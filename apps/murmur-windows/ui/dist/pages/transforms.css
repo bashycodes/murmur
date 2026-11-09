@@ -1,0 +1,80 @@
+/* Transforms page (ui/src/pages/transforms.ts), after PageTransforms.dc.html.
+   The banner, lumen and link-light rules are the design system's
+   (docs/design/app-design/ds/murmur/components/bundle.css), copied as is
+   (the base banner rules are also in pages/scratchpad-page.css and
+   pages/style.css; identical, so either file can go first). lw-tf-* is
+   this page's layout. Colours are theme.css tokens. */
+
+.fl-btn-lumen { background: var(--lumen-400); color: var(--vast-950); }
+.fl-btn-lumen:hover { opacity: .85; }
+.fl-btn-link-light { background: transparent; color: var(--lumen-400); padding-left: 8px; padding-right: 8px; }
+.fl-btn-link-light:hover { text-decoration: underline; }
+.fl-banner { position: relative; overflow: hidden; display: flex; flex-direction: column; justify-content: center; gap: 8px; min-height: 148px; padding: 24px; border-radius: 12px; color: var(--lumen-400); }
+.fl-banner-mist { background: linear-gradient(100deg, var(--fathom-900) 0%, var(--vast-700) 55%, var(--vast-900) 100%); }
+.fl-banner-title { margin: 0; font: 400 28px/28px var(--font-serif); letter-spacing: -0.04em; }
+.fl-banner-body { margin: 0; max-width: 460px; font: 550 15px/20px var(--font-sans); }
+.fl-banner-actions { display: flex; gap: 8px; margin-top: 12px; }
+
+.lw-tf-head { gap: 12px; }
+.lw-tf-head > .fl-page-title { flex: none; }
+.lw-tf-grow { flex: 1; }
+.lw-tf-optin { font: 550 15px/20px var(--font-sans); cursor: pointer; }
+.lw-tf-view .fl-kbd-text { margin-left: 8px; }
+
+.lw-tf-auto.fl-row { border-top: 0; padding: 0; gap: 12px; }
+.lw-tf-auto-pick.fl-select { width: 180px; flex: none; }
+.lw-tf-auto-pick.fl-select:disabled { opacity: .5; cursor: not-allowed; }
+.fl-toggle:disabled { opacity: .5; cursor: not-allowed; }
+
+.lw-tf-bar { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.lw-tf-h2 { margin: 0; flex: 1; font-size: 28px; line-height: 28px; font-weight: 400; }
+.lw-tf-bar .fl-btn svg { width: 16px; height: 16px; }
+
+.lw-tf-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.lw-tf-card {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 10px;
+  padding: 20px; border-radius: 12px; border: 1px solid var(--border);
+  background: var(--background); min-height: 150px; box-sizing: border-box;
+  font: inherit; color: inherit; text-align: left; cursor: pointer;
+  transition: border-color .2s, box-shadow .2s;
+}
+.lw-tf-card:hover, .lw-tf-card:focus-visible { border-color: var(--neutral-500); }
+.lw-tf-card:focus-visible { outline: 2px solid var(--neutral-500); outline-offset: 2px; }
+.lw-tf-card[hidden] { display: none; }
+.lw-tf-own { border: 1px dashed var(--sand-700); background: transparent; }
+.lw-tf-plus { width: 28px; height: 28px; border-radius: 50%; background: var(--background-tertiary); display: inline-flex; align-items: center; justify-content: center; }
+.lw-tf-plus svg { width: 14px; height: 14px; }
+.lw-tf-keys { min-height: 24px; }
+.lw-tf-nokeys { font: 400 13px/22px var(--font-sans); color: var(--foreground-tertiary); }
+.lw-tf-name { font: 600 16px/24px var(--font-sans); overflow-wrap: anywhere; }
+.lw-tf-desc { font: 400 15px/20px var(--font-sans); color: var(--foreground-tertiary); overflow-wrap: anywhere; }
+
+/* Editor and Try it out dialogs */
+dialog.lw-tf-dialog { width: min(480px, calc(100vw - 48px)); box-sizing: border-box; }
+.lw-tf-field { display: flex; flex-direction: column; gap: 6px; font: 550 14px/20px var(--font-sans); }
+.lw-tf-field em { font-style: normal; font-weight: 400; color: var(--foreground-tertiary); }
+.lw-tf-field .fl-input, .lw-tf-field .fl-select { width: 100%; box-sizing: border-box; }
+.lw-tf-field textarea.fl-input { min-height: 96px; }
+.lw-tf-field > label { font: inherit; }
+.lw-tf-keyrow { display: flex; align-items: center; gap: 8px; }
+.lw-tf-keyrow .fl-input { flex: 1; min-width: 0; }
+.lw-tf-keyrow .fl-btn { flex: none; }
+.lw-tf-hint { font: 400 13px/18px var(--font-sans); color: var(--foreground-tertiary); }
+.lw-tf-err { min-height: 0; font: 400 14px/20px var(--font-sans); color: var(--destructive); }
+.lw-tf-err:empty { display: none; }
+.lw-tf-del { margin-right: auto; }
+.lw-tf-del[hidden] { display: none; }
+.lw-tf-result {
+  min-height: 60px; padding: 8px 12px; border-radius: 8px; background: var(--background-tertiary);
+  font: 400 15px/20px var(--font-sans); white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.lw-tf-result.err { color: var(--destructive); }
+
+@media (max-width: 900px) {
+  .lw-tf-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Home: a transform row's before / after (home.ts, "View changes") */
+.lw-tf-change { margin-top: 8px; padding: 12px; border-radius: 8px; background: var(--background-tertiary); }
+.lw-tf-change[hidden] { display: none; }
+.lw-tf-change .lw-hist-note { margin: 0; }

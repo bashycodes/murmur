@@ -30,7 +30,7 @@ below is the one used for BYOK, local and self-hosted cleanup.
 - **Clone first:** a translation hotkey; auto-adding learned corrections with
   an Undo toast, plus their two candidate filters; Whisper decoder thresholds
   against silence hallucinations; an "OpenAI-compatible STT URL" route for the
-  user's own server; signed auto-update served from flow-server.
+  user's own server; signed auto-update served from murmur-server.
 - **Their cleanup is all AI.** They have no pre-AI text rules at all. Fillers,
   spoken punctuation, numbers, self-corrections and lists are all in one
   prompt. That matches our D30/D60 direction and the owner's "prefer AI
@@ -60,11 +60,11 @@ M = about a week, L = several weeks, "-" = nothing to do there.
 | 2 | Auto-learn: auto-add + Undo toast + candidate filters | High | S | S | S | Yes (fully local) |
 | 3 | Whisper anti-hallucination decoder thresholds | Med-High | S | - | - | Yes (decoder setting) |
 | 4 | Self-hosted OpenAI-compatible STT URL (their "custom ASR shim") | Medium | M | S | S | Yes, the user's own host, D52-style consent |
-| 5 | Signed auto-update (and a signed model catalogue) | Medium | - | M | M | Yes, if the feed is flow-server's library (D40), not a public URL |
+| 5 | Signed auto-update (and a signed model catalogue) | Medium | - | M | M | Yes, if the feed is murmur-server's library (D40), not a public URL |
 | 6 | Onboarding: hardware- and language-aware model picks, real-hotkey demo, mic as the only required grant | Medium | S | M | M | Yes |
-| 7 | Team-shared dictionaries | Low-Med | S | S | S | Yes via flow-server named keys (D38); needs a server endpoint (M) |
+| 7 | Team-shared dictionaries | Low-Med | S | S | S | Yes via murmur-server named keys (D38); needs a server endpoint (M) |
 | 8 | Per-scope AI models (cleanup / command / translate each pick a model) | Low | S | S | S | Yes, inside OpenRouter / custom server (D28/D52) |
-| 9 | iOS keyboard-extension architecture | Low now | L | - | - | Yes, with the app streaming to flow-server |
+| 9 | iOS keyboard-extension architecture | Low now | L | - | - | Yes, with the app streaming to murmur-server |
 | 10 | Screenshot context for the AI | Low | M | M | M | Weak: privacy cost and a vision model; we already send cursor text |
 | 11 | BYOK provider zoo (OpenAI, Anthropic, Gemini, Groq, Deepgram, AssemblyAI, Bedrock, Azure …) | Low | L | M | M | No: contradicts D28 (one third party) |
 | 12 | Searchable history | n.a. | - | - | - | We already have it, and ours is better (A.8) |
@@ -135,11 +135,11 @@ M = about a week, L = several weeks, "-" = nothing to do there.
   - Toast: `src/hooks/useMainProcessNotifications.tsx`; Undo is IPC
     `undo-learned-corrections`.
 - **Ours:**
-  - `crates/flow-core/src/learn.rs` (`learn_edit`) word-aligns
+  - `crates/murmur-core/src/learn.rs` (`learn_edit`) word-aligns
     pasted vs edited and takes substitution runs of up to 4 words. It drops
     stopwords, existing entries, contractions and sentence-initial
     capitalisation, and caps at 4 candidates.
-  - Windows `apps/flow-windows/src/learn.rs` re-reads the field by UIA polling
+  - Windows `apps/murmur-windows/src/learn.rs` re-reads the field by UIA polling
     every 1 s. Android re-reads through the a11y service.
   - A candidate becomes a **pending suggestion** and is never added
     automatically.
@@ -176,11 +176,11 @@ falling from 2.25 % to 0.06 % over 4,814 real dictations.
   `resolveTranscriptionRoute` in `src/helpers/transcriptionRoute.ts`;
   `src/helpers/selfHostedTranscription.js`; `isSecureHttpEndpoint`.
 - **For us:**
-  - flow-server already is our self-hosted STT, and it is better: streaming,
+  - murmur-server already is our self-hosted STT, and it is better: streaming,
     auth, never-fail fallback.
   - The gap is a user who already runs a Whisper or OpenAI-compatible server
     (speaches, faster-whisper-server, LocalAI).
-  - Core M: a `flow-cloud` batch adapter to a host the user typed and
+  - Core M: a `murmur-cloud` batch adapter to a host the user typed and
     consented to. This is exactly D52's pattern for cleanup, applied to STT.
     It needs a decision amending D28, as D52 did.
   - Shells S: one URL field each.
@@ -210,7 +210,7 @@ falling from 2.25 % to 0.06 % over 4,814 real dictations.
   - Android M: an "update available" check plus the system installer. The D56
     key makes it install in place.
   - The feed: the repo is private, so GitHub release assets aren't anonymously
-    fetchable. Serve the manifest and binaries from flow-server's model
+    fetchable. Serve the manifest and binaries from murmur-server's model
     library (D40/D41), which already serves owner-tagged files to the
     air-gapped devices.
   - Their monotonic-version and rotating-key rules for the catalogue apply
@@ -220,7 +220,7 @@ falling from 2.25 % to 0.06 % over 4,814 real dictations.
 ### A.6 Onboarding
 
 - **Theirs:** the route is recomputed from context, not a fixed wizard
-  (`src/components/onboarding/flow.ts`, `getOnboardingRoute`).
+  (`src/components/onboarding/murmur.ts`, `getOnboardingRoute`).
   - Guest route: auth → permissions → hotkey → setup choice.
   - Account route: adds languages, use cases, a demo and notes.
   - Setup choice offers Cloud, On this device (shows the free GB needed),
@@ -242,7 +242,7 @@ falling from 2.25 % to 0.06 % over 4,814 real dictations.
     - Downloads continue in a background tray after the wizard ends.
   - The onboarding session survives app updates: retired steps map to the
     nearest live step.
-- **Ours:** Windows `apps/flow-windows/ui/src/onboarding/`; Android
+- **Ours:** Windows `apps/murmur-windows/ui/src/onboarding/`; Android
   `data/SetupChecklist.kt`. The model step offers a fixed catalogue (D31).
 - **Clone (M per shell):**
   - The machine-class → recommended model table, from our own phone and PC
@@ -269,10 +269,10 @@ falling from 2.25 % to 0.06 % over 4,814 real dictations.
   - SSO is better-auth's SSO plugin; enterprise AI uses web-identity
     credentials. None of that applies to us.
 - **Ours:**
-  - `DictMatcher::new(personal, team)` (`crates/flow-core/src/postprocess/dict.rs`)
+  - `DictMatcher::new(personal, team)` (`crates/murmur-core/src/postprocess/dict.rs`)
     already takes a team list, but every engine call passes
     `&[]`.
-  - flow-server has named keys (D38) but no dictionary endpoint.
+  - murmur-server has named keys (D38) but no dictionary endpoint.
 - **Clone:**
   - Server M: `GET /v1/dictionary` with admin-edited shared entries.
   - Core and shells S: fetch, cache and pass the team list.
@@ -288,7 +288,7 @@ falling from 2.25 % to 0.06 % over 4,814 real dictations.
   - FTS5 and semantic search (Qdrant + MiniLM) exist for notes only.
   - Items offer Retry with current settings, View raw transcript, show the
     audio file, and Delete. Audio is kept 30 days by default.
-- **Ours:** Windows `apps/flow-windows/src/history.rs` has search (wildcards
+- **Ours:** Windows `apps/murmur-windows/src/history.rs` has search (wildcards
   escaped), get, delete, clear and set-edited; paste-last and copy-last
   chords; Retry from kept recordings (D35). Android has history search and
   raw-vs-formatted.
@@ -321,9 +321,9 @@ falling from 2.25 % to 0.06 % over 4,814 real dictations.
 - **Lesson for us:**
   - Copy this split: app owns audio, keyboard owns insertion, App Group +
     Darwin notification in between.
-  - Put flow-core (via `flow-ffi`) in the **app**, not the extension:
+  - Put murmur-core (via `murmur-ffi`) in the **app**, not the extension:
     keyboard extensions have a small memory limit and no mic.
-  - The hybrid route fits well: the app streams to flow-server, so no model
+  - The hybrid route fits well: the app streams to murmur-server, so no model
     has to be on the phone.
   - Effort L; nothing to do until an iOS device is in scope.
 
@@ -336,7 +336,7 @@ falling from 2.25 % to 0.06 % over 4,814 real dictations.
     (`src/helpers/screenContextCapture.js`).
   - Ours: cleanup already gets cursor text before and after plus the
     selection. Whisper gets screen words in its initial prompt
-    (`build_initial_prompt` in `crates/flow-core/src/asr.rs`).
+    (`build_initial_prompt` in `crates/murmur-core/src/asr.rs`).
   - Verdict: not worth a vision model and a screenshot leaving the device.
 - **BYOK provider zoo:**
   - Theirs: `src/services/ai/inferenceProviders/` (openai / custom /
@@ -502,10 +502,10 @@ Output only the cleaned transcript.
 **Ours:**
 
 - **AI cleanup** (cloud / custom server, raw transcript in, D30/D60):
-  `crates/flow-core/src/cleanup/prompt_v5.rs`, which is v4c plus list and
+  `crates/murmur-core/src/cleanup/prompt_v5.rs`, which is v4c plus list and
   correction rules and 8 more few-shots, for about 37 few-shot turns in total.
-- **On-device and flow-server cleanup** (rules text in):
-  - Prompt v2 is `SYSTEM` plus `EXAMPLES` in `crates/flow-core/src/cleanup.rs`:
+- **On-device and murmur-server cleanup** (rules text in):
+  - Prompt v2 is `SYSTEM` plus `EXAMPLES` in `crates/murmur-core/src/cleanup.rs`:
     21 few-shots, including D63's number turns.
   - D65 adds the Hebrew turn (`HEBREW_EXAMPLE`).
   - The user message carries `APP | CATEGORY`, `STYLE`, `DICTIONARY`, cursor
@@ -559,7 +559,7 @@ change per dictation; both break the D27 cached prefix.
   - em-dash replacement on pasted *assistant* answers only
     (`src/helpers/assistantResponseDelivery.ts`).
 - **Ours:**
-  - D15 `crates/flow-core/src/postprocess/spoken.rs` and
+  - D15 `crates/murmur-core/src/postprocess/spoken.rs` and
     `spoken_commands.rs` (fillers, spoken punctuation, backtracking,
     money/time/date ITN, paired quote/bracket commands), on by default.
   - D30: the AI-cleanup path sends the **raw** transcript with no rules
@@ -600,7 +600,7 @@ change per dictation; both break the D27 cached prefix.
     preamble/postamble scrub and quote unwrap (`unwrap_output_for` in
     `cleanup.rs`); and D65's script-drift check (`script_lock::drifted_from`).
   - The OpenRouter request already sends `include_reasoning: false` and a
-    reasoning effort (`crates/flow-cloud/src/cleaner.rs`).
+    reasoning effort (`crates/murmur-cloud/src/cleaner.rs`).
   - Nothing strips `<think>` text from a D52 custom server's answer.
 - **Verdict: keep ours (D59), adopt two failure detectors.** Neither is a
   text-quality rule; both catch a broken answer.
@@ -632,12 +632,12 @@ change per dictation; both break the D27 cached prefix.
     speech, and the local path **retries once without the prompt**.
 - **Ours:**
   - Whisper `initial_prompt` = dictionary, then screen words
-    (`build_initial_prompt`, `crates/flow-core/src/asr.rs`).
+    (`build_initial_prompt`, `crates/murmur-core/src/asr.rs`).
   - Sherpa hotwords (D12: WER 1.2 → 0.9 %).
   - `DICTIONARY:` in the LLM user message.
   - Deterministic `DictMatcher` replacement and snippets
-    (`crates/flow-core/src/postprocess/dict.rs`).
-  - Stock-phrase hallucination filter (`crates/flow-core/src/hallucination.rs`)
+    (`crates/murmur-core/src/postprocess/dict.rs`).
+  - Stock-phrase hallucination filter (`crates/murmur-core/src/hallucination.rs`)
     and D20's degenerate-text re-decode. Neither looks for a recited
     dictionary.
 - **Verdict: keep ours, adopt their echo handling and prompt ordering.**
@@ -673,7 +673,7 @@ tweak.
   - Titles never leave the main process; only the category does.
   - It is off by default. It is offered after 70 dictated words, with a setup
     dialog.
-- **Ours** (`classify` in `crates/flow-core/src/postprocess/apps.rs`):
+- **Ours** (`classify` in `crates/murmur-core/src/postprocess/apps.rs`):
   - Prefix lists per platform (exe or package plus URL), giving
     Personal / Work / Email / Other buckets plus AI, terminal, document and
     Notion flags.
@@ -743,7 +743,7 @@ tweak.
   fuzzy (Levenshtein 0 / 1 / 2 by name length). It counts only at the start,
   after a cue word, or after a sentence end.
 - **Ours:**
-  - `crates/flow-core/src/command.rs`: `SYSTEM_TRANSFORM` / `SYSTEM_GENERATE`,
+  - `crates/murmur-core/src/command.rs`: `SYSTEM_TRANSFORM` / `SYSTEM_GENERATE`,
     XML-tagged user message, response sanitiser, a 4000-char limit, a 25 s
     budget and the Hebrew script check.
   - Windows: the Command chord plus Transforms (D32).
@@ -821,10 +821,10 @@ tweak.
   - Cloud cleanup has a 2.5 s budget (D30).
 - **Verdict: keep ours, adopt connection pre-warm.**
   - At hotkey-down, open (or keep alive) the TLS connection the commit will
-    use: the OpenRouter or custom cleanup HTTP client, and the flow-server
+    use: the OpenRouter or custom cleanup HTTP client, and the murmur-server
     websocket where the shell doesn't already. The TLS handshake then
     overlaps speech instead of sitting on the release → text path. Check
-    first whether `flow-cloud`'s HTTP client already keeps connections alive.
+    first whether `murmur-cloud`'s HTTP client already keeps connections alive.
   - Speculative decoding: n.a. for a 1.5B on CPU.
   - Idle unload: we already handle memory pressure on Android
     (`onTrimMemory`, D55).
@@ -923,12 +923,12 @@ tweak.
    Accept a title match on an unlisted host only when the host carries the
    site's name. Fixture tests in `apps.rs`.
 9. **Pre-warm cleanup and server connections at hotkey-down.** Check whether
-   the `flow-cloud` HTTP client and the flow-server websocket are already warm
+   the `murmur-cloud` HTTP client and the murmur-server websocket are already warm
    when recording starts. If not, open or keep alive the TLS connection at
    hotkey-down. Measure release → text p50 before and after on Windows and
    the phone.
-10. **Signed self-update from flow-server.** Proposal first: serve signed
-    Windows installers and Android APKs from the flow-server library (D40),
+10. **Signed self-update from murmur-server.** Proposal first: serve signed
+    Windows installers and Android APKs from the murmur-server library (D40),
     with a signed manifest (ed25519, rotating key IDs, monotonic version, as
     OpenWhispr's model catalogue does). Windows uses the Tauri updater;
     Android uses an "update available" check plus the system installer (the
@@ -943,8 +943,8 @@ tweak.
     D28 for STT, as D52 did for cleanup: the user may point STT at their own
     `/audio/transcriptions` server (batch), with host-bound consent. Plain
     HTTP is allowed only for private addresses (D17's rule). Implement it in
-    `flow-cloud` and add a URL field in both shells.
-13. **Team dictionary on flow-server (later).** Add a `GET /v1/dictionary`
+    `murmur-cloud` and add a URL field in both shells.
+13. **Team dictionary on murmur-server (later).** Add a `GET /v1/dictionary`
     endpoint holding admin-edited shared entries, cached by clients and passed
     to `DictMatcher::new(personal, team)`, which already takes a team list.
     Filter shared entries to term-like words (≤ 64 chars, ≤ 6 tokens, no

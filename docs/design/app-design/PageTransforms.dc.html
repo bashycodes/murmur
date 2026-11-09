@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <title>Transforms</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="flow-theme.css">
-<link rel="stylesheet" href="ds/flow/components/bundle.css">
-<script src="ds/flow/components/bundle.js"></script>
+<link rel="stylesheet" href="murmur-theme.css">
+<link rel="stylesheet" href="ds/murmur/components/bundle.css">
+<script src="ds/murmur/components/bundle.js"></script>
 </head>
 <body>
 <x-dc>
@@ -19,10 +19,10 @@ a{color:#1a1a1a}a:hover{color:#30302f}
 </helmet>
 <div class="fl" style="width: 1280px; height: 800px; display: flex; flex-direction: column; background: var(--background-tertiary); font-family: var(--font-sans); color: var(--foreground); overflow: hidden;">
   <header style="height: 44px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 16px;">
-    <x-import component-from-global-scope="Flow.IconButton" icon="panel" label="Collapse sidebar" variant="titlebar"></x-import>
+    <x-import component-from-global-scope="Murmur.IconButton" icon="panel" label="Collapse sidebar" variant="titlebar"></x-import>
     <div style="display: flex; align-items: center; gap: 4px;">
-      <x-import component-from-global-scope="Flow.IconButton" icon="moon" label="Theme" variant="titlebar"></x-import>
-      <x-import component-from-global-scope="Flow.IconButton" icon="bell" label="Notifications" variant="titlebar"></x-import>
+      <x-import component-from-global-scope="Murmur.IconButton" icon="moon" label="Theme" variant="titlebar"></x-import>
+      <x-import component-from-global-scope="Murmur.IconButton" icon="bell" label="Notifications" variant="titlebar"></x-import>
       <span style="width: 132px;"></span>
     </div>
   </header>
@@ -35,39 +35,39 @@ a{color:#1a1a1a}a:hover{color:#30302f}
           <span class="fl-badge fl-badge-dark">Beta</span>
           <span style="flex: 1;"></span>
           <span style="font: 550 15px/20px var(--font-sans);">Opt in</span>
-          <x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Opt in to Transforms"></x-import>
-          <x-import component-from-global-scope="Flow.Kbd" keys="{{viewKeys}}">to view changes</x-import>
+          <x-import component-from-global-scope="Murmur.Toggle" default-checked="{{yes}}" label="Opt in to Transforms"></x-import>
+          <x-import component-from-global-scope="Murmur.Kbd" keys="{{viewKeys}}">to view changes</x-import>
         </div>
 
         <div class="fl-banner fl-banner-mist">
           <h3 class="fl-banner-title">Transform works anywhere you write</h3>
           <p class="fl-banner-body">Select text in any app, press a shortcut, and it's rewritten in place. Uses your AI cleanup engine: OpenRouter, then this PC.</p>
           <div class="fl-banner-actions">
-            <x-import component-from-global-scope="Flow.Button" variant="lumen">Try it out</x-import>
+            <x-import component-from-global-scope="Murmur.Button" variant="lumen">Try it out</x-import>
             <a class="fl-btn fl-btn-link-light" href="SettingsCleanup.dc.html" style="text-decoration: none;">How it works</a>
           </div>
         </div>
 
         <div class="fl-row" style="border-top: 0; padding: 0;">
           <div class="fl-row-text"><div class="fl-row-title">Auto Apply After Dictation</div><div class="fl-row-desc">Pass each dictation through the chosen transform before it is pasted.</div></div>
-          <x-import component-from-global-scope="Flow.Select" options="{{tOpts}}" default-value="polish" width="{{w180}}" disabled="{{yes}}"></x-import>
-          <x-import component-from-global-scope="Flow.Toggle" label="Auto apply after dictation"></x-import>
+          <x-import component-from-global-scope="Murmur.Select" options="{{tOpts}}" default-value="polish" width="{{w180}}" disabled="{{yes}}"></x-import>
+          <x-import component-from-global-scope="Murmur.Toggle" label="Auto apply after dictation"></x-import>
         </div>
 
         <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
           <h2 class="fl-serif" style="margin: 0; flex: 1; font-size: 28px; line-height: 28px; font-weight: 400;">My Transforms</h2>
-          <x-import component-from-global-scope="Flow.Button" variant="ghost" icon="refresh">Reset to defaults</x-import>
-          <x-import component-from-global-scope="Flow.Button" variant="primary">Create New</x-import>
+          <x-import component-from-global-scope="Murmur.Button" variant="ghost" icon="refresh">Reset to defaults</x-import>
+          <x-import component-from-global-scope="Murmur.Button" variant="primary">Create New</x-import>
         </div>
 
         <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px;">
           <div style="display: flex; flex-direction: column; gap: 10px; padding: 20px; border-radius: 12px; border: 1px solid var(--border); background: var(--background); min-height: 150px; box-sizing: border-box;">
-            <x-import component-from-global-scope="Flow.Kbd" keys="{{k1}}"></x-import>
+            <x-import component-from-global-scope="Murmur.Kbd" keys="{{k1}}"></x-import>
             <span style="font: 600 16px/24px var(--font-sans);">Polish</span>
             <span style="font: 400 15px/20px var(--font-sans); color: var(--foreground-tertiary);">Clearer, tighter wording</span>
           </div>
           <div style="display: flex; flex-direction: column; gap: 10px; padding: 20px; border-radius: 12px; border: 1px solid var(--border); background: var(--background); min-height: 150px; box-sizing: border-box;">
-            <x-import component-from-global-scope="Flow.Kbd" keys="{{k2}}"></x-import>
+            <x-import component-from-global-scope="Murmur.Kbd" keys="{{k2}}"></x-import>
             <span style="font: 600 16px/24px var(--font-sans);">Prompt Builder</span>
             <span style="font: 400 15px/20px var(--font-sans); color: var(--foreground-tertiary);">Turns a rough ask into a clear prompt</span>
           </div>

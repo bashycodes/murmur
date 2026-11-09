@@ -1,6 +1,6 @@
 # Cloud speech-to-text and text cleanup (opt-in, OpenRouter; cleanup also a custom server)
 
-Status: implemented on `feat/or-cloud` (flow-cloud, W1) + `feat/or-route` (core/router/ffi),
+Status: implemented on `feat/or-cloud` (murmur-cloud, W1) + `feat/or-route` (core/router/ffi),
 decisions **D18** (cloud STT, client-direct, fenced) and **D28** (OpenRouter is the only
 provider; second opt-in for cloud text cleanup). Design and the dated OpenRouter API
 facts: `docs/proposals/openrouter-only-cloud.md` (§1 facts, §2 design, §4.1 frozen API).
@@ -20,14 +20,14 @@ catalogue). Fences:
 
 | # | Invariant | Enforced by |
 |---|---|---|
-| C1 | Off by default; STT never used without `allow_cloud` **and** STT consent for `openrouter.ai` **and** a key **and** `cloud` in `order`; cleanup likewise with `allow_cloud_cleanup`, its **own** consent and `cloud` in `cleanup_order` | `flow-router/tests/policy.rs` (or-route) |
+| C1 | Off by default; STT never used without `allow_cloud` **and** STT consent for `openrouter.ai` **and** a key **and** `cloud` in `order`; cleanup likewise with `allow_cloud_cleanup`, its **own** consent and `cloud` in `cleanup_order` | `murmur-router/tests/policy.rs` (or-route) |
 | C2 | Not compiled into client-only builds | `tools/check-build-matrix.sh` (dependency graph) |
-| C3 | Keys only in OS secure storage and Rust memory (`SecretString`); never in config JSON, logs, `route_status`, `info_json`, catalogue, crash text or flow-server frames | `flow-contract-tests/tests/no_key_leak.rs` |
-| C4 | Calls run on the client; flow-server never sees keys or cloud traffic | §4, `no_key_leak.rs::start_frame_has_no_cloud_fields` |
-| C5 | Provider returns raw text; VAD, guard, spoken cleanup, dictionary, LLM step and post-processing run in local flow-core | `equivalence.rs::equivalence_cloud_mock_http` |
-| C6 | Silence is never uploaded | `flow-cloud/tests/session.rs::silence_makes_no_request` |
+| C3 | Keys only in OS secure storage and Rust memory (`SecretString`); never in config JSON, logs, `route_status`, `info_json`, catalogue, crash text or murmur-server frames | `murmur-contract-tests/tests/no_key_leak.rs` |
+| C4 | Calls run on the client; murmur-server never sees keys or cloud traffic | §4, `no_key_leak.rs::start_frame_has_no_cloud_fields` |
+| C5 | Provider returns raw text; VAD, guard, spoken cleanup, dictionary, LLM step and post-processing run in local murmur-core | `equivalence.rs::equivalence_cloud_mock_http` |
+| C6 | Silence is never uploaded | `murmur-cloud/tests/session.rs::silence_makes_no_request` |
 | C7 | Every dictation that used OpenRouter is visible (pill `C`, route row, usage) | shell UI tests |
-| **C8** | **One host.** The API root is the constant `https://openrouter.ai/api/v1` (`flow_cloud::BASE_URL`); no config, preset or env var changes it; no redirect is followed; https only; no other provider host string is compiled into a cloud build | `api.rs`, `http.rs`, `contract_openrouter.rs::redirects_are_never_followed`, `check-build-matrix.sh` host scan |
+| **C8** | **One host.** The API root is the constant `https://openrouter.ai/api/v1` (`murmur_cloud::BASE_URL`); no config, preset or env var changes it; no redirect is followed; https only; no other provider host string is compiled into a cloud build | `api.rs`, `http.rs`, `contract_openrouter.rs::redirects_are_never_followed`, `check-build-matrix.sh` host scan |
 
 ---
 
@@ -84,7 +84,7 @@ Unchanged from D18 for STT (`order`, `allow_cloud`, `Route::Cloud`, `CloudFactor
 ### 3.2 Failure handling (STT and cleanup)
 
 STT is batch, so OpenRouter is not contacted until commit; the router keeps the PCM
-buffer for replay. Mapping (`flow_cloud::http::map_status`, codes = `CloudError::code()`):
+buffer for replay. Mapping (`murmur_cloud::http::map_status`, codes = `CloudError::code()`):
 
 | OpenRouter answer | Code | Retry / circuit |
 |---|---|---|
@@ -111,7 +111,7 @@ key or a URL); a code that contains the key is dropped (`scrub`).
 
 `commit deadline = now + stt.timeout_base_ms (6000) + 0.5 × audio_ms + llm_timeout_ms`,
 capped at 90 s; connect timeout 3 s (STT), 1.5 s (cleanup). Cleanup has its own
-`cleanup.timeout_ms` (2500), enforced by flow-core's `run_cleanup`; the stream is aborted
+`cleanup.timeout_ms` (2500), enforced by murmur-core's `run_cleanup`; the stream is aborted
 when it fires.
 
 ### 3.4 RouteInfo
@@ -123,7 +123,7 @@ when it fires.
 
 ## 4. Where the call runs: client direct
 
-Unchanged from D18: keys stay on each device, flow-server keeps `IPAddressDeny=any`, no
+Unchanged from D18: keys stay on each device, murmur-server keeps `IPAddressDeny=any`, no
 protocol change. Cloud cleanup applies to on-device and cloud-STT dictations, **not** to
 the server route in v1 (the server uses its own LLM; proposal §2.5).
 
@@ -134,7 +134,7 @@ billed call per dictation). OpenRouter's STT endpoint has no streaming. Cleanup 
 
 ---
 
-## 6. `crates/flow-cloud`
+## 6. `crates/murmur-cloud`
 
 ### 6.1 Layout
 
@@ -145,8 +145,8 @@ billed call per dictation). OpenRouter's STT endpoint has no streaming. Cleanup 
 | `settings.rs` | `Privacy`, `SttSettings`, `CleanupSettings`, `CleanupScope`, `SttPath(Choice)`, defaults, `valid_model_id` |
 | `catalog.rs` | `ModelInfo`, `Catalog`, `CatalogStore` (memory → cache file → baked), `refresh`, `lookup_model`, picker search/rows/badges/price labels |
 | `adapters/openrouter.rs` | `OpenRouterStt`: paths A and B, Groq prompt, WAV retry, `verbatim_check`, `TRANSCRIBE_PROMPT` |
-| `lib.rs` | `CloudAsr` (chunking, cost), `CloudBackend` (`flow_router::Backend`, incl. `install_cleanup`), router glue (`attach*` = cloud factory + cleanup factory, `factory*`, `cleanup_factory`; `From<&OpenRouterConfig>` for the settings) |
-| `cleaner.rs` | `OpenRouterCleaner: flow_core::Cleaner` (SSE, cancel, usage, prefill = `GET /key`) |
+| `lib.rs` | `CloudAsr` (chunking, cost), `CloudBackend` (`murmur_router::Backend`, incl. `install_cleanup`), router glue (`attach*` = cloud factory + cleanup factory, `factory*`, `cleanup_factory`; `From<&OpenRouterConfig>` for the settings) |
+| `cleaner.rs` | `OpenRouterCleaner: murmur_core::Cleaner` (SSE, cancel, usage, prefill = `GET /key`) |
 | `keyinfo.rs`, `generation.rs`, `budget.rs` | `/key`, deferred `/generation` cost, estimates + `max_price` |
 | `encode.rs` | FLAC / WAV / PCM16, VAD-quiet chunking |
 | `presets.rs` | `presets()` = exactly one OpenRouter entry (kept for `nativeCloudPresets`) |
@@ -154,7 +154,7 @@ billed call per dictation). OpenRouter's STT endpoint has no streaming. Cleanup 
 | `data/catalog-baked.json` | trimmed raw OpenRouter JSON (65 models, 28 transcription), generated by `tools/gen-openrouter-catalog.py` from `docs/proposals/data/*-2026-10-24.json`; parsed by the same code as live answers |
 
 Dependencies unchanged: `reqwest` (blocking, json, rustls-tls-webpki-roots), `flacenc`,
-`base64`, `serde_json`. No logging crate: flow-cloud never logs.
+`base64`, `serde_json`. No logging crate: murmur-cloud never logs.
 
 ### 6.2 STT paths
 
@@ -213,25 +213,25 @@ OpenRouter with its own settings, consent and key, and the pages say so.
 
 * **Base URL** as typed, `http://` or `https://`, any host (owner's choice: on http the
   key and the dictated text cross the network unencrypted; the pages warn).
-  `flow_router::cloud::normalize_custom_base_url` adds `/v1` when the URL has no path,
+  `murmur_router::cloud::normalize_custom_base_url` adds `/v1` when the URL has no path,
   drops a trailing `/`, refuses credentials, spaces, backslashes, query and fragment.
   `custom_server_address` adds the canonical host (lower case, IPv6 compressed, IDN in
   punycode) that consent binds to; the shells take URL and host from it (Android
   `nativeCustomCleanupAddress`), never from their own URL parser.
-* **Request** (`flow_cloud::custom::CustomCleaner`): streamed `POST {base}/chat/completions`
+* **Request** (`murmur_cloud::custom::CustomCleaner`): streamed `POST {base}/chat/completions`
   with `model`, `messages`, `temperature: 0`, `max_tokens`, `stream: true`. None of
   OpenRouter's fields (`provider`, `zdr`, `max_price`, `reasoning`, `include_reasoning`,
   `seed`), no `/key`, `/generation` or credits calls. Same SSE reader, cancel, error codes
   and redirect rule as §6.4. `prefill` = content-free `GET {base}/models` (≤ once per 60 s).
 * **Key** optional (`set_cloud_key("custom", …)`; Windows Credential Manager
-  `flow-clone/cloud/custom`, Android `SecretVault("flow_cloud_custom")`); none = no
+  `murmur/cloud/custom`, Android `SecretVault("murmur_cloud_custom")`); none = no
   `Authorization` header. Never used for STT; the OpenRouter key never reaches this server.
   The settings pages' "Load models" / "Test connection" / "Test cleanup" send the key typed
   into the field, or the saved key **only** when the URL's host is the consented one
   (`CustomCleanupConfig::saved_key_allowed_for`, `Router::with_custom_cleanup_key`); a URL
   typed elsewhere never receives the saved key.
 * **Model** free text (1-256 chars, no whitespace or control characters). The pages list
-  `GET {base}/models` ids (`flow_cloud::custom::list_models`, also the Test connection;
+  `GET {base}/models` ids (`murmur_cloud::custom::list_models`, also the Test connection;
   Android `nativeCustomCleanupModels`; result JSON `custom::models_json`) and allow manual
   entry. "Test cleanup" (`custom::test_cleanup`) runs one streamed completion of a fixed
   sample sentence on the selected provider.
@@ -251,7 +251,7 @@ OpenRouter with its own settings, consent and key, and the pages say so.
 
 ## 7. Pipeline and dictionary
 
-`CloudBackend` owns `FlowCore::from_engines(Arc<CloudAsr>, cleaner)`; the whole local
+`CloudBackend` owns `MurmurCore::from_engines(Arc<CloudAsr>, cleaner)`; the whole local
 pipeline runs on the provider text (C5). Only `AsrRequest.dictionary_terms` are sent (and
 only when `send_dictionary`), never screen words. Dictionary replacements still run
 locally; snippet triggers are never sent.
@@ -279,17 +279,17 @@ locally; snippet triggers are never sent.
 `cleanup_provider` (default `"openrouter"`) and `custom_cleanup` (D52) are omitted while
 default.
 
-Owned by flow-router (or-route); flow-cloud mirrors the field names in `SttSettings` /
+Owned by murmur-router (or-route); murmur-cloud mirrors the field names in `SttSettings` /
 `CleanupSettings` / `Privacy`. There is no OpenRouter base URL, preset, dialect or price
 field; the only base URL is the custom cleanup server's (D52).
-Key: Windows Credential Manager `flow-clone/cloud/openrouter`, Android
-`SecretVault("flow_cloud_openrouter")`.
+Key: Windows Credential Manager `murmur/cloud/openrouter`, Android
+`SecretVault("murmur_cloud_openrouter")`.
 
 ---
 
 ## 9. Build matrix
 
-| Build | flow-cloud | `cloud_capabilities().adapters` |
+| Build | murmur-cloud | `cloud_capabilities().adapters` |
 |---|---|---|
 | Android `local`, Windows `local,app` | **no** | — |
 | Android `hybrid` / `remote` (+`cloud`), Windows `…,cloud,app` | yes | `["openrouter"]` |
@@ -298,10 +298,10 @@ Key: Windows Credential Manager `flow-clone/cloud/openrouter`, Android
 scan that fails on any known third-party speech/LLM API host (ElevenLabs, Deepgram,
 AssemblyAI, Groq, OpenAI, Anthropic, Mistral, Together, Fireworks, DeepInfra, Cerebras,
 SambaNova, Google speech/generative, Speechmatics, Rev, Gladia, xAI, Azure speech,
-Cohere, Perplexity) in (a) the Rust sources linked into cloud builds, (b) flow-cloud's
-compiled artefact, (c) `FLOW_CLOUD_ARTIFACTS` (APK / .so / .exe paths); flow-cloud's
+Cohere, Perplexity) in (a) the Rust sources linked into cloud builds, (b) murmur-cloud's
+compiled artefact, (c) `MURMUR_CLOUD_ARTIFACTS` (APK / .so / .exe paths); murmur-cloud's
 non-test URL literals must all be `https://openrouter.ai`; the shipped flavours must not
-enable flow-cloud's `mock-server` feature. Shell sources are scanned too. Strict and
+enable murmur-cloud's `mock-server` feature. Shell sources are scanned too. Strict and
 cloud-strict mode are the default since the D28 merge (2026-10-24); both CI workflows run
 the gate and scan their shipped APKs / hybrid exe.
 
@@ -311,33 +311,33 @@ the gate and scan their shipped APKs / hybrid exe.
 
 | File | What |
 |---|---|
-| `crates/flow-cloud/src/**` unit tests | settings JSON names, privacy defaults, model-id validation, catalogue parsing (paths, router/batch/free flags, unit sanity, ZDR join, account filter, baked defaults + recommended, labels), budget, verbatim check, SSE parser, error codes |
-| `crates/flow-cloud/tests/contract_openrouter.rs` | STT wire contract vs mock OpenRouter: path A/B shapes, base64 round trip, Groq prompt, privacy on/off, chunking, WAV retry once + remembered, path choice per catalogue entry, §3.2 table, transport errors, redirects, deferred cost |
-| `crates/flow-cloud/tests/contract_cleaner.rs` | cleanup: request shape (`stream`, `max_price`, `sort`, no `user`/`session_id`), streamed result + usage, reasoning effort, mid-stream error, **cancel < 50 ms + connection dropped**, `run_cleanup` timeout and formatting, JSON fallback, error codes, prefill = `/key` only, deferred cost |
-| `crates/flow-cloud/tests/contract_catalog.rs` | refresh (3-4 GETs, key only for `/models/user`), pagination same-origin only, ZDR failure degrades, size cap, cache store, `lookup_model`, `/key`, `/generation` |
-| `crates/flow-cloud/tests/session.rs`, `encode.rs` | backend/session behaviour (C5, C6, deadline, probe, router e2e); encodings |
-| `crates/flow-cloud/tests/live_smoke.rs` | `FLOW_CLOUD_LIVE_OPENROUTER_KEY` only (else skip lines): STT for the recommended models + one chat-audio model (WER ≤ 10 %), cleanup on 8 messy dictations (guard ≥ 6/8, p90 < timeout), `/key`, live catalogue |
-| `crates/flow-contract-tests/**` | equivalence, toggle matrix, segmented, key leak (router, cleaner, catalogue, key info), build matrix incl. the host scan and a planted-host negative test |
+| `crates/murmur-cloud/src/**` unit tests | settings JSON names, privacy defaults, model-id validation, catalogue parsing (paths, router/batch/free flags, unit sanity, ZDR join, account filter, baked defaults + recommended, labels), budget, verbatim check, SSE parser, error codes |
+| `crates/murmur-cloud/tests/contract_openrouter.rs` | STT wire contract vs mock OpenRouter: path A/B shapes, base64 round trip, Groq prompt, privacy on/off, chunking, WAV retry once + remembered, path choice per catalogue entry, §3.2 table, transport errors, redirects, deferred cost |
+| `crates/murmur-cloud/tests/contract_cleaner.rs` | cleanup: request shape (`stream`, `max_price`, `sort`, no `user`/`session_id`), streamed result + usage, reasoning effort, mid-stream error, **cancel < 50 ms + connection dropped**, `run_cleanup` timeout and formatting, JSON fallback, error codes, prefill = `/key` only, deferred cost |
+| `crates/murmur-cloud/tests/contract_catalog.rs` | refresh (3-4 GETs, key only for `/models/user`), pagination same-origin only, ZDR failure degrades, size cap, cache store, `lookup_model`, `/key`, `/generation` |
+| `crates/murmur-cloud/tests/session.rs`, `encode.rs` | backend/session behaviour (C5, C6, deadline, probe, router e2e); encodings |
+| `crates/murmur-cloud/tests/live_smoke.rs` | `MURMUR_CLOUD_LIVE_OPENROUTER_KEY` only (else skip lines): STT for the recommended models + one chat-audio model (WER ≤ 10 %), cleanup on 8 messy dictations (guard ≥ 6/8, p90 < timeout), `/key`, live catalogue |
+| `crates/murmur-contract-tests/**` | equivalence, toggle matrix, segmented, key leak (router, cleaner, catalogue, key info), build matrix incl. the host scan and a planted-host negative test |
 
-Tests reach the mock only through `flow_cloud::testing::override_base_url` (feature
+Tests reach the mock only through `murmur_cloud::testing::override_base_url` (feature
 `mock-server`), never through config: configs in tests are production-shaped.
 
 ---
 
 ## Changelog for shells
 
-**2026-10-24 — D28: OpenRouter only (flow-cloud W1 + contract W6, branch `feat/or-cloud`)**
+**2026-10-24 — D28: OpenRouter only (murmur-cloud W1 + contract W6, branch `feat/or-cloud`)**
 
 * **Removed:** the `openai_compat`, `elevenlabs`, `deepgram` and `assemblyai` adapters,
   all presets but one, custom base URLs (and the plain-http LAN path), the dialect and the
-  static `price_per_hour` table (`flow_cloud::price_per_hour` is gone). `flow_cloud::presets()`
-  returns exactly one OpenRouter entry; `flow_cloud::ADAPTERS == ["openrouter"]`.
-* **Base URL is constant.** flow-cloud never reads a base URL from config (schema 2 has
+  static `price_per_hour` table (`murmur_cloud::price_per_hour` is gone). `murmur_cloud::presets()`
+  returns exactly one OpenRouter entry; `murmur_cloud::ADAPTERS == ["openrouter"]`.
+* **Base URL is constant.** murmur-cloud never reads a base URL from config (schema 2 has
   none; `CloudFactory` / `CleanupFactory` take `&OpenRouterConfig`). `attach` /
   `attach_with` now also install the cleanup factory. Tests that pointed `base_url` at a mock must use
-  `flow_cloud::testing::override_base_url(srv.url("/api/v1"))` (guard; serialised;
-  `BaseOverride::set` to re-point, e.g. at a closed port). Affects `flow-ffi/tests/{jni_cloud,c_abi}.rs`
-  (or-route) and `apps/flow-windows/tests/cloud_integration.rs` (W5).
+  `murmur_cloud::testing::override_base_url(srv.url("/api/v1"))` (guard; serialised;
+  `BaseOverride::set` to re-point, e.g. at a closed port). Affects `murmur-ffi/tests/{jni_cloud,c_abi}.rs`
+  (or-route) and `apps/murmur-windows/tests/cloud_integration.rs` (W5).
 * **Mock wire format:** STT mocks must answer like OpenRouter (`POST /api/v1/audio/transcriptions`,
   JSON body with base64 `input_audio`; answer `{text, usage{seconds, cost}}`), not
   multipart `file`.
@@ -359,7 +359,7 @@ reachable until a shell enables cloud.
 
 **2026-10-22 (later) — live route:** while recording, `Router::poll().route` / `start_session_info().route` (JNI `nativePoll` / `nativeStartSessionInfo`) name the cloud provider + model (`{"engine":"cloud","provider":…,"model":…}`), so the pill can say "Transcribing via <provider>…" before the commit; see `docs/hybrid-architecture.md` "Changelog for shells" (live route entry).
 
-**2026-10-22 — flow-core CR, router cloud route, flow-cloud, contract tests landed**
+**2026-10-22 — murmur-core CR, router cloud route, murmur-cloud, contract tests landed**
 
 * **Deviations from §3 / §6 (read these first).**
   * `Capabilities` is unchanged (Windows builds it with a struct literal). Cloud support
@@ -370,24 +370,24 @@ reachable until a shell enables cloud.
     or budget used up) gives `NoEngineEnabled`; the reason is in the dead session's
     `commit().route.fallback` (`cloud_not_configured` / `budget_exceeded`) and in the
     error text. A cloud start failure with no other route gives `ServerUnavailable`.
-  * Keys: `SecretString` lives in `flow_router` (`flow_router::SecretString`, re-exported
-    nowhere else), not in flow-cloud, because `set_cloud_key` / `CloudFactory` need it in
-    builds without flow-cloud. No `zeroize` dependency (manual volatile wipe), so the
+  * Keys: `SecretString` lives in `murmur_router` (`murmur_router::SecretString`, re-exported
+    nowhere else), not in murmur-cloud, because `set_cloud_key` / `CloudFactory` need it in
+    builds without murmur-cloud. No `zeroize` dependency (manual volatile wipe), so the
     Windows lockfile does not change.
-  * flow-cloud does not log at all (no `log`/`tracing`); per-call metadata for the dev page
+  * murmur-cloud does not log at all (no `log`/`tracing`); per-call metadata for the dev page
     is `CloudBackend::last_call() -> CallInfo { provider_id, adapter, model, requests,
     bytes, audio_ms, billed_audio_ms, cost_usd, cost_estimated, encode_ms, latency_ms,
     request_id, error, message }` (no key, headers, bodies or text).
   * OpenRouter sends no biasing terms in v1 (§7 `provider.options.<slug>.prompt` not
-    wired). Fixtures in `crates/flow-cloud/fixtures/` follow the providers' documented
+    wired). Fixtures in `crates/murmur-cloud/fixtures/` follow the providers' documented
     shapes; they are not captured responses (no keys on the dev box).
-* **flow-core** (CR): `AsrRequest` gains `dictionary_terms`, `screen_terms`, `purpose:
+* **murmur-core** (CR): `AsrRequest` gains `dictionary_terms`, `screen_terms`, `purpose:
   AsrPurpose { Final, Partial }` (all `Default`; `initial_prompt` unchanged);
-  `FlowCore::cleaner() -> Option<Arc<dyn Cleaner>>`; `RouteInfo` gains `model`,
+  `MurmurCore::cleaner() -> Option<Arc<dyn Cleaner>>`; `RouteInfo` gains `model`,
   `billed_audio_ms`, `cost_usd: Option<Usd>`, `cost_estimated` (all omitted from JSON when
-  `None`). `flow_core::Usd(pub f64)` is a plain JSON number (newtype only so structs keep
+  `None`). `murmur_core::Usd(pub f64)` is a plain JSON number (newtype only so structs keep
   `Eq`). Code that builds `RouteInfo { .. }` with every field listed needs `..Default::default()`.
-* **flow-router** (all `#[serde(default)]`, omitted from JSON while default, so every
+* **murmur-router** (all `#[serde(default)]`, omitted from JSON while default, so every
   pre-existing fixture is byte-identical):
   * `RouterConfig.allow_cloud: bool`, `.order: Vec<Route>` (`"server"|"client"|"cloud"`),
     `.cloud: CloudConfig { active, providers: Vec<CloudProviderConfig>, monthly_budget_usd:
@@ -401,7 +401,7 @@ reachable until a shell enables cloud.
     QuotaExceeded, ProviderError}` (`cloud_not_configured`, `budget_exceeded`,
     `quota_exceeded`, `provider_error`). Both enums were already `#[non_exhaustive]`.
   * `Router::with_cloud(CloudFactory)`, `with_cloud_adapters(Vec<String>)` (builders; use
-    `flow_cloud::attach` instead), `set_cloud_key(id, Option<SecretString>)`,
+    `murmur_cloud::attach` instead), `set_cloud_key(id, Option<SecretString>)`,
     `has_cloud_key(id)`, `probe_cloud(&CloudProviderConfig, Option<SecretString>) ->
     HealthReport` (Test provider: transcribes the bundled 3 s JFK clip; `key: None` = the
     stored key; needs no consent; a success for the active provider closes the cloud
@@ -417,7 +417,7 @@ reachable until a shell enables cloud.
     (fixture `health_cloud_ok.json`); `RouteStatus` gains `cloud_circuit:
     Option<CircuitStatus>` (present only with a cloud factory; fixture
     `route_status_cloud.json`). `commit_result_cloud.json` shows a cloud `route`.
-* **Behaviour** (proved by `flow-router/tests/cloud_policy.rs`, 29 tests):
+* **Behaviour** (proved by `murmur-router/tests/cloud_policy.rs`, 29 tests):
   * C1: the cloud is tried only with a cloud factory **and** `allow_cloud` **and** `cloud`
     in `order` **and** consent for the active provider's current host **and** a key **and**
     budget left. Missing consent/key/provider → route skipped with `cloud_not_configured`
@@ -434,41 +434,41 @@ reachable until a shell enables cloud.
     → 5 s doubling to 60 s; 429 (`busy`) → 5 s. Like the server circuit it is honoured
     only when a later route can serve the session (then `circuit_open`).
   * Cloud commit deadline = `timeout_base_ms + 0.5 × audio + llm_timeout_ms`, ≤ 90 s.
-* **flow-cloud** (new crate, link only in cloud flavours): `flow_cloud::attach(router,
+* **murmur-cloud** (new crate, link only in cloud flavours): `murmur_cloud::attach(router,
   cleaner)` or `attach_with(router, || current_cleaner())` (pass the local core's
-  `FlowCore::cleaner()`); `presets() -> Vec<CloudProviderConfig>` (§8.2, no id/consent;
+  `MurmurCore::cleaner()`); `presets() -> Vec<CloudProviderConfig>` (§8.2, no id/consent;
   the Developer "Add provider" list), `price_per_hour(&p)`, `ADAPTERS`, `TEST_CLIP`.
   `CloudBackend` forces `partial_interval_ms = None` (pill: "Transcribing via
   <provider>…", no live preview). Errors are typed (`CloudError` → `Failure`) and carry
   only the HTTP status and a sanitised provider code.
-* **Build matrix**: `tools/check-build-matrix.sh` now also requires that flow-core,
-  flow-router, flow-ffi `jni,whisper,llm,parakeet` and flow-windows `local,app` contain no
-  `flow-cloud|reqwest|hyper|rustls|webpki`, and that flow-cloud contains no ASR/LLM libs.
-  Two checks wait for the shells' `cloud` feature and SKIP until then: `flow-ffi
-  jni,remote,cloud` and `flow-windows remote,cloud,app` (no ASR/LLM libs). They do not
+* **Build matrix**: `tools/check-build-matrix.sh` now also requires that murmur-core,
+  murmur-router, murmur-ffi `jni,whisper,llm,parakeet` and murmur-windows `local,app` contain no
+  `murmur-cloud|reqwest|hyper|rustls|webpki`, and that murmur-cloud contains no ASR/LLM libs.
+  Two checks wait for the shells' `cloud` feature and SKIP until then: `murmur-ffi
+  jni,remote,cloud` and `murmur-windows remote,cloud,app` (no ASR/LLM libs). They do not
   fail `CHECK_BUILD_MATRIX_STRICT=1`; run `CHECK_BUILD_MATRIX_STRICT_CLOUD=1` after the
   W/A cloud merges.
 
-### What A needs (flow-ffi + Android)
+### What A needs (murmur-ffi + Android)
 
-* `crates/flow-ffi/Cargo.toml`: `cloud = ["dep:flow-cloud"]`, `flow-cloud = { path =
-  "../flow-cloud", optional = true }`. Enable it in `tools/build-native.sh --flavor hybrid`
-  and `--flavor remote` only (never `local`; the gate above enforces it). flow-cloud uses
+* `crates/murmur-ffi/Cargo.toml`: `cloud = ["dep:murmur-cloud"]`, `murmur-cloud = { path =
+  "../murmur-cloud", optional = true }`. Enable it in `tools/build-native.sh --flavor hybrid`
+  and `--flavor remote` only (never `local`; the gate above enforces it). murmur-cloud uses
   rustls + webpki-roots (no OpenSSL), so the NDK build needs nothing new; `ring` needs
   the NDK clang already used for whisper.
-* `new_router`: under `#[cfg(feature = "cloud")]`, `flow_cloud::attach_with(router, move
-  || local_core.cleaner())` (the `FlowCore` passed to `flow_open_router`, if any).
-* New C ABI (same conventions: JSON strings, `flow_string_free`, never panics):
+* `new_router`: under `#[cfg(feature = "cloud")]`, `murmur_cloud::attach_with(router, move
+  || local_core.cleaner())` (the `MurmurCore` passed to `murmur_open_router`, if any).
+* New C ABI (same conventions: JSON strings, `murmur_string_free`, never panics):
 
-| C | JNI (`NativeFlowCore`, static) | Semantics |
+| C | JNI (`NativeMurmurCore`, static) | Semantics |
 |---|---|---|
-| `int flow_set_cloud_key(FlowHandle*, const char* provider_id, const char* key_or_null)` | `nativeSetCloudKey(h: Long, providerId: String, key: String?): Boolean` | `Router::set_cloud_key`; `null`/empty = forget. Call at startup for every stored provider and on Save/Delete. `-1`/`false` + kind `error` for a core handle. Zero the Java/C copies after the call where possible; never log the arguments |
-| `char* flow_probe_cloud(FlowHandle*, const char* provider_json, const char* key_or_null)` | `nativeProbeCloud(h: Long, providerJson: String, key: String?): String` | Blocking `HealthReport` JSON (Test provider) for an unsaved `CloudProviderConfig`; `key` null = stored key. `h = 0` allowed (uses a temporary router: then a key is required). Without feature `cloud`: `ok:false, error:"cloud_not_configured"` |
-| `char* flow_cloud_usage(FlowHandle*)` | `nativeCloudUsage(h: Long): String` | `CloudUsage` JSON (persist it after each commit) |
-| `int flow_set_cloud_usage(FlowHandle*, const char* usage_json)` | `nativeSetCloudUsage(h: Long, usageJson: String): Boolean` | Restore persisted counters at router open |
-| `void flow_reset_cloud_usage(FlowHandle*)` | `nativeResetCloudUsage(h: Long)` | Developer "Reset counters" |
-| `char* flow_cloud_capabilities(void)` | `nativeCloudCapabilities(): String` | `CloudCapabilities` JSON of this build (`cloud:false, adapters:[]` without the feature); must match a new `BuildConfig.CAP_CLOUD` |
-| `char* flow_cloud_presets(void)` | `nativeCloudPresets(): String` | `presets()` as a JSON array (`[]` without the feature) |
+| `int murmur_set_cloud_key(MurmurHandle*, const char* provider_id, const char* key_or_null)` | `nativeSetCloudKey(h: Long, providerId: String, key: String?): Boolean` | `Router::set_cloud_key`; `null`/empty = forget. Call at startup for every stored provider and on Save/Delete. `-1`/`false` + kind `error` for a core handle. Zero the Java/C copies after the call where possible; never log the arguments |
+| `char* murmur_probe_cloud(MurmurHandle*, const char* provider_json, const char* key_or_null)` | `nativeProbeCloud(h: Long, providerJson: String, key: String?): String` | Blocking `HealthReport` JSON (Test provider) for an unsaved `CloudProviderConfig`; `key` null = stored key. `h = 0` allowed (uses a temporary router: then a key is required). Without feature `cloud`: `ok:false, error:"cloud_not_configured"` |
+| `char* murmur_cloud_usage(MurmurHandle*)` | `nativeCloudUsage(h: Long): String` | `CloudUsage` JSON (persist it after each commit) |
+| `int murmur_set_cloud_usage(MurmurHandle*, const char* usage_json)` | `nativeSetCloudUsage(h: Long, usageJson: String): Boolean` | Restore persisted counters at router open |
+| `void murmur_reset_cloud_usage(MurmurHandle*)` | `nativeResetCloudUsage(h: Long)` | Developer "Reset counters" |
+| `char* murmur_cloud_capabilities(void)` | `nativeCloudCapabilities(): String` | `CloudCapabilities` JSON of this build (`cloud:false, adapters:[]` without the feature); must match a new `BuildConfig.CAP_CLOUD` |
+| `char* murmur_cloud_presets(void)` | `nativeCloudPresets(): String` | `presets()` as a JSON array (`[]` without the feature) |
 
 * Existing natives need no signature change: `nativeOpenRouter` / `nativeUpdateRouter`
   accept the cloud fields in the config JSON; `nativeRouteStatus` returns `cloud_circuit`;
@@ -477,28 +477,28 @@ reachable until a shell enables cloud.
   `route.fallback`: the four `Failure` values above.
 * Kotlin: `DevSettings.cloud` ↔ `RouterConfig.cloud`/`allow_cloud`/`order` (must
   serialise to `router_config_cloud.json` exactly; the existing four fixtures are
-  unchanged); `SecretVault("flow_cloud_<id>")`; consent dialog writes `consent_host` =
+  unchanged); `SecretVault("murmur_cloud_<id>")`; consent dialog writes `consent_host` =
   host of `base_url` and `consent_at_ms`; changing the base URL host or the adapter clears
   both (the router also refuses a stale consent). Bubble badge `C` when
   `route.engine == "cloud"`. Hide the section when `CloudCapabilities.cloud` is false.
 
 ### What W needs (Windows)
 
-* `apps/flow-windows/Cargo.toml`: feature `cloud = ["dep:flow-cloud"]` (default set
+* `apps/murmur-windows/Cargo.toml`: feature `cloud = ["dep:murmur-cloud"]` (default set
   becomes `local,remote,tls,cloud`); `local,app` must stay without it. Update the MSVC
   cross-check loop with a `app,local-engine,remote,cloud` flavour (rustls/ring cross-check
-  like flow-remote's `tls`). The Windows `Cargo.lock` gains reqwest/flacenc.
-* Router construction: `flow_cloud::attach_with(router, move || adapter.cleaner())` where
-  `adapter.cleaner()` returns the loaded core's `FlowCore::cleaner()`; keep calling
+  like murmur-remote's `tls`). The Windows `Cargo.lock` gains reqwest/flacenc.
+* Router construction: `murmur_cloud::attach_with(router, move || adapter.cleaner())` where
+  `adapter.cleaner()` returns the loaded core's `MurmurCore::cleaner()`; keep calling
   `Router::set_local` after the two-phase LLM load (that rebuilds the cloud backend with
   the cleaner).
-* Keys: `CredentialStore` → Credential Manager `flow-clone/cloud/<id>`; at startup call
+* Keys: `CredentialStore` → Credential Manager `murmur/cloud/<id>`; at startup call
   `set_cloud_key(id, Some(SecretString::new(secret)))` for each provider; on Save/Delete
   likewise (`None` to forget). Never put keys in `prefs.json`, Tauri events or logs.
 * Tauri commands (§8.3) map 1:1: `dev_cloud_test` → `probe_cloud(&form, key_from_form)`,
   `dev_cloud_set_key` / `dev_cloud_clear_key` → `set_cloud_key`, `dev_cloud_usage` →
   `cloud_usage()` (persist to `cloud_usage.json`; restore with `set_cloud_usage` at
-  start), plus `dev_cloud_presets` → `flow_cloud::presets()` and
+  start), plus `dev_cloud_presets` → `murmur_cloud::presets()` and
   `cloud_capabilities()` for showing the section.
 * Prefs `developer.cloud` + `allow_cloud` + `order` must serialise to
   `router_config_cloud.json` exactly. The engine row: `cloud · <provider> · <model> ·

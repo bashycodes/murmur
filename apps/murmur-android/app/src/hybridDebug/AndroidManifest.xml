@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hybrid debug builds only (English 1 spike, docs/findings/2026-11-02-pixel-offline-dictation.md):
+     the ML Kit GenAI speech probe screen. Not exported: reached from Developer settings only.
+     verify<Variant>NoDebugWavReceiver fails a release manifest that contains it. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name="dev.murmur.probe.EnglishProbeActivity"
+            android:exported="false"
+            android:label="English speech probe"
+            android:theme="@android:style/Theme.DeviceDefault.DayNight" />
+    </application>
+</manifest>

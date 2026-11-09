@@ -5,7 +5,7 @@ Covers the `core-p1` API (segments, `plain_text`, `empty_reason`, typed load err
 `vad`/`hallucination_guard`/`spoken_cleanup`/`llm_prefill` session flags).
 
 **Goal.** A shell (Windows, Android) dictates either on-device ("client", today's path)
-or by streaming to a self-hosted `flow-server` on the user's own machine (i7-6700, 8
+or by streaming to a self-hosted `murmur-server` on the user's own machine (i7-6700, 8
 threads, 19 GB RAM, no GPU; LAN or VPN). Voice never reaches a third party.
 **Hard requirement:** going server-only or client-only later must be a build-flag
 change with no integration work. Proof: the toggle-matrix and equivalence suites (§4)
@@ -15,12 +15,12 @@ and the per-flavour build gates (§1.4).
 
 | # | Invariant | Enforced by |
 |---|---|---|
-| I1 | Shells talk to exactly one API: the session API, served by `flow_router::Router` in every build | §1, §6 ownership |
-| I2 | Remote results are identical to local results for the same ASR model and inputs (the server runs the full flow-core pipeline; the shell's `SessionConfig`/`FieldContext` pass through verbatim) | `equivalence.rs` |
+| I1 | Shells talk to exactly one API: the session API, served by `murmur_router::Router` in every build | §1, §6 ownership |
+| I2 | Remote results are identical to local results for the same ASR model and inputs (the server runs the full murmur-core pipeline; the shell's `SessionConfig`/`FieldContext` pass through verbatim) | `equivalence.rs` |
 | I3 | Client-only builds contain no network code and (Android) no network permission | `cargo tree` gate, `verifyLocal*NoNetworkPermissions` |
 | I4 | Server-only builds contain no ASR/LLM native libs and need no models | `verifyRemote*NoAsrLibs`, `tools/check-build-matrix.sh` |
 | I5 | Audio pushed during a remote session is never lost on fallback | router PCM buffer, `matrix_*_dies_mid_session_*` |
-| I6 | The server persists neither audio nor text; it keeps no per-user state | §3.5, `flow-server/tests/no_persist.rs` |
+| I6 | The server persists neither audio nor text; it keeps no per-user state | §3.5, `murmur-server/tests/no_persist.rs` |
 
 ---
 
@@ -31,25 +31,25 @@ and the per-flavour build gates (§1.4).
 | Option | Verdict |
 |---|---|
 | Router + WS client in each shell (Rust in Windows, Kotlin in Android) | Rejected. Two routers (fallback, buffering, timeouts, circuit breaker) and two protocol clients would drift; Android has no built-in WebSocket client (no AndroidX/OkHttp in this app) |
-| **Router + WS client in Rust crates, reached by Windows directly and by Android via flow-ffi/JNI** | **Chosen.** One implementation, tested once by the contract suite (§4); the protocol is spoken only by Rust on both ends, so there is no Kotlin wire mirror to keep in sync. Kotlin only parses router JSON (config, health, route info), pinned by shared fixtures |
+| **Router + WS client in Rust crates, reached by Windows directly and by Android via murmur-ffi/JNI** | **Chosen.** One implementation, tested once by the contract suite (§4); the protocol is spoken only by Rust on both ends, so there is no Kotlin wire mirror to keep in sync. Kotlin only parses router JSON (config, health, route info), pinned by shared fixtures |
 
 New crates (root workspace):
 
 | Crate | Depends on | Network code | Purpose |
 |---|---|---|---|
-| `crates/flow-protocol` | flow-core (`default-features = false`), serde | no | Wire message types, version constants, golden fixtures |
-| `crates/flow-router` | flow-core (`default-features = false`) | **no** | `Router` (session API mirror), `Backend` trait, `RouterConfig`, policy, PCM buffer, circuit breaker, `impl Backend for FlowCore` |
-| `crates/flow-remote` | flow-protocol, flow-router, tokio, tokio-tungstenite, rustls (feature `tls`) | yes | `RemoteBackend` (WS client) + `flow_remote::factory()` |
-| `crates/flow-server` | flow-core, flow-protocol, axum, tokio | yes | The server binary (§3) |
-| `crates/flow-contract-tests` | all of the above (dev, `publish = false`) | test only | §4 suites |
+| `crates/murmur-protocol` | murmur-core (`default-features = false`), serde | no | Wire message types, version constants, golden fixtures |
+| `crates/murmur-router` | murmur-core (`default-features = false`) | **no** | `Router` (session API mirror), `Backend` trait, `RouterConfig`, policy, PCM buffer, circuit breaker, `impl Backend for MurmurCore` |
+| `crates/murmur-remote` | murmur-protocol, murmur-router, tokio, tokio-tungstenite, rustls (feature `tls`) | yes | `RemoteBackend` (WS client) + `murmur_remote::factory()` |
+| `crates/murmur-server` | murmur-core, murmur-protocol, axum, tokio | yes | The server binary (§3) |
+| `crates/murmur-contract-tests` | all of the above (dev, `publish = false`) | test only | §4 suites |
 
-`flow-router` takes the remote backend as an injected factory, so a client-only build
-links the router but not `flow-remote`: the network code is absent, not just unused.
+`murmur-router` takes the remote backend as an injected factory, so a client-only build
+links the router but not `murmur-remote`: the network code is absent, not just unused.
 
 ### 1.2 Router API (frozen here; Windows and Android code against it with stubs)
 
 ```rust
-// crates/flow-router/src/lib.rs
+// crates/murmur-router/src/lib.rs
 pub enum EngineKind { Local, Remote }            // serde: "local" | "remote"
 pub enum Prefer { Server, Client }               // serde: "server" | "client"
 
@@ -83,7 +83,7 @@ impl Router {
     pub fn update_config(&self, cfg: RouterConfig);             // takes effect at next start_session
     pub fn set_local(&self, local: Option<Arc<dyn Backend>>);   // shell (re)loaded models
     pub fn capabilities(&self) -> Capabilities;
-    // mirror of FlowCore, same semantics:
+    // mirror of MurmurCore, same semantics:
     pub fn start_session(&self, cfg: SessionConfig) -> Result<(), RouterError>;
     pub fn push_audio(&self, pcm: &[i16]) -> bool;
     pub fn set_context(&self, ctx: FieldContext);
@@ -98,10 +98,10 @@ impl Router {
 }
 ```
 
-* `learn_edit` always runs locally: `flow_core::learn::learn_edit(pasted, edited, &last_session_dictionary)`. It is pure and needs no model, so it behaves the same in every build and needs no wire message.
+* `learn_edit` always runs locally: `murmur_core::learn::learn_edit(pasted, edited, &last_session_dictionary)`. It is pure and needs no model, so it behaves the same in every build and needs no wire message.
 * `RouterError` kinds (stable snake_case, surfaced as last error): `no_engine_enabled`, `local_not_ready`, `server_not_configured`, `server_unavailable`, `bad_config`.
 
-**Additive flow-core change** (the only one): `CommitResult.route: Option<RouteInfo>`
+**Additive murmur-core change** (the only one): `CommitResult.route: Option<RouteInfo>`
 (`#[serde(default, skip_serializing_if = "Option::is_none")]`) with
 
 ```rust
@@ -112,8 +112,8 @@ pub struct RouteInfo { pub engine: String /*"local"|"remote"*/, pub fallback: Op
 
 `fallback` values: `connect_failed`, `auth_failed`, `proto_mismatch`, `busy`, `timeout`,
 `disconnected`, `circuit_open`, `server_not_configured`, `local_not_ready` (client-first
-→ server). FlowCore itself never sets `route`; the router does. Also add
-`pub const POSTPROCESS_REV: &str` to flow-core (bump whenever deterministic output
+→ server). MurmurCore itself never sets `route`; the router does. Also add
+`pub const POSTPROCESS_REV: &str` to murmur-core (bump whenever deterministic output
 changes) so client and server can detect pipeline skew.
 
 ### 1.3 Routing policy
@@ -136,7 +136,7 @@ Server with an empty `host` counts as `server_not_configured`: treated as remote
 2. Every `push_audio`: append to the router's session PCM buffer (`Vec<i16>`, capped at `max_samples`; only allocated when a fallback exists) and `try_send` to the WS writer task (bounded 64 frames ≈ 6.4 s). Never blocks.
 3. `set_context`: store the latest context in the router; forward.
 4. `partial`: last `partial` message from the server (or local backend after a switch).
-4b. `poll` / `endpoint_reached` (D19): the router runs `flow_core::endpoint::Endpointer` on the audio it is pushed, so the hands-free endpoint is the same on every route, needs no protocol message, and survives a fallback replay. `SessionConfig.endpoint_silence_ms` still reaches the server unchanged (its own detector is simply not read).
+4b. `poll` / `endpoint_reached` (D19): the router runs `murmur_core::endpoint::Endpointer` on the audio it is pushed, so the hands-free endpoint is the same on every route, needs no protocol message, and survives a fallback replay. `SessionConfig.endpoint_silence_ms` still reaches the server unchanged (its own detector is simply not read).
 5. `commit`: send `commit`, wait until `deadline = now + commit_timeout_base_ms + 0.3 × audio_ms + llm_timeout_ms`.
 
 **Failure handling (fallback = local allowed and ready)**
@@ -179,27 +179,27 @@ for shells", D28 entry.
 
 ### 1.4 Build variants
 
-**Windows** (`apps/flow-windows/Cargo.toml` features):
+**Windows** (`apps/murmur-windows/Cargo.toml` features):
 
 | Feature | Pulls in | Notes |
 |---|---|---|
-| `local` (default) | `whisper` (existing) + optional `parakeet` | local backend = existing `FlowCoreAdapter` |
-| `remote` (default) | `flow-remote` | |
+| `local` (default) | `whisper` (existing) + optional `parakeet` | local backend = existing `MurmurCoreAdapter` |
+| `remote` (default) | `murmur-remote` | |
 | `app` | Tauri (unchanged) | |
 
 Client-only: `--no-default-features --features local,app`. Server-only:
-`--no-default-features --features remote,app` (no whisper, no `flow_llm.dll`, no model
+`--no-default-features --features remote,app` (no whisper, no `murmur_llm.dll`, no model
 download hints). The shell always builds a `Router`; `#[cfg(feature)]` only decides
 whether `local`/`remote` are `Some`.
 
-**Android** product flavours, dimension `net`; same `applicationId dev.flowclone` for all
+**Android** product flavours, dimension `net`; same `applicationId dev.murmur` for all
 three so switching is an in-place update that keeps prefs, dictionary and history:
 
-| Flavour | `libflow_ffi.so` features | Extra libs | Manifest | Gates |
+| Flavour | `libmurmur_ffi.so` features | Extra libs | Manifest | Gates |
 |---|---|---|---|---|
-| `local` | `jni,whisper,llm[,parakeet]` | libc++_shared, libflow_llm, [sherpa, onnxruntime] | today's (network perms removed) | `verifyLocal<BT>NoNetworkPermissions` (existing task, now flavour-scoped) |
+| `local` | `jni,whisper,llm[,parakeet]` | libc++_shared, libmurmur_llm, [sherpa, onnxruntime] | today's (network perms removed) | `verifyLocal<BT>NoNetworkPermissions` (existing task, now flavour-scoped) |
 | `hybrid` | `jni,whisper,llm,remote[,parakeet]` | as local | `src/hybrid/AndroidManifest.xml` adds **only** `INTERNET` | `verifyHybrid<BT>OnlyInternetPermission` |
-| `remote` | `jni,remote` | none | adds only `INTERNET` | `verifyRemote<BT>OnlyInternetPermission`, `verifyRemote<BT>NoAsrLibs` (APK has no libwhisper/libsherpa*/libonnxruntime/libflow_llm/libc++_shared; `libflow_ffi.so` exports no `whisper_`/`llama_` symbols) |
+| `remote` | `jni,remote` | none | adds only `INTERNET` | `verifyRemote<BT>OnlyInternetPermission`, `verifyRemote<BT>NoAsrLibs` (APK has no libwhisper/libsherpa*/libonnxruntime/libmurmur_llm/libc++_shared; `libmurmur_ffi.so` exports no `whisper_`/`llama_` symbols) |
 
 * jniLibs move from `src/main/jniLibs` to `src/<flavour>/jniLibs`; `tools/build-native.sh --flavor local|hybrid|remote` fills them.
 * `BuildConfig.CAP_LOCAL` / `CAP_REMOTE` per flavour; at startup they must equal `nativeCapabilities()` (mismatch = main-screen error "native library flavour mismatch").
@@ -208,10 +208,10 @@ three so switching is an in-place update that keeps prefs, dictionary and histor
 * A mesh VPN on Android is an OS VPN: no extra permission or code.
 
 **Root workspace gate** `tools/check-build-matrix.sh` (owner: server implementer):
-`cargo tree -p flow-ffi -e normal --features jni,whisper` must not contain
+`cargo tree -p murmur-ffi -e normal --features jni,whisper` must not contain
 `tokio-tungstenite|tokio|rustls|axum`; `--features jni,remote` must not contain
-`whisper-rs-sys|sherpa-onnx|llama-cpp`. Same two checks for `apps/flow-windows` with
-`local,app` and `remote,app`. Run by `cargo test -p flow-contract-tests --test build_matrix`
+`whisper-rs-sys|sherpa-onnx|llama-cpp`. Same two checks for `apps/murmur-windows` with
+`local,app` and `remote,app`. Run by `cargo test -p murmur-contract-tests --test build_matrix`
 (shells out to the script).
 
 ---
@@ -219,15 +219,15 @@ three so switching is an in-place update that keeps prefs, dictionary and histor
 ## 2. Wire protocol v1 (our own, D8)
 
 Spec file: `docs/protocol.md` (normative; this section is its outline). Types:
-`crates/flow-protocol/src/lib.rs`. Golden fixtures: `crates/flow-protocol/fixtures/*.json`.
+`crates/murmur-protocol/src/lib.rs`. Golden fixtures: `crates/murmur-protocol/fixtures/*.json`.
 
 ### 2.1 Transport
 
-* `GET /v1/stream` → WebSocket, subprotocol `flow.v1`. `Authorization: Bearer <token>` on the upgrade request (fallback `?token=` is **not** offered: tokens must not land in access logs).
+* `GET /v1/stream` → WebSocket, subprotocol `murmur.v1` (the old name `flow.v1` is still accepted, D83). `Authorization: Bearer <token>` on the upgrade request (fallback `?token=` is **not** offered: tokens must not land in access logs).
 * `GET /v1/health` (same auth) → `HelloOk` JSON, for `curl`/monitoring.
 * Path major `/v1/` changes only on breaking change; minor `proto` integer is negotiated in `hello`.
 * TCP_NODELAY on both ends. WS-level ping every 15 s; 45 s silence = dead.
-* One WS = at most one active session (mirrors one `FlowCore` handle). The client keeps the WS open between sessions for `idle_keepalive_s` (60 s).
+* One WS = at most one active session (mirrors one `MurmurCore` handle). The client keeps the WS open between sessions for `idle_keepalive_s` (60 s).
 
 ### 2.2 Frames
 
@@ -238,7 +238,7 @@ Spec file: `docs/protocol.md` (normative; this section is its outline). Types:
 
 | Client → server | Server → client | Session API |
 |---|---|---|
-| `{"t":"hello","proto_min":1,"proto_max":1,"client":"flow-android 0.2.0","core":"0.1.0","postprocess_rev":"…"}` | `{"t":"hello_ok","proto":1,"server":"flow-server 0.2.0+1a2b3c4","core":"0.1.0","postprocess_rev":"…","asr_backend":"parakeet","asr_model":"sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8","llm":false,"workers":1,"busy":0,"max_samples":19200000}` | (handshake) |
+| `{"t":"hello","proto_min":1,"proto_max":1,"client":"murmur-android 0.2.0","core":"0.1.0","postprocess_rev":"…"}` | `{"t":"hello_ok","proto":1,"server":"murmur-server 0.2.0+1a2b3c4","core":"0.1.0","postprocess_rev":"…","asr_backend":"parakeet","asr_model":"sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8","llm":false,"workers":1,"busy":0,"max_samples":19200000}` | (handshake) |
 | `{"t":"start","sid":7,"config":<SessionConfig>}` | `{"t":"started","sid":7,"queued":false}` | `start_session` |
 | *binary PCM* | — | `push_audio` |
 | `{"t":"context","sid":7,"ctx":<FieldContext>}` | — | `set_context` |
@@ -248,8 +248,8 @@ Spec file: `docs/protocol.md` (normative; this section is its outline). Types:
 | `{"t":"ping","n":3}` | `{"t":"pong","n":3,"busy":0}` | (health) |
 | — | `{"t":"error","sid":7?,"code":"…","message":"…","fatal":false}` | |
 
-* `<SessionConfig>`, `<FieldContext>`, `<CommitResult>` are **flow-core's serde types verbatim** (flow-protocol re-exports them). So `segments`, `plain_text`, `empty_reason`, the core-p1 flags (`vad`, `hallucination_guard`, `spoken_cleanup`, `llm_prefill`), `platform`, dictionary, styles, `llm_timeout_ms` and any future additive field flow through with no protocol change. The server never sets `route`.
-* `sid`: client-chosen u64, increasing per connection. Messages with a stale `sid` → non-fatal `error stale_sid`. A `start` while a session is active cancels it (as `FlowCore::start_session`).
+* `<SessionConfig>`, `<FieldContext>`, `<CommitResult>` are **murmur-core's serde types verbatim** (murmur-protocol re-exports them). So `segments`, `plain_text`, `empty_reason`, the core-p1 flags (`vad`, `hallucination_guard`, `spoken_cleanup`, `llm_prefill`), `platform`, dictionary, styles, `llm_timeout_ms` and any future additive field flow through with no protocol change. The server never sets `route`.
+* `sid`: client-chosen u64, increasing per connection. Messages with a stale `sid` → non-fatal `error stale_sid`. A `start` while a session is active cancels it (as `MurmurCore::start_session`).
 * **Dictionary / learn_edit sync: none needed.** The server is stateless: the dictionary travels in every `start.config`; `learn_edit` runs client-side (§1.2). The server stores no user data.
 * `ModelConfig` is server-side config only; a client cannot choose server paths.
 * Error codes: `unauthorized` (also WS close 4001), `proto_mismatch` (close 4002), `busy`, `bad_request`, `stale_sid`, `no_session`, `too_large` (frame > 64 KiB or session > `max_samples`; sets `truncated` like the core instead when only over `max_samples`), `server_error`. `fatal:true` = server closes after sending.
@@ -262,13 +262,13 @@ Spec file: `docs/protocol.md` (normative; this section is its outline). Types:
 
 ### 2.5 Auth
 
-* Named keys (D38, `src/keys.rs`): each person or device has its own bearer secret, managed with `flow-server keys add <name> [--admin] | list | revoke <name|id>`. `keys.json` in the state dir stores only SHA-256 hashes + metadata; `key-usage.json` per-key counters. The old `token_file` is imported once as the admin key `owner`; the server re-reads `keys.json` on change, so a revoke applies to the next connection. Details: `docs/server-advanced.md` §4. Admin API (D39, `src/admin.rs`): admin keys list / create / revoke keys over `/v1/admin/keys`; Windows Settings → Users & keys uses it through `flow_remote::admin`.
-* Originally one shared bearer token: `flow-server gen-token` writes 32 random bytes base64url (43 chars) to `token_file` (mode 0600). Constant-time compare. Clients store it (Windows: DPAPI `CryptProtectData` blob in prefs; Android: Android Keystore AES-GCM key `flow_dev_token`, ciphertext in the `dev` prefs file). Minimum accepted length 16.
+* Named keys (D38, `src/keys.rs`): each person or device has its own bearer secret, managed with `murmur-server keys add <name> [--admin] | list | revoke <name|id>`. `keys.json` in the state dir stores only SHA-256 hashes + metadata; `key-usage.json` per-key counters. The old `token_file` is imported once as the admin key `owner`; the server re-reads `keys.json` on change, so a revoke applies to the next connection. Details: `docs/server-advanced.md` §4. Admin API (D39, `src/admin.rs`): admin keys list / create / revoke keys over `/v1/admin/keys`; Windows Settings → Users & keys uses it through `murmur_remote::admin`.
+* Originally one shared bearer token: `murmur-server gen-token` writes 32 random bytes base64url (43 chars) to `token_file` (mode 0600). Constant-time compare. Clients store it (Windows: DPAPI `CryptProtectData` blob in prefs; Android: Android Keystore AES-GCM key `murmur_dev_token`, ciphertext in the `dev` prefs file). Minimum accepted length 16.
 * The server refuses to start without a token or a keys file unless `auth = "none"` **and** every bind address is loopback.
 
 ### 2.6 Transport security
 
-| Server address (client-side check, `flow_router::net::classify`) | `ws://` | `wss://` |
+| Server address (client-side check, `murmur_router::net::classify`) | `ws://` | `wss://` |
 |---|---|---|
 | loopback, RFC 1918, 100.64.0.0/10 (VPN/CGNAT), fd7a:115c:a1e0::/48 (VPN overlay), fc00::/7, link-local, `*.ts.net`, `*.local`, single-label names | allowed; Developer page shows "unencrypted: OK only on your LAN or over an encrypted VPN" | allowed |
 | anything else (public IP or public DNS name) | **refused** (`connect_failed: plaintext to public address`) | required |
@@ -282,43 +282,43 @@ user-entered server only; no discovery, no relay, no fallback hosts.
 
 Remote mode: **everything on the server** (VAD → ASR → hallucination guard → spoken
 cleanup → optional LLM → guard → post-processing → segments), via an unmodified
-`FlowCore` session fed the client's `SessionConfig`/`FieldContext`. The client does no
+`MurmurCore` session fed the client's `SessionConfig`/`FieldContext`. The client does no
 text shaping, so remote and local differ only if the ASR/LLM models differ.
 
 ---
 
-## 3. `crates/flow-server`
+## 3. `crates/murmur-server`
 
 ### 3.1 Structure
 
 | File | Content |
 |---|---|
-| `src/main.rs` | CLI: `flow-server [--config PATH]`, `gen-token`, `check-config`, `keys` |
+| `src/main.rs` | CLI: `murmur-server [--config PATH]`, `gen-token`, `check-config`, `keys` |
 | `src/keys.rs` | Named keys (D38): hashed key store, usage counters, hot reload |
 | `src/config.rs` | TOML config (below), validation |
-| `src/pool.rs` | `workers` × `FlowCore`, loaded at startup; lease/return; queue |
+| `src/pool.rs` | `workers` × `MurmurCore`, loaded at startup; lease/return; queue |
 | `src/ws.rs` | per-connection task: auth, hello, message loop, partial poller |
 | `src/health.rs` | `/v1/health` |
 | `src/lib.rs` | `pub async fn serve(cfg, listener) -> ServerHandle` (used by tests in-process) |
-| `dist/flow-server.service`, `dist/config.example.toml` | systemd unit, example config |
+| `dist/murmur-server.service`, `dist/config.example.toml` | systemd unit, example config |
 | `tests/ws_protocol.rs`, `tests/auth.rs`, `tests/queue.rs`, `tests/no_persist.rs` | crate tests (mock ASR) |
 
-### 3.2 Config (`/etc/flow-server/config.toml`)
+### 3.2 Config (`/etc/murmur-server/config.toml`)
 
 ```toml
 bind = ["127.0.0.1:7313", "100.64.0.10:7313"]  # default ["127.0.0.1:7313"]
-token_file = "/etc/flow-server/token"           # imported as key "owner" (D38); needed unless keys.json exists or auth="none" on loopback
-# state_dir = "/var/lib/flow-server"            # keys.json + key-usage.json (default $STATE_DIRECTORY / XDG state dir)
-workers = 1            # FlowCore instances; each holds its models (Parakeet ≈ 0.9 GB RSS)
+token_file = "/etc/murmur-server/token"           # imported as key "owner" (D38); needed unless keys.json exists or auth="none" on loopback
+# state_dir = "/var/lib/murmur-server"            # keys.json + key-usage.json (default $STATE_DIRECTORY / XDG state dir)
+workers = 1            # MurmurCore instances; each holds its models (Parakeet ≈ 0.9 GB RSS)
 max_queue = 2          # sessions waiting for a worker
 queue_timeout_ms = 30000
 idle_timeout_s = 120   # close idle WS
 max_session_s = 1200   # 20 min, same as the Windows hard stop
-[model]                # = flow_core::ModelConfig verbatim
+[model]                # = murmur_core::ModelConfig verbatim
 asr_engine = "parakeet"
-asr_path = "/var/lib/flow-server/models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8"
+asr_path = "/var/lib/murmur-server/models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8"
 threads = 4            # 4 on the i7-6700: 8 threads was 14x slower (HT)
-# llm_path = "/var/lib/flow-server/models/qwen2.5-1.5b-instruct-q4_k_m.gguf"
+# llm_path = "/var/lib/murmur-server/models/qwen2.5-1.5b-instruct-q4_k_m.gguf"
 # vad_model_path = …
 [tls]                  # optional
 # cert = "…"; key = "…"
@@ -327,22 +327,22 @@ level = "info"
 log_text = false       # true prints transcripts at debug level; startup warns loudly
 ```
 
-Build features mirror flow-core: `whisper` (default), `parakeet`, `llm`. Default
+Build features mirror murmur-core: `whisper` (default), `parakeet`, `llm`. Default
 `workers = 1` because the box has 4 physical cores and one 4-thread decode saturates
 them; RAM would allow 2-3 (set `workers = 2` and `threads = 2` to trade latency for
 concurrency).
 
 ### 3.3 Concurrency
 
-* A session leases a worker at `start` and returns it at `result`/`cancelled`/disconnect (`FlowCore::cancel`). Lease at start (not at commit) keeps partials and LLM prefill-ahead.
+* A session leases a worker at `start` and returns it at `result`/`cancelled`/disconnect (`MurmurCore::cancel`). Lease at start (not at commit) keeps partials and LLM prefill-ahead.
 * No free worker: `started{queued:true}`; audio is buffered server-side (bounded `max_samples`) and replayed when a worker frees; `queue_timeout_ms` → `error busy fatal:false` and the session ends. Queue full → `error busy` immediately. (Routers with a client fallback cancel on `queued:true`, §1.3.)
-* Each `FlowCore` call that blocks (`commit`) runs in `spawn_blocking`; `push_audio` is called directly (non-blocking ring).
-* Partial poller: every 100 ms while a session has `partial_interval_ms`, `FlowCore::partial()`; send if changed.
+* Each `MurmurCore` call that blocks (`commit`) runs in `spawn_blocking`; `push_audio` is called directly (non-blocking ring).
+* Partial poller: every 100 ms while a session has `partial_interval_ms`, `MurmurCore::partial()`; send if changed.
 
 ### 3.4 Startup and systemd
 
 * Models load before the listener binds (`load_models` fails → exit 1 with `CoreError::kind()`; systemd restarts). Log line: `ready workers=1 asr=parakeet load_ms=…`.
-* `dist/flow-server.service`: `DynamicUser=yes`, `StateDirectory=flow-server`, `Environment=TMPDIR=/var/lib/flow-server/tmp` (Parakeet `bpe.vocab`), `ProtectSystem=strict`, `ProtectHome=yes`, `PrivateTmp=yes`, `NoNewPrivileges=yes`, `RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX`, **`IPAddressDeny=any` + `IPAddressAllow=localhost 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16 fc00::/7 fe80::/10`** (the kernel enforces "no third party"; the server applies the same classes itself at accept, so a manual start or a container is not exposed), `MemoryMax=8G`, `Restart=on-failure`, `Nice=5`.
+* `dist/murmur-server.service`: `DynamicUser=yes`, `StateDirectory=murmur-server`, `Environment=TMPDIR=/var/lib/murmur-server/tmp` (Parakeet `bpe.vocab`), `ProtectSystem=strict`, `ProtectHome=yes`, `PrivateTmp=yes`, `NoNewPrivileges=yes`, `RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX`, **`IPAddressDeny=any` + `IPAddressAllow=localhost 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16 fc00::/7 fe80::/10`** (the kernel enforces "no third party"; the server applies the same classes itself at accept, so a manual start or a container is not exposed), `MemoryMax=8G`, `Restart=on-failure`, `Nice=5`.
 
 ### 3.5 Privacy and logging
 
@@ -355,17 +355,17 @@ concurrency).
 
 ## 4. Equivalence and toggle-matrix proof
 
-All in `crates/flow-contract-tests` (`cargo test -p flow-contract-tests`). Harness
-`src/lib.rs`: `spawn_server(cfg) -> TestServer` (in-process `flow_server::serve` on
+All in `crates/murmur-contract-tests` (`cargo test -p murmur-contract-tests`). Harness
+`src/lib.rs`: `spawn_server(cfg) -> TestServer` (in-process `murmur_server::serve` on
 `127.0.0.1:0`, mock or real models), `TestServer::{kill(), stall_commits(), set_busy(), connections()}`,
 `local_backend(model)`, `remote_router(addr)`, `normalize(&CommitResult) -> serde_json::Value`
 (drops `timings` and `route`; everything else compared byte-for-byte as JSON).
 
-Fixtures: `crates/flow-contract-tests/fixtures/sessions/*.json`:
+Fixtures: `crates/murmur-contract-tests/fixtures/sessions/*.json`:
 `{name, asr: {"mock":"text"}|"whisper-tiny"|"parakeet", audio: "jfk.wav"|"silence:3000"|"noise:3000"|"noise+jfk", session_config, contexts:[{at_ms, ctx}], learn?: {pasted, edited}}`.
-≥ 40 cases generated once by `tools/gen-session-fixtures.py` from `crates/flow-core/tests/vectors/` (cases expressible as ASR text + config + context: dictionary, cursor context, snippets, press-enter, `{{BREAK}}`/`{{TAB}}`, android platform gates, styles) plus core-p1 cases (spoken cleanup, `only_filler`, `no_speech`, hallucination).
+≥ 40 cases generated once by `tools/gen-session-fixtures.py` from `crates/murmur-core/tests/vectors/` (cases expressible as ASR text + config + context: dictionary, cursor context, snippets, press-enter, `{{BREAK}}`/`{{TAB}}`, android platform gates, styles) plus core-p1 cases (spoken cleanup, `only_filler`, `no_speech`, hallucination).
 
-**`tests/equivalence.rs`** — each runs the case through `FlowCore` directly (local) and through `Router{allow_server only}` → `flow-remote` → in-process server (remote), and asserts `normalize(local) == normalize(remote)`:
+**`tests/equivalence.rs`** — each runs the case through `MurmurCore` directly (local) and through `Router{allow_server only}` → `murmur-remote` → in-process server (remote), and asserts `normalize(local) == normalize(remote)`:
 
 | Test | What |
 |---|---|
@@ -376,7 +376,7 @@ Fixtures: `crates/flow-contract-tests/fixtures/sessions/*.json`:
 | `equivalence_cancel_then_commit_is_error` | cancel → commit = ERROR both ways |
 | `equivalence_max_samples_truncated` | `truncated` + `dropped_samples` semantics |
 | `equivalence_partials_mock` | partial stream equals local partial sequence (mock) |
-| `equivalence_learn_edit` | router `learn_edit` == `FlowCore::learn_edit` with the same dictionary |
+| `equivalence_learn_edit` | router `learn_edit` == `MurmurCore::learn_edit` with the same dictionary |
 | `equivalence_whisper_tiny_jfk_if_present` | real whisper tiny.en on jfk.wav (skip without `models/`) |
 | `equivalence_parakeet_if_present` | real Parakeet (skip without the model) |
 | `equivalence_llm_if_present` | real LLM with generous budget (skip without plugin/GGUF) |
@@ -405,13 +405,13 @@ Fixtures: `crates/flow-contract-tests/fixtures/sessions/*.json`:
 
 | File | Owner | What |
 |---|---|---|
-| `crates/flow-protocol/tests/fixtures.rs` | server | every `fixtures/*.json` parses and re-serialises to the same JSON; unknown-field tolerance; proto negotiation table |
-| `crates/flow-router/tests/policy.rs` | server | policy table with fake backends (no network) |
-| `crates/flow-router/fixtures/*.json` + `tests/fixtures.rs` | server | `router_config_{default,hybrid,remote_only,local_only}.json`, `capabilities_{local,hybrid,remote}.json`, `health_ok.json`, `health_auth_failed.json`, `route_status.json`, `commit_result_remote.json`, `commit_result_fallback.json` |
-| `apps/flow-android/app/src/test/.../core/RouterJsonTest.kt` | android | parses the same `crates/flow-router/fixtures` (Gradle `sourceSets.test.resources.srcDir("../../../crates/flow-router/fixtures")`, no copies) and serialises `DevSettings` → JSON equal to `router_config_*.json` |
-| `apps/flow-windows/tests/router_integration.rs` | windows | controller + `Router` + in-process server (dev-dep on flow-server, mock ASR): PTT → remote → paste; kill server → local paste; both off → error pill |
-| `crates/flow-contract-tests/tests/build_matrix.rs` | server | runs `tools/check-build-matrix.sh` |
-| `crates/flow-ffi/tests/jni_smoke.rs` (extend) | android | `nativeOpenRouter` round trip with mock local + in-process server |
+| `crates/murmur-protocol/tests/fixtures.rs` | server | every `fixtures/*.json` parses and re-serialises to the same JSON; unknown-field tolerance; proto negotiation table |
+| `crates/murmur-router/tests/policy.rs` | server | policy table with fake backends (no network) |
+| `crates/murmur-router/fixtures/*.json` + `tests/fixtures.rs` | server | `router_config_{default,hybrid,remote_only,local_only}.json`, `capabilities_{local,hybrid,remote}.json`, `health_ok.json`, `health_auth_failed.json`, `route_status.json`, `commit_result_remote.json`, `commit_result_fallback.json` |
+| `apps/murmur-android/app/src/test/.../core/RouterJsonTest.kt` | android | parses the same `crates/murmur-router/fixtures` (Gradle `sourceSets.test.resources.srcDir("../../../crates/murmur-router/fixtures")`, no copies) and serialises `DevSettings` → JSON equal to `router_config_*.json` |
+| `apps/murmur-windows/tests/router_integration.rs` | windows | controller + `Router` + in-process server (dev-dep on murmur-server, mock ASR): PTT → remote → paste; kill server → local paste; both off → error pill |
+| `crates/murmur-contract-tests/tests/build_matrix.rs` | server | runs `tools/check-build-matrix.sh` |
+| `crates/murmur-ffi/tests/jni_smoke.rs` (extend) | android | `nativeOpenRouter` round trip with mock local + in-process server |
 
 ---
 
@@ -443,7 +443,7 @@ Read-only rows:
 * **Circuit:** closed / open until hh:mm:ss (reason).
 
 Buttons:
-* **Test connection** → `probe_server()` with the form's unsaved values, off the UI thread. Shows "OK · median 4 ms (3-6) · flow-server 0.2.0+1a2b3c4 · parakeet" or the error code with a hint (`auth_failed` → "token rejected", `connect_failed` → "is flow-server running / LAN or VPN up?", `proto_mismatch` → versions).
+* **Test connection** → `probe_server()` with the form's unsaved values, off the UI thread. Shows "OK · median 4 ms (3-6) · murmur-server 0.2.0+1a2b3c4 · parakeet" or the error code with a hint (`auth_failed` → "token rejected", `connect_failed` → "is murmur-server running / LAN or VPN up?", `proto_mismatch` → versions).
 * **Test session** → 1 s silence through the full router path with the current toggles; expects EMPTY `no_speech`; shows the route used.
 * **Reset circuit**, **Reset to defaults**.
 
@@ -473,38 +473,38 @@ handle (Android). A probe runs after each save; its result fills "Server info".
 
 | Implementer | Owns | Must not touch |
 |---|---|---|
-| **S: server + client stack** | `crates/flow-protocol/**`, `crates/flow-router/**`, `crates/flow-remote/**`, `crates/flow-server/**`, `crates/flow-contract-tests/**`, `docs/protocol.md`, `tools/check-build-matrix.sh`, `tools/gen-session-fixtures.py`, root `Cargo.toml` members; the additive flow-core change (`CommitResult.route`, `RouteInfo`, `POSTPROCESS_REV`) | `apps/**`, `crates/flow-ffi/**` |
-| **W: Windows** | `apps/flow-windows/**` (Cargo features, `src/router_adapter.rs` new: `CoreApi` on `flow_router::Router`, local backend wrapper over `FlowCoreAdapter`'s slot, `prefs.rs` `developer`, `app.rs` commands, `ui/src/settings.ts` Developer tab, `tests/router_integration.rs`, README section) | `crates/**` |
-| **A: Android + FFI** | `apps/flow-android/**` (flavours, gates, `DevSettings`, `TokenVault`, `DeveloperActivity`, `NativeFlowCore` additions, `CoreJson` new fields incl. core-p1 `segments`/`plain_text`/`empty_reason`/`route`, `RouterJsonTest`, `build-native.sh --flavor`, JNI_CONTRACT.md, INSTALL.md), `crates/flow-ffi/**` (router handle, `remote` feature, C + JNI additions, header) | other `crates/**` |
+| **S: server + client stack** | `crates/murmur-protocol/**`, `crates/murmur-router/**`, `crates/murmur-remote/**`, `crates/murmur-server/**`, `crates/murmur-contract-tests/**`, `docs/protocol.md`, `tools/check-build-matrix.sh`, `tools/gen-session-fixtures.py`, root `Cargo.toml` members; the additive murmur-core change (`CommitResult.route`, `RouteInfo`, `POSTPROCESS_REV`) | `apps/**`, `crates/murmur-ffi/**` |
+| **W: Windows** | `apps/murmur-windows/**` (Cargo features, `src/router_adapter.rs` new: `CoreApi` on `murmur_router::Router`, local backend wrapper over `MurmurCoreAdapter`'s slot, `prefs.rs` `developer`, `app.rs` commands, `ui/src/settings.ts` Developer tab, `tests/router_integration.rs`, README section) | `crates/**` |
+| **A: Android + FFI** | `apps/murmur-android/**` (flavours, gates, `DevSettings`, `TokenVault`, `DeveloperActivity`, `NativeMurmurCore` additions, `CoreJson` new fields incl. core-p1 `segments`/`plain_text`/`empty_reason`/`route`, `RouterJsonTest`, `build-native.sh --flavor`, JNI_CONTRACT.md, INSTALL.md), `crates/murmur-ffi/**` (router handle, `remote` feature, C + JNI additions, header) | other `crates/**` |
 
 Changes outside one's area go through `docs/core-change-requests.md` (append a CR), not direct edits.
 
 ### 6.2 FFI / JNI additions (all additive; owner A)
 
-flow-ffi handle becomes `Box<enum Handle { Core(FlowCore), Router(Router) }>`; every
+murmur-ffi handle becomes `Box<enum Handle { Core(MurmurCore), Router(Router) }>`; every
 existing symbol keeps its signature and works on both kinds. Feature `remote =
-["dep:flow-remote"]`; `flow-router` is always linked.
+["dep:murmur-remote"]`; `murmur-router` is always linked.
 
 | Kotlin `@JvmStatic external` | C | Semantics |
 |---|---|---|
-| `nativeCapabilities(): String` | `char *flow_capabilities(void)` | `Capabilities` JSON |
-| `nativeOpenRouter(routerConfigJson: String, localHandle: Long): Long` | `FlowHandle *flow_open_router(const char *json, FlowHandle *local)` | takes ownership of `local` (0/NULL = none; Kotlin must not unload it afterwards); 0 + last error (`no_engine_enabled`, `bad_config`) |
-| `nativeUpdateRouter(h: Long, routerConfigJson: String): Boolean` | `int flow_update_router(FlowHandle*, const char*)` | `update_config` |
-| `nativeProbeServer(serverConfigJson: String): String` | `char *flow_probe_server(const char*)` | blocking `HealthReport` JSON; never throws |
-| `nativeRouteStatus(h: Long): String` | `char *flow_route_status(FlowHandle*)` | `RouteStatus` JSON |
+| `nativeCapabilities(): String` | `char *murmur_capabilities(void)` | `Capabilities` JSON |
+| `nativeOpenRouter(routerConfigJson: String, localHandle: Long): Long` | `MurmurHandle *murmur_open_router(const char *json, MurmurHandle *local)` | takes ownership of `local` (0/NULL = none; Kotlin must not unload it afterwards); 0 + last error (`no_engine_enabled`, `bad_config`) |
+| `nativeUpdateRouter(h: Long, routerConfigJson: String): Boolean` | `int murmur_update_router(MurmurHandle*, const char*)` | `update_config` |
+| `nativeProbeServer(serverConfigJson: String): String` | `char *murmur_probe_server(const char*)` | blocking `HealthReport` JSON; never throws |
+| `nativeRouteStatus(h: Long): String` | `char *murmur_route_status(MurmurHandle*)` | `RouteStatus` JSON |
 
 Kotlin flow: existing `EnginePlan` loads local (`nativeLoadModels`, ASR-only retry) when
 `CAP_LOCAL && allow_client`, then `nativeOpenRouter(cfg, localHandle)`; all session calls
-go to the router handle. `FakeFlowCore` stays the mock-engine path.
+go to the router handle. `FakeMurmurCore` stays the mock-engine path.
 
-### 6.3 Merge order (each step green on its own: `cargo fmt && cargo clippy --all-targets -- -D warnings && cargo test` at root; `cd apps/flow-windows && cargo test`; `./gradlew testDebugUnitTest assembleDebug` for all flavours)
+### 6.3 Merge order (each step green on its own: `cargo fmt && cargo clippy --all-targets -- -D warnings && cargo test` at root; `cd apps/murmur-windows && cargo test`; `./gradlew testDebugUnitTest assembleDebug` for all flavours)
 
 | # | Branch | Owner | Content | Unblocks |
 |---|---|---|---|---|
 | 0 | `core-p1` | (other agent) | already in progress | everything (CommitResult fields) |
-| 1 | `hybrid-contract` | S | flow-core additive change, `flow-protocol` + fixtures, `flow-router` with policy + fake-backend tests + `impl Backend for FlowCore`, router fixtures, `docs/protocol.md` | W and A switch from stubs to the real router (local-only works) |
-| 2 | `hybrid-server` | S | `flow-remote`, `flow-server`, `flow-contract-tests` (equivalence, matrix, build matrix), systemd unit | real remote e2e |
-| 3a | `hybrid-ffi-android` | A | flow-ffi additions, flavours, gates, dev page | — |
+| 1 | `hybrid-contract` | S | murmur-core additive change, `murmur-protocol` + fixtures, `murmur-router` with policy + fake-backend tests + `impl Backend for MurmurCore`, router fixtures, `docs/protocol.md` | W and A switch from stubs to the real router (local-only works) |
+| 2 | `hybrid-server` | S | `murmur-remote`, `murmur-server`, `murmur-contract-tests` (equivalence, matrix, build matrix), systemd unit | real remote e2e |
+| 3a | `hybrid-ffi-android` | A | murmur-ffi additions, flavours, gates, dev page | — |
 | 3b | `hybrid-windows` | W | features, router adapter, dev tab | — |
 
 W and A start immediately against the §1.2 API with a local stub `Router` (W: a trait
@@ -515,7 +515,7 @@ exactly as in §1.2; any change needs this doc updated first.
 ### 6.4 Definition of done (new `PROJECT_CONTEXT.md` "What works" rows)
 
 1. `equivalence.rs` + `toggle_matrix.rs` green (mock), real-model equivalence green when models are present.
-2. `flow-server` on the i7-6700 under systemd; Windows hybrid dictation via a VPN shows route `remote`, then `local` with `connect_failed` after `systemctl stop flow-server`, with no lost words.
+2. `murmur-server` on the i7-6700 under systemd; Windows hybrid dictation via a VPN shows route `remote`, then `local` with `connect_failed` after `systemctl stop murmur-server`, with no lost words.
 3. Android `local` APK identical in behaviour to today (no-network gate green); `remote` APK has no ASR libs (gate green) and dictates through the server; `hybrid` falls back on airplane mode.
 4. Developer page in both apps: toggles, host/port validation, Test connection with latency, active-engine row.
 
@@ -527,13 +527,13 @@ Implementation notes for W and A against the §1.2 API (branch `hybrid-server`).
 Every item is additive: code written against §1.2 compiles unchanged.
 
 **2026-10-24 — D28: OpenRouter-only cloud, opt-in cloud cleanup (branch `feat/or-route` +
-`feat/or-cloud`; spec `docs/proposals/openrouter-only-cloud.md`, flow-cloud API §4.1)**
+`feat/or-cloud`; spec `docs/proposals/openrouter-only-cloud.md`, murmur-cloud API §4.1)**
 
 Not additive for the cloud settings: the D18 provider list is replaced by one OpenRouter
 config. Everything else (server/local routing, fixtures other than the cloud ones) is
 unchanged.
 
-*Rust API (flow-router / flow-core):*
+*Rust API (murmur-router / murmur-core):*
 * `RouterConfig.cloud` = `CloudConfig { schema: 2, openrouter: OpenRouterConfig { privacy:
   Privacy { zdr, data_collection }, stt: SttConfig { model, stt_path, language,
   send_dictionary, format_override, timeout_base_ms, consent_host, consent_at_ms }, cleanup:
@@ -546,17 +546,17 @@ unchanged.
   `["cloud","local"]`; `["local","cloud"]` = cloud only when no local LLM is loaded.
 * `RouterConfig::migrate_d28() -> MigrationReport { migrated, key_from, key_to, delete_keys,
   removed, cloud_disabled, model_from, model_to, notice }`, idempotent; rules in
-  `crates/flow-router/src/migrate.rs` (fixtures `fixtures/migration/<preset>.{v1,v2,report}.json`,
+  `crates/murmur-router/src/migrate.rs` (fixtures `fixtures/migration/<preset>.{v1,v2,report}.json`,
   all 7 old presets + a mixed case). `CloudUsage::migrate_d28(&report)` keeps the month's
   total (removed providers → one `removed` counter). The router also migrates any legacy
   config it is given (`new` / `update_config`) and then remembers the report
   (`cloud_notice()`, `ack_cloud_notice()`; restored usage is migrated too).
 * Keys: one key, id `"openrouter"`, bound to `openrouter.ai`. `set_cloud_key(id, key)` ignores
   every other id except the migrated legacy OpenRouter id (alias). `set_cloud_key_for(&CloudProviderConfig)`
-  is kept only for that legacy case. `with_cloud_key(|k| …)` lends the key to flow-cloud calls
+  is kept only for that legacy case. `with_cloud_key(|k| …)` lends the key to murmur-cloud calls
   that are not dictations (catalogue account filter, key info).
 * `probe_cloud(&OpenRouterConfig, key)` (was `&CloudProviderConfig`). `CloudFactory` takes
-  `&OpenRouterConfig`. New `CleanupFactory` + `Router::with_cleanup_factory` (flow-cloud's
+  `&OpenRouterConfig`. New `CleanupFactory` + `Router::with_cleanup_factory` (murmur-cloud's
   `attach_with` installs both), `Router::set_cleanup(allow, order, cleanup)`,
   `Router::cleanup_status() -> CleanupStatus { supported, enabled, order, consent, blocked,
   circuit, model, timeout_ms, last: CleanUsage, month_cost_usd }` (`fixtures/cleanup_status.json`).
@@ -570,7 +570,7 @@ unchanged.
   `RoutedCleaner(cloud, local LLM)` into the local engine, the on-demand local engine and the
   cloud-STT backend. The server route never gets it.
 
-*Routing rules (`crates/flow-router/src/gate.rs`, tests `tests/cleanup_policy.rs`):* C1 for
+*Routing rules (`crates/murmur-router/src/gate.rs`, tests `tests/cleanup_policy.rs`):* C1 for
 cleanup = build has the cleanup factory ∧ `allow_cloud_cleanup` ∧ `cloud` ∈ `cleanup_order` ∧
 cleanup consent for openrouter.ai (STT consent does not count) ∧ key ∧ cleanup circuit closed ∧
 `month_cost + estimate ≤ budget` (catalogue estimate with headroom; an unpriced model with a
@@ -583,7 +583,7 @@ Circuit: auth / quota / `no_private_route` sticky until key or cleanup config ch
 back off 5 s doubling to 60 s. By default the prompt carries only the transcript, app
 category, style and dictionary (`PromptScope::MINIMAL`); each `send_*` toggle adds its item.
 
-*FFI (`apps/flow-android/JNI_CONTRACT.md` "OpenRouter (D28)", C `flow_core.h`):*
+*FFI (`apps/murmur-android/JNI_CONTRACT.md` "OpenRouter (D28)", C `murmur_core.h`):*
 `nativeMigrateCloud(devJson)`, `nativeSetCleanup(h, json)`, `nativeCleanupStatus(h)`,
 `nativeCloudNotice(h)` / `nativeAckCloudNotice(h)`, `nativeSetCloudModel(h, use, model)`,
 `nativeSetCloudCacheDir(dir)`, `nativeCloudCatalog(h, use, query, filtersJson)`,
@@ -591,13 +591,13 @@ category, style and dictionary (`PromptScope::MINIMAL`); each `send_*` toggle ad
 `nativeCloudPresets` returns one OpenRouter entry. `nativeProbeCloud` / `nativeSetCloudKeyFor`
 accept an `OpenRouterConfig` JSON. A legacy entry of another adapter is refused / ignored.
 
-*Android shell work (W4, `apps/flow-android`):*
+*Android shell work (W4, `apps/murmur-android`):*
 1. Startup, once: if the stored dev JSON has no `cloud.schema`, call `nativeMigrateCloud(devJson)`.
-   Persist `config`. In `SecretVault`, move `flow_cloud_<report.key_from>` → `flow_cloud_openrouter`
-   and delete `flow_cloud_<id>` for every `report.delete_keys`. Rewrite the persisted
+   Persist `config`. In `SecretVault`, move `murmur_cloud_<report.key_from>` → `murmur_cloud_openrouter`
+   and delete `murmur_cloud_<id>` for every `report.delete_keys`. Rewrite the persisted
    `cloud_usage` with the router's after `nativeSetCloudUsage`, then show `report.notice` once
    (or `nativeCloudNotice` + `nativeAckCloudNotice`). Test it with a Robolectric fixture from
-   `crates/flow-router/fixtures/migration/`.
+   `crates/murmur-router/fixtures/migration/`.
 2. `data/CloudSettings.kt`: replace the provider list / `CloudPresets.ALL` / add-provider picker
    with the schema-2 data class (`cloud.openrouter.{privacy,stt,cleanup}`, `allow_cloud_cleanup`,
    `cleanup_order`). Keep `RouterJsonTest` in sync with `router_config_cloud.json` and
@@ -625,27 +625,27 @@ accept an `OpenRouterConfig` JSON. A legacy entry of another adapter is refused 
    in this build". Rebuild the natives and run `tools/probes/check_native_so.sh` per flavour
    (the contract lists the new symbols).
 
-*Windows shell work (W5, `apps/flow-windows`):*
+*Windows shell work (W5, `apps/murmur-windows`):*
 1. `dev_settings.rs` / `prefs.rs`: on load, a legacy `cloud` runs
    `RouterConfig::migrate_d28()`. Persist the result. In `credentials.rs`, move
-   `flow-clone/cloud/<key_from>` → `flow-clone/cloud/openrouter`, delete every
+   `murmur/cloud/<key_from>` → `murmur/cloud/openrouter`, delete every
    `delete_keys` entry and keep the host binding `openrouter.ai`. Show `notice` once.
    `normalize_cloud` / `reconcile_consent` / `removed_providers` go: consent is per use, and
    the host is constant.
 2. `app.rs` / `router_adapter.rs`: replace `set_cloud_key_for(&provider)` with
    `set_cloud_key("openrouter", key)` and `probe_cloud(&provider, key)` with
-   `probe_cloud(&cfg.cloud.openrouter, key)`. `flow_cloud::attach_with` now also installs the
+   `probe_cloud(&cfg.cloud.openrouter, key)`. `murmur_cloud::attach_with` now also installs the
    cleanup factory. Remove `dev_cloud_presets` and `dev_cloud_new_id`; keep
    `dev_cloud_set_key/clear_key/usage/reset_usage`.
 3. New Tauri commands:
-   * `dev_or_catalog(use, query, filters)` → `flow_cloud::CatalogStore::search_json`. The store
-     lives in `%LOCALAPPDATA%\FlowClone\cache\openrouter-catalog.json`; register it with
-     `flow_cloud::catalog::set_default_store`.
+   * `dev_or_catalog(use, query, filters)` → `murmur_cloud::CatalogStore::search_json`. The store
+     lives in `%LOCALAPPDATA%\Murmur\cache\openrouter-catalog.json`; register it with
+     `murmur_cloud::catalog::set_default_store`.
    * `dev_or_refresh_catalog(force)` → `refresh`, inside `router.with_cloud_key`, on a blocking
      task.
-   * `dev_or_key_info` → `flow_cloud::keyinfo::fetch`.
+   * `dev_or_key_info` → `murmur_cloud::keyinfo::fetch`.
    * `dev_or_test_stt` → `probe_cloud`.
-   * `dev_or_test_cleanup` → a sample sentence through `flow_cloud::cleaner_for`.
+   * `dev_or_test_cleanup` → a sample sentence through `murmur_cloud::cleaner_for`.
    * `dev_or_set_cleanup` → `Router::set_cleanup`.
    * `dev_or_cleanup_status` → `cleanup_status()`.
 4. `ui/src/settings.ts` (+ committed `ui/dist`): the same page and semantics as Android step 3.
@@ -653,11 +653,11 @@ accept an `OpenRouterConfig` JSON. A legacy entry of another adapter is refused 
    field stays `type=password`.
 5. Tests: `cloud_settings` (schema 2 round trip, separate consents), credential migration,
    and `cloud_integration`. For the last one, the mock is reached only through
-   `flow_cloud::testing::override_base_url` (the `mock-server` feature, dev-dependency only),
+   `murmur_cloud::testing::override_base_url` (the `mock-server` feature, dev-dependency only),
    never through a base URL in config.
 
    *Done on `feat/or-windows` (W5):* the catalogue cache is
-   `%APPDATA%\FlowClone\cache\openrouter-catalog.json` (next to prefs.json; user
+   `%APPDATA%\Murmur\cache\openrouter-catalog.json` (next to prefs.json; user
    decision, not `%LOCALAPPDATA%`). Commands as listed plus `dev_or_get` (the page view),
    `dev_or_catalog_status`, `dev_or_set_model`, `dev_or_set_stt`, `dev_or_set_privacy`,
    `dev_or_set_budget`, `dev_or_ack_notice`; `dev_cloud_set_key(key)` /
@@ -665,9 +665,9 @@ accept an `OpenRouterConfig` JSON. A legacy entry of another adapter is refused 
    Consent is recorded by the backend (host fixed to openrouter.ai, time of the call); the
    page only says the dialog was accepted. The Developer form carries no cloud fields.
 
-**2026-10-21 — flow-protocol + flow-router landed**
+**2026-10-21 — murmur-protocol + murmur-router landed**
 
-* Types §1.2 left open, now concrete (`crates/flow-router/src/lib.rs`):
+* Types §1.2 left open, now concrete (`crates/murmur-router/src/lib.rs`):
   * `StartInfo { queued: bool }`.
   * `BackendError { kind: Failure, message: String }`; `Failure` serialises to the `route.fallback` strings (`connect_failed`, `auth_failed`, `proto_mismatch`, `busy`, `timeout`, `disconnected`, `circuit_open`, `server_not_configured`, `local_not_ready`, plus `error` for a local engine failure).
   * `HealthReport` (JSON = `fixtures/health_*.json`): `ok`, `engine`, `error` (a `Failure` string), `message`, `server` ("host:port"), `rtt_ms {min,median,max}`, `server_version`, `server_core`, `postprocess_rev`, `postprocess_match`, `proto`, `asr_backend`, `asr_model`, `llm`, `workers`, `busy`, `checked_at_ms`.
@@ -675,8 +675,8 @@ accept an `OpenRouterConfig` JSON. A legacy entry of another adapter is refused 
   * `RouterError` = `NoEngineEnabled | LocalNotReady | ServerNotConfigured | ServerUnavailable(String) | BadConfig(String)`, `kind()` = the §1.2 snake_case strings; `Display` = `"<kind>: <detail>"`.
 * `Backend::session_failure(&self) -> Option<BackendError>` — new trait method **with a default** (`None`); shells' local wrappers need not implement it. The router polls it on every push to detect a dead remote session (busy, lost connection, no `started` in time).
 * New `Router` methods: `with_local_capability(bool)` (builder: declare a local engine before its models are loaded, so `allow_client` with no model gives `local_not_ready`, not `no_engine_enabled`; default = a local backend was passed to `new`/`set_local`), `with_local_info(asr_engines, llm)` (fills `capabilities()`), `config()`, `probe_config(&ServerConfig)` (Test connection with the unsaved form; touches no router state), `reset_circuit()`.
-* Validation: `RouterConfig::validate() -> Result<(), RouterError::BadConfig>` implements the §5 rules (host syntax via `flow_router::net::validate_host`, public host requires `tls`, pin 64 hex, token empty or ≥ 16, timeout ranges). `ServerConfig::addr()` gives "host:port" (IPv6 bracketed). `flow_router::net::classify(host)` is the §2.6 address class.
-* flow-core: besides `CommitResult.route` / `RouteInfo` / `POSTPROCESS_REV`, `flow_core::VERSION` (crate version, used for `Capabilities.core_version` and `hello.core`).
+* Validation: `RouterConfig::validate() -> Result<(), RouterError::BadConfig>` implements the §5 rules (host syntax via `murmur_router::net::validate_host`, public host requires `tls`, pin 64 hex, token empty or ≥ 16, timeout ranges). `ServerConfig::addr()` gives "host:port" (IPv6 bracketed). `murmur_router::net::classify(host)` is the §2.6 address class.
+* murmur-core: besides `CommitResult.route` / `RouteInfo` / `POSTPROCESS_REV`, `murmur_core::VERSION` (crate version, used for `Capabilities.core_version` and `hello.core`).
 * Behaviour decisions:
   * Server-only (`allow_client` off) and the server is unreachable at start: `start_session` returns `Err(server_unavailable: …)` (or `server_not_configured`) **and** a following `commit()` returns ERROR with `route.fallback` set, so either check works.
   * Both toggles off: `Err(no_engine_enabled)`; `commit()` returns ERROR `no_engine_enabled: …` (route `None`).
@@ -687,20 +687,20 @@ accept an `OpenRouterConfig` JSON. A legacy entry of another adapter is refused 
 * **Designed for a third route (opt-in cloud STT, planned; not implemented).**
   * `EngineKind`, `Prefer` and `Failure` are `#[non_exhaustive]`: shells must `match` with a `_` arm (a `Cloud` engine kind and cloud failures such as quota errors will be added).
   * `RouterConfig::route_order() -> Vec<EngineKind>` is the policy as an ordered list of allowed routes (today derived from `prefer` + the toggles). The cloud follow-up will add an `order: [..]` config field that supersedes `prefer` (which stays accepted as legacy JSON); shells that read the order through `route_order()` need no change.
-  * `RouteInfo.provider: Option<String>` (flow-core, omitted from JSON when `None`) will name the cloud provider (`"openai"`, `"elevenlabs"`, `"openrouter"`, …).
-  * Running the deterministic pipeline on an externally produced transcript already has a clean entry point: a cloud STT client is an `flow_core::asr::AsrEngine` (`transcribe(pcm, &AsrRequest) -> AsrOutput`, the request carries the dictionary/screen-word prompt and language), wrapped by `FlowCore::from_engines(asr, cleaner)`. That keeps VAD (no audio is sent for silence), the hallucination guard, spoken cleanup, the dictionary, the LLM step and post-processing on-device, so a cloud route is a third `Backend` built from a `FlowCore` and needs no flow-core change. TODO (cloud follow-up): if a provider returns text only after its own streaming endpointing, add `FlowCore::process_transcript(text, &SessionConfig, &FieldContext) -> CommitResult` for text-in/result-out without PCM.
+  * `RouteInfo.provider: Option<String>` (murmur-core, omitted from JSON when `None`) will name the cloud provider (`"openai"`, `"elevenlabs"`, `"openrouter"`, …).
+  * Running the deterministic pipeline on an externally produced transcript already has a clean entry point: a cloud STT client is an `murmur_core::asr::AsrEngine` (`transcribe(pcm, &AsrRequest) -> AsrOutput`, the request carries the dictionary/screen-word prompt and language), wrapped by `MurmurCore::from_engines(asr, cleaner)`. That keeps VAD (no audio is sent for silence), the hallucination guard, spoken cleanup, the dictionary, the LLM step and post-processing on-device, so a cloud route is a third `Backend` built from a `MurmurCore` and needs no murmur-core change. TODO (cloud follow-up): if a provider returns text only after its own streaming endpointing, add `MurmurCore::process_transcript(text, &SessionConfig, &FieldContext) -> CommitResult` for text-in/result-out without PCM.
 
-**2026-10-22 — flow-remote, flow-server, contract tests landed**
+**2026-10-22 — murmur-remote, murmur-server, contract tests landed**
 
-* Use the remote backend with `Router::new(cfg, local, Some(flow_remote::factory("flow-windows 0.2.0")))`. Cargo feature `tls` on `flow-remote` adds `wss://` (rustls + Mozilla roots, or a pinned leaf: `tls_pin_sha256`); without it a `tls: true` config fails with `connect_failed`.
+* Use the remote backend with `Router::new(cfg, local, Some(murmur_remote::factory("murmur-windows 0.2.0")))`. Cargo feature `tls` on `murmur-remote` adds `wss://` (rustls + Mozilla roots, or a pinned leaf: `tls_pin_sha256`); without it a `tls: true` config fails with `connect_failed`.
 * Remote behaviour the shells will see:
   * `ws://` to a public host fails in `start_session`/`probe` with `connect_failed: plaintext to public address (enable TLS)` and opens no socket.
   * A warm connection is reused across sessions (idle close after 60 s), so only the first session after a pause pays the TCP + upgrade + hello round trips.
   * `started{queued:true}` (server busy) makes the router go local with `busy` when a ready local engine exists; without one the session waits on the server's queue (`queue_timeout_ms`, then ERROR).
   * Mid-session failure detection is by `session_failure()` on each push: connection closed, writer queue full (> 6.4 s backlog), server `busy`/`no_session`/`stale_sid`, or no `started` within `connect_timeout_ms`.
-* `flow-server` (crate `crates/flow-server`): `flow-server [--config PATH] [--token-file PATH]`, `flow-server gen-token --out PATH` (43-char token, mode 0600, never overwrites), `flow-server check-config`. Features: `whisper` (default), `parakeet`, `llm`, `tls` (default). Example config and the systemd unit (with the kernel IP allowlist) are in `crates/flow-server/dist/`; the unit passes the token via `LoadCredential`. Not installed on any machine by this branch.
+* `murmur-server` (crate `crates/murmur-server`): `murmur-server [--config PATH] [--token-file PATH]`, `murmur-server gen-token --out PATH` (43-char token, mode 0600, never overwrites), `murmur-server check-config`. Features: `whisper` (default), `parakeet`, `llm`, `tls` (default). Example config and the systemd unit (with the kernel IP allowlist) are in `crates/murmur-server/dist/`; the unit passes the token via `LoadCredential`. Not installed on any machine by this branch.
 * Behaviour notes vs §3: auth failure is an HTTP 401 on the upgrade request (clients map 401/403 to `auth_failed`; the 4001 close code is reserved); a start while queued keeps the queued audio (≤ `max_samples`) and replays it into the worker with an enlarged ring; `max_session_s` overrun ends the session with `error too_large`; cancelling a queued session aborts its wait so the slot frees immediately.
-* `tools/check-build-matrix.sh` (run by `cargo test -p flow-contract-tests --test build_matrix`) checks the flow-ffi and flow-windows flavours with `cargo tree`; the checks for features the shells have not added yet (`flow-ffi/remote`, `flow-windows/local`, `flow-windows/remote`) print SKIP. Strict mode (a SKIP fails) and cloud-strict mode are the defaults since the D28 merge; `CHECK_BUILD_MATRIX_STRICT=0` / `CHECK_BUILD_MATRIX_STRICT_CLOUD=0` relax them on a branch that has not caught up. Because Tauri itself depends on tokio, the Windows client-only check looks for the WS client stack (`flow-remote`, `tungstenite`, `axum`) rather than for tokio.
+* `tools/check-build-matrix.sh` (run by `cargo test -p murmur-contract-tests --test build_matrix`) checks the murmur-ffi and murmur-windows flavours with `cargo tree`; the checks for features the shells have not added yet (`murmur-ffi/remote`, `murmur-windows/local`, `murmur-windows/remote`) print SKIP. Strict mode (a SKIP fails) and cloud-strict mode are the defaults since the D28 merge; `CHECK_BUILD_MATRIX_STRICT=0` / `CHECK_BUILD_MATRIX_STRICT_CLOUD=0` relax them on a branch that has not caught up. Because Tauri itself depends on tokio, the Windows client-only check looks for the WS client stack (`murmur-remote`, `tungstenite`, `axum`) rather than for tokio.
 
 **2026-10-22 — live route + hands-free endpointing for the shells (branch `router-route`)**
 
@@ -708,7 +708,7 @@ Goal: the pill says "Transcribing via <route>…" **while recording** (and updat
 changes mid-session), and hands-free mode stops by itself on silence (D19). All additive;
 pre-existing fixtures are byte-identical.
 
-* **flow-router API** (`crates/flow-router/src/lib.rs`, tests `policy.rs` / `cloud_policy.rs`
+* **murmur-router API** (`crates/murmur-router/src/lib.rs`, tests `policy.rs` / `cloud_policy.rs`
   "live session route", fixtures `start_info_remote.json`, `poll_cloud.json`,
   `poll_fallback.json`, `poll_idle.json`):
   * `SessionRoute { engine: EngineKind, provider, model, server, fallback: Option<String> }`
@@ -737,14 +737,14 @@ pre-existing fixtures are byte-identical.
     `commit`/`cancel`, after a failed start, and when every route failed (the commit is ERROR).
     Invariant: `SessionRoute::from_route_info(commit().route)` == the last polled route, and ==
     the start route unless a mid-session fallback happened.
-* **flow-ffi**: C `char *flow_start_session_info(h, session_json)` (StartInfo JSON, NULL + the
-  same last error/kind as `flow_start_session`) and `char *flow_poll(h)` (RouterPoll JSON; NULL
-  for a NULL handle) in `flow_core.h`; JNI `nativeStartSessionInfo(h: Long, cfg: String): String?`
+* **murmur-ffi**: C `char *murmur_start_session_info(h, session_json)` (StartInfo JSON, NULL + the
+  same last error/kind as `murmur_start_session`) and `char *murmur_poll(h)` (RouterPoll JSON; NULL
+  for a NULL handle) in `murmur_core.h`; JNI `nativeStartSessionInfo(h: Long, cfg: String): String?`
   (`(JLjava/lang/String;)Ljava/lang/String;`) and `nativePoll(h: Long): String` (`(J)Ljava/lang/String;`,
   never null; `0` = idle poll). Core handles answer too, without `route`. See
-  `apps/flow-android/JNI_CONTRACT.md` "Live route + hands-free endpointing".
+  `apps/murmur-android/JNI_CONTRACT.md` "Live route + hands-free endpointing".
 
-**What W must do** (flow-windows calls `flow_router::Router` directly, `router_adapter.rs`):
+**What W must do** (murmur-windows calls `murmur_router::Router` directly, `router_adapter.rs`):
 
 1. Start: replace `self.router.start_session(to_core_session(&cfg))` with
    `self.router.start_session_info(…)` and keep `info.route` (map the error exactly as today).
@@ -766,10 +766,10 @@ pre-existing fixtures are byte-identical.
    polling once finishing started. `endpoint_reached` is latched and the same on every route
    (computed in the router from the pushed audio, not by the backend).
 5. The trait `CoreApi` is W's own; add a `poll()` (or `route()`) method there with a default
-   so `StubCore` / `FlowCoreAdapter` keep compiling (`FlowCore::poll()` gives the
+   so `StubCore` / `MurmurCoreAdapter` keep compiling (`MurmurCore::poll()` gives the
    `SessionPoll`; a bare core has no route — show "on this PC").
 
-**What A must do** (Kotlin over JNI, `NativeFlowCore.kt`):
+**What A must do** (Kotlin over JNI, `NativeMurmurCore.kt`):
 
 1. Declare `@JvmStatic external fun nativeStartSessionInfo(handle: Long, sessionConfigJson: String): String?`
    and `@JvmStatic external fun nativePoll(handle: Long): String`. (The libraries of every
@@ -788,42 +788,42 @@ pre-existing fixtures are byte-identical.
    `nativeCommit` on `Dispatchers.Default`, paste) exactly as when the user stops; ignore
    further polls once finishing started.
 5. Tests: `RouterJsonTest` can decode `poll_cloud.json`, `poll_fallback.json`, `poll_idle.json`,
-   `start_info_remote.json` from `crates/flow-router/fixtures/`.
+   `start_info_remote.json` from `crates/murmur-router/fixtures/`.
 
 **2026-10-22 — review fixes, core/router/cloud/ffi side (branch `router-route`; review `docs/reviews/2026-10-22-integration.md` on `review-2026-10-22`)**
 
 All additive at the API level (no signature removed); behaviour changes are listed so W and A
 can adapt. Server-side items (S7-S10, C5, the server half of C4) are on branch `server-fixes`.
 
-* **S1 Test provider / S4 key binding** (`flow-router`). A stored cloud key is bound to the saved
+* **S1 Test provider / S4 key binding** (`murmur-router`). A stored cloud key is bound to the saved
   provider's base-URL host + adapter. `update_config` with a changed host or adapter (or a removed
   provider) drops it; a key set by id before its provider is in the config binds to the first one
   saved. `probe_cloud(p, None)` uses the stored key only if `p` has exactly that host + adapter;
   otherwise `ok:false, error:"cloud_not_configured"`, message "enter the API key: the stored key is
   only sent to the saved host". New: `Router::set_cloud_key_for(&CloudProviderConfig, Option<SecretString>)`,
-  C `flow_set_cloud_key_for(h, provider_json, key)`, JNI `nativeSetCloudKeyFor(h, providerJson, key): Boolean`.
+  C `murmur_set_cloud_key_for(h, provider_json, key)`, JNI `nativeSetCloudKeyFor(h, providerJson, key): Boolean`.
   * W: on Save call `set_cloud_key_for(&saved_provider, key)`; when the host or adapter of a saved
     provider changes, delete its Credential Manager entry and ask for the key again (never re-send the
     old key, or it is bound to the new host). "Test provider" on an edited form must pass the typed key;
     show the message above when the field is empty.
   * A: same with `nativeSetCloudKeyFor` and the Keystore entry (`CloudSettings.edited`); the provider
     form's Test button passes the typed key when the host/adapter differ from the saved ones.
-* **S2 URL parsing** (`flow-router`). `flow_router::cloud::parse_base_url(&str) -> Result<BaseUrl{https, host, port, ip}, String>`
+* **S2 URL parsing** (`murmur-router`). `murmur_router::cloud::parse_base_url(&str) -> Result<BaseUrl{https, host, port, ip}, String>`
   uses the `url` crate (reqwest's parser). It refuses `\`, whitespace / control characters anywhere,
   any userinfo (`user@`, `:pw@`), non-http(s) schemes and empty hosts; `CloudProviderConfig::host()`,
   consent and the http cleartext rule all use its host (WHATWG IPv4 forms like `0x7f.1` become
   dotted quads; percent escapes are decoded). **The Kotlin mirror (`CloudSettings.kt`) must match the
-  vectors in `crates/flow-router/tests/url_parse.rs`** (the Android agent ports it). W: drop the
+  vectors in `crates/murmur-router/tests/url_parse.rs`** (the Android agent ports it). W: drop the
   hand-rolled host classifier in `dev_settings.rs` (~640-665) and call `parse_base_url` /
   `CloudProviderConfig::validate` instead.
-* **S3 redirects** (`flow-cloud`). Provider calls never follow redirects (no Referer, https-only for
+* **S3 redirects** (`murmur-cloud`). Provider calls never follow redirects (no Referer, https-only for
   https base URLs); a 3xx is `provider_error`. No shell change.
-* **S5 mid-session re-check** (`flow-router`). Every fallback hop and replay re-checks the current
+* **S5 mid-session re-check** (`murmur-router`). Every fallback hop and replay re-checks the current
   toggles, `order`, consent and key; `update_config` / `set_cloud_key*` prune the live session's hops,
   and a live cloud session that is no longer allowed switches to the next allowed route at once (the
   pill changes on the next poll). A running server session keeps its route until the next session.
   No shell change (just call `update_config` as today).
-* **S6 cleartext by resolved address** (`flow-remote`, `flow-cloud`, `flow_router::net`). `ws://`
+* **S6 cleartext by resolved address** (`murmur-remote`, `murmur-cloud`, `murmur_router::net`). `ws://`
   (and cloud `http://`) to a name resolves it and requires **every** address to be loopback, RFC 1918,
   ULA, link-local, or VPN (100.64/10, fd7a:115c:a1e0::/48) reached through an interface that holds
   a VPN address (`net::plaintext_ok_resolved`, `net::route_source`); the connection then goes to
@@ -832,15 +832,15 @@ can adapt. Server-side items (S7-S10, C5, the server half of C4) are on branch `
   also uses 100.64/10, so a phone on such a network with its VPN down cannot be told apart here;
   that case needs `wss://`. Failure: `connect_failed` "…: plaintext refused: … (enable TLS)"; shells
   may show it as "Use TLS for this server".
-* **S11 stale preview** (`flow-core`). A partial decode of a cancelled/committed session can no
+* **S11 stale preview** (`murmur-core`). A partial decode of a cancelled/committed session can no
   longer appear in the next session; commit and cancel clear the preview. No shell change.
-* **C2 blocking calls.** Documented in `flow_core.h` and JNI_CONTRACT.md "Threading". A: move
+* **C2 blocking calls.** Documented in `murmur_core.h` and JNI_CONTRACT.md "Threading". A: move
   `nativeStartSession*` off Main (it can block up to `connect_timeout_ms` on the server route).
   W: `start_session` blocks the same way; keep it off the UI/hook thread.
-* **C3 failover off the audio thread** (`flow-router`). `push_audio` never connects: a mid-session
+* **C3 failover off the audio thread** (`murmur-router`). `push_audio` never connects: a mid-session
   failover runs on a helper thread while audio is buffered; `poll().route` names the route being
   switched to and `partial` is `None` until it is installed. No shell change.
-* **C4 cancel during commit** (`flow-router`, `flow-core`, `flow-remote`, `flow-cloud`). `cancel()`
+* **C4 cancel during commit** (`murmur-router`, `murmur-core`, `murmur-remote`, `murmur-cloud`). `cancel()`
   with no open session aborts a `commit()` running on another thread: it returns at once with ERROR
   `cancelled` (route set), the engine is told to stop (local ASR abort flag, server `cancel`, cloud
   upload skipped if not started), and no fallback is tried. `start_session` no longer cancels a
@@ -862,9 +862,9 @@ No API change; behaviour the shells can see:
   no provider, consent, key or budget left no longer counts as a fallback, so the server is
   retried (half-open) instead of failing the dictation.
 * `CommitResult.truncated` is now also `true` when a fallback replay lost audio past
-  `max_samples` (C18). flow-core no longer counts samples past `max_samples` as
+  `max_samples` (C18). murmur-core no longer counts samples past `max_samples` as
   `dropped_samples`, and `audio::resample_to_16k(_, 0)` returns no audio instead of panicking.
-* flow-core (C6): a `start_session` that overlaps the previous `commit` (hands-free back to
+* murmur-core (C6): a `start_session` that overlaps the previous `commit` (hands-free back to
   back) no longer changes that commit's context (app category, screen words) or its
   `dropped_samples`.
 * Cloud, keyless self-hosted servers (P3): a `custom`-preset `openai_compat` provider whose base
@@ -890,7 +890,7 @@ symbol changes.
 * `SessionConfig.segment_pause_ms` (recommended 800) / `segment_min_ms` / `segment_soft_max_ms`
   travel in `start.config` like every other field. The server runs the unmodified core, so a
   server dictation is segmented exactly like a local one, and router fallback replay finds
-  the same cuts (`flow-contract-tests/tests/segmented.rs`). A pre-D22 server ignores the field
+  the same cuts (`murmur-contract-tests/tests/segmented.rs`). A pre-D22 server ignores the field
   and returns the full text. The cloud backend never segments (`CloudAsr::segmentable` false;
   one upload at commit, C5).
 * `HelloOk.features` (`["segments"]` from this server on; omitted = none). Router-internal; old
@@ -913,9 +913,9 @@ with keep-warm off the shell opened the router with no local backend, so after t
 connect timeout `start_routes` found no ready local engine and returned
 `Err(server_unavailable)`, although the client route was allowed and a model was imported.
 800 ms was also too short for the relay (3+ round trips of 150-300 ms), so the server was
-"down" while flow-server saw the connection arrive.
+"down" while murmur-server saw the connection arrive.
 
-* **On-demand local engine** (`flow-router`): `LocalLoader = Arc<dyn Fn() -> Result<Arc<dyn
+* **On-demand local engine** (`murmur-router`): `LocalLoader = Arc<dyn Fn() -> Result<Arc<dyn
   Backend>, String>>`; `Router::with_local_loader(l)` / `set_local_loader(Option<l>)`. When the
   client route comes up with no warm engine (server down at start, open circuit, mid-session
   death, commit timeout), the session goes live on the client route immediately: audio is
@@ -931,20 +931,20 @@ connect timeout `start_routes` found no ready local engine and returned
 * **Debug fields**: `RouteDiag { connect_ms, local_cold, local_load_ms, local_load_error }` in
   `RouteStatus.last_diag` (fixture `route_status_diag.json`), recorded at commit. Android's D21
   line gains `connect_ms`, `local_cold`, `local_load_ms`.
-* **Connect timeout**: default 800 → **2500 ms** (`flow_router::DEFAULT_CONNECT_TIMEOUT_MS`;
+* **Connect timeout**: default 800 → **2500 ms** (`murmur_router::DEFAULT_CONNECT_TIMEOUT_MS`;
   `LEGACY_CONNECT_TIMEOUT_MS` = 800 for the shells' one-time migration; fixtures
   `router_config_{default,hybrid,local_only,cloud}.json` changed accordingly). Adaptive:
   `effective_connect_timeout_ms(cfg, rtt_median)` = `max(cfg, clamp(rtt × 6, 1500, 10000))`
   once a successful probe of this server measured its RTT; the remote backend is rebuilt when
   the effective value changes. Never lowers the configured value.
-* **Pre-warm**: `Backend::warm()` (default `Ok(())`; flow-remote opens/keeps the warm WS) and
+* **Pre-warm**: `Backend::warm()` (default `Ok(())`; murmur-remote opens/keeps the warm WS) and
   `Router::prewarm() -> bool` (**blocking**: off the UI thread). Skipped with the server route
   off / unconfigured / circuit open / a live session; a failure opens the circuit, so the next
   dictation goes straight to local. Android calls it when a text field gets focus (≤ once per
   20 s); Windows does not yet (no focus signal; startup and Save already probe).
 * **API note**: `StartInfo`, `RouterPoll`, `RouteStatus` gained fields; struct literals outside
-  the crate need `..Default::default()` (the shells build none except flow-ffi's poll).
-* **flow-ffi**: `json_api::set_local_loader(h, "[ModelConfig, …]")` (tried in order) and
+  the crate need `..Default::default()` (the shells build none except murmur-ffi's poll).
+* **murmur-ffi**: `json_api::set_local_loader(h, "[ModelConfig, …]")` (tried in order) and
   `json_api::prewarm(h)`; JNI `nativeSetLocalLoader(h, json): Boolean`, `nativePrewarm(h): Boolean`
   (JNI_CONTRACT.md). No C symbols added.
 * **Android**: `EngineRoute.plan` keeps the Native plan as `onDemand` when keep-warm is off;

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Re-run of the 2026-10-23 cliptest (whole vs segment_pause_ms 800, previews
 # on, real-time pacing unless CLIPTEST_FAST=1) against this worktree's
-# flow-core. Writes a new per-run dir; grade with analyze.py.
+# murmur-core. Writes a new per-run dir; grade with analyze.py.
 # usage: run_cliptest.sh CLIPS_DIR OUT_ROOT PARAKEET_DIR WHISPER_MODEL
 set -u
 CLIPS=$1; OUT=$2/$(date +%Y%m%d-%H%M%S); P=$3; W=$4

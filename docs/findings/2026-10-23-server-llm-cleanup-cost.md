@@ -1,7 +1,7 @@
 # Server-side LLM cleanup: cost on the home server (2026-10-23)
 
 **Question.** What does turning on LLM cleanup (`llm_path`, Qwen2.5-1.5B-Instruct Q4_K_M)
-on the home `flow-server` (i7-6700, 8 threads, no GPU, Parakeet unified 0.6B int8,
+on the home `murmur-server` (i7-6700, 8 threads, no GPU, Parakeet unified 0.6B int8,
 `workers = 1`, `threads = 4`) add to release→text, and is it worth leaving on?
 
 **Answer.** It is not worth it on this box today. **The server is back on the pre-LLM config.**
@@ -9,7 +9,7 @@ on the home `flow-server` (i7-6700, 8 threads, no GPU, Parakeet unified 0.6B int
 > **Update 2026-10-24: the user chose to keep LLM cleanup ON on both devices**
 > (home server and phone), accepting the latency and RAM cost above. The server
 > runs with `llm_path` set again; `tools/server/install.sh` now builds the `llm`
-> feature and installs `libflow_llm.so` (`--llm`, and automatically when the
+> feature and installs `libmurmur_llm.so` (`--llm`, and automatically when the
 > config sets `llm_path`; `docs/server-setup.md` "LLM cleanup"), so a re-install
 > no longer drops cleanup. The verdict below is the 2026-10-23 measurement, kept
 > for reference.
@@ -24,17 +24,17 @@ on the home `flow-server` (i7-6700, 8 threads, no GPU, Parakeet unified 0.6B int
   a final period and one comma. It made no harmful edits on these clips (no hallucinated
   words, no change of meaning).
 * RSS went from 1.65 GB to 3.41 GB (+1.76 GB).
-* During the second bench, flow-server was SIGKILLed (00:01:57). The whole box was out of
+* During the second bench, murmur-server was SIGKILLed (00:01:57). The whole box was out of
   memory: swap had 0 MiB free, earlyoom was active and other agents' builds were running.
-  At 2.7 GB, flow-server was the largest process. systemd restarted it, but the reload
+  At 2.7 GB, murmur-server was the largest process. systemd restarted it, but the reload
   took 70 s under that memory pressure. Under the task's rule ("if enabling breaks the
   server, restore"), I restored `config.toml.bak-pre-llm`. ASR then checked healthy
   (`llm:false`, jfk 951 ms, load 5.4 s).
 
 ## Setup
 
-* Bench: `crates/flow-contract-tests/examples/hybrid_latency.rs` with new flags
-  `--remote-only --reps 3 --jsonl …`. This is the real Router → flow-remote → `/v1/stream`
+* Bench: `crates/murmur-contract-tests/examples/hybrid_latency.rs` with new flags
+  `--remote-only --reps 3 --jsonl …`. This is the real Router → murmur-remote → `/v1/stream`
   path. Audio is pushed in 100 ms frames at real-time pace, and the clock runs from
   `commit` to the result (release→text, the client's view).
   Session: `{"partial_interval_ms":1500,"segment_pause_ms":800,"llm_timeout_ms":3000,
@@ -54,25 +54,25 @@ on the home `flow-server` (i7-6700, 8 threads, no GPU, Parakeet unified 0.6B int
 
 ## What enabling needs (the installed server did not have it)
 
-1. **A flow-server built with `--features llm`.** `tools/server/install.sh` builds
+1. **A murmur-server built with `--features llm`.** `tools/server/install.sh` builds
    `--features parakeet,tls` only. With that build, `llm_path` set is a startup error
    ("llm_path set but built without the `llm` feature"). Build:
-   `SHERPA_ONNX_LIB_DIR=… cargo build --release -p flow-server --no-default-features --features parakeet,tls,llm`
+   `SHERPA_ONNX_LIB_DIR=… cargo build --release -p murmur-server --no-default-features --features parakeet,tls,llm`
    (the feature only adds libloading; there is no llama.cpp in the binary).
-2. **The `flow-llm` plugin `libflow_llm.so`** (llama.cpp, a separate cdylib because of
+2. **The `murmur-llm` plugin `libmurmur_llm.so`** (llama.cpp, a separate cdylib because of
    the ggml symbol clash). Point `llm_lib` at it in `[model]`, or put it next to the
-   binary (`~/.local/bin/`), or set `FLOW_LLM_LIB`. Building it on this box needs
+   binary (`~/.local/bin/`), or set `MURMUR_LLM_LIB`. Building it on this box needs
    `BINDGEN_EXTRA_CLANG_ARGS="-I/usr/lib/gcc/x86_64-linux-gnu/13/include"`; without it,
-   bindgen fails on `stdbool.h`. For this run I used the release `libflow_llm.so` from
-   the integration target, built 2026-10-22 (flow-llm is unchanged since 2026-10-20,
-   ABI 1, prefill symbols present), installed as `~/.local/lib/flow-server/libflow_llm.so`.
-3. `[model] llm_path = "~/.local/share/flow-server/models/qwen2.5-1.5b-instruct-q4_k_m.gguf"`
+   bindgen fails on `stdbool.h`. For this run I used the release `libmurmur_llm.so` from
+   the integration target, built 2026-10-22 (murmur-llm is unchanged since 2026-10-20,
+   ABI 1, prefill symbols present), installed as `~/.local/lib/murmur-server/libmurmur_llm.so`.
+3. `[model] llm_path = "~/.local/share/murmur-server/models/qwen2.5-1.5b-instruct-q4_k_m.gguf"`
    (sha256 `6a1a2eb6…9407e`, checked).
 
 The `ready` log line does not print llm state. Check `GET /v1/health` (= `hello_ok`)
 for `"llm":true`. The installed binary is now the llm-capable build; it behaves
-identically without `llm_path`. The previous binary is at `~/.local/bin/flow-server.bak-pre-llm`,
-and the LLM-on config at `~/.config/flow-server/config.toml.llm-on-2026-10-23`.
+identically without `llm_path`. The previous binary is at `~/.local/bin/murmur-server.bak-pre-llm`,
+and the LLM-on config at `~/.config/murmur-server/config.toml.llm-on-2026-10-23`.
 Re-enabling is a config copy plus a restart. Downtime was 22 s on the swap (Parakeet +
 LLM load), and 51–70 s cold or under memory pressure.
 
@@ -111,7 +111,7 @@ on-device (15 rows with timings, median 10 words):
 | total_ms | 429 | 2147 |
 | perceived_ms (release→text) | 655 | 2755 |
 
-Server side, the phone's sessions in the flow-server journal (VPN peer, since
+Server side, the phone's sessions in the murmur-server journal (VPN peer, since
 2026-10-22): 26 sessions, 21 with text, 5 empty.
 
 | metric (server) | median | p90 |
@@ -168,7 +168,7 @@ linearly with transcript length (~65–75 ms per output word under this load).
 | cgroup peak while benching with LLM | 2.7 GB (+swap 0) |
 
 **+1.76 GB resident.** The box (20 GB RAM, 8 GB swap) was already at swap 7.9/8 GB from
-other work before the change. The extra 1.8 GB made flow-server the largest process. It
+other work before the change. The extra 1.8 GB made murmur-server the largest process. It
 was SIGKILLed at 00:01:57 during a memory-exhaustion episode (earlyoom also killed java
 and node processes at 00:02:08).
 

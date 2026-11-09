@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Run every WAV of a directory through `flow-cli transcribe --json`.
+"""Run every WAV of a directory through `murmur-cli transcribe --json`.
 
 Probe for docs/findings/2026-11-07-random-capitals.md. Writes one row per
 clip, `{"clip", "raw" (asr_text, after joins), "rules" (final_text),
 "status"}`, to OUT.jsonl (keep it outside the repo: owner audio gives
-owner text). Extra arguments go to flow-cli (model, session, ...).
-Env `FLOW_SEGMENT_JOIN` passes through (bench knob).
+owner text). Extra arguments go to murmur-cli (model, session, ...).
+Env `MURMUR_SEGMENT_JOIN` passes through (bench knob).
 
-Usage: run_set.py FLOW_CLI WAV_DIR OUT.jsonl -- [flow-cli transcribe args]
+Usage: run_set.py MURMUR_CLI WAV_DIR OUT.jsonl -- [murmur-cli transcribe args]
 """
 import json
 import subprocess

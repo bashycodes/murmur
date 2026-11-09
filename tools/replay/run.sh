@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 # Replay harness: saved recordings x speech models x cleanup models x prompt
-# versions through the real flow-core pipeline, then the score report.
+# versions through the real murmur-core pipeline, then the score report.
 # See tools/replay/README.md.
 #
 # usage: tools/replay/run.sh --in DIR [--out DIR] [--asr LIST] [--cleanup LIST]
-#          [--prompt LIST] [--expected FILE] [--max-spend USD] [flow-replay args]
+#          [--prompt LIST] [--expected FILE] [--max-spend USD] [murmur-replay args]
 #        tools/replay/run.sh --score OUT_DIR [--expected FILE]   (score only)
 #        tools/replay/run.sh cargo <cargo args>   (cargo under the memory rules)
 #
-# Memory rules (shared box with the home flow-server): every cargo build and
+# Memory rules (shared box with the home murmur-server): every cargo build and
 # every run that loads a local LLM is serial under
 # $HOME/.cache/flow-clone-build.lock, as an earlyoom-first (choom 1000),
 # nice 10 process; builds are --release -j 2 and need >= 4000 MB available,
 # local-model runs need model size + 2000 MB.
 #
-# env: FLOW_PARAKEET_DIR, SHERPA_ONNX_LIB_DIR, FLOW_WHISPER_MODEL,
-#      FLOW_LLM_GGUF + FLOW_LLM_LIB (local Qwen), CARGO_TARGET_DIR,
+# env: MURMUR_PARAKEET_DIR, SHERPA_ONNX_LIB_DIR, MURMUR_WHISPER_MODEL,
+#      MURMUR_LLM_GGUF + MURMUR_LLM_LIB (local Qwen), CARGO_TARGET_DIR,
 #      REPLAY_FEATURES (default parakeet,whisper,llm).
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -49,7 +49,7 @@ while (( $# )); do
     --out) out="$2"; shift 2 ;;
     --expected) expected="$2"; shift 2 ;;
     --llm) llm="$2"; shift 2 ;;
-    --cleanup) pass+=("$1" "$2"); [[ ",$2," == *,local,* ]] && llm="${llm:-${FLOW_LLM_GGUF:?--cleanup local needs FLOW_LLM_GGUF or --llm}}"; shift 2 ;;
+    --cleanup) pass+=("$1" "$2"); [[ ",$2," == *,local,* ]] && llm="${llm:-${MURMUR_LLM_GGUF:?--cleanup local needs MURMUR_LLM_GGUF or --llm}}"; shift 2 ;;
     *) pass+=("$1"); shift ;;
   esac
 done
@@ -62,15 +62,15 @@ esac
 [[ -z "$expected" && -f "$in/expected.json" ]] && expected="$in/expected.json"
 
 features="${REPLAY_FEATURES:-parakeet,whisper,llm}"
-cargo_locked build --release --offline -j 2 -p flow-replay --features "$features" >&2
-bin="${CARGO_TARGET_DIR:-$root/target}/release/flow-replay"
+cargo_locked build --release --offline -j 2 -p murmur-replay --features "$features" >&2
+bin="${CARGO_TARGET_DIR:-$root/target}/release/murmur-replay"
 
 args=("${pass[@]}" --out "$out")
 if [[ -n "$llm" ]]; then
   need=$(( $(stat -c %s "$llm") / 1048576 + 2000 ))
   a=$(avail_mb)
   if (( a < need )); then echo "replay: $a MB available < $need MB for $(basename "$llm")" >&2; exit 3; fi
-  args+=(--llm "$llm" --llm-lib "${FLOW_LLM_LIB:?FLOW_LLM_LIB (libflow_llm.so) for the local LLM}")
+  args+=(--llm "$llm" --llm-lib "${MURMUR_LLM_LIB:?MURMUR_LLM_LIB (libmurmur_llm.so) for the local LLM}")
   locked "$bin" "${args[@]}"
 else
   nice -n 10 "$bin" "${args[@]}"

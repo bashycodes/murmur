@@ -15,11 +15,11 @@ server address) was never stored.
 
 **Evidence (read-only, owner's PC, copies kept out of the repo).**
 
-- `%APPDATA%\FlowClone\prefs.json`: `asr_engine` whisper, `model_path`
+- `%APPDATA%\Murmur\prefs.json`: `asr_engine` whisper, `model_path`
   null, `developer.allow_server` true, `server.host` empty,
   `route_order` [server, client]: the shipped engine defaults, consistent
   with every setup save being refused.
-- No `models` folder under `%APPDATA%\FlowClone`: no speech model.
+- No `models` folder under `%APPDATA%\Murmur`: no speech model.
 - `history.sqlite`: 0 rows: no dictation ever finished, not even a failed
   one.
 - Debug log off, so no per-dictation lines.
@@ -60,7 +60,7 @@ Hypotheses checked:
 
 ## Fix (D75)
 
-- `Router::route_checks()` (flow-router, read-only, no network): the
+- `Router::route_checks()` (murmur-router, read-only, no network): the
   dictation routes a start would walk, in order, each with the reason a
   start would skip it without trying (no server host, an open or sticky
   circuit with a viable fallback, missing cloud consent/key/budget, no

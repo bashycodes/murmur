@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Dated probe (2026-11-07) for docs/findings/2026-11-07-phone-beam-hotwords.md:
-# peak RSS of one `flow-cli transcribe` per Parakeet decoding mode (greedy /
+# peak RSS of one `murmur-cli transcribe` per Parakeet decoding mode (greedy /
 # beam / auto = beam + a second, greedy recognizer for the fallback). Not a
 # permanent tool.
 #
-#   CLI=<release flow-cli, feature parakeet> MODEL=<parakeet dir> CLIP=<wav>
+#   CLI=<release murmur-cli, feature parakeet> MODEL=<parakeet dir> CLIP=<wav>
 #   DICT=<dictionary JSON> SESSION=<session JSON>  ram_modes.sh
 set -euo pipefail
 : "${CLI:?}" "${MODEL:?}" "${CLIP:?}" "${DICT:?}" "${SESSION:?}"

@@ -15,17 +15,17 @@
 #   --tap           a hands-free dictation (ends on silence or at the end); default: hold
 #
 # Environment:
-#   FLOW_PHONE          transport: a serial (emulator-5554, 100.64.0.5:5555) or
+#   MURMUR_PHONE          transport: a serial (emulator-5554, 100.64.0.5:5555) or
 #                       raw transport options ("-t 60", "-d"); empty = the only device
-#   FLOW_PKG            app package (default dev.flowclone)
-#   FLOW_PLATFORM_TOOL  the Android platform tool to call (default: the one on PATH)
+#   MURMUR_PKG            app package (default dev.murmur)
+#   MURMUR_PLATFORM_TOOL  the Android platform tool to call (default: the one on PATH)
 #
 # Prints the app's answer, e.g. "ok: hello.wav queued"; exit 1 when the app refused.
 set -euo pipefail
-TOOL="${FLOW_PLATFORM_TOOL:-$(printf 'a%sb' d)}"
-PKG="${FLOW_PKG:-dev.flowclone}"
-RECEIVER="dev.flowclone.debug.WavMicReceiver"
-ACTION="dev.flowclone.debug.PLAY_WAV"
+TOOL="${MURMUR_PLATFORM_TOOL:-$(printf 'a%sb' d)}"
+PKG="${MURMUR_PKG:-dev.murmur}"
+RECEIVER="dev.murmur.debug.WavMicReceiver"
+ACTION="dev.murmur.debug.PLAY_WAV"
 
 usage() { sed -n '2,/^set -euo/{/^set -euo/d;s/^# \{0,1\}//;p}' "$0" >&2; exit 2; }
 die() { echo "play-wav: $1" >&2; exit "${2:-1}"; }
@@ -46,10 +46,10 @@ done
 
 # Transport: "-t 60" / "-s X" / "-d" as given, a bare value is a serial.
 TRANSPORT=()
-case "${FLOW_PHONE:-}" in
+case "${MURMUR_PHONE:-}" in
     "") ;;
-    -*) read -r -a TRANSPORT <<<"$FLOW_PHONE" ;;
-    *) TRANSPORT=(-s "$FLOW_PHONE") ;;
+    -*) read -r -a TRANSPORT <<<"$MURMUR_PHONE" ;;
+    *) TRANSPORT=(-s "$MURMUR_PHONE") ;;
 esac
 phone() { "$TOOL" "${TRANSPORT[@]}" "$@"; }
 
@@ -70,7 +70,7 @@ if (r, c, b) != (16000, 1, 2):
     case "$NAME" in *.wav) ;; *) NAME="$NAME.wav" ;; esac
     DEST="files/debug/wav-in/$NAME"
     phone exec-in run-as "$PKG" sh -c "'mkdir -p files/debug/wav-in && cat > $DEST'" <"$FILE" \
-        || die "push failed (run-as needs a debug build of the app, a connected phone and the right FLOW_PHONE)"
+        || die "push failed (run-as needs a debug build of the app, a connected phone and the right MURMUR_PHONE)"
     want="$(sha256sum <"$FILE" | cut -d' ' -f1)"
     got="$(phone exec-out run-as "$PKG" sha256sum "$DEST" | cut -d' ' -f1)" || die "sha256sum failed on the phone"
     [ "$want" = "$got" ] || die "$DEST: sha256 mismatch after the push (got ${got:-nothing})"

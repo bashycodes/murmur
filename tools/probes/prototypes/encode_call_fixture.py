@@ -7,7 +7,7 @@ fixture is 44.1 kHz stereo AAC-LC m4a: the phone has to decode, downmix and resa
 
 Needs PyAV (`pip install av`, e.g. in a throwaway venv). No ffmpeg binary needed.
 
-    python encode_call_fixture.py path/to/jfk.wav apps/flow-android/tools/fixtures/calls/jfk-call.m4a
+    python encode_call_fixture.py path/to/jfk.wav apps/murmur-android/tools/fixtures/calls/jfk-call.m4a
 
 Promoted to: nothing (the fixture it made is committed; rerun only to regenerate it).
 """

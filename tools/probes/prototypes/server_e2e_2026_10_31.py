@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Dated probe (2026-10-31): end-to-end check of a running flow-server.
+"""Dated probe (2026-10-31): end-to-end check of a running murmur-server.
 
 Consumer: docs/findings/2026-10-31-server-model-setup.md (verification and
 latency tables). Not a permanent tool.
 
-Speaks the flow.v1 WebSocket protocol (docs/protocol.md) directly: hello,
+Speaks the murmur.v1 WebSocket protocol (docs/protocol.md) directly: hello,
 then one session per WAV (start -> PCM frames at real time or faster ->
 commit -> result), then optional D36 `clean` requests. Prints one JSON line
 per result with timings, route, language, status and text. The token is read
@@ -72,7 +72,7 @@ def health(http_url, token):
 
 async def run(a, token):
     hdr = {"Authorization": f"Bearer {token}"}
-    async with websockets.connect(a.url + "/v1/stream", subprotocols=["flow.v1"],
+    async with websockets.connect(a.url + "/v1/stream", subprotocols=["murmur.v1"],
                                   additional_headers=hdr, max_size=None) as ws:
         await ws.send(json.dumps({"t": "hello", "proto_min": 1, "proto_max": 1,
                                   "client": "server-e2e-probe 2026-10-31"}))

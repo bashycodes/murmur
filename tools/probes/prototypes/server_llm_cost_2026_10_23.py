@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Dated probe (2026-10-23): what LLM cleanup costs on the home flow-server.
+"""Dated probe (2026-10-23): what LLM cleanup costs on the home murmur-server.
 
 Consumer: docs/findings/2026-10-23-server-llm-cleanup-cost.md (tables).
 Not a permanent tool.
 
 Input: JSONL rows written by
-  cargo run --release -p flow-contract-tests --features parakeet \
+  cargo run --release -p murmur-contract-tests --features parakeet \
       --example hybrid_latency -- --remote-only --reps 3 --jsonl OUT.jsonl ...
 one file per configuration (e.g. before.jsonl = server without llm_path,
 after.jsonl = same bench with llm_path set).

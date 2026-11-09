@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # usage: run.sh LABEL MODE [MODEL.gguf|- [PROMPT.json|- [FROM.jsonl]]]
 #   MODE prod|ai|rules (see runner/src/main.rs). env: MODELS (gguf dir),
-#   FLOW_LLM_LIB (libflow_llm.so), BENCH_BIN (default: the release build under
+#   MURMUR_LLM_LIB (libmurmur_llm.so), BENCH_BIN (default: the release build under
 #   the repo's target/ai-bench).
 # Runs the formatting-eval cases with 4 LLM threads, as a
 # low-priority, earlyoom-first process under the shared build lock, and only
-# when MemAvailable >= model size + 2000 MB (the home flow-server must not be
+# when MemAvailable >= model size + 2000 MB (the home murmur-server must not be
 # the one earlyoom picks). Peak RSS goes to results/LABEL.time.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -17,7 +17,7 @@ if [[ -n "$model" && "$model" != - ]]; then
   need=$(( $(stat -c %s "$MODELS/$model") / 1048576 + 2000 ))
   avail=$(awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo)
   if (( avail < need )); then echo "skip $label: $avail MB available < $need MB" >&2; exit 3; fi
-  args+=(--llm "$MODELS/$model" --llm-lib "$FLOW_LLM_LIB")
+  args+=(--llm "$MODELS/$model" --llm-lib "$MURMUR_LLM_LIB")
 fi
 [[ -n "$prompt" && "$prompt" != - ]] && args+=(--prompt "$here/$prompt")
 [[ -n "${5:-}" ]] && args+=(--from "$here/$5")

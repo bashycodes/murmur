@@ -1,21 +1,21 @@
-# flow-core change requests (from the shells)
+# murmur-core change requests (from the shells)
 
 The core is developed on its own branch. Shells do not edit `crates/` and
 instead file requests here. Each entry says what the shell does in the meantime.
 
 ## CR-1: tell a missing model file apart from a bad one (Windows shell, 2026-10-20)
 
-**Problem.** `FlowCore::load_models` reports every failure as `CoreError::Load(String)`. A shell cannot show "model not found, put a file at X" without parsing the message.
+**Problem.** `MurmurCore::load_models` reports every failure as `CoreError::Load(String)`. A shell cannot show "model not found, put a file at X" without parsing the message.
 
 **Ask.** Add `CoreError::ModelNotFound { path }`, returned before whisper.cpp is invoked.
 
 **Workaround.** `core_adapter::load_blocking` checks `path.is_file()` first and reports `ModelStatus::Missing`.
 
-**Status: DONE (branch `core-p1`).** `CoreError::ModelNotFound{path}` (ASR and LLM model), plus `CoreError::LlmLibNotFound{tried}`, `CoreError::kind()` and C `flow_last_error_kind()`. See core-architecture "Changelog for shells".
+**Status: DONE (branch `core-p1`).** `CoreError::ModelNotFound{path}` (ASR and LLM model), plus `CoreError::LlmLibNotFound{tried}`, `CoreError::kind()` and C `murmur_last_error_kind()`. See core-architecture "Changelog for shells".
 
 ## CR-2: structured paste segments instead of in-band markers (Windows shell)
 
-**Problem.** `{{BREAK}}`/`{{TAB}}` markers travel inside `final_text` when the text carries them (e.g. a snippet body; flow-core no longer produces them since the IDE tagging was removed, D82). History and "paste last" then store the markers, and a shell that forgets to parse them pastes them literally.
+**Problem.** `{{BREAK}}`/`{{TAB}}` markers travel inside `final_text` when the text carries them (e.g. a snippet body; murmur-core no longer produces them since the IDE tagging was removed, D82). History and "paste last" then store the markers, and a shell that forgets to parse them pastes them literally.
 
 **Ask.** Keep `final_text` marker-free and add `segments: [{text} | "tab" | "break"]` (or a `paste_plan` field) to `CommitResult`.
 
@@ -33,7 +33,7 @@ instead file requests here. Each entry says what the shell does in the meantime.
 
 ## CR-4: typed LLM load errors (Windows shell, 2026-10-20)
 
-**Problem.** `LlamaCleaner::load` returns `CleanError::Backend(String)` for every failure. The shell has to tell "flow_llm.dll not found" (a packaging problem: ship the DLL) from "model failed to load" (bad GGUF) by matching the prefix `"llm plugin not found"`.
+**Problem.** `LlamaCleaner::load` returns `CleanError::Backend(String)` for every failure. The shell has to tell "murmur_llm.dll not found" (a packaging problem: ship the DLL) from "model failed to load" (bad GGUF) by matching the prefix `"llm plugin not found"`.
 
 **Ask.** `CleanError::PluginNotFound { tried: Vec<PathBuf> }` and `CleanError::ModelLoad(String)` (or a `kind` field), and `ModelNotFound` as in CR-1.
 
@@ -41,9 +41,9 @@ instead file requests here. Each entry says what the shell does in the meantime.
 
 ## CR-5: attach/detach the LLM on a running core (Windows shell, info)
 
-**Problem.** `FlowCore::load_models` loads ASR and LLM together, so a 10-50 s LLM load would block dictation, and toggling cleanup would reload whisper.
+**Problem.** `MurmurCore::load_models` loads ASR and LLM together, so a 10-50 s LLM load would block dictation, and toggling cleanup would reload whisper.
 
-**Ask.** Nothing blocking: the shell composes `WhisperEngine::load` + `LlamaCleaner::load` itself through `FlowCore::from_engines` and rebuilds the core when the cleaner changes. A `FlowCore::set_cleaner(Option<Arc<dyn Cleaner>>)` would avoid the rebuild (one extra worker thread per swap) and keep `load_models` the only entry point for other shells.
+**Ask.** Nothing blocking: the shell composes `WhisperEngine::load` + `LlamaCleaner::load` itself through `MurmurCore::from_engines` and rebuilds the core when the cleaner changes. A `MurmurCore::set_cleaner(Option<Arc<dyn Cleaner>>)` would avoid the rebuild (one extra worker thread per swap) and keep `load_models` the only entry point for other shells.
 
 **Workaround.** Two-phase load in `core_adapter.rs` (module docs).
 
@@ -53,4 +53,4 @@ instead file requests here. Each entry says what the shell does in the meantime.
 
 **Ask.** Optionally accept the field context and return a `source` (`user_edits` / `app_context`) plus an `edited_bounded` string, so Android and Windows share the bounding rule.
 
-**Workaround.** Bounding lives in `apps/flow-windows/src/learn.rs`; every candidate is a user-accepted suggestion, so a wrong one costs one "Dismiss".
+**Workaround.** Bounding lives in `apps/murmur-windows/src/learn.rs`; every candidate is a user-accepted suggestion, so a wrong one costs one "Dismiss".

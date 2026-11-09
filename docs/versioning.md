@@ -1,7 +1,7 @@
 # Versioning (D26)
 
 One product version for the whole repo: the Windows app, the three Android
-flavours, flow-server and every crate share it. A build also carries the
+flavours, murmur-server and every crate share it. A build also carries the
 git commit it was made from, so a bug report, a debug-log line or a server
 log pins the exact code.
 
@@ -15,8 +15,8 @@ log pins the exact code.
   apart by their build metadata (§3).
 * Ranges: MINOR and PATCH ≤ 99, MAJOR ≤ 209999 (the versionCode ceiling).
 * **Starting version: 0.2.0.** `0.1.0` was never tagged but is baked into
-  every build shipped so far (APKs with versionCode 1, `Flow-Clone_0.1.0_*`
-  installers, `flow-server 0.1.0`). Tagging `v0.1.0` now would give one name
+  every build shipped so far (APKs with versionCode 1, `<old name>_0.1.0_*`
+  installers, `murmur-server 0.1.0`). Tagging `v0.1.0` now would give one name
   to many different builds; `0.2.0` is the first version that means exactly
   one commit. Until it is cut, the tree says `0.1.0` (+ commit, see §3).
 
@@ -28,14 +28,14 @@ from it or is a stamped copy that `tools/check-version.sh` verifies:
 | Where | How it gets the version |
 |---|---|
 | every crate in `crates/` | `version.workspace = true` → root `Cargo.toml` `[workspace.package] version` (stamped copy) |
-| root `Cargo.lock`, `apps/flow-windows/Cargo.lock` | the `flow-*` path packages' entries (stamped copies; CI builds `--locked`) |
-| `apps/flow-windows/Cargo.toml` (own workspace) | `[package] version` (stamped copy) |
-| Windows installers (Tauri) | `tauri.conf.json` has **no** `version`, so Tauri 2 takes Cargo.toml's → `Murmur_0.8.0_x64-setup_hybrid.exe` (`Flow-Clone_…` up to 0.7.1) |
-| `apps/flow-windows/ui/package.json` + `package-lock.json` | stamped copies (kept so `npm ci` sees a consistent lock) |
+| root `Cargo.lock`, `apps/murmur-windows/Cargo.lock` | the `murmur-*` path packages' entries (stamped copies; CI builds `--locked`) |
+| `apps/murmur-windows/Cargo.toml` (own workspace) | `[package] version` (stamped copy) |
+| Windows installers (Tauri) | `tauri.conf.json` has **no** `version`, so Tauri 2 takes Cargo.toml's → `Murmur_0.8.0_x64-setup_hybrid.exe` (older names up to 0.7.1) |
+| `apps/murmur-windows/ui/package.json` + `package-lock.json` | stamped copies (kept so `npm ci` sees a consistent lock) |
 | Android `versionName` / `versionCode` | read from `VERSION` by `app/build.gradle.kts` at build time; a literal fails the check |
-| `flow_core::VERSION`, `flow_build_info::VERSION` | `CARGO_PKG_VERSION` |
+| `murmur_core::VERSION`, `murmur_build_info::VERSION` | `CARGO_PKG_VERSION` |
 
-Guards: `crates/flow-build-info/build.rs` and `apps/flow-windows/build.rs`
+Guards: `crates/murmur-build-info/build.rs` and `apps/murmur-windows/build.rs`
 fail the Rust build when their package version ≠ `VERSION`;
 `AppVersionTest` fails when BuildConfig ≠ `VERSION`; `tools/check-version.sh`
 lists every copy and fails on any difference. Never edit a copy by hand:
@@ -46,33 +46,33 @@ lists every copy and fails on any difference. Never edit a copy by hand:
 `build` = the 7-hex git short sha, `-dirty` appended when tracked files
 differed from that commit at build time, `unknown` without git. `full` =
 SemVer with build metadata: `0.2.0+1a2b3c4` / `0.2.0+1a2b3c4.dirty` /
-`0.2.0+unknown`. `FLOW_GIT_SHA` / `FLOW_GIT_DIRTY=1` override git (e.g. a
+`0.2.0+unknown`. `MURMUR_GIT_SHA` / `MURMUR_GIT_DIRTY=1` override git (e.g. a
 build from a source tarball). Untracked files do not count as dirty.
 
-* **Rust:** crate `flow-build-info` (no deps) bakes `VERSION`, `GIT_SHA`,
+* **Rust:** crate `murmur-build-info` (no deps) bakes `VERSION`, `GIT_SHA`,
   `GIT_DIRTY`, `BUILD`, `FULL` at compile time. Its build script re-runs when
   HEAD, the index, `VERSION` or any source under `crates/` /
-  `apps/flow-windows/{src,ui/src}` changes, so the dirty flag follows edits.
-  Only leaf crates depend on it (flow-server, flow-ffi, flow-windows), so a
-  new commit does not rebuild flow-core.
+  `apps/murmur-windows/{src,ui/src}` changes, so the dirty flag follows edits.
+  Only leaf crates depend on it (murmur-server, murmur-ffi, murmur-windows), so a
+  new commit does not rebuild murmur-core.
 * **Android:** Gradle stamps `BuildConfig.GIT_SHA`, `GIT_DIRTY`, `BUILD`;
-  `dev.flowclone.data.AppVersion.current` is the app-side view. The native
-  `.so` reports its own build (`Native engine: flow-ffi 0.2.0+1a2b3c4`),
+  `dev.murmur.data.AppVersion.current` is the app-side view. The native
+  `.so` reports its own build (`Native engine: murmur-ffi 0.2.0+1a2b3c4`),
   which is how an APK packaged with a stale `.so` shows up.
 
 Where it is shown:
 
 | Surface | Text |
 |---|---|
-| Android main screen | `Version 0.2.0 (hybrid) · 1a2b3c4` + `Native engine: flow-ffi 0.2.0+1a2b3c4` |
+| Android main screen | `Version 0.2.0 (hybrid) · 1a2b3c4` + `Native engine: murmur-ffi 0.2.0+1a2b3c4` |
 | Android Developer → Build (hub and Status page) | `Version: 0.2.0 (200) · build 1a2b3c4` |
 | Android Settings → About row (7 taps unlock Developer settings) | `Version 0.2.0 (hybrid) · 1a2b3c4` (`AppVersion.current.label()`, same as the main screen) |
 | Windows Settings About row (`version_row`) | `Murmur 0.2.0 · 1a2b3c4` |
 | Windows Developer build line | `Murmur 0.2.0+1a2b3c4 · client + server · ASR … · proto 1 · core 0.2.0` |
-| flow-server | `ready` log line `version=0.2.0+1a2b3c4`; `hello_ok.server` / `/v1/health` `flow-server 0.2.0+1a2b3c4` (shown by every client's Test connection) |
-| `hello.client` (both shells → server log `connected client=…`) | `flow-ffi 0.2.0+1a2b3c4` / `flow-windows 0.2.0+1a2b3c4` |
+| murmur-server | `ready` log line `version=0.2.0+1a2b3c4`; `hello_ok.server` / `/v1/health` `murmur-server 0.2.0+1a2b3c4` (shown by every client's Test connection) |
+| `hello.client` (both shells → server log `connected client=…`) | `murmur-ffi 0.2.0+1a2b3c4` / `murmur-windows 0.2.0+1a2b3c4` |
 | D21 debug log, both platforms | every line (dictation and event): `"app_version":"0.2.0","build":"1a2b3c4"` right after `ts` (additive) |
-| CI artifacts | `flow-clone-android-debug-apks-<label>`, `flow-clone-windows-<flavour>-<label>`; label = tag on tag builds, else `<version>+<sha>` |
+| CI artifacts | `murmur-android-debug-apks-<label>`, `murmur-windows-<flavour>-<label>`; label = tag on tag builds, else `<version>+<sha>` |
 
 ## 4. Android versionCode
 
@@ -89,7 +89,7 @@ Python rules.
 
 ## 5. What stays independent
 
-* **Wire protocol** (`flow_protocol::PROTO_MIN/MAX`, path `/v1/`): negotiated
+* **Wire protocol** (`murmur_protocol::PROTO_MIN/MAX`, path `/v1/`): negotiated
   between any client and server version (`docs/protocol.md` §5). A product
   release does not imply a protocol change and vice versa; tying them would
   either force protocol bumps on every release or make mixed-version
@@ -120,14 +120,14 @@ git push origin integration v0.2.0
 
 `--apply` refuses a version not newer than `VERSION`, an existing tag, an
 empty `[Unreleased]`, uncommitted changes to tracked files, a branch other
-than `integration` (`FLOW_RELEASE_ANY_BRANCH=1` overrides) and lockfiles cargo
-would rewrite. It never pushes. `FLOW_RELEASE_DATE` / `FLOW_REPO_URL` set the
+than `integration` (`MURMUR_RELEASE_ANY_BRANCH=1` overrides) and lockfiles cargo
+would rewrite. It never pushes. `MURMUR_RELEASE_DATE` / `MURMUR_REPO_URL` set the
 date and add compare links.
 
 On the pushed tag both workflows run `tools/check-version.sh --tag vX.Y.Z`
 (tag = `v` + `VERSION`, CHANGELOG section present), refuse a dirty tree, build
 as usual, and a `release` job (tags only, `contents: write`) attaches
-`flow-clone-android-<flavour>-X.Y.Z-debug.apk`, the Windows MSI/NSIS
+`murmur-android-<flavour>-X.Y.Z-debug.apk`, the Windows MSI/NSIS
 installers and `SHA256SUMS-*` to the GitHub release `vX.Y.Z`, creating it
 from the CHANGELOG section if the other workflow has not yet. The APKs are
 debug-signed and the installers unsigned, as in every CI build (no secrets
@@ -141,7 +141,7 @@ in CI).
   (the local gate) and by `tools/release.sh`.
 * `python3 -m unittest discover -s tools/versioning`: version parsing,
   versionCode, build metadata, copy discovery, stamping, CHANGELOG rotation.
-* `cargo test -p flow-build-info` (shared `describe` vectors, baked constants
-  = `VERSION`), `flow-server` `ws_protocol::hello_ok_describes_the_server`,
+* `cargo test -p murmur-build-info` (shared `describe` vectors, baked constants
+  = `VERSION`), `murmur-server` `ws_protocol::hello_ok_describes_the_server`,
   Android `AppVersionTest` + `DebugLogTest.everyLineNamesTheBuild`, Windows
   `debug_log` schema tests.

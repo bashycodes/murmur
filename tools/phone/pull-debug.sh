@@ -2,7 +2,7 @@
 # Copy the phone's debug state to a temporary directory on this machine in one
 # command: the debug log (files/debug/dictations.jsonl), the kept dictation
 # WAVs (files/debug/audio/, only the ones not already here, sha256-checked) and
-# the two settings files (shared_prefs/flow_settings.xml, dev.xml) with every
+# the two settings files (shared_prefs/murmur_settings.xml, dev.xml) with every
 # token / key / secret / password / auth value removed before it touches disk.
 # Read-only on the phone: recordings stay there. Needs a debug build (run-as).
 #
@@ -13,17 +13,17 @@
 #               Pull into the same DIR again to fetch only the new WAVs.
 #
 # Environment:
-#   FLOW_PHONE          transport: a serial (emulator-5554, 100.64.0.5:5555) or
+#   MURMUR_PHONE          transport: a serial (emulator-5554, 100.64.0.5:5555) or
 #                       raw transport options ("-t 60", "-d"); empty = the only device
-#   FLOW_PKG            app package (default dev.flowclone)
-#   FLOW_PLATFORM_TOOL  the Android platform tool to call (default: the one on PATH)
+#   MURMUR_PKG            app package (default dev.murmur)
+#   MURMUR_PLATFORM_TOOL  the Android platform tool to call (default: the one on PATH)
 #
 # Summary on stdout: "pulled N lines, N wavs (N new, N already here), N prefs → DIR (N bytes from phone)".
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd -P)"
 REPO="$(cd "$HERE/../.." && pwd -P)"
-TOOL="${FLOW_PLATFORM_TOOL:-$(printf 'a%sb' d)}"
-PKG="${FLOW_PKG:-dev.flowclone}"
+TOOL="${MURMUR_PLATFORM_TOOL:-$(printf 'a%sb' d)}"
+PKG="${MURMUR_PKG:-dev.murmur}"
 
 usage() { sed -n '2,/^set -euo/{/^set -euo/d;s/^# \{0,1\}//;p}' "$0" >&2; exit 2; }
 die() { echo "pull-debug: $1" >&2; exit "${2:-1}"; }
@@ -40,10 +40,10 @@ done
 
 # Transport: "-t 60" / "-s X" / "-d" as given, a bare value is a serial.
 TRANSPORT=()
-case "${FLOW_PHONE:-}" in
+case "${MURMUR_PHONE:-}" in
     "") ;;
-    -*) read -r -a TRANSPORT <<<"$FLOW_PHONE" ;;
-    *) TRANSPORT=(-s "$FLOW_PHONE") ;;
+    -*) read -r -a TRANSPORT <<<"$MURMUR_PHONE" ;;
+    *) TRANSPORT=(-s "$MURMUR_PHONE") ;;
 esac
 
 # --since → the log's own format (2026-10-27T10:00:00.000Z), so plain string order works.
@@ -53,7 +53,7 @@ fi
 SINCE_WAV="${SINCE//:/-}"
 
 if [ -z "$OUT" ]; then
-    OUT="$(mktemp -d "${TMPDIR:-/tmp}/flow-debug.XXXXXX")"
+    OUT="$(mktemp -d "${TMPDIR:-/tmp}/murmur-debug.XXXXXX")"
 else
     real="$(realpath -m -- "$OUT")"
     case "$real/" in "$REPO"/*) die "--out $OUT is inside the repo; pick a directory outside it" 2 ;; esac
@@ -72,7 +72,7 @@ pull_var() {
     REPLY="${REPLY%x}"; BYTES=$((BYTES + ${#REPLY}))
 }
 
-pull_var ls . 2>"$OUT/.err" || die "cannot read $PKG's data (run-as needs a debug build of the app, a connected phone and the right FLOW_PHONE): $(head -c 300 "$OUT/.err")"
+pull_var ls . 2>"$OUT/.err" || die "cannot read $PKG's data (run-as needs a debug build of the app, a connected phone and the right MURMUR_PHONE): $(head -c 300 "$OUT/.err")"
 rm -f "$OUT/.err"
 mkdir -p "$OUT/audio" "$OUT/prefs"
 
@@ -167,7 +167,7 @@ fi
 
 # 3. Settings, redacted in memory before writing.
 PREFS=0
-for p in flow_settings dev; do
+for p in murmur_settings dev; do
     if pull_var cat "shared_prefs/$p.xml" 2>/dev/null; then
         printf '%s' "$REPLY" | redact xml >"$OUT/prefs/$p.xml" || { rm -f "$OUT/prefs/$p.xml"; die "could not redact $p.xml; not kept"; }
         PREFS=$((PREFS + 1))

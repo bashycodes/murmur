@@ -1,0 +1,39 @@
+{
+  "circuit": {
+    "open": true,
+    "reason": "connect_failed",
+    "retry_in_ms": 4200,
+    "until_config_change": false
+  },
+  "health": {
+    "asr_backend": "parakeet",
+    "asr_model": "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8",
+    "busy": 0,
+    "checked_at_ms": 1792540800000,
+    "engine": "remote",
+    "error": null,
+    "llm": false,
+    "message": null,
+    "ok": true,
+    "postprocess_match": true,
+    "postprocess_rev": "2026-10-21.1",
+    "proto": 1,
+    "rtt_ms": {
+      "max": 6,
+      "median": 4,
+      "min": 3
+    },
+    "server": "100.64.0.10:7313",
+    "server_core": "0.1.0",
+    "server_version": "murmur-server 0.1.0",
+    "workers": 1
+  },
+  "last": {
+    "engine": "local",
+    "fallback": "connect_failed",
+    "queue_ms": null,
+    "rtt_ms": null,
+    "server": "100.64.0.10:7313",
+    "server_core": null
+  }
+}

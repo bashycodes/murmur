@@ -12,7 +12,7 @@
 # 127.0.0.1:7391/7392 with a throwaway token, never the user's service port.
 set -euo pipefail
 : "${BASE:?}" "${NEW:?}" "${PARAKEET_DIR:?}" "${CLIPS_DIR:?}"
-OUT=${OUT:-$HOME/.cache/flow-clone/streaming-latency-2026-10-23/$(date +%Y%m%d-%H%M%S)}
+OUT=${OUT:-$HOME/.cache/murmur/streaming-latency-2026-10-23/$(date +%Y%m%d-%H%M%S)}
 mkdir -p "$OUT"
 export LD_LIBRARY_PATH=${SHERPA_ONNX_LIB_DIR:-}:${LD_LIBRARY_PATH:-}
 CLIPS=${CLIPS:-"long_010s long_025s long_028s long_032s long_040s long_060s"}
@@ -30,7 +30,7 @@ asr_engine = "parakeet"
 asr_path = "$PARAKEET_DIR"
 threads = 4
 TOML
-  "$tree/target/release/flow-server" --config "$OUT/$label.toml" > "$OUT/$label.server.log" 2>&1 &
+  "$tree/target/release/murmur-server" --config "$OUT/$label.toml" > "$OUT/$label.server.log" 2>&1 &
   local pid=$!
   for _ in $(seq 120); do grep -q ready "$OUT/$label.server.log" && break; sleep 1; done
   local files=()

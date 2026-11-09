@@ -9,22 +9,22 @@
 #   tools/phone/call-decode.sh [--transcribe] [--lang he|en] [FILE]
 #
 #   FILE           audio file on this machine (default: the committed public-domain fixture
-#                  apps/flow-android/tools/fixtures/calls/jfk-call.m4a, 11 s, 44.1 kHz stereo AAC)
+#                  apps/murmur-android/tools/fixtures/calls/jfk-call.m4a, 11 s, 44.1 kHz stereo AAC)
 #   --transcribe   then transcribe it with the Calls job (its own engine); the transcript shows
-#                  on the Calls page, progress in logcat (tag FlowCallDecode)
+#                  on the Calls page, progress in logcat (tag MurmurCallDecode)
 #   --lang L       the call's language for --transcribe (default en)
 #
 # Expected for the fixture: "ok: in 44100 Hz 2 ch ...; out ~176000 samples 16000 Hz mono = ~11000 ms".
 #
 # Environment:
-#   FLOW_PHONE          transport: a serial or raw transport options ("-t 60", "-d"); empty = the only device
-#   FLOW_PKG            app package (default dev.flowclone)
-#   FLOW_PLATFORM_TOOL  the Android platform tool to call (default: the one on PATH)
+#   MURMUR_PHONE          transport: a serial or raw transport options ("-t 60", "-d"); empty = the only device
+#   MURMUR_PKG            app package (default dev.murmur)
+#   MURMUR_PLATFORM_TOOL  the Android platform tool to call (default: the one on PATH)
 set -euo pipefail
-TOOL="${FLOW_PLATFORM_TOOL:-$(printf 'a%sb' d)}"
-PKG="${FLOW_PKG:-dev.flowclone}"
-RECEIVER="dev.flowclone.debug.CallDecodeReceiver"
-ACTION="dev.flowclone.debug.DECODE_CALL"
+TOOL="${MURMUR_PLATFORM_TOOL:-$(printf 'a%sb' d)}"
+PKG="${MURMUR_PKG:-dev.murmur}"
+RECEIVER="dev.murmur.debug.CallDecodeReceiver"
+ACTION="dev.murmur.debug.DECODE_CALL"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 usage() { sed -n '2,/^set -euo/{/^set -euo/d;s/^# \{0,1\}//;p}' "$0" >&2; exit 2; }
@@ -40,15 +40,15 @@ while [ $# -gt 0 ]; do
         *) [ -z "$FILE" ] || usage; FILE="$1"; shift ;;
     esac
 done
-[ -n "$FILE" ] || FILE="$HERE/../../apps/flow-android/tools/fixtures/calls/jfk-call.m4a"
+[ -n "$FILE" ] || FILE="$HERE/../../apps/murmur-android/tools/fixtures/calls/jfk-call.m4a"
 [ -f "$FILE" ] || die "no such file: $FILE" 2
 case "$LANG_CODE" in he|en) ;; *) die "--lang must be he or en" 2 ;; esac
 
 TRANSPORT=()
-case "${FLOW_PHONE:-}" in
+case "${MURMUR_PHONE:-}" in
     "") ;;
-    -*) read -r -a TRANSPORT <<<"$FLOW_PHONE" ;;
-    *) TRANSPORT=(-s "$FLOW_PHONE") ;;
+    -*) read -r -a TRANSPORT <<<"$MURMUR_PHONE" ;;
+    *) TRANSPORT=(-s "$MURMUR_PHONE") ;;
 esac
 phone() { "$TOOL" "${TRANSPORT[@]}" "$@"; }
 
@@ -57,9 +57,9 @@ DEST="files/debug/calls-in/$NAME"
 # exec-in/exec-out skip the device shell on some phones (Android 17): inner quotes reach sh
 # literally, the command fails, yet exit 0 comes back. So stage the file in /data/local/tmp
 # with push and copy it in through `shell`, which always runs a shell.
-TMP="/data/local/tmp/flow-call-decode-$NAME"
+TMP="/data/local/tmp/murmur-call-decode-$NAME"
 phone push "$FILE" "$TMP" >/dev/null \
-    || die "push failed (a connected phone and the right FLOW_PHONE?)"
+    || die "push failed (a connected phone and the right MURMUR_PHONE?)"
 copied=0
 phone shell "cat '$TMP' | run-as '$PKG' sh -c 'mkdir -p files/debug/calls-in && cat > $DEST'" || copied=$?
 phone shell "rm -f '$TMP'" || true

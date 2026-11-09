@@ -1,7 +1,7 @@
 # 2026-10-24: phone went local-only, a target_changed dictation, blank_asr, client latency gap
 
 Evidence: the phone's D21 debug log (59 dictation lines, 2026-10-23 evening to
-2026-10-24 13:03 UTC) and the flow-server journal for the same times. The
+2026-10-24 13:03 UTC) and the murmur-server journal for the same times. The
 phone ran the f2cea77a build until 02:48 UTC, then the hybrid build from
 `fix/never-fail` + `feat/devsettings-ui` (merge 0548140 era). Transcript
 content is not quoted here, only word counts.
@@ -88,12 +88,12 @@ Added (additive, no threshold change):
   segmented; `0` = none; absent = VAD off).
 * `timings.peak_dbfs`: the peak level of the session audio.
 
-Both are in every commit result from flow-core (local and server routes), in
+Both are in every commit result from murmur-core (local and server routes), in
 the server's `result` log line, and in the Android debug log
 (`speech_ms` / `peak_dbfs`, also in the in-app viewer). The next time a
 blank_asr shows a low `speech_ms`, or `peak_dbfs` around -40, the cause is
 the signal. A high `speech_ms` at a normal level points at the ASR. Tests:
-`flow-core/tests/api_additions.rs` (`blank_asr_reports_vad_speech_and_peak_level`
+`murmur-core/tests/api_additions.rs` (`blank_asr_reports_vad_speech_and_peak_level`
 etc.), `CoreJsonTest.decodesSpeechAndPeakDiagnostics`,
 `DictationControllerTest.traceCarriesSpeechAndPeakFromTheResult`.
 
@@ -107,7 +107,7 @@ The phone's `client_ms` 5550 is that plus the network.
 **02:45:39 `client_ms` 6241 vs `total_ms` 1703** (f2cea77a build, so no
 `connect_ms` field). `client_ms` is `Router::commit` wall time. The remote
 backend sends `commit` on the same ordered writer queue as the audio and then
-waits for the result (`flow-remote` `RemoteBackend::commit`). It does not
+waits for the result (`murmur-remote` `RemoteBackend::commit`). It does not
 connect, probe or sleep there. A timeline built from the two clocks:
 
 | event | time (UTC) | source |
@@ -129,7 +129,7 @@ which fits a fresh-connection effect.
 * The hybrid build already has the cheap fix: the D24 pre-warm opens the server
   connection when the field gets focus, off the dictation's critical path.
   It also logs `connect_ms`.
-* Added to see the rest: flow-server now logs `start_to_commit_ms` (`start` →
+* Added to see the rest: murmur-server now logs `start_to_commit_ms` (`start` →
   `commit` arrival). Upload backlog at commit ≈ `start_to_commit_ms` − (phone
   recording length − `connect_ms`). No wire change.
 * Not added: a phone-side "unsent audio" counter. Audio leaves the app's

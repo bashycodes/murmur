@@ -190,7 +190,7 @@ ap("sig_empty", "Hi Tom, thanks.", E, {"email_signature": ""})
 ap("sig_with_before", "Hi Tom, thanks.", {**E, "before": "Draft: "}, SIG)
 ap("sig_with_after", "Hi Tom, thanks.", {**E, "after": "Old text"}, SIG)
 # --- app skip lists via context steps ---
-for app, url in [("Notion.exe", ""), ("notion.exe", ""), ("chrome.exe", "www.notion.so"), ("chrome.exe", "notion.so"), ("Flow Clone.exe", ""), ("flow-windows.exe", ""), ("dev.flowclone", ""), ("Dictate Pro.exe", "")]:
+for app, url in [("Notion.exe", ""), ("notion.exe", ""), ("chrome.exe", "www.notion.so"), ("chrome.exe", "notion.so"), ("Murmur.exe", ""), ("murmur-windows.exe", ""), ("dev.murmur", ""), ("Dictate Pro.exe", "")]:
     ap(f"skip_{app}_{url}", T, {"app_id": app, "url_host": url, "before": "so "})
 # --- stacked messages / chat apps by id ---
 for app in ["WhatsApp.exe", "Telegram.exe", "slack.exe", "Discord.exe", "ms-teams.exe", "com.whatsapp", "org.telegram.messenger"]:
@@ -335,7 +335,7 @@ for k in [9, 10, 11, 14]:
 # 3. Notion skip conditions
 for host_app, nm in [({"app_id": "Notion.exe"}, "app"), ({"app_id": "chrome.exe", "url_host": "notion.so"}, "host"),
                      ({"app_id": "chrome.exe", "url_host": "www.notion.so"}, "www"), ({"app_id": "chrome.exe", "url_host": "x.notion.site"}, "site"),
-                     ({"app_id": "flow-windows.exe"}, "own")]:
+                     ({"app_id": "murmur-windows.exe"}, "own")]:
     for n, c in [("empty", {}), ("b1", {"before": "so "}), ("b2", {"before": "so then "}), ("b3", {"before": "one two three "}),
                  ("b5", {"before": "we went to the shop "}), ("bell", {"before": "we went to the shop..."}),
                  ("b1_after", {"before": "so ", "after": "x"}), ("b5_after", {"before": "we went to the shop ", "after": " more"}),
@@ -519,9 +519,9 @@ for h in HOSTS:
     ap(f"r3e_chath_{h}", SEE, {"app_id": "chrome.exe", "url_host": h})
     ap(f"r3e_sigh_{h}", "Hi Tom, thanks.", {"app_id": "chrome.exe", "url_host": h}, SIG)
 # --- round 4: shared app groups (A3): own-app and Notion skips, new members ---
-for app, plat in [("flow-windows.exe", "windows"), ("murmur.exe", "windows"), ("Murmur.exe", "windows"),
+for app, plat in [("murmur-windows.exe", "windows"), ("murmur.exe", "windows"), ("Murmur.exe", "windows"),
                   ("notion.id", "android"), ("com.notion.id", "android"), ("Notion.exe", "windows"),
-                  ("dev.flowclone", "android")]:
+                  ("dev.murmur", "android")]:
     for n, c in [("empty", {}), ("so", {"before": "so "}), ("ok", {"before": "ok "}), ("long", {"before": "we went to the shop "}),
                  ("after", {"after": "x"}), ("so_after", {"before": "so ", "after": "x"}), ("sel", {"selected": "bad"}),
                  ("nosp", {"before": "Done."}), ("ell", {"before": "we went..."})]:
@@ -538,7 +538,7 @@ for i in ["olk", "ms-teams", "teams", "zoom", "hxoutlook", "notepad", "winword",
 for i in ["com.slack", "us.zoom.videomeetings", "com.tencent.mm", "com.microsoft.outlook.lite", "com.example.mail"]:
     ap(f"r4_chata_{i}", SEE, {"app_id": i}, AND)
 # --- round 5: own-app window with a selection keeps the period (any style) ---
-for app in ["flow-windows.exe", "murmur.exe"]:
+for app in ["murmur-windows.exe", "murmur.exe"]:
     for n, c in [("sel", {"selected": "abc"}), ("sel_ba", {"before": "so ", "selected": "abc", "after": " x"}),
                  ("sel_ws", {"selected": "  "}), ("sel_dot", {"selected": "Fine."}), ("nosel", {"before": "so "}),
                  ("line_dot", {"before": "Done.\nso "}), ("line_q", {"before": "so ", "after": " ok?"})]:

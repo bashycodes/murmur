@@ -1,5 +1,5 @@
 {
-  "_note": "V4c: generated from flow-core by `ai-cleanup-bench --dump-prompt` (do not edit; the source is crates/flow-core/src/cleanup).",
+  "_note": "V4c: generated from murmur-core by `ai-cleanup-bench --dump-prompt` (do not edit; the source is crates/murmur-core/src/cleanup).",
   "examples": [
     [
       "Notes",

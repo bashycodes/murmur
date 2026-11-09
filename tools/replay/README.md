@@ -2,12 +2,12 @@
 
 Replaces manual A/B dictation rounds: the owner's saved recordings are re-run
 on this box through every speech model x cleanup model x prompt version, on the
-**real** flow-core pipeline (`FlowCore::commit`: decode-while-speaking
+**real** murmur-core pipeline (`MurmurCore::commit`: decode-while-speaking
 segmentation, VAD, hallucination guard, D30 AI-cleanup routing, loosened and
 strict guards, fallback rules, post-processing), and scored.
 
-* Binary: `crates/flow-replay` (`flow-replay --help`). Library + fake-engine
-  test of the matrix: `crates/flow-replay/tests/matrix.rs`.
+* Binary: `crates/murmur-replay` (`murmur-replay --help`). Library + fake-engine
+  test of the matrix: `crates/murmur-replay/tests/matrix.rs`.
 * Score report: `score.py`, reusing
   `tools/probes/prototypes/ai_cleanup_bench_2026_10_26/score.py`'s
   closeness and exact match. Test: `python3 -I tools/replay/test_score.py`.
@@ -20,7 +20,7 @@ the phone), and results go next to it (`run.sh` refuses an `--out` inside the
 repo). No expected text is committed.
 
 The OpenRouter key is read by the binary from
-`$HOME/.config/flow-clone/openrouter.key` (or `--key-file`) only when an
+`$HOME/.config/murmur/openrouter.key` (or `--key-file`) only when an
 OpenRouter slot is asked for; it goes only into the request header and is
 never printed, logged or written. Rows carry costs and generation metadata,
 no request bodies.
@@ -43,14 +43,14 @@ JSONL `{id, spoken, expected}`) whose script matches the phone's transcript
 
 ```sh
 export SHERPA_ONNX_LIB_DIR=<dir with libsherpa-onnx-c-api.so>   # build time
-export FLOW_PARAKEET_DIR=<parakeet model dir>   # e.g. the server's unified-en-0.6b-int8
-export FLOW_WHISPER_MODEL=<ggml-base.en.bin>
-export FLOW_LLM_GGUF=<qwen2.5-1.5b-instruct-q4_k_m.gguf> FLOW_LLM_LIB=<libflow_llm.so>
+export MURMUR_PARAKEET_DIR=<parakeet model dir>   # e.g. the server's unified-en-0.6b-int8
+export MURMUR_WHISPER_MODEL=<ggml-base.en.bin>
+export MURMUR_LLM_GGUF=<qwen2.5-1.5b-instruct-q4_k_m.gguf> MURMUR_LLM_LIB=<libmurmur_llm.so>
 
 tools/replay/run.sh --in "$CORPUS" \
   --asr parakeet,whisper,or-stt \
   --cleanup none,local,or:meta-llama/llama-3.3-70b-instruct \
-  --prompt v5,v4c --llm "$FLOW_LLM_GGUF" --max-spend 0.05
+  --prompt v5,v4c --llm "$MURMUR_LLM_GGUF" --max-spend 0.05
 tools/replay/run.sh --score "$CORPUS/replay/<run>" --expected "$CORPUS/expected.json" --detail
 ```
 
@@ -74,7 +74,7 @@ exact vs expected, closeness / exact **vs the phone** (reproduction), guard
 fallbacks (AI cleanup answer not used, by reason), cleanup routes, LLM and ASR
 p50, cloud cost. The total OpenRouter spend is printed at the end.
 
-## Memory rules (shared box with the home flow-server)
+## Memory rules (shared box with the home murmur-server)
 
 * Every cargo build goes through `tools/replay/run.sh cargo <args>` (or the
   build `run.sh` does itself): `--release -j 2`, serial under
@@ -84,9 +84,9 @@ p50, cloud cost. The total OpenRouter spend is printed at the end.
   the same lock (one local model at a time, serial with builds) and only
   with model size + 2000 MB available. Runs without a local model are only
   niced.
-* The home flow-server is never touched; models are read from its models dir.
+* The home murmur-server is never touched; models are read from its models dir.
 
 Not covered: on-phone replay (WAV-as-mic), the user dictionary (not in a
 corpus), and the local 1.5B on prompt v5 (no product path runs it).
 
-The cache default is `~/.cache/flow-clone`; set CACHE=<dir> to reuse an existing cache.
+The cache default is `~/.cache/murmur`; set CACHE=<dir> to reuse an existing cache.

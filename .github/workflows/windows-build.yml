@@ -1,16 +1,16 @@
-# Windows shell (apps/flow-windows): the real MSVC build, tests and the
+# Windows shell (apps/murmur-windows): the real MSVC build, tests and the
 # Tauri installers (MSI + NSIS) for two flavours:
-#   * hybrid  = default features (this PC + your flow-server + opt-in cloud
+#   * hybrid  = default features (this PC + your murmur-server + opt-in cloud
 #               STT) + Parakeet, i.e. `--features app,parakeet`;
 #   * client  = client-only, no network code linked
 #               (`--no-default-features --features local,app,parakeet`).
 # Both bundle whisper.cpp and Parakeet (sherpa-onnx + onnxruntime DLLs next
 # to the exe) and the AI cleanup engine (llama.cpp plugin, D10) twice:
-# flow_llm_vulkan.dll (GPU through Vulkan; built with the LunarG Vulkan SDK)
-# and flow_llm.dll (CPU). The app loads the Vulkan one first and the CPU one
+# murmur_llm_vulkan.dll (GPU through Vulkan; built with the LunarG Vulkan SDK)
+# and murmur_llm.dll (CPU). The app loads the Vulkan one first and the CPU one
 # when it does not load (no vulkan-1.dll); with no usable GPU the Vulkan
 # one runs on the CPU itself. Whisper gets the same treatment (D42):
-# flow_whisper_vulkan.dll (whisper.cpp on the GPU through Vulkan) is loaded
+# murmur_whisper_vulkan.dll (whisper.cpp on the GPU through Vulkan) is loaded
 # first; without vulkan-1.dll or a usable GPU the app uses its built-in CPU
 # whisper. No secrets, no signing: the installers are unsigned, so
 # SmartScreen warns on first run (README "Live test on Windows").
@@ -26,7 +26,7 @@ on:
     # Path filters are not evaluated for tag pushes: every release tag builds.
     tags: ["v*"]
     paths:
-      - "apps/flow-windows/**"
+      - "apps/murmur-windows/**"
       - "crates/**"
       - "Cargo.lock"
       - "VERSION"
@@ -74,7 +74,7 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: apps/flow-windows
+        working-directory: apps/murmur-windows
     steps:
       - uses: actions/checkout@v4
 
@@ -90,7 +90,7 @@ jobs:
           v=$(tr -d '\r\n' < ../../VERSION)
           label="$v+$(git rev-parse --short=7 HEAD)"
           [ "$GITHUB_REF_TYPE" = tag ] && label="$GITHUB_REF_NAME"
-          echo "FLOW_LABEL=$label" >> "$GITHUB_ENV"
+          echo "MURMUR_LABEL=$label" >> "$GITHUB_ENV"
 
       - name: Rust toolchain
         run: |
@@ -103,10 +103,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
-            apps/flow-windows -> target
+            apps/murmur-windows -> target
             . -> target
           cache-on-failure: true
-          # Bump when apps/flow-windows/.cargo/config.toml's GGML_* env or
+          # Bump when apps/murmur-windows/.cargo/config.toml's GGML_* env or
           # the CMAKE_*_FLAGS_RELEASE env above changes: whisper-rs-sys'
           # build script does not track them, so a restored cache would keep
           # the old whisper.cpp objects.
@@ -199,9 +199,9 @@ jobs:
       # hashes, so both stay cached). GGML_NATIVE=OFF keeps ggml portable,
       # as for whisper (0.9.2, AVX-512 crash): llama-cpp-sys-2 also forces it
       # unless target-cpu=native, so both DLLs get the AVX2 baseline. The
-      # Vulkan DLL's GPU-vs-CPU policy is unit-tested here (flow-llm
+      # Vulkan DLL's GPU-vs-CPU policy is unit-tested here (murmur-llm
       # `backend`); it links vulkan-1.dll, which GPU drivers install.
-      # Then whisper on the GPU (flow-whisper, D42): only a Vulkan build, as
+      # Then whisper on the GPU (murmur-whisper, D42): only a Vulkan build, as
       # the app's built-in whisper is the CPU fallback. Its bindgen needs
       # LIBCLANG_PATH (the bundled bindings lack the Vulkan API, so a
       # bindgen failure stops the build rather than shipping a CPU DLL).
@@ -210,25 +210,25 @@ jobs:
         env:
           GGML_NATIVE: "OFF"
         run: |
-          out=apps/flow-windows/target/release
+          out=apps/murmur-windows/target/release
           mkdir -p "$out"
-          cargo build --locked --release -p flow-llm
-          cp target/release/flow_llm.dll "$out/flow_llm.dll"
-          cargo build --locked --release -p flow-llm --features vulkan
-          cp target/release/flow_llm.dll "$out/flow_llm_vulkan.dll"
-          cargo test --locked --release -p flow-llm --features vulkan --lib
-          ls -la "$out"/flow_llm*.dll
+          cargo build --locked --release -p murmur-llm
+          cp target/release/murmur_llm.dll "$out/murmur_llm.dll"
+          cargo build --locked --release -p murmur-llm --features vulkan
+          cp target/release/murmur_llm.dll "$out/murmur_llm_vulkan.dll"
+          cargo test --locked --release -p murmur-llm --features vulkan --lib
+          ls -la "$out"/murmur_llm*.dll
           # Short target dir: whisper.cpp's Vulkan build configures a nested
           # vulkan-shaders-gen project whose MSBuild tracker logs exceed
           # MAX_PATH under target/release/build/whisper-rs-sys-<hash>/
           # (FTK1011 "could not create the new file tracking log file").
           # Not covered by rust-cache, so this build is always cold.
           export CARGO_TARGET_DIR=D:/fw
-          cargo build --locked --release -p flow-whisper --features vulkan
-          cp "$CARGO_TARGET_DIR/release/flow_whisper.dll" "$out/flow_whisper_vulkan.dll"
-          cargo test --locked --release -p flow-whisper --features vulkan --lib
-          ls -la "$out"/flow_whisper_vulkan.dll
-          apps/flow-windows/tools/ci/check-ggml-opt.sh "$CARGO_TARGET_DIR/release"
+          cargo build --locked --release -p murmur-whisper --features vulkan
+          cp "$CARGO_TARGET_DIR/release/murmur_whisper.dll" "$out/murmur_whisper_vulkan.dll"
+          cargo test --locked --release -p murmur-whisper --features vulkan --lib
+          ls -la "$out"/murmur_whisper_vulkan.dll
+          apps/murmur-windows/tools/ci/check-ggml-opt.sh "$CARGO_TARGET_DIR/release"
 
       - name: Release build (hybrid + Parakeet) and the DLL bundle overlay
         run: |
@@ -252,7 +252,7 @@ jobs:
         env:
           CHECK_BUILD_MATRIX_NO_BUILD: "1"
         run: |
-          FLOW_CLOUD_ARTIFACTS=apps/flow-windows/target/release/flow-windows.exe \
+          MURMUR_CLOUD_ARTIFACTS=apps/murmur-windows/target/release/murmur-windows.exe \
           CHECK_BUILD_MATRIX_NOTICES=0 tools/check-build-matrix.sh
 
       # Tauri's bundler downloads WiX 3.14, NSIS 3.13 and nsis_tauri_utils
@@ -349,14 +349,14 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: flow-clone-windows-hybrid-${{ env.FLOW_LABEL }}
-          path: apps/flow-windows/dist-ci/hybrid/
+          name: murmur-windows-hybrid-${{ env.MURMUR_LABEL }}
+          path: apps/murmur-windows/dist-ci/hybrid/
           if-no-files-found: error
 
       - uses: actions/upload-artifact@v4
         with:
-          name: flow-clone-windows-client-${{ env.FLOW_LABEL }}
-          path: apps/flow-windows/dist-ci/client/
+          name: murmur-windows-client-${{ env.MURMUR_LABEL }}
+          path: apps/murmur-windows/dist-ci/client/
           if-no-files-found: error
 
   # Tag pushes only: attach the installers to the GitHub release (created
@@ -371,7 +371,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          pattern: flow-clone-windows-*
+          pattern: murmur-windows-*
           path: assets
           merge-multiple: true
       - name: Release upload

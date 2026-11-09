@@ -5486,33 +5486,33 @@
 "cfg": {}
 },
 {
-"id": "skip_Flow Clone.exe_",
+"id": "skip_Murmur.exe_",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "Flow Clone.exe",
+"app_id": "Murmur.exe",
 "url_host": "",
 "before": "so "
 },
 "cfg": {}
 },
 {
-"id": "skip_flow-windows.exe_",
+"id": "skip_murmur-windows.exe_",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "url_host": "",
 "before": "so "
 },
 "cfg": {}
 },
 {
-"id": "skip_dev.flowclone_",
+"id": "skip_dev.murmur_",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "dev.flowclone",
+"app_id": "dev.murmur",
 "url_host": "",
 "before": "so "
 },
@@ -9769,7 +9769,7 @@
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe"
+"app_id": "murmur-windows.exe"
 },
 "cfg": {}
 },
@@ -9778,7 +9778,7 @@
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "so "
 },
 "cfg": {}
@@ -9788,7 +9788,7 @@
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "so then "
 },
 "cfg": {}
@@ -9798,7 +9798,7 @@
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "one two three "
 },
 "cfg": {}
@@ -9808,7 +9808,7 @@
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "we went to the shop "
 },
 "cfg": {}
@@ -9818,7 +9818,7 @@
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "we went to the shop..."
 },
 "cfg": {}
@@ -9828,7 +9828,7 @@
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "so ",
 "after": "x"
 },
@@ -9839,7 +9839,7 @@
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "we went to the shop ",
 "after": " more"
 },
@@ -9850,7 +9850,7 @@
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "so then"
 },
 "cfg": {}
@@ -9860,7 +9860,7 @@
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "we went to the shop... "
 },
 "cfg": {}
@@ -20279,22 +20279,22 @@
 }
 },
 {
-"id": "r4_flow-windows.exe_empty",
+"id": "r4_murmur-windows.exe_empty",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe"
+"app_id": "murmur-windows.exe"
 },
 "cfg": {
 "platform": "windows"
 }
 },
 {
-"id": "r4_flow-windows.exe_so",
+"id": "r4_murmur-windows.exe_so",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "so "
 },
 "cfg": {
@@ -20302,11 +20302,11 @@
 }
 },
 {
-"id": "r4_flow-windows.exe_ok",
+"id": "r4_murmur-windows.exe_ok",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "ok "
 },
 "cfg": {
@@ -20314,11 +20314,11 @@
 }
 },
 {
-"id": "r4_flow-windows.exe_long",
+"id": "r4_murmur-windows.exe_long",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "we went to the shop "
 },
 "cfg": {
@@ -20326,11 +20326,11 @@
 }
 },
 {
-"id": "r4_flow-windows.exe_after",
+"id": "r4_murmur-windows.exe_after",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "after": "x"
 },
 "cfg": {
@@ -20338,11 +20338,11 @@
 }
 },
 {
-"id": "r4_flow-windows.exe_so_after",
+"id": "r4_murmur-windows.exe_so_after",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "so ",
 "after": "x"
 },
@@ -20351,11 +20351,11 @@
 }
 },
 {
-"id": "r4_flow-windows.exe_sel",
+"id": "r4_murmur-windows.exe_sel",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "selected": "bad"
 },
 "cfg": {
@@ -20363,11 +20363,11 @@
 }
 },
 {
-"id": "r4_flow-windows.exe_nosp",
+"id": "r4_murmur-windows.exe_nosp",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "Done."
 },
 "cfg": {
@@ -20375,11 +20375,11 @@
 }
 },
 {
-"id": "r4_flow-windows.exe_ell",
+"id": "r4_murmur-windows.exe_ell",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "we went..."
 },
 "cfg": {
@@ -20387,11 +20387,11 @@
 }
 },
 {
-"id": "r4_flow-windows.exe_casual",
+"id": "r4_murmur-windows.exe_casual",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "so "
 },
 "cfg": {
@@ -20405,11 +20405,11 @@
 }
 },
 {
-"id": "r4_flow-windows.exe_enter",
+"id": "r4_murmur-windows.exe_enter",
 "kind": "apply",
 "text": "Send it press enter.",
 "ctx": {
-"app_id": "flow-windows.exe"
+"app_id": "murmur-windows.exe"
 },
 "cfg": {
 "platform": "windows"
@@ -21101,22 +21101,22 @@
 }
 },
 {
-"id": "r4_dev.flowclone_empty",
+"id": "r4_dev.murmur_empty",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "dev.flowclone"
+"app_id": "dev.murmur"
 },
 "cfg": {
 "platform": "android"
 }
 },
 {
-"id": "r4_dev.flowclone_so",
+"id": "r4_dev.murmur_so",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "dev.flowclone",
+"app_id": "dev.murmur",
 "before": "so "
 },
 "cfg": {
@@ -21124,11 +21124,11 @@
 }
 },
 {
-"id": "r4_dev.flowclone_ok",
+"id": "r4_dev.murmur_ok",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "dev.flowclone",
+"app_id": "dev.murmur",
 "before": "ok "
 },
 "cfg": {
@@ -21136,11 +21136,11 @@
 }
 },
 {
-"id": "r4_dev.flowclone_long",
+"id": "r4_dev.murmur_long",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "dev.flowclone",
+"app_id": "dev.murmur",
 "before": "we went to the shop "
 },
 "cfg": {
@@ -21148,11 +21148,11 @@
 }
 },
 {
-"id": "r4_dev.flowclone_after",
+"id": "r4_dev.murmur_after",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "dev.flowclone",
+"app_id": "dev.murmur",
 "after": "x"
 },
 "cfg": {
@@ -21160,11 +21160,11 @@
 }
 },
 {
-"id": "r4_dev.flowclone_so_after",
+"id": "r4_dev.murmur_so_after",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "dev.flowclone",
+"app_id": "dev.murmur",
 "before": "so ",
 "after": "x"
 },
@@ -21173,11 +21173,11 @@
 }
 },
 {
-"id": "r4_dev.flowclone_sel",
+"id": "r4_dev.murmur_sel",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "dev.flowclone",
+"app_id": "dev.murmur",
 "selected": "bad"
 },
 "cfg": {
@@ -21185,11 +21185,11 @@
 }
 },
 {
-"id": "r4_dev.flowclone_nosp",
+"id": "r4_dev.murmur_nosp",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "dev.flowclone",
+"app_id": "dev.murmur",
 "before": "Done."
 },
 "cfg": {
@@ -21197,11 +21197,11 @@
 }
 },
 {
-"id": "r4_dev.flowclone_ell",
+"id": "r4_dev.murmur_ell",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "dev.flowclone",
+"app_id": "dev.murmur",
 "before": "we went..."
 },
 "cfg": {
@@ -21209,11 +21209,11 @@
 }
 },
 {
-"id": "r4_dev.flowclone_casual",
+"id": "r4_dev.murmur_casual",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "dev.flowclone",
+"app_id": "dev.murmur",
 "before": "so "
 },
 "cfg": {
@@ -21227,11 +21227,11 @@
 }
 },
 {
-"id": "r4_dev.flowclone_enter",
+"id": "r4_dev.murmur_enter",
 "kind": "apply",
 "text": "Send it press enter.",
 "ctx": {
-"app_id": "dev.flowclone"
+"app_id": "dev.murmur"
 },
 "cfg": {
 "platform": "android"
@@ -21713,11 +21713,11 @@
 }
 },
 {
-"id": "r5_flow-windows.exe_sel_casual",
+"id": "r5_murmur-windows.exe_sel_casual",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "selected": "abc"
 },
 "cfg": {
@@ -21731,11 +21731,11 @@
 }
 },
 {
-"id": "r5_flow-windows.exe_sel_very_casual",
+"id": "r5_murmur-windows.exe_sel_very_casual",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "selected": "abc"
 },
 "cfg": {
@@ -21749,11 +21749,11 @@
 }
 },
 {
-"id": "r5_flow-windows.exe_sel_formal",
+"id": "r5_murmur-windows.exe_sel_formal",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "selected": "abc"
 },
 "cfg": {
@@ -21767,11 +21767,11 @@
 }
 },
 {
-"id": "r5_flow-windows.exe_sel_default",
+"id": "r5_murmur-windows.exe_sel_default",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "selected": "abc"
 },
 "cfg": {
@@ -21779,11 +21779,11 @@
 }
 },
 {
-"id": "r5_flow-windows.exe_sel_ba_casual",
+"id": "r5_murmur-windows.exe_sel_ba_casual",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "so ",
 "selected": "abc",
 "after": " x"
@@ -21799,11 +21799,11 @@
 }
 },
 {
-"id": "r5_flow-windows.exe_sel_ba_very_casual",
+"id": "r5_murmur-windows.exe_sel_ba_very_casual",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "so ",
 "selected": "abc",
 "after": " x"
@@ -21819,11 +21819,11 @@
 }
 },
 {
-"id": "r5_flow-windows.exe_sel_ba_formal",
+"id": "r5_murmur-windows.exe_sel_ba_formal",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "so ",
 "selected": "abc",
 "after": " x"
@@ -21839,11 +21839,11 @@
 }
 },
 {
-"id": "r5_flow-windows.exe_sel_ba_default",
+"id": "r5_murmur-windows.exe_sel_ba_default",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "so ",
 "selected": "abc",
 "after": " x"
@@ -21853,11 +21853,11 @@
 }
 },
 {
-"id": "r5_flow-windows.exe_sel_ws_casual",
+"id": "r5_murmur-windows.exe_sel_ws_casual",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "selected": "  "
 },
 "cfg": {
@@ -21871,11 +21871,11 @@
 }
 },
 {
-"id": "r5_flow-windows.exe_sel_ws_very_casual",
+"id": "r5_murmur-windows.exe_sel_ws_very_casual",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "selected": "  "
 },
 "cfg": {
@@ -21889,11 +21889,11 @@
 }
 },
 {
-"id": "r5_flow-windows.exe_sel_ws_formal",
+"id": "r5_murmur-windows.exe_sel_ws_formal",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "selected": "  "
 },
 "cfg": {
@@ -21907,11 +21907,11 @@
 }
 },
 {
-"id": "r5_flow-windows.exe_sel_ws_default",
+"id": "r5_murmur-windows.exe_sel_ws_default",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "selected": "  "
 },
 "cfg": {
@@ -21919,11 +21919,11 @@
 }
 },
 {
-"id": "r5_flow-windows.exe_sel_dot_casual",
+"id": "r5_murmur-windows.exe_sel_dot_casual",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "selected": "Fine."
 },
 "cfg": {
@@ -21937,11 +21937,11 @@
 }
 },
 {
-"id": "r5_flow-windows.exe_sel_dot_very_casual",
+"id": "r5_murmur-windows.exe_sel_dot_very_casual",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "selected": "Fine."
 },
 "cfg": {
@@ -21955,11 +21955,11 @@
 }
 },
 {
-"id": "r5_flow-windows.exe_sel_dot_formal",
+"id": "r5_murmur-windows.exe_sel_dot_formal",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "selected": "Fine."
 },
 "cfg": {
@@ -21973,11 +21973,11 @@
 }
 },
 {
-"id": "r5_flow-windows.exe_sel_dot_default",
+"id": "r5_murmur-windows.exe_sel_dot_default",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "selected": "Fine."
 },
 "cfg": {
@@ -21985,11 +21985,11 @@
 }
 },
 {
-"id": "r5_flow-windows.exe_nosel_casual",
+"id": "r5_murmur-windows.exe_nosel_casual",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "so "
 },
 "cfg": {
@@ -22003,11 +22003,11 @@
 }
 },
 {
-"id": "r5_flow-windows.exe_nosel_very_casual",
+"id": "r5_murmur-windows.exe_nosel_very_casual",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "so "
 },
 "cfg": {
@@ -22021,11 +22021,11 @@
 }
 },
 {
-"id": "r5_flow-windows.exe_nosel_formal",
+"id": "r5_murmur-windows.exe_nosel_formal",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "so "
 },
 "cfg": {
@@ -22039,11 +22039,11 @@
 }
 },
 {
-"id": "r5_flow-windows.exe_nosel_default",
+"id": "r5_murmur-windows.exe_nosel_default",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "so "
 },
 "cfg": {
@@ -22051,11 +22051,11 @@
 }
 },
 {
-"id": "r5_flow-windows.exe_line_dot_casual",
+"id": "r5_murmur-windows.exe_line_dot_casual",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "Done.\nso "
 },
 "cfg": {
@@ -22069,11 +22069,11 @@
 }
 },
 {
-"id": "r5_flow-windows.exe_line_dot_very_casual",
+"id": "r5_murmur-windows.exe_line_dot_very_casual",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "Done.\nso "
 },
 "cfg": {
@@ -22087,11 +22087,11 @@
 }
 },
 {
-"id": "r5_flow-windows.exe_line_dot_formal",
+"id": "r5_murmur-windows.exe_line_dot_formal",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "Done.\nso "
 },
 "cfg": {
@@ -22105,11 +22105,11 @@
 }
 },
 {
-"id": "r5_flow-windows.exe_line_dot_default",
+"id": "r5_murmur-windows.exe_line_dot_default",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "Done.\nso "
 },
 "cfg": {
@@ -22117,11 +22117,11 @@
 }
 },
 {
-"id": "r5_flow-windows.exe_line_q_casual",
+"id": "r5_murmur-windows.exe_line_q_casual",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "so ",
 "after": " ok?"
 },
@@ -22136,11 +22136,11 @@
 }
 },
 {
-"id": "r5_flow-windows.exe_line_q_very_casual",
+"id": "r5_murmur-windows.exe_line_q_very_casual",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "so ",
 "after": " ok?"
 },
@@ -22155,11 +22155,11 @@
 }
 },
 {
-"id": "r5_flow-windows.exe_line_q_formal",
+"id": "r5_murmur-windows.exe_line_q_formal",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "so ",
 "after": " ok?"
 },
@@ -22174,11 +22174,11 @@
 }
 },
 {
-"id": "r5_flow-windows.exe_line_q_default",
+"id": "r5_murmur-windows.exe_line_q_default",
 "kind": "apply",
 "text": "The parcel arrived early.",
 "ctx": {
-"app_id": "flow-windows.exe",
+"app_id": "murmur-windows.exe",
 "before": "so ",
 "after": " ok?"
 },

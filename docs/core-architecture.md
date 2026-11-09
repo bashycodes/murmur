@@ -1,4 +1,4 @@
-# flow-core architecture
+# murmur-core architecture
 
 Shared Rust core of Murmur. It implements
 the core API both shells call (below). All speech recognition and text
@@ -6,31 +6,31 @@ shaping run on-device; the core makes no network calls.
 
 ```
 crates/
-  flow-core/   lib: session engine, ASR/LLM seams, deterministic post-processing
-  flow-ffi/    C ABI (cdylib/staticlib, include/flow_core.h) + JNI (feature `jni`)
-  flow-cli/    dev harness: `flow-cli transcribe` = full pipeline on a WAV; `flow-cli clean` = LLM cleanup on text
-  flow-llm/    llama.cpp cleanup engine as a cdylib plugin (libflow_llm.so / flow_llm.dll), loaded at runtime
-  flow-asr-sherpa/  Parakeet-TDT ASR via the official sherpa-onnx crate (flow-core feature `parakeet`)
+  murmur-core/   lib: session engine, ASR/LLM seams, deterministic post-processing
+  murmur-ffi/    C ABI (cdylib/staticlib, include/murmur_core.h) + JNI (feature `jni`)
+  murmur-cli/    dev harness: `murmur-cli transcribe` = full pipeline on a WAV; `murmur-cli clean` = LLM cleanup on text
+  murmur-llm/    llama.cpp cleanup engine as a cdylib plugin (libmurmur_llm.so / murmur_llm.dll), loaded at runtime
+  murmur-asr-sherpa/  Parakeet-TDT ASR via the official sherpa-onnx crate (murmur-core feature `parakeet`)
 ```
 
 ## API (v2)
 
-| Call | Rust (`FlowCore`) | C ABI | JNI (`com.flowclone.core.NativeFlowCore`) |
+| Call | Rust (`MurmurCore`) | C ABI | JNI (`com.murmur.core.NativeMurmurCore`) |
 |---|---|---|---|
-| `load_models(ModelConfig)` | `FlowCore::load_models(&ModelConfig)` | `flow_load_models(json) -> FlowHandle*` | `loadModels(json): Long` |
-| `unload` | `unload(self)` / drop | `flow_unload` | `unload(h)` |
-| `start_session(SessionConfig)` | `start_session(cfg)` | `flow_start_session(h, json)` | `startSession(h, json)` |
-| `push_audio(pcm16)` | `push_audio(&[i16]) -> bool` | `flow_push_audio(h, ptr, len)` | `pushAudio(h, short[], len)` |
-| `set_context(FieldContext)` | `set_context(ctx)` | `flow_set_context(h, json)` | `setContext(h, json)` |
-| `partial()` | `partial() -> Option<String>` | `flow_partial(h)` | `partial(h): String?` |
+| `load_models(ModelConfig)` | `MurmurCore::load_models(&ModelConfig)` | `murmur_load_models(json) -> MurmurHandle*` | `loadModels(json): Long` |
+| `unload` | `unload(self)` / drop | `murmur_unload` | `unload(h)` |
+| `start_session(SessionConfig)` | `start_session(cfg)` | `murmur_start_session(h, json)` | `startSession(h, json)` |
+| `push_audio(pcm16)` | `push_audio(&[i16]) -> bool` | `murmur_push_audio(h, ptr, len)` | `pushAudio(h, short[], len)` |
+| `set_context(FieldContext)` | `set_context(ctx)` | `murmur_set_context(h, json)` | `setContext(h, json)` |
+| `partial()` | `partial() -> Option<String>` | `murmur_partial(h)` | `partial(h): String?` |
 | *(clone)* poll | `poll() -> SessionPoll`, `endpoint() -> Option<EndpointState>`, `endpoint_reached() -> bool` | not yet exported (see changelog) | not yet exported |
-| `commit()` | `commit() -> CommitResult` | `flow_commit(h) -> json` | `commit(h): String` |
-| `cancel()` | `cancel()` | `flow_cancel(h)` | `cancel(h)` |
-| `learn_edit(pasted, edited)` | `learn_edit() -> Vec<Candidate>` | `flow_learn_edit(h,p,e) -> json` | `learnEdit(h,p,e)` |
+| `commit()` | `commit() -> CommitResult` | `murmur_commit(h) -> json` | `commit(h): String` |
+| `cancel()` | `cancel()` | `murmur_cancel(h)` | `cancel(h)` |
+| `learn_edit(pasted, edited)` | `learn_edit() -> Vec<Candidate>` | `murmur_learn_edit(h,p,e) -> json` | `learnEdit(h,p,e)` |
 
-The JNI class/package name is provisional until `apps/flow-android/JNI_CONTRACT.md`
+The JNI class/package name is provisional until `apps/murmur-android/JNI_CONTRACT.md`
 lands. Renaming it only changes the `Java_…` symbol prefix in
-`crates/flow-ffi/src/jni_api.rs`.
+`crates/murmur-ffi/src/jni_api.rs`.
 
 All config types are serde structs in which every field has a default, so a
 shell can send partial JSON (`{}` is a valid `SessionConfig`).
@@ -56,7 +56,7 @@ Paste fields:
 * `segments` is the same text as a paste plan: text runs, `Tab` (press Tab), `Break` (finish inserting, pause ~150 ms, continue; no key), and a trailing `Enter` when `press_enter` is set. A shell that pastes `segments` must not also act on `press_enter`. Empty for EMPTY/ERROR.
 * `plain_text` is `final_text` without markers (history, "paste last").
 
-Load errors (`CoreError`, `#[non_exhaustive]`): `ModelNotFound{path}` (ASR or LLM model file missing, checked before whisper.cpp/llama.cpp run), `LlmLibNotFound{tried}` (no `flow-llm` plugin at any lookup location), `Load(String)` (anything else), `WorkerGone`. `CoreError::kind()` gives a stable snake_case name; C callers read it with `flow_last_error_kind()` (`""`, `bad_config`, `model_not_found`, `llm_lib_not_found`, `load`, `error`). Messages keep stable prefixes for JNI (`nativeLastError`): `model not found: <path>`, `llm plugin not found (…)`.
+Load errors (`CoreError`, `#[non_exhaustive]`): `ModelNotFound{path}` (ASR or LLM model file missing, checked before whisper.cpp/llama.cpp run), `LlmLibNotFound{tried}` (no `murmur-llm` plugin at any lookup location), `Load(String)` (anything else), `WorkerGone`. `CoreError::kind()` gives a stable snake_case name; C callers read it with `murmur_last_error_kind()` (`""`, `bad_config`, `model_not_found`, `llm_lib_not_found`, `load`, `error`). Messages keep stable prefixes for JNI (`nativeLastError`): `model not found: <path>`, `llm plugin not found (…)`.
 
 ## Threads and buffering
 
@@ -71,7 +71,7 @@ shell UI thread ──start/commit/cancel──▶ control channel (mpsc) ──
 * **Late context.** `set_context` may arrive at any time before `commit`. Context is read when commit runs, so screen words still reach the Whisper `initial_prompt` and the post-processing.
 * **Partials.** With `partial_interval_ms` set, the worker re-decodes the last 12 s (2026-10-23; was 30 s) of the open audio, shown with a leading `"… "` when the window does not reach back. A preview is skipped once ≥ 400 ms of silence follows speech the last preview already covered. These partials are for preview only. `commit` waits for a decode in flight (`timings.wait_ms`): neither whisper's encoder nor a sherpa decode can be interrupted.
 * **Pause segmentation** (D22, `SessionConfig.segment_pause_ms`, default off; recommended 800). `segment::Segmenter` runs the streaming VAD over the drained samples and cuts in the middle of each pause ≥ `segment_pause_ms` once the open piece is ≥ `segment_min_ms` (4 s), or at its longest ≥ 200 ms gap after `segment_soft_max_ms` (20 s). The cuts depend only on the audio (identical under any push chunking, on the server and in router fallback replay). The worker decodes each closed piece (VAD-trimmed, `AsrPurpose::Segment`, whisper `prior_text` = the last 30 words) before any preview, one decode per tick. At commit it reuses pieces whose request is unchanged, re-decodes a piece a late `set_context` changed, decodes the tail, and joins with one space. Each cut also gets a bridge decode (4 s either side, decoded while recording): `segment::splice` takes its punctuation and case for the words next to the cut, so a mid-sentence pause does not become a sentence break. A per-piece guard drops stock-phrase-only pieces and strips a trailing "Thank you." from non-final ones. Then the usual pipeline runs on the joined text. `timings.asr_ms` = ASR inside commit; `pre_asr_ms` = before it; `segments` = pieces with speech. Engines with `segmentable() == false` (cloud) ignore it. `cancel()` stops a piece in flight through a per-session abort flag.
-* **Hands-free endpointing** (D19, `SessionConfig.endpoint_silence_ms`, default off). `push_audio` also feeds a streaming copy of the VAD (`endpoint::Endpointer`: same 20 ms frames, speech bars and 60 ms runs as D16; noise floor from the last 30 s). After ≥ 300 ms of speech and `endpoint_silence_ms` (min 300; recommended 2000) of trailing silence, `poll().endpoint_reached` latches true for the rest of the session. It runs on the pushing thread (a few µs per 20 ms frame), so a slow partial decode on the worker cannot delay it. The core never commits by itself. `flow_router::Router` runs the same detector on its own pushes, so the signal is identical on every route.
+* **Hands-free endpointing** (D19, `SessionConfig.endpoint_silence_ms`, default off). `push_audio` also feeds a streaming copy of the VAD (`endpoint::Endpointer`: same 20 ms frames, speech bars and 60 ms runs as D16; noise floor from the last 30 s). After ≥ 300 ms of speech and `endpoint_silence_ms` (min 300; recommended 2000) of trailing silence, `poll().endpoint_reached` latches true for the rest of the session. It runs on the pushing thread (a few µs per 20 ms frame), so a slow partial decode on the worker cannot delay it. The core never commits by itself. `murmur_router::Router` runs the same detector on its own pushes, so the signal is identical on every route.
 * `max_samples` is a hard safety bound only; the session-length policy lives in the shells. Audio past the bound is discarded and `truncated` is set.
 
 ## Commit pipeline
@@ -99,18 +99,18 @@ shell UI thread ──start/commit/cancel──▶ control channel (mpsc) ──
    * Output scrubbing: preambles ("Here is the cleaned text:"), trailing "Note:" commentary and one layer of quotes or guillemets are stripped.
    * No output guard (D59, owner decision 2026-11-06). The answer is used as the model gave it (after scrubbing, list flattening and the English unit style); only a timeout, an error or an empty answer falls back to the deterministic text. The support/coverage guard (`guard::check`, 2026-10-24 to D59) and the opt-in edit-distance check (`divergence_threshold`) were removed: on the 2026-11-05 parity eval the guard rejected correct dictated parentheses, quotes and math (5/31 format points) with no word-error benefit. Text quality is the prompt's and the model's job.
 
-### ASR backend: Parakeet (feature `parakeet`, crate `flow-asr-sherpa`)
+### ASR backend: Parakeet (feature `parakeet`, crate `murmur-asr-sherpa`)
 D4 makes Parakeet-TDT-0.6B-v2 int8 the English default on desktops with ≥ 4 GB RAM (`docs/model-benchmarks.md`: WER 1.2% vs 3.7% for whisper base, RTF 0.14).
 
-* **Selecting it.** `ModelConfig` JSON `{"asr_engine":"parakeet","asr_path":"<model dir>","threads":4}` (`asr_backend` works too). `asr_path` is the sherpa-onnx model *directory* (`encoder/decoder/joiner*.onnx`, `tokens.txt`; `*.int8.onnx` preferred). The build must enable `parakeet` (flow-core, flow-ffi or flow-cli); otherwise `load_models` fails with "built without the `parakeet` feature". CLI: `flow-cli transcribe --engine parakeet --model <dir> file.wav`. Whisper stays the default, and the only choice for non-English or auto-detect; the shell picks the engine (English-only user + model present → parakeet).
-* **Packaging.** It uses the official `sherpa-onnx` crate (=1.13.8, k2-fsa, safe wrapper over the C API) with `features = ["shared"]`. It links `libsherpa-onnx-c-api.so` (3.6 MB) + `libonnxruntime.so` (27 MB, x86_64). No plugin is needed, unlike llama.cpp (D10): onnxruntime does not contain ggml, so whisper.cpp and Parakeet share one binary. Proof: `flow-cli` with whisper + llm + parakeet runs both engines, and the `--all-features` test suite (whisper_e2e, parakeet_e2e, llm_e2e, JNI) passes in one build.
+* **Selecting it.** `ModelConfig` JSON `{"asr_engine":"parakeet","asr_path":"<model dir>","threads":4}` (`asr_backend` works too). `asr_path` is the sherpa-onnx model *directory* (`encoder/decoder/joiner*.onnx`, `tokens.txt`; `*.int8.onnx` preferred). The build must enable `parakeet` (murmur-core, murmur-ffi or murmur-cli); otherwise `load_models` fails with "built without the `parakeet` feature". CLI: `murmur-cli transcribe --engine parakeet --model <dir> file.wav`. Whisper stays the default, and the only choice for non-English or auto-detect; the shell picks the engine (English-only user + model present → parakeet).
+* **Packaging.** It uses the official `sherpa-onnx` crate (=1.13.8, k2-fsa, safe wrapper over the C API) with `features = ["shared"]`. It links `libsherpa-onnx-c-api.so` (3.6 MB) + `libonnxruntime.so` (27 MB, x86_64). No plugin is needed, unlike llama.cpp (D10): onnxruntime does not contain ggml, so whisper.cpp and Parakeet share one binary. Proof: `murmur-cli` with whisper + llm + parakeet runs both engines, and the `--all-features` test suite (whisper_e2e, parakeet_e2e, llm_e2e, JNI) passes in one build.
   * Build: `SHERPA_ONNX_LIB_DIR=<dir with the two .so>`. Without it, `sherpa-onnx-sys` downloads the v1.13.8 prebuilt archive from GitHub at **build** time. The runtime never touches the network.
-  * The build copies the .so files next to the outputs in `target/<profile>/`. `flow-cli/build.rs` and `flow-asr-sherpa/build.rs` add `-rpath,$ORIGIN`, because sherpa-onnx-sys's own rpath arg only applies to its own crate. Shells ship both .so files next to the exe (Windows: `sherpa-onnx-c-api.dll` + `onnxruntime.dll`) or in `jniLibs/arm64-v8a` (Android, see below).
+  * The build copies the .so files next to the outputs in `target/<profile>/`. `murmur-cli/build.rs` and `murmur-asr-sherpa/build.rs` add `-rpath,$ORIGIN`, because sherpa-onnx-sys's own rpath arg only applies to its own crate. Shells ship both .so files next to the exe (Windows: `sherpa-onnx-c-api.dll` + `onnxruntime.dll`) or in `jniLibs/arm64-v8a` (Android, see below).
   * Cost when the feature is off: none. The feature is not in any default feature set.
 * **Engine.** One `OfflineRecognizer` stays warm (the three onnxruntime sessions), and each decode uses a fresh stream. The silence gate (RMS < 0.003) returns empty, and input shorter than 1 s is padded. Language is always `en`. A sherpa decode cannot be interrupted, so the abort flag is only checked before the decode. That is acceptable at RTF ≈ 0.1-0.15, but a live partial cannot be cut short.
 * **Contextual biasing (hotwords): supported.** sherpa-onnx's NeMo transducer runs `modified_beam_search` with per-stream hotwords (an Aho-Corasick context graph), TDT included.
   * The adapter turns the whisper `initial_prompt` vocabulary (dictionary words and replacement targets, then screen words, ≤ 200 words) back into phrases (`parakeet::hotwords_from_prompt`, round-trip unit-tested against `build_initial_prompt`). It passes them `/`-separated, deduped and capped at 100 phrases.
-  * The NeMo export ships no `bpe.vocab`, so `flow-asr-sherpa` derives one from `tokens.txt` with score = -id, which is sentencepiece BPE merge order. It writes the vocab to the temp dir (or `bpe.vocab` in the model dir if one is present) and deletes it once loaded. If it cannot be written, the engine falls back to greedy search without hotwords. **Android: the shell should set `TMPDIR` to the app cache dir, or ship `bpe.vocab` in the model dir.**
+  * The NeMo export ships no `bpe.vocab`, so `murmur-asr-sherpa` derives one from `tokens.txt` with score = -id, which is sentencepiece BPE merge order. It writes the vocab to the temp dir (or `bpe.vocab` in the model dir if one is present) and deletes it once loaded. If it cannot be written, the engine falls back to greedy search without hotwords. **Android: the shell should set `TMPDIR` to the app cache dir, or ship `bpe.vocab` in the model dir.**
   * A flat vocab (all scores 0) was harmful: words split into single letters, every letter earned the bonus, and an unrelated hotword was inserted everywhere.
   * Measured (`tools/probes/parakeet_wer.py`, results in `tools/probes/results/`). Extended 40-clip set, 22 hotwords: 3 relevant (Battleax, Meadowcroft, "Vive le roi") and 19 unrelated tech names:
 
@@ -122,55 +122,55 @@ D4 makes Parakeet-TDT-0.6B-v2 int8 the English default on desktops with ≥ 4 GB
     | beam 2, hotwords 1.5 | 2.1% (split apostrophes, "Persocratic") | — |
     | 3 clips, one nonsense hotword, score 3.5 / 5 | nonsense hotword inserted / garbage | — |
 
-    Defaults: beam 4, score 1.0. Higher scores fix more names but re-case ordinary words ("the Captain", "Fir Tree"). `FLOW_PARAKEET_HOTWORDS_SCORE` overrides the score; `0` means greedy with no hotwords.
+    Defaults: beam 4, score 1.0. Higher scores fix more names but re-case ordinary words ("the Captain", "Fir Tree"). `MURMUR_PARAKEET_HOTWORDS_SCORE` overrides the score; `0` means greedy with no hotwords.
   * Proof: `tests/parakeet_e2e.rs`. LibriSpeech 5142-36377-0008 gives "Meadocroft" unbiased and "Meadowcroft" with the dictionary word.
 * **Measured** (i7-6700, 4 threads, load 6-25 from other jobs, release):
   * WER/RTF spot check on the 40-clip extended set: WER **1.2%** (11/955), the same errors as the bench, with greedy RTF 0.16. Core 13-clip set: WER 0.6%, RTF 0.10-0.12 greedy and 0.14-0.20 beam 4. On a quiet box, beam 4 costs about +20-40% over greedy, though the noise is as large as the effect.
-  * jfk.wav (11 s) through `flow-cli --engine parakeet`: ASR 0.9-1.6 s.
+  * jfk.wav (11 s) through `murmur-cli --engine parakeet`: ASR 0.9-1.6 s.
   * **Preload / cold start:** `load_models` takes 2.9-4.0 s with the model in the page cache and 10.3-11.2 s cold (page cache evicted, HDD). Beam vs greedy makes no difference to load time. The bench saw 12-47 s cold under heavier load. RSS is about 880 MB. Shells must therefore load at app start or on the first hotkey press, never per dictation, and keep the core resident.
 * **Android arm64:** built, see "Android: Parakeet" below.
-* **flow-core lines touched** (all additive, for the merge with `core-p1`):
-  * `crates/flow-core/Cargo.toml`: the `parakeet` feature, the optional `flow-asr-sherpa` dependency, and the `[[test]] parakeet_e2e` entry.
+* **murmur-core lines touched** (all additive, for the merge with `core-p1`):
+  * `crates/murmur-core/Cargo.toml`: the `parakeet` feature, the optional `murmur-asr-sherpa` dependency, and the `[[test]] parakeet_e2e` entry.
   * `src/lib.rs`: `#[cfg(feature = "parakeet")] pub mod parakeet;` after `pub mod llama;`.
   * `src/config.rs`: the `AsrBackend::Parakeet` variant (after `Whisper`), `#[serde(alias = "asr_engine")]` and its doc comment on `ModelConfig.asr_backend`, and the test `asr_engine_selector_defaults_to_whisper`.
   * `src/engine.rs` `load_models`: two match arms, `#[cfg(feature = "parakeet")] AsrBackend::Parakeet` and its `not(feature)` error twin, inserted after the `not(feature = "whisper")` arm. core-p1 rewrote the `Whisper` arm just above, so expect a trivial textual conflict there.
   * New files: `src/parakeet.rs`, `tests/parakeet_e2e.rs`. `AsrRequest` and `AsrOutput` are unchanged; the adapter builds `AsrOutput` with `..Default::default()`, so core-p1's `no_speech_prob` field merges cleanly.
-  * Outside flow-core: the workspace `members`, `flow-ffi`/`flow-cli` `parakeet` features, `flow-cli --engine`, `flow-cli/build.rs`, and `tools/fetch-models.sh --parakeet`.
+  * Outside murmur-core: the workspace `members`, `murmur-ffi`/`murmur-cli` `parakeet` features, `murmur-cli --engine`, `murmur-cli/build.rs`, and `tools/fetch-models.sh --parakeet`.
 
 ### Android: Parakeet (arm64-v8a)
-**Feasible, and built; not yet run on a device.** `tools/build-android-parakeet.sh` (NDK 27.2.12479018, cargo-ndk, API 33) cross-builds `libflow_ffi.so` with `jni,whisper,parakeet` into `target/android-parakeet/jniLibs/arm64-v8a/`. It links against the official prebuilt `sherpa-onnx-v1.13.8-android.tar.bz2` (`jniLibs/arm64-v8a`; pass it as `SHERPA_ANDROID_LIBS`, otherwise sherpa-onnx-sys downloads it at build time). `apps/` is not touched. `tools/probes/check_parakeet_so.sh` checks the output:
+**Feasible, and built; not yet run on a device.** `tools/build-android-parakeet.sh` (NDK 27.2.12479018, cargo-ndk, API 33) cross-builds `libmurmur_ffi.so` with `jni,whisper,parakeet` into `target/android-parakeet/jniLibs/arm64-v8a/`. It links against the official prebuilt `sherpa-onnx-v1.13.8-android.tar.bz2` (`jniLibs/arm64-v8a`; pass it as `SHERPA_ANDROID_LIBS`, otherwise sherpa-onnx-sys downloads it at build time). `apps/` is not touched. `tools/probes/check_parakeet_so.sh` checks the output:
 
 | file | size | notes |
 |---|---|---|
-| `libflow_ffi.so` | 5.4 MB (was 3.9 MB with whisper only) | all 11 JNI contract symbols; NEEDED: `libc++_shared.so`, `libsherpa-onnx-c-api.so`, bionic |
+| `libmurmur_ffi.so` | 5.4 MB (was 3.9 MB with whisper only) | all 11 JNI contract symbols; NEEDED: `libc++_shared.so`, `libsherpa-onnx-c-api.so`, bionic |
 | `libsherpa-onnx-c-api.so` | 4.5 MB | prebuilt; NEEDED `libonnxruntime.so`, `libandroid`, `liblog`; its libc++ is static |
 | `libonnxruntime.so` | 22.2 MB | prebuilt 1.28 (CPU EP; NNAPI/XNNPACK not enabled) |
 | `libc++_shared.so` | 1.8 MB | already shipped for whisper |
 
-Every LOAD segment of all four is 16 KB aligned: k2-fsa's prebuilts already are, and flow-ffi gets the same `-z max-page-size=16384` flags as `build-native.sh`. The sherpa `libsherpa-onnx-jni.so` / `-cxx-api.so` are not needed, because flow-ffi uses the C API.
+Every LOAD segment of all four is 16 KB aligned: k2-fsa's prebuilts already are, and murmur-ffi gets the same `-z max-page-size=16384` flags as `build-native.sh`. The sherpa `libsherpa-onnx-jni.so` / `-cxx-api.so` are not needed, because murmur-ffi uses the C API.
 
 APK packaging, for the Android shell owner:
-1. Copy the four .so files into `apps/flow-android/app/src/main/jniLibs/arm64-v8a/`, or point `tools/build-native.sh` at the same features. bionic resolves `libsherpa-onnx-c-api.so` and `libonnxruntime.so` from the app's lib dir when `System.loadLibrary("flow_ffi")` runs; no extra `loadLibrary` calls are needed.
-2. Keep `jniLibs.useLegacyPackaging = false` (stored + 16 KB zip-aligned, as today). The APK grows by about 28 MB uncompressed. If that matters, a "parakeet" product flavor can ship the libs only there; flow-ffi without the feature does not reference them.
+1. Copy the four .so files into `apps/murmur-android/app/src/main/jniLibs/arm64-v8a/`, or point `tools/build-native.sh` at the same features. bionic resolves `libsherpa-onnx-c-api.so` and `libonnxruntime.so` from the app's lib dir when `System.loadLibrary("murmur_ffi")` runs; no extra `loadLibrary` calls are needed.
+2. Keep `jniLibs.useLegacyPackaging = false` (stored + 16 KB zip-aligned, as today). The APK grows by about 28 MB uncompressed. If that matters, a "parakeet" product flavor can ship the libs only there; murmur-ffi without the feature does not reference them.
 3. The model (661 MB: `encoder.int8.onnx` 652 MB, `decoder` 7 MB, `joiner` 2 MB, `tokens.txt`) is user-imported like the whisper model (D9, SAF) into a directory under `filesDir`. `loadModels` takes `{"asr_engine":"parakeet","asr_path":"<that dir>","threads":4}`.
-4. Before `loadModels`, call `Os.setenv("TMPDIR", cacheDir.path, true)`. The derived `bpe.vocab` for hotwords is written there; otherwise hotwords are silently disabled. Alternatively, write `bpe.vocab` into the model dir at import (`flow_asr_sherpa::bpe_vocab_from_tokens`).
+4. Before `loadModels`, call `Os.setenv("TMPDIR", cacheDir.path, true)`. The derived `bpe.vocab` for hotwords is written there; otherwise hotwords are silently disabled. Alternatively, write `bpe.vocab` into the model dir at import (`murmur_asr_sherpa::bpe_vocab_from_tokens`).
 5. Expect about 0.9 GB RSS (desktop measurement) and several seconds of load. Offer the engine only on phones with ≥ 6-8 GB RAM, preload it in the keep-alive service, and fall back to whisper on load failure. Phone RTF is unmeasured. The bench estimate is ≈ 1-2.5 s for a 10 s dictation on a flagship (`docs/model-benchmarks.md`).
 
 Not yet verified: loading on bionic (first device run), and whether whisper's libc++_shared and sherpa's static libc++ coexist at runtime. They coexist on desktop, and the C API boundary passes no C++ objects.
 
-### LLM backend (feature `llm`, crate `flow-llm`)
+### LLM backend (feature `llm`, crate `murmur-llm`)
 `load_models` with `llm_path` set loads the GGUF model once and keeps it warm. `unload` (or drop) frees the model and its context. A bad path, a missing plugin or a build without `llm` fails `load_models`.
 
-* **Packaging.** llama.cpp cannot be linked into the same binary as whisper.cpp: `whisper-rs-sys` and `llama-cpp-sys-2` each bundle a different ggml, and the link fails with duplicate `ggml_*` symbols. So the engine is the `flow-llm` cdylib, which exports only `flow_llm_*` (C ABI v1, documented in `crates/flow-llm/src/lib.rs`; chat messages travel as JSON). flow-core's `llm` feature is only a `libloading` loader (`flow_core::llama::LlamaCleaner`).
-  * Plugin lookup: `ModelConfig.llm_lib`, else `FLOW_LLM_LIB`, else next to the executable (and its parent directory, for cargo test binaries), else the bare name through the system loader (Android: the packaged `libflow_llm.so`).
-  * Shells ship `libflow_llm.so` / `flow_llm.dll` next to the app.
+* **Packaging.** llama.cpp cannot be linked into the same binary as whisper.cpp: `whisper-rs-sys` and `llama-cpp-sys-2` each bundle a different ggml, and the link fails with duplicate `ggml_*` symbols. So the engine is the `murmur-llm` cdylib, which exports only `murmur_llm_*` (C ABI v1, documented in `crates/murmur-llm/src/lib.rs`; chat messages travel as JSON). murmur-core's `llm` feature is only a `libloading` loader (`murmur_core::llama::LlamaCleaner`).
+  * Plugin lookup: `ModelConfig.llm_lib`, else `MURMUR_LLM_LIB`, else next to the executable (and its parent directory, for cargo test binaries), else the bare name through the system loader (Android: the packaged `libmurmur_llm.so`).
+  * Shells ship `libmurmur_llm.so` / `murmur_llm.dll` next to the app.
   * The library is never `dlclose`d. Closing a library that owns OpenMP threads and TLS destructors segfaulted at exit.
 * **Engine.** One thread owns the model, one 4096-token context and its KV cache.
   * It renders the model's own chat template (Qwen2.5, Llama-3.2), with a ChatML fallback.
-  * Prefix reuse: only the tokens after the first difference with the previous prompt are prefilled. Optional ABI-1 symbols `flow_llm_prefill(h, messages)` (non-blocking) and `flow_llm_prefill_cancel(h)` drive prefill-ahead; flow-core looks them up lazily, so an older plugin still loads. `flow_llm_info` adds `ahead{requests, completed, preempted, tokens, ms}`. `load` prefills `cleanup::warm_prompt()` (light level, empty context), whose system prompt and example turns are byte-identical to every light commit's prefix (pinned by a test), so a warm commit prefills only its user message. The v2 prefix needs ~14 s cold on this box; it is paid at load, not by the first dictation. Medium/high change the level line, so the first commit at those levels after load is cold.
+  * Prefix reuse: only the tokens after the first difference with the previous prompt are prefilled. Optional ABI-1 symbols `murmur_llm_prefill(h, messages)` (non-blocking) and `murmur_llm_prefill_cancel(h)` drive prefill-ahead; murmur-core looks them up lazily, so an older plugin still loads. `murmur_llm_info` adds `ahead{requests, completed, preempted, tokens, ms}`. `load` prefills `cleanup::warm_prompt()` (light level, empty context), whose system prompt and example turns are byte-identical to every light commit's prefix (pinned by a test), so a warm commit prefills only its user message. The v2 prefix needs ~14 s cold on this box; it is paid at load, not by the first dictation. Medium/high change the level line, so the first commit at those levels after load is cold.
   * Decoding is greedy with at most 2 × transcript tokens + 32 new tokens, stopping on EOG or a stop string (`<|im_end|>`, `<|eot_id|>`, `\nTRANSCRIPT:`, …). The deadline and cancel flag are checked between 128-token prefill chunks and before every token.
-  * Prompt-lookup drafting (up to n tokens copied from the prompt, checked in one batch) is off by default in the plugin. flow-server turns it on with 4 (D69, `[model] llm_draft`, optional ABI-1 symbol `flow_llm_set_draft`): on the 13 parity clips it cut generation p50 2.9 → 1.5 s. `FLOW_LLM_DRAFT=n` overrides any setting. The phone and PC keep it off (unmeasured there; an earlier probe on 8 short dictations, `tools/probes/llm_ab.sh`, found no gain).
-  * llama.cpp logs are silenced unless `FLOW_LLM_LOG` is set.
+  * Prompt-lookup drafting (up to n tokens copied from the prompt, checked in one batch) is off by default in the plugin. murmur-server turns it on with 4 (D69, `[model] llm_draft`, optional ABI-1 symbol `murmur_llm_set_draft`): on the 13 parity clips it cut generation p50 2.9 → 1.5 s. `MURMUR_LLM_DRAFT=n` overrides any setting. The phone and PC keep it off (unmeasured there; an earlier probe on 8 short dictations, `tools/probes/llm_ab.sh`, found no gain).
+  * llama.cpp logs are silenced unless `MURMUR_LLM_LOG` is set.
 * **Measured** (`tests/llm_e2e.rs`, 8 messy dictations; i7-6700, 4 threads, box shared with a concurrent llama-server at load 6-13, so treat the times as upper bounds):
 
   | model (Q4_K_M) | quality (generous budget) | llm per call | load + warm prefill |
@@ -179,7 +179,7 @@ Not yet verified: loading on bionic (first device run), and whether whisper's li
   | Qwen2.5-1.5B-Instruct | 8/8 | 1.1-1.8 s at load 6, 2.6-5.3 s at load 12 | 23-38 s |
 
   Decode runs at 15-35 tok/s for 0.5B and 7-13 tok/s for 1.5B on this contended box. The first call after an app or style switch also prefills the user-message prefix (~100 tokens, +0.3-0.8 s).
-3. **Deterministic post-processing** (`postprocess`; behaviour contract: `docs/specs/text-postprocess.md`). The dictionary matcher is built once per distinct dictionary and shared by later sessions (`FlowCore::dict_matcher_builds`, `postprocess::apply_with`). Before it, the engine closes an open dictation of ≥ 4 words with a period (`postprocess::terminal`, D25). The steps, in order:
+3. **Deterministic post-processing** (`postprocess`; behaviour contract: `docs/specs/text-postprocess.md`). The dictionary matcher is built once per distinct dictionary and shared by later sessions (`MurmurCore::dict_matcher_builds`, `postprocess::apply_with`). Before it, the engine closes an open dictation of ≥ 4 words with a period (`postprocess::terminal`, D25). The steps, in order:
    1. whole-utterance snippet on the raw transcript (Windows): the snippet body is inserted as is; only the email signature may follow;
    2. "press enter" at the end of the dictation (Windows; sets `press_enter`, the shell sends the key);
    3. all-lowercase mode;
@@ -216,27 +216,27 @@ Turning candidates into entries (with or without a model) is left to the shell.
 ## Build / test
 ```
 cargo fmt && cargo clippy --all-targets -- -D warnings && cargo test
-cargo test --all-features                 # + JNI round trip (needs `java`) + flow-llm plugin + llm_e2e
+cargo test --all-features                 # + JNI round trip (needs `java`) + murmur-llm plugin + llm_e2e
 tools/fetch-models.sh [ggml-base.en.bin]  # explicit, user-run model download into models/
 tools/fetch-models.sh --llm [0.5b 1.5b]   # Qwen2.5-Instruct Q4_K_M GGUF for LLM cleanup
 tools/fetch-models.sh --parakeet          # Parakeet-TDT-0.6B-v2 int8 model dir (sherpa-onnx)
 export SHERPA_ONNX_LIB_DIR=…/sherpa-onnx/lib   # optional; else sherpa-onnx-sys downloads its prebuilt libs at build time
-cargo run --release -p flow-cli --features parakeet -- transcribe --engine parakeet --model models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8 models/jfk.wav
-cargo run --release -p flow-asr-sherpa --example spot_check -- <model dir> tools/probes/bench/asr_manifest_extended.json <audio dir> > out.jsonl
+cargo run --release -p murmur-cli --features parakeet -- transcribe --engine parakeet --model models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8 models/jfk.wav
+cargo run --release -p murmur-asr-sherpa --example spot_check -- <model dir> tools/probes/bench/asr_manifest_extended.json <audio dir> > out.jsonl
 python3 tools/probes/parakeet_wer.py out.jsonl  # WER/RTF with the bench normaliser
-cargo run --release -p flow-cli -- transcribe --model models/ggml-tiny.en.bin models/jfk.wav --json
-cargo build --release -p flow-cli -p flow-llm   # plugin lands next to flow-cli
-target/release/flow-cli clean --llm models/qwen2.5-0.5b-instruct-q4_k_m.gguf "um so scratch that hi"
-cargo check -p flow-ffi --features jni --target aarch64-linux-android   # NDK needed only to link
+cargo run --release -p murmur-cli -- transcribe --model models/ggml-tiny.en.bin models/jfk.wav --json
+cargo build --release -p murmur-cli -p murmur-llm   # plugin lands next to murmur-cli
+target/release/murmur-cli clean --llm models/qwen2.5-0.5b-instruct-q4_k_m.gguf "um so scratch that hi"
+cargo check -p murmur-ffi --features jni --target aarch64-linux-android   # NDK needed only to link
 ```
 * The model-dependent tests (`whisper_e2e`, `cli::real_model_on_jfk_if_present`) skip with a note when `models/` is missing.
 * `whisper-rs-sys` is built at opt-level 3 even in dev builds. `llama-cpp-sys-2` builds llama.cpp as RelWithDebInfo (`-O2`) in dev builds anyway.
 * `llama-cpp-sys-2` runs bindgen. On this box libclang 18 has no resource headers, so the build needs `BINDGEN_EXTRA_CLANG_ARGS="-I/usr/lib/gcc/x86_64-linux-gnu/13/include"` (otherwise: `'stdbool.h' file not found`).
-* The LLM tests (`llm_e2e`, which skips without a model or plugin) take ~1 min. `FLOW_LLM_MODEL`, `FLOW_LLM_BUDGET_MS`, `FLOW_LLM_QUALITY_BUDGET_MS` and `FLOW_LLM_MIN_GOOD` tune them.
+* The LLM tests (`llm_e2e`, which skips without a model or plugin) take ~1 min. `MURMUR_LLM_MODEL`, `MURMUR_LLM_BUDGET_MS`, `MURMUR_LLM_QUALITY_BUDGET_MS` and `MURMUR_LLM_MIN_GOOD` tune them.
 
 ## Measurements (2026-10-20, i7-6700, 4 threads, box shared with other agents' builds, load 7-24)
 
-**LLM prefill-ahead**, `flow-cli transcribe --realtime` on jfk.wav (11 s), tiny.en + Qwen2.5-1.5B Q4_K_M, context `{app_id: slack.exe, before: "Hey team,"}`, budget 10 s so every run finishes; counters are the commit's own prefill. Raw log: `docs/bench/llm-prefill-2026-10-20/` (old prompt, 1223 prompt tokens).
+**LLM prefill-ahead**, `murmur-cli transcribe --realtime` on jfk.wav (11 s), tiny.en + Qwen2.5-1.5B Q4_K_M, context `{app_id: slack.exe, before: "Hey team,"}`, budget 10 s so every run finishes; counters are the commit's own prefill. Raw log: `docs/bench/llm-prefill-2026-10-20/` (old prompt, 1223 prompt tokens).
 
 | partials | prefill-ahead | tokens prefilled at commit | commit prefill ms | llm ms |
 |---|---|---|---|---|
@@ -264,13 +264,13 @@ All additions are backward compatible: new JSON fields have serde defaults (old 
 * `Cleaner` gains defaulted methods: `prompt_scope()` (FULL), `engine()` (`"local"`), `model()`, `timeout_ms()` (replaces the session's `llm_timeout_ms` when `Some`; cloud cleanup = 2500 ms), `estimate_cost_usd(&CleanPrompt)`, `clean_metered(..) -> (Result<String, CleanError>, CleanUsage)`. `CleanUsage { engine, model, cost_usd: Option<Usd>, cost_estimated, generation_id, ttft_ms, latency_ms }`. Existing cleaners compile unchanged.
 * `CleanError::Unavailable(code)`: a *fast* failure before any output (connect, auth, quota, no consent / key / budget, open circuit, no private route); `CleanError::code()`. `fallback_reason` is then `llm_error: <code>` and `CommitResult.llm` stays `None`.
 * `cleanup::RoutedCleaner { primary, fallback, min_fallback_ms: 800 }`: the fallback runs only after an `Unavailable` primary with ≥ 800 ms left; a timeout, backend error or empty answer is final (deterministic text). Scope = intersection; prefill goes to both.
-* `FlowCore::set_cleaner(Option<Arc<dyn Cleaner>>)` (applies from the next commit; `None` restores the built-in one), `FlowCore::active_cleaner()`. `FlowCore::cleaner()` still returns the built-in (on-device) one.
+* `MurmurCore::set_cleaner(Option<Arc<dyn Cleaner>>)` (applies from the next commit; `None` restores the built-in one), `MurmurCore::active_cleaner()`. `MurmurCore::cleaner()` still returns the built-in (on-device) one.
 * `run_cleanup_metered(..) -> (CleanOutcome, CleanUsage)`; `CommitResult.llm: Option<CleanUsage>` (omitted while `None`: LLM off, skipped, or refused up front). `RouteInfo` gains `llm_engine` (`local` / `cloud` / `server`), `llm_model`, `llm_cost_usd` (set by the router; omitted while `None`). Adopt: log them as the D21 fields `llm_engine`, `llm_model`, `llm_cost_usd`, `llm_ttft_ms`, `llm_generation_id` (from `CommitResult.llm`). Shells never build a `Cleaner` themselves: the router installs it (see `docs/hybrid-architecture.md` "Changelog for shells", D28).
 
 2026-10-24 (branch `fix/route-order`; `docs/findings/2026-10-24-phone-local-only.md`):
 * `Timings.speech_ms: Option<u64>` (VAD speech in the dictation, summed over pieces when segmented; `Some(0)` = VAD found none, `None` = VAD off) and `Timings.peak_dbfs: Option<i32>` (peak sample level, whole dBFS, `PEAK_DBFS_FLOOR` = -120 for digital silence; `None` = no audio). Both omitted from JSON when `None`. With `empty_reason: blank_asr` they separate "ASR heard speech and returned nothing" from "the VAD failed open on noise / a quiet mic". No behaviour change, no threshold change.
   * Android: decoded into `Timings.speechMs` / `peakDbfs`; debug log fields `speech_ms` / `peak_dbfs` (additive). Windows: optional, same field names in its debug log.
-  * flow-server: the `result` log line also carries `speech_ms`, `peak_dbfs` and `start_to_commit_ms` (`start` → `commit` arrival; against the client's recording length it shows an upload backlog). Log only, no wire change.
+  * murmur-server: the `result` log line also carries `speech_ms`, `peak_dbfs` and `start_to_commit_ms` (`start` → `commit` arrival; against the client's recording length it shows an upload backlog). Log only, no wire change.
 
 2026-10-24 (branch `feat/fmt-llm`, draft D27 layers 4-6; `docs/findings/2026-10-24-formatting-gap.md`):
 * **Behaviour (gate, D27):** the deterministic layer (spoken cleanup, spoken commands, layout, closing period) follows `SessionConfig.spoken_cleanup` alone. `cleanup_level: none` and `raw_mode` now only mean "no LLM". Verbatim = `spoken_cleanup: false` + `cleanup_level: none` (the deterministic post-processing still runs, as before).
@@ -304,8 +304,8 @@ All additions are backward compatible: new JSON fields have serde defaults (old 
 * Behaviour: the live-preview window is 12 s (leading `"… "` when it does not reach back), and previews pause once ≥ 400 ms of silence follows speech already previewed. No shell change.
 
 2026-10-22 (branch `core-endpoint`):
-* Hands-free endpointing (D19). `SessionConfig.endpoint_silence_ms: Option<u32>` (omitted from JSON when unset, so old servers see the same config). New `FlowCore::poll() -> SessionPoll` / `Router::poll()`: JSON `{"partial": str|null, "endpoint_reached": bool, "speech_ms": u64, "trailing_silence_ms": u64}`; plus `endpoint()`, `endpoint_reached()`. Adopt (shells; flow-ffi owner): export `flow_poll(h) -> json` (C) / `poll(h): String` (JNI) wrapping `Router::poll`; in hands-free mode start sessions with `endpoint_silence_ms: 2000` (a user pref, 300-10000), poll it on the existing partial timer, and on `endpoint_reached` run the normal finish path (stop sound + `commit` + paste), exactly as if the user had pressed the hands-free key. Push-to-talk should leave it unset.
-  * Update (branch `router-route`): done — C `flow_poll` / `flow_start_session_info`, JNI `nativePoll` / `nativeStartSessionInfo`; `Router::poll()` now returns `RouterPoll` (`SessionPoll` + live `route`, derefs to `SessionPoll`). Step-by-step adoption for W and A: `docs/hybrid-architecture.md` "Changelog for shells", entry "live route + hands-free endpointing".
+* Hands-free endpointing (D19). `SessionConfig.endpoint_silence_ms: Option<u32>` (omitted from JSON when unset, so old servers see the same config). New `MurmurCore::poll() -> SessionPoll` / `Router::poll()`: JSON `{"partial": str|null, "endpoint_reached": bool, "speech_ms": u64, "trailing_silence_ms": u64}`; plus `endpoint()`, `endpoint_reached()`. Adopt (shells; murmur-ffi owner): export `murmur_poll(h) -> json` (C) / `poll(h): String` (JNI) wrapping `Router::poll`; in hands-free mode start sessions with `endpoint_silence_ms: 2000` (a user pref, 300-10000), poll it on the existing partial timer, and on `endpoint_reached` run the normal finish path (stop sound + `commit` + paste), exactly as if the user had pressed the hands-free key. Push-to-talk should leave it unset.
+  * Update (branch `router-route`): done — C `murmur_poll` / `murmur_start_session_info`, JNI `nativePoll` / `nativeStartSessionInfo`; `Router::poll()` now returns `RouterPoll` (`SessionPoll` + live `route`, derefs to `SessionPoll`). Step-by-step adoption for W and A: `docs/hybrid-architecture.md` "Changelog for shells", entry "live route + hands-free endpointing".
 * `ModelConfig.whisper_fit_ctx` (D20, default on): Whisper encodes only the clip + 1 s, with a full-window re-decode on repetition. No shell change; a shell may expose it as a developer toggle ("Fast Whisper encoder") and send `false` to get the old behaviour.
 * Behaviour: spoken cleanup now lays out numbered lists ("first … second … third" → `1.` lines) and, in email apps, greeting / sign-off lines without the LLM. `POSTPROCESS_REV` → `2026-10-22.1`. No shell change; the "Auto-format" pref (`spoken_cleanup`) turns it off too.
 
@@ -313,10 +313,10 @@ All additions are backward compatible: new JSON fields have serde defaults (old 
 * `CommitResult.segments` / `plain_text` (CR-2). Adopt: paste `segments` in order (`Break` = pause, `Tab`/`Enter` = key) and stop acting on `press_enter` separately; store `plain_text` in history.
 * `CommitResult.empty_reason`, `timings.asr_audio_ms`. Optional: show "no speech heard" for `no_speech`.
 * `fallback_reason` gains `llm_unsupported`, `llm_dropped` (`llm_diverged` only with an explicit `divergence_threshold`).
-* `CoreError::ModelNotFound{path}`, `CoreError::LlmLibNotFound{tried}`, `CoreError::kind()`; C `flow_last_error_kind()` (in `flow_core.h`) (CR-1). Adopt: Windows can drop its `is_file()` pre-check; Android can map `nativeLastError` prefixes `model not found:` / `llm plugin not found` (no JNI symbol was added).
+* `CoreError::ModelNotFound{path}`, `CoreError::LlmLibNotFound{tried}`, `CoreError::kind()`; C `murmur_last_error_kind()` (in `murmur_core.h`) (CR-1). Adopt: Windows can drop its `is_file()` pre-check; Android can map `nativeLastError` prefixes `model not found:` / `llm plugin not found` (no JNI symbol was added).
 * `SessionConfig` (all default on): `vad`, `hallucination_guard`, `spoken_cleanup`, `llm_prefill`. Shells may expose `spoken_cleanup` as a pref ("Auto-format punctuation, fillers and corrections"). `divergence_threshold` now defaults to off.
 * Behaviour: room noise without speech is EMPTY (no ASR call); Whisper "Thank you." on a breath is EMPTY; fillers/spoken punctuation/backtracking/ITN are applied without the LLM; the LLM prompt is the short few-shot one.
-* `FlowCore::llm_info()` (backend counters JSON); `Cleaner::prefill`/`cancel_prefill`/`info_json` default methods; `postprocess::spoken`, `guard`, `vad`, `hallucination`, `paste` modules are public.
+* `MurmurCore::llm_info()` (backend counters JSON); `Cleaner::prefill`/`cancel_prefill`/`info_json` default methods; `postprocess::spoken`, `guard`, `vad`, `hallucination`, `paste` modules are public.
 * Breaking only for code that builds these structs by hand: `AsrOutput` gained `no_speech_prob` (and lost `Eq`); `LlamaCleaner::load` returns `LlamaLoadError`. No shell does either.
 
 **VAD** (`tests/vad_bench.rs`, release, min of 2; synthetic room noise RMS ≈ 0.0023 padding / ≈ 0.005 noise-only):
@@ -333,5 +333,5 @@ All additions are backward compatible: new JSON fields have serde defaults (old 
 Trimming barely changes Whisper's time below 30 s, because its encoder always runs a full 30 s window (as the benchmark found); the win is skipping ASR entirely on presses without speech (0.7-3.9 s saved, and no chance of a silence hallucination). Trimming matters past 30 s (one fewer window per 30 s of silence) and for `audio_ctx` sizing later.
 
 **Cleanup quality with the new pipeline** (spoken cleanup → few-shot LLM → guard → post), Qwen2.5-1.5B Q4_K_M, generous budget:
-* benchmark 20 cases (`FLOW_LLM_BENCH=1 … llm_e2e bench_cases`): mean similarity **0.919** (raw 0.710; spoken cleanup alone 0.920; the benchmark's 1.5B few-shot alone 0.876); 19 FORMATTED, c17 EMPTY; no fallbacks; llm 0.9-3.9 s per case on this box. On CPU the LLM adds layout (email, lists, colons) but no net similarity over the rules.
+* benchmark 20 cases (`MURMUR_LLM_BENCH=1 … llm_e2e bench_cases`): mean similarity **0.919** (raw 0.710; spoken cleanup alone 0.920; the benchmark's 1.5B few-shot alone 0.876); 19 FORMATTED, c17 EMPTY; no fallbacks; llm 0.9-3.9 s per case on this box. On CPU the LLM adds layout (email, lists, colons) but no net similarity over the rules.
 * the 8 llm_e2e dictations: quality 6/8 (was 8/8 with the long prompt). The two misses: "milk comma eggs … period thanks", where the model dropped "thanks" and the guard fell back to the deterministic text (which is correct), and an unpunctuated "first … second … third" that the model wrote as three sentences instead of a numbered list. At the real 1.5 s budget, 5/8 FORMATTED (p50 1.0 s).

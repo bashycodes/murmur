@@ -3,7 +3,7 @@
 #   folder  texts  licence  derivation
 # texts: the full texts every copy of the model carries, from
 # third_party/licenses/ (comma-separated). licence: the same string as the
-# catalogue's `license` (apps/flow-windows/src/model_download.rs; the bundle
+# catalogue's `license` (apps/murmur-windows/src/model_download.rs; the bundle
 # test keeps them equal) and NOTICE §5. derivation: how the copy we fetch was
 # made from the original ("converted/quantised from", CC-BY-4.0 §3(a)(1)(B)
 # asks to say a work was modified; kept for every model).

@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <title>Dictionary</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="flow-theme.css">
-<link rel="stylesheet" href="ds/flow/components/bundle.css">
-<script src="ds/flow/components/bundle.js"></script>
+<link rel="stylesheet" href="murmur-theme.css">
+<link rel="stylesheet" href="ds/murmur/components/bundle.css">
+<script src="ds/murmur/components/bundle.js"></script>
 </head>
 <body>
 <x-dc>
@@ -19,10 +19,10 @@ a{color:#1a1a1a}a:hover{color:#30302f}
 </helmet>
 <div class="fl" style="width: 1280px; height: 800px; display: flex; flex-direction: column; background: var(--background-tertiary); font-family: var(--font-sans); color: var(--foreground); overflow: hidden;">
   <header style="height: 44px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 16px;">
-    <x-import component-from-global-scope="Flow.IconButton" icon="panel" label="Collapse sidebar" variant="titlebar"></x-import>
+    <x-import component-from-global-scope="Murmur.IconButton" icon="panel" label="Collapse sidebar" variant="titlebar"></x-import>
     <div style="display: flex; align-items: center; gap: 4px;">
-      <x-import component-from-global-scope="Flow.IconButton" icon="moon" label="Theme" variant="titlebar"></x-import>
-      <x-import component-from-global-scope="Flow.IconButton" icon="bell" label="Notifications" variant="titlebar"></x-import>
+      <x-import component-from-global-scope="Murmur.IconButton" icon="moon" label="Theme" variant="titlebar"></x-import>
+      <x-import component-from-global-scope="Murmur.IconButton" icon="bell" label="Notifications" variant="titlebar"></x-import>
       <span style="width: 132px;"></span>
     </div>
   </header>
@@ -32,8 +32,8 @@ a{color:#1a1a1a}a:hover{color:#30302f}
       <div style="width: 100%; max-width: 860px; display: flex; flex-direction: column; gap: 20px;">
         <div style="display: flex; align-items: center; gap: 8px;">
           <h1 class="fl-page-title" style="flex: 1;">Dictionary</h1>
-          <x-import component-from-global-scope="Flow.Button" variant="secondary">Import</x-import>
-          <x-import component-from-global-scope="Flow.Button" variant="primary" icon="plus">Add new</x-import>
+          <x-import component-from-global-scope="Murmur.Button" variant="secondary">Import</x-import>
+          <x-import component-from-global-scope="Murmur.Button" variant="primary" icon="plus">Add new</x-import>
         </div>
 
         <div class="fl-card" style="display: flex; align-items: center; gap: 16px;">
@@ -41,7 +41,7 @@ a{color:#1a1a1a}a:hover{color:#30302f}
             <div class="fl-row-title">Learn from my corrections</div>
             <div class="fl-row-desc">When you fix a word right after dictating, it's added here. Learned words are marked ✨.</div>
           </div>
-          <x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Learn from my corrections"></x-import>
+          <x-import component-from-global-scope="Murmur.Toggle" default-checked="{{yes}}" label="Learn from my corrections"></x-import>
         </div>
 
         <div class="fl-tabs" style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border);">
@@ -51,8 +51,8 @@ a{color:#1a1a1a}a:hover{color:#30302f}
             <button type="button" role="tab" aria-selected="false" class="fl-tab">Learned</button>
           </div>
           <div class="fl-tabs-actions" style="display: flex; gap: 2px;">
-            <x-import component-from-global-scope="Flow.IconButton" icon="search" label="Search" variant="toolbar"></x-import>
-            <x-import component-from-global-scope="Flow.IconButton" icon="sort" label="Sort" variant="toolbar"></x-import>
+            <x-import component-from-global-scope="Murmur.IconButton" icon="search" label="Search" variant="toolbar"></x-import>
+            <x-import component-from-global-scope="Murmur.IconButton" icon="sort" label="Sort" variant="toolbar"></x-import>
           </div>
         </div>
 

@@ -16,11 +16,11 @@ Source: design artboard `docs/design/app-design/PageTransforms.dc.html`. Built o
 - Default chords Win+Alt+1/2… (they shadow taskbar jump lists only while Transforms is on; user-changeable).
 
 ## Reuse
-Selection capture (`capture_selection`), `CoreApi::command` → `Router::command_cleaner` → `flow_core::command`
+Selection capture (`capture_selection`), `CoreApi::command` → `Router::command_cleaner` → `murmur_core::command`
 (consent, budget, OR→local order), `command::sanitize`, `Effect::Paste` with the S13 paste guard, command history rows.
 
 ## New
-1. `crates/flow-core/src/transform.rs`: `Transform`, `builtins()`, `run_transform(cleaner, instruction, text,
+1. `crates/murmur-core/src/transform.rs`: `Transform`, `builtins()`, `run_transform(cleaner, instruction, text,
    Source::{Selection, Dictation}, timeout)`. Selection keeps Command Mode's surrounding-text gate; Dictation doesn't
    (transcript is already in cleanup scope).
 2. Prefs `transforms: {enabled, auto_apply: Option<id>, view_changes: Option<Chord>, items: [{transform, shortcut}]}`;

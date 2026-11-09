@@ -1,58 +1,68 @@
 #!/bin/sh
-# flow-server container entrypoint (docs/container.md, D77).
+# murmur-server container entrypoint (docs/container.md, D77).
 #
 #   (no args) | serve [flags]          run the server
 #   check-config [flags]               validate, with the same bind rewrite
 #   keys … | library … | gen-token …   run that CLI command
 #   anything else                      exec'd as is (e.g. `sh`)
 #
-# Also installed as /usr/local/bin/flow-server, so `docker exec <container>
-# flow-server keys add phone` finds the config without --config. Called by
+# Also installed as /usr/local/bin/murmur-server, so `docker exec <container>
+# murmur-server keys add phone` finds the config without --config. Called by
 # that name it only runs CLI commands.
 #
-# Zero-config start (D77, FLOW_CONFIG unset):
-#   /models   (FLOW_MODELS_DIR) the models folder, mounted read-only: one
+# Zero-config start (D77, MURMUR_CONFIG unset):
+#   /models   (MURMUR_MODELS_DIR) the models folder, mounted read-only: one
 #             folder per model, each tagged by its model.toml (D40), e.g. the
 #             colleague bundle's unzipped library/. The server uses them and
 #             serves them to the apps (the library).
-#   /data     (FLOW_DATA) the volume: admin.token (the first admin key,
+#   /data     (MURMUR_DATA) the volume: admin.token (the first admin key,
 #             token_file, imported as key "owner"), keys.json,
 #             key-usage.json, library-hashes.json, and optionally your own
 #             config.toml.
 # Without /data/config.toml the config is generated on every start from the
-# tagged folders in /models (pick_model below; FLOW_STT / FLOW_LLM /
-# FLOW_HEBREW / FLOW_LID name a folder or `none`). The key is never printed:
+# tagged folders in /models (pick_model below; MURMUR_STT / MURMUR_LLM /
+# MURMUR_HEBREW / MURMUR_LID name a folder or `none`). The key is never printed:
 # the log says how to read it (`docker exec … cat /data/admin.token`).
 #
-# FLOW_CONFIG set (e.g. the Helm chart's /etc/flow-server/config.toml): that
+# MURMUR_CONFIG set (e.g. the Helm chart's /etc/murmur-server/config.toml): that
 # config as is. Then, with no keys yet, the entrypoint waits until
-# `flow-server keys add <name> --admin` creates keys.json (a crash loop
+# `murmur-server keys add <name> --admin` creates keys.json (a crash loop
 # would make `exec` impossible).
 #
 # Binding (docs/container.md "Binding"). The server refuses a wildcard bind
 # (0.0.0.0) without [tls] or --insecure-bind-any (config.rs check_bind), so:
-# * FLOW_BIND_CONTAINER_IP=1 (default): replace the config's `bind` with
+# * MURMUR_BIND_CONTAINER_IP=1 (default): replace the config's `bind` with
 #   127.0.0.1 and this container's own addresses (private on Docker and
-#   Kubernetes networks), port FLOW_PORT (default 7313). Published/forwarded
+#   Kubernetes networks), port MURMUR_PORT (default 7313). Published/forwarded
 #   ports reach those addresses; the peer filter (loopback/LAN/VPN only)
 #   stays on.
-# * FLOW_BIND_CONTAINER_IP=0: use the config's `bind` as written (e.g.
-#   0.0.0.0 with [tls], or with FLOW_INSECURE_BIND_ANY=1).
-# * FLOW_INSECURE_BIND_ANY=1 adds --insecure-bind-any (warns).
+# * MURMUR_BIND_CONTAINER_IP=0: use the config's `bind` as written (e.g.
+#   0.0.0.0 with [tls], or with MURMUR_INSECURE_BIND_ANY=1).
+# * MURMUR_INSECURE_BIND_ANY=1 adds --insecure-bind-any (warns).
 set -eu
 
-BIN="${FLOW_BIN:-/opt/flow-server/bin/flow-server}"
-DATA="${FLOW_DATA:-/data}"
-MODELS="${FLOW_MODELS_DIR:-/models}"
-RUN_DIR="${FLOW_RUN_DIR:-/tmp}"
-PORT="${FLOW_PORT:-7313}"
-# Container name in the hints printed to the log (the quick start's --name).
-NAME="${FLOW_CONTAINER_NAME:-flow-server}"
-GENERATED="$RUN_DIR/flow-server.generated.toml"
-PREPARING="$RUN_DIR/flow-server.preparing"
-STARTED="$RUN_DIR/flow-server.started"
+# D83: before the Murmur rename these variables were FLOW_*. For one
+# transition period an unset MURMUR_<X> takes FLOW_<X>'s value, with a
+# notice (the server binary does the same for the ones it reads itself).
+for old in $(env | sed -n 's/^FLOW_\([A-Za-z0-9_]*\)=.*/\1/p'); do
+    if [ -z "$(printenv "MURMUR_$old" || true)" ]; then
+        export "MURMUR_$old=$(printenv "FLOW_$old")"
+        echo "murmur-server: notice: FLOW_$old is the old name of MURMUR_$old; still read for now, rename it (D83)" >&2
+    fi
+done
 
-say() { echo "flow-server: $*" >&2; }
+BIN="${MURMUR_BIN:-/opt/murmur-server/bin/murmur-server}"
+DATA="${MURMUR_DATA:-/data}"
+MODELS="${MURMUR_MODELS_DIR:-/models}"
+RUN_DIR="${MURMUR_RUN_DIR:-/tmp}"
+PORT="${MURMUR_PORT:-7313}"
+# Container name in the hints printed to the log (the quick start's --name).
+NAME="${MURMUR_CONTAINER_NAME:-murmur-server}"
+GENERATED="$RUN_DIR/murmur-server.generated.toml"
+PREPARING="$RUN_DIR/murmur-server.preparing"
+STARTED="$RUN_DIR/murmur-server.started"
+
+say() { echo "murmur-server: $*" >&2; }
 die() { say "error: $*"; exit 1; }
 
 has_config_flag() {
@@ -124,18 +134,18 @@ pick_model() {
 generate_config() {
     [ -d "$MODELS" ] ||
         die "no models folder at $MODELS. Mount one: -v /path/to/models:$MODELS:ro (docs/server-setup.md)"
-    stt="$(pick_model stt "${FLOW_STT:-}" parakeet-tdt-0.6b-v2-int8 parakeet-unified-en-0.6b-int8)"
+    stt="$(pick_model stt "${MURMUR_STT:-}" parakeet-tdt-0.6b-v2-int8 parakeet-unified-en-0.6b-int8)"
     [ -n "$stt" ] ||
         die "no speech model in $MODELS: it needs a folder per model with a model.toml (kind = \"stt\"), e.g. the colleague bundle's library/ (docs/server-setup.md)"
-    lid="$(pick_model lid "${FLOW_LID:-}" whisper-tiny-lid)"
-    llm="$(pick_model llm "${FLOW_LLM:-}" qwen2.5-1.5b-instruct-q4_k_m)"
-    he="$(pick_model hebrew "${FLOW_HEBREW:-}" zipformer-he-int8)"
+    lid="$(pick_model lid "${MURMUR_LID:-}" whisper-tiny-lid)"
+    llm="$(pick_model llm "${MURMUR_LLM:-}" qwen2.5-1.5b-instruct-q4_k_m)"
+    he="$(pick_model hebrew "${MURMUR_HEBREW:-}" zipformer-he-int8)"
     stt_engine="$(engine "$stt")" stt_path="$(model_path "$stt")"
     lid_path="" llm_path="" he_engine="" he_path=""
     [ -z "$lid" ] || lid_path="$(model_path "$lid")"
     [ -z "$llm" ] || llm_path="$(model_path "$llm")"
     [ -z "$he" ] || { he_engine="$(engine "$he")"; he_path="$(model_path "$he")"; }
-    threads="${FLOW_THREADS:-$(nproc 2>/dev/null || echo 4)}"
+    threads="${MURMUR_THREADS:-$(nproc 2>/dev/null || echo 4)}"
     [ "$threads" -le 4 ] 2>/dev/null || threads=4
     {
         echo "# Generated by the entrypoint from the models in $MODELS. To change"
@@ -170,10 +180,10 @@ generate_config() {
     say "models from $MODELS: speech $stt${lid:+, language detection $lid}${llm:+, AI cleanup $llm}${he:+, Hebrew $he}"
 }
 
-# The config file: FLOW_CONFIG, else $DATA/config.toml, else generated.
+# The config file: MURMUR_CONFIG, else $DATA/config.toml, else generated.
 config_file() {
-    if [ -n "${FLOW_CONFIG:-}" ]; then
-        echo "$FLOW_CONFIG"
+    if [ -n "${MURMUR_CONFIG:-}" ]; then
+        echo "$MURMUR_CONFIG"
     elif [ -f "$DATA/config.toml" ]; then
         echo "$DATA/config.toml"
     else
@@ -185,7 +195,7 @@ config_file() {
 # The config to run with: $1, or a copy in $RUN_DIR with `bind` replaced by
 # loopback + the container's addresses.
 effective_config() {
-    if [ "${FLOW_BIND_CONTAINER_IP:-1}" != 1 ]; then
+    if [ "${MURMUR_BIND_CONTAINER_IP:-1}" != 1 ]; then
         echo "$1"
         return
     fi
@@ -198,9 +208,9 @@ effective_config() {
             *) binds="$binds, \"$ip:$PORT\"" ;;
         esac
     done
-    out="$RUN_DIR/flow-server.config.toml"
+    out="$RUN_DIR/murmur-server.config.toml"
     {
-        echo "# $1 with bind rewritten by the entrypoint (FLOW_BIND_CONTAINER_IP=1)"
+        echo "# $1 with bind rewritten by the entrypoint (MURMUR_BIND_CONTAINER_IP=1)"
         echo "bind = [$binds]"
         # Drop the original top-level bind (single line, before any [table]).
         awk 'BEGIN { top = 1 } /^[[:space:]]*\[/ { top = 0 }
@@ -216,19 +226,19 @@ admin_token() {
     grep -q "^token_file = \"$DATA/admin.token\"" "$1" || return 0
     if [ ! -f "$DATA/admin.token" ]; then
         { [ -d "$DATA" ] && [ -w "$DATA" ]; } ||
-            die "$DATA is not writable by uid $(id -u). Use a Docker volume (-v flow_data:$DATA), or for a host folder: sudo chown -R $(id -u):$(id -g) <folder>"
+            die "$DATA is not writable by uid $(id -u). Use a Docker volume (-v murmur_data:$DATA), or for a host folder: sudo chown -R $(id -u):$(id -g) <folder>"
         "$BIN" gen-token --out "$DATA/admin.token" >/dev/null 2>&1 ||
             die "could not write the admin key to $DATA/admin.token"
         cat >&2 <<EOF
 
 =====================================================================
- flow-server created its admin key. Show it (treat it like a password):
+ murmur-server created its admin key. Show it (treat it like a password):
 
      docker exec $NAME cat $DATA/admin.token
 
  In each app, Settings > Your server: this machine's LAN or VPN
  address (\`hostname -I\` on this machine), port $PORT, and the key.
- One key per device:  docker exec $NAME flow-server keys add phone
+ One key per device:  docker exec $NAME murmur-server keys add phone
 =====================================================================
 
 EOF
@@ -250,14 +260,14 @@ cli() {
             shift
             c="$(config_file)"
             set -- "$@" --config "$(effective_config "$c")"
-            [ "${FLOW_INSECURE_BIND_ANY:-0}" = 1 ] && set -- "$@" --insecure-bind-any
+            [ "${MURMUR_INSECURE_BIND_ANY:-0}" = 1 ] && set -- "$@" --insecure-bind-any
             exec "$BIN" check-config "$@" ;;
     esac
     exec "$BIN" "$@"
 }
 
-# Called as `flow-server` (docker exec): CLI only.
-[ "$(basename "$0")" = flow-server ] && cli "$@"
+# Called as `murmur-server` (docker exec): CLI only.
+[ "$(basename "$0")" = murmur-server ] && cli "$@"
 
 case "${1:-serve}" in
     keys|library|check-config|gen-token) cli "$@" ;;
@@ -268,13 +278,13 @@ esac
 
 if ! has_config_flag "$@"; then
     CONFIG="$(config_file)"
-    [ -n "${FLOW_CONFIG:-}" ] || admin_token "$CONFIG"
+    [ -n "${MURMUR_CONFIG:-}" ] || admin_token "$CONFIG"
     EFFECTIVE="$(effective_config "$CONFIG")"
     [ "$EFFECTIVE" = "$CONFIG" ] || say "bind = $(sed -n 2p "$EFFECTIVE" | cut -d= -f2-)"
     set -- --config "$EFFECTIVE" "$@"
 fi
-if [ "${FLOW_INSECURE_BIND_ANY:-0}" = 1 ]; then
-    say "WARNING: FLOW_INSECURE_BIND_ANY=1: wildcard/public bind allowed without TLS and no peer filter. Publish the port on a loopback, LAN or VPN host address only, or configure [tls] (docs/container.md)."
+if [ "${MURMUR_INSECURE_BIND_ANY:-0}" = 1 ]; then
+    say "WARNING: MURMUR_INSECURE_BIND_ANY=1: wildcard/public bind allowed without TLS and no peer filter. Publish the port on a loopback, LAN or VPN host address only, or configure [tls] (docs/container.md)."
     set -- "$@" --insecure-bind-any
 fi
 
@@ -290,12 +300,12 @@ while :; do
             : >"$PREPARING" 2>/dev/null || true
             if [ "$announced" = 0 ]; then
                 say "no keys in the state dir yet. Add the admin key, e.g."
-                say "  docker exec $NAME flow-server keys add owner --admin"
-                say "  kubectl exec deploy/<release>-flow-server -- flow-server keys add owner --admin"
+                say "  docker exec $NAME murmur-server keys add owner --admin"
+                say "  kubectl exec deploy/<release>-murmur-server -- murmur-server keys add owner --admin"
                 say "waiting for keys.json ..."
                 announced=1
             fi
-            sleep "${FLOW_KEY_POLL_S:-3}" ;;
+            sleep "${MURMUR_KEY_POLL_S:-3}" ;;
         *)
             echo "$out" >&2
             exit 1 ;;
@@ -304,7 +314,7 @@ done
 [ "$announced" = 1 ] && say "keys found, starting"
 rm -f "$PREPARING" 2>/dev/null || true
 # Models load before the listener binds (Parakeet + LLM: up to minutes on a
-# loaded box); the healthcheck allows FLOW_START_GRACE_S from here.
+# loaded box); the healthcheck allows MURMUR_START_GRACE_S from here.
 date +%s >"$STARTED" 2>/dev/null || true
 say "loading models (about a minute), then \"ready\""
 exec "$BIN" "$@"

@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <title>Setup: AI cleanup</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="flow-theme.css">
-<link rel="stylesheet" href="ds/flow/components/bundle.css">
-<script src="ds/flow/components/bundle.js"></script>
+<link rel="stylesheet" href="murmur-theme.css">
+<link rel="stylesheet" href="ds/murmur/components/bundle.css">
+<script src="ds/murmur/components/bundle.js"></script>
 </head>
 <body>
 <x-dc>
@@ -76,7 +76,7 @@ a{color:#1a1a1a}a:hover{color:#30302f}
                 <div style="display: flex; flex-direction: column; gap: 6px;"><label class="fl-row-title" for="ll-url">Address</label><input id="ll-url" class="fl-input lw-mono" type="url" value="https://llm.home.lan:4000"></div>
                 <div style="display: flex; flex-direction: column; gap: 6px;"><label class="fl-row-title" for="ll-key">API key (optional)</label><input id="ll-key" class="fl-input" type="password" placeholder="sk-…"></div>
                 <div style="display: flex; flex-direction: column; gap: 6px;"><label class="fl-row-title" for="ll-model">Model</label><input id="ll-model" class="fl-input lw-mono" type="text" value="qwen2.5-32b"></div>
-                <div style="display: flex; flex-direction: column; gap: 6px; justify-content: flex-end;"><span style="display: flex; align-items: center; gap: 8px;"><x-import component-from-global-scope="Flow.Button" variant="secondary" size="sm">Test connection</x-import><span class="fl-badge fl-badge-success">6 models</span></span></div>
+                <div style="display: flex; flex-direction: column; gap: 6px; justify-content: flex-end;"><span style="display: flex; align-items: center; gap: 8px;"><x-import component-from-global-scope="Murmur.Button" variant="secondary" size="sm">Test connection</x-import><span class="fl-badge fl-badge-success">6 models</span></span></div>
               </div>
             </sc-if>
             <span style="font: 400 13px/20px var(--font-sans); color: var(--neutral-600);">{{consent}}</span>

@@ -4,17 +4,17 @@
 //!
 //! usage:
 //!   joins core   '<ModelConfig JSON>' SESSION.json CLIPS_DIR OUT.jsonl
-//!       FlowCore commit per clip, whole vs segment_pause_ms 800 (no
+//!       MurmurCore commit per clip, whole vs segment_pause_ms 800 (no
 //!       pacing: pieces and bridges decode at commit, same text).
 //!   joins pieces '<ModelConfig JSON>' SESSION.json CLIPS_DIR OUT.jsonl
 //!       Segmenter + whisper directly: each piece decoded the way the
 //!       core does (VAD trim, asr level), with and without the previous
 //!       pieces' last words as prior_text, plus the cut sample indices.
 //!       `whisper_fit_ctx` in the ModelConfig picks the encoder window.
-use flow_core::asr::{compose_prompt, prior_words, AsrEngine, AsrPurpose, AsrRequest};
-use flow_core::config::{ModelConfig, SessionConfig};
-use flow_core::segment::{SegmentParams, Segmenter};
-use flow_core::FlowCore;
+use murmur_core::asr::{compose_prompt, prior_words, AsrEngine, AsrPurpose, AsrRequest};
+use murmur_core::config::{ModelConfig, SessionConfig};
+use murmur_core::segment::{SegmentParams, Segmenter};
+use murmur_core::MurmurCore;
 use std::io::Write;
 
 fn clips(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
@@ -41,10 +41,10 @@ fn main() {
     };
     match a[1].as_str() {
         "core" => {
-            let core = FlowCore::load_models(&model).expect("load");
+            let core = MurmurCore::load_models(&model).expect("load");
             for p in clips(&dir) {
                 let Some(name) = wanted(&p) else { continue };
-                let pcm = flow_core::audio::read_wav_16k_mono(&p).unwrap();
+                let pcm = murmur_core::audio::read_wav_16k_mono(&p).unwrap();
                 for (mode, seg) in [("whole", None), ("seg", Some(800u32))] {
                     let mut cfg = base.clone();
                     cfg.segment_pause_ms = seg;
@@ -69,16 +69,16 @@ fn main() {
             }
         }
         "pieces" => {
-            let w = flow_core::whisper::WhisperEngine::load(&model.asr_path, model.threads.max(1))
+            let w = murmur_core::whisper::WhisperEngine::load(&model.asr_path, model.threads.max(1))
                 .expect("whisper")
                 .with_fit_ctx(model.whisper_fit_ctx);
             let mut cfg = base.clone();
             cfg.segment_pause_ms = Some(800);
             let params = SegmentParams::for_session(&cfg).unwrap();
-            let prompt = flow_core::asr::build_initial_prompt(&cfg.dictionary, &[]);
+            let prompt = murmur_core::asr::build_initial_prompt(&cfg.dictionary, &[]);
             for p in clips(&dir) {
                 let Some(name) = wanted(&p) else { continue };
-                let pcm: Vec<f32> = flow_core::audio::read_wav_16k_mono(&p)
+                let pcm: Vec<f32> = murmur_core::audio::read_wav_16k_mono(&p)
                     .unwrap()
                     .iter()
                     .map(|&s| s as f32 / 32768.0)
@@ -92,13 +92,13 @@ fn main() {
                 let mut prompts = Vec::new();
                 for k in 0..bounds.len() - 1 {
                     let piece = &pcm[bounds[k]..bounds[k + 1]];
-                    let Some(sp) = flow_core::vad::detect(piece) else {
+                    let Some(sp) = murmur_core::vad::detect(piece) else {
                         with_prior.push(String::new());
                         no_prior.push(String::new());
                         prompts.push(0);
                         continue;
                     };
-                    let mut lvl = flow_core::vad::asr_level(&piece[sp.start..sp.end]).into_owned();
+                    let mut lvl = murmur_core::vad::asr_level(&piece[sp.start..sp.end]).into_owned();
                     // PIECE_MIN_MS: zero-pad the piece to at least this long,
                     // i.e. a floor on the fitted encoder window (whisper pads
                     // to 30 s with zeros anyway; audio_ctx only cuts it).

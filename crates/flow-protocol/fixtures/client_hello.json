@@ -1,8 +1,0 @@
-{
-  "t": "hello",
-  "proto_min": 1,
-  "proto_max": 1,
-  "client": "flow-android 0.2.0",
-  "core": "0.1.0",
-  "postprocess_rev": "2026-10-21.1"
-}

@@ -13,8 +13,8 @@ of it ("איפה שמת את המפתחות?") instead of the English text.
 All transcript text below is synthetic. The field values are the real ones.
 
 ```
-I/FlowService: commit FORMATTED audio=5720ms asr=467ms llm=1002ms total=1472ms ... route=local/-
-I/FlowDebug: {"kind":"dictation","app_version":"1.0.0","build":"3c8df49","route":"local",
+I/MurmurService: commit FORMATTED audio=5720ms asr=467ms llm=1002ms total=1472ms ... route=local/-
+I/MurmurDebug: {"kind":"dictation","app_version":"1.0.0","build":"3c8df49","route":"local",
   "engine":"sherpa_online","model":"zipformer-he","language":"he","language_source":"fixed",
   "llm":"formatted","llm_engine":"cloud","llm_model":"meta-llama/llama-3.3-70b-instruct",
   "cleanup_route":"cloud","target":"com.whatsapp",
@@ -22,7 +22,7 @@ I/FlowDebug: {"kind":"dictation","app_version":"1.0.0","build":"3c8df49","route"
 ```
 
 - All 6 dictations: `route=local`, `engine=sherpa_online`, `model=zipformer-he`,
-  `language=he`, `language_source=fixed`. The flow-server and cloud STT were not
+  `language=he`, `language_source=fixed`. The murmur-server and cloud STT were not
   used, so the server's `languages = he` played no part.
 - `raw` (the STT output, before cleanup) is already a fluent Hebrew sentence in
   5 of 6. Cleanup (cloud Llama 3.3 70B) returned it unchanged apart from the

@@ -1,4 +1,4 @@
-	Command being timed: "tools/probes/prototypes/ai_cleanup_bench_2026_10_26/../../../../target/ai-bench/release/ai-cleanup-bench --mode ai --cases tools/probes/prototypes/ai_cleanup_bench_2026_10_26/results/all_cases.jsonl --session tools/probes/prototypes/ai_cleanup_bench_2026_10_26/sessions/prod.json --threads 4 --timeout-ms 8000 --llm $CACHE/models/qwen2.5-3b-instruct-q4_k_m.gguf --llm-lib $CACHE/ai-bench-2026-10-26/libflow_llm.so --prompt tools/probes/prototypes/ai_cleanup_bench_2026_10_26/prompt_v4b.json"
+	Command being timed: "tools/probes/prototypes/ai_cleanup_bench_2026_10_26/../../../../target/ai-bench/release/ai-cleanup-bench --mode ai --cases tools/probes/prototypes/ai_cleanup_bench_2026_10_26/results/all_cases.jsonl --session tools/probes/prototypes/ai_cleanup_bench_2026_10_26/sessions/prod.json --threads 4 --timeout-ms 8000 --llm $CACHE/models/qwen2.5-3b-instruct-q4_k_m.gguf --llm-lib $CACHE/ai-bench-2026-10-26/libmurmur_llm.so --prompt tools/probes/prototypes/ai_cleanup_bench_2026_10_26/prompt_v4b.json"
 	User time (seconds): 1567.14
 	System time (seconds): 2.36
 	Percent of CPU this job got: 386%

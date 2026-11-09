@@ -6,7 +6,7 @@
 | File | What |
 |---|---|
 | `rps.sh` | Runs a local `.ps1` on the laptop over ssh (`LAPTOP_SSH=user@host`), `-EncodedCommand`; prints PowerShell errors as `ERR:` |
-| `fetch_models.ps1` | Fetches the 0.12.0 catalogue files (Llama-3.2-3B GGUF, zipformer-he, LID tiny-q5_1) from the pinned URLs in `apps/flow-windows/src/model_download.rs` into `%APPDATA%\FlowClone\models`, checks size + SHA-256 |
+| `fetch_models.ps1` | Fetches the 0.12.0 catalogue files (Llama-3.2-3B GGUF, zipformer-he, LID tiny-q5_1) from the pinned URLs in `apps/murmur-windows/src/model_download.rs` into `%APPDATA%\Murmur\models`, checks size + SHA-256 |
 | `install.ps1` | Closes the app, installs the NSIS build with `/S` |
 | `set_prefs.py` | Edits `prefs.json` (app closed): local cleanup with the 3B, cleanup order local → server → cloud, Hebrew zipformer, keyboard language, hands-free pause 0 |
 | `launch.ps1` | Starts the app in the interactive session (one-shot scheduled task); `REDIRECT=1` captures stdout/stderr; lists loaded DLLs and the process's GPU memory |

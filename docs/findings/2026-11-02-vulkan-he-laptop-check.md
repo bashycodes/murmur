@@ -18,17 +18,17 @@
 
 * **Install.** 1.0.0 hybrid NSIS (`Murmur_1.0.0_x64-setup_hybrid.exe`, SHA-256
   `2f7f7b3a…c7de`, equal to `SHA256SUMS-windows-1.0.0.txt`) over 0.12.0 with `/S` (exit 0).
-  * `flow_whisper_vulkan.dll` (60.8 MB) is now next to the exe.
+  * `murmur_whisper_vulkan.dll` (60.8 MB) is now next to the exe.
   * Prefs were backed up first (`prefs.json.bak-20261102-080919-pre-1.0.0`). After the check
     they are back to that state (`hebrew_model` zipformer), with no key changed.
 * **Model.** The 10-31 bench's `ivrit-turbo-q5_0.bin` was copied (not downloaded) to
   `models\ggml-ivrit-large-v3-turbo-q5_0.bin`. Its size and SHA-256 (`6c1da92e…a572`) match
   the catalogue entry.
-* **Harness.** `plugin_bench.py` loads the **installed** `flow_whisper_vulkan.dll` with ctypes
+* **Harness.** `plugin_bench.py` loads the **installed** `murmur_whisper_vulkan.dll` with ctypes
   and calls the C ABI exactly as `core_adapter::whisper_engine` does: `threads` = the app
   default (4 on this 8-thread CPU), `fit_ctx: false`, `language: "he"`, empty prompt.
   * One resident engine, with one warm-up decode first. Latency = the wall time of
-    `flow_whisper_transcribe`, so model load is excluded, as in the app.
+    `murmur_whisper_transcribe`, so model load is excluded, as in the app.
   * Input: the 10-31 bench's 49 FLEURS he_il dev clips (3–20 s); the first 10 form the subset.
 * **Silence gate.** 18 of the 49 FLEURS recordings are under the engine's silence gate
   (RMS < 0.003, `whisper.rs` `SILENCE_RMS`; −50 to −60 dBFS). For those the app returns ""
@@ -58,21 +58,21 @@
   caches them. The owner's first Hebrew dictation after an install or driver update will
   be slow once.
 * **GPU confirmed:**
-  * `flow_whisper_info` → `{"backend":"Vulkan","device":"Intel(R) Arc(TM) 140V GPU (16GB)","gpu_error":null}`
+  * `murmur_whisper_info` → `{"backend":"Vulkan","device":"Intel(R) Arc(TM) 140V GPU (16GB)","gpu_error":null}`
     and stderr has `ggml_vulkan: 0 = Intel(R) Arc(TM) 140V GPU … KHR_coopmat`.
   * The same DLL forced to the CPU is ~180× slower (below).
-  * In the app, the process loads `flow_whisper_vulkan.dll`, `vulkan-1.dll` and
+  * In the app, the process loads `murmur_whisper_vulkan.dll`, `vulkan-1.dll` and
     `igvk64.dll`, with `hebrew_model = ivrit_turbo`.
 
 ## CPU fallback
 
-* **Plugin CPU path** (`FLOW_WHISPER_DEVICE=cpu`): `info.backend = "CPU"`. Output is correct:
+* **Plugin CPU path** (`MURMUR_WHISPER_DEVICE=cpu`): `info.backend = "CPU"`. Output is correct:
   * 3.24 s clip: **262 s**, 2/8 word errors;
   * 10.38 s clip: **267 s**, 3/22 word errors.
 * **App, forced CPU.** The app started, ivrit loaded in 800 ms, and it shows "Ready" (label
   below).
 * **App, no plugin.** This ran from a temp copy of the install without
-  `flow_whisper_vulkan.dll`. The built-in CPU whisper loaded ivrit in 721 ms and shows
+  `murmur_whisper_vulkan.dll`. The built-in CPU whisper loaded ivrit in 721 ms and shows
   "Ready", and no `[model]` problem line was printed. A dictation through it was not timed:
   there is no file input, and the built-in engine is linked into the exe.
 
@@ -92,7 +92,7 @@
 * Suspects:
   * the MSVC build of ggml-cpu under `GGML_NATIVE=OFF`: FMA/F16C code paths not taken;
   * `GGML_OPENMP=OFF` (whisper-rs-sys without its `openmp` feature).
-* **`flow-windows.exe` has the same instruction counts** (vfmadd 104, vcvtph2ps 29), and its
+* **`murmur-windows.exe` has the same instruction counts** (vfmadd 104, vcvtph2ps 29), and its
   whisper.cpp is built the same way. So the built-in CPU whisper is very likely just as
   slow. That covers the no-Vulkan fallback, and also the **default English whisper on every
   PC without a GPU**. Not measured.
@@ -102,7 +102,7 @@
 
 ### Bug 2: the CPU label gives the wrong reason
 
-* With a GPU present but the CPU forced (`FLOW_WHISPER_DEVICE=cpu`), Settings says "Runs on
+* With a GPU present but the CPU forced (`MURMUR_WHISPER_DEVICE=cpu`), Settings says "Runs on
   the CPU (no graphics chip found)". It says the same when the plugin DLL is missing.
 * The cause: `runsOnLine` (`ui/src/features/models.ts`) prints "no graphics chip found"
   whenever whisper runs on the CPU without a `gpu_error`. `ModelStatus.backend` does not say

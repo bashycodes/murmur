@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Base vs new flow-server, live, with and without the dictionary, R
+# Base vs new murmur-server, live, with and without the dictionary, R
 # interleaved rounds (live.sh each), so box load hits both alike.
 #
 #   live_ab.sh OUT_DIR ROUNDS SPEED
 #
-# env: live.sh's env (minus SERVER), plus BASE and NEW (two flow-server
+# env: live.sh's env (minus SERVER), plus BASE and NEW (two murmur-server
 # binaries) and DICT (run_paths.py --dict file). ENVF, when set, is sourced
 # first. Output: OUT_DIR/server_{base,new}-{dict,nodict}-rN.jsonl.
 set -uo pipefail

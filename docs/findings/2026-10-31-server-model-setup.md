@@ -1,10 +1,10 @@
 # Home server model setup on 0.12.0 (2026-10-31)
 
-**Question.** Which models should the home flow-server (i7-6700, 4C/8T AVX2,
+**Question.** Which models should the home murmur-server (i7-6700, 4C/8T AVX2,
 no GPU, ~19.9 GB RAM shared with other jobs) serve, and does the 0.12.0 build
 serve them end to end?
 
-**Answer.** Deployed `flow-server 0.12.0+5a27023` (tag v0.12.0) with:
+**Answer.** Deployed `murmur-server 0.12.0+5a27023` (tag v0.12.0) with:
 
 | slot | model | why |
 |---|---|---|
@@ -20,15 +20,15 @@ models, no LID.
 ## Install
 
 * Systemd **user** unit (install.sh `--user` layout): binary in
-  `~/.local/bin`, `libflow_llm.so` + sherpa/onnxruntime libs in
-  `~/.local/lib/flow-server`, models in `~/.local/share/flow-server/models`,
-  config + token in `~/.config/flow-server`. Unit unchanged (MemoryMax 8G, Nice 5).
+  `~/.local/bin`, `libmurmur_llm.so` + sherpa/onnxruntime libs in
+  `~/.local/lib/murmur-server`, models in `~/.local/share/murmur-server/models`,
+  config + token in `~/.config/murmur-server`. Unit unchanged (MemoryMax 8G, Nice 5).
 * Build: detached worktree at `v0.12.0`, `cargo build --release --offline -j 2
-  -p flow-server --no-default-features --features whisper,parakeet,tls,llm`
-  plus `-p flow-llm`, under the shared build lock (16.6 + 2.9 min).
+  -p murmur-server --no-default-features --features whisper,parakeet,tls,llm`
+  plus `-p murmur-llm`, under the shared build lock (16.6 + 2.9 min).
   **`tools/server/install.sh` cannot build this config:** it builds
   `parakeet,tls[,llm]` without `whisper`, and `lid_path` needs the `whisper`
-  feature (`flow_core::engine::load_lid` refuses otherwise). So the binary and
+  feature (`murmur_core::engine::load_lid` refuses otherwise). So the binary and
   plugin were installed by hand exactly where install.sh puts them; the
   sherpa libs were already the 1.13.8 ones (same hashes), and the config was
   edited (install.sh never edits an existing config).
@@ -100,7 +100,7 @@ supports keeping sessions on the production path. 4 min 35 s wall.
 ## Rollback
 
 Timestamped copies `*.bak-20261031-1942` next to the binary, the plugin
-`libflow_llm.so` and `config.toml`, and the user unit at
-`~/.config/flow-server/flow-server.service.bak-20261031-1942`. Restore the
-three files and `systemctl --user restart flow-server`. Sherpa libs and the
+`libmurmur_llm.so` and `config.toml`, and the user unit at
+`~/.config/murmur-server/murmur-server.service.bak-20261031-1942`. Restore the
+three files and `systemctl --user restart murmur-server`. Sherpa libs and the
 unit were not changed.

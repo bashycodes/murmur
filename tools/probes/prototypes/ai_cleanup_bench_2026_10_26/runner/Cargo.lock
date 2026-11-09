@@ -15,9 +15,9 @@ dependencies = [
 name = "ai-cleanup-bench"
 version = "0.0.0"
 dependencies = [
- "flow-cloud",
- "flow-core",
- "flow-router",
+ "murmur-cloud",
+ "murmur-core",
+ "murmur-router",
  "regex",
  "serde",
  "serde_json",
@@ -240,20 +240,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "flow-cloud"
+name = "murmur-cloud"
 version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "flacenc",
- "flow-core",
- "flow-router",
+ "murmur-core",
+ "murmur-router",
  "reqwest",
  "serde",
  "serde_json",
 ]
 
 [[package]]
-name = "flow-core"
+name = "murmur-core"
 version = "1.0.0"
 dependencies = [
  "fancy-regex",
@@ -267,20 +267,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "flow-protocol"
+name = "murmur-protocol"
 version = "1.0.0"
 dependencies = [
- "flow-core",
+ "murmur-core",
  "serde",
  "serde_json",
 ]
 
 [[package]]
-name = "flow-router"
+name = "murmur-router"
 version = "1.0.0"
 dependencies = [
- "flow-core",
- "flow-protocol",
+ "murmur-core",
+ "murmur-protocol",
  "serde",
  "serde_json",
  "thiserror",

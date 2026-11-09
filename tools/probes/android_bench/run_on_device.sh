@@ -11,10 +11,10 @@
 #   run_on_device.sh stop                       # stop after the current item
 set -euo pipefail
 : "${ADB:?set ADB to the device bridge command}"
-PKG=dev.flowclone
+PKG=dev.murmur
 EXT=/sdcard/Android/data/$PKG/files/bench
-TMP=/data/local/tmp/flow-bench
-CACHE="${CACHE:-$HOME/.cache/flow-clone}"
+TMP=/data/local/tmp/murmur-bench
+CACHE="${CACHE:-$HOME/.cache/murmur}"
 act="$PKG/.debug.BenchActivity"
 cmd="${1:-}"; shift || true
 case "$cmd" in

@@ -1,6 +1,6 @@
 # Hebrew auto-detect: spoken language ID (H6, D34) — 2026-10-30
 
-Question: with language = auto, can flow-core tell Hebrew from English before
+Question: with language = auto, can murmur-core tell Hebrew from English before
 decoding, cheaply enough (target ≤ 150 ms on the i7-6700) and offline on the
 server, Windows and Android?
 
@@ -23,7 +23,7 @@ every later detection uses that window.
 * Input: the first 2 s or 3 s after the energy VAD's speech start. Candidates
   {en, he}, renormalised.
 * Machine: i7-6700, 4 threads, a shared box (load average ≈ 7).
-* Reproduce with `crates/flow-core/tests/lid_e2e.rs`; its header lists the env.
+* Reproduce with `crates/murmur-core/tests/lid_e2e.rs`; its header lists the env.
 
 | model | window | head | latency mean / p90 / max | routed right (p(he) ≥ 0.1) | + 10 dB white noise |
 |---|---|---|---|---|---|

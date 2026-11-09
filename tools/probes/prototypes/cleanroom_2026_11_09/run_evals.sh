@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # usage: run_evals.sh LABEL
 # Deterministic evals for the post-processing rewrite, no LLM, through the
-# real FlowCore commit path (probe.rs eval mode): the formatting-eval cases
+# real MurmurCore commit path (probe.rs eval mode): the formatting-eval cases
 # (our own set) with the shipped and the proposed styles. Optional parity
 # set: PARITY_CASES (a JSONL outside the repo) with PARITY_SESSION and
 # PARITY_OUT (an output dir outside the repo); its outputs never go into

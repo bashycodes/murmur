@@ -1,26 +1,26 @@
-# flow-server wire protocol v1 (normative)
+# murmur-server wire protocol v1 (normative)
 
-Our own protocol between a hybrid client (`flow-remote`, reached through
-`flow_router::Router`) and `flow-server` (D17). It is the project's own
-protocol. Types: `crates/flow-protocol/src/lib.rs`. Golden
-fixtures: `crates/flow-protocol/fixtures/*.json` (one message per file,
-`client_*` / `server_*`; `cargo test -p flow-protocol` round-trips each).
+Our own protocol between a hybrid client (`murmur-remote`, reached through
+`murmur_router::Router`) and `murmur-server` (D17). It is the project's own
+protocol. Types: `crates/murmur-protocol/src/lib.rs`. Golden
+fixtures: `crates/murmur-protocol/fixtures/*.json` (one message per file,
+`client_*` / `server_*`; `cargo test -p murmur-protocol` round-trips each).
 Design rationale: `docs/hybrid-architecture.md` §2.
 
 ## 1. Transport
 
 | Item | Rule |
 |---|---|
-| Stream endpoint | `GET /v1/stream`, upgraded to WebSocket. The client offers subprotocol `flow.v1`; the server echoes it |
+| Stream endpoint | `GET /v1/stream`, upgraded to WebSocket. The client offers subprotocols `murmur.v1, flow.v1`; the server echoes the first it knows (`flow.v1` is the name before the rename, still accepted for now, D83) |
 | Auth | `Authorization: Bearer <token>` on the upgrade request. No query-string token (it would land in access logs). Missing/wrong token → HTTP 401 before the upgrade (clients report `auth_failed`) |
 | Health | `GET /v1/health` with the same auth → `200` + a `hello_ok` JSON body (without `"t"`) |
-| Model library (D40) | `GET /v1/models` with the same auth → `200` + `{"models":[{id, title, kind, language?, catalogue_id?, engine?, files:[{name, size, sha256}]}]}` (`flow_protocol::library::ModelList`; `kind` = `stt`/`hebrew`/`llm`/`lid`/`vad`). `GET /v1/models/{id}/files/{name}` → the file (`application/octet-stream`, `ETag` = `"<sha256>"`, `Accept-Ranges: bytes`); one `Range: bytes=` range → `206` + `Content-Range`, unsatisfiable → `416`, `If-Range` with another ETag → whole file. Unknown id/file → `404`; file changed since the last scan → `503` + `Retry-After`. Ids and names use only `A-Z a-z 0-9 . _ -` (plus `/` inside a file name), so paths need no escaping. Clients verify every file against the listed `sha256`, and a model with a `catalogue_id` against their built-in pins |
+| Model library (D40) | `GET /v1/models` with the same auth → `200` + `{"models":[{id, title, kind, language?, catalogue_id?, engine?, files:[{name, size, sha256}]}]}` (`murmur_protocol::library::ModelList`; `kind` = `stt`/`hebrew`/`llm`/`lid`/`vad`). `GET /v1/models/{id}/files/{name}` → the file (`application/octet-stream`, `ETag` = `"<sha256>"`, `Accept-Ranges: bytes`); one `Range: bytes=` range → `206` + `Content-Range`, unsatisfiable → `416`, `If-Range` with another ETag → whole file. Unknown id/file → `404`; file changed since the last scan → `503` + `Retry-After`. Ids and names use only `A-Z a-z 0-9 . _ -` (plus `/` inside a file name), so paths need no escaping. Clients verify every file against the listed `sha256`, and a model with a `catalogue_id` against their built-in pins |
 | Versioning | Path major `/v1/` changes only on a breaking change; the minor `proto` integer is negotiated in `hello` |
-| Schemes | `ws://` only to loopback / RFC 1918 / 100.64.0.0/10 / fd7a:115c:a1e0::/48 / fc00::/7 / link-local / `*.ts.net` / `*.local` / single-label hosts (client-side check `flow_router::net::classify`); anything else needs `wss://` |
+| Schemes | `ws://` only to loopback / RFC 1918 / 100.64.0.0/10 / fd7a:115c:a1e0::/48 / fc00::/7 / link-local / `*.ts.net` / `*.local` / single-label hosts (client-side check `murmur_router::net::classify`); anything else needs `wss://` |
 | TLS | rustls; self-signed leaf certificates may be pinned by SHA-256 of the leaf DER (`tls_pin_sha256`, 64 hex) |
 | Sockets | TCP_NODELAY on both ends. WebSocket ping every 15 s; 45 s without any frame = dead |
 | Sessions per connection | At most one active session. The client keeps an idle connection for 60 s for the next session |
-| Admin API | Plain HTTP JSON on the same port and TLS (D39): `GET /v1/whoami` (any key), `GET`/`POST /v1/admin/keys`, `DELETE /v1/admin/keys/{id}` (admin keys; 403 `forbidden` otherwise). Types and error codes: `crates/flow-protocol/src/admin.rs`; client: `flow_remote::admin::AdminClient` |
+| Admin API | Plain HTTP JSON on the same port and TLS (D39): `GET /v1/whoami` (any key), `GET`/`POST /v1/admin/keys`, `DELETE /v1/admin/keys/{id}` (admin keys; 403 `forbidden` otherwise). Types and error codes: `crates/murmur-protocol/src/admin.rs`; client: `murmur_remote::admin::AdminClient` |
 
 ## 2. Frames
 
@@ -35,15 +35,15 @@ Design rationale: `docs/hybrid-architecture.md` §2.
 
 ## 3. Messages
 
-`<SessionConfig>`, `<FieldContext>` and `<CommitResult>` are flow-core's serde
+`<SessionConfig>`, `<FieldContext>` and `<CommitResult>` are murmur-core's serde
 types verbatim; every field has a default, so partial objects are valid and
 additive core fields need no protocol change. The server never sets
 `CommitResult.route` (the client's router does).
 
 | Direction | Message | Meaning |
 |---|---|---|
-| C→S | `{"t":"hello","proto_min":1,"proto_max":1,"client":"flow-android 0.2.0","core":"0.1.0","postprocess_rev":"…"}` | First message on a connection |
-| S→C | `{"t":"hello_ok","proto":1,"server":"flow-server 0.2.0+1a2b3c4","core":"0.1.0","postprocess_rev":"…","asr_backend":"parakeet","asr_model":"…","llm":false,"workers":1,"busy":0,"max_samples":19200000}` | Handshake accepted |
+| C→S | `{"t":"hello","proto_min":1,"proto_max":1,"client":"murmur-android 0.2.0","core":"0.1.0","postprocess_rev":"…"}` | First message on a connection |
+| S→C | `{"t":"hello_ok","proto":1,"server":"murmur-server 0.2.0+1a2b3c4","core":"0.1.0","postprocess_rev":"…","asr_backend":"parakeet","asr_model":"…","llm":false,"workers":1,"busy":0,"max_samples":19200000}` | Handshake accepted |
 | C→S | `{"t":"start","sid":7,"config":<SessionConfig>}` | `start_session`. A `start` while a session is active cancels that session |
 | S→C | `{"t":"started","sid":7,"queued":false}` | `queued:true` = no free worker; audio is buffered server-side until one frees |
 | C→S | binary PCM | `push_audio` |
@@ -66,7 +66,7 @@ additive core fields need no protocol change. The server never sets
   per-user state.
 * Text-only cleanup (D36): `<CleanRequest>` = `{text, level, style, ctx:
   <FieldContext>, dictionary, language?, timeout_ms, prompt: "v2"|"v4c"}`
-  (`flow_core::cleanup::CleanRequest`), the dictation's raw text and the
+  (`murmur_core::cleanup::CleanRequest`), the dictation's raw text and the
   inputs the client's prompt builder would use, already narrowed to what the
   client allows the server to see. `id` is client-chosen; replies may arrive
   in any order and independently of a session on the same connection. The
@@ -78,7 +78,7 @@ additive core fields need no protocol change. The server never sets
   `"meeting_summary"` (summary + action items), with `text` = the
   transcript (`Me: …` / `Others: …` lines) or the notes and `language` =
   the answer's language. The server builds the prompt with
-  `flow_core::summary::build_prompt` instead of the cleanup prompt; the
+  `murmur_core::summary::build_prompt` instead of the cleanup prompt; the
   answer comes back in `cleaned` as usual. Absent `task` = cleanup, so
   cleanup requests are unchanged. The server lists `"summary"` in
   `hello_ok.features` next to `"clean"`; an older server ignores `task` and
@@ -96,7 +96,7 @@ additive core fields need no protocol change. The server never sets
 
 ### 3.1 Server limits
 
-The server bounds every client-controlled size (`crates/flow-server/src/limits.rs`):
+The server bounds every client-controlled size (`crates/murmur-server/src/limits.rs`):
 
 | Item | Limit |
 |---|---|
@@ -126,16 +126,16 @@ The server bounds every client-controlled size (`crates/flow-server/src/limits.r
 
 `proto` = 1. The server speaks `[PROTO_MIN, PROTO_MAX]` = `[1, 1]` and picks
 `min(client.proto_max, server.proto_max)` if that is ≥ both minimums
-(`flow_protocol::negotiate`), else `proto_mismatch`. Additive changes (new
+(`murmur_protocol::negotiate`), else `proto_mismatch`. Additive changes (new
 optional fields, new message types the peer may ignore, new error codes) do
 not bump `proto`; bump it when a peer must understand something new; bump the
 path to `/v2/` only for a breaking change. `core` / `postprocess_rev`
 differences are not fatal; the client records `route.server_core` and the
 Developer page warns. `proto` is deliberately independent of the product
-version (D26, `docs/versioning.md`): `server` = `flow-server <version>+<commit>`
+version (D26, `docs/versioning.md`): `server` = `murmur-server <version>+<commit>`
 and `core` = the plain product version are informational only.
 
-## 6. Client behaviour (flow-remote)
+## 6. Client behaviour (murmur-remote)
 
 * New connection: TCP connect (+TLS) + upgrade + `hello`/`hello_ok`, all within
   `connect_timeout_ms`. A warm connection skips all of it.
@@ -147,9 +147,9 @@ and `core` = the plain product version are informational only.
 * `commit` waits for `result` until the router's deadline
   `commit_timeout_base_ms + 0.3 × audio_ms + llm_timeout_ms`.
 
-## 7. Server behaviour (flow-server)
+## 7. Server behaviour (murmur-server)
 
-* Runs an unmodified `FlowCore` session per `start`, fed the client's
+* Runs an unmodified `MurmurCore` session per `start`, fed the client's
   `SessionConfig` / `FieldContext`: VAD → ASR → hallucination guard → spoken
   cleanup → optional LLM → guard → post-processing → segments.
 * Bind policy (S10): loopback, RFC 1918, 100.64/10, link-local and IPv6 ULA
@@ -168,7 +168,7 @@ and `core` = the plain product version are informational only.
   `max_session_s` of wall-clock time ends with `error too_large`.
 * `cancel` (or a replacing `start`, or a disconnect) while a commit is
   running is answered at once; the result is dropped and the server calls
-  `FlowCore::cancel()` on the in-flight core (only until the job ends, so it
+  `MurmurCore::cancel()` on the in-flight core (only until the job ends, so it
   never reaches the worker's next lessee). The worker returns to the pool
   when the core stops the job.
 * A session leases a worker at `start` and returns it at `result`,

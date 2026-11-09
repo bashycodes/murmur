@@ -4,7 +4,7 @@
 usage: variants.py DUMP_DIR OUT_DIR
 
 DUMP_DIR holds the runner's `--dump-prompt` files of the base prompts:
-`dump-cloud.json` (v5) and `dump-local.json` (v2; flow-server sends the
+`dump-cloud.json` (v5) and `dump-local.json` (v2; murmur-server sends the
 same). Writes `--override` JSONs per variant, `NAME-cloud.json` and
 `NAME-local.json` (+ `NAME-server.json`, a copy): the base system prompt
 with a code-name rule inserted, and few-shot turns added before the

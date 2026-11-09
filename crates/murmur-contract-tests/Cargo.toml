@@ -1,0 +1,32 @@
+[package]
+name = "murmur-contract-tests"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+publish = false
+description = "Hybrid contract suites: local vs in-process server / mock cloud equivalence, toggle matrix, build matrix, key-leak checks"
+
+[features]
+default = []
+# Real-model equivalence (skips without models).
+whisper = ["murmur-core/whisper", "murmur-server/whisper"]
+parakeet = ["murmur-core/parakeet", "murmur-server/parakeet"]
+llm = ["murmur-core/llm", "murmur-server/llm"]
+
+[dependencies]
+murmur-core = { path = "../murmur-core", features = ["wav"] }
+murmur-protocol = { path = "../murmur-protocol" }
+murmur-router = { path = "../murmur-router" }
+murmur-remote = { path = "../murmur-remote", features = ["tls"] }
+murmur-server = { path = "../murmur-server", default-features = false, features = ["tls"] }
+murmur-cloud = { path = "../murmur-cloud", features = ["mock-server"] }
+base64 = "0.22"
+serde = { workspace = true }
+serde_json.workspace = true
+tokio = { version = "1", features = ["rt-multi-thread", "net"] }
+
+[dev-dependencies]
+rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }
+sha2 = "0.10"
+claxon = "0.4"
+tempfile = "3"

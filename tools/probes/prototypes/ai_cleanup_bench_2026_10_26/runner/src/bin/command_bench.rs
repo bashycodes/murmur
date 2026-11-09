@@ -3,20 +3,20 @@
 //!
 //! * `--mode before`: the pre-fix prompt (integration before
 //!   `feat/command-mode-hebrew`: the old system line, the English few-shot,
-//!   no language lock, no retry), one call, flow-core's sanitiser.
-//! * `--mode after`: `flow_core::command::run` as shipped (lock line,
+//!   no language lock, no retry), one call, murmur-core's sanitiser.
+//! * `--mode after`: `murmur_core::command::run` as shipped (lock line,
 //!   Hebrew few-shot, one retry, `language_changed` refusal).
 //!
 //! One JSON row per case on stdout: id, want (`he` / `latin`), the answer
 //! (or error kind), its dominant script, pass. Usage:
-//! `command-bench --mode after --cases X.jsonl --llm M.gguf --llm-lib libflow_llm.so`.
+//! `command-bench --mode after --cases X.jsonl --llm M.gguf --llm-lib libmurmur_llm.so`.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use flow_core::cleanup::{CleanPrompt, Cleaner};
-use flow_core::command;
-use flow_core::script_lock::{self, Script};
+use murmur_core::cleanup::{CleanPrompt, Cleaner};
+use murmur_core::command;
+use murmur_core::script_lock::{self, Script};
 use serde_json::{json, Value};
 
 const OLD_SYSTEM: &str = "You edit text for the user. You get a piece of text the user \
@@ -77,7 +77,7 @@ fn main() {
     let timeout = Duration::from_millis(arg("--timeout-ms").map_or(25_000, |t| t.parse().unwrap()));
     let t = Instant::now();
     let cl: Arc<dyn Cleaner> = Arc::new(
-        flow_core::llama::LlamaCleaner::load(
+        murmur_core::llama::LlamaCleaner::load(
             &arg("--llm").expect("--llm"),
             threads,
             arg("--llm-lib").as_deref(),

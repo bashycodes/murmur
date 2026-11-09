@@ -18,7 +18,7 @@ import numpy as np
 import soundfile as sf
 
 HERE = pathlib.Path(__file__).resolve().parent
-CACHE = pathlib.Path(os.environ.get("CACHE", pathlib.Path.home() / ".cache/flow-clone"))
+CACHE = pathlib.Path(os.environ.get("CACHE", pathlib.Path.home() / ".cache/murmur"))
 URL = "https://www.openslr.org/resources/12/test-clean.tar.gz"
 
 

@@ -1,6 +1,6 @@
 # Probe binary for the 2026-10-26 AI-cleanup benchmark. Own workspace (like
 # formatting_eval_2026_10_24/runner) so it does not touch the product
-# workspace; uses flow-core unmodified.
+# workspace; uses murmur-core unmodified.
 [package]
 name = "ai-cleanup-bench"
 version = "0.0.0"
@@ -10,10 +10,10 @@ publish = false
 [workspace]
 
 [dependencies]
-flow-core = { path = "../../../../../crates/flow-core", features = ["llm"] }
+murmur-core = { path = "../../../../../crates/murmur-core", features = ["llm"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 regex = "1"
 # Phase 1d: the product's OpenRouter cleaner (D28), used unmodified.
-flow-cloud = { path = "../../../../../crates/flow-cloud" }
-flow-router = { path = "../../../../../crates/flow-router" }
+murmur-cloud = { path = "../../../../../crates/murmur-cloud" }
+murmur-router = { path = "../../../../../crates/murmur-router" }

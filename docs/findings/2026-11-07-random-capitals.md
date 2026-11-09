@@ -12,11 +12,11 @@ owner's history, recordings, transcripts and every output stay in
   (`dictations.jsonl`): 87 English dictations (hold/tap) from 0.9.1 to
   1.1.2, Parakeet unified (greedy/auto) on the PC, "Decode while speaking"
   on (`segment_pause_ms` 800), local Llama 3B cleanup that mostly did not
-  run (3 s timeout), 2 rows on flow-server. 15 rows still have audio.
+  run (3 s timeout), 2 rows on murmur-server. 15 rows still have audio.
 * Phone history: not available while this ran; not used.
 * Parity main set (13 clips, cased references) and the parity
   English set (30 clips), Parakeet unified greedy, PC session, rerun with
-  flow-cli from this branch: bridge joins (product), plain joins, whole
+  murmur-cli from this branch: bridge joins (product), plain joins, whole
   clip.
 
 A "wrong capital" is a capitalised word that is not at a sentence start and

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tests for play-wav.sh. Never touches a phone: a stub platform tool on PATH (same
 # name as the real one) keeps the app's data dir in a temp dir, answers the
-# broadcast like the debug receiver, and logs every call. FLOW_PHONE is a fake
+# broadcast like the debug receiver, and logs every call. MURMUR_PHONE is a fake
 # serial, so even a real tool would find no device.
 #
 #   tools/phone/test-play-wav.sh
@@ -29,17 +29,17 @@ case "$1" in
     exec-in)
         # One remote command line, as the real tool sends it: run-as PKG sh -c '…'
         line="${*:2}"
-        [[ "$line" == "run-as dev.flowclone sh -c '"*"'" ]] || { echo "fake: unsupported: $line" >&2; exit 2; }
-        cmd="${line#run-as dev.flowclone sh -c \'}"; cmd="${cmd%\'}"
+        [[ "$line" == "run-as dev.murmur sh -c '"*"'" ]] || { echo "fake: unsupported: $line" >&2; exit 2; }
+        cmd="${line#run-as dev.murmur sh -c \'}"; cmd="${cmd%\'}"
         if [ -n "${FAKE_GARBLE:-}" ]; then cmd="${cmd/cat >/head -c 10 >}"; fi
         sh -c "$cmd" ;;
     exec-out)
-        [ "$2" = run-as ] && [ "$3" = dev.flowclone ] && [ "$4" = sha256sum ] || { echo "fake: unsupported: $*" >&2; exit 2; }
+        [ "$2" = run-as ] && [ "$3" = dev.murmur ] && [ "$4" = sha256sum ] || { echo "fake: unsupported: $*" >&2; exit 2; }
         sha256sum "$5" ;;
     shell)
         shift
         [ "$1 $2" = "am broadcast" ] || { echo "fake: unsupported: $*" >&2; exit 2; }
-        echo "Broadcasting: Intent { act=dev.flowclone.debug.PLAY_WAV }"
+        echo "Broadcasting: Intent { act=dev.murmur.debug.PLAY_WAV }"
         path=""; while [ $# -gt 0 ]; do [ "$1" = --es ] && [ "$2" = path ] && path="$3"; shift; done
         if [ -f "$path" ]; then echo "Broadcast completed: result=0, data=\"ok: $(basename "$path") queued\""
         else echo "Broadcast completed: result=0, data=\"error: no WAV file under files/debug/: $path\""; fi ;;
@@ -47,8 +47,8 @@ case "$1" in
 esac
 EOF
 chmod +x "$T/bin/$TOOLNAME"
-export PATH="$T/bin:$PATH" FAKE_PHONE="$T/phone" FAKE_CALLS="$T/calls" FLOW_PHONE="-s fake-serial-0"
-unset FLOW_PLATFORM_TOOL
+export PATH="$T/bin:$PATH" FAKE_PHONE="$T/phone" FAKE_CALLS="$T/calls" MURMUR_PHONE="-s fake-serial-0"
+unset MURMUR_PLATFORM_TOOL
 [ "$(command -v "$TOOLNAME")" = "$T/bin/$TOOLNAME" ] || { echo "stub not first on PATH; refusing to run"; exit 1; }
 
 fails=0
@@ -77,8 +77,8 @@ check "prints the app's answer" "$out" "^ok: hello_there.wav queued"
 cmp -s "$T/hello there.wav" "$T/phone/files/debug/wav-in/hello_there.wav" && ok "wav pushed intact, name sanitised" || bad "wav pushed intact"
 calls="$(cat "$T/calls")"
 check "transport passed on every call" "$(grep -vc '^-s fake-serial-0 ' <<<"$calls" || true)" "^0$"
-check "push via run-as" "$calls" "exec-in run-as dev.flowclone sh -c 'mkdir -p files/debug/wav-in && cat > files/debug/wav-in/hello_there.wav'"
-check "explicit receiver, path extra" "$calls" "am broadcast -a dev.flowclone.debug.PLAY_WAV -n dev.flowclone/dev.flowclone.debug.WavMicReceiver --es path files/debug/wav-in/hello_there.wav$"
+check "push via run-as" "$calls" "exec-in run-as dev.murmur sh -c 'mkdir -p files/debug/wav-in && cat > files/debug/wav-in/hello_there.wav'"
+check "explicit receiver, path extra" "$calls" "am broadcast -a dev.murmur.debug.PLAY_WAV -n dev.murmur/dev.murmur.debug.WavMicReceiver --es path files/debug/wav-in/hello_there.wav$"
 check "real time by default" "$calls" "--ez fast" "!"
 
 # --- flags ---

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 [workspace]
 [dependencies]
-flow-core = { path = "../../../../crates/flow-core", features = ["whisper", "parakeet", "wav"] }
+murmur-core = { path = "../../../../crates/murmur-core", features = ["whisper", "parakeet", "wav"] }
 serde_json = "1"
 [profile.dev.package.whisper-rs-sys]
 opt-level = 3

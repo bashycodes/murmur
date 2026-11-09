@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Generate crates/flow-cloud/data/catalog-baked.json (D28 §2.2).
+"""Generate crates/murmur-cloud/data/catalog-baked.json (D28 §2.2).
 
-The baked catalogue is flow-cloud's offline fallback: used when there is no
+The baked catalogue is murmur-cloud's offline fallback: used when there is no
 cache file and no network. It is a *trimmed copy of the raw OpenRouter
 JSON* (not a pre-parsed catalogue), so the Rust parser that reads live
-responses (`flow_cloud::catalog::Catalog::from_api`) also reads this file:
+responses (`murmur_cloud::catalog::Catalog::from_api`) also reads this file:
 one parser, no Python/Rust drift.
 
 Input: the dated snapshots in docs/proposals/data/
@@ -28,9 +28,9 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "docs", "proposals", "data")
-OUT = os.path.join(ROOT, "crates", "flow-cloud", "data", "catalog-baked.json")
+OUT = os.path.join(ROOT, "crates", "murmur-cloud", "data", "catalog-baked.json")
 
-# Keep in sync with flow_cloud::catalog::RECOMMENDED_* (a Rust test checks
+# Keep in sync with murmur_cloud::catalog::RECOMMENDED_* (a Rust test checks
 # every one of them is in the baked file).
 RECOMMENDED_STT = [
     "openai/whisper-large-v3-turbo",

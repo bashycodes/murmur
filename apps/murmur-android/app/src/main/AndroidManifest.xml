@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Everything except network permissions (the flavour manifests decide those). -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- D46: a call transcription keeps running with the screen off (CallJobService, held only while a job runs). -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- D49: read new call recordings from the media index (asked for only when the owner turns
+         on "Transcribe new call recordings" on the Calls page; files are only read). -->
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <!-- P1 recovery: restart after boot / update; battery-optimisation onboarding step. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- Network permissions are per flavour (D17): src/local strips them all,
+         src/hybrid and src/remote add INTERNET and nothing else. -->
+
+    <!-- Settings → Writing style → Style per app lists launchable apps (package visibility,
+         API 30+): the launcher intent only, not QUERY_ALL_PACKAGES. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <!-- D37: the active keyboard's subtype (dictation language follows the keyboard). -->
+        <intent>
+            <action android:name="android.view.InputMethod" />
+        </intent>
+    </queries>
+
+    <uses-feature android:name="android.hardware.microphone" android:required="true" />
+    <!-- Shake to un-snooze / reveal. Optional: the app works without an accelerometer. -->
+    <uses-feature android:name="android.hardware.sensor.accelerometer" android:required="false" />
+
+    <application
+        android:name=".MurmurApp"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:icon="@drawable/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Murmur"
+        android:usesCleartextTraffic="false">
+
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.Murmur.Shell">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Long-press the icon → New note / Quick note. -->
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
+        </activity>
+        <!-- Drawer → Permissions (the setup checklist); draws its own top bar. -->
+        <activity android:name=".ui.PermissionsActivity" android:exported="false" android:label="Permissions" android:theme="@style/Theme.Murmur.Shell" />
+        <activity android:name=".ui.ModelImportActivity" android:exported="false" android:label="@string/title_models"
+            android:theme="@style/Theme.Murmur.Shell" />
+        <activity android:name=".ui.SettingsActivity" android:exported="false" android:label="@string/title_settings"
+            android:theme="@style/Theme.Murmur.Shell" />
+        <activity android:name=".ui.DictionaryActivity" android:exported="false" android:label="@string/title_dictionary" android:theme="@style/Theme.Murmur.Shell" />
+        <!-- History, Insights, Notes and the note editor draw the design's top bar (Theme.Murmur.Shell). -->
+        <activity android:name=".ui.HistoryActivity" android:exported="false" android:label="@string/title_history" android:theme="@style/Theme.Murmur.Shell" />
+        <activity android:name=".ui.InsightsActivity" android:exported="false" android:label="@string/title_insights" android:theme="@style/Theme.Murmur.Shell" />
+        <!-- Notes list: no bubble here (only the editor is a dictation surface). -->
+        <activity android:name=".ui.CallsActivity" android:exported="false" android:label="Calls" android:theme="@style/Theme.Murmur.Shell" />
+        <activity android:name=".ui.NotesActivity" android:exported="false" android:label="@string/title_notes" android:theme="@style/Theme.Murmur.Shell" />
+        <!-- Note editor (Quick note + every note): the one screen of ours the bubble dictates into (policy/OwnAppGate). -->
+        <activity android:name=".ui.NoteEditorActivity" android:exported="false" android:label="@string/title_scratchpad"
+            android:theme="@style/Theme.Murmur.Shell"
+            android:launchMode="singleTop" android:windowSoftInputMode="adjustResize|stateVisible" />
+        <activity android:name=".ui.DeveloperActivity" android:exported="false" android:label="@string/title_developer"
+            android:theme="@style/Theme.Murmur.Shell" />
+        <activity android:name=".ui.OpenRouterActivity" android:exported="false" android:label="Cloud server"
+            android:theme="@style/Theme.Murmur.Shell" />
+        <activity android:name=".ui.ModelPickerActivity" android:exported="false" android:label="Model"
+            android:theme="@style/Theme.Murmur.Shell" />
+        <activity android:name=".ui.UsersKeysActivity" android:exported="false" android:label="Users &amp; keys"
+            android:theme="@style/Theme.Murmur.Shell" />
+
+        <!-- D21: the debug log file, shared only through a user-initiated share sheet (read grant). -->
+        <provider
+            android:name=".ui.DebugLogProvider"
+            android:authorities="${applicationId}.debuglog"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
+        <service
+            android:name=".service.MurmurService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="microphone|specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="overlay-ui-host: keeps the on-device dictation bubble visible over the keyboard, including while microphone access is being re-granted" />
+        </service>
+
+        <service
+            android:name=".calls.CallJobService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="on-device-transcription: transcribes an audio file the user picked, or a new call recording after the user turned on automatic transcription, on the phone, with progress and cancel" />
+        </service>
+
+        <!-- D49: content-URI trigger + run jobs for new call recordings (CallRecordingJob). -->
+        <service
+            android:name=".calls.CallRecordingJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <!-- Single process. isAccessibilityTool is kept: this
+             build targets sideload / F-Droid, not Play. -->
+        <service
+            android:name=".service.MurmurAccessibilityService"
+            android:enabled="true"
+            android:exported="false"
+            android:isAccessibilityTool="true"
+            android:label="@string/a11y_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <!-- USER_UNLOCKED is best effort (not every build delivers it to manifest receivers);
+             MurmurService also re-checks on USER_PRESENT while it runs. -->
+        <receiver
+            android:name=".receiver.BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.USER_UNLOCKED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

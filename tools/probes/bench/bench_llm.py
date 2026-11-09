@@ -23,7 +23,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from wer import edit_distance, normalise  # noqa: E402
 
-CACHE = pathlib.Path(os.environ.get("CACHE", pathlib.Path.home() / ".cache/flow-clone"))
+CACHE = pathlib.Path(os.environ.get("CACHE", pathlib.Path.home() / ".cache/murmur"))
 SERVER = CACHE / "llama.cpp/build/bin/llama-server"
 DEFAULT_MODELS = ["qwen2.5-0.5b-instruct-q4_k_m.gguf", "qwen2.5-1.5b-instruct-q4_k_m.gguf",
                   "qwen2.5-3b-instruct-q4_k_m.gguf", "Llama-3.2-1B-Instruct-Q4_K_M.gguf",

@@ -1,0 +1,554 @@
+//! Text insertion: clipboard + synthetic Ctrl+V with full
+//! clipboard save/restore, KEYEVENTF_UNICODE typing as fallback.
+//!
+//! Decisions are pure (strategy choice, restore guard, which formats can be
+//! snapshotted) and tested here; `win` does the Win32 calls.
+
+#[cfg(windows)]
+pub mod integrity;
+#[cfg(windows)]
+pub mod win;
+
+use crate::prefs::PasteMethod;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Strategy {
+    Clipboard { shift_insert: bool },
+    Type,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PasteOptions {
+    pub method: PasteMethod,
+    pub restore_clipboard: bool,
+    /// `None` = per-app default ([`restore_delay_ms`]).
+    pub restore_delay_ms: Option<u64>,
+    pub type_fallback_max_chars: usize,
+}
+
+impl PasteOptions {
+    pub fn from_prefs(p: &crate::prefs::Prefs) -> Self {
+        PasteOptions {
+            method: p.paste_method,
+            restore_clipboard: p.restore_clipboard,
+            restore_delay_ms: p.paste_restore_delay_ms,
+            type_fallback_max_chars: p.type_fallback_max_chars,
+        }
+    }
+}
+
+/// Wait between the paste chord and restoring the user's clipboard, keyed
+/// on the foreground exe: slow
+/// readers (Office, WhatsApp) and remote viewers fetch the clipboard late.
+pub fn restore_delay_ms(exe: &str) -> u64 {
+    const REMOTE_VIEWERS: &[&str] = &[
+        "vncviewer",
+        "tvnviewer",
+        "mstsc",
+        "msrdc",
+        "wfica32",
+        "vmware-view",
+        "rdcman",
+        "anydesk",
+        "teamviewer",
+    ];
+    const SLOW_READERS: &[&str] = &["outlook", "olk", "winword", "whatsapp"];
+    let lower = exe.to_ascii_lowercase();
+    let stem = lower.strip_suffix(".exe").unwrap_or(&lower);
+    if REMOTE_VIEWERS.contains(&stem) {
+        5000
+    } else if SLOW_READERS.contains(&stem) {
+        3000
+    } else {
+        500
+    }
+}
+
+/// Registered clipboard formats set (to DWORD 0) next to every text we put
+/// on the clipboard, paste or copy (S14): no Win+V history, no cloud
+/// clipboard upload, no clipboard monitors / viewers.
+pub const PRIVACY_FORMATS: [&str; 4] = [
+    "ExcludeClipboardContentFromMonitorProcessing",
+    "CanIncludeInClipboardHistory",
+    "CanUploadToCloudClipboard",
+    "Clipboard Viewer Ignore",
+];
+
+/// The window a dictation is meant for (review S13): the foreground window
+/// when the dictation started, re-checked right before every paste step.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FocusTarget {
+    /// HWND as an integer (HWND is not `Send`).
+    pub hwnd: usize,
+    pub pid: u32,
+    /// Exe file name (for the message).
+    pub exe: String,
+}
+
+/// Why a paste was not done.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GuardFailure {
+    /// Another window (or app) has the focus now: the text goes to the
+    /// clipboard instead.
+    Moved,
+    /// The focus moved to a password field: nothing is inserted or copied.
+    Guarded,
+}
+
+impl GuardFailure {
+    pub fn message(&self) -> &'static str {
+        match self {
+            GuardFailure::Moved => {
+                "Not pasted: the focus moved to another window. The text is on the clipboard (Ctrl+V)."
+            }
+            GuardFailure::Guarded => "Not pasted into a password field.",
+        }
+    }
+}
+
+/// Paste only into the window the dictation started in (S13). `start` =
+/// target at dictation start (`None` = unknown: no check), `now` = the
+/// current foreground, `password_now` / `password_at_start` = the focused
+/// control is a password field (`None` = unknown).
+pub fn paste_guard(
+    start: Option<&FocusTarget>,
+    now: Option<&FocusTarget>,
+    password_at_start: Option<bool>,
+    password_now: Option<bool>,
+) -> Result<(), GuardFailure> {
+    let Some(start) = start else { return Ok(()) };
+    match now {
+        Some(n) if n.hwnd == start.hwnd && n.pid == start.pid => {}
+        _ => return Err(GuardFailure::Moved),
+    }
+    if password_now == Some(true) && password_at_start != Some(true) {
+        return Err(GuardFailure::Guarded);
+    }
+    Ok(())
+}
+
+/// Preferred strategy before touching the clipboard.
+pub fn initial_strategy(method: PasteMethod) -> Strategy {
+    match method {
+        PasteMethod::CtrlV => Strategy::Clipboard {
+            shift_insert: false,
+        },
+        PasteMethod::ShiftInsert => Strategy::Clipboard { shift_insert: true },
+        PasteMethod::Type => Strategy::Type,
+    }
+}
+
+/// Clipboard couldn't be opened (another app holds it): type short texts,
+/// give up on long ones (typing 5 kB char-by-char is slow and fragile).
+pub fn fallback_after_clipboard_failure(text: &str, max_chars: usize) -> Option<Strategy> {
+    (text.chars().count() <= max_chars).then_some(Strategy::Type)
+}
+
+/// Restore the user's clipboard only if nobody wrote to it since we did
+/// (`GetClipboardSequenceNumber` unchanged) — otherwise we'd clobber a copy
+/// the user or target app made in the meantime.
+pub fn should_restore(enabled: bool, seq_after_our_set: u32, seq_now: u32) -> bool {
+    enabled && seq_after_our_set == seq_now
+}
+
+/// Formats whose clipboard handle is an HGLOBAL we can copy byte-wise.
+/// GDI-handle formats (bitmaps, metafiles, palettes) and owner-display
+/// formats are skipped; Windows re-synthesises CF_BITMAP from CF_DIB.
+pub fn is_restorable_format(fmt: u32) -> bool {
+    const CF_BITMAP: u32 = 2;
+    const CF_METAFILEPICT: u32 = 3;
+    const CF_PALETTE: u32 = 9;
+    const CF_ENHMETAFILE: u32 = 14;
+    const CF_OWNERDISPLAY: u32 = 0x80;
+    const CF_DSPBITMAP: u32 = 0x82;
+    const CF_DSPMETAFILEPICT: u32 = 0x83;
+    const CF_DSPENHMETAFILE: u32 = 0x8E;
+    !matches!(
+        fmt,
+        CF_BITMAP
+            | CF_METAFILEPICT
+            | CF_PALETTE
+            | CF_ENHMETAFILE
+            | CF_OWNERDISPLAY
+            | CF_DSPBITMAP
+            | CF_DSPMETAFILEPICT
+            | CF_DSPENHMETAFILE
+    )
+}
+
+/// CF_UNICODETEXT payload: UTF-16LE, NUL-terminated, CRLF line endings.
+pub fn unicode_text_bytes(text: &str) -> Vec<u8> {
+    let crlf = text.replace("\r\n", "\n").replace('\n', "\r\n");
+    crlf.encode_utf16()
+        .chain(std::iter::once(0))
+        .flat_map(|u| u.to_le_bytes())
+        .collect()
+}
+
+/// Paste-layer markers: `{{BREAK}}` = split the insertion (let a mention
+/// popup open), `{{TAB}}` = press Tab (accept it). murmur-core no longer
+/// produces them (D82); they act only when the text carries them, e.g. a
+/// snippet body.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Segment<'a> {
+    Text(&'a str),
+    Tab,
+    Break,
+}
+
+pub const BREAK_MARKER: &str = "{{BREAK}}";
+pub const TAB_MARKER: &str = "{{TAB}}";
+/// Pause at a `{{BREAK}}` so the target app reacts to the `@` first.
+pub const BREAK_PAUSE_MS: u64 = 150;
+
+pub fn segments(text: &str) -> Vec<Segment<'_>> {
+    let mut out = Vec::new();
+    let mut rest = text;
+    while !rest.is_empty() {
+        let b = rest.find(BREAK_MARKER);
+        let t = rest.find(TAB_MARKER);
+        let (at, seg, len) = match (b, t) {
+            (Some(b), Some(t)) if t < b => (t, Segment::Tab, TAB_MARKER.len()),
+            (Some(b), _) => (b, Segment::Break, BREAK_MARKER.len()),
+            (None, Some(t)) => (t, Segment::Tab, TAB_MARKER.len()),
+            (None, None) => {
+                out.push(Segment::Text(rest));
+                break;
+            }
+        };
+        if at > 0 {
+            out.push(Segment::Text(&rest[..at]));
+        }
+        out.push(seg);
+        rest = &rest[at + len..];
+    }
+    out
+}
+
+/// `text` without paste markers: what the user sees after the paste, for
+/// "copy last transcript" and learn-from-edits.
+pub fn plain_text(text: &str) -> String {
+    segments(text)
+        .into_iter()
+        .map(|s| match s {
+            Segment::Text(t) => t,
+            Segment::Tab => "\t",
+            Segment::Break => "",
+        })
+        .collect()
+}
+
+/// Plain text (the common case) goes through the normal clipboard paste;
+/// marker-carrying text is typed segment by segment (no clipboard, so the
+/// user's clipboard needs no multi-step restore).
+pub fn has_markers(text: &str) -> bool {
+    text.contains(BREAK_MARKER) || text.contains(TAB_MARKER)
+}
+
+/// One step of executing the core's paste plan (`CommitResult.segments`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Step {
+    /// Insert text: clipboard paste, or typed (`KEYEVENTF_UNICODE`) when
+    /// the plan has Tab/Break keys (an @-mention popup must see keystrokes,
+    /// and the clipboard then needs no multi-step restore).
+    Insert { text: String, typed: bool },
+    /// Press Tab or Enter.
+    Key(crate::core_api::PasteKey),
+    /// `Break`: let the target app react (open its popup) before going on.
+    Pause(u64),
+}
+
+/// Turn the core's segments into steps. A trailing Enter (spoken "press
+/// enter") is just another step, so the shell never reads `press_enter`.
+pub fn plan(segs: &[crate::core_api::PasteSegment]) -> Vec<Step> {
+    use crate::core_api::{PasteKey, PasteSegment};
+    let typed = segs.iter().any(|s| {
+        matches!(
+            s,
+            PasteSegment::Key {
+                key: PasteKey::Tab | PasteKey::Break
+            }
+        )
+    });
+    segs.iter()
+        .filter_map(|s| match s {
+            PasteSegment::Text { text } if text.is_empty() => None,
+            PasteSegment::Text { text } => Some(Step::Insert {
+                text: text.clone(),
+                typed,
+            }),
+            PasteSegment::Key {
+                key: PasteKey::Break,
+            } => Some(Step::Pause(BREAK_PAUSE_MS)),
+            PasteSegment::Key { key } => Some(Step::Key(*key)),
+        })
+        .collect()
+}
+
+/// Mandatory integrity RIDs (`SECURITY_MANDATORY_*_RID`).
+pub mod rid {
+    pub const LOW: u32 = 0x1000;
+    pub const MEDIUM: u32 = 0x2000;
+    pub const MEDIUM_PLUS: u32 = 0x2100;
+    pub const HIGH: u32 = 0x3000;
+    pub const SYSTEM: u32 = 0x4000;
+}
+
+/// UIPI: input injected by a process is silently dropped by windows of a
+/// higher integrity level — and `SendInput` still reports success, so the
+/// only way to notice is to compare levels *before* sending. `None` (level
+/// unreadable) = assume OK and let the paste try.
+pub fn uipi_blocks(own: Option<u32>, target: Option<u32>) -> bool {
+    matches!((own, target), (Some(o), Some(t)) if t > o)
+}
+
+pub const ELEVATED_TARGET_MSG: &str = "The app you're dictating into runs as administrator, so \
+     Windows blocks pasting from Murmur. The text is on your clipboard: press Ctrl+V.";
+
+/// Command Mode's Ctrl+C fallback: how long the target gets to put the
+/// selection on the clipboard. No change by then = nothing was selected.
+pub const COPY_WAIT_MS: u64 = 400;
+
+/// Command Mode: the selection a Ctrl+C produced. `changed` = the clipboard
+/// sequence number moved after our Ctrl+C; `text` = its CF_UNICODETEXT.
+/// Unchanged = nothing selected (`Ok(None)`, speak-to-generate); changed
+/// without text = a non-text selection (an image), refused so the command
+/// never pastes over it.
+pub fn selection_from_copy(changed: bool, text: Option<String>) -> Result<Option<String>, String> {
+    if !changed {
+        return Ok(None);
+    }
+    match text {
+        Some(t) if t.is_empty() => Ok(None),
+        Some(t) => Ok(Some(t)),
+        None => Err(NOT_TEXT_SELECTION_MSG.into()),
+    }
+}
+
+pub const NOT_TEXT_SELECTION_MSG: &str = "Command Mode works on selected text only";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn copied_selection_reads_unchanged_as_nothing_selected() {
+        assert_eq!(selection_from_copy(false, None), Ok(None));
+        assert_eq!(
+            selection_from_copy(false, Some("old clipboard".into())),
+            Ok(None),
+            "an untouched clipboard is the user's, not the selection"
+        );
+        assert_eq!(selection_from_copy(true, Some(String::new())), Ok(None));
+        assert_eq!(
+            selection_from_copy(true, Some("picked".into())),
+            Ok(Some("picked".into()))
+        );
+        assert_eq!(
+            selection_from_copy(true, None),
+            Err(NOT_TEXT_SELECTION_MSG.to_string())
+        );
+    }
+
+    fn t(hwnd: usize, pid: u32) -> FocusTarget {
+        FocusTarget {
+            hwnd,
+            pid,
+            exe: "x.exe".into(),
+        }
+    }
+
+    #[test]
+    fn paste_goes_only_to_the_window_the_dictation_started_in() {
+        let a = t(1, 10);
+        assert_eq!(paste_guard(Some(&a), Some(&a), None, None), Ok(()));
+        assert_eq!(
+            paste_guard(None, Some(&t(9, 9)), None, None),
+            Ok(()),
+            "unknown start"
+        );
+        assert_eq!(
+            paste_guard(Some(&a), Some(&t(2, 10)), None, None),
+            Err(GuardFailure::Moved),
+            "other window of the same app"
+        );
+        assert_eq!(
+            paste_guard(Some(&a), Some(&t(1, 11)), None, None),
+            Err(GuardFailure::Moved),
+            "hwnd reused by another process"
+        );
+        assert_eq!(
+            paste_guard(Some(&a), None, None, None),
+            Err(GuardFailure::Moved)
+        );
+    }
+
+    #[test]
+    fn a_password_field_that_appeared_meanwhile_is_guarded() {
+        let a = t(1, 10);
+        assert_eq!(
+            paste_guard(Some(&a), Some(&a), Some(false), Some(true)),
+            Err(GuardFailure::Guarded)
+        );
+        assert_eq!(
+            paste_guard(Some(&a), Some(&a), None, Some(true)),
+            Err(GuardFailure::Guarded)
+        );
+        // Dictating into a password field on purpose (it was one at start).
+        assert_eq!(
+            paste_guard(Some(&a), Some(&a), Some(true), Some(true)),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn plain_text_drops_markers() {
+        assert_eq!(
+            plain_text("see @{{BREAK}}main.rs{{TAB}} now"),
+            "see @main.rs\t now"
+        );
+        assert_eq!(plain_text("plain"), "plain");
+    }
+
+    #[test]
+    fn plan_pastes_plain_text_then_enter() {
+        use crate::core_api::{PasteKey, PasteSegment};
+        let segs = murmur_core::paste::segments("Hello there.", true);
+        assert_eq!(
+            plan(&segs),
+            vec![
+                Step::Insert {
+                    text: "Hello there.".into(),
+                    typed: false
+                },
+                Step::Key(PasteKey::Enter)
+            ]
+        );
+        assert!(plan(&[]).is_empty());
+        assert!(plan(&[PasteSegment::Text { text: "".into() }]).is_empty());
+    }
+
+    #[test]
+    fn plan_types_mention_segments() {
+        use crate::core_api::PasteKey;
+        let segs = murmur_core::paste::segments("open @{{BREAK}}main.rs{{TAB}} now", false);
+        assert_eq!(
+            plan(&segs),
+            vec![
+                Step::Insert {
+                    text: "open @".into(),
+                    typed: true
+                },
+                Step::Pause(BREAK_PAUSE_MS),
+                Step::Insert {
+                    text: "main.rs".into(),
+                    typed: true
+                },
+                Step::Key(PasteKey::Tab),
+                Step::Insert {
+                    text: " now".into(),
+                    typed: true
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn segments_split_cursor_markers() {
+        use Segment::*;
+        assert_eq!(segments("plain text"), vec![Text("plain text")]);
+        assert!(!has_markers("plain text"));
+        assert_eq!(
+            segments("open @{{BREAK}}main.rs{{TAB}} now"),
+            vec![Text("open @"), Break, Text("main.rs"), Tab, Text(" now")]
+        );
+        assert_eq!(segments("{{TAB}}{{BREAK}}"), vec![Tab, Break]);
+        assert_eq!(segments(""), Vec::<Segment>::new());
+        assert!(has_markers("a{{TAB}}"));
+    }
+
+    #[test]
+    fn uipi_blocks_only_higher_integrity_targets() {
+        assert!(uipi_blocks(Some(rid::MEDIUM), Some(rid::HIGH)), "admin cmd");
+        assert!(uipi_blocks(Some(rid::MEDIUM), Some(rid::SYSTEM)));
+        assert!(!uipi_blocks(Some(rid::MEDIUM), Some(rid::MEDIUM)));
+        assert!(
+            !uipi_blocks(Some(rid::MEDIUM), Some(rid::LOW)),
+            "sandboxed browser"
+        );
+        assert!(
+            !uipi_blocks(Some(rid::HIGH), Some(rid::HIGH)),
+            "we run elevated too"
+        );
+        assert!(!uipi_blocks(Some(rid::MEDIUM), None), "unreadable = try");
+        assert!(!uipi_blocks(None, Some(rid::HIGH)));
+    }
+
+    #[test]
+    fn restore_delay_per_app() {
+        assert_eq!(restore_delay_ms("notepad.exe"), 500);
+        assert_eq!(restore_delay_ms("OUTLOOK.EXE"), 3000);
+        assert_eq!(restore_delay_ms("olk.exe"), 3000);
+        assert_eq!(restore_delay_ms("WINWORD.EXE"), 3000);
+        assert_eq!(restore_delay_ms("WhatsApp.exe"), 3000);
+        assert_eq!(restore_delay_ms("mstsc.exe"), 5000);
+        assert_eq!(restore_delay_ms("AnyDesk.exe"), 5000);
+        assert_eq!(restore_delay_ms("TeamViewer"), 5000);
+        assert_eq!(restore_delay_ms(""), 500);
+    }
+
+    #[test]
+    fn strategy_from_method() {
+        assert_eq!(
+            initial_strategy(PasteMethod::CtrlV),
+            Strategy::Clipboard {
+                shift_insert: false
+            }
+        );
+        assert_eq!(
+            initial_strategy(PasteMethod::ShiftInsert),
+            Strategy::Clipboard { shift_insert: true }
+        );
+        assert_eq!(initial_strategy(PasteMethod::Type), Strategy::Type);
+    }
+
+    #[test]
+    fn fallback_types_only_short_text() {
+        assert_eq!(
+            fallback_after_clipboard_failure("héllo", 5),
+            Some(Strategy::Type)
+        );
+        assert_eq!(fallback_after_clipboard_failure("hello!", 5), None);
+    }
+
+    #[test]
+    fn restore_guard() {
+        assert!(should_restore(true, 41, 41));
+        assert!(!should_restore(true, 41, 42), "someone copied meanwhile");
+        assert!(!should_restore(false, 41, 41));
+    }
+
+    #[test]
+    fn restorable_formats() {
+        assert!(is_restorable_format(13), "CF_UNICODETEXT");
+        assert!(is_restorable_format(8), "CF_DIB");
+        assert!(is_restorable_format(15), "CF_HDROP");
+        assert!(is_restorable_format(0xC123), "registered");
+        for f in [2u32, 3, 9, 14, 0x80, 0x82, 0x83, 0x8E] {
+            assert!(!is_restorable_format(f), "{f:#x}");
+        }
+    }
+
+    #[test]
+    fn unicode_bytes_are_utf16le_nul_terminated_crlf() {
+        assert_eq!(unicode_text_bytes("a"), vec![b'a', 0, 0, 0]);
+        let b = unicode_text_bytes("a\nb");
+        let units: Vec<u16> = b
+            .chunks(2)
+            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .collect();
+        assert_eq!(units, vec![b'a' as u16, 13, 10, b'b' as u16, 0]);
+        let b = unicode_text_bytes("x\r\ny");
+        assert_eq!(b.len(), 5 * 2, "existing CRLF not doubled");
+    }
+}

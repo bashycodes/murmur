@@ -1,0 +1,60 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Murmur",
+  "identifier": "dev.murmur.windows",
+  "build": {
+    "frontendDist": "ui/dist",
+    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "npm run build"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ipc: http://ipc.localhost"
+    },
+    "windows": [
+      {
+        "label": "overlay",
+        "title": "Murmur Bar",
+        "url": "overlay.html",
+        "width": 512,
+        "height": 614,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "focus": false,
+        "shadow": false,
+        "visible": false
+      },
+      {
+        "label": "settings",
+        "title": "Murmur",
+        "url": "settings.html",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 960,
+        "minHeight": 640,
+        "visible": false,
+        "center": true
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "resources": {
+      "../../COPYRIGHT": "COPYRIGHT.txt",
+      "../../NOTICE": "NOTICE.txt",
+      "../../THIRD-PARTY-LICENSES": "THIRD-PARTY-LICENSES.txt"
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/icon.png",
+      "icons/icon.ico"
+    ]
+  }
+}

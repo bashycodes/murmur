@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <title>Settings: Speech to text</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="flow-theme.css">
-<link rel="stylesheet" href="ds/flow/components/bundle.css">
-<script src="ds/flow/components/bundle.js"></script>
+<link rel="stylesheet" href="murmur-theme.css">
+<link rel="stylesheet" href="ds/murmur/components/bundle.css">
+<script src="ds/murmur/components/bundle.js"></script>
 </head>
 <body>
 <x-dc>
@@ -53,7 +53,7 @@ a{color:#1a1a1a}a:hover{color:#30302f}
             <button type="button" class="fl-iconbtn is-toolbar" aria-label="Move up" disabled="disabled" style="height: 18px; opacity: .3;"><svg class="fl-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 15l6-6 6 6"></path></svg></button>
             <button type="button" class="fl-iconbtn is-toolbar" aria-label="Move down" style="height: 18px;"><svg class="fl-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
           </span>
-          <x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Use this PC"></x-import>
+          <x-import component-from-global-scope="Murmur.Toggle" default-checked="{{yes}}" label="Use this PC"></x-import>
         </div>
         <div class="fl-row">
           <span class="lw-rank">2</span>
@@ -64,7 +64,7 @@ a{color:#1a1a1a}a:hover{color:#30302f}
             <button type="button" class="fl-iconbtn is-toolbar" aria-label="Move up" style="height: 18px;"><svg class="fl-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 15l6-6 6 6"></path></svg></button>
             <button type="button" class="fl-iconbtn is-toolbar" aria-label="Move down" style="height: 18px;"><svg class="fl-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
           </span>
-          <x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Use your server"></x-import>
+          <x-import component-from-global-scope="Murmur.Toggle" default-checked="{{yes}}" label="Use your server"></x-import>
         </div>
         <div class="fl-row">
           <span class="lw-rank">3</span>
@@ -75,7 +75,7 @@ a{color:#1a1a1a}a:hover{color:#30302f}
             <button type="button" class="fl-iconbtn is-toolbar" aria-label="Move up" style="height: 18px;"><svg class="fl-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 15l6-6 6 6"></path></svg></button>
             <button type="button" class="fl-iconbtn is-toolbar" aria-label="Move down" disabled="disabled" style="height: 18px; opacity: .3;"><svg class="fl-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
           </span>
-          <x-import component-from-global-scope="Flow.Toggle" label="Use the cloud for speech"></x-import>
+          <x-import component-from-global-scope="Murmur.Toggle" label="Use the cloud for speech"></x-import>
         </div>
       </div>
 
@@ -83,11 +83,11 @@ a{color:#1a1a1a}a:hover{color:#30302f}
       <div class="fl-group">
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Model</div><div class="fl-row-desc">Parakeet is fastest but English only. Whisper speaks many languages.</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Select" options="{{engineOpts}}" default-value="parakeet" width="{{w200}}"></x-import></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Select" options="{{engineOpts}}" default-value="parakeet" width="{{w200}}"></x-import></div>
         </div>
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Download models from</div><div class="fl-row-desc">For speech and cleanup models. Your server works without the internet. Every file is checked against its SHA-256 fingerprint before it's used.</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Select" options="{{srcOpts}}" default-value="server" width="{{w200}}"></x-import></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Select" options="{{srcOpts}}" default-value="server" width="{{w200}}"></x-import></div>
         </div>
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Whisper small</div><div class="fl-row-desc">Many languages · 466 MB. Your server doesn't have this one. Ask whoever runs it to add it, or download from Hugging Face.</div></div>
@@ -95,15 +95,15 @@ a{color:#1a1a1a}a:hover{color:#30302f}
         </div>
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Model folder</div><div class="fl-row-desc lw-mono">%APPDATA%\Murmur\models\parakeet-tdt-0.6b-v2-int8</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Button" variant="secondary">Change</x-import></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Button" variant="secondary">Change</x-import></div>
         </div>
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Use dictionary words when listening</div><div class="fl-row-desc">Better at names and jargon. Uses about 0.6 GB more memory.</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Use dictionary words when listening"></x-import></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Toggle" default-checked="{{yes}}" label="Use dictionary words when listening"></x-import></div>
         </div>
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Keep loaded while the server is used</div><div class="fl-row-desc">Instant fallback if the server drops, at the cost of memory.</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Keep loaded while the server is used"></x-import></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Toggle" default-checked="{{yes}}" label="Keep loaded while the server is used"></x-import></div>
         </div>
       </div>
 
@@ -115,18 +115,18 @@ a{color:#1a1a1a}a:hover{color:#30302f}
         </div>
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Language</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Select" options="{{langOpts}}" default-value="auto" width="{{w160}}"></x-import></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Select" options="{{langOpts}}" default-value="auto" width="{{w160}}"></x-import></div>
         </div>
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Send dictionary words</div><div class="fl-row-desc">Helps it spell names the way you do.</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Send dictionary words"></x-import></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Toggle" default-checked="{{yes}}" label="Send dictionary words"></x-import></div>
         </div>
       </div>
 
       <div class="fl-group" style="margin-top: 32px;">
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Transcribe while I speak</div><div class="fl-row-desc">Each phrase is turned into text as you pause, so long dictations finish about a second after you let go.</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Transcribe while I speak"></x-import></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Toggle" default-checked="{{yes}}" label="Transcribe while I speak"></x-import></div>
         </div>
       </div>
     </div>

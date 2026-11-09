@@ -38,7 +38,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "flow-core"
+name = "murmur-core"
 version = "1.0.0"
 dependencies = [
  "fancy-regex",
@@ -169,7 +169,7 @@ dependencies = [
 name = "silence_check_2026_11_04"
 version = "0.0.0"
 dependencies = [
- "flow-core",
+ "murmur-core",
  "hound",
  "serde_json",
 ]

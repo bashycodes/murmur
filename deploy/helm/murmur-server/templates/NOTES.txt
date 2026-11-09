@@ -1,0 +1,23 @@
+murmur-server {{ .Chart.AppVersion }} ({{ include "murmur-server.image" . }}).
+
+1. Put the models into the models volume ({{ .Values.persistence.models.existingClaim | default (printf "%s-models" (include "murmur-server.fullname" .)) }}),
+   matching asr_path / llm_path in the config (docs/container.md "Helm").
+
+2. On first start the pod waits for the admin key. Create it (the secret is
+   printed once; paste it into the apps as the token):
+
+     kubectl -n {{ .Release.Namespace }} exec deploy/{{ include "murmur-server.fullname" . }} -- murmur-server keys add owner --admin
+
+   One key per device: `... -- murmur-server keys add phone`; `keys list`, `keys revoke <name>`.
+
+3. Logs (expect "ready ... asr=..."):
+
+     kubectl -n {{ .Release.Namespace }} logs -f deploy/{{ include "murmur-server.fullname" . }}
+{{- if .Values.ingress.enabled }}
+
+4. Apps: host {{ .Values.ingress.host }}, port 443, TLS {{ if .Values.ingress.tls.enabled }}on{{ else }}off{{ end }}.
+{{- else }}
+
+4. Apps: the Service {{ include "murmur-server.fullname" . }}:{{ .Values.service.port }} ({{ .Values.service.type }}); for a quick test:
+     kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "murmur-server.fullname" . }} 7313:{{ .Values.service.port }}
+{{- end }}

@@ -1,4 +1,4 @@
-# flow-server container image (deploy/docker/Dockerfile, D77): checks that
+# murmur-server container image (deploy/docker/Dockerfile, D77): checks that
 # it builds and starts. Build only: nothing is pushed or published (users
 # build it from the source, docs/server-setup.md). Runs on pull requests and
 # on integration; feature-branch pushes are covered by their pull request.
@@ -55,9 +55,9 @@ jobs:
           target: runtime
           push: false
           load: true
-          tags: flow-server:ci
+          tags: murmur-server:ci
           build-args: |
-            FLOW_GIT_SHA=${{ github.sha }}
+            MURMUR_GIT_SHA=${{ github.sha }}
             CARGO_BUILD_JOBS=4
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -66,17 +66,17 @@ jobs:
       # entrypoint refuses an empty models folder with its message.
       - name: Image starts
         run: |
-          docker run --rm --entrypoint /opt/flow-server/bin/flow-server flow-server:ci gen-token --out /tmp/t
-          if docker run --rm flow-server:ci >out.txt 2>&1; then cat out.txt; exit 1; fi
+          docker run --rm --entrypoint /opt/murmur-server/bin/murmur-server murmur-server:ci gen-token --out /tmp/t
+          if docker run --rm murmur-server:ci >out.txt 2>&1; then cat out.txt; exit 1; fi
           grep -q "no speech model in /models" out.txt || { cat out.txt; exit 1; }
-          docker image ls flow-server:ci
+          docker image ls murmur-server:ci
 
       # D80: the image carries the rights, notices and full licence texts, and
       # its sherpa-onnx libraries no TTS (espeak-ng) code.
       - name: Image carries the notices
         run: |
-          id=$(docker create flow-server:ci)
-          docker cp "$id:/opt/flow-server" img; docker rm "$id"
-          for f in COPYRIGHT NOTICE THIRD-PARTY-LICENSES; do test -s "img/$f" || { echo "FAIL: no /opt/flow-server/$f"; exit 1; }; done
+          id=$(docker create murmur-server:ci)
+          docker cp "$id:/opt/murmur-server" img; docker rm "$id"
+          for f in COPYRIGHT NOTICE THIRD-PARTY-LICENSES; do test -s "img/$f" || { echo "FAIL: no /opt/murmur-server/$f"; exit 1; }; done
           grep -q 'All rights reserved' img/COPYRIGHT
           tools/checks/no-tts-libs.sh img/lib/*.so*

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Overrides main: this flavour has the internet permission. -->
+    <string name="a11y_description">Murmur uses Accessibility to notice when your keyboard is open, show the dictation bubble, read up to 500 characters around the cursor so the transcript fits what you already wrote, and type the transcript into the focused text field.\n\nSpeech recognition runs on this phone or on a Murmur server you connect; AI cleanup uses only the server or cloud provider you choose in Settings.\n\nMurmur never reads or types into password, PIN, number or phone fields, and it stays hidden in banking and payment apps and in apps you exclude.</string>
+</resources>
