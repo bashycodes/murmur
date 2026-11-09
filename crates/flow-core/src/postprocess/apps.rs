@@ -48,8 +48,6 @@ pub struct AppInfo {
     pub is_terminal: bool,
     pub is_notion: bool,
     pub is_flow_app: bool,
-    /// Cursor / Windsurf (IDE @file tagging; VS Code excluded).
-    pub is_tagging_ide: bool,
 }
 
 impl AppInfo {
@@ -114,7 +112,6 @@ pub fn classify(platform: Platform, bundle: &str, url: &str) -> AppInfo {
                 is_terminal,
                 is_notion,
                 is_flow_app: groups::windows("flow").app(bundle),
-                is_tagging_ide: groups::windows("tagging_ide").app(bundle),
             }
         }
         Platform::Android => {
@@ -141,7 +138,6 @@ pub fn classify(platform: Platform, bundle: &str, url: &str) -> AppInfo {
                 is_terminal: groups::android("terminal").app(bundle),
                 is_notion,
                 is_flow_app: false,
-                is_tagging_ide: false,
             }
         }
     }
@@ -176,7 +172,6 @@ mod tests {
         assert!(win("Slack.EXE").is_messaging);
         assert!(win("murmur.exe").is_flow_app);
         assert!(win("Flow-Windows.exe").is_flow_app);
-        assert!(win("Cursor.exe").is_tagging_ide);
         assert!(!win("notepad.exe").is_messaging);
         assert_eq!(win("notepad.exe").category(), AppCategory::Other);
     }

@@ -1423,7 +1423,7 @@ pub fn build_prompt_versioned(
         ctx.app_id.clear();
         ctx.url_host.clear();
     }
-    // Never sent to a cleaner; IDE tagging is post-processing.
+    // Never sent to a cleaner (IDE file names are unused since D82).
     ctx.file_names.clear();
     CleanPrompt {
         system,

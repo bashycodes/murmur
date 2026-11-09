@@ -150,7 +150,6 @@ pub const WINDOWS_GROUPS: &[&str] = &[
     "terminal",
     "document",
     "flow",
-    "tagging_ide",
 ];
 
 /// Lowercase exact app ids of a Windows group (for the Settings table).

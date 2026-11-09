@@ -71,10 +71,13 @@ missing `looks_like_name` as false).
 
 `PostOutput.showed_prompt` (always false, never read) is removed.
 Everything else in the old `postprocess` module tree
-(`PostInput`, `process`, `process_with`, the `android`, `apps`, `context`,
+(`PostInput`, `process`, `process_with`, the `android`, `context`,
 `cursor_tag`, `press_enter`, `slack`, `stacked` modules and their
 functions) had no caller outside the module and its ground-truth harness,
-and is not part of the contract. New internal structure is free.
+and is not part of the contract. `pub mod apps` (`classify`, `AppInfo`,
+over the shared app groups) stays: §9 uses it and
+`tests/app_groups_vectors.rs` reads `classify(..).bucket`. New internal
+structure is free.
 
 ## 3. Pipeline (`apply_with`)
 
@@ -401,9 +404,12 @@ early. "; "so " with `after` "x" → "the parcel arrived early "; empty
 
 *This app's own windows* (Windows only): when `app.is_flow_app`, §5.1–§5.6
 are skipped whatever the context: `t` is inserted as is, with no
-trailing space; style punctuation (§6) and Press Enter (§8) still apply.
+trailing space; Press Enter (§8) still applies, and style punctuation
+(§6) applies only when `selected` is empty (over a selection the text
+keeps its period, as in §5.6).
 Observed, kept: `murmur.exe` / `flow-windows.exe` with any `before`,
-`after` or selection → "The parcel arrived early."; casual → "The parcel
+`after` or selection → "The parcel arrived early."; casual over the
+selection "abc" → "The parcel arrived early."; casual → "The parcel
 arrived early"; "Send it press enter." → "Send it." with `press_enter`.
 Android `dev.flowclone` is not special.
 

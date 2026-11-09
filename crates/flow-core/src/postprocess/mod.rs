@@ -21,6 +21,7 @@ pub mod terminal;
 
 pub use replace::DictMatcher;
 
+use crate::align::trim_punct;
 use crate::config::{AppCategory, FieldContext, Platform, SessionConfig, Style};
 use crate::dictionary::DictEntry;
 use apps::{AppInfo, AppType};
@@ -62,96 +63,116 @@ pub fn apply_with(
     if text.is_empty() {
         return PostOutput::default();
     }
-    let windows = cfg.platform == Platform::Windows;
-    let style = cfg
-        .styles
-        .for_category(effective_category(cfg.platform, ctx));
-    let listed = classify(cfg.platform, ctx);
-
-    let snippet = if windows {
+    let run = Run {
+        cfg,
+        ctx,
+        windows: cfg.platform == Platform::Windows,
+        style: cfg
+            .styles
+            .for_category(effective_category(cfg.platform, ctx)),
+        listed: classify(cfg.platform, ctx),
+    };
+    let snippet = if run.windows {
         m.whole_snippet(raw_asr)
     } else {
         None
     };
-    let (text, press_enter) = match snippet {
-        Some(body) => (body, false),
-        None => body_text(text, raw_asr, cfg, ctx, m, style, &listed),
+    let mut out = match snippet {
+        Some(body) => PostOutput {
+            text: body,
+            press_enter: false,
+        },
+        None => run.body(text, raw_asr, m),
     };
-
-    let mut text = text;
-    if windows && listed.app_type == AppType::Email && ctx.context_known {
+    if run.windows && run.listed.app_type == AppType::Email && ctx.context_known {
         if let Some(sig) = cfg.email_signature.as_deref().filter(|s| !s.is_empty()) {
-            text = signature::append(text, sig, ctx);
+            out.text = signature::append(out.text, sig, ctx);
         }
     }
-    PostOutput { text, press_enter }
+    out
 }
 
-/// Steps 3–8: press Enter, all-lowercase, dictionary, cursor fitting or
-/// a §5.7 skip, style punctuation, trailing space.
-fn body_text(
-    text: &str,
-    raw_asr: &str,
-    cfg: &SessionConfig,
-    ctx: &FieldContext,
-    m: &DictMatcher,
+/// What one dictation's post-processing reads, decided once.
+struct Run<'a> {
+    cfg: &'a SessionConfig,
+    ctx: &'a FieldContext,
+    windows: bool,
     style: Style,
-    listed: &AppInfo,
-) -> (String, bool) {
-    let windows = cfg.platform == Platform::Windows;
-    let (mut text, press_enter) = if windows && cfg.press_enter_enabled {
-        enter::take(text, raw_asr)
-    } else {
-        (text.to_string(), false)
-    };
-    if cfg.all_lowercase {
-        text = text.to_lowercase();
-    }
-    text = m.find_and_replace(&text);
+    /// The app groups' view of the app, ignoring `ctx.app_category`.
+    listed: AppInfo,
+}
 
-    let t = text.trim();
-    if t.is_empty() {
-        return (String::new(), press_enter);
+impl Run<'_> {
+    /// Steps 3–8: press Enter, all-lowercase, dictionary, cursor fitting
+    /// or a §5.7 skip, style punctuation, trailing space.
+    fn body(&self, text: &str, raw_asr: &str, m: &DictMatcher) -> PostOutput {
+        let cfg = self.cfg;
+        let (mut text, press_enter) = if self.windows && cfg.press_enter_enabled {
+            enter::take(text, raw_asr)
+        } else {
+            (text.to_string(), false)
+        };
+        if cfg.all_lowercase {
+            text = text.to_lowercase();
+        }
+        text = m.find_and_replace(&text);
+        let text = self.fit(text.trim(), press_enter);
+        PostOutput { text, press_enter }
     }
-    let chat = listed.is_messaging;
-    // This app's own windows: inserted as is, whatever the context.
-    if windows && listed.is_flow_app {
-        return (style::punctuate(t, style, chat, ctx), press_enter);
+
+    /// Steps 6–8 on the trimmed text `t`.
+    fn fit(&self, t: &str, press_enter: bool) -> String {
+        let ctx = self.ctx;
+        if t.is_empty() {
+            return String::new();
+        }
+        let selected = !ctx.selected.is_empty();
+        // This app's own windows: inserted as is, whatever the context;
+        // over a selection the text keeps its period too.
+        if self.windows && self.listed.is_flow_app {
+            return if selected {
+                t.to_string()
+            } else {
+                self.punctuate(t)
+            };
+        }
+        let names: Vec<String> = self
+            .cfg
+            .user_names
+            .iter()
+            .chain(&ctx.screen_words)
+            .cloned()
+            .collect();
+        let proper = Proper {
+            names: &names,
+            dict: &self.cfg.dictionary.entries,
+        };
+        if selected {
+            return cursor::over_selection(t, &ctx.selected, proper);
+        }
+        if self.listed.is_notion && notion_skip(ctx) {
+            return self.punctuate(t);
+        }
+        let field = Field {
+            before: &ctx.before,
+            after: &ctx.after,
+        };
+        let fitted = cursor::at_cursor(t, field, proper);
+        let mut out = self.punctuate(&fitted.text);
+        // On Android an unreadable field may already end in a space.
+        if fitted.room_after
+            && !press_enter
+            && (ctx.context_known || self.windows)
+            && out.chars().last().is_some_and(|c| !chars::is_cjk(c))
+        {
+            out.push(' ');
+        }
+        out
     }
-    let names: Vec<String> = cfg
-        .user_names
-        .iter()
-        .chain(&ctx.screen_words)
-        .cloned()
-        .collect();
-    let proper = Proper {
-        names: &names,
-        dict: &cfg.dictionary.entries,
-    };
-    if !ctx.selected.is_empty() {
-        return (
-            cursor::over_selection(t, &ctx.selected, proper),
-            press_enter,
-        );
+
+    fn punctuate(&self, t: &str) -> String {
+        style::punctuate(t, self.style, self.listed.is_messaging, self.ctx)
     }
-    if listed.is_notion && notion_skip(ctx) {
-        return (style::punctuate(t, style, chat, ctx), press_enter);
-    }
-    let field = Field {
-        before: &ctx.before,
-        after: &ctx.after,
-    };
-    let fitted = cursor::at_cursor(t, field, proper);
-    let mut out = style::punctuate(&fitted.text, style, chat, ctx);
-    // On Android an unreadable field may already end in a space.
-    if fitted.room_after
-        && !press_enter
-        && (ctx.context_known || windows)
-        && out.chars().last().is_some_and(|c| !chars::is_cjk(c))
-    {
-        out.push(' ');
-    }
-    (out, press_enter)
 }
 
 /// §5.7 in Notion: a short or "..."-ended `before` with nothing after the
@@ -180,10 +201,6 @@ pub fn starts_with_proper_noun(text: &str, proper: &[String], dict: &[DictEntry]
         || dict
             .iter()
             .any(|e| first_is(&e.word) || e.replacement.as_deref().is_some_and(first_is))
-}
-
-fn trim_punct(w: &str) -> &str {
-    w.trim_matches(|c: char| !c.is_alphanumeric())
 }
 
 #[cfg(test)]
@@ -607,6 +624,19 @@ mod tests {
             let mut casual = win();
             casual.styles.other = Style::Casual;
             assert_eq!(out(PARCEL, &casual, &app(id)), "The parcel arrived early");
+            // Over a selection the text keeps its period.
+            let over = FieldContext {
+                app_id: id.into(),
+                selected: "abc".into(),
+                ..Default::default()
+            };
+            assert_eq!(out(PARCEL, &casual, &over), PARCEL);
+            // A sentence mark on the cursor line keeps it too.
+            let marked = FieldContext {
+                app_id: id.into(),
+                ..field("Ok. ", "")
+            };
+            assert_eq!(out(PARCEL, &casual, &marked), PARCEL);
             let o = run("Send it press enter.", &win(), &app(id));
             assert_eq!((o.text.as_str(), o.press_enter), ("Send it.", true));
         }

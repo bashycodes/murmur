@@ -537,6 +537,14 @@ for i in ["olk", "ms-teams", "teams", "zoom", "hxoutlook", "notepad", "winword",
     ap(f"r4_sigw_{i}", "Hi Tom, thanks.", {"app_id": i + ".exe"}, SIG)
 for i in ["com.slack", "us.zoom.videomeetings", "com.tencent.mm", "com.microsoft.outlook.lite", "com.example.mail"]:
     ap(f"r4_chata_{i}", SEE, {"app_id": i}, AND)
+# --- round 5: own-app window with a selection keeps the period (any style) ---
+for app in ["flow-windows.exe", "murmur.exe"]:
+    for n, c in [("sel", {"selected": "abc"}), ("sel_ba", {"before": "so ", "selected": "abc", "after": " x"}),
+                 ("sel_ws", {"selected": "  "}), ("sel_dot", {"selected": "Fine."}), ("nosel", {"before": "so "}),
+                 ("line_dot", {"before": "Done.\nso "}), ("line_q", {"before": "so ", "after": " ok?"})]:
+        for s in ["casual", "very_casual", "formal"]:
+            ap(f"r5_{app}_{n}_{s}", T, {"app_id": app, **c}, {"platform": "windows", **sty(s)})
+        ap(f"r5_{app}_{n}_default", T, {"app_id": app, **c}, {"platform": "windows"})
 ap("r3e_snip_sig_empty_text", "", {"app_id": "outlook.exe"}, {**D(SN2), **SIG}, raw="my address")
 
 out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cases.json")

@@ -15,7 +15,7 @@ instead file requests here. Each entry says what the shell does in the meantime.
 
 ## CR-2: structured paste segments instead of in-band markers (Windows shell)
 
-**Problem.** `cursor_tag` puts `{{BREAK}}`/`{{TAB}}` inside `final_text`. Every `@` gets a `{{BREAK}}`, even inside an email address. History and "paste last" then store the markers, and a shell that forgets to parse them pastes them literally.
+**Problem.** `{{BREAK}}`/`{{TAB}}` markers travel inside `final_text` when the text carries them (e.g. a snippet body; flow-core no longer produces them since the IDE tagging was removed, D82). History and "paste last" then store the markers, and a shell that forgets to parse them pastes them literally.
 
 **Ask.** Keep `final_text` marker-free and add `segments: [{text} | "tab" | "break"]` (or a `paste_plan` field) to `CommitResult`.
 
