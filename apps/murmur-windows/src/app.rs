@@ -3197,13 +3197,13 @@ pub fn run() {
     // D83: pick up the data folder from before the rename, once.
     if let Some(a) = appdata.as_deref() {
         match crate::old_data::copy_once(std::path::Path::new(a)) {
-            Ok(crate::old_data::Outcome::Copied { files, linked }) => tracing::info!(
-                files,
-                linked,
-                "copied the data folder from before the Murmur rename"
+            Ok(crate::old_data::Outcome::Copied { files, linked }) => eprintln!(
+                "[rename] copied the data folder of the app before the Murmur rename ({files} files copied, {linked} model files linked); the old folder is unchanged (D83)"
             ),
             Ok(_) => {}
-            Err(e) => tracing::warn!("could not copy the old data folder: {e}"),
+            Err(e) => eprintln!(
+                "[rename] could not copy the data folder of the app before the Murmur rename: {e}; trying again on the next start (D83)"
+            ),
         }
     }
     let path = Prefs::default_path(appdata.as_deref());

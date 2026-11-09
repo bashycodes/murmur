@@ -3,9 +3,9 @@
 //! Keys live only in the OS secure store and in Rust memory: never in
 //! `prefs.json`, Tauri events, logs or crash text. On Windows the store is
 //! Credential Manager, one generic credential named
-//! `flow-clone/cloud/openrouter` (D28: OpenRouter is the only cloud
+//! `murmur/cloud/openrouter` (D28: OpenRouter is the only cloud
 //! provider; [`apply_migration`] moves / deletes the D18 per-provider
-//! entries `flow-clone/cloud/<id>` once) (`CRED_PERSIST_LOCAL_MACHINE`: this
+//! entries `murmur/cloud/<id>` once) (`CRED_PERSIST_LOCAL_MACHINE`: this
 //! user on this PC, not roamed). Other hosts (the Linux test/CI build) use
 //! [`MemoryStore`], the keyring stand-in the tests run against.
 //!
@@ -17,7 +17,7 @@ use std::sync::{Arc, Mutex};
 
 /// Credential Manager target name of a provider's key.
 pub fn target_name(provider_id: &str) -> String {
-    format!("flow-clone/cloud/{provider_id}")
+    format!("murmur/cloud/{provider_id}")
 }
 
 /// Secure storage for provider keys, keyed by provider id.
@@ -136,8 +136,8 @@ pub fn normalize_key(raw: &str) -> Result<String, String> {
 // ------------------------------------------------ host + adapter binding
 
 /// The id of the one OpenRouter key (D28): Credential Manager
-/// `flow-clone/cloud/openrouter`.
-pub const OPENROUTER: &str = flow_router::cloud::OPENROUTER_ID;
+/// `murmur/cloud/openrouter`.
+pub const OPENROUTER: &str = murmur_router::cloud::OPENROUTER_ID;
 
 /// A stored key and the endpoint it was saved for (review S4): the host
 /// and adapter. D28: the only binding is `(openrouter.ai, openrouter)`;
@@ -149,17 +149,17 @@ pub struct StoredKey {
     pub bound: Option<(String, String)>,
 }
 
-const BOUND_V1: &str = "flow-bound-v1\n";
+const BOUND_V1: &str = "murmur-bound-v1\n";
 
 /// The binding of the OpenRouter key.
 pub fn openrouter_binding() -> (String, String) {
     (
-        flow_router::cloud::OPENROUTER_HOST.to_string(),
+        murmur_router::cloud::OPENROUTER_HOST.to_string(),
         "openrouter".to_string(),
     )
 }
 
-/// Credential blob: `flow-bound-v1\n<host>\n<adapter>\n<key>`.
+/// Credential blob: `murmur-bound-v1\n<host>\n<adapter>\n<key>`.
 pub fn encode(key: &str, bound: &(String, String)) -> String {
     format!("{BOUND_V1}{}\n{}\n{key}", bound.0, bound.1)
 }
@@ -208,11 +208,11 @@ pub fn openrouter_key(store: &dyn CredentialStore) -> Option<String> {
 }
 
 /// D52: the id of the optional key for the user's own OpenAI-compatible
-/// cleanup server: Credential Manager `flow-clone/cloud/custom`. Not bound
+/// cleanup server: Credential Manager `murmur/cloud/custom`. Not bound
 /// to a host (the base URL is the user's to change); the router only calls
 /// a server whose host the user consented to, so a changed URL sends
 /// nothing, key included, until that consent is given again.
-pub const CUSTOM: &str = flow_router::cloud::CUSTOM_CLEANUP_ID;
+pub const CUSTOM: &str = murmur_router::cloud::CUSTOM_CLEANUP_ID;
 
 /// Save the custom cleanup server's key.
 pub fn store_custom_key(store: &dyn CredentialStore, key: &str) -> Result<(), String> {
@@ -236,7 +236,7 @@ pub fn custom_key(store: &dyn CredentialStore) -> Option<String> {
 pub fn custom_key_for(
     typed: Option<&str>,
     saved: impl FnOnce() -> Option<String>,
-    cfg: &flow_router::cloud::CustomCleanupConfig,
+    cfg: &murmur_router::cloud::CustomCleanupConfig,
     base_url: &str,
 ) -> Result<Option<String>, String> {
     match typed.map(str::trim).filter(|k| !k.is_empty()) {
@@ -252,7 +252,7 @@ pub fn custom_key_for(
 pub fn saved_custom_key_withheld(
     typed: bool,
     has_saved: bool,
-    cfg: &flow_router::cloud::CustomCleanupConfig,
+    cfg: &murmur_router::cloud::CustomCleanupConfig,
     base_url: &str,
 ) -> bool {
     !typed && has_saved && !cfg.saved_key_allowed_for(base_url)
@@ -271,13 +271,13 @@ pub struct KeyMigration {
 }
 
 /// Apply `RouterConfig::migrate_d28`'s report to Credential Manager: move
-/// `flow-clone/cloud/<key_from>` to `flow-clone/cloud/openrouter` (only if
+/// `murmur/cloud/<key_from>` to `murmur/cloud/openrouter` (only if
 /// that key was saved for openrouter.ai: bound to it, or a legacy unbound
 /// key of an entry whose base URL was openrouter.ai, `legacy_host`), and
 /// delete every `delete_keys` entry. Idempotent.
 pub fn apply_migration(
     store: &dyn CredentialStore,
-    report: &flow_router::MigrationReport,
+    report: &murmur_router::MigrationReport,
     legacy_host: &dyn Fn(&str) -> Option<String>,
 ) -> KeyMigration {
     let mut out = KeyMigration::default();
@@ -292,7 +292,7 @@ pub fn apply_migration(
                 let for_openrouter = match &sk.bound {
                     Some(b) => *b == openrouter_binding(),
                     None => {
-                        legacy_host(from).as_deref() == Some(flow_router::cloud::OPENROUTER_HOST)
+                        legacy_host(from).as_deref() == Some(murmur_router::cloud::OPENROUTER_HOST)
                     }
                 };
                 if for_openrouter && !sk.key.is_empty() {
@@ -363,7 +363,7 @@ mod win {
                 .encode_utf16()
                 .chain(Some(0))
                 .collect();
-            let mut user: Vec<u16> = "flow-clone".encode_utf16().chain(Some(0)).collect();
+            let mut user: Vec<u16> = "murmur".encode_utf16().chain(Some(0)).collect();
             let mut blob = key.as_bytes().to_vec();
             let cred = CREDENTIALW {
                 Flags: CRED_FLAGS(0),
@@ -407,7 +407,7 @@ mod tests {
             s.get("legacy-1").unwrap().as_deref(),
             Some("sk-0123456789abcdef")
         );
-        assert_eq!(s.targets(), vec!["flow-clone/cloud/legacy-1".to_string()]);
+        assert_eq!(s.targets(), vec!["murmur/cloud/legacy-1".to_string()]);
         s.set("legacy-1", "sk-other-key-000000").unwrap();
         assert_eq!(
             s.get("legacy-1").unwrap().as_deref(),
@@ -452,7 +452,7 @@ mod tests {
             custom_key(&*s).as_deref(),
             Some("sk-litellm-LEAKCHECK-0001")
         );
-        assert!(s.targets().contains(&"flow-clone/cloud/custom".to_string()));
+        assert!(s.targets().contains(&"murmur/cloud/custom".to_string()));
         assert_eq!(key_state(&*s, CUSTOM).masked, "••••0001");
         assert_eq!(
             openrouter_key(&*s).as_deref(),
@@ -475,7 +475,7 @@ mod tests {
                 bound: Some(("openrouter.ai".into(), "openrouter".into()))
             }
         );
-        assert_eq!(s.targets(), vec!["flow-clone/cloud/openrouter".to_string()]);
+        assert_eq!(s.targets(), vec!["murmur/cloud/openrouter".to_string()]);
         assert_eq!(key_state(&*s, OPENROUTER).masked, "••••1234");
         assert_eq!(
             openrouter_key(&*s).as_deref(),
@@ -506,8 +506,8 @@ mod tests {
         assert!(decode(&s.get(OPENROUTER).unwrap().unwrap()).bound.is_some());
     }
 
-    fn report(from: Option<&str>, delete: &[&str]) -> flow_router::MigrationReport {
-        flow_router::MigrationReport {
+    fn report(from: Option<&str>, delete: &[&str]) -> murmur_router::MigrationReport {
+        murmur_router::MigrationReport {
             migrated: true,
             key_from: from.map(str::to_string),
             key_to: from.map(|_| OPENROUTER.to_string()),
@@ -538,7 +538,7 @@ mod tests {
         let m = apply_migration(&*s, &report(Some("openrouter-1"), &["legacy-1"]), &|_| None);
         assert_eq!(m.moved_from.as_deref(), Some("openrouter-1"));
         assert_eq!(m.deleted, vec!["legacy-1".to_string()]);
-        assert_eq!(s.targets(), vec!["flow-clone/cloud/openrouter".to_string()]);
+        assert_eq!(s.targets(), vec!["murmur/cloud/openrouter".to_string()]);
         assert_eq!(
             openrouter_key(&*s).as_deref(),
             Some("sk-or-v1-LEAKCHECK-0001")
@@ -582,7 +582,7 @@ mod tests {
 
     #[test]
     fn custom_key_goes_to_the_consented_host_only() {
-        let cfg = flow_router::cloud::CustomCleanupConfig {
+        let cfg = murmur_router::cloud::CustomCleanupConfig {
             base_url: "http://10.0.0.5:4000".into(),
             consent_host: "10.0.0.5".into(),
             consent_at_ms: 1,
@@ -607,7 +607,7 @@ mod tests {
         assert_eq!(pick(None, "http://attacker.example:4000").unwrap(), None);
         assert_eq!(pick(None, "http://10.0.0.6:4000").unwrap(), None);
         assert_eq!(pick(None, "not a url").unwrap(), None);
-        let unconsented = flow_router::cloud::CustomCleanupConfig {
+        let unconsented = murmur_router::cloud::CustomCleanupConfig {
             consent_at_ms: 0,
             ..cfg.clone()
         };
