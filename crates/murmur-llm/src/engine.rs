@@ -7,10 +7,10 @@
 //!
 //! Latency comes from three things:
 //! * **Prefix reuse.** The KV cache keeps the last prompt. Only the tokens
-//!   after the first difference are prefilled. flow-core's `build_prompt`
+//!   after the first difference are prefilled. murmur-core's `build_prompt`
 //!   keeps the ~1k-token system prompt static per level/style, so a warm
 //!   call prefills only the user message.
-//! * **Warm-up.** `load` prefills a caller-supplied prompt (flow-core sends
+//! * **Warm-up.** `load` prefills a caller-supplied prompt (murmur-core sends
 //!   its default light/default-style one), so the first dictation is warm.
 //! * **Bounded decode.** Greedy sampling, at most 2 × transcript tokens + 32
 //!   new tokens, stop on EOG or a stop string, and a deadline and
@@ -112,7 +112,7 @@ fn backend() -> Result<&'static LlamaBackend, String> {
     BACKEND
         .get_or_init(|| {
             let mut b = LlamaBackend::init().map_err(|e| e.to_string())?;
-            if std::env::var_os("FLOW_LLAMA_LOG").is_none() {
+            if murmur_build_info::env::var_os("MURMUR_LLAMA_LOG").is_none() {
                 b.void_logs();
             }
             Ok(b)
@@ -207,7 +207,7 @@ impl Engine {
         let draft = Arc::new(AtomicUsize::new(env_draft().unwrap_or(DRAFT_DEFAULT)));
         let wdraft = draft.clone();
         let worker = std::thread::Builder::new()
-            .name("flow-llm".into())
+            .name("murmur-llm".into())
             .spawn(move || {
                 let b = match backend() {
                     Ok(b) => b,
@@ -389,7 +389,7 @@ impl Engine {
     }
 
     /// Draft up to `n` tokens per decode step from the transcript (capped
-    /// at [`DRAFT_MAX`]; 0 = one token per step). `FLOW_LLM_DRAFT`, when
+    /// at [`DRAFT_MAX`]; 0 = one token per step). `MURMUR_LLM_DRAFT`, when
     /// set, wins (benchmarks).
     pub fn set_draft(&self, n: usize) {
         if env_draft().is_none() {
@@ -716,7 +716,7 @@ impl State<'_> {
 
 /// Longest draft: tokens decoded speculatively per forward pass.
 const DRAFT_MAX: usize = 8;
-/// Off unless the caller sets it ([`Engine::set_draft`]; flow-server does,
+/// Off unless the caller sets it ([`Engine::set_draft`]; murmur-server does,
 /// D69). On the i7-6700 home server with Qwen2.5-1.5B, 4 drafted tokens per
 /// step cut the decode of the parity main set's long dictations from 2.9 to
 /// 1.5 s p50 (`docs/findings/2026-11-07-server-cleanup-speed.md`); the
@@ -726,11 +726,11 @@ const DRAFT_MAX: usize = 8;
 /// differed in a word or comma).
 const DRAFT_DEFAULT: usize = 0;
 
-/// `FLOW_LLM_DRAFT=n`, if set (read once).
+/// `MURMUR_LLM_DRAFT=n`, if set (read once).
 fn env_draft() -> Option<usize> {
     static D: OnceLock<Option<usize>> = OnceLock::new();
     *D.get_or_init(|| {
-        std::env::var("FLOW_LLM_DRAFT")
+        murmur_build_info::env::var("MURMUR_LLM_DRAFT")
             .ok()
             .and_then(|s| s.parse().ok())
             .map(|d: usize| d.min(DRAFT_MAX))

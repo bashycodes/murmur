@@ -1,4 +1,4 @@
-//! `workers` × `FlowCore`, loaded at startup; lease at `start`, return at
+//! `workers` × `MurmurCore`, loaded at startup; lease at `start`, return at
 //! result / cancel / disconnect.
 
 use std::collections::BTreeMap;
@@ -6,12 +6,12 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use flow_core::config::ModelConfig;
-use flow_core::{CoreError, FlowCore};
+use murmur_core::config::ModelConfig;
+use murmur_core::{CoreError, MurmurCore};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 pub struct Pool {
-    cores: Vec<Arc<FlowCore>>,
+    cores: Vec<Arc<MurmurCore>>,
     free: Mutex<Vec<usize>>,
     sem: Arc<Semaphore>,
     waiting: AtomicUsize,
@@ -29,7 +29,7 @@ pub struct Pool {
 }
 
 pub struct Lease {
-    pub core: Arc<FlowCore>,
+    pub core: Arc<MurmurCore>,
     idx: usize,
     pool: Arc<Pool>,
     _permit: OwnedSemaphorePermit,
@@ -53,7 +53,7 @@ pub enum LeaseError {
     Timeout,
 }
 
-fn backend_name(backend: &flow_core::config::AsrBackend, path: &str) -> (String, String) {
+fn backend_name(backend: &murmur_core::config::AsrBackend, path: &str) -> (String, String) {
     let name = backend.name();
     let model = std::path::Path::new(path)
         .file_name()
@@ -64,7 +64,7 @@ fn backend_name(backend: &flow_core::config::AsrBackend, path: &str) -> (String,
 
 /// D69: the drafting length the LLM plugin reports when it is not the one
 /// the config asks for (`None` when they match, or no LLM or no drafting
-/// was asked for). A plugin without `flow_llm_set_draft` reports no
+/// was asked for). A plugin without `murmur_llm_set_draft` reports no
 /// `draft` and runs its default (off): that is `Some(0)`.
 fn draft_not_applied(want: Option<usize>, info: Option<&str>) -> Option<usize> {
     let want = want.filter(|&n| n > 0)?;
@@ -78,7 +78,7 @@ impl Pool {
     /// Load `workers` cores (blocking; seconds for real models).
     pub fn load(model: &ModelConfig, workers: usize, max_queue: usize) -> Result<Self, CoreError> {
         let cores = (0..workers.max(1))
-            .map(|_| FlowCore::load_models(model).map(Arc::new))
+            .map(|_| MurmurCore::load_models(model).map(Arc::new))
             .collect::<Result<Vec<_>, _>>()?;
         for (worker, core) in cores.iter().enumerate() {
             if let Some(got) = draft_not_applied(model.llm_draft, core.llm_info().as_deref()) {
@@ -86,7 +86,7 @@ impl Pool {
                     worker,
                     want = model.llm_draft,
                     got,
-                    "llm_draft not applied (plugin without flow_llm_set_draft, or FLOW_LLM_DRAFT set)"
+                    "llm_draft not applied (plugin without murmur_llm_set_draft, or MURMUR_LLM_DRAFT set)"
                 );
             }
         }
@@ -102,7 +102,7 @@ impl Pool {
     /// later ones fit. Blocking; a failure is logged, not fatal. Returns
     /// how many workers warmed.
     pub fn warm_llm(&self) -> usize {
-        let req = flow_core::cleanup::CleanRequest {
+        let req = murmur_core::cleanup::CleanRequest {
             text: WARM_TEXT.into(),
             timeout_ms: WARM_TIMEOUT_MS,
             ..Default::default()
@@ -112,7 +112,7 @@ impl Pool {
             let Some(cl) = core.cleaner().filter(|c| c.available()) else {
                 continue;
             };
-            let (r, _, took) = flow_core::cleanup::clean_text(cl, &req, WARM_TIMEOUT_MS);
+            let (r, _, took) = murmur_core::cleanup::clean_text(cl, &req, WARM_TIMEOUT_MS);
             let llm_ms = took.as_millis() as u64;
             match r {
                 Ok(_) => {
@@ -125,7 +125,7 @@ impl Pool {
         warmed
     }
 
-    pub fn from_cores(cores: Vec<Arc<FlowCore>>, model: &ModelConfig, max_queue: usize) -> Self {
+    pub fn from_cores(cores: Vec<Arc<MurmurCore>>, model: &ModelConfig, max_queue: usize) -> Self {
         let (asr_backend, asr_model) = backend_name(&model.asr_backend, &model.asr_path);
         let languages = model
             .languages
@@ -153,7 +153,7 @@ impl Pool {
 
     /// (backend, model name) that decodes a session with this forced
     /// language: its `[model.languages]` entry, else the default model
-    /// (FlowCore's routing, `ModelConfig::language_route`).
+    /// (MurmurCore's routing, `ModelConfig::language_route`).
     pub fn asr_for(&self, language: Option<&str>) -> (&str, &str) {
         match self
             .model
@@ -263,12 +263,12 @@ mod tests {
         assert_eq!(draft_not_applied(Some(0), Some(r#"{}"#)), None);
         assert_eq!(draft_not_applied(None, Some(r#"{}"#)), None);
         assert_eq!(draft_not_applied(Some(4), None), None);
-        // A plugin without flow_llm_set_draft reports no length: off.
+        // A plugin without murmur_llm_set_draft reports no length: off.
         assert_eq!(
             draft_not_applied(Some(4), Some(r#"{"load_ms":1}"#)),
             Some(0)
         );
-        // FLOW_LLM_DRAFT overrode the config.
+        // MURMUR_LLM_DRAFT overrode the config.
         assert_eq!(draft_not_applied(Some(4), Some(r#"{"draft":2}"#)), Some(2));
     }
 }

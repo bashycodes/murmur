@@ -1,13 +1,13 @@
-//! Raw-protocol test client for flow-server (mock ASR, in-process server).
+//! Raw-protocol test client for murmur-server (mock ASR, in-process server).
 #![allow(dead_code)]
 
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use flow_core::config::{AsrBackend, ModelConfig};
-use flow_protocol::{ClientMsg, Hello, HelloOk, ServerMsg};
-use flow_server::{Config, ServerHandle};
 use futures_util::{SinkExt, StreamExt};
+use murmur_core::config::{AsrBackend, ModelConfig};
+use murmur_protocol::{ClientMsg, Hello, HelloOk, ServerMsg};
+use murmur_server::{Config, ServerHandle};
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::http::HeaderValue;
@@ -31,7 +31,7 @@ pub fn mock_cfg(text: &str) -> Config {
 
 pub async fn start(cfg: Config) -> ServerHandle {
     let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    flow_server::serve(cfg, vec![l]).await.unwrap()
+    murmur_server::serve(cfg, vec![l]).await.unwrap()
 }
 
 pub fn speech(ms: usize) -> Vec<i16> {
@@ -44,12 +44,24 @@ pub async fn connect(
     addr: SocketAddr,
     token: Option<&str>,
 ) -> Result<Ws, tokio_tungstenite::tungstenite::Error> {
+    connect_offering(addr, token, murmur_protocol::SUBPROTOCOL)
+        .await
+        .map(|(ws, _)| ws)
+}
+
+/// [`connect`] offering `subprotocols` (a `Sec-WebSocket-Protocol` value);
+/// also returns the one the server picked.
+pub async fn connect_offering(
+    addr: SocketAddr,
+    token: Option<&str>,
+    subprotocols: &'static str,
+) -> Result<(Ws, Option<String>), tokio_tungstenite::tungstenite::Error> {
     let mut req = format!("ws://{addr}/v1/stream")
         .into_client_request()
         .unwrap();
     req.headers_mut().insert(
         "Sec-WebSocket-Protocol",
-        HeaderValue::from_static("flow.v1"),
+        HeaderValue::from_static(subprotocols),
     );
     if let Some(t) = token {
         req.headers_mut().insert(
@@ -59,7 +71,14 @@ pub async fn connect(
     }
     tokio_tungstenite::connect_async(req)
         .await
-        .map(|(ws, _)| ws)
+        .map(|(ws, resp)| {
+            let picked = resp
+                .headers()
+                .get("Sec-WebSocket-Protocol")
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_string);
+            (ws, picked)
+        })
 }
 
 pub async fn send(ws: &mut Ws, m: &ClientMsg) {
@@ -68,7 +87,7 @@ pub async fn send(ws: &mut Ws, m: &ClientMsg) {
 
 pub async fn send_audio(ws: &mut Ws, pcm: &[i16]) {
     for c in pcm.chunks(1600) {
-        ws.send(Message::Binary(flow_protocol::encode_pcm(c).into()))
+        ws.send(Message::Binary(murmur_protocol::encode_pcm(c).into()))
             .await
             .unwrap();
     }

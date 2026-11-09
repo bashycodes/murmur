@@ -5,7 +5,7 @@
 //! the protocol already defines what happens past them (truncation /
 //! slower partials).
 
-use flow_core::config::{FieldContext, SessionConfig, SAMPLE_RATE};
+use murmur_core::config::{FieldContext, SessionConfig, SAMPLE_RATE};
 
 /// Extra ring room on top of the session cap: the router enlarges the ring
 /// to replay buffered audio after a fallback (`REPLAY_HEADROOM`).
@@ -22,7 +22,7 @@ pub const MAX_CONTEXT_TEXT_BYTES: usize = 8 * 1024;
 pub const MAX_CONTEXT_WORDS: usize = 1000;
 /// One WebSocket message or frame (audio frames are at most 64 KiB; the
 /// dictionary travels in `start`).
-pub const MAX_WS_MESSAGE_BYTES: usize = flow_protocol::MAX_FRAME_BYTES * 2;
+pub const MAX_WS_MESSAGE_BYTES: usize = murmur_protocol::MAX_FRAME_BYTES * 2;
 
 /// Validate and clamp a client's session config against the server's
 /// sample cap (`max_session_s` × 16 kHz).
@@ -89,11 +89,11 @@ pub fn context(ctx: &FieldContext) -> Result<(), String> {
 }
 
 /// Reject a text-only cleanup request (D36) over the server limits.
-pub fn clean(req: &flow_core::cleanup::CleanRequest) -> Result<(), String> {
-    if req.text.len() > flow_protocol::MAX_CLEAN_TEXT_BYTES {
+pub fn clean(req: &murmur_core::cleanup::CleanRequest) -> Result<(), String> {
+    if req.text.len() > murmur_protocol::MAX_CLEAN_TEXT_BYTES {
         return Err(format!(
             "text over {} bytes",
-            flow_protocol::MAX_CLEAN_TEXT_BYTES
+            murmur_protocol::MAX_CLEAN_TEXT_BYTES
         ));
     }
     if req.timeout_ms > MAX_LLM_TIMEOUT_MS {
@@ -199,8 +199,8 @@ mod tests {
 
     #[test]
     fn clean_limits() {
-        let mut r = flow_core::cleanup::CleanRequest {
-            text: "x".repeat(flow_protocol::MAX_CLEAN_TEXT_BYTES),
+        let mut r = murmur_core::cleanup::CleanRequest {
+            text: "x".repeat(murmur_protocol::MAX_CLEAN_TEXT_BYTES),
             timeout_ms: MAX_LLM_TIMEOUT_MS,
             ..Default::default()
         };

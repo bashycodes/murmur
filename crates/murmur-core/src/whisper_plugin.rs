@@ -1,17 +1,17 @@
-//! `PluginWhisper`: whisper.cpp from the `flow-whisper` plugin library
+//! `PluginWhisper`: whisper.cpp from the `murmur-whisper` plugin library
 //! (feature `whisper-plugin`), the GPU speech engine of the Windows app.
 //!
 //! The app links whisper.cpp for the CPU (feature `whisper`). The Vulkan
 //! build cannot be linked in: the exe would then need `vulkan-1.dll` to
-//! start. So it ships as `flow_whisper_vulkan.dll`, loaded here at runtime
-//! (C ABI documented in `crates/flow-whisper/src/lib.rs`), the way the
+//! start. So it ships as `murmur_whisper_vulkan.dll`, loaded here at runtime
+//! (C ABI documented in `crates/murmur-whisper/src/lib.rs`), the way the
 //! cleanup engine is (`crate::llama`, D10). When it does not load (no
 //! Vulkan driver), [`PluginWhisper::load`] says so and the shell uses the
 //! built-in CPU [`crate::whisper::WhisperEngine`]. Inside the plugin, no
 //! usable GPU or a GPU that fails to load the model means the CPU.
 //!
 //! Plugin lookup, first hit wins:
-//! 1. an explicit path, or the `FLOW_WHISPER_LIB` environment variable;
+//! 1. an explicit path, or the `MURMUR_WHISPER_LIB` environment variable;
 //! 2. [`GPU_PLUGIN_FILE`] next to the current executable, then in its
 //!    parent directory (cargo puts test binaries in `target/<profile>/deps/`).
 
@@ -29,11 +29,11 @@ const ABI_VERSION: u32 = 1;
 /// The GPU (Vulkan) build of the plugin, shipped next to the exe by the
 /// Windows installers.
 pub const GPU_PLUGIN_FILE: &str = if cfg!(windows) {
-    "flow_whisper_vulkan.dll"
+    "murmur_whisper_vulkan.dll"
 } else if cfg!(target_os = "macos") {
-    "libflow_whisper_vulkan.dylib"
+    "libmurmur_whisper_vulkan.dylib"
 } else {
-    "libflow_whisper_vulkan.so"
+    "libmurmur_whisper_vulkan.so"
 };
 
 #[repr(C)]
@@ -67,8 +67,8 @@ pub enum WhisperPluginError {
     Backend(String),
 }
 
-/// Where a whisper model runs, from the plugin's JSON (`flow_whisper_info`
-/// or `flow_whisper_backends`).
+/// Where a whisper model runs, from the plugin's JSON (`murmur_whisper_info`
+/// or `murmur_whisper_backends`).
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct WhisperBackend {
     /// "Vulkan", "CPU", …
@@ -118,7 +118,7 @@ pub fn plugin_candidates(explicit: Option<&str>) -> Vec<PathBuf> {
     if let Some(p) = explicit.filter(|p| !p.is_empty()) {
         return vec![PathBuf::from(p)];
     }
-    if let Some(p) = std::env::var_os("FLOW_WHISPER_LIB") {
+    if let Some(p) = murmur_build_info::env::var_os("MURMUR_WHISPER_LIB") {
         return vec![PathBuf::from(p)];
     }
     let mut v = Vec::new();
@@ -179,19 +179,25 @@ fn cstr(s: &str) -> CString {
 
 /// The plugin [`PluginWhisper::load`] would use and where it would run a
 /// model, without loading one.
-pub fn probe_backend(plugin: Option<&str>) -> Result<(PathBuf, WhisperBackend), WhisperPluginError> {
+pub fn probe_backend(
+    plugin: Option<&str>,
+) -> Result<(PathBuf, WhisperBackend), WhisperPluginError> {
     let (lib, path) = find_plugin(plugin)?;
-    let sym_err = |e: libloading::Error| WhisperPluginError::Backend(format!("whisper plugin: {e}"));
-    // SAFETY: symbol types match the ABI in crates/flow-whisper/src/lib.rs.
+    let sym_err =
+        |e: libloading::Error| WhisperPluginError::Backend(format!("whisper plugin: {e}"));
+    // SAFETY: symbol types match the ABI in crates/murmur-whisper/src/lib.rs.
     unsafe {
         let free_str: FreeStrFn = *lib
-            .get::<FreeStrFn>(b"flow_whisper_free_string\0")
+            .get::<FreeStrFn>(b"murmur_whisper_free_string\0")
             .map_err(sym_err)?;
         let f: BackendsFn = *lib
-            .get::<BackendsFn>(b"flow_whisper_backends\0")
+            .get::<BackendsFn>(b"murmur_whisper_backends\0")
             .map_err(sym_err)?;
         let json = take_string(free_str, f());
-        Ok((path, WhisperBackend::from_info(&json).unwrap_or_else(WhisperBackend::cpu)))
+        Ok((
+            path,
+            WhisperBackend::from_info(&json).unwrap_or_else(WhisperBackend::cpu),
+        ))
     }
 }
 
@@ -231,27 +237,31 @@ impl PluginWhisper {
         let (lib, plugin_path) = find_plugin(plugin)?;
         let sym_err =
             |e: libloading::Error| WhisperPluginError::Backend(format!("whisper plugin: {e}"));
-        // SAFETY: symbol types match the ABI in crates/flow-whisper/src/lib.rs;
+        // SAFETY: symbol types match the ABI in crates/murmur-whisper/src/lib.rs;
         // the version check guards against a mismatched plugin.
         unsafe {
             let ver: Symbol<unsafe extern "C" fn() -> u32> =
-                lib.get(b"flow_whisper_abi_version\0").map_err(sym_err)?;
+                lib.get(b"murmur_whisper_abi_version\0").map_err(sym_err)?;
             if ver() != ABI_VERSION {
                 return Err(WhisperPluginError::Backend(format!(
                     "whisper plugin ABI {} != {ABI_VERSION}",
                     ver()
                 )));
             }
-            let load: LoadFn = *lib.get::<LoadFn>(b"flow_whisper_load\0").map_err(sym_err)?;
-            let transcribe_fn: TranscribeFn = *lib
-                .get::<TranscribeFn>(b"flow_whisper_transcribe\0")
+            let load: LoadFn = *lib
+                .get::<LoadFn>(b"murmur_whisper_load\0")
                 .map_err(sym_err)?;
-            let info_fn: InfoFn = *lib.get::<InfoFn>(b"flow_whisper_info\0").map_err(sym_err)?;
+            let transcribe_fn: TranscribeFn = *lib
+                .get::<TranscribeFn>(b"murmur_whisper_transcribe\0")
+                .map_err(sym_err)?;
+            let info_fn: InfoFn = *lib
+                .get::<InfoFn>(b"murmur_whisper_info\0")
+                .map_err(sym_err)?;
             let free_str: FreeStrFn = *lib
-                .get::<FreeStrFn>(b"flow_whisper_free_string\0")
+                .get::<FreeStrFn>(b"murmur_whisper_free_string\0")
                 .map_err(sym_err)?;
             let unload: UnloadFn = *lib
-                .get::<UnloadFn>(b"flow_whisper_unload\0")
+                .get::<UnloadFn>(b"murmur_whisper_unload\0")
                 .map_err(sym_err)?;
             let (m, o) = (
                 cstr(model),
@@ -299,14 +309,21 @@ impl AsrEngine for PluginWhisper {
         let mut out: *mut c_char = std::ptr::null_mut();
         // SAFETY: live handle; `pcm` and the strings outlive the call.
         let rc = unsafe {
-            (self.transcribe_fn)(self.handle, pcm.as_ptr(), pcm.len(), r.as_ptr(), flag, &mut out)
+            (self.transcribe_fn)(
+                self.handle,
+                pcm.as_ptr(),
+                pcm.len(),
+                r.as_ptr(),
+                flag,
+                &mut out,
+            )
         };
         let s = take_string(self.free_str, out);
         if rc != 0 {
             return Err(AsrError::Transcribe(s));
         }
-        let v: serde_json::Value =
-            serde_json::from_str(&s).map_err(|e| AsrError::Transcribe(format!("plugin json: {e}")))?;
+        let v: serde_json::Value = serde_json::from_str(&s)
+            .map_err(|e| AsrError::Transcribe(format!("plugin json: {e}")))?;
         Ok(AsrOutput {
             text: v["text"].as_str().unwrap_or_default().to_string(),
             language: v["language"].as_str().map(str::to_string),
@@ -317,7 +334,7 @@ impl AsrEngine for PluginWhisper {
 
 impl Drop for PluginWhisper {
     fn drop(&mut self) {
-        // SAFETY: handle from flow_whisper_load, freed exactly once; the
+        // SAFETY: handle from murmur_whisper_load, freed exactly once; the
         // library is never closed.
         unsafe { (self.unload)(self.handle) };
     }
@@ -337,12 +354,15 @@ mod tests {
 
     #[test]
     fn default_lookup_is_the_gpu_build_next_to_the_exe() {
-        if std::env::var_os("FLOW_WHISPER_LIB").is_some() {
+        if std::env::var_os("MURMUR_WHISPER_LIB").is_some() {
             return;
         }
         let c = plugin_candidates(None);
         assert!(!c.is_empty());
-        assert!(c.iter().all(|p| p.file_name().unwrap() == GPU_PLUGIN_FILE), "{c:?}");
+        assert!(
+            c.iter().all(|p| p.file_name().unwrap() == GPU_PLUGIN_FILE),
+            "{c:?}"
+        );
     }
 
     #[test]
@@ -365,13 +385,20 @@ mod tests {
 
     #[test]
     fn missing_plugin_is_plugin_not_found() {
-        let e = probe_backend(Some("/nonexistent/flow_whisper_vulkan.dll"))
+        let e = probe_backend(Some("/nonexistent/murmur_whisper_vulkan.dll"))
             .err()
             .unwrap();
-        assert!(matches!(e, WhisperPluginError::PluginNotFound { .. }), "{e}");
-        let e = PluginWhisper::load("m.bin", &PluginOptions::default(), Some("/nonexistent/x.so"))
-            .err()
-            .unwrap();
+        assert!(
+            matches!(e, WhisperPluginError::PluginNotFound { .. }),
+            "{e}"
+        );
+        let e = PluginWhisper::load(
+            "m.bin",
+            &PluginOptions::default(),
+            Some("/nonexistent/x.so"),
+        )
+        .err()
+        .unwrap();
         assert!(e.to_string().contains("plugin not found"), "{e}");
     }
 

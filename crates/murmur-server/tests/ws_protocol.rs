@@ -1,15 +1,15 @@
-//! Protocol behaviour of flow-server against a raw WebSocket client.
+//! Protocol behaviour of murmur-server against a raw WebSocket client.
 
 mod common;
 
 use std::sync::Arc;
 
 use common::*;
-use flow_core::asr::MockAsr;
-use flow_core::config::{FieldContext, SessionConfig};
-use flow_core::FlowCore;
-use flow_protocol::{code, ClientMsg, Hello, ServerMsg};
 use futures_util::{SinkExt, StreamExt};
+use murmur_core::asr::MockAsr;
+use murmur_core::config::{FieldContext, SessionConfig};
+use murmur_core::MurmurCore;
+use murmur_protocol::{code, ClientMsg, Hello, ServerMsg};
 use tokio_tungstenite::tungstenite::Message;
 
 const TEXT: &str = "um so zephyr is great press enter";
@@ -35,26 +35,49 @@ async fn hello_ok_describes_the_server() {
     let mut ws = connect(s.addr(), Some(TOKEN)).await.unwrap();
     let h = hello(&mut ws).await;
     assert_eq!(h.proto, 1);
-    // D26: product version + commit (`flow-server 0.2.0+abc1234[.dirty]`); `core`
+    // D26: product version + commit (`murmur-server 0.2.0+abc1234[.dirty]`); `core`
     // stays the plain version (informational; compatibility is `proto`).
-    assert_eq!(h.server, format!("flow-server {}", flow_build_info::FULL));
+    assert_eq!(
+        h.server,
+        format!("murmur-server {}", murmur_build_info::FULL)
+    );
     assert!(
         h.server
-            .starts_with(&format!("flow-server {}+", flow_core::VERSION)),
+            .starts_with(&format!("murmur-server {}+", murmur_core::VERSION)),
         "{}",
         h.server
     );
-    assert_eq!(h.core, flow_core::VERSION);
-    assert_eq!(flow_build_info::VERSION, flow_core::VERSION);
-    assert_eq!(h.postprocess_rev, flow_core::POSTPROCESS_REV);
+    assert_eq!(h.core, murmur_core::VERSION);
+    assert_eq!(murmur_build_info::VERSION, murmur_core::VERSION);
+    assert_eq!(h.postprocess_rev, murmur_core::POSTPROCESS_REV);
     assert_eq!(h.asr_backend, "mock");
     assert_eq!(h.workers, 1);
     assert_eq!(h.busy, 0);
     assert!(!h.llm);
 }
 
+/// D83: an app from before the Murmur rename offers only the old
+/// subprotocol; the server still speaks it. A new client offers both and
+/// gets the new name.
 #[tokio::test(flavor = "multi_thread")]
-async fn session_result_equals_flowcore_directly() {
+async fn the_old_subprotocol_name_is_still_accepted() {
+    let s = start(mock_cfg(TEXT)).await;
+    let (mut old, picked) = connect_offering(s.addr(), Some(TOKEN), "flow.v1")
+        .await
+        .unwrap();
+    assert_eq!(picked.as_deref(), Some(murmur_protocol::OLD_SUBPROTOCOL));
+    assert_eq!(hello(&mut old).await.proto, 1);
+
+    let (mut new, picked) =
+        connect_offering(s.addr(), Some(TOKEN), murmur_protocol::CLIENT_SUBPROTOCOLS)
+            .await
+            .unwrap();
+    assert_eq!(picked.as_deref(), Some(murmur_protocol::SUBPROTOCOL));
+    assert_eq!(hello(&mut new).await.proto, 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn session_result_equals_murmurcore_directly() {
     let s = start(mock_cfg(TEXT)).await;
     let mut ws = session(s.addr()).await;
     send(
@@ -87,7 +110,7 @@ async fn session_result_equals_flowcore_directly() {
     assert_eq!(server_timings.recv_audio_ms, 1000);
     assert!(result.route.is_none(), "the server never sets route");
 
-    let core = FlowCore::from_engines(Arc::new(MockAsr::new(TEXT)), None);
+    let core = MurmurCore::from_engines(Arc::new(MockAsr::new(TEXT)), None);
     core.start_session(session_cfg()).unwrap();
     core.push_audio(&speech(1000));
     core.set_context(ctx());
@@ -328,7 +351,7 @@ async fn health_endpoint_returns_hello_ok() {
     let s = start(mock_cfg(TEXT)).await;
     let (status, body) = http_get(s.addr(), "/v1/health", Some(TOKEN)).await;
     assert_eq!(status, 200);
-    let h: flow_protocol::HelloOk = serde_json::from_str(&body).unwrap();
+    let h: murmur_protocol::HelloOk = serde_json::from_str(&body).unwrap();
     assert_eq!(h.asr_backend, "mock");
     assert_eq!(h.proto, 1);
 }

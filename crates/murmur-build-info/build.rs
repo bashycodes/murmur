@@ -1,11 +1,11 @@
-//! Bakes the git commit into the crate (FLOW_GIT_SHA / FLOW_GIT_DIRTY /
-//! FLOW_BUILD / FLOW_FULL) and fails the build when the workspace version
+//! Bakes the git commit into the crate (MURMUR_GIT_SHA / MURMUR_GIT_DIRTY /
+//! MURMUR_BUILD / MURMUR_FULL) and fails the build when the workspace version
 //! drifts from the repo's VERSION file (D26, docs/versioning.md).
 //!
-//! The env vars FLOW_GIT_SHA and FLOW_GIT_DIRTY (1/true) override git, e.g.
+//! The env vars MURMUR_GIT_SHA and MURMUR_GIT_DIRTY (1/true) override git, e.g.
 //! for a build from a source tarball. The dirty flag covers tracked files and
 //! is refreshed when HEAD, the index, VERSION or any Rust source under
-//! crates/ or apps/flow-windows changes.
+//! crates/ or apps/murmur-windows changes.
 
 use std::env;
 use std::fs;
@@ -49,13 +49,13 @@ fn main() {
         }
     }
 
-    println!("cargo:rerun-if-env-changed=FLOW_GIT_SHA");
-    println!("cargo:rerun-if-env-changed=FLOW_GIT_DIRTY");
-    let sha = env::var("FLOW_GIT_SHA")
+    println!("cargo:rerun-if-env-changed=MURMUR_GIT_SHA");
+    println!("cargo:rerun-if-env-changed=MURMUR_GIT_DIRTY");
+    let sha = env::var("MURMUR_GIT_SHA")
         .ok()
         .or_else(|| git(&root, &["rev-parse", "--short=7", "HEAD"]))
         .unwrap_or_default();
-    let dirty = match env::var("FLOW_GIT_DIRTY") {
+    let dirty = match env::var("MURMUR_GIT_DIRTY") {
         Ok(v) => v == "1" || v == "true",
         Err(_) => {
             !sha.is_empty()
@@ -84,19 +84,19 @@ fn main() {
         "Cargo.toml",
         "Cargo.lock",
         "crates",
-        "apps/flow-windows/Cargo.toml",
-        "apps/flow-windows/src",
-        "apps/flow-windows/ui/src",
+        "apps/murmur-windows/Cargo.toml",
+        "apps/murmur-windows/src",
+        "apps/murmur-windows/ui/src",
     ] {
         rerun(&root.join(d));
     }
 
     let (build, full) = describe(&version, &sha, dirty);
-    println!("cargo:rustc-env=FLOW_GIT_SHA={sha}");
+    println!("cargo:rustc-env=MURMUR_GIT_SHA={sha}");
     println!(
-        "cargo:rustc-env=FLOW_GIT_DIRTY={}",
+        "cargo:rustc-env=MURMUR_GIT_DIRTY={}",
         if dirty { "1" } else { "0" }
     );
-    println!("cargo:rustc-env=FLOW_BUILD={build}");
-    println!("cargo:rustc-env=FLOW_FULL={full}");
+    println!("cargo:rustc-env=MURMUR_BUILD={build}");
+    println!("cargo:rustc-env=MURMUR_FULL={full}");
 }

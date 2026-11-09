@@ -20,7 +20,7 @@ async fn serve_refuses_wildcard_and_public_binds_without_tls() {
         let mut c = mock_cfg("x");
         c.bind = vec!["127.0.0.1:7313".into(), bind.into()];
         let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let e = flow_server::serve(c, vec![l]).await.err();
+        let e = murmur_server::serve(c, vec![l]).await.err();
         let e = e.unwrap_or_else(|| panic!("{bind} was accepted"));
         assert!(e.contains("--insecure-bind-any"), "{bind}: {e}");
     }
@@ -37,13 +37,13 @@ async fn serve_refuses_wildcard_and_public_binds_without_tls() {
         let mut c = mock_cfg("x");
         c.bind = vec![bind.into()];
         let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        assert!(flow_server::serve(c, vec![l]).await.is_ok(), "{bind}");
+        assert!(murmur_server::serve(c, vec![l]).await.is_ok(), "{bind}");
     }
     let mut c = mock_cfg("x");
     c.bind = vec!["0.0.0.0:7313".into()];
     c.insecure_bind_any = true;
     let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    assert!(flow_server::serve(c, vec![l]).await.is_ok());
+    assert!(murmur_server::serve(c, vec![l]).await.is_ok());
 }
 
 fn write_cfg(dir: &std::path::Path, bind: &str) -> std::path::PathBuf {
@@ -65,7 +65,7 @@ fn the_binary_refuses_0_0_0_0_and_check_config_says_why() {
     let d = tempfile::tempdir().unwrap();
     let cfg = write_cfg(d.path(), "0.0.0.0:0");
     for sub in [&["check-config"][..], &[][..]] {
-        let out = Command::new(env!("CARGO_BIN_EXE_flow-server"))
+        let out = Command::new(env!("CARGO_BIN_EXE_murmur-server"))
             .args(sub)
             .arg("--config")
             .arg(&cfg)
@@ -82,7 +82,7 @@ fn the_binary_refuses_0_0_0_0_and_check_config_says_why() {
 fn insecure_bind_any_starts_with_a_loud_warning() {
     let d = tempfile::tempdir().unwrap();
     let cfg = write_cfg(d.path(), "0.0.0.0:0");
-    let mut child = Command::new(env!("CARGO_BIN_EXE_flow-server"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_murmur-server"))
         .arg("--config")
         .arg(&cfg)
         .arg("--insecure-bind-any")

@@ -143,8 +143,8 @@ pub struct CommitResult {
     /// suppressed phrase). `None` for other statuses.
     #[serde(default)]
     pub empty_reason: Option<String>,
-    /// Which engine produced this result (hybrid router, D17). `FlowCore`
-    /// never sets it; `flow_router::Router` always does.
+    /// Which engine produced this result (hybrid router, D17). `MurmurCore`
+    /// never sets it; `murmur_router::Router` always does.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub route: Option<RouteInfo>,
     /// The LLM step of this commit, when it ran (engine `local`/`cloud`,
@@ -176,7 +176,7 @@ pub struct CommitResult {
     pub fallback_detail: Option<String>,
 }
 
-/// One poll of the live session (`FlowCore::poll`, `Router::poll`): the
+/// One poll of the live session (`MurmurCore::poll`, `Router::poll`): the
 /// latest partial plus the hands-free endpoint signal (D19). Added
 /// 2026-10-22; every field defaults.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -220,11 +220,11 @@ pub struct RouteInfo {
     pub server: Option<String>,
     pub rtt_ms: Option<u32>,
     pub queue_ms: Option<u32>,
-    /// The server's flow-core version (pipeline skew detection).
+    /// The server's murmur-core version (pipeline skew detection).
     pub server_core: Option<String>,
     /// Wall time of `Router::commit` on the client (release → result, so
     /// for a server result it includes the upload tail, the network and
-    /// the server's queue). Set by `flow_router::Router`; `FlowCore` never
+    /// the server's queue). Set by `murmur_router::Router`; `MurmurCore` never
     /// sets it. 2026-10-23.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_ms: Option<u32>,
@@ -329,14 +329,14 @@ pub enum CoreError {
     /// is invoked). CR-1.
     #[error("model not found: {path}")]
     ModelNotFound { path: String },
-    /// The `flow-llm` plugin library could not be opened from any lookup
+    /// The `murmur-llm` plugin library could not be opened from any lookup
     /// location (`tried`, in order, each with its loader error).
     #[error("llm plugin not found ({})", tried.join("; "))]
     LlmLibNotFound { tried: Vec<String> },
 }
 
 impl CoreError {
-    /// Stable snake_case kind for FFI callers (`flow_last_error_kind`).
+    /// Stable snake_case kind for FFI callers (`murmur_last_error_kind`).
     pub fn kind(&self) -> &'static str {
         match self {
             CoreError::Load(_) => "load",
@@ -439,7 +439,7 @@ const DEFAULT_LANGUAGE: &str = "en";
 
 /// Phases a sherpa engine reported, as [`Phase`]s.
 #[cfg(feature = "parakeet")]
-fn sherpa_phases(p: &[flow_asr_sherpa::LoadPhase]) -> Vec<Phase> {
+fn sherpa_phases(p: &[murmur_asr_sherpa::LoadPhase]) -> Vec<Phase> {
     p.iter()
         .map(|p| Phase {
             name: p.name,
@@ -557,7 +557,7 @@ fn load_lid(cfg: &ModelConfig) -> Result<Option<WithTiming<Arc<dyn LanguageId>>>
     }
 }
 
-/// One [`FlowCore`] load in progress: its timings, and the LLM a previous
+/// One [`MurmurCore`] load in progress: its timings, and the LLM a previous
 /// engine kept for it ([`crate::llm_keep`]). That LLM is taken out first,
 /// so a kept model that does not match is freed before anything loads; a
 /// matching one goes back into the slot if the load fails before
@@ -587,7 +587,7 @@ impl<'s> Load<'s> {
     }
 
     /// The LLM (kept or loaded), then the core.
-    fn finish(mut self, cfg: &ModelConfig, routes: AsrRoutes) -> Result<FlowCore, CoreError> {
+    fn finish(mut self, cfg: &ModelConfig, routes: AsrRoutes) -> Result<MurmurCore, CoreError> {
         let llm = match LlmKey::of(cfg) {
             None => None,
             Some(key) => Some(match self.kept_llm.take() {
@@ -603,7 +603,7 @@ impl<'s> Load<'s> {
                 }
             }),
         };
-        let mut core = FlowCore::from_routes(routes, llm.as_ref().map(|(_, c)| c.clone()));
+        let mut core = MurmurCore::from_routes(routes, llm.as_ref().map(|(_, c)| c.clone()));
         core.llm_key = llm.map(|(k, _)| k);
         core.load_timings = LoadTimings {
             total_ms: ms_since(self.started),
@@ -746,7 +746,7 @@ impl Shared {
 }
 
 /// Opaque core handle (§9 `Handle`). One active session at a time.
-pub struct FlowCore {
+pub struct MurmurCore {
     shared: Arc<Shared>,
     /// The cleaner the core was built with (the on-device LLM).
     cleaner_info: Option<Arc<dyn Cleaner>>,
@@ -754,14 +754,14 @@ pub struct FlowCore {
     active_cleaner: Mutex<Option<Arc<dyn Cleaner>>>,
     load_timings: LoadTimings,
     /// The load `cleaner_info` came from, when it is a loaded on-device
-    /// LLM ([`FlowCore::keep_llm`]).
+    /// LLM ([`MurmurCore::keep_llm`]).
     llm_key: Option<LlmKey>,
     ctrl: mpsc::Sender<Ctrl>,
     worker: Option<JoinHandle<()>>,
 }
 
-impl FlowCore {
-    /// Load models and keep them warm until [`FlowCore::unload`] / drop:
+impl MurmurCore {
+    /// Load models and keep them warm until [`MurmurCore::unload`] / drop:
     /// the default ASR model, every model in `cfg.languages` (D33) and the
     /// LLM. Sessions whose forced language has a map entry decode on that
     /// model, all others on the default one.
@@ -781,14 +781,14 @@ impl FlowCore {
         load.finish(cfg, routes)
     }
 
-    /// Like [`FlowCore::load_models`] but with one ASR model in memory
+    /// Like [`MurmurCore::load_models`] but with one ASR model in memory
     /// (D33 decision 4, for RAM-tight shells such as Android): the model
     /// that serves `language` ([`ModelConfig::language_route`]: the map
     /// entry, else the default model), plus the LLM. Every session then
     /// decodes on that model, whatever its language, so the shell reloads
     /// when the user switches to a language that routes elsewhere (compare
     /// `language_route` of the old and new language). Before freeing the
-    /// old core it can [`FlowCore::keep_llm`], which this load then reuses
+    /// old core it can [`MurmurCore::keep_llm`], which this load then reuses
     /// instead of loading the LLM again.
     pub fn load_models_for(cfg: &ModelConfig, language: Option<&str>) -> Result<Self, CoreError> {
         Self::load_models_for_in(&llm_keep::SLOT, cfg, language)
@@ -842,7 +842,7 @@ impl FlowCore {
         Self::from_language_engines(asr, Vec::new(), cleaner)
     }
 
-    /// [`FlowCore::from_engines`] with per-language engines (D33): a
+    /// [`MurmurCore::from_engines`] with per-language engines (D33): a
     /// session whose forced language matches a key (`"he"`; matched like
     /// [`ModelConfig::language_route`]) decodes on that engine, every other
     /// session on `default`.
@@ -854,7 +854,7 @@ impl FlowCore {
         Self::from_language_engines_with_lid(default, by_language, None, cleaner)
     }
 
-    /// [`FlowCore::from_language_engines`] with a language identifier
+    /// [`MurmurCore::from_language_engines`] with a language identifier
     /// (H6, D34): an auto-detect session with `lid` and at least one
     /// language engine has its first [`crate::lid::LID_SAMPLES`] of speech
     /// identified and decodes on that language's engine when there is one.
@@ -893,7 +893,7 @@ impl FlowCore {
         let ws = shared.clone();
         let cleaner_info = cleaner.clone();
         let worker = std::thread::Builder::new()
-            .name("flow-core-worker".into())
+            .name("murmur-core-worker".into())
             .spawn(move || {
                 Worker {
                     shared: ws,
@@ -998,7 +998,7 @@ impl FlowCore {
         let _ = self.ctrl.send(Ctrl::SetCleaner(eff));
     }
 
-    /// The cleaner commits use now ([`FlowCore::set_cleaner`], else the
+    /// The cleaner commits use now ([`MurmurCore::set_cleaner`], else the
     /// built-in one). Additive (D28).
     pub fn active_cleaner(&self) -> Option<Arc<dyn Cleaner>> {
         self.active_cleaner.lock().unwrap().clone()
@@ -1113,7 +1113,7 @@ impl FlowCore {
     }
 }
 
-impl Drop for FlowCore {
+impl Drop for MurmurCore {
     fn drop(&mut self) {
         let _ = self.ctrl.send(Ctrl::Shutdown);
         if let Some(w) = self.worker.take() {
@@ -1218,7 +1218,7 @@ impl Session {
 
 /// How pieces are joined at commit. `Bridge` (the product); the others
 /// exist only so `tests/segment_bench.rs` can compare candidates
-/// (`FLOW_SEGMENT_JOIN=plain|smooth`, undocumented, bench use only).
+/// (`MURMUR_SEGMENT_JOIN=plain|smooth`, undocumented, bench use only).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum JoinMode {
     Bridge,
@@ -1228,7 +1228,7 @@ enum JoinMode {
 
 impl JoinMode {
     fn from_env() -> Self {
-        match std::env::var("FLOW_SEGMENT_JOIN").as_deref() {
+        match murmur_build_info::env::var("MURMUR_SEGMENT_JOIN").as_deref() {
             Ok("plain") => Self::Plain,
             Ok("smooth") => Self::Smooth,
             _ => Self::Bridge,
@@ -2191,7 +2191,7 @@ fn finish_text(
             language.as_deref(),
         );
         // Scaled with the text's length when the session asks (a long
-        // dictation decodes more tokens; flow-server sets the rate).
+        // dictation decodes more tokens; murmur-server sets the rate).
         let timeout_ms = cl.budget_ms(cfg.llm_budget_ms(&text));
         let t = Instant::now();
         let (outcome, usage) = cleanup::run_cleanup_metered_for(
@@ -2317,10 +2317,10 @@ mod keep_llm_tests {
     }
 
     /// A core whose LLM was loaded for `cfg()`, as [`Load::finish`] builds it.
-    fn core_with_llm() -> (FlowCore, Weak<dyn Cleaner>) {
+    fn core_with_llm() -> (MurmurCore, Weak<dyn Cleaner>) {
         let c: Arc<dyn Cleaner> = Arc::new(Fake);
         let w = Arc::downgrade(&c);
-        let mut core = FlowCore::from_engines(Arc::new(crate::asr::MockAsr::new("hi")), Some(c));
+        let mut core = MurmurCore::from_engines(Arc::new(crate::asr::MockAsr::new("hi")), Some(c));
         core.llm_key = LlmKey::of(&cfg());
         (core, w)
     }
@@ -2338,7 +2338,8 @@ mod keep_llm_tests {
         let (_other, _) = core_with_llm();
         assert!(old.keep_llm_in(&slot));
         drop(old);
-        let next = FlowCore::load_models_for_in(&slot, &cfg(), None).expect("reuses the kept LLM");
+        let next =
+            MurmurCore::load_models_for_in(&slot, &cfg(), None).expect("reuses the kept LLM");
         assert!(same(&next.cleaner().unwrap(), &old_llm));
         assert!(next.load_timings().llm().unwrap().reused);
         // The new core can keep it again for the switch after.
@@ -2348,7 +2349,7 @@ mod keep_llm_tests {
     #[test]
     fn a_core_without_a_loaded_llm_keeps_nothing() {
         let slot = LlmSlot::new();
-        let built = FlowCore::from_engines(
+        let built = MurmurCore::from_engines(
             Arc::new(crate::asr::MockAsr::new("hi")),
             Some(Arc::new(Fake)),
         );
@@ -2367,10 +2368,10 @@ mod keep_llm_tests {
             asr_path: "invented/missing-model.bin".into(),
             ..cfg()
         };
-        assert!(FlowCore::load_models_for_in(&slot, &missing, None).is_err());
+        assert!(MurmurCore::load_models_for_in(&slot, &missing, None).is_err());
         assert!(old_llm.upgrade().is_some(), "still kept");
         // The retry (model now there) reuses it.
-        let retry = FlowCore::load_models_for_in(&slot, &cfg(), None).expect("retry");
+        let retry = MurmurCore::load_models_for_in(&slot, &cfg(), None).expect("retry");
         assert!(same(&retry.cleaner().unwrap(), &old_llm));
     }
 }

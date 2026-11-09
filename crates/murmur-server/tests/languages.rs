@@ -4,11 +4,11 @@
 //!
 //! The real-model test (feature `parakeet`) runs the streaming Hebrew
 //! zipformer on a FLEURS clip and skips (passes with a note) unless both
-//! exist: FLOW_ZIPFORMER_HE_DIR (default models/zipformer2-66m-streaming-
-//! he-int8, then ~/.cache/flow-clone-models/zipformer2-66m-streaming-he-int8;
-//! fetch with `tools/fetch-models.sh --hebrew`) and FLOW_HE_WAV (default
+//! exist: MURMUR_ZIPFORMER_HE_DIR (default models/zipformer2-66m-streaming-
+//! he-int8, then ~/.cache/murmur-models/zipformer2-66m-streaming-he-int8;
+//! fetch with `tools/fetch-models.sh --hebrew`) and MURMUR_HE_WAV (default
 //! models/he.wav, then the FLEURS he dev clip 10012360550181770926.wav under
-//! ~/.cache/flow-clone-models/fleurs-he-sample/raw/). Model pin:
+//! ~/.cache/murmur-models/fleurs-he-sample/raw/). Model pin:
 //! docs/findings/2026-10-30-hebrew-model-pins.md.
 
 mod common;
@@ -17,10 +17,10 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 
 use common::*;
-use flow_core::config::{AsrBackend, LanguageModel, SessionConfig};
-use flow_core::CommitResult;
-use flow_protocol::{ClientMsg, ServerMsg};
-use flow_server::Config;
+use murmur_core::config::{AsrBackend, LanguageModel, SessionConfig};
+use murmur_core::CommitResult;
+use murmur_protocol::{ClientMsg, ServerMsg};
+use murmur_server::Config;
 
 fn with_language(mut cfg: Config, lang: &str, m: LanguageModel) -> Config {
     cfg.model.languages = BTreeMap::from([(lang.to_string(), m)]);
@@ -120,13 +120,13 @@ mod zipformer {
     use super::*;
 
     fn models() -> PathBuf {
-        std::env::var_os("FLOW_MODELS_DIR")
+        std::env::var_os("MURMUR_MODELS_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../models"))
     }
 
     fn cache() -> Option<PathBuf> {
-        std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache/flow-clone-models"))
+        std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache/murmur-models"))
     }
 
     /// The env var, else the first candidate that exists.
@@ -140,7 +140,7 @@ mod zipformer {
     fn inputs() -> Option<(PathBuf, PathBuf)> {
         let zip = "zipformer2-66m-streaming-he-int8";
         let dir = pick(
-            "FLOW_ZIPFORMER_HE_DIR",
+            "MURMUR_ZIPFORMER_HE_DIR",
             [Some(models().join(zip)), cache().map(|c| c.join(zip))]
                 .into_iter()
                 .flatten()
@@ -148,7 +148,7 @@ mod zipformer {
             |p| p.join("tokens.txt").is_file(),
         );
         let wav = pick(
-            "FLOW_HE_WAV",
+            "MURMUR_HE_WAV",
             [
                 Some(models().join("he.wav")),
                 cache().map(|c| c.join("fleurs-he-sample/raw/10012360550181770926.wav")),
@@ -170,7 +170,7 @@ mod zipformer {
     /// The clip scaled to peak 0.5: some FLEURS he clips are recorded
     /// below the engines' silence gate; dictation audio is louder.
     fn clip(wav: &Path) -> Vec<i16> {
-        let pcm = flow_core::audio::read_wav_16k_mono(wav).unwrap();
+        let pcm = murmur_core::audio::read_wav_16k_mono(wav).unwrap();
         let peak = pcm
             .iter()
             .map(|s| (*s as i32).abs())
@@ -211,8 +211,8 @@ mod zipformer {
         let wait = Duration::from_secs(60);
 
         let r = dictate(&mut ws, 1, forced("he-IL"), &pcm, wait).await;
-        assert_ne!(r.status, flow_core::CommitStatus::Error, "{r:?}");
-        assert_ne!(r.status, flow_core::CommitStatus::Empty, "{r:?}");
+        assert_ne!(r.status, murmur_core::CommitStatus::Error, "{r:?}");
+        assert_ne!(r.status, murmur_core::CommitStatus::Empty, "{r:?}");
         assert_eq!(r.language.as_deref(), Some("he"));
         assert_hebrew(&r.asr_text);
         assert_hebrew(&r.final_text);

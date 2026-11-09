@@ -10,9 +10,9 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use common::*;
-use flow_core::config::SessionConfig;
-use flow_protocol::{ClientMsg, Hello, ServerMsg};
 use futures_util::{SinkExt, StreamExt};
+use murmur_core::config::SessionConfig;
+use murmur_protocol::{ClientMsg, Hello, ServerMsg};
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::MaybeTlsStream;
 
@@ -44,7 +44,7 @@ fn logs() -> &'static Arc<Mutex<Vec<u8>>> {
     })
 }
 
-async fn server(f: impl FnOnce(&mut flow_server::Config)) -> flow_server::ServerHandle {
+async fn server(f: impl FnOnce(&mut murmur_server::Config)) -> murmur_server::ServerHandle {
     logs();
     let mut c = mock_cfg(TEXT);
     f(&mut c);
@@ -126,7 +126,7 @@ async fn a_completed_dictation_logs_result_and_audio_bytes() {
     let s = server(|_| {}).await;
     let mut ws = connect(s.addr(), Some(TOKEN)).await.unwrap();
     let peer = local_addr(&ws);
-    hello_as(&mut ws, "flow-test 9.9.9").await;
+    hello_as(&mut ws, "murmur-test 9.9.9").await;
     start_session(&mut ws, 1).await;
     send_audio(&mut ws, &speech(500)).await;
     send(&mut ws, &ClientMsg::Commit { sid: 1 }).await;
@@ -136,7 +136,7 @@ async fn a_completed_dictation_logs_result_and_audio_bytes() {
     ));
     ws.close(None).await.unwrap();
     let line = end_line(peer).await;
-    assert!(line.contains("client=\"flow-test 9.9.9\""), "{line}");
+    assert!(line.contains("client=\"murmur-test 9.9.9\""), "{line}");
     assert!(line.contains("key=\"k-"), "the owner key id: {line}");
     // 500 ms at 16 kHz, 2 bytes a sample.
     assert!(line.contains("audio_bytes=16000"), "{line}");
@@ -158,7 +158,7 @@ async fn a_client_that_closes_mid_session_logs_the_open_session() {
     let s = server(|_| {}).await;
     let mut ws = connect(s.addr(), Some(TOKEN)).await.unwrap();
     let peer = local_addr(&ws);
-    hello_as(&mut ws, "flow-test").await;
+    hello_as(&mut ws, "murmur-test").await;
     start_session(&mut ws, 4).await;
     ws.close(None).await.unwrap();
     let line = end_line(peer).await;
@@ -179,7 +179,7 @@ async fn an_authenticated_but_idle_client_is_logged_as_idle() {
     let s = server(|c| c.idle_timeout_s = 1).await;
     let mut ws = connect(s.addr(), Some(TOKEN)).await.unwrap();
     let peer = local_addr(&ws);
-    hello_as(&mut ws, "flow-test").await;
+    hello_as(&mut ws, "murmur-test").await;
     // Keep reading (answering pings) until the server closes.
     while tokio::time::timeout(Duration::from_secs(5), ws.next())
         .await
@@ -202,7 +202,7 @@ async fn a_silent_peer_is_logged_as_dead() {
     .await;
     let mut ws = connect(s.addr(), Some(TOKEN)).await.unwrap();
     let peer = local_addr(&ws);
-    hello_as(&mut ws, "flow-test").await;
+    hello_as(&mut ws, "murmur-test").await;
     start_session(&mut ws, 2).await;
     // `ws` is not polled again, so pings go unanswered.
     let line = end_line(peer).await;
@@ -232,13 +232,13 @@ async fn a_protocol_mismatch_is_logged_with_the_client() {
         &ClientMsg::Hello(Hello {
             proto_min: 900,
             proto_max: 901,
-            client: "flow-future 99.0.0".into(),
+            client: "murmur-future 99.0.0".into(),
             ..Default::default()
         }),
     )
     .await;
     let line = end_line(peer).await;
-    assert!(line.contains("client=\"flow-future 99.0.0\""), "{line}");
+    assert!(line.contains("client=\"murmur-future 99.0.0\""), "{line}");
     assert!(line.contains("reason=\"proto_mismatch\""), "{line}");
 }
 
@@ -247,7 +247,7 @@ async fn a_server_shutdown_is_logged() {
     let s = server(|_| {}).await;
     let mut ws = connect(s.addr(), Some(TOKEN)).await.unwrap();
     let peer = local_addr(&ws);
-    hello_as(&mut ws, "flow-test").await;
+    hello_as(&mut ws, "murmur-test").await;
     send_audio(&mut ws, &speech(100)).await;
     // Let the server read the audio before it stops.
     send(&mut ws, &ClientMsg::Ping { n: 1 }).await;
@@ -264,7 +264,7 @@ async fn failed_sessions_beside_a_result_each_get_a_line() {
     let s = server(|_| {}).await;
     let mut ws = connect(s.addr(), Some(TOKEN)).await.unwrap();
     let peer = local_addr(&ws);
-    hello_as(&mut ws, "flow-test").await;
+    hello_as(&mut ws, "murmur-test").await;
     start_session(&mut ws, 1).await;
     send_audio(&mut ws, &speech(100)).await;
     start_session(&mut ws, 2).await; // replaces 1
@@ -326,7 +326,11 @@ async fn a_newline_in_the_client_string_cannot_forge_a_line() {
     let s = server(|_| {}).await;
     let mut ws = connect(s.addr(), Some(TOKEN)).await.unwrap();
     let peer = local_addr(&ws);
-    hello_as(&mut ws, "evil\nINFO flow_server::ws: forged peer=1.2.3.4:5").await;
+    hello_as(
+        &mut ws,
+        "evil\nINFO murmur_server::ws: forged peer=1.2.3.4:5",
+    )
+    .await;
     send(&mut ws, &ClientMsg::Ping { n: 1 }).await;
     assert!(matches!(recv(&mut ws).await, Some(ServerMsg::Pong { .. })));
     ws.close(None).await.unwrap();
@@ -339,7 +343,7 @@ async fn a_newline_in_the_client_string_cannot_forge_a_line() {
     let log = String::from_utf8_lossy(&logs().lock().unwrap()).to_string();
     assert!(
         !log.lines()
-            .any(|l| l.starts_with("INFO flow_server::ws: forged")),
+            .any(|l| l.starts_with("INFO murmur_server::ws: forged")),
         "no forged line"
     );
 }

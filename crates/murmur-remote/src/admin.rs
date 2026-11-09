@@ -1,20 +1,20 @@
-//! Admin API client (D39, `flow_protocol::admin`): who am I, and list /
+//! Admin API client (D39, `murmur_protocol::admin`): who am I, and list /
 //! create / revoke the server's keys. Plain HTTP/1.1 JSON on the stream's
 //! host, port, TLS and bearer key, with the same address checks as the
 //! stream (no plaintext to public addresses, TLS pin honoured).
 //!
 //! Blocking: every call runs on its own short-lived single-thread runtime,
 //! bounded by `connect_timeout_ms` for the connection and [`REQUEST_TIMEOUT`]
-//! overall. Shared by flow-windows and, through flow-ffi, Android. Nothing
+//! overall. Shared by murmur-windows and, through murmur-ffi, Android. Nothing
 //! here logs; a created key's secret is only in the returned value.
 
 use std::time::Duration;
 
-use flow_protocol::admin::{
+use murmur_protocol::admin::{
     code, key_path, AdminError, CreateKey, CreatedKey, KeyList, RevokedKey, WhoAmI,
     PATH_ADMIN_KEYS, PATH_WHOAMI,
 };
-use flow_router::ServerConfig;
+use murmur_router::ServerConfig;
 use serde::de::DeserializeOwned;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
@@ -31,7 +31,7 @@ pub struct AdminClient {
 }
 
 impl AdminClient {
-    /// `client` names the app in `User-Agent` (e.g. `"flow-windows 1.0.0"`).
+    /// `client` names the app in `User-Agent` (e.g. `"murmur-windows 1.0.0"`).
     pub fn new(cfg: ServerConfig, client: &str) -> Self {
         Self {
             cfg,
@@ -113,7 +113,7 @@ impl AdminClient {
     }
 }
 
-fn connect_err(e: flow_router::BackendError) -> AdminError {
+fn connect_err(e: murmur_router::BackendError) -> AdminError {
     AdminError::new(code::CONNECT_FAILED, e.to_string())
 }
 
@@ -252,7 +252,7 @@ fn decode<T: DeserializeOwned>(status: u16, body: &[u8], want: u16) -> Result<T,
         Ok(e) if !e.code.is_empty() => Err(e),
         _ if status == 404 => Err(AdminError::new(
             code::UNSUPPORTED,
-            "this server has no admin API: update flow-server",
+            "this server has no admin API: update murmur-server",
         )),
         _ if status == 401 => Err(AdminError::new(
             code::UNAUTHORIZED,

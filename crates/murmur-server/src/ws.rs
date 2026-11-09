@@ -6,14 +6,14 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
-use flow_core::cleanup::CleanRequest;
-use flow_core::config::{FieldContext, SessionConfig, SAMPLE_RATE};
-use flow_core::{CommitResult, FlowCore};
-use flow_protocol::{
+use futures_util::{SinkExt, StreamExt};
+use murmur_core::cleanup::CleanRequest;
+use murmur_core::config::{FieldContext, SessionConfig, SAMPLE_RATE};
+use murmur_core::{CommitResult, MurmurCore};
+use murmur_protocol::{
     code, decode_pcm, negotiate, samples_to_ms, Cleaned, ClientMsg, FrameError, ServerMsg,
     ServerTimings, CLOSE_PROTO_MISMATCH, PROTO_MAX, PROTO_MIN,
 };
-use futures_util::{SinkExt, StreamExt};
 use tokio::sync::mpsc;
 
 use crate::pool::{Lease, LeaseError};
@@ -57,7 +57,7 @@ struct Sess {
     waiter: Option<tokio::task::AbortHandle>,
     /// The core running this session's commit, reachable until the job
     /// ends so a cancel or disconnect can abort it (C4).
-    inflight: Arc<Mutex<Option<Arc<FlowCore>>>>,
+    inflight: Arc<Mutex<Option<Arc<MurmurCore>>>>,
 }
 
 impl Sess {
@@ -571,7 +571,7 @@ impl Conn {
                     };
                 };
                 let (r, usage, took) =
-                    flow_core::cleanup::clean_text(cl, &req, crate::limits::MAX_LLM_TIMEOUT_MS);
+                    murmur_core::cleanup::clean_text(cl, &req, crate::limits::MAX_LLM_TIMEOUT_MS);
                 drop(lease); // the worker is free once its LLM call ended
                 let (text, error) = match r {
                     Ok(t) => (Some(t), None),
@@ -607,7 +607,7 @@ impl Conn {
     }
 
     fn start(&mut self, sid: u64, cfg: SessionConfig) {
-        // A start while a session is active cancels it (FlowCore semantics).
+        // A start while a session is active cancels it (MurmurCore semantics).
         self.end_session(REPLACED);
         self.end.sessions += 1;
         let cfg = match crate::limits::session(cfg, self.state.cfg.max_session_samples()) {
@@ -671,7 +671,7 @@ impl Conn {
 
     /// `start_session` failed (the core's worker thread is gone): report
     /// it instead of a `started` that would never produce a result.
-    fn worker_failed(&self, sid: u64, e: flow_core::CoreError) {
+    fn worker_failed(&self, sid: u64, e: murmur_core::CoreError) {
         tracing::error!(sid, peer = %self.peer, kind = e.kind(), "start_session failed: {e}");
         self.send(&ServerMsg::error(
             Some(sid),
@@ -945,7 +945,7 @@ mod tests {
     fn result() -> CommitResult {
         serde_json::from_value(serde_json::json!({
             "status": "EMPTY", "asr_text": "", "final_text": "", "language": null,
-            "timings": serde_json::to_value(flow_core::Timings::default()).unwrap(),
+            "timings": serde_json::to_value(murmur_core::Timings::default()).unwrap(),
             "press_enter": false, "fallback_reason": null,
             "truncated": false, "error": null
         }))
@@ -995,7 +995,7 @@ mod tests {
             "100.64.0.2:5000".parse().unwrap(),
             Some("k-0123456789abcdef".into()),
         );
-        e.client = "flow-ffi 1.0.0+abc".into();
+        e.client = "murmur-ffi 1.0.0+abc".into();
         e
     }
 
@@ -1010,7 +1010,7 @@ mod tests {
         });
         assert_eq!(line.matches("disconnected").count(), 1, "{line}");
         assert!(line.contains("key=\"k-0123456789abcdef\""), "{line}");
-        assert!(line.contains("client=\"flow-ffi 1.0.0+abc\""), "{line}");
+        assert!(line.contains("client=\"murmur-ffi 1.0.0+abc\""), "{line}");
         assert!(line.contains("duration_ms="), "{line}");
         assert!(line.contains("audio_bytes=64000"), "{line}");
         assert!(
@@ -1030,7 +1030,7 @@ mod tests {
         let line = logged(|| {
             let mut e = end_log();
             e.client = clip(&format!(
-                "evil\nINFO flow_server::ws: forged {}",
+                "evil\nINFO murmur_server::ws: forged {}",
                 "x".repeat(100)
             ));
         });

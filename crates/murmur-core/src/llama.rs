@@ -1,21 +1,21 @@
 //! `LlamaCleaner`: the llama.cpp [`Cleaner`] (feature `llm`).
 //!
-//! The engine lives in the `flow-llm` plugin library, which this module
+//! The engine lives in the `murmur-llm` plugin library, which this module
 //! loads at runtime. It cannot be linked in: llama.cpp and whisper.cpp each
 //! bundle a different ggml, and one binary holding both fails to link with
-//! duplicate symbols. The plugin exports only `flow_llm_*`, so its ggml stays
-//! private (C ABI documented in `crates/flow-llm/src/lib.rs`).
+//! duplicate symbols. The plugin exports only `murmur_llm_*`, so its ggml stays
+//! private (C ABI documented in `crates/murmur-llm/src/lib.rs`).
 //!
 //! Plugin lookup, first hit wins:
-//! 1. `ModelConfig.llm_lib`, or the `FLOW_LLM_LIB` environment variable;
+//! 1. `ModelConfig.llm_lib`, or the `MURMUR_LLM_LIB` environment variable;
 //! 2. next to the current executable, then its parent directory (cargo
 //!    puts test binaries in `target/<profile>/deps/`): in each, the GPU
 //!    build [`GPU_PLUGIN_FILE`] first, then [`PLUGIN_FILE`]. The GPU build
 //!    links the Vulkan loader, so on a PC without `vulkan-1.dll` it does not
 //!    load and the CPU build is next; with Vulkan but no usable GPU it runs
-//!    on the CPU itself (flow-llm `backend`);
+//!    on the CPU itself (murmur-llm `backend`);
 //! 3. the bare file name, which leaves the search to the system loader
-//!    (on Android this finds the app's packaged `libflow_llm.so`).
+//!    (on Android this finds the app's packaged `libmurmur_llm.so`).
 
 use std::ffi::{c_char, CStr, CString};
 use std::path::PathBuf;
@@ -32,21 +32,21 @@ const ABI_VERSION: u32 = 1;
 
 /// Platform file name of the plugin.
 pub const PLUGIN_FILE: &str = if cfg!(windows) {
-    "flow_llm.dll"
+    "murmur_llm.dll"
 } else if cfg!(target_os = "macos") {
-    "libflow_llm.dylib"
+    "libmurmur_llm.dylib"
 } else {
-    "libflow_llm.so"
+    "libmurmur_llm.so"
 };
 
 /// The GPU (Vulkan) build of the plugin, shipped next to [`PLUGIN_FILE`]
 /// by the Windows installers.
 pub const GPU_PLUGIN_FILE: &str = if cfg!(windows) {
-    "flow_llm_vulkan.dll"
+    "murmur_llm_vulkan.dll"
 } else if cfg!(target_os = "macos") {
-    "libflow_llm_vulkan.dylib"
+    "libmurmur_llm_vulkan.dylib"
 } else {
-    "libflow_llm_vulkan.so"
+    "libmurmur_llm_vulkan.so"
 };
 
 type LoadFn =
@@ -89,7 +89,7 @@ pub fn plugin_candidates(explicit: Option<&str>) -> Vec<PathBuf> {
         v.push(PathBuf::from(p));
         return v;
     }
-    if let Some(p) = std::env::var_os("FLOW_LLM_LIB") {
+    if let Some(p) = murmur_build_info::env::var_os("MURMUR_LLM_LIB") {
         v.push(PathBuf::from(p));
         return v;
     }
@@ -107,8 +107,8 @@ pub fn plugin_candidates(explicit: Option<&str>) -> Vec<PathBuf> {
     v
 }
 
-/// Where the plugin runs a model, from its info JSON (`flow_llm_info` or
-/// `flow_llm_backends`). Plugins built before 2026-10-30 report neither
+/// Where the plugin runs a model, from its info JSON (`murmur_llm_info` or
+/// `murmur_llm_backends`). Plugins built before 2026-10-30 report neither
 /// field: `None`.
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct LlmBackend {
@@ -146,16 +146,19 @@ impl LlmBackend {
 }
 
 /// The plugin that [`LlamaCleaner::load`] would use and where it would run
-/// a model, without loading one (`flow_llm_backends`). A plugin too old to
+/// a model, without loading one (`murmur_llm_backends`). A plugin too old to
 /// export it reports the CPU.
 pub fn probe_backend(plugin: Option<&str>) -> Result<(PathBuf, LlmBackend), LlamaLoadError> {
     let (lib, path) = find_plugin(plugin)?;
     type BackendsFn = unsafe extern "C" fn() -> *mut c_char;
-    // SAFETY: symbol types match the ABI in crates/flow-llm/src/lib.rs.
+    // SAFETY: symbol types match the ABI in crates/murmur-llm/src/lib.rs.
     unsafe {
-        let Ok(free_str) = lib.get::<FreeStrFn>(b"flow_llm_free_string\0").map(|f| *f) else {
+        let Ok(free_str) = lib
+            .get::<FreeStrFn>(b"murmur_llm_free_string\0")
+            .map(|f| *f)
+        else {
             return Err(LlamaLoadError::Backend(
-                "llm plugin: no flow_llm_free_string".into(),
+                "llm plugin: no murmur_llm_free_string".into(),
             ));
         };
         let cpu = LlmBackend {
@@ -163,7 +166,7 @@ pub fn probe_backend(plugin: Option<&str>) -> Result<(PathBuf, LlmBackend), Llam
             device: "CPU".into(),
             gpu_error: None,
         };
-        let Ok(f) = lib.get::<BackendsFn>(b"flow_llm_backends\0").map(|f| *f) else {
+        let Ok(f) = lib.get::<BackendsFn>(b"murmur_llm_backends\0").map(|f| *f) else {
             return Ok((path, cpu));
         };
         let json = take_string(free_str, f());
@@ -246,31 +249,36 @@ impl LlamaCleaner {
     pub fn load(model: &str, threads: usize, plugin: Option<&str>) -> Result<Self, LlamaLoadError> {
         let (lib, plugin_path) = find_plugin(plugin)?;
         let sym_err = |e: libloading::Error| LlamaLoadError::Backend(format!("llm plugin: {e}"));
-        // SAFETY: symbol types match the ABI in crates/flow-llm/src/lib.rs;
+        // SAFETY: symbol types match the ABI in crates/murmur-llm/src/lib.rs;
         // the version check guards against a mismatched plugin.
         unsafe {
             let ver: Symbol<unsafe extern "C" fn() -> u32> =
-                lib.get(b"flow_llm_abi_version\0").map_err(sym_err)?;
+                lib.get(b"murmur_llm_abi_version\0").map_err(sym_err)?;
             if ver() != ABI_VERSION {
                 return Err(LlamaLoadError::Backend(format!(
                     "llm plugin ABI {} != {ABI_VERSION}",
                     ver()
                 )));
             }
-            let load: LoadFn = *lib.get::<LoadFn>(b"flow_llm_load\0").map_err(sym_err)?;
-            let clean: CleanFn = *lib.get::<CleanFn>(b"flow_llm_clean\0").map_err(sym_err)?;
-            let info_fn: InfoFn = *lib.get::<InfoFn>(b"flow_llm_info\0").map_err(sym_err)?;
+            let load: LoadFn = *lib.get::<LoadFn>(b"murmur_llm_load\0").map_err(sym_err)?;
+            let clean: CleanFn = *lib.get::<CleanFn>(b"murmur_llm_clean\0").map_err(sym_err)?;
+            let info_fn: InfoFn = *lib.get::<InfoFn>(b"murmur_llm_info\0").map_err(sym_err)?;
             let free_str: FreeStrFn = *lib
-                .get::<FreeStrFn>(b"flow_llm_free_string\0")
+                .get::<FreeStrFn>(b"murmur_llm_free_string\0")
                 .map_err(sym_err)?;
-            let unload: UnloadFn = *lib.get::<UnloadFn>(b"flow_llm_unload\0").map_err(sym_err)?;
-            let prefill = lib.get::<PrefillFn>(b"flow_llm_prefill\0").ok().map(|f| *f);
+            let unload: UnloadFn = *lib
+                .get::<UnloadFn>(b"murmur_llm_unload\0")
+                .map_err(sym_err)?;
+            let prefill = lib
+                .get::<PrefillFn>(b"murmur_llm_prefill\0")
+                .ok()
+                .map(|f| *f);
             let prefill_cancel = lib
-                .get::<PrefillCancelFn>(b"flow_llm_prefill_cancel\0")
+                .get::<PrefillCancelFn>(b"murmur_llm_prefill_cancel\0")
                 .ok()
                 .map(|f| *f);
             let set_draft = lib
-                .get::<SetDraftFn>(b"flow_llm_set_draft\0")
+                .get::<SetDraftFn>(b"murmur_llm_set_draft\0")
                 .ok()
                 .map(|f| *f);
 
@@ -387,7 +395,7 @@ impl Cleaner for LlamaCleaner {
 
 impl Drop for LlamaCleaner {
     fn drop(&mut self) {
-        // SAFETY: handle from flow_llm_load, freed exactly once; the library
+        // SAFETY: handle from murmur_llm_load, freed exactly once; the library
         // is never closed.
         unsafe { (self.unload)(self.handle) };
     }
@@ -407,7 +415,7 @@ mod tests {
 
     #[test]
     fn default_lookup_ends_with_bare_name() {
-        if std::env::var_os("FLOW_LLM_LIB").is_some() {
+        if std::env::var_os("MURMUR_LLM_LIB").is_some() {
             return;
         }
         let c = plugin_candidates(None);
@@ -417,7 +425,7 @@ mod tests {
 
     #[test]
     fn the_gpu_build_is_tried_before_the_cpu_build() {
-        if std::env::var_os("FLOW_LLM_LIB").is_some() {
+        if std::env::var_os("MURMUR_LLM_LIB").is_some() {
             return;
         }
         let c = plugin_candidates(None);
@@ -432,7 +440,7 @@ mod tests {
         );
         assert_eq!(c[0].parent(), c[1].parent());
         // An explicit path is the only candidate (no GPU detour).
-        assert_eq!(plugin_candidates(Some("/x/flow_llm.dll")).len(), 1);
+        assert_eq!(plugin_candidates(Some("/x/murmur_llm.dll")).len(), 1);
     }
 
     #[test]
@@ -457,7 +465,7 @@ mod tests {
 
     #[test]
     fn missing_plugin_is_a_probe_error_too() {
-        let e = probe_backend(Some("/nonexistent/libflow_llm.so"))
+        let e = probe_backend(Some("/nonexistent/libmurmur_llm.so"))
             .err()
             .unwrap();
         assert!(matches!(e, LlamaLoadError::PluginNotFound { .. }), "{e}");
@@ -465,7 +473,7 @@ mod tests {
 
     #[test]
     fn missing_plugin_is_a_load_error() {
-        let e = LlamaCleaner::load("m.gguf", 1, Some("/nonexistent/libflow_llm.so"))
+        let e = LlamaCleaner::load("m.gguf", 1, Some("/nonexistent/libmurmur_llm.so"))
             .err()
             .unwrap();
         assert!(e.to_string().contains("plugin not found"), "{e}");

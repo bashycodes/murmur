@@ -1,4 +1,4 @@
-//! Admin API v1 (D39, `flow_protocol::admin`): list, create and revoke
+//! Admin API v1 (D39, `murmur_protocol::admin`): list, create and revoke
 //! named keys over HTTP JSON, authenticated with the same bearer key as
 //! the stream. `GET /v1/whoami` answers any active key; `/v1/admin/...`
 //! needs an admin key (else 403). The new key's secret is in the create
@@ -12,7 +12,7 @@ use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get};
 use axum::Router;
-use flow_protocol::admin::{
+use murmur_protocol::admin::{
     code, AdminError, CreateKey, CreatedKey, KeyList, KeyView, RevokedKey, WhoAmI,
     MAX_ADMIN_BODY_BYTES, PATH_ADMIN_KEYS, PATH_WHOAMI,
 };

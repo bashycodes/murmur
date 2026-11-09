@@ -3,12 +3,12 @@
 //! A key is a secret handed to one person or device, with a name, a stable
 //! opaque id, an admin flag and usage counters. The server stores only the
 //! SHA-256 of each secret; the secret itself is printed once by
-//! `flow-server keys add` and never written anywhere.
+//! `murmur-server keys add` and never written anywhere.
 //!
 //! Two files in the server's state directory, both mode 0600 and written
 //! atomically (temp file + rename):
 //!
-//! * `keys.json`: the key records. Written by the `flow-server keys` CLI
+//! * `keys.json`: the key records. Written by the `murmur-server keys` CLI
 //!   and by the server (admin API, D39; `token_file` import). Every
 //!   read-modify-write holds an exclusive lock on `keys.json.lock` and
 //!   re-reads the file under it, so two writers never lose each other's
@@ -82,7 +82,7 @@ pub struct Usage {
     /// unknown until the key is used again.
     #[serde(alias = "last_seen")]
     pub last_connected: Option<u64>,
-    /// `hello.client` of the last connection (e.g. `flow-android 0.12.0`).
+    /// `hello.client` of the last connection (e.g. `murmur-android 0.12.0`).
     pub client: Option<String>,
     pub dictations: u64,
     pub audio_ms: u64,
@@ -496,7 +496,7 @@ impl KeyStore {
     }
 }
 
-/// `flow-server keys list`: one row per key, revoked ones last-marked.
+/// `murmur-server keys list`: one row per key, revoked ones last-marked.
 pub fn table(keys: &[KeyInfo]) -> String {
     let when = |t: Option<u64>| match t {
         Some(t) => {
@@ -807,7 +807,7 @@ mod tests {
         let s = KeyStore::open(d.path(), Some(TOKEN)).unwrap();
         let (k, secret) = s.add("phone", false).unwrap();
         assert_eq!(secret.len(), 43);
-        s.record_client(&k.id, "flow-android 9.9.9");
+        s.record_client(&k.id, "murmur-android 9.9.9");
         s.flush().unwrap();
         for f in [KEYS_FILE, USAGE_FILE] {
             let p = d.path().join(f);
@@ -874,7 +874,7 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let s = KeyStore::open(d.path(), Some(TOKEN)).unwrap();
         let id = s.authenticate(TOKEN).unwrap().id;
-        s.record_client(&id, "flow-windows 1.0.0");
+        s.record_client(&id, "murmur-windows 1.0.0");
         s.record_dictation(&id, 1500);
         s.record_dictation(&id, 2500);
         s.record_download(&id, 1000);
@@ -884,7 +884,7 @@ mod tests {
         let u = &s.list()[0].usage;
         assert_eq!((u.dictations, u.audio_ms), (2, 4000));
         assert_eq!((u.downloads, u.download_bytes), (2, 1500));
-        assert_eq!(u.client.as_deref(), Some("flow-windows 1.0.0"));
+        assert_eq!(u.client.as_deref(), Some("murmur-windows 1.0.0"));
         assert!(u.last_used.is_some());
         assert!(u.last_connected.is_some());
     }
@@ -910,7 +910,7 @@ mod tests {
         std::fs::write(
             d.path().join(USAGE_FILE),
             format!(
-                r#"{{"version":1,"usage":{{"{id}":{{"last_seen":1700000500,"client":"flow-android 1.0.0","dictations":3,"audio_ms":4000}}}}}}"#
+                r#"{{"version":1,"usage":{{"{id}":{{"last_seen":1700000500,"client":"murmur-android 1.0.0","dictations":3,"audio_ms":4000}}}}}}"#
             ),
         )
         .unwrap();
@@ -920,7 +920,7 @@ mod tests {
         assert_eq!(u.last_used, None);
         assert_eq!((u.dictations, u.audio_ms), (3, 4000));
         // Rewritten in the new shape: no `last_seen` left behind.
-        s.record_client(&id, "flow-android 1.1.0");
+        s.record_client(&id, "murmur-android 1.1.0");
         s.flush().unwrap();
         let raw = std::fs::read_to_string(d.path().join(USAGE_FILE)).unwrap();
         let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
@@ -932,7 +932,7 @@ mod tests {
     fn table_shows_usage_never_hashes() {
         let s = KeyStore::in_memory(TOKEN);
         let id = s.authenticate(TOKEN).unwrap().id;
-        s.record_client(&id, "flow-android 1.0.0");
+        s.record_client(&id, "murmur-android 1.0.0");
         s.record_dictation(&id, 90_000);
         s.record_download(&id, 2_500_000);
         let (k, _) = s.add("old", false).unwrap();
@@ -944,7 +944,7 @@ mod tests {
             OWNER,
             id.as_str(),
             "yes",
-            "flow-android 1.0.0",
+            "murmur-android 1.0.0",
             " 1 ",
             "1.5",
             "1 (2.5 MB)",

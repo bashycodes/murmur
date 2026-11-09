@@ -12,8 +12,8 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use common::*;
-use flow_core::config::{FieldContext, SessionConfig};
-use flow_protocol::{ClientMsg, ServerMsg};
+use murmur_core::config::{FieldContext, SessionConfig};
+use murmur_protocol::{ClientMsg, ServerMsg};
 
 const SECRET: &str = "zebra quartz confidential phrase";
 const DICT_SECRET: &str = "xylophonist";
@@ -39,7 +39,7 @@ async fn run_session(rust_log: Option<&str>, level: &str, log_text: bool) -> Run
         ),
     )
     .unwrap();
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_flow-server"));
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_murmur-server"));
     cmd.arg("--config")
         .arg(&cfg_path)
         .current_dir(state.path())
@@ -128,7 +128,7 @@ async fn run_session(rust_log: Option<&str>, level: &str, log_text: bool) -> Run
 /// Files under `root` other than the key store's files, which must
 /// hold no secret, transcript, dictionary or context.
 fn files_besides_the_key_store(root: &std::path::Path) -> usize {
-    let keys = root.join(".local/state/flow-server");
+    let keys = root.join(".local/state/murmur-server");
     let mut n = 0;
     let mut stack = vec![root.to_path_buf()];
     while let Some(d) = stack.pop() {

@@ -1,4 +1,4 @@
-//! Parakeet-TDT backend (feature `parakeet`, crate `flow-asr-sherpa`).
+//! Parakeet-TDT backend (feature `parakeet`, crate `murmur-asr-sherpa`).
 //!
 //! NeMo transducer through sherpa-onnx (English Parakeet, or a
 //! language fine-tune such as Parakeet-v3-he; see [`ParakeetAsr::with_language`]). `ModelConfig.asr_path`
@@ -11,7 +11,7 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use flow_asr_sherpa::{ParakeetConfig, ParakeetEngine, Search};
+use murmur_asr_sherpa::{ParakeetConfig, ParakeetEngine, Search};
 
 use crate::asr::{AsrEngine, AsrError, AsrOutput, AsrRequest};
 use crate::config::{ParakeetDecoding, SAMPLE_RATE};
@@ -51,7 +51,7 @@ impl ParakeetAsr {
         // Tuning knob for field tests; the default is the measured one.
         // `0` = greedy only (the pre-fix workaround for the beam-4 empty
         // results; a systemd drop-in may still set it).
-        if let Some(s) = std::env::var("FLOW_PARAKEET_HOTWORDS_SCORE")
+        if let Some(s) = murmur_build_info::env::var("MURMUR_PARAKEET_HOTWORDS_SCORE")
             .ok()
             .and_then(|s| s.parse::<f32>().ok())
         {
@@ -59,7 +59,7 @@ impl ParakeetAsr {
             cfg.hotwords_score = s;
         }
         // Same, for the beam width (D68's latency probe; the default is D12's 4).
-        if let Some(b) = std::env::var("FLOW_PARAKEET_BEAM")
+        if let Some(b) = murmur_build_info::env::var("MURMUR_PARAKEET_BEAM")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
             .filter(|&b| b > 0)
@@ -87,7 +87,7 @@ impl ParakeetAsr {
     }
 
     /// How long each step of the load took (sherpa sessions etc.).
-    pub fn load_phases(&self) -> &[flow_asr_sherpa::LoadPhase] {
+    pub fn load_phases(&self) -> &[murmur_asr_sherpa::LoadPhase] {
         self.engine.load_phases()
     }
 

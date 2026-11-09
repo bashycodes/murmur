@@ -49,12 +49,12 @@ async fn health_needs_the_token_too() {
 async fn auth_none_only_on_loopback() {
     let mut c = mock_cfg("x");
     c.token = None;
-    c.auth = flow_server::config::AuthMode::None;
+    c.auth = murmur_server::config::AuthMode::None;
     let s = start(c.clone()).await;
     assert!(connect(s.addr(), None).await.is_ok());
     c.bind = vec!["0.0.0.0:7313".into()];
     let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let e = flow_server::serve(c, vec![l]).await.err().unwrap();
+    let e = murmur_server::serve(c, vec![l]).await.err().unwrap();
     assert!(e.contains("loopback"), "{e}");
 }
 
@@ -66,5 +66,5 @@ async fn refuses_to_start_without_a_token() {
     c.token = None;
     c.state_dir = Some(d.path().into());
     let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    assert!(flow_server::serve(c, vec![l]).await.is_err());
+    assert!(murmur_server::serve(c, vec![l]).await.is_err());
 }

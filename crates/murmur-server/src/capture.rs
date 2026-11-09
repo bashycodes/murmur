@@ -23,8 +23,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use flow_core::config::SAMPLE_RATE;
-use flow_core::CommitResult;
+use murmur_core::config::SAMPLE_RATE;
+use murmur_core::CommitResult;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -86,9 +86,18 @@ impl DebugConfig {
 }
 
 /// The server's state directory: systemd's `$STATE_DIRECTORY` (the unit's
-/// `StateDirectory=flow-server`, first entry), else
-/// `$XDG_STATE_HOME/flow-server`, else `$HOME/.local/state/flow-server`.
+/// `StateDirectory=murmur-server`, first entry), else
+/// `$XDG_STATE_HOME/murmur-server`, else `$HOME/.local/state/murmur-server`;
+/// the earlier install's `flow-server` dir while only it has the keys (D83).
 pub fn state_dir() -> Option<PathBuf> {
+    let (dir, note) = crate::legacy::state_dir(default_state_dir()?);
+    if let Some(n) = note {
+        crate::legacy::notice(&n);
+    }
+    Some(dir)
+}
+
+fn default_state_dir() -> Option<PathBuf> {
     let env = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty());
     if let Some(s) = env("STATE_DIRECTORY") {
         let first = s
@@ -105,9 +114,9 @@ pub fn state_dir() -> Option<PathBuf> {
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
     {
-        return Some(x.join("flow-server"));
+        return Some(x.join("murmur-server"));
     }
-    env("HOME").map(|h| PathBuf::from(h).join(".local/state/flow-server"))
+    env("HOME").map(|h| PathBuf::from(h).join(".local/state/murmur-server"))
 }
 
 /// What one finished session leaves for the JSON line.
@@ -273,7 +282,7 @@ fn line(ts: &str, audio: &str, samples: usize, r: &Record) -> Value {
     json!({
         "ts": ts,
         "kind": "server_session",
-        "build": flow_build_info::FULL,
+        "build": murmur_build_info::FULL,
         "sid": r.sid,
         "peer": r.peer.ip().to_string(),
         "route": "server",
@@ -406,7 +415,7 @@ mod tests {
         serde_json::from_value(json!({
             "status": "FORMATTED", "asr_text": text, "final_text": format!("{text}."),
             "language": "en",
-            "timings": serde_json::to_value(flow_core::Timings::default()).unwrap(),
+            "timings": serde_json::to_value(murmur_core::Timings::default()).unwrap(),
             "press_enter": false, "fallback_reason": null,
             "truncated": false, "error": null
         }))

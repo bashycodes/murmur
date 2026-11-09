@@ -1,4 +1,4 @@
-//! The model library client (D41) against a real in-process flow-server
+//! The model library client (D41) against a real in-process murmur-server
 //! with a temp library: list, download + verify, resume from a `.part`,
 //! the expected fingerprint enforced (ETag and content), cancel, auth,
 //! unknown files.
@@ -7,11 +7,11 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use flow_core::config::{AsrBackend, ModelConfig};
-use flow_protocol::library::{LibraryFile, ModelKind};
-use flow_remote::library::{ErrorKind, LibraryClient};
-use flow_router::ServerConfig;
-use flow_server::{Config, ServerHandle};
+use murmur_core::config::{AsrBackend, ModelConfig};
+use murmur_protocol::library::{LibraryFile, ModelKind};
+use murmur_remote::library::{ErrorKind, LibraryClient};
+use murmur_router::ServerConfig;
+use murmur_server::{Config, ServerHandle};
 use sha2::{Digest, Sha256};
 
 const TOKEN: &str = "test-token-0123456789abcdef";
@@ -57,7 +57,7 @@ impl Drop for Server {
     }
 }
 
-/// flow-server with a library of one custom whisper model and one Hebrew
+/// murmur-server with a library of one custom whisper model and one Hebrew
 /// sherpa folder (with a subfolder file).
 fn start() -> Server {
     let d = tempfile::tempdir().unwrap();
@@ -81,7 +81,7 @@ fn start() -> Server {
             ..Default::default()
         },
         state_dir: Some(d.path().join("state")),
-        library: flow_server::library::LibraryConfig {
+        library: murmur_server::library::LibraryConfig {
             dir: Some(lib),
             rescan_s: 0,
         },
@@ -94,7 +94,7 @@ fn start() -> Server {
         .unwrap();
     let handle = rt.block_on(async {
         let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        flow_server::serve(cfg, vec![l]).await.unwrap()
+        murmur_server::serve(cfg, vec![l]).await.unwrap()
     });
     let s = Server {
         handle,
