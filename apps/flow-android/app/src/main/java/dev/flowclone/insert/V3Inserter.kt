@@ -59,13 +59,13 @@ class V3Inserter(private val env: InsertionEnvironment, private val now: () -> L
 
         fun reacquireEnabledForSurface(): Boolean {
             val p = anchorPkg() ?: return false
-            return p in PolicyLists.IN_CALL || p in PolicyLists.SYSTEM_SEARCH || p in PolicyLists.KNOWN_NULL_SURROUNDING_TEXT
+            return PolicyLists.isInCall(p) || PolicyLists.isSystemSearch(p) || PolicyLists.isKnownNullSurroundingText(p)
         }
 
         fun boundEditorMatchesAnchor() = env.imeBoundPackage().let { it != null && it == anchorPkg() }
 
         fun staleProbeEnabledForSurface() =
-            boundEditorMatchesAnchor() && anchorPkg() in PolicyLists.RESTART_PRONE_READABLE && !livenessReadExcluded()
+            boundEditorMatchesAnchor() && PolicyLists.isRestartProne(anchorPkg()) && !livenessReadExcluded()
 
         fun probeConnectionAlive(ic: InputConnectionPort) =
             !livenessReadExcluded() && runCatching { ic.getSurroundingText(0, 0) }.getOrNull() != null
@@ -220,7 +220,7 @@ class V3Inserter(private val env: InsertionEnvironment, private val now: () -> L
                 val p = probeRead(conn, node)
                 reads++
                 if (p !is Probe.Available) {
-                    if (reads == 1 && precommit != "null" && env.currentPackage() in PolicyLists.KNOWN_NULL_SURROUNDING_TEXT) {
+                    if (reads == 1 && precommit != "null" && PolicyLists.isKnownNullSurroundingText(env.currentPackage())) {
                         step("trusted_commit")
                         return ok(Status.SUCCESS_NULL_SURROUNDING_TRUSTED_COMMIT, VerifySource.TRUSTED)
                     }
