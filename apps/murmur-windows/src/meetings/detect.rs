@@ -82,7 +82,7 @@ pub struct Window {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum Flow {
+pub enum Dataflow {
     /// A microphone (capture endpoint).
     Capture,
     /// A speaker / headset output (render endpoint).
@@ -92,7 +92,7 @@ pub enum Flow {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AudioSession {
     pub exe: String,
-    pub flow: Flow,
+    pub flow: Dataflow,
     /// `AudioSessionStateActive` (a stream is running), not just open.
     pub active: bool,
 }
@@ -188,16 +188,16 @@ pub fn classify(snap: &Snapshot) -> Vec<Sighting> {
             .processes
             .iter()
             .any(|e| p.meeting_procs.contains(&e.as_str()));
-        let session = |f: Flow| {
+        let session = |f: Dataflow| {
             snap.audio
                 .iter()
                 .any(|s| s.active && s.flow == f && mine(&s.exe))
         };
         let level = if window || helper {
             Some(Level::Meeting)
-        } else if session(Flow::Capture) {
+        } else if session(Dataflow::Capture) {
             Some(Level::Mic)
-        } else if session(Flow::Render) {
+        } else if session(Dataflow::Render) {
             Some(Level::Alive)
         } else {
             None
@@ -566,8 +566,8 @@ pub fn describe(snap: &Snapshot) -> String {
     }
     for a in &snap.audio {
         let f = match a.flow {
-            Flow::Capture => "mic",
-            Flow::Render => "out",
+            Dataflow::Capture => "mic",
+            Dataflow::Render => "out",
         };
         let st = if a.active { "active" } else { "idle" };
         parts.push(format!("{f} {}:{st}", a.exe));
@@ -591,7 +591,7 @@ pub fn spawn_watcher(
     mode: Arc<dyn Fn() -> Mode + Send + Sync>,
 ) {
     let _ = std::thread::Builder::new()
-        .name("flow-meeting-detect".into())
+        .name("murmur-meeting-detect".into())
         .spawn(move || {
             super::lower_thread_priority();
             loop {

@@ -1,4 +1,4 @@
-//! Meetings on disk, next to the history: `%APPDATA%\FlowClone\meetings\`
+//! Meetings on disk, next to the history: `%APPDATA%\Murmur\meetings\`
 //! holds one `<id>.json` per meeting (times, app, status, transcript) and,
 //! for the [`KEEP_AUDIO`] most recent meetings only, its two recordings
 //! `<id>.mic.wav` / `<id>.system.wav`. Older audio is deleted
@@ -12,12 +12,12 @@ use serde::{Deserialize, Serialize};
 use super::record::Source;
 use super::transcript::Turn;
 
-/// Folder of the meetings under `%APPDATA%\FlowClone`.
+/// Folder of the meetings under `%APPDATA%\Murmur`.
 pub const MEETINGS_DIR: &str = "meetings";
 /// Meetings whose audio is kept (debugging); older ones keep only text.
 pub const KEEP_AUDIO: usize = 3;
 
-/// `%APPDATA%\FlowClone\meetings`.
+/// `%APPDATA%\Murmur\meetings`.
 pub fn default_dir(appdata: Option<&str>) -> PathBuf {
     crate::notes::app_dir(appdata).join(MEETINGS_DIR)
 }
@@ -334,7 +334,7 @@ mod tests {
 
     fn tmp(name: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!(
-            "flow-meet-store-{name}-{}-{:?}",
+            "murmur-meet-store-{name}-{}-{:?}",
             std::process::id(),
             std::thread::current().id()
         ));

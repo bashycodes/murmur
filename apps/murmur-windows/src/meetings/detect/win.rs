@@ -7,7 +7,7 @@
 //! 3. the WASAPI audio sessions of the clients on every active capture
 //!    and render endpoint (`IAudioSessionManager2`), with their state.
 
-use super::{known_exes, AudioSession, Flow, Probe, Snapshot, Window};
+use super::{known_exes, AudioSession, Dataflow, Probe, Snapshot, Window};
 use std::collections::HashMap;
 use windows::core::Interface;
 use windows::Win32::Foundation::{CloseHandle, BOOL, HWND, LPARAM};
@@ -128,8 +128,8 @@ unsafe fn sessions(pids: &HashMap<u32, String>) -> windows::core::Result<Vec<Aud
     for i in 0..devices.GetCount()? {
         let Ok(dev) = devices.Item(i) else { continue };
         let flow = match dev.cast::<IMMEndpoint>().and_then(|e| e.GetDataFlow()) {
-            Ok(f) if f == eCapture => Flow::Capture,
-            Ok(_) => Flow::Render,
+            Ok(f) if f == eCapture => Dataflow::Capture,
+            Ok(_) => Dataflow::Render,
             Err(_) => continue,
         };
         let Ok(mgr) = dev.Activate::<IAudioSessionManager2>(CLSCTX_ALL, None) else {

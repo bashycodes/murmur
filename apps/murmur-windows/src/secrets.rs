@@ -12,15 +12,18 @@ use base64::Engine;
 
 /// Extra entropy bound into every blob: another app calling
 /// `CryptUnprotectData` on our blob without it fails.
-#[cfg_attr(not(windows), allow(dead_code))]
-const ENTROPY: &[u8] = b"FlowClone/secret/v1";
+const ENTROPY: &[u8] = b"Murmur/secret/v1";
+/// D83: the entropy before the Murmur rename. Blobs in a `prefs.json`
+/// copied from the old data folder ([`crate::old_data`]) were sealed with
+/// it; [`unprotect`] still opens them, [`protect`] never uses it.
+const OLD_ENTROPY: &[u8] = b"FlowClone/secret/v1";
 
 /// Encrypt `plain` for the current user. `""` stays `""` (= no secret).
 pub fn protect(plain: &str) -> Result<String, String> {
     if plain.is_empty() {
         return Ok(String::new());
     }
-    imp::protect(plain.as_bytes()).map(|b| B64.encode(b))
+    imp::protect(plain.as_bytes(), ENTROPY).map(|b| B64.encode(b))
 }
 
 /// Inverse of [`protect`]. A blob from another user/PC fails: the caller
@@ -30,13 +33,13 @@ pub fn unprotect(blob: &str) -> Result<String, String> {
         return Ok(String::new());
     }
     let raw = B64.decode(blob.trim()).map_err(|e| e.to_string())?;
-    let plain = imp::unprotect(&raw)?;
+    let plain = imp::unprotect(&raw, ENTROPY)
+        .or_else(|e| imp::unprotect(&raw, OLD_ENTROPY).map_err(|_| e))?;
     String::from_utf8(plain).map_err(|e| e.to_string())
 }
 
 #[cfg(windows)]
 mod imp {
-    use super::ENTROPY;
     use windows::Win32::Foundation::{LocalFree, HLOCAL};
     use windows::Win32::Security::Cryptography::{
         CryptProtectData, CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
@@ -56,14 +59,14 @@ mod imp {
         v
     }
 
-    pub fn protect(plain: &[u8]) -> Result<Vec<u8>, String> {
+    pub fn protect(plain: &[u8], entropy: &[u8]) -> Result<Vec<u8>, String> {
         let input = blob(plain);
-        let entropy = blob(ENTROPY);
+        let entropy = blob(entropy);
         let mut out = CRYPT_INTEGER_BLOB::default();
         unsafe {
             CryptProtectData(
                 &input,
-                windows::core::w!("FlowClone"),
+                windows::core::w!("Murmur"),
                 Some(&entropy),
                 None,
                 None,
@@ -75,9 +78,9 @@ mod imp {
         }
     }
 
-    pub fn unprotect(raw: &[u8]) -> Result<Vec<u8>, String> {
+    pub fn unprotect(raw: &[u8], entropy: &[u8]) -> Result<Vec<u8>, String> {
         let input = blob(raw);
-        let entropy = blob(ENTROPY);
+        let entropy = blob(entropy);
         let mut out = CRYPT_INTEGER_BLOB::default();
         unsafe {
             CryptUnprotectData(
@@ -99,12 +102,15 @@ mod imp {
 mod imp {
     const MARK: &[u8] = b"plain:";
 
-    pub fn protect(plain: &[u8]) -> Result<Vec<u8>, String> {
-        Ok([MARK, plain].concat())
+    /// `plain:<entropy>:<plain>`: like DPAPI, the entropy must match.
+    pub fn protect(plain: &[u8], entropy: &[u8]) -> Result<Vec<u8>, String> {
+        Ok([MARK, entropy, b":", plain].concat())
     }
 
-    pub fn unprotect(raw: &[u8]) -> Result<Vec<u8>, String> {
+    pub fn unprotect(raw: &[u8], entropy: &[u8]) -> Result<Vec<u8>, String> {
         raw.strip_prefix(MARK)
+            .and_then(|r| r.strip_prefix(entropy))
+            .and_then(|r| r.strip_prefix(b":"))
             .map(<[u8]>::to_vec)
             .ok_or_else(|| "not a secret blob from this host".into())
     }
@@ -123,5 +129,15 @@ mod tests {
         assert_eq!(unprotect("").unwrap(), "");
         assert!(unprotect("not base64!").is_err());
         assert!(unprotect(&B64.encode(b"garbage")).is_err());
+    }
+
+    #[test]
+    fn a_blob_sealed_before_the_rename_still_opens_and_reseals_new() {
+        let old = B64.encode(imp::protect(b"synthetic-old-token", OLD_ENTROPY).unwrap());
+        assert_eq!(unprotect(&old).unwrap(), "synthetic-old-token");
+        let new = protect("synthetic-old-token").unwrap();
+        assert!(imp::unprotect(&B64.decode(new).unwrap(), OLD_ENTROPY).is_err());
+        let other = B64.encode(imp::protect(b"x", b"another-app").unwrap());
+        assert!(unprotect(&other).is_err());
     }
 }
