@@ -3,7 +3,7 @@ package dev.flowclone.learn
 import dev.flowclone.core.FieldContext
 
 /**
- * "Learn from my edits" (Windows `apps/flow-windows/src/learn.rs`, windows-research 03 §3),
+ * "Learn from my edits" (Windows `apps/flow-windows/src/learn.rs`),
  * platform-free.
  *
  * After an insert the accessibility service keeps re-reading the field the dictation went into
