@@ -1,6 +1,6 @@
 # Review: `integration` @ 49b21c5 vs `master` @ 6160d43 (2026-10-22)
 
-Scope: the whole codebase except `research/` (used only as a spec reference).
+Scope: the whole codebase.
 Axes: privacy/security, then correctness (router, lifecycle, FFI/JNI), then
 shell edge cases, test gaps and simplification. Specs: `docs/DECISIONS.md`
 (D17-D20), `docs/hybrid-architecture.md`, `docs/cloud-stt.md`,
