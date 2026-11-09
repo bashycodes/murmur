@@ -10,7 +10,7 @@ pub(super) fn append(text: String, sig: &str, ctx: &FieldContext) -> String {
     if !reads_like_email(&text) || already_signed(sig, ctx, &text) {
         return text;
     }
-    let mut out = text.trim_end_matches(' ').to_string();
+    let mut out = text.strip_suffix(' ').unwrap_or(&text).to_string();
     out.push_str("\n\n");
     out.push_str(sig);
     out
@@ -65,7 +65,10 @@ mod tests {
         assert_eq!(sign("Hi Tom, thanks. "), "Hi Tom, thanks.\n\n— Ann");
         assert_eq!(sign("hello, all set."), "hello, all set.\n\n— Ann");
         assert_eq!(sign("Hey! Done."), "Hey! Done.\n\n— Ann");
-        assert_eq!(sign("Thanks for that. "), "Thanks for that. ");
+        assert_eq!(sign("Thanks for the update. "), "Thanks for the update. ");
+        // Only one trailing space is removed.
+        assert_eq!(sign("Hi Tom.  "), "Hi Tom. \n\n— Ann");
+        assert_eq!(sign(""), "");
         assert_eq!(sign("Hiya Tom."), "Hiya Tom.");
         let ten = "one two three four five six seven eight nine ten.";
         assert_eq!(sign(ten), format!("{ten}\n\n— Ann"));

@@ -5,8 +5,9 @@
 //! config and the focused field, and returns the text to insert plus
 //! whether the shell presses Enter afterwards. Steps, in order:
 //! whole-utterance snippet (Windows), spoken "press enter" (Windows),
-//! all-lowercase, dictionary replacements, fitting to the cursor, style
-//! punctuation, trailing space, email signature (Windows).
+//! all-lowercase, dictionary replacements, fitting to the cursor (or the
+//! Notion skip), style punctuation, trailing space, email signature
+//! (Windows).
 
 mod apps;
 mod chars;
@@ -23,14 +24,12 @@ pub use replace::DictMatcher;
 
 use crate::config::{AppCategory, FieldContext, Platform, SessionConfig};
 use crate::dictionary::DictEntry;
-use cursor::{Field, Fitted, Proper};
+use cursor::{Field, Proper};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PostOutput {
     pub text: String,
     pub press_enter: bool,
-    /// Kept for source compatibility; always false.
-    pub showed_prompt: bool,
 }
 
 /// [`apply_with`] with a matcher compiled from `cfg.dictionary`.
@@ -47,19 +46,46 @@ pub fn apply_with(
     ctx: &FieldContext,
     m: &DictMatcher,
 ) -> PostOutput {
+    if text.is_empty() {
+        return PostOutput::default();
+    }
     let windows = cfg.platform == Platform::Windows;
-    let category = effective_category(cfg.platform, ctx);
-    let style = cfg.styles.for_category(category);
+    let style = cfg
+        .styles
+        .for_category(effective_category(cfg.platform, ctx));
+    let listed = apps::listed_category(cfg.platform, ctx);
 
-    if windows {
-        if let Some(body) = m.whole_snippet(raw_asr) {
-            return PostOutput {
-                text: body,
-                ..Default::default()
-            };
+    let snippet = if windows {
+        m.whole_snippet(raw_asr)
+    } else {
+        None
+    };
+    let (text, press_enter) = match snippet {
+        Some(body) => (body, false),
+        None => body_text(text, raw_asr, cfg, ctx, m, style, listed),
+    };
+
+    let mut text = text;
+    if windows && listed == AppCategory::Email && ctx.context_known {
+        if let Some(sig) = cfg.email_signature.as_deref().filter(|s| !s.is_empty()) {
+            text = signature::append(text, sig, ctx);
         }
     }
+    PostOutput { text, press_enter }
+}
 
+/// Steps 3–8: press Enter, all-lowercase, dictionary, cursor fitting or
+/// the Notion skip, style punctuation, trailing space.
+fn body_text(
+    text: &str,
+    raw_asr: &str,
+    cfg: &SessionConfig,
+    ctx: &FieldContext,
+    m: &DictMatcher,
+    style: crate::config::Style,
+    listed: AppCategory,
+) -> (String, bool) {
+    let windows = cfg.platform == Platform::Windows;
     let (mut text, press_enter) = if windows && cfg.press_enter_enabled {
         enter::take(text, raw_asr)
     } else {
@@ -70,62 +96,54 @@ pub fn apply_with(
     }
     text = m.find_and_replace(&text);
 
-    let mut room_after = false;
-    if apps::manages_own_spacing(cfg.platform, ctx) {
-        text = style::punctuate(text.trim(), style, category);
-    } else {
-        let names: Vec<String> = cfg
-            .user_names
-            .iter()
-            .chain(&ctx.screen_words)
-            .cloned()
-            .collect();
-        let proper = Proper {
-            names: &names,
-            dict: &cfg.dictionary.entries,
-        };
-        // An unreadable field is treated as an empty one.
-        let field = if ctx.context_known {
-            Field {
-                before: &ctx.before,
-                selected: &ctx.selected,
-                after: &ctx.after,
-            }
-        } else {
-            Field::default()
-        };
-        match cursor::fit(&text, field, proper) {
-            Fitted::Selection(s) => text = s,
-            Fitted::Cursor {
-                text: t,
-                room_after: r,
-            } => {
-                text = style::punctuate(&t, style, category);
-                // On Android an unreadable field may already end in a space.
-                room_after = r && (ctx.context_known || windows);
-            }
-        }
+    let t = text.trim();
+    if t.is_empty() {
+        return (String::new(), press_enter);
     }
+    let names: Vec<String> = cfg
+        .user_names
+        .iter()
+        .chain(&ctx.screen_words)
+        .cloned()
+        .collect();
+    let proper = Proper {
+        names: &names,
+        dict: &cfg.dictionary.entries,
+    };
+    if !ctx.selected.is_empty() {
+        return (
+            cursor::over_selection(t, &ctx.selected, proper),
+            press_enter,
+        );
+    }
+    let chat = matches!(listed, AppCategory::WorkChat | AppCategory::PersonalChat);
+    if notion_skip(ctx) {
+        return (style::punctuate(t, style, chat, ctx), press_enter);
+    }
+    let field = Field {
+        before: &ctx.before,
+        after: &ctx.after,
+    };
+    let fitted = cursor::at_cursor(t, field, proper);
+    let mut out = style::punctuate(&fitted.text, style, chat, ctx);
+    // On Android an unreadable field may already end in a space.
+    if fitted.room_after
+        && !press_enter
+        && (ctx.context_known || windows)
+        && out.chars().last().is_some_and(|c| !chars::is_cjk(c))
+    {
+        out.push(' ');
+    }
+    (out, press_enter)
+}
 
-    if room_after && !press_enter && text.chars().last().is_some_and(|c| !chars::is_cjk(c)) {
-        text.push(' ');
-    }
-
-    if windows && category == AppCategory::Email && ctx.context_known {
-        if let Some(sig) = cfg
-            .email_signature
-            .as_deref()
-            .filter(|s| !s.trim().is_empty())
-        {
-            text = signature::append(text, sig, ctx);
-        }
-    }
-
-    PostOutput {
-        text,
-        press_enter,
-        showed_prompt: false,
-    }
+/// §5.7: on the exact host `notion.so`, a short or "..."-ended `before`
+/// with nothing after the cursor.
+fn notion_skip(ctx: &FieldContext) -> bool {
+    apps::is_notion_host(ctx)
+        && !ctx.before.is_empty()
+        && ctx.after.is_empty()
+        && (ctx.before.ends_with("...") || ctx.before.split(' ').count() <= 2)
 }
 
 /// True when the first word of `text` (surrounding punctuation removed) is
@@ -199,42 +217,55 @@ mod tests {
         }
     }
 
+    fn notion(before: &str, after: &str) -> FieldContext {
+        FieldContext {
+            app_id: "chrome.exe".into(),
+            url_host: "notion.so".into(),
+            ..field(before, after)
+        }
+    }
+
     #[test]
     fn empty_field_gets_a_trailing_space() {
         let o = run(PARCEL, &win(), &FieldContext::default());
         assert_eq!(o.text, "The parcel arrived early. ");
         assert!(!o.press_enter);
-        assert!(!o.showed_prompt);
+    }
+
+    #[test]
+    fn empty_text_stays_empty_even_for_a_snippet() {
+        let cfg = with_dict(win(), vec![DictEntry::snippet("my address", "12 Elm Road")]);
+        let o = apply("", "my address", &cfg, &FieldContext::default());
+        assert_eq!(o, PostOutput::default());
+    }
+
+    #[test]
+    fn whitespace_only_text_becomes_empty() {
+        // Change: no stray space.
+        for ctx in [FieldContext::default(), field("x ", "")] {
+            assert_eq!(out("   ", &win(), &ctx), "");
+        }
     }
 
     #[test]
     fn cursor_context_examples() {
         let w = win();
-        assert_eq!(
-            out(PARCEL, &w, &field("", "and then")),
-            "The parcel arrived early "
-        );
-        assert_eq!(
-            out(PARCEL, &w, &field("", " and then")),
-            "The parcel arrived early"
-        );
+        let early = "The parcel arrived early";
+        assert_eq!(out(PARCEL, &w, &field("", "and then")), format!("{early} "));
+        assert_eq!(out(PARCEL, &w, &field("", " and then")), early);
         assert_eq!(
             out(PARCEL, &w, &field("", "Then we left.")),
             "The parcel arrived early. "
         );
-        assert_eq!(
-            out(PARCEL, &w, &field("", "42")),
-            "The parcel arrived early. "
-        );
-        assert_eq!(out(PARCEL, &w, &field("", ".")), "The parcel arrived early");
-        assert_eq!(
-            out(PARCEL, &w, &field("", ")")),
-            "The parcel arrived early."
-        );
-        assert_eq!(
-            out(PARCEL, &w, &field("", " ")),
-            "The parcel arrived early."
-        );
+        assert_eq!(out(PARCEL, &w, &field("", "42")), format!("{PARCEL} "));
+        for a in [".", ",", ";", "?", "— and"] {
+            assert_eq!(out(PARCEL, &w, &field("", a)), early, "{a:?}");
+        }
+        for a in [")", "\"", "—", "😀", "…", "$5", "\tand", " "] {
+            assert_eq!(out(PARCEL, &w, &field("", a)), PARCEL, "{a:?}");
+        }
+        assert_eq!(out(PARCEL, &w, &field("", "- And")), format!("{PARCEL} "));
+        assert_eq!(out(PARCEL, &w, &field("", "- and")), format!("{early} "));
         assert_eq!(
             out(PARCEL, &w, &field("I think", "")),
             " the parcel arrived early. "
@@ -243,15 +274,14 @@ mod tests {
             out(PARCEL, &w, &field("Done.", "")),
             " The parcel arrived early. "
         );
+        assert_eq!(out("世界很好。", &w, &field("", "再见")), "世界很好。");
+        assert_eq!(out("好的。", &w, &field("", "x")), "好的。");
         assert_eq!(
             out("世界很好。", &w, &FieldContext::default()),
             "世界很好。"
         );
         // Change: no space before a newline.
-        assert_eq!(
-            out(PARCEL, &w, &field("", "\nNext line")),
-            "The parcel arrived early."
-        );
+        assert_eq!(out(PARCEL, &w, &field("", "\nNext line")), PARCEL);
     }
 
     #[test]
@@ -274,26 +304,50 @@ mod tests {
             out("Kubernetes failed.", &cfg, &field("and ", "")),
             "Kubernetes failed. "
         );
-        // Change: mixed-case and all-caps words keep their case.
+        // Change: all-caps words keep their case; mixed case lowers the
+        // first letter only.
         assert_eq!(
             out("NASA called.", &win(), &field("and ", "")),
             "NASA called. "
         );
         assert_eq!(
             out("IPhone works.", &win(), &field("and ", "")),
-            "IPhone works. "
+            "iPhone works. "
         );
     }
 
     #[test]
-    fn unknown_context() {
-        let ctx = FieldContext {
+    fn unknown_context_still_uses_the_field() {
+        let unknown = |before: &str, app_id: &str| FieldContext {
             context_known: false,
-            before: "stale".into(),
+            before: before.into(),
+            app_id: app_id.into(),
             ..Default::default()
         };
-        assert_eq!(out(PARCEL, &win(), &ctx), "The parcel arrived early. ");
-        assert_eq!(out(PARCEL, &android(), &ctx), "The parcel arrived early.");
+        assert_eq!(
+            out(PARCEL, &win(), &unknown("", "")),
+            "The parcel arrived early. "
+        );
+        assert_eq!(
+            out(PARCEL, &android(), &unknown("", "")),
+            "The parcel arrived early."
+        );
+        assert_eq!(
+            out(PARCEL, &android(), &unknown("ok ", "")),
+            "the parcel arrived early."
+        );
+        assert_eq!(
+            out(
+                "See you soon.",
+                &android(),
+                &unknown("Ok. ", "com.whatsapp")
+            ),
+            "See you soon."
+        );
+        assert_eq!(
+            out("See you soon.", &android(), &unknown("", "com.whatsapp")),
+            "See you soon"
+        );
     }
 
     #[test]
@@ -312,6 +366,11 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(out("New words.", &cfg, &ctx), " New words. ");
+        let ctx = FieldContext {
+            selected: " bad words ".into(),
+            ..Default::default()
+        };
+        assert_eq!(out("New words.", &cfg, &ctx), " new words ");
     }
 
     #[test]
@@ -382,6 +441,11 @@ mod tests {
                 "See you soon. Bring the map. Call Mara first "
             );
         }
+        let eleven = "Go. ".repeat(10) + "Go.";
+        assert_eq!(
+            out(&eleven, &cfg, &app("notepad.exe")),
+            format!("{eleven} ")
+        );
         let wa = app("WhatsApp.exe");
         assert_eq!(
             out("See you soon. Bring the map.", &win(), &wa),
@@ -400,44 +464,92 @@ mod tests {
             "See you soon. "
         );
         assert_eq!(out("Wait...", &cfg, &wa), "Wait... ");
+        let mut formal = win();
+        formal.styles.personal = Style::Formal;
+        assert_eq!(
+            out("See you soon. Bring the map.", &formal, &wa),
+            "See you soon. Bring the map. "
+        );
     }
 
     #[test]
-    fn the_shell_category_decides_chat() {
-        // Change: an unlisted app in a personal-chat bucket loses the period.
-        let ctx = FieldContext {
-            app_id: "zentrix.exe".into(),
-            app_category: AppCategory::PersonalChat,
+    fn the_listed_category_decides_chat() {
+        let bucket = |id: &str, c: AppCategory| FieldContext {
+            app_id: id.into(),
+            app_category: c,
             ..Default::default()
         };
-        assert_eq!(out("See you soon.", &win(), &ctx), "See you soon ");
+        assert_eq!(
+            out(
+                "See you soon.",
+                &win(),
+                &bucket("notepad.exe", AppCategory::PersonalChat)
+            ),
+            "See you soon. "
+        );
+        assert_eq!(
+            out(
+                "See you soon.",
+                &win(),
+                &bucket("WhatsApp.exe", AppCategory::Email)
+            ),
+            "See you soon "
+        );
+        // Android Slack is not a listed chat app.
+        assert_eq!(
+            out(
+                "See you soon.",
+                &android(),
+                &bucket("com.slack", AppCategory::WorkChat)
+            ),
+            "See you soon. "
+        );
     }
 
     #[test]
-    fn own_spacing_apps_insert_the_trimmed_text() {
-        let mut cfg = win();
-        cfg.styles.other = Style::Casual;
-        let ctx = FieldContext {
-            app_id: "Notion.exe".into(),
-            before: "and".into(),
-            after: "then".into(),
-            ..Default::default()
-        };
-        assert_eq!(out("  The parcel arrived early.  ", &win(), &ctx), PARCEL);
-        assert_eq!(out(PARCEL, &cfg, &ctx), "The parcel arrived early");
-        let ctx = FieldContext {
-            app_id: "chrome.exe".into(),
+    fn notion_skip() {
+        let w = win();
+        for b in ["so ", "so then", "we went to the shop..."] {
+            assert_eq!(out(PARCEL, &w, &notion(b, "")), PARCEL, "{b:?}");
+        }
+        assert_eq!(
+            out(PARCEL, &w, &notion("so then ", "")),
+            "the parcel arrived early. "
+        );
+        assert_eq!(
+            out(PARCEL, &w, &notion("we went to the shop... ", "")),
+            "The parcel arrived early. "
+        );
+        assert_eq!(
+            out(PARCEL, &w, &notion("so ", "x")),
+            "the parcel arrived early "
+        );
+        assert_eq!(
+            out(PARCEL, &w, &notion("", "")),
+            "The parcel arrived early. "
+        );
+        let www = FieldContext {
             url_host: "www.notion.so".into(),
-            before: "and".into(),
-            ..Default::default()
+            ..notion("so ", "")
         };
-        assert_eq!(out(PARCEL, &win(), &ctx), PARCEL);
-        let ctx = FieldContext {
-            app_id: "dev.flowclone.hybrid".into(),
-            before: "and".into(),
-            ..Default::default()
+        assert_eq!(out(PARCEL, &w, &www), "the parcel arrived early. ");
+        // The text is trimmed; style punctuation still applies.
+        assert_eq!(
+            out("  The parcel arrived early.  ", &w, &notion("so ", "")),
+            PARCEL
+        );
+        let mut casual = win();
+        casual.styles.other = Style::Casual;
+        assert_eq!(
+            out(PARCEL, &casual, &notion("so ", "")),
+            "The parcel arrived early"
+        );
+        // The desktop app and this app's own windows get normal fitting.
+        let desktop = FieldContext {
+            app_id: "Notion.exe".into(),
+            ..field("so ", "")
         };
-        assert_eq!(out(PARCEL, &android(), &ctx), PARCEL);
+        assert_eq!(out(PARCEL, &w, &desktop), "the parcel arrived early. ");
     }
 
     #[test]
@@ -493,29 +605,46 @@ mod tests {
     fn email_signature() {
         let mut cfg = win();
         cfg.email_signature = Some("— Ann".into());
-        let outlook = app("olk.exe");
+        let outlook = app("outlook.exe");
         assert_eq!(
             out("Hi Tom, thanks.", &cfg, &outlook),
             "Hi Tom, thanks.\n\n— Ann"
         );
-        assert_eq!(out("Thanks for that.", &cfg, &outlook), "Thanks for that. ");
+        assert_eq!(
+            out("Thanks for the update.", &cfg, &outlook),
+            "Thanks for the update. "
+        );
         let ten = "We can meet on the third floor after lunch today.";
         assert_eq!(out(ten, &cfg, &outlook), format!("{ten}\n\n— Ann"));
         let nine = "We can meet on the third floor after lunch.";
         assert_eq!(out(nine, &cfg, &outlook), format!("{nine} "));
-        // A shell-set Email category counts.
-        let ctx = FieldContext {
-            app_id: "zentrix.exe".into(),
-            app_category: AppCategory::Email,
+        assert_eq!(out("", &cfg, &outlook), "");
+        // The shell's bucket does not count; the listed category does.
+        let bucket = |id: &str, c: AppCategory| FieldContext {
+            app_id: id.into(),
+            app_category: c,
             ..Default::default()
         };
         assert_eq!(
-            out("Hi Tom, thanks.", &cfg, &ctx),
+            out(
+                "Hi Tom, thanks.",
+                &cfg,
+                &bucket("notepad.exe", AppCategory::Email)
+            ),
+            "Hi Tom, thanks. "
+        );
+        assert_eq!(
+            out(
+                "Hi Tom, thanks.",
+                &cfg,
+                &bucket("outlook.exe", AppCategory::WorkChat)
+            ),
             "Hi Tom, thanks.\n\n— Ann"
         );
-        // Not outside email, not on Android, not with an unknown field.
+        // Not in new Outlook (unlisted), not on Android, not with an
+        // unknown field, not with an empty signature.
         assert_eq!(
-            out("Hi Tom, thanks.", &cfg, &app("winword.exe")),
+            out("Hi Tom, thanks.", &cfg, &app("olk.exe")),
             "Hi Tom, thanks. "
         );
         let mut a = cfg.clone();
@@ -529,6 +658,27 @@ mod tests {
         assert_eq!(out("Hi Tom, thanks.", &cfg, &unknown), "Hi Tom, thanks. ");
         cfg.email_signature = Some(String::new());
         assert_eq!(out("Hi Tom, thanks.", &cfg, &outlook), "Hi Tom, thanks. ");
+    }
+
+    #[test]
+    fn snippet_body_gets_the_signature() {
+        let mut cfg = with_dict(
+            win(),
+            vec![
+                DictEntry::snippet("reply ok", "Hi Tom, all good here."),
+                DictEntry::snippet("my address", "12 Elm Road"),
+            ],
+        );
+        cfg.email_signature = Some("— Ann".into());
+        let outlook = app("outlook.exe");
+        assert_eq!(
+            apply("Reply ok.", "reply ok", &cfg, &outlook).text,
+            "Hi Tom, all good here.\n\n— Ann"
+        );
+        assert_eq!(
+            apply("My address.", "my address", &cfg, &outlook).text,
+            "12 Elm Road"
+        );
     }
 
     #[test]

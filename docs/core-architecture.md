@@ -181,16 +181,16 @@ Not yet verified: loading on bionic (first device run), and whether whisper's li
 
   Decode runs at 15-35 tok/s for 0.5B and 7-13 tok/s for 1.5B on this contended box. The first call after an app or style switch also prefills the user-message prefix (~100 tokens, +0.3-0.8 s).
 3. **Deterministic post-processing** (`postprocess`; behaviour contract: `docs/specs/text-postprocess.md`). The dictionary matcher is built once per distinct dictionary and shared by later sessions (`FlowCore::dict_matcher_builds`, `postprocess::apply_with`). Before it, the engine closes an open dictation of ≥ 4 words with a period (`postprocess::terminal`, D25). The steps, in order:
-   1. whole-utterance snippet on the raw transcript (Windows): the snippet body is inserted as is and nothing else runs;
+   1. whole-utterance snippet on the raw transcript (Windows): the snippet body is inserted as is; only the email signature may follow;
    2. "press enter" at the end of the dictation (Windows; sets `press_enter`, the shell sends the key);
    3. all-lowercase mode;
    4. dictionary replacements: case-insensitive whole words, longest key first, a contraction guard ("don" leaves "don't"), personal entries over team entries;
-   5. fitting to the cursor: a leading space, a lower-case start mid-sentence (names, "I", acronyms and dictionary words kept), dropping `.!?` before a continuation, the selection's shape when replacing a selection, CJK spacing; skipped for Notion and this app's own fields;
-   6. style punctuation: casual styles drop the final period; default and excited drop it in chat apps for 1–2 sentences;
+   5. fitting to the cursor: a leading space, a lower-case start mid-sentence (names, "I", acronyms and dictionary words kept), dropping `.!?` before a continuation, the selection's shape when replacing a selection, CJK spacing; skipped at the start of a Notion web page block;
+   6. style punctuation: casual drops the final period up to 10 sentences, very casual always, default and excited in chat apps for 1–2 sentences; never when the cursor's line or the selection already has `.!?`;
    7. the trailing space;
    8. email signature (Windows, off unless `email_signature` is set).
 
-   **The trailing space is intended.** It is appended when nothing follows the cursor, or a letter or digit follows it directly (and the text does not end in CJK), so the next dictation does not run into this one; `final_text` normally ends with `" "` and shells insert it as is. It is left out on Android when `context_known == false`, with a selection (the selection's own edge spaces are kept instead), after "press enter" and on the Notion / own-app skip. `plain_text` keeps it (only the paste markers are removed); `asr_text` (raw ASR) has none.
+   **The trailing space is intended.** It is appended when nothing follows the cursor, or a letter or digit follows it directly (and the text does not end in CJK), so the next dictation does not run into this one; `final_text` normally ends with `" "` and shells insert it as is. It is left out on Android when `context_known == false`, with a selection (the selection's own edge spaces are kept instead), after "press enter" and on the Notion skip. `plain_text` keeps it (only the paste markers are removed); `asr_text` (raw ASR) has none.
 
    `postprocess::effective_category` maps an app id or URL host to a category from the module's own tables (spec §9) when the shell did not send one.
 

@@ -1,5 +1,4 @@
-//! App category lookup (spec §9) and the apps that manage their own
-//! spacing (spec §5.7).
+//! App category lookup (spec §9) and the Notion host (spec §5.7).
 
 use crate::config::{AppCategory, FieldContext, Platform};
 
@@ -9,22 +8,32 @@ struct Row {
     windows: &'static [&'static str],
     /// Android package names, exact.
     android: &'static [&'static str],
-    /// Hosts; each also matches its subdomains.
-    hosts: &'static [&'static str],
+    /// Hosts matched exactly on Windows.
+    windows_hosts: &'static [&'static str],
+    /// Hosts matched with their subdomains on Android.
+    android_hosts: &'static [&'static str],
 }
+
+const EMAIL_HOSTS: &[&str] = &[
+    "mail.google.com",
+    "outlook.live.com",
+    "outlook.office.com",
+    "outlook.office365.com",
+    "mail.proton.me",
+    "mail.yahoo.com",
+];
+
+const PERSONAL_HOSTS: &[&str] = &[
+    "web.whatsapp.com",
+    "web.telegram.org",
+    "discord.com",
+    "messenger.com",
+];
 
 const TABLE: &[Row] = &[
     Row {
         category: AppCategory::Email,
-        windows: &[
-            "outlook",
-            "olk",
-            "thunderbird",
-            "betterbird",
-            "mailbird",
-            "mailspring",
-            "hxoutlook",
-        ],
+        windows: &["outlook", "thunderbird", "mailbird", "mailspring"],
         android: &[
             "com.google.android.gm",
             "com.microsoft.office.outlook",
@@ -34,25 +43,15 @@ const TABLE: &[Row] = &[
             "net.thunderbird.android",
             "com.yahoo.mobile.client.android.mail",
         ],
-        hosts: &[
-            "mail.google.com",
-            "outlook.live.com",
-            "outlook.office.com",
-            "outlook.office365.com",
-            "mail.proton.me",
-            "mail.yahoo.com",
-        ],
+        windows_hosts: EMAIL_HOSTS,
+        android_hosts: EMAIL_HOSTS,
     },
     Row {
         category: AppCategory::WorkChat,
-        windows: &["slack", "ms-teams", "teams", "zoom", "mattermost"],
-        android: &[
-            "com.slack",
-            "com.microsoft.teams",
-            "us.zoom.videomeetings",
-            "com.mattermost.rn",
-        ],
-        hosts: &["app.slack.com", "teams.microsoft.com", "teams.live.com"],
+        windows: &["slack"],
+        android: &["com.microsoft.teams", "com.mattermost.rn"],
+        windows_hosts: &["app.slack.com", "teams.microsoft.com"],
+        android_hosts: &["slack.com", "teams.microsoft.com", "teams.live.com"],
     },
     Row {
         category: AppCategory::PersonalChat,
@@ -63,10 +62,6 @@ const TABLE: &[Row] = &[
             "discord",
             "signal",
             "messenger",
-            "viber",
-            "line",
-            "skype",
-            "element",
         ],
         android: &[
             "com.whatsapp",
@@ -80,32 +75,25 @@ const TABLE: &[Row] = &[
             "jp.naver.line.android",
             "com.google.android.apps.messaging",
             "com.samsung.android.messaging",
-            "im.vector.app",
         ],
-        hosts: &[
-            "web.whatsapp.com",
-            "web.telegram.org",
-            "discord.com",
-            "messenger.com",
-        ],
+        windows_hosts: PERSONAL_HOSTS,
+        android_hosts: PERSONAL_HOSTS,
     },
     Row {
         category: AppCategory::AiPrompt,
-        windows: &[
-            "chatgpt",
-            "claude",
-            "perplexity",
-            "cursor",
-            "windsurf",
-            "code",
-        ],
+        windows: &["chatgpt", "claude", "cursor", "windsurf", "code"],
         android: &[
             "com.openai.chatgpt",
             "com.anthropic.claude",
-            "ai.perplexity.app.android",
             "com.google.android.apps.bard",
         ],
-        hosts: &[
+        windows_hosts: &[
+            "chatgpt.com",
+            "chat.openai.com",
+            "claude.ai",
+            "gemini.google.com",
+        ],
+        android_hosts: &[
             "chatgpt.com",
             "chat.openai.com",
             "claude.ai",
@@ -117,91 +105,63 @@ const TABLE: &[Row] = &[
         category: AppCategory::Terminal,
         windows: &[
             "windowsterminal",
-            "wt",
             "cmd",
             "powershell",
             "pwsh",
-            "conhost",
             "alacritty",
             "wezterm-gui",
-            "mintty",
-            "putty",
         ],
-        android: &[
-            "com.termux",
-            "org.connectbot",
-            "com.server.auditor.ssh.client",
-        ],
-        hosts: &[],
-    },
-    Row {
-        category: AppCategory::Document,
-        windows: &[
-            "winword", "notion", "obsidian", "onenote", "soffice", "swriter",
-        ],
-        android: &[
-            "com.google.android.apps.docs.editors.docs",
-            "com.microsoft.office.word",
-            "notion.id",
-            "md.obsidian",
-        ],
-        hosts: &["docs.google.com", "notion.so", "notion.site"],
+        android: &["com.termux"],
+        windows_hosts: &[],
+        android_hosts: &[],
     },
 ];
 
 /// The category post-processing and AI cleanup use: the shell's own
-/// category when it sent one, else this module's app and host lists.
+/// category when it sent one, else [`listed_category`].
 pub fn effective_category(platform: Platform, ctx: &FieldContext) -> AppCategory {
     if ctx.app_category != AppCategory::Other {
         return ctx.app_category;
     }
-    let by_app = match platform {
+    listed_category(platform, ctx)
+}
+
+/// The category of the app id or URL host in the app lists alone,
+/// ignoring `ctx.app_category`.
+pub(super) fn listed_category(platform: Platform, ctx: &FieldContext) -> AppCategory {
+    let host = normalise_host(&ctx.url_host);
+    let row = match platform {
         Platform::Windows => {
             let id = windows_id(&ctx.app_id);
-            TABLE.iter().find(|r| r.windows.contains(&id.as_str()))
+            TABLE
+                .iter()
+                .find(|r| r.windows.contains(&id.as_str()))
+                .or_else(|| {
+                    TABLE
+                        .iter()
+                        .find(|r| r.windows_hosts.contains(&host.as_str()))
+                })
         }
         Platform::Android => {
             let id = ctx.app_id.trim();
-            TABLE.iter().find(|r| r.android.contains(&id))
+            TABLE.iter().find(|r| r.android.contains(&id)).or_else(|| {
+                TABLE
+                    .iter()
+                    .find(|r| r.android_hosts.iter().any(|h| host_matches(&host, h)))
+            })
         }
     };
-    if let Some(r) = by_app {
-        return r.category;
-    }
-    let host = normalise_host(&ctx.url_host);
-    TABLE
-        .iter()
-        .find(|r| r.hosts.iter().any(|h| host_matches(&host, h)))
-        .map_or(AppCategory::Other, |r| r.category)
+    row.map_or(AppCategory::Other, |r| r.category)
 }
 
-/// Fields whose app handles spacing and case itself: the dictation is
-/// inserted trimmed, without cursor fitting or a trailing space.
-pub(super) fn manages_own_spacing(platform: Platform, ctx: &FieldContext) -> bool {
-    let host = normalise_host(&ctx.url_host);
-    if ["notion.so", "notion.site"]
-        .iter()
-        .any(|h| host_matches(&host, h))
-    {
-        return true;
-    }
-    match platform {
-        Platform::Windows => matches!(
-            windows_id(&ctx.app_id).as_str(),
-            "notion" | "flow-windows" | "murmur" | "murmur"
-        ),
-        Platform::Android => {
-            let id = ctx.app_id.trim();
-            id == "notion.id" || id == "dev.flowclone" || id.starts_with("dev.flowclone.")
-        }
-    }
+/// The URL host is exactly `notion.so` (§5.7).
+pub(super) fn is_notion_host(ctx: &FieldContext) -> bool {
+    normalise_host(&ctx.url_host) == "notion.so"
 }
 
-/// A Windows process name, lower-case, without a directory or `.exe`.
+/// A Windows process name, lower-case, without `.exe`.
 fn windows_id(app_id: &str) -> String {
-    let id = app_id.trim();
-    let base = id.rsplit(['\\', '/']).next().unwrap_or(id);
-    let lower = base.to_lowercase();
+    let lower = app_id.trim().to_lowercase();
     match lower.strip_suffix(".exe") {
         Some(s) => s.to_string(),
         None => lower,
@@ -246,10 +206,14 @@ mod tests {
     }
 
     fn host(p: Platform, h: &str) -> AppCategory {
+        let app_id = match p {
+            Platform::Windows => "chrome.exe",
+            Platform::Android => "com.android.chrome",
+        };
         effective_category(
             p,
             &FieldContext {
-                app_id: "chrome.exe".into(),
+                app_id: app_id.into(),
                 url_host: h.into(),
                 ..Default::default()
             },
@@ -260,24 +224,39 @@ mod tests {
     fn windows_app_ids() {
         assert_eq!(win("slack.exe"), WorkChat);
         assert_eq!(win("OUTLOOK.EXE"), Email);
-        assert_eq!(win("olk.exe"), Email);
         assert_eq!(win("thunderbird"), Email);
-        assert_eq!(win("ms-teams.exe"), WorkChat);
-        assert_eq!(win("Teams.exe"), WorkChat);
+        assert_eq!(win("Mailbird.exe"), Email);
+        assert_eq!(win("mailspring.exe"), Email);
         assert_eq!(win("WhatsApp.exe"), PersonalChat);
+        assert_eq!(win("WhatsApp.Root.exe"), PersonalChat);
         assert_eq!(win("Telegram.exe"), PersonalChat);
         assert_eq!(win("Discord.exe"), PersonalChat);
         assert_eq!(win("Signal.exe"), PersonalChat);
+        assert_eq!(win("Messenger.exe"), PersonalChat);
         assert_eq!(win("WindowsTerminal.exe"), Terminal);
+        assert_eq!(win("cmd.exe"), Terminal);
         assert_eq!(win("pwsh.exe"), Terminal);
+        assert_eq!(win("wezterm-gui.exe"), Terminal);
         assert_eq!(win("ChatGPT.exe"), AiPrompt);
         assert_eq!(win("Claude.exe"), AiPrompt);
         assert_eq!(win("Cursor.exe"), AiPrompt);
         assert_eq!(win("Code.exe"), AiPrompt);
-        assert_eq!(win("WINWORD.EXE"), Document);
-        assert_eq!(win("Notion.exe"), Document);
-        assert_eq!(win("linkedin.exe"), Other);
-        assert_eq!(win("zentrix.exe"), Other);
+        // Not listed: Other.
+        for id in [
+            "olk.exe",
+            "ms-teams.exe",
+            "Teams.exe",
+            "Zoom.exe",
+            "mattermost.exe",
+            "WINWORD.EXE",
+            "Notion.exe",
+            "Obsidian.exe",
+            "notepad.exe",
+            "chrome.exe",
+            "zentrix.exe",
+        ] {
+            assert_eq!(win(id), Other, "{id}");
+        }
         // Android packages are not looked up on Windows.
         assert_eq!(win("com.whatsapp"), Other);
     }
@@ -285,73 +264,86 @@ mod tests {
     #[test]
     fn android_packages() {
         assert_eq!(android("com.whatsapp"), PersonalChat);
-        assert_eq!(android("com.slack"), WorkChat);
+        assert_eq!(android("com.microsoft.teams"), WorkChat);
+        assert_eq!(android("com.mattermost.rn"), WorkChat);
         assert_eq!(android("com.google.android.gm"), Email);
         assert_eq!(android("com.instagram.android"), PersonalChat);
-        assert_eq!(android("com.linkedin.android"), Other);
         assert_eq!(android("com.termux"), Terminal);
-        assert_eq!(
-            android("com.google.android.apps.docs.editors.docs"),
-            Document
-        );
+        assert_eq!(android("com.google.android.apps.bard"), AiPrompt);
+        for id in [
+            "com.slack",
+            "us.zoom.videomeetings",
+            "im.vector.app",
+            "com.linkedin.android",
+            "notion.id",
+        ] {
+            assert_eq!(android(id), Other, "{id}");
+        }
         // Exact package names; Windows ids are not looked up on Android.
         assert_eq!(android("COM.WHATSAPP"), Other);
         assert_eq!(android("slack"), Other);
     }
 
     #[test]
-    fn hosts_and_subdomains() {
-        for p in [Platform::Windows, Platform::Android] {
-            assert_eq!(host(p, "mail.google.com"), Email);
-            assert_eq!(host(p, "app.slack.com"), WorkChat);
-            assert_eq!(host(p, "web.whatsapp.com"), PersonalChat);
-            assert_eq!(host(p, "claude.ai"), AiPrompt);
-            assert_eq!(host(p, "docs.google.com"), Document);
-            assert_eq!(host(p, "www.notion.so"), Document);
-            assert_eq!(host(p, "ptb.discord.com"), PersonalChat);
-            assert_eq!(host(p, "notdiscord.com"), Other);
-            assert_eq!(host(p, "www.linkedin.com"), Other);
+    fn windows_hosts_are_exact() {
+        let w = Platform::Windows;
+        assert_eq!(host(w, "mail.google.com"), Email);
+        assert_eq!(host(w, "app.slack.com"), WorkChat);
+        assert_eq!(host(w, "teams.microsoft.com"), WorkChat);
+        assert_eq!(host(w, "web.whatsapp.com"), PersonalChat);
+        assert_eq!(host(w, "messenger.com"), PersonalChat);
+        assert_eq!(host(w, "claude.ai"), AiPrompt);
+        for h in [
+            "www.messenger.com",
+            "x.slack.com",
+            "slack.com",
+            "teams.live.com",
+            "perplexity.ai",
+            "docs.google.com",
+            "notion.so",
+            "",
+        ] {
+            assert_eq!(host(w, h), Other, "{h}");
         }
     }
 
     #[test]
-    fn shell_category_wins() {
+    fn android_hosts_match_subdomains() {
+        let a = Platform::Android;
+        assert_eq!(host(a, "mail.google.com"), Email);
+        assert_eq!(host(a, "slack.com"), WorkChat);
+        assert_eq!(host(a, "app.slack.com"), WorkChat);
+        assert_eq!(host(a, "x.slack.com"), WorkChat);
+        assert_eq!(host(a, "teams.live.com"), WorkChat);
+        assert_eq!(host(a, "www.messenger.com"), PersonalChat);
+        assert_eq!(host(a, "ptb.discord.com"), PersonalChat);
+        assert_eq!(host(a, "perplexity.ai"), AiPrompt);
+        assert_eq!(host(a, "notdiscord.com"), Other);
+        assert_eq!(host(a, "docs.google.com"), Other);
+    }
+
+    #[test]
+    fn shell_category_wins_but_not_in_the_listed_one() {
         let ctx = FieldContext {
             app_id: "slack.exe".into(),
             app_category: PersonalChat,
             ..Default::default()
         };
         assert_eq!(effective_category(Platform::Windows, &ctx), PersonalChat);
+        assert_eq!(listed_category(Platform::Windows, &ctx), WorkChat);
     }
 
     #[test]
-    fn own_spacing_apps() {
-        let own = |p, id: &str, h: &str| {
-            manages_own_spacing(
-                p,
-                &FieldContext {
-                    app_id: id.into(),
-                    url_host: h.into(),
-                    ..Default::default()
-                },
-            )
+    fn notion_host_is_exact() {
+        let n = |h: &str| {
+            is_notion_host(&FieldContext {
+                url_host: h.into(),
+                ..Default::default()
+            })
         };
-        assert!(own(Platform::Windows, "Notion.exe", ""));
-        assert!(own(Platform::Windows, "flow-windows.exe", ""));
-        assert!(own(Platform::Windows, "Murmur.exe", ""));
-        assert!(own(Platform::Windows, "murmur.exe", ""));
-        assert!(own(Platform::Windows, "chrome.exe", "notion.so"));
-        assert!(own(Platform::Windows, "chrome.exe", "www.notion.so"));
-        assert!(own(
-            Platform::Android,
-            "com.android.chrome",
-            "zentrix.notion.site"
-        ));
-        assert!(own(Platform::Android, "notion.id", ""));
-        assert!(own(Platform::Android, "dev.flowclone", ""));
-        assert!(own(Platform::Android, "dev.flowclone.hybrid", ""));
-        assert!(!own(Platform::Android, "dev.flowclonex", ""));
-        assert!(!own(Platform::Windows, "slack.exe", ""));
-        assert!(!own(Platform::Windows, "chrome.exe", "notion.com"));
+        assert!(n("notion.so"));
+        assert!(!n("www.notion.so"));
+        assert!(!n("zentrix.notion.site"));
+        assert!(!n(""));
     }
 }

@@ -20279,6 +20279,1440 @@
 }
 },
 {
+"id": "r4_flow-windows.exe_empty",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe"
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_flow-windows.exe_so",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "so "
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_flow-windows.exe_ok",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "ok "
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_flow-windows.exe_long",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "we went to the shop "
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_flow-windows.exe_after",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"after": "x"
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_flow-windows.exe_so_after",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "so ",
+"after": "x"
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_flow-windows.exe_sel",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"selected": "bad"
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_flow-windows.exe_nosp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "Done."
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_flow-windows.exe_ell",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "we went..."
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_flow-windows.exe_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "so "
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r4_flow-windows.exe_enter",
+"kind": "apply",
+"text": "Send it press enter.",
+"ctx": {
+"app_id": "flow-windows.exe"
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_murmur.exe_empty",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe"
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_murmur.exe_so",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"before": "so "
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_murmur.exe_ok",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"before": "ok "
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_murmur.exe_long",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"before": "we went to the shop "
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_murmur.exe_after",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"after": "x"
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_murmur.exe_so_after",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"before": "so ",
+"after": "x"
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_murmur.exe_sel",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"selected": "bad"
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_murmur.exe_nosp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"before": "Done."
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_murmur.exe_ell",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"before": "we went..."
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_murmur.exe_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"before": "so "
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r4_murmur.exe_enter",
+"kind": "apply",
+"text": "Send it press enter.",
+"ctx": {
+"app_id": "murmur.exe"
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_Murmur.exe_empty",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Murmur.exe"
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_Murmur.exe_so",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Murmur.exe",
+"before": "so "
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_Murmur.exe_ok",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Murmur.exe",
+"before": "ok "
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_Murmur.exe_long",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Murmur.exe",
+"before": "we went to the shop "
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_Murmur.exe_after",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Murmur.exe",
+"after": "x"
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_Murmur.exe_so_after",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Murmur.exe",
+"before": "so ",
+"after": "x"
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_Murmur.exe_sel",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Murmur.exe",
+"selected": "bad"
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_Murmur.exe_nosp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Murmur.exe",
+"before": "Done."
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_Murmur.exe_ell",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Murmur.exe",
+"before": "we went..."
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_Murmur.exe_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Murmur.exe",
+"before": "so "
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r4_Murmur.exe_enter",
+"kind": "apply",
+"text": "Send it press enter.",
+"ctx": {
+"app_id": "Murmur.exe"
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_notion.id_empty",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "notion.id"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_notion.id_so",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "notion.id",
+"before": "so "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_notion.id_ok",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "notion.id",
+"before": "ok "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_notion.id_long",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "notion.id",
+"before": "we went to the shop "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_notion.id_after",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "notion.id",
+"after": "x"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_notion.id_so_after",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "notion.id",
+"before": "so ",
+"after": "x"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_notion.id_sel",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "notion.id",
+"selected": "bad"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_notion.id_nosp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "notion.id",
+"before": "Done."
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_notion.id_ell",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "notion.id",
+"before": "we went..."
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_notion.id_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "notion.id",
+"before": "so "
+},
+"cfg": {
+"platform": "android",
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r4_notion.id_enter",
+"kind": "apply",
+"text": "Send it press enter.",
+"ctx": {
+"app_id": "notion.id"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_com.notion.id_empty",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "com.notion.id"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_com.notion.id_so",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "com.notion.id",
+"before": "so "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_com.notion.id_ok",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "com.notion.id",
+"before": "ok "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_com.notion.id_long",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "com.notion.id",
+"before": "we went to the shop "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_com.notion.id_after",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "com.notion.id",
+"after": "x"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_com.notion.id_so_after",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "com.notion.id",
+"before": "so ",
+"after": "x"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_com.notion.id_sel",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "com.notion.id",
+"selected": "bad"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_com.notion.id_nosp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "com.notion.id",
+"before": "Done."
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_com.notion.id_ell",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "com.notion.id",
+"before": "we went..."
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_com.notion.id_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "com.notion.id",
+"before": "so "
+},
+"cfg": {
+"platform": "android",
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r4_com.notion.id_enter",
+"kind": "apply",
+"text": "Send it press enter.",
+"ctx": {
+"app_id": "com.notion.id"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_Notion.exe_empty",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Notion.exe"
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_Notion.exe_so",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Notion.exe",
+"before": "so "
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_Notion.exe_ok",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Notion.exe",
+"before": "ok "
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_Notion.exe_long",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Notion.exe",
+"before": "we went to the shop "
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_Notion.exe_after",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Notion.exe",
+"after": "x"
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_Notion.exe_so_after",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Notion.exe",
+"before": "so ",
+"after": "x"
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_Notion.exe_sel",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Notion.exe",
+"selected": "bad"
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_Notion.exe_nosp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Notion.exe",
+"before": "Done."
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_Notion.exe_ell",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Notion.exe",
+"before": "we went..."
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_Notion.exe_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Notion.exe",
+"before": "so "
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r4_Notion.exe_enter",
+"kind": "apply",
+"text": "Send it press enter.",
+"ctx": {
+"app_id": "Notion.exe"
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r4_dev.flowclone_empty",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "dev.flowclone"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_dev.flowclone_so",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "dev.flowclone",
+"before": "so "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_dev.flowclone_ok",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "dev.flowclone",
+"before": "ok "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_dev.flowclone_long",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "dev.flowclone",
+"before": "we went to the shop "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_dev.flowclone_after",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "dev.flowclone",
+"after": "x"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_dev.flowclone_so_after",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "dev.flowclone",
+"before": "so ",
+"after": "x"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_dev.flowclone_sel",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "dev.flowclone",
+"selected": "bad"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_dev.flowclone_nosp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "dev.flowclone",
+"before": "Done."
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_dev.flowclone_ell",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "dev.flowclone",
+"before": "we went..."
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_dev.flowclone_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "dev.flowclone",
+"before": "so "
+},
+"cfg": {
+"platform": "android",
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r4_dev.flowclone_enter",
+"kind": "apply",
+"text": "Send it press enter.",
+"ctx": {
+"app_id": "dev.flowclone"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_host_notion.so_so",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "notion.so",
+"before": "so "
+},
+"cfg": {}
+},
+{
+"id": "r4_ahost_notion.so_so",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "notion.so",
+"before": "so "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_host_notion.so_long",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "notion.so",
+"before": "we went to the shop "
+},
+"cfg": {}
+},
+{
+"id": "r4_ahost_notion.so_long",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "notion.so",
+"before": "we went to the shop "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_host_notion.so/page_so",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "notion.so/page",
+"before": "so "
+},
+"cfg": {}
+},
+{
+"id": "r4_ahost_notion.so/page_so",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "notion.so/page",
+"before": "so "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_host_notion.so/page_long",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "notion.so/page",
+"before": "we went to the shop "
+},
+"cfg": {}
+},
+{
+"id": "r4_ahost_notion.so/page_long",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "notion.so/page",
+"before": "we went to the shop "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_host_www.notion.so_so",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "www.notion.so",
+"before": "so "
+},
+"cfg": {}
+},
+{
+"id": "r4_ahost_www.notion.so_so",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "www.notion.so",
+"before": "so "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_host_www.notion.so_long",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "www.notion.so",
+"before": "we went to the shop "
+},
+"cfg": {}
+},
+{
+"id": "r4_ahost_www.notion.so_long",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "www.notion.so",
+"before": "we went to the shop "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_host_x.notion.site_so",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "x.notion.site",
+"before": "so "
+},
+"cfg": {}
+},
+{
+"id": "r4_ahost_x.notion.site_so",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "x.notion.site",
+"before": "so "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_host_x.notion.site_long",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "x.notion.site",
+"before": "we went to the shop "
+},
+"cfg": {}
+},
+{
+"id": "r4_ahost_x.notion.site_long",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "x.notion.site",
+"before": "we went to the shop "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_host_Notion.so_so",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "Notion.so",
+"before": "so "
+},
+"cfg": {}
+},
+{
+"id": "r4_ahost_Notion.so_so",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "Notion.so",
+"before": "so "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_host_Notion.so_long",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "Notion.so",
+"before": "we went to the shop "
+},
+"cfg": {}
+},
+{
+"id": "r4_ahost_Notion.so_long",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "Notion.so",
+"before": "we went to the shop "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_chatw_olk",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "olk.exe"
+},
+"cfg": {}
+},
+{
+"id": "r4_sigw_olk",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "olk.exe"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r4_chatw_ms-teams",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "ms-teams.exe"
+},
+"cfg": {}
+},
+{
+"id": "r4_sigw_ms-teams",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "ms-teams.exe"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r4_chatw_teams",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "teams.exe"
+},
+"cfg": {}
+},
+{
+"id": "r4_sigw_teams",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "teams.exe"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r4_chatw_zoom",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "zoom.exe"
+},
+"cfg": {}
+},
+{
+"id": "r4_sigw_zoom",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "zoom.exe"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r4_chatw_hxoutlook",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "hxoutlook.exe"
+},
+"cfg": {}
+},
+{
+"id": "r4_sigw_hxoutlook",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "hxoutlook.exe"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r4_chatw_notepad",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "notepad.exe"
+},
+"cfg": {}
+},
+{
+"id": "r4_sigw_notepad",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "notepad.exe"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r4_chatw_winword",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "winword.exe"
+},
+"cfg": {}
+},
+{
+"id": "r4_sigw_winword",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "winword.exe"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r4_chatw_perplexity",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "perplexity.exe"
+},
+"cfg": {}
+},
+{
+"id": "r4_sigw_perplexity",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "perplexity.exe"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r4_chatw_kitty",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "kitty.exe"
+},
+"cfg": {}
+},
+{
+"id": "r4_sigw_kitty",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "kitty.exe"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r4_chata_com.slack",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.slack"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_chata_us.zoom.videomeetings",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "us.zoom.videomeetings"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_chata_com.tencent.mm",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.tencent.mm"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_chata_com.microsoft.outlook.lite",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.microsoft.outlook.lite"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r4_chata_com.example.mail",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.example.mail"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
 "id": "r3e_snip_sig_empty_text",
 "kind": "apply",
 "text": "",
