@@ -303,7 +303,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         recommended: false,
         recommended_gpu: false,
         language: Some(crate::core_adapter::HEBREW),
-        license: Some("CC-BY-4.0 · krut42, based on thewh1teagle/parakeet-tdt-0.6b-v3-he"),
+        license: Some("CC-BY-4.0 · NVIDIA (nvidia/parakeet-tdt-0.6b-v3), fine-tuned by thewh1teagle, int8 by krut42"),
         extras: LID_FILES,
         files: &[
             model_file!(parakeet_he_base!(), "encoder.int8.onnx", 653_215_173, "7eaf80bc88fccd579a7d3950c25e50e4c7935e5b037ec2aa1eee29bca5ca3981"),

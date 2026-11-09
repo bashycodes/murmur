@@ -102,6 +102,10 @@ fi
 [ "$(grep -c '^COPY COPYRIGHT NOTICE THIRD-PARTY-LICENSES /opt/flow-server/$' "$ROOT/deploy/docker/Dockerfile")" = 2 ] ||
   fail "an image stage leaves a notice out"
 
+# third_party/licenses/ is what its SHA256SUMS says (tools/notice/fetch-texts.sh).
+(cd "$ROOT/third_party/licenses" && sha256sum -c --quiet SHA256SUMS) || fail "third_party/licenses/SHA256SUMS"
+! grep -q ' SHA256SUMS$' "$ROOT/third_party/licenses/SHA256SUMS" || fail "SHA256SUMS lists itself"
+
 # 7. Model zips' MODEL-LICENSES.txt: the catalogue and tools/notice/models.tsv
 # agree; the notice of a speech set and of the cleanup set with Llama carries
 # the texts and notices their licences ask for; an unknown model is
@@ -120,6 +124,10 @@ grep -q '^NVIDIA Open Model License Agreement' "$T/speech.txt" || fail "speech z
 grep -q 'Attribution 4.0 International' "$T/speech.txt" || fail "speech zip: CC-BY-4.0 text"
 grep -q 'zipformer-he-int8: CC-BY-4.0 · Yakov Kolani / ivrit.ai' "$T/speech.txt" || fail "speech zip: CC-BY credit"
 grep -q 'Permission is hereby granted, free of charge' "$T/speech.txt" || fail "speech zip: MIT text"
+grep -q 'Converted to int8 ONNX (krut42) from thewh1teagle/parakeet-tdt-0.6b-v3-he, fine-tuned from nvidia/parakeet-tdt-0.6b-v3' "$T/speech.txt" ||
+  fail "speech zip: v3-he derivation"
+[ "$(grep -c '^- ' "$T/speech.txt")" = "$(grep -c '^    Converted\|^    Int8' "$T/speech.txt")" ] || fail "speech zip: a model without its derivation"
+grep -q 'NVIDIA (nvidia/parakeet-tdt-0.6b-v3), fine-tuned by' "$ROOT/NOTICE" || fail "NOTICE: v3-he attribution lacks NVIDIA"
 python3 -I "$MN" qwen2.5-1.5b-instruct-q4_k_m llama-3.2-3b-instruct-q4_k_m test-diarizer > "$T/llm.txt"
 grep -q 'Built with Llama' "$T/llm.txt" || fail "cleanup zip: Built with Llama"
 grep -q 'LLAMA 3.2 COMMUNITY LICENSE AGREEMENT' "$T/llm.txt" || fail "cleanup zip: Llama licence text"

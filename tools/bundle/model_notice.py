@@ -5,7 +5,8 @@
     model_notice.py --check-catalog CATALOG_RS
 
 FOLDER: the model folders in the zip (column 1 of models_manifest.py).
-Prints each model's licence and attribution from tools/notice/models.tsv,
+Prints each model's licence, attribution and how it was converted or
+quantised from the original (tools/notice/models.tsv),
 the notices its licence asks for ("Built with Llama", NVIDIA's notice),
 then the full texts (third_party/licenses/), each once. A folder without a
 row is listed as "licence unconfirmed" rather than given one.
@@ -31,8 +32,8 @@ def table():
     rows = {}
     for line in TABLE.read_text(encoding="utf-8").splitlines():
         if line.strip() and not line.startswith("#"):
-            folder, texts, lic = line.split("\t")
-            rows[folder] = (texts.split(","), lic)
+            folder, texts, lic, derived = line.split("\t")
+            rows[folder] = (texts.split(","), lic, derived)
     return rows
 
 
@@ -46,8 +47,8 @@ def notice(folders):
         if f not in rows:
             out.append(f"- {f}: licence unconfirmed; see the model's page before use")
             continue
-        names, lic = rows[f]
-        out.append(f"- {f}: {lic}")
+        names, lic, derived = rows[f]
+        out += [f"- {f}: {lic}", f"    {derived[0].upper() + derived[1:]}."]
         for key, text in NOTICES.items():
             if lic.startswith(key) and text not in extra:
                 extra.append(text)
@@ -73,7 +74,7 @@ def check_catalog(rs):
             bad.append(f"{cid}: no row in {TABLE.name}")
         elif rows[cid][1] != lic:
             bad.append(f"{cid}: catalogue says {lic!r}, {TABLE.name} {rows[cid][1]!r}")
-    bad += [f"{f}: no text {n}" for f, (names, _) in rows.items() for n in names if not (TEXTS / n).is_file()]
+    bad += [f"{f}: no text {n}" for f, (names, _, _) in rows.items() for n in names if not (TEXTS / n).is_file()]
     if bad:
         sys.exit("model_notice.py: " + "; ".join(bad))
 
