@@ -250,6 +250,67 @@ jobs:
           FLOW_CLOUD_ARTIFACTS=apps/flow-windows/target/release/flow-windows.exe \
             tools/check-build-matrix.sh
 
+      # Tauri's bundler downloads WiX 3.14, NSIS 3.13 and nsis_tauri_utils
+      # into its tools dir (dirs::cache_dir()\tauri = %LOCALAPPDATA%\tauri)
+      # with no retry, so one GitHub 504 failed the installer step. Cache
+      # that dir; on a miss, fetch the same files with retries and lay them
+      # out as tauri-bundler 2.x does (bundle/windows/msi/mod.rs
+      # get_and_extract_wix, nsis/mod.rs get_and_extract_nsis): it then finds
+      # every required file with the right hash and downloads nothing. If a
+      # CLI bump moves to newer tools, the bundler replaces the stale ones
+      # itself (unprotected again): update the URLs, hashes and cache key.
+      - name: Tauri bundler tools (cache)
+        id: tauri-tools
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\tauri
+          key: tauri-tools-wix314-nsis313-ntu053
+
+      - name: Tauri bundler tools (download with retries)
+        if: steps.tauri-tools.outputs.cache-hit != 'true'
+        shell: pwsh
+        working-directory: .
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tools = Join-Path $env:LOCALAPPDATA 'tauri'
+          $dl = Join-Path $env:RUNNER_TEMP 'tauri-tools'
+          New-Item -ItemType Directory -Force $tools, $dl | Out-Null
+          function Get-Verified($url, $out, $algo, $hash) {
+            for ($i = 1; $i -le 5; $i++) {
+              try {
+                curl.exe -fsSL --retry 2 -o $out $url
+                if ($LASTEXITCODE -ne 0) { throw "curl exit $LASTEXITCODE" }
+                $got = (Get-FileHash -Algorithm $algo $out).Hash
+                if ($got -ne $hash) { throw "$algo mismatch: $got" }
+                return
+              } catch {
+                if ($i -eq 5) { throw "download failed: $url ($_)" }
+                $wait = 10 * [math]::Pow(2, $i - 1)
+                Write-Warning "attempt $i for $url failed ($_); retrying in $wait s"
+                Start-Sleep -Seconds $wait
+              }
+            }
+          }
+          # WiX: the zip's files straight into WixTools314.
+          $wix = Join-Path $dl 'wix.zip'
+          Get-Verified 'https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip' $wix SHA256 '6AC824E1642D6F7277D0ED7EA09411A508F6116BA6FAE0AA5F2C7DAA2FF43D31'
+          Expand-Archive -Force $wix (Join-Path $tools 'WixTools314')
+          # NSIS: the zip's nsis-3.13 folder renamed to NSIS, plus the plugin.
+          $nsis = Join-Path $dl 'nsis.zip'
+          Get-Verified 'https://github.com/tauri-apps/binary-releases/releases/download/nsis-3.13/nsis-3.13.zip' $nsis SHA1 'DB14F8AF2EA346B786C6AE19343F61AAF5E09B8E'
+          Expand-Archive -Force $nsis $tools
+          Move-Item (Join-Path $tools 'nsis-3.13') (Join-Path $tools 'NSIS')
+          $plugins = Join-Path $tools 'NSIS\Plugins\x86-unicode\additional'
+          New-Item -ItemType Directory -Force $plugins | Out-Null
+          Get-Verified 'https://github.com/tauri-apps/nsis-tauri-utils/releases/download/nsis_tauri_utils-v0.5.3/nsis_tauri_utils.dll' (Join-Path $plugins 'nsis_tauri_utils.dll') SHA1 '75197FEE3C6A814FE035788D1C34EAD39349B860'
+          # The bundler's own checks: NSIS.exe hash and the key files.
+          $exe = (Get-FileHash -Algorithm SHA1 (Join-Path $tools 'NSIS\NSIS.exe')).Hash
+          if ($exe -ne '6D45D4E8CCF18FE1FDAC9164058F356102A2ECF2') { throw "NSIS.exe SHA1 $exe" }
+          foreach ($f in 'WixTools314\candle.exe', 'WixTools314\light.exe', 'WixTools314\WixUIExtension.dll', 'NSIS\makensis.exe', 'NSIS\Bin\makensis.exe', 'NSIS\Include\MUI2.nsh') {
+            if (-not (Test-Path (Join-Path $tools $f))) { throw "missing $f" }
+          }
+          Get-ChildItem $tools
+
       - name: Installers (hybrid + cloud, whisper + Parakeet)
         run: |
           npx --yes @tauri-apps/cli@2 build --ci --bundles msi,nsis \
