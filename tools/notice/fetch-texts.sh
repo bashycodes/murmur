@@ -53,8 +53,11 @@ get llvm-libcxx/LICENSE.TXT https://raw.githubusercontent.com/llvm/llvm-project/
 get libgomp/GPL-3.0.txt https://www.gnu.org/licenses/gpl-3.0.txt
 get libgomp/GCC-exception-3.1.txt https://raw.githubusercontent.com/spdx/license-list-data/v3.25.0/text/GCC-exception-3.1.txt
 
-# Windows installer: NSIS 3.13 stub and the nsis_tauri_utils plugin 0.5.3.
+# Windows installers: NSIS 3.13 stub and the nsis_tauri_utils plugin 0.5.3;
+# WiX 3.14.1, whose UI extension puts its custom-action DLL (wixca, path
+# validation) and dialog resources into the MSI.
 get nsis/COPYING https://raw.githubusercontent.com/kichik/nsis/v313/COPYING
+get wix/LICENSE.TXT https://raw.githubusercontent.com/wixtoolset/wix3/wix3141rtm/LICENSE.TXT
 get nsis-tauri-utils/LICENSE_MIT https://raw.githubusercontent.com/tauri-apps/nsis-tauri-utils/nsis_tauri_utils-v0.5.3/LICENSE_MIT
 get nsis-tauri-utils/LICENSE_APACHE-2.0 https://raw.githubusercontent.com/tauri-apps/nsis-tauri-utils/nsis_tauri_utils-v0.5.3/LICENSE_APACHE-2.0
 
@@ -75,8 +78,11 @@ curl -fsSL --retry 3 https://www.nvidia.com/en-us/agreements/enterprise-software
 # Standard texts (SPDX license-list-data v3.25.0) for licences a component
 # declares without shipping its own file.
 for id in Apache-2.0 MIT MIT-0 BSD-2-Clause BSD-3-Clause ISC Zlib Unicode-3.0 MPL-2.0 Unlicense \
-          BSL-1.0 CC0-1.0 0BSD CDLA-Permissive-2.0 CC-BY-4.0 OFL-1.1; do
+          BSL-1.0 CC0-1.0 0BSD CDLA-Permissive-2.0 CC-BY-4.0 OFL-1.1 MS-RL; do
   get "spdx/$id.txt" "https://raw.githubusercontent.com/spdx/license-list-data/v3.25.0/text/$id.txt"
 done
-(cd "$L" && find . -type f | sort | sed 's|^\./||' | xargs sha256sum) > "$L/SHA256SUMS"
+# Into a file outside $L first: written in place, SHA256SUMS would list itself.
+sums="$(mktemp)"
+(cd "$L" && find . -type f ! -name SHA256SUMS | sort | sed 's|^\./||' | xargs sha256sum) > "$sums"
+mv "$sums" "$L/SHA256SUMS"; chmod 644 "$L/SHA256SUMS"
 echo "wrote $(find "$L" -type f | wc -l) files to third_party/licenses/"

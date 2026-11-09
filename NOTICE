@@ -96,16 +96,26 @@ MODEL-LICENSES.txt.
 - apps/flow-windows/ui has no runtime npm dependencies. Build-only:
   TypeScript 5.6.3 (Apache-2.0, https://github.com/microsoft/TypeScript) and,
   in CI, @tauri-apps/cli 2 (Apache-2.0 OR MIT, https://github.com/tauri-apps/tauri).
-- NSIS 3 installer stub and the nsis_tauri_utils plugin
+- NSIS 3 installer stub and the nsis_tauri_utils plugin (.exe installer)
   zlib/libpng licence (NSIS), Apache-2.0 OR MIT (plugin).
   https://nsis.sourceforge.io/License, https://github.com/tauri-apps/nsis-tauri-utils
+- WiX Toolset 3.14.1 (.msi installer): its UI extension embeds its
+  custom-action DLL (install-folder check) and dialog resources in the MSI
+  [FLAG: MS-RL, Microsoft Reciprocal License, file-level copyleft; used
+  unmodified, source at https://github.com/wixtoolset/wix3]
 - Microsoft Edge WebView2 Runtime: not shipped; the installer fetches
   Microsoft's bootstrapper when the PC lacks it (Microsoft software licence).
 
 5. Speech and cleanup models (downloaded; licence from each model card)
 
 The apps' model catalogue shows the same licence and attribution for each
-model (tools/notice/models.tsv keeps the two in step).
+model (tools/notice/models.tsv keeps the two in step). None is the original:
+each is converted and/or quantised from the model it names ("from"), as
+models.tsv and each model zip's MODEL-LICENSES.txt state per model:
+Whisper converted to ggml (q5_1/q5_0 quantised) by whisper.cpp or Tagidu;
+Parakeet converted to int8 ONNX by the sherpa-onnx authors or krut42; Qwen
+and Llama quantised to GGUF q4_k_m by Qwen and by bartowski; Zipformer as
+its authors publish it (int8 ONNX).
 
 - Whisper GGML models (tiny/base/small, .en and multilingual; language
   detection), from ggerganov/whisper.cpp
@@ -125,7 +135,8 @@ model (tools/notice/models.tsv keeps the two in step).
   CC-BY-4.0 (attribution: Yakov Kolani / ivrit.ai). https://huggingface.co/ivrit-ai/zipformer2-66m-streaming-he
 - Parakeet TDT 0.6B v3 Hebrew int8 (krut42/voice-parakeet-he-int8, from
   thewh1teagle/parakeet-tdt-0.6b-v3-he, from nvidia/parakeet-tdt-0.6b-v3)
-  CC-BY-4.0 (attribution: NVIDIA and the fine-tune authors). https://huggingface.co/krut42/voice-parakeet-he-int8
+  CC-BY-4.0 (attribution: NVIDIA (nvidia/parakeet-tdt-0.6b-v3), fine-tuned by
+  thewh1teagle, int8 by krut42). https://huggingface.co/krut42/voice-parakeet-he-int8
 - ivrit.ai Whisper large-v3-turbo GGML q5_0 (tagidu/ivrit-whisper-large-v3-turbo-ggml-quantized,
   from ivrit-ai/whisper-large-v3-turbo)
   Apache-2.0. https://huggingface.co/tagidu/ivrit-whisper-large-v3-turbo-ggml-quantized

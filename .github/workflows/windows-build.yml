@@ -241,7 +241,7 @@ jobs:
           cp -n "$(cygpath -u "$SHERPA_ONNX_LIB_DIR")"/*.dll target/release/
           ls target/release/*.dll
           # D80: the DLLs the installers bundle carry no espeak-ng/piper (TTS) code.
-          ../../tools/checks/no-tts-libs.sh target/release/sherpa-onnx-c-api.dll target/release/onnxruntime*.dll
+          ../../tools/checks/no-tts-libs.sh target/release/sherpa-onnx*.dll target/release/onnxruntime*.dll
           tools/ci/parakeet-conf.sh target/release
 
       # I3/I4 + C2 + D28 gate, strict and cloud-strict (the defaults): the
@@ -329,10 +329,10 @@ jobs:
             -- --no-default-features
           tools/ci/collect-bundle.sh client
 
-      # D80: what the installers unpack holds COPYRIGHT, NOTICE and the full
-      # licence texts, and no TTS code (7-Zip reads NSIS installers).
+      # D80: what the installers (MSI and NSIS) unpack holds COPYRIGHT,
+      # NOTICE and the full licence texts, and no TTS code (7-Zip reads both).
       - name: Installers carry the notices
-        run: tools/ci/check-installer-notices.sh dist-ci/*/*.exe
+        run: tools/ci/check-installer-notices.sh dist-ci/*/*.exe dist-ci/*/*.msi
 
       # The installers run `tauri build`, which may rewrite Cargo.toml (it
       # added `features = []` to tauri-build, so 1.0.0's CI exes said
