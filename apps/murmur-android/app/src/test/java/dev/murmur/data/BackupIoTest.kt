@@ -93,4 +93,26 @@ class BackupIoTest {
         assertEquals(sealed, prefs(DevStore.FILE).getString(CloudKeyStore.PREFIX + "openrouter", null))
         assertEquals("/data/models/other.bin", app.settings.modelPath)
     }
+
+    /**
+     * D83: an export made by the app before the Murmur rename (a frozen file in its exact format,
+     * invented content) goes through Restore like the button does, and its transcriptions are in
+     * this app's History afterwards.
+     */
+    @Test fun restoringAnExportOfTheAppBeforeTheRenameBringsBackItsTranscriptions() {
+        app.history.add(HistoryRow(0, System.currentTimeMillis(), "com.chat", "FORMATTED", "x", "Made here.", true, 800), Retention.KEEP)
+        val text = requireNotNull(javaClass.classLoader!!.getResource("old-app-backup-v1.json")).readText()
+        val parsed = Backup.decode(text)
+        assertTrue(parsed.toString(), parsed is Backup.Parsed.Ok)
+
+        BackupIo(app).restore((parsed as Backup.Parsed.Ok).data)
+
+        val rows = app.history.all()
+        assertEquals(listOf("See you at the made-up café.", "Invented short text."), rows.map { it.finalText })
+        assertEquals(listOf("see you at the made up cafe", "make it shorter"), rows.map { it.asrText })
+        assertEquals(listOf("FORMATTED", HistoryRow.COMMAND), rows.map { it.status })
+        assertEquals("An invented longer text to shorten.", rows[1].commandOriginal)
+        assertEquals(listOf("Quixotron", "omw"), app.dictionary.all().map { it.word })
+        assertEquals(setOf("scratchpad"), app.documents.list().map { it.id }.toSet())
+    }
 }

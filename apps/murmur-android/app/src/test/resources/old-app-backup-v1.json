@@ -1,0 +1,129 @@
+{
+ "format": "flow-clone-backup",
+ "version": 1,
+ "app_version": "1.1.1",
+ "platform": "android",
+ "flavor": "hybrid",
+ "created": "2026-11-01T09:30:00+02:00",
+ "data": {
+  "settings": {
+   "bubble_scale": {
+    "type": "float",
+    "value": 1.25
+   },
+   "cap_minutes": {
+    "type": "int",
+    "value": 5
+   },
+   "language": {
+    "type": "string",
+    "value": "en"
+   },
+   "llm_enabled": {
+    "type": "bool",
+    "value": true
+   },
+   "user_denylist": {
+    "type": "string_set",
+    "value": [
+     "com.example.bank"
+    ]
+   }
+  },
+  "developer": {
+   "allow_server": {
+    "type": "bool",
+    "value": true
+   },
+   "server.host": {
+    "type": "string",
+    "value": "10.0.0.7"
+   },
+   "server.port": {
+    "type": "long",
+    "value": 7313
+   }
+  },
+  "dictionary": [
+   {
+    "word": "Quixotron",
+    "isSnippet": false
+   },
+   {
+    "word": "omw",
+    "replacement": "on my way",
+    "isSnippet": true
+   }
+  ],
+  "learn_suggestions": {
+   "pending": [
+    {
+     "word": "Zorbel",
+     "heard": "zorble",
+     "app": "com.example.chat",
+     "ts": 1761980000000,
+     "count": 2
+    }
+   ],
+   "dismissed": [
+    "teh"
+   ]
+  },
+  "insights": {
+   "backfilled": true,
+   "days": {
+    "2026-10-31": {
+     "words": 42,
+     "ms": 9000,
+     "count": 3,
+     "apps": {
+      "com.example.chat": 42
+     }
+    }
+   }
+  },
+  "notes": [
+   {
+    "id": "scratchpad",
+    "text": "invented scratch line",
+    "pinned": true,
+    "created": 1761900000000,
+    "updated": 1761900100000
+   }
+  ],
+  "history": [
+   {
+    "created_at": 1761980000000,
+    "app_id": "com.example.chat",
+    "status": "FORMATTED",
+    "asr_text": "see you at the made up cafe",
+    "final_text": "See you at the made-up café.",
+    "inserted": true,
+    "audio_ms": 2100,
+    "fallback_reason": null,
+    "asr_ms": 400,
+    "llm_ms": 300,
+    "total_ms": 900,
+    "insert_outcome": "inserted",
+    "route": "server",
+    "command_original": null
+   },
+   {
+    "created_at": 1761980060000,
+    "app_id": null,
+    "status": "COMMAND",
+    "asr_text": "make it shorter",
+    "final_text": "Invented short text.",
+    "inserted": false,
+    "audio_ms": 1300,
+    "fallback_reason": "timeout",
+    "asr_ms": 0,
+    "llm_ms": 0,
+    "total_ms": 0,
+    "insert_outcome": null,
+    "route": null,
+    "command_original": "An invented longer text to shorten."
+   }
+  ]
+ }
+}
