@@ -1,5 +1,5 @@
 // Scratchpad page (PageScratchpad.dc.html): the notes kept on this PC,
-// pinned first, then the most recent. Opening a note (or Start new note)
+// pinned first, then the most recent. Opening a note (or New note)
 // shows it in the notes window (`note_open`; ui/src/scratchpad.ts is that
 // window's editor). This window never reads or writes a note's text itself:
 // it only lists (`note_list`), creates (`note_create`) and pins

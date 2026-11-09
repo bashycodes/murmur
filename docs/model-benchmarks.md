@@ -1,6 +1,6 @@
 # Local model benchmarks (ASR + cleanup LLM)
 
-Measured 2026-10-20 to check the defaults in `DECISIONS.md` D3–D5 against data. The scripts are in `tools/probes/bench/`. Binaries, models and audio live in the bench cache directory (`$CACHE`, see `run_all.sh`) and are not in git. To reproduce, run `tools/probes/bench/run_all.sh`; the reproduce section at the end has the details.
+Measured 2026-10-20 to check the defaults in `DECISIONS.md` D3–D5 against data. The scripts are in `tools/probes/bench/`. Binaries, models and audio live in the bench cache directory (`$CACHE`, see `run_all.sh`; default `~/.cache/flow-clone`) and are not in git. Set CACHE=<dir> to reuse an existing cache. To reproduce, run `tools/probes/bench/run_all.sh`; the reproduce section at the end has the details.
 
 ## TL;DR
 
@@ -85,7 +85,7 @@ Observations:
 ## Cleanup LLM
 
 ### Setup
-* 20 hand-written cases in `cleanup_cases.json`.
+* 20 hand-written cases in `cleanup_cases.json`. Case c01 was removed later (19 cases now), so the scores below were computed on a set that still included it.
 
   | phenomenon | cases |
   |---|---|

@@ -37,7 +37,7 @@ object WritingStyle {
     val CHOICES = listOf(
         Choice(Style.FORMAL, "Formal", "Sounds good. See you at 7:30.", "Capitals and full punctuation", "Capitals, full punctuation"),
         Choice(Style.CASUAL, "Casual", "Sounds good. See you at 7:30", "Capitals, no final period", "Capitals, lighter punctuation"),
-        Choice(Style.VERY_CASUAL, "Very casual", "sounds good. see you at 7:30", "No final period; all lowercase when AI cleanup is on", "Less punctuation; no caps with AI cleanup"),
+        Choice(Style.VERY_CASUAL, "Very casual", "sounds good. see you at 7:30", "No final period; all lowercase when AI cleanup is on", "Lowercase, lighter punctuation"),
     )
 
     private val EXCITED = Choice(Style.EXCITED, "Excited", "Sounds good! See you at 7:30!", "More exclamation marks (AI cleanup)", "More exclamation marks")

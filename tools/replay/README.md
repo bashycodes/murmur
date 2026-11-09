@@ -88,3 +88,5 @@ p50, cloud cost. The total OpenRouter spend is printed at the end.
 
 Not covered: on-phone replay (WAV-as-mic), the user dictionary (not in a
 corpus), and the local 1.5B on prompt v5 (no product path runs it).
+
+The cache default is `~/.cache/flow-clone`; set CACHE=<dir> to reuse an existing cache.

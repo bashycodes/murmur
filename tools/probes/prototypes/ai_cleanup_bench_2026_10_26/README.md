@@ -48,3 +48,5 @@ python3 $B/score.py v4c=$B/results/or_v4c_l70_r2.jsonl:out_strict --fails v4c
 
 `libflow_llm.so` = the release `flow-llm` cdylib of the same commit (no
 flow-llm or `llama.rs` change since 2026-10-24).
+
+The cache default is `~/.cache/flow-clone`; set CACHE=<dir> to reuse an existing cache.
