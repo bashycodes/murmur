@@ -116,8 +116,27 @@ class AppCategorizerTest {
     @Test fun whatsappIsPersonal() = assertEquals(AppCategorizer.Category.PERSONAL, AppCategorizer.categorize("com.whatsapp", null))
     @Test fun unknownIsOther() = assertEquals(AppCategorizer.Category.OTHER, AppCategorizer.categorize("com.example", null))
     @Test fun browserHostStripsWwwAndMatchesSubdomains() {
-        val host = PolicyLists.EMAIL_WEB_HOSTS.first()
-        assertEquals(AppCategorizer.Category.EMAIL, AppCategorizer.categorize("com.android.chrome", "www.$host"))
+        assertEquals(AppCategorizer.Category.EMAIL, AppCategorizer.categorize("com.android.chrome", "www.outlook.office.com"))
+        assertEquals(AppCategorizer.Category.WORK, AppCategorizer.categorize("com.android.chrome", "myteam.slack.com"))
+        assertEquals(AppCategorizer.Category.PERSONAL, AppCategorizer.categorize("com.android.chrome", "old.reddit.com"))
+    }
+    @Test fun mailHostRuleIsEmail() {
+        assertEquals(AppCategorizer.Category.EMAIL, AppCategorizer.categorize("org.mozilla.firefox", "mail.example.org"))
+        assertEquals(AppCategorizer.Category.EMAIL, AppCategorizer.categorize("org.mozilla.firefox", "webmail.example.org"))
+        assertEquals(AppCategorizer.Category.OTHER, AppCategorizer.categorize("org.mozilla.firefox", "mailchimp.example.org"))
+    }
+    @Test fun mailNamePartIsEmail() {
+        assertEquals(AppCategorizer.Category.EMAIL, AppCategorizer.categorize("com.example.android.mail", null))
+        assertEquals(AppCategorizer.Category.EMAIL, AppCategorizer.categorize("com.example.email.provider", null))
+        assertEquals(AppCategorizer.Category.OTHER, AppCategorizer.categorize("com.example.dailymail", null))
+    }
+    @Test fun familiesCoverVariants() {
+        assertEquals(AppCategorizer.Category.PERSONAL, AppCategorizer.categorize("com.whatsapp.w4b", null))
+        assertEquals(AppCategorizer.Category.PERSONAL, AppCategorizer.categorize("org.telegram.messenger.web", null))
+        assertEquals(AppCategorizer.Category.WORK, AppCategorizer.categorize("com.google.android.apps.docs.editors.sheets", null))
+        assertEquals(AppCategorizer.Category.WORK, AppCategorizer.categorize("com.atlassian.android.jira.core", null))
+        // Outlook sits in the Office family but email wins.
+        assertEquals(AppCategorizer.Category.EMAIL, AppCategorizer.categorize("com.microsoft.office.outlook", null))
     }
     @Test fun coreCategoryNames() {
         assertEquals("email", AppCategorizer.Category.EMAIL.coreName)
