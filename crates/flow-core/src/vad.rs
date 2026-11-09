@@ -49,6 +49,16 @@ const UNVOICED_FACTOR: f32 = 0.5;
 const ZCR_UNVOICED: f32 = 0.3;
 /// 60 ms of consecutive speech frames.
 pub(crate) const MIN_RUN: usize = 3;
+/// A recording counts as speech only when at least one of its speech runs
+/// is this long: shorter runs are taps and clicks, which raised +40 dB
+/// ([`asr_level`]) a recognizer writes a word for ("Yeah.", 2026-11-07).
+/// Measured: the stop-key clicks in two PC recordings had longest runs of
+/// 60-140 ms; real speech over 63 clips (PC recordings, parity main and
+/// English sets) never had a longest run under 300 ms
+/// (`docs/findings/2026-11-07-stray-yeah.md`). Judged on the whole
+/// recording, not on a piece: the VAD bars follow the slice analysed, and a
+/// quiet piece alone breaks into runs under 200 ms (FLEURS Hebrew).
+pub const MIN_LONGEST_RUN_MS: usize = 200;
 pub const PAD_HEAD: usize = SAMPLE_RATE * 3 / 10; // 300 ms
 pub const PAD_TAIL: usize = SAMPLE_RATE * 2 / 5; // 400 ms
 
@@ -59,9 +69,16 @@ pub struct Speech {
     pub end: usize,
     /// Number of 20 ms frames classified as speech (in qualifying runs).
     pub speech_frames: usize,
+    /// Length of the longest of those runs, in frames.
+    pub longest_run: usize,
 }
 
 impl Speech {
+    /// Only taps and clicks: no run reaches [`MIN_LONGEST_RUN_MS`].
+    pub fn only_taps(&self) -> bool {
+        self.longest_run * FRAME * 1000 < MIN_LONGEST_RUN_MS * SAMPLE_RATE
+    }
+
     pub fn speech_ms(&self) -> u64 {
         (self.speech_frames * FRAME * 1000 / SAMPLE_RATE) as u64
     }
@@ -221,7 +238,7 @@ impl StreamVad {
 /// The span of `pcm` that holds speech, or `None` when there is none.
 pub fn detect(pcm: &[f32]) -> Option<Speech> {
     let flags = frame_flags(pcm);
-    let (mut first, mut last, mut frames) = (None, 0, 0);
+    let (mut first, mut last, mut frames, mut longest) = (None, 0, 0, 0);
     let mut i = 0;
     while i < flags.len() {
         if !flags[i] {
@@ -233,6 +250,7 @@ pub fn detect(pcm: &[f32]) -> Option<Speech> {
             first.get_or_insert(i);
             last = j;
             frames += j - i;
+            longest = longest.max(j - i);
         }
         i = j;
     }
@@ -241,7 +259,38 @@ pub fn detect(pcm: &[f32]) -> Option<Speech> {
         start: (first * FRAME).saturating_sub(PAD_HEAD),
         end: (last * FRAME + PAD_TAIL).min(pcm.len()),
         speech_frames: frames,
+        longest_run: longest,
     })
+}
+
+/// The typical level of the speech in `pcm`: the median RMS of the 20 ms
+/// frames in [`detect`]'s speech runs, or `None` without speech. A median,
+/// so one short loud sound (a cough, a bump on the desk) does not move it.
+pub fn speech_level(pcm: &[f32]) -> Option<f32> {
+    let flags = frame_flags(pcm);
+    let mut rms = Vec::new();
+    let mut i = 0;
+    while i < flags.len() {
+        if !flags[i] {
+            i += 1;
+            continue;
+        }
+        let j = flags[i..].iter().take_while(|&&f| f).count() + i;
+        if j - i >= MIN_RUN {
+            rms.extend(
+                pcm.chunks(FRAME)
+                    .skip(i)
+                    .take(j - i)
+                    .map(|f| frame_stats(f).0),
+            );
+        }
+        i = j;
+    }
+    if rms.is_empty() {
+        return None;
+    }
+    let mid = rms.len() / 2;
+    Some(*rms.select_nth_unstable_by(mid, f32::total_cmp).1)
 }
 
 /// Speech quieter than this RMS (≈ -44 dBFS) is raised by [`asr_level`];
@@ -258,16 +307,25 @@ const ASR_MAX_GAIN: f32 = 100.0;
 /// recognizers' log-mel features hardly depend on level, but their own
 /// RMS < 0.003 gate would return "" for quiet speech (`blank_asr`).
 pub fn asr_level(pcm: &[f32]) -> std::borrow::Cow<'_, [f32]> {
-    use std::borrow::Cow;
+    with_gain(pcm, asr_gain(pcm))
+}
+
+/// The gain [`asr_level`] applies to `pcm` (1.0 = left as is).
+pub fn asr_gain(pcm: &[f32]) -> f32 {
     if pcm.is_empty() {
-        return Cow::Borrowed(pcm);
+        return 1.0;
     }
     let rms = (pcm.iter().map(|s| s * s).sum::<f32>() / pcm.len() as f32).sqrt();
     let peak = pcm.iter().fold(0f32, |m, s| m.max(s.abs()));
     if rms >= ASR_LEVEL_BELOW || peak <= 0.0 {
-        return Cow::Borrowed(pcm);
+        return 1.0;
     }
-    let gain = (ASR_TARGET_PEAK / peak).min(ASR_MAX_GAIN);
+    (ASR_TARGET_PEAK / peak).clamp(1.0, ASR_MAX_GAIN)
+}
+
+/// `pcm` scaled by `gain` (borrowed when the gain is not above 1).
+pub fn with_gain(pcm: &[f32], gain: f32) -> std::borrow::Cow<'_, [f32]> {
+    use std::borrow::Cow;
     if gain <= 1.0 {
         return Cow::Borrowed(pcm);
     }
@@ -342,6 +400,18 @@ mod tests {
             *s = 0.5;
         }
         assert_eq!(detect(&pcm), None);
+    }
+
+    #[test]
+    fn taps_shorter_than_the_longest_run_bar_are_only_taps() {
+        // A key click spans a few 20 ms frames: three or more pass MIN_RUN,
+        // but no run reaches MIN_LONGEST_RUN_MS.
+        let floor = |n| noise(n, 0.0004, 7);
+        let tap = |ms: usize| voiced(ms * S / 1000, 0.02);
+        let taps = concat(&[floor(S / 2), tap(60), floor(S / 4), tap(140), floor(S / 2)]);
+        assert!(detect(&taps).unwrap().only_taps());
+        let word = concat(&[floor(S / 2), tap(300), floor(S / 2)]);
+        assert!(!detect(&word).unwrap().only_taps());
     }
 
     #[test]
@@ -470,5 +540,20 @@ mod tests {
         // The gain is capped: a -100 dB blip stays tiny.
         let blip = vec![1e-5; S];
         assert!(asr_level(&blip).iter().all(|s| *s <= 1e-3 + 1e-9));
+    }
+
+    #[test]
+    fn speech_level_is_the_typical_speech_not_a_cough() {
+        let quiet = voiced(6 * S, 0.006); // frame RMS ≈ 0.0032
+        let cough = voiced(S / 5, 0.5);
+        let gap = noise(S / 2, 0.0002, 9);
+        let alone = concat(&[gap.clone(), quiet.clone(), gap.clone()]);
+        let with_cough = concat(&[gap.clone(), cough, gap.clone(), quiet, gap]);
+        let a = speech_level(&alone).unwrap();
+        let b = speech_level(&with_cough).unwrap();
+        assert!((0.002..0.005).contains(&a), "{a}");
+        assert!((b - a).abs() < a * 0.1, "{a} vs {b}");
+        assert!(b < ASR_LEVEL_BELOW);
+        assert_eq!(speech_level(&noise(2 * S, 0.0002, 3)), None);
     }
 }

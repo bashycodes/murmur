@@ -21,7 +21,7 @@ const TEMPLATE = `
   <div class="lw-nt-hero">
     ${iconSvg(ICON.notetaker, 24)}
     <h2 class="fl-serif lw-nt-title">Meeting notes, <em>without the bot</em></h2>
-    <p class="lw-nt-body">Notetaker will record your mic and computer audio, then transcribe and summarise the meeting with the same engines you use for dictation. No bot joins the call, and nothing leaves this PC unless you've turned on OpenRouter.</p>
+    <p class="lw-nt-body">Notetaker will record your mic and computer audio, then transcribe and summarise the meeting with the same engines you use for dictation. No bot joins the call, and nothing leaves this PC unless you've turned on the cloud.</p>
     <ul class="lw-nt-points">
       <li>Works with any meeting app</li>
       <li>Summary and action items from AI cleanup</li>

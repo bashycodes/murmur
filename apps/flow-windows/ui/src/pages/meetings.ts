@@ -294,7 +294,7 @@ async function refreshList(): Promise<void> {
 const SUMMARY_BY: Record<string, string> = {
   local: "this PC's AI model",
   server: "your server",
-  cloud: "OpenRouter",
+  cloud: "Cloud",
 };
 
 /** What the summary box says about its state ("" when it just shows it). */
@@ -333,7 +333,7 @@ function showSummary(m: Meeting): void {
 const ROUTE_NAMES: Record<string, string> = {
   local: "This PC",
   remote: "Your server",
-  cloud: "OpenRouter",
+  cloud: "Cloud",
 };
 
 /** "Transcribed on: This PC"; with several routes, the most used first

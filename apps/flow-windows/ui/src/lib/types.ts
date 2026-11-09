@@ -209,13 +209,13 @@ export interface CleanupStatus {
   month_cost_usd: number | null;
   custom_month_cost_usd?: number | null;
   /** D52: who the cloud cleanup route calls. */
-  provider?: CleanupProvider;
+  provider?: CloudProvider;
   /** D52: the custom server's host (absent for OpenRouter). */
   host?: string;
 }
 
 /** D52: OpenRouter, or the user's own OpenAI-compatible server. */
-export type CleanupProvider = "openrouter" | "custom";
+export type CloudProvider = "openrouter" | "custom";
 
 /** D52: the custom cleanup server (`flow-clone/cloud/custom` key, masked). */
 export interface CustomCleanupView {
@@ -246,6 +246,8 @@ export interface OrView {
   key: KeyState;
   privacy: { zdr: boolean; data_collection: "deny" | "allow" };
   stt: {
+    /** D78: the Cloud provider can do speech to text (OpenRouter only). */
+    available?: boolean;
     allow: boolean;
     consent: boolean;
     consent_at_ms: number;
@@ -268,7 +270,7 @@ export interface OrView {
     send_app_name: boolean;
     status: CleanupStatus;
     /** D52: `allow`, the order and "Also send" are shared; the rest above is OpenRouter's. */
-    provider: CleanupProvider;
+    provider: CloudProvider;
     custom: CustomCleanupView;
   };
   budget: number | null;

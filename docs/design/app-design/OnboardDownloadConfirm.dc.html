@@ -18,7 +18,7 @@ a{color:#1a1a1a}a:hover{color:#30302f}
 </style>
 </helmet>
 <div class="fl" style="width: 1280px; height: 800px; position: relative; overflow: hidden; font-family: var(--font-sans); color: var(--foreground);">
-  <dc-import name="OnboardModel" state="idle" hint-size="1280px,800px"></dc-import>
+  <dc-import name="OnboardModel" state="idle" source="{{source}}" hint-size="1280px,800px"></dc-import>
 
   <div class="fl-scrim" style="position: absolute; inset: 0;">
     <div class="fl-dialog" role="dialog" aria-label="Download Parakeet?" style="width: 560px; gap: 20px; background: var(--shade-white);">
@@ -29,13 +29,13 @@ a{color:#1a1a1a}a:hover{color:#30302f}
 
       <dl style="margin: 0; display: grid; grid-template-columns: 96px minmax(0, 1fr); row-gap: 12px; column-gap: 16px; padding: 16px; border-radius: 12px; background: var(--background-tertiary); font: 400 14px/20px var(--font-sans);">
         <dt style="color: var(--foreground-tertiary);">From</dt>
-        <dd class="lw-mono" style="margin: 0; font-size: 12px; line-height: 18px; overflow-wrap: anywhere;">https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8.tar.bz2</dd>
+        <dd style="margin: 0; display: flex; flex-direction: column; gap: 2px;"><span>{{fromName}}</span><span class="lw-mono" style="font-size: 12px; line-height: 18px; overflow-wrap: anywhere; color: var(--foreground-tertiary);">{{fromUrl}}</span></dd>
         <dt style="color: var(--foreground-tertiary);">Size</dt>
-        <dd style="margin: 0;">640 MB once unpacked</dd>
+        <dd style="margin: 0;">640 MB, 4 files</dd>
         <dt style="color: var(--foreground-tertiary);">Saved to</dt>
         <dd class="lw-mono" style="margin: 0; font-size: 12px; line-height: 18px; overflow-wrap: anywhere;">%APPDATA%\Murmur\models\</dd>
         <dt style="color: var(--foreground-tertiary);">Checked</dt>
-        <dd style="margin: 0;">Against a SHA-256 fingerprint built into this version. If it doesn't match, the file is deleted and never loaded.</dd>
+        <dd style="margin: 0;">{{checked}}</dd>
       </dl>
 
       <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; font: 400 14px/20px var(--font-sans); color: var(--neutral-600);">
@@ -51,9 +51,21 @@ a{color:#1a1a1a}a:hover{color:#30302f}
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+<script type="text/x-dc" data-dc-script data-props='{"source":{"editor":"enum","options":["server","huggingface"],"default":"server"},"$preview":{"width":1280,"height":800}}'>
 class Component extends DCLogic {
-  renderVals() { return {}; }
+  renderVals() {
+    const server = (this.props.source ?? 'server') === 'server';
+    return {
+      source: server ? 'server' : 'huggingface',
+      fromName: server ? 'Your server, box.tailnet.ts.net' : 'Hugging Face',
+      fromUrl: server
+        ? 'https://box.tailnet.ts.net/v1/models/parakeet-tdt-0.6b-v2-int8/'
+        : 'https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8',
+      checked: server
+        ? "Against the SHA-256 fingerprint built into this version, which your server's copy must match. If it doesn't, the file is deleted and never loaded."
+        : "Against a SHA-256 fingerprint built into this version. If it doesn't match, the file is deleted and never loaded."
+    };
+  }
 }
 </script>
 </body>

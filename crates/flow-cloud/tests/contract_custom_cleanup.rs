@@ -7,7 +7,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use flow_cloud::custom::{self, CustomCleaner, COST_HEADER};
+use flow_cloud::custom::{self, CustomCleaner, COST_HEADER, COST_HEADER_ORIGINAL};
 use flow_cloud::testing::{MockServer, Reply};
 use flow_cloud::CloudError;
 use flow_core::cleanup::{build_prompt, CleanPrompt, Cleaner, PromptScope};
@@ -219,9 +219,7 @@ fn models_list_parses_ids() {
 fn router_dictation_uses_the_custom_server() {
     use flow_core::asr::MockAsr;
     use flow_core::FlowCore;
-    use flow_router::{
-        Backend, CleanupProvider, CleanupRoute, Router, RouterConfig, SessionConfig,
-    };
+    use flow_router::{Backend, CleanupRoute, CloudProvider, Router, RouterConfig, SessionConfig};
 
     let srv = MockServer::fixed(sse_ok());
     let mut c = RouterConfig {
@@ -230,7 +228,7 @@ fn router_dictation_uses_the_custom_server() {
         cleanup_order: vec![CleanupRoute::Cloud, CleanupRoute::Local],
         ..Default::default()
     };
-    c.cloud.cleanup_provider = CleanupProvider::Custom;
+    c.cloud.provider = CloudProvider::LiteLlm;
     c.cloud.custom_cleanup = cfg(&srv.url(""));
     c.cloud.custom_cleanup.consent_host = "127.0.0.1".into();
     c.cloud.custom_cleanup.consent_at_ms = 1;
@@ -269,7 +267,16 @@ fn router_dictation_uses_the_custom_server() {
             ("GET", "/v1/models", 0)
         );
     }
-    assert_eq!(router.cleanup_status().provider, CleanupProvider::Custom);
+    assert_eq!(router.cleanup_status().provider, CloudProvider::LiteLlm);
+}
+
+/// D78: LiteLLM's streamed answers carry only the `-original` cost header.
+#[test]
+fn streamed_cost_falls_back_to_the_original_cost_header() {
+    let srv = MockServer::fixed(sse_ok().header(COST_HEADER_ORIGINAL, "0.00003"));
+    let t = custom::test_cleanup(&cfg(&srv.url("")), None);
+    assert!(t.ok, "{t:?}");
+    assert_eq!(t.cost_usd, Some(0.00003));
 }
 
 #[test]
@@ -311,5 +318,5 @@ fn models_json_is_the_shared_shape() {
     assert_eq!(v, serde_json::json!({"models": ["a"]}));
     let v = custom::models_json(Err(CloudError::Auth));
     assert_eq!(v["error"], "auth_failed");
-    assert_eq!(v["message"], "the server rejected the key");
+    assert_eq!(v["message"], "the server rejected the key, or needs one");
 }

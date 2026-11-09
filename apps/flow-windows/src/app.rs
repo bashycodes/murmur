@@ -20,7 +20,7 @@ use crate::notes::{self, AutoSave, NoteStore};
 use crate::paste::{self, PasteOptions};
 use crate::prefs::{LoadOutcome, Prefs};
 use crate::recent_apps::{self, RecentAppStore};
-use crate::router_adapter::{self, RouteView, RouterAdapter, SessionTest};
+use crate::router_adapter::{self, Readiness, RouteView, RouterAdapter, SessionTest};
 use crate::suggestions::{self as sugg, SuggestionStore};
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -172,6 +172,9 @@ impl Platform for WinPlatform {
             .is_some_and(|m| m.is_recording());
         self.set_overlay_visible(always || recording || *st != OverlayState::Resting);
         let _ = self.app.emit_to(OVERLAY, "dictation:status", st);
+        // D75: setup's "try it" step shows listening / working / why it
+        // failed in the window the user is looking at, not only on the pill.
+        let _ = self.app.emit_to(SETTINGS, "dictation:status", st);
     }
 
     fn level(&self, level: f32) {
@@ -2253,6 +2256,21 @@ async fn dev_test_session(app: AppHandle) -> Result<SessionTest, String> {
     Ok(r)
 }
 
+/// D75: can a dictation start now, and if not why (setup's last step).
+/// Probes a configured server, so off the UI thread.
+#[tauri::command]
+async fn setup_readiness(app: AppHandle) -> Result<Readiness, String> {
+    let router = app
+        .state::<AppState>()
+        .router
+        .get()
+        .cloned()
+        .ok_or("The app is still starting. Wait a moment and try again.")?;
+    tauri::async_runtime::spawn_blocking(move || router.readiness())
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn dev_route_status(state: tauri::State<'_, AppState>) -> Option<RouteView> {
     state.router.get().map(|r| r.route_view())
@@ -2683,7 +2701,7 @@ async fn dev_or_test_cleanup(app: AppHandle) -> Result<CleanupTest, String> {
     let state = app.state::<AppState>();
     let router = state.router.get().cloned().ok_or("router not ready")?;
     let cloud = state.prefs.read().unwrap().developer.cloud.clone();
-    if !cloud.cleanup_provider.is_openrouter() {
+    if !cloud.provider.is_openrouter() {
         let cc = cloud.custom_cleanup;
         let key = credentials::custom_key_for(
             None,
@@ -3160,7 +3178,9 @@ pub fn run() {
     // other providers' keys leave Credential Manager (before any router or
     // key load sees them).
     let migrated = crate::cloud::migrate_d28(&mut prefs.developer, &*creds, &usage_path);
-    if migrated.is_some() {
+    // D78: one Cloud provider at a time (LiteLLM has no cloud speech here).
+    let one_provider = prefs.developer.one_cloud_provider();
+    if migrated.is_some() || one_provider {
         if let Err(e) = prefs.save(&path) {
             eprintln!("[cloud] could not save the migrated settings: {e}");
         }
@@ -3317,6 +3337,7 @@ pub fn run() {
             dev_set,
             dev_test_connection,
             dev_test_session,
+            setup_readiness,
             admin_status,
             admin_list_keys,
             admin_create_key,

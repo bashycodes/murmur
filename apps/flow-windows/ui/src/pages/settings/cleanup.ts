@@ -1,8 +1,9 @@
 // Settings → AI cleanup (design: SettingsCleanup.dc.html): the cleanup
 // level and formatting (features/ai.ts, features/general.ts), the cleanup
-// order (D36: this PC, your server, OpenRouter; features/ai.ts) and
-// cloud cleanup: OpenRouter or, D52, the user's own OpenAI-compatible
-// server (features/openrouter.ts). Markup only.
+// order (D36: this PC, your server, the cloud; features/ai.ts) and cloud
+// cleanup on the Cloud provider (D78): OpenRouter's model, or the model on
+// the user's LiteLLM proxy (D52), whose address is on the Cloud page
+// (features/openrouter.ts). Markup only.
 
 import { ICON } from "../../lib/icons.js";
 import { group, heading, row, toggle } from "../../lib/markup.js";
@@ -55,39 +56,17 @@ ${heading(
   <div class="fl-group" id="ai_routes">
     ${engineRow("aieng", "cleanup", "local", ICON.chip, "This PC", toggle("llm_enabled", "Use this PC for cleanup", `data-save="prefs"`), `data-needs="local"`)}
     ${engineRow("aieng", "cleanup", "server", ICON.server, "Your server", toggle("aieng_server_on", "Use your server for cleanup"), `data-needs="remote"`)}
-    ${engineRow("aieng", "cleanup", "cloud", ICON.cloud, "OpenRouter", toggle("or_cleanup_allow", "Use OpenRouter for cleanup"), `data-needs="cloud"`)}
+    ${engineRow("aieng", "cleanup", "cloud", ICON.cloud, "Cloud", toggle("or_cleanup_allow", "Use the cloud for cleanup"), `data-needs="cloud"`)}
     <div class="fl-row lw-foot-row"><div class="fl-row-desc">Every dictation is cleaned by the first engine that is on and ready, whichever engine transcribed it; if it fails or runs out of time, the next one tries, and the built-in formatting rules finish the job. Now: <span id="ai_engine_line">On this PC</span>. <span id="or_cleanup_consent"></span> <span id="cleanup_order_msg" class="hint"></span></div></div>
   </div>
 </section>
 
 <section class="lw-section" id="or_cleanup_group" data-needs="cloud">
-  <h3 class="fl-group-title" id="or_cleanup_title">Cloud server</h3>
+  <h3 class="fl-group-title lw-title-badge" id="or_cleanup_title">Cloud · <span data-cloud-name>OpenRouter</span> <button type="button" class="lw-link lw-link-sm" data-go="settings-openrouter">Change provider →</button></h3>
   <div class="fl-group" id="or_cleanup_box">
     ${row(
-      "Send text to",
-      "Cloud speech to text always uses OpenRouter.",
-      `<select id="or_cleanup_provider" class="fl-select lw-w220" aria-label="Cloud cleanup provider">
-        <option value="openrouter">OpenRouter</option>
-        <option value="custom">Custom server (LiteLLM / OpenAI-compatible)</option>
-      </select>`,
-    )}
-    ${row(
-      "Server address",
-      `The base URL of your LiteLLM proxy or other OpenAI-compatible server. <code class="lw-mono">/v1</code> is added when no path is given; include the full path if your server uses a prefix. <span id="cu_url_norm" class="hint lw-mono"></span> <span id="cu_http_warn" class="hint warn" hidden>This is http://: the key and your dictated text are sent unencrypted.</span>`,
-      `<input id="cu_base_url" class="fl-input lw-w220 lw-mono-input" spellcheck="false" autocomplete="off" placeholder="http://192.168.1.20:4000" aria-label="Server base URL" />`,
-      `data-provider="custom"`,
-    )}
-    ${row(
-      "API key",
-      `<span id="cu_key_state" class="lw-key-state">No key saved</span> Optional. Saved in Windows Credential Manager and only ever sent to this server.`,
-      `<span id="cu_key_saved_ctl" hidden><button type="button" class="fl-btn fl-btn-ghost" id="cu_key_clear">Remove</button></span>
-       <span id="cu_key_entry"><input id="cu_key" class="fl-input lw-w160 lw-mono-input" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…" aria-label="API key (optional)" />
-       <button type="button" class="fl-btn fl-btn-primary" id="cu_key_save">Save</button></span>`,
-      `data-provider="custom"`,
-    )}
-    ${row(
       "Model",
-      `Any model your server serves; type it or load the list. <span id="cu_models_out"></span>`,
+      `From your proxy's list, or type its name. <span id="cu_models_out"></span>`,
       `<input id="cu_model" class="fl-input lw-w220 lw-mono-input" list="cu_model_list" spellcheck="false" autocomplete="off" placeholder="gpt-4o-mini" aria-label="Model id" />
        <datalist id="cu_model_list"></datalist>
        <button type="button" class="fl-btn fl-btn-secondary" id="cu_models_load">Load models</button>`,
@@ -103,12 +82,6 @@ ${heading(
         <option value="15000">15 seconds</option>
         <option value="30000">30 seconds</option>
       </select>`,
-      `data-provider="custom"`,
-    )}
-    ${row(
-      "Connection",
-      `<span id="cu_test_out"></span>`,
-      `<button type="button" class="fl-btn fl-btn-secondary" id="cu_test">Test connection</button>`,
       `data-provider="custom"`,
     )}
     ${row(
