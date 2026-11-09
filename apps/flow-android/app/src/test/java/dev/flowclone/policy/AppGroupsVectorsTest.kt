@@ -8,7 +8,7 @@ import org.junit.Test
 /**
  * The shared app-group vectors (crates/flow-core/fixtures/app-groups/vectors.json, on the test
  * classpath via sourceSets). flow-core's tests/app_groups_vectors.rs checks the same file, so
- * PolicyLists and the Rust core read crates/flow-core/data/app-groups.json the same way (D80).
+ * PolicyLists and the Rust core read crates/flow-core/data/app-groups.json the same way (D81).
  */
 class AppGroupsVectorsTest {
     private val vectors = JSONObject(javaClass.classLoader!!.getResource("app-groups/vectors.json")!!.readText())

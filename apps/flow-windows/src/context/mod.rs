@@ -487,7 +487,7 @@ mod tests {
         assert_eq!(app_kind("outlook.exe", None), AppKind::Email);
         assert_eq!(app_kind("notepad.exe", None), AppKind::Document);
         assert_eq!(app_kind("calc.exe", None), AppKind::Other);
-        // Exact exe names (D80): variants are listed, popular apps covered.
+        // Exact exe names (D81): variants are listed, popular apps covered.
         assert_eq!(app_kind("Code - Insiders.exe", None), AppKind::Ai);
         assert_eq!(app_kind("ollama app.exe", None), AppKind::Ai);
         assert_eq!(app_kind("kitty.exe", None), AppKind::Terminal);

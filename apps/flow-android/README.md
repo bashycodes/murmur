@@ -73,7 +73,7 @@ Install on a phone (sideload, permissions, model import, device checklist): [`IN
 | `ui/` | Main/onboarding (mic → overlay → a11y + ghost fix → battery → notifications → OEM), model import (SAF; speech ggml, Parakeet folder, LLM GGUF), settings, Developer settings (D17 §5; D18 cloud section + `CloudProviderActivity`), dictionary editor (search, tabs, edit, shared JSON import/export), history (search, copy, delete, raw vs formatted), Scratchpad (`NoteEditorActivity`: one document to dictate into, Copy all / Share / Clear) | device only |
 
 `policy/PolicyLists.kt` reads its app groups from `crates/flow-core/data/app-groups.json`
-(packed as a Java resource), the file flow-core and the Windows app use too (D80; the JSON and
+(packed as a Java resource), the file flow-core and the Windows app use too (D81; the JSON and
 the PolicyLists header document the method and sources).
 
 ## Deviations from Wispr (deliberate)
