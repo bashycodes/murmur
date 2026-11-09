@@ -1,0 +1,8833 @@
+[
+{
+"id": "ctx_empty",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {},
+"cfg": {}
+},
+{
+"id": "ctx_before_space",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "I think "
+},
+"cfg": {}
+},
+{
+"id": "ctx_before_nospace",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "I think"
+},
+"cfg": {}
+},
+{
+"id": "ctx_before_comma",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "Well,"
+},
+"cfg": {}
+},
+{
+"id": "ctx_before_comma_sp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "Well, "
+},
+"cfg": {}
+},
+{
+"id": "ctx_before_period",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "Done."
+},
+"cfg": {}
+},
+{
+"id": "ctx_before_period_sp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "Done. "
+},
+"cfg": {}
+},
+{
+"id": "ctx_before_q",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "Really? "
+},
+"cfg": {}
+},
+{
+"id": "ctx_before_newline",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "Line one\n"
+},
+"cfg": {}
+},
+{
+"id": "ctx_before_colon",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "Note: "
+},
+"cfg": {}
+},
+{
+"id": "ctx_before_lower_noperiod",
+"kind": "apply",
+"text": "the parcel arrived early.",
+"ctx": {
+"before": "Done. "
+},
+"cfg": {}
+},
+{
+"id": "ctx_after_letter",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "and then"
+},
+"cfg": {}
+},
+{
+"id": "ctx_after_space_letter",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": " and then"
+},
+"cfg": {}
+},
+{
+"id": "ctx_after_upper",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "Then we left."
+},
+"cfg": {}
+},
+{
+"id": "ctx_after_period",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "."
+},
+"cfg": {}
+},
+{
+"id": "ctx_after_comma",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": ", then"
+},
+"cfg": {}
+},
+{
+"id": "ctx_after_paren",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": ")"
+},
+"cfg": {}
+},
+{
+"id": "ctx_after_paren_sp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": ") more"
+},
+"cfg": {}
+},
+{
+"id": "ctx_after_digit",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "42"
+},
+"cfg": {}
+},
+{
+"id": "ctx_after_space",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": " "
+},
+"cfg": {}
+},
+{
+"id": "ctx_after_newline",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "\nNext line"
+},
+"cfg": {}
+},
+{
+"id": "ctx_mid_both",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "so ",
+"after": " and"
+},
+"cfg": {}
+},
+{
+"id": "ctx_mid_q",
+"kind": "apply",
+"text": "Is it ready?",
+"ctx": {
+"before": "ask ",
+"after": " now"
+},
+"cfg": {}
+},
+{
+"id": "ctx_mid_excl",
+"kind": "apply",
+"text": "Great work!",
+"ctx": {
+"before": "say ",
+"after": " to all"
+},
+"cfg": {}
+},
+{
+"id": "ctx_pron_I",
+"kind": "apply",
+"text": "I left early.",
+"ctx": {
+"before": "and then "
+},
+"cfg": {}
+},
+{
+"id": "ctx_pron_Im",
+"kind": "apply",
+"text": "I'm on my way.",
+"ctx": {
+"before": "and "
+},
+"cfg": {}
+},
+{
+"id": "ctx_name",
+"kind": "apply",
+"text": "Mara called.",
+"ctx": {
+"before": "and "
+},
+"cfg": {
+"user_names": [
+"Mara"
+]
+}
+},
+{
+"id": "ctx_name_noname",
+"kind": "apply",
+"text": "Mara called.",
+"ctx": {
+"before": "and "
+},
+"cfg": {}
+},
+{
+"id": "ctx_screen_word",
+"kind": "apply",
+"text": "Quillon is down.",
+"ctx": {
+"before": "and ",
+"screen_words": [
+"Quillon"
+]
+},
+"cfg": {}
+},
+{
+"id": "ctx_dict_word",
+"kind": "apply",
+"text": "Kubernetes failed.",
+"ctx": {
+"before": "and "
+},
+"cfg": {
+"dictionary": [
+{
+"word": "Kubernetes"
+}
+]
+}
+},
+{
+"id": "ctx_acronym",
+"kind": "apply",
+"text": "NASA called.",
+"ctx": {
+"before": "and "
+},
+"cfg": {}
+},
+{
+"id": "ctx_selection",
+"kind": "apply",
+"text": "New words.",
+"ctx": {
+"before": "Old ",
+"selected": "bad words",
+"after": " end"
+},
+"cfg": {}
+},
+{
+"id": "ctx_selection_edges",
+"kind": "apply",
+"text": "New words.",
+"ctx": {
+"selected": " bad words "
+},
+"cfg": {}
+},
+{
+"id": "ctx_selection_period",
+"kind": "apply",
+"text": "New words.",
+"ctx": {
+"before": "x ",
+"selected": "bad",
+"after": ""
+},
+"cfg": {}
+},
+{
+"id": "ctx_unknown",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"context_known": false
+},
+"cfg": {}
+},
+{
+"id": "ctx_unknown_android",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"context_known": false
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "ctx_android",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "I think "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "ctx_android_empty",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "ctx_cjk_before",
+"kind": "apply",
+"text": "世界很好。",
+"ctx": {
+"before": "你好"
+},
+"cfg": {}
+},
+{
+"id": "ctx_cjk_end",
+"kind": "apply",
+"text": "Hello 世界。",
+"ctx": {},
+"cfg": {}
+},
+{
+"id": "ctx_cjk_after",
+"kind": "apply",
+"text": "世界很好。",
+"ctx": {
+"after": "再见"
+},
+"cfg": {}
+},
+{
+"id": "ctx_latin_after_cjk",
+"kind": "apply",
+"text": "Hello there.",
+"ctx": {
+"before": "你好"
+},
+"cfg": {}
+},
+{
+"id": "ctx_ws_text",
+"kind": "apply",
+"text": "  spaced text.  ",
+"ctx": {},
+"cfg": {}
+},
+{
+"id": "ctx_multi_sentence_mid",
+"kind": "apply",
+"text": "First one. Second one.",
+"ctx": {
+"before": "so "
+},
+"cfg": {}
+},
+{
+"id": "ctx_ellipsis_before",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "Wait... "
+},
+"cfg": {}
+},
+{
+"id": "ctx_quote_before",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "He said \""
+},
+"cfg": {}
+},
+{
+"id": "ctx_paren_before",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "("
+},
+"cfg": {}
+},
+{
+"id": "ctx_dash_before",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "so - "
+},
+"cfg": {}
+},
+{
+"id": "ctx_number_start",
+"kind": "apply",
+"text": "42 people came.",
+"ctx": {
+"before": "about "
+},
+"cfg": {}
+},
+{
+"id": "ctx_after_quote",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "\""
+},
+"cfg": {}
+},
+{
+"id": "ctx_after_semicolon",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "; more"
+},
+"cfg": {}
+},
+{
+"id": "ctx_after_q",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "?"
+},
+"cfg": {}
+},
+{
+"id": "ctx_text_noperiod_after",
+"kind": "apply",
+"text": "the parcel arrived",
+"ctx": {
+"after": " today"
+},
+"cfg": {}
+},
+{
+"id": "sty_default_personal_chat_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_personal_chat_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_personal_chat_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_personal_chat_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_personal_chat_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_personal_chat_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_work_chat_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_work_chat_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_work_chat_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_work_chat_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_work_chat_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_work_chat_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_email_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_email_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_email_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_email_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_email_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_email_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_other_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_other_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_other_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_other_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_other_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_other_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_ai_prompt_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_ai_prompt_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_ai_prompt_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_ai_prompt_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_ai_prompt_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_ai_prompt_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_terminal_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_terminal_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_terminal_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_terminal_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_terminal_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_terminal_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_document_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_document_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_document_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_document_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_document_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_default_document_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+}
+}
+},
+{
+"id": "sty_formal_personal_chat_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_personal_chat_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_personal_chat_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_personal_chat_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_personal_chat_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_personal_chat_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_work_chat_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_work_chat_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_work_chat_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_work_chat_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_work_chat_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_work_chat_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_email_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_email_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_email_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_email_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_email_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_email_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_other_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_other_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_other_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_other_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_other_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_other_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_ai_prompt_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_ai_prompt_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_ai_prompt_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_ai_prompt_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_ai_prompt_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_ai_prompt_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_terminal_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_terminal_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_terminal_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_terminal_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_terminal_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_terminal_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_document_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_document_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_document_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_document_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_document_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_formal_document_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_casual_personal_chat_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_personal_chat_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_personal_chat_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_personal_chat_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_personal_chat_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_personal_chat_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_work_chat_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_work_chat_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_work_chat_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_work_chat_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_work_chat_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_work_chat_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_email_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_email_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_email_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_email_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_email_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_email_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_other_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_other_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_other_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_other_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_other_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_other_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_ai_prompt_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_ai_prompt_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_ai_prompt_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_ai_prompt_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_ai_prompt_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_ai_prompt_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_terminal_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_terminal_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_terminal_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_terminal_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_terminal_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_terminal_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_document_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_document_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_document_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_document_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_document_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_document_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_very_casual_personal_chat_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_personal_chat_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_personal_chat_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_personal_chat_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_personal_chat_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_personal_chat_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_work_chat_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_work_chat_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_work_chat_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_work_chat_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_work_chat_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_work_chat_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_email_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_email_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_email_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_email_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_email_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_email_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_other_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_other_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_other_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_other_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_other_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_other_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_ai_prompt_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_ai_prompt_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_ai_prompt_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_ai_prompt_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_ai_prompt_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_ai_prompt_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_terminal_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_terminal_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_terminal_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_terminal_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_terminal_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_terminal_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_document_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_document_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_document_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_document_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_document_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_very_casual_document_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_excited_personal_chat_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_personal_chat_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_personal_chat_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_personal_chat_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_personal_chat_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_personal_chat_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_work_chat_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_work_chat_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_work_chat_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_work_chat_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_work_chat_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_work_chat_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_email_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_email_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_email_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_email_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_email_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_email_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_other_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_other_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_other_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_other_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_other_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_other_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "other"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_ai_prompt_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_ai_prompt_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_ai_prompt_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_ai_prompt_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_ai_prompt_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_ai_prompt_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "ai_prompt"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_terminal_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_terminal_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_terminal_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_terminal_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_terminal_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_terminal_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "terminal"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_document_1s",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_document_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_document_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_document_q",
+"kind": "apply",
+"text": "Are you coming?",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_document_x",
+"kind": "apply",
+"text": "That is great!",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_excited_document_mix",
+"kind": "apply",
+"text": "Hello there, Mara. I hope the trip went well.",
+"ctx": {
+"app_category": "document"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_default_personal_after",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "personal_chat",
+"after": " ok"
+},
+"cfg": {}
+},
+{
+"id": "sty_casual_personal_before",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_category": "personal_chat",
+"before": "ok "
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_vc_personal_I",
+"kind": "apply",
+"text": "I think I will. Ok.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "sty_vc_names",
+"kind": "apply",
+"text": "Mara and NASA agree.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+},
+"user_names": [
+"Mara"
+]
+}
+},
+{
+"id": "sty_excited_comma",
+"kind": "apply",
+"text": "We won, finally.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "sty_formal_personal_noperiod",
+"kind": "apply",
+"text": "see you soon",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "sty_casual_dots",
+"kind": "apply",
+"text": "Well... see you.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_casual_url",
+"kind": "apply",
+"text": "Visit example.com.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "sty_default_multiline",
+"kind": "apply",
+"text": "Line one.\nLine two.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {}
+},
+{
+"id": "sty_default_list",
+"kind": "apply",
+"text": "Plan:\n\n1. Buy milk.\n2. Call Mara.",
+"ctx": {
+"app_category": "work_chat"
+},
+"cfg": {}
+},
+{
+"id": "lower_basic",
+"kind": "apply",
+"text": "Mara Sent The NASA Report.",
+"ctx": {},
+"cfg": {
+"all_lowercase": true
+}
+},
+{
+"id": "lower_mid",
+"kind": "apply",
+"text": "The Report.",
+"ctx": {
+"before": "Done. "
+},
+"cfg": {
+"all_lowercase": true
+}
+},
+{
+"id": "lower_I",
+"kind": "apply",
+"text": "I think so.",
+"ctx": {},
+"cfg": {
+"all_lowercase": true
+}
+},
+{
+"id": "dict_repl",
+"kind": "apply",
+"text": "deploy the cubernetes job.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "cubernetes",
+"replacement": "Kubernetes"
+}
+]
+}
+},
+{
+"id": "dict_repl_case",
+"kind": "apply",
+"text": "deploy the Cubernetes job.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "cubernetes",
+"replacement": "Kubernetes"
+}
+]
+}
+},
+{
+"id": "dict_repl_upper",
+"kind": "apply",
+"text": "deploy the CUBERNETES job.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "cubernetes",
+"replacement": "Kubernetes"
+}
+]
+}
+},
+{
+"id": "dict_repl_start",
+"kind": "apply",
+"text": "cubernetes failed.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "cubernetes",
+"replacement": "Kubernetes"
+}
+]
+}
+},
+{
+"id": "dict_repl_inside_word",
+"kind": "apply",
+"text": "the cubernetesx job.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "cubernetes",
+"replacement": "Kubernetes"
+}
+]
+}
+},
+{
+"id": "dict_repl_punct",
+"kind": "apply",
+"text": "is it cubernetes?",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "cubernetes",
+"replacement": "Kubernetes"
+}
+]
+}
+},
+{
+"id": "dict_repl_possessive",
+"kind": "apply",
+"text": "the cubernetes's job.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "cubernetes",
+"replacement": "Kubernetes"
+}
+]
+}
+},
+{
+"id": "dict_repl_twice",
+"kind": "apply",
+"text": "cubernetes and cubernetes.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "cubernetes",
+"replacement": "Kubernetes"
+}
+]
+}
+},
+{
+"id": "dict_repl_phrase",
+"kind": "apply",
+"text": "we use zen trix daily.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "zen trix",
+"replacement": "Zentrix"
+}
+]
+}
+},
+{
+"id": "dict_repl_phrase_ws",
+"kind": "apply",
+"text": "we use zen  trix daily.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "zen trix",
+"replacement": "Zentrix"
+}
+]
+}
+},
+{
+"id": "dict_overlap_longest",
+"kind": "apply",
+"text": "we use zen trix hub daily.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "zen trix",
+"replacement": "Zentrix"
+},
+{
+"word": "zen trix hub",
+"replacement": "ZentrixHub"
+}
+]
+}
+},
+{
+"id": "dict_overlap_order",
+"kind": "apply",
+"text": "we use zen trix hub daily.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "zen trix hub",
+"replacement": "ZentrixHub"
+},
+{
+"word": "zen trix",
+"replacement": "Zentrix"
+}
+]
+}
+},
+{
+"id": "dict_t_guard",
+"kind": "apply",
+"text": "I don't know.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "don",
+"replacement": "Don"
+}
+]
+}
+},
+{
+"id": "dict_t_guard2",
+"kind": "apply",
+"text": "ask don today.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "don",
+"replacement": "Don"
+}
+]
+}
+},
+{
+"id": "dict_apos_word",
+"kind": "apply",
+"text": "it's the dont rule.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "dont",
+"replacement": "DONT"
+}
+]
+}
+},
+{
+"id": "dict_vocab_case",
+"kind": "apply",
+"text": "deploy the kubernetes job.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "Kubernetes"
+}
+]
+}
+},
+{
+"id": "dict_vocab_case_upper",
+"kind": "apply",
+"text": "deploy the KUBERNETES job.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "Kubernetes"
+}
+]
+}
+},
+{
+"id": "dict_vocab_phrase",
+"kind": "apply",
+"text": "we use zentrix hub.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "Zentrix Hub"
+}
+]
+}
+},
+{
+"id": "dict_vocab_lower_entry",
+"kind": "apply",
+"text": "Deploy the Lumo job.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "lumo"
+}
+]
+}
+},
+{
+"id": "dict_vocab_camel",
+"kind": "apply",
+"text": "the iphone broke.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "iPhone"
+}
+]
+}
+},
+{
+"id": "dict_vocab_start",
+"kind": "apply",
+"text": "kubernetes failed.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "Kubernetes"
+}
+]
+}
+},
+{
+"id": "dict_special_chars",
+"kind": "apply",
+"text": "email me at c plus plus.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "c plus plus",
+"replacement": "C++"
+}
+]
+}
+},
+{
+"id": "dict_special_key",
+"kind": "apply",
+"text": "we like c++ a lot.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "c++",
+"replacement": "C plus plus"
+}
+]
+}
+},
+{
+"id": "dict_dot_key",
+"kind": "apply",
+"text": "open node.js now.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "node.js",
+"replacement": "Node.js"
+}
+]
+}
+},
+{
+"id": "dict_unicode",
+"kind": "apply",
+"text": "café time.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "café",
+"replacement": "Café Lumo"
+}
+]
+}
+},
+{
+"id": "dict_unicode_boundary",
+"kind": "apply",
+"text": "the écafé time.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "café",
+"replacement": "X"
+}
+]
+}
+},
+{
+"id": "dict_number_key",
+"kind": "apply",
+"text": "room 42 is free.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "42",
+"replacement": "forty-two"
+}
+]
+}
+},
+{
+"id": "dict_empty_word",
+"kind": "apply",
+"text": "hello there.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "",
+"replacement": "X"
+}
+]
+}
+},
+{
+"id": "dict_ws_word",
+"kind": "apply",
+"text": "hello there.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "  hello  ",
+"replacement": "Hi"
+}
+]
+}
+},
+{
+"id": "dict_repl_dollar",
+"kind": "apply",
+"text": "pay the fee.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "fee",
+"replacement": "$5 fee"
+}
+]
+}
+},
+{
+"id": "dict_repl_backref",
+"kind": "apply",
+"text": "pay the fee.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "fee",
+"replacement": "$1 fee"
+}
+]
+}
+},
+{
+"id": "dict_snippet_inline",
+"kind": "apply",
+"text": "send my address please.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "my address",
+"replacement": "12 Elm Road",
+"isSnippet": true
+}
+]
+}
+},
+{
+"id": "dict_snippet_whole",
+"kind": "apply",
+"text": "My address.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "my address",
+"replacement": "12 Elm Road",
+"isSnippet": true
+}
+]
+},
+"raw": "my address"
+},
+{
+"id": "dict_snippet_whole_raw_punct",
+"kind": "apply",
+"text": "My address!",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "my address",
+"replacement": "12 Elm Road",
+"isSnippet": true
+}
+]
+},
+"raw": "My address!"
+},
+{
+"id": "dict_snippet_whole_android",
+"kind": "apply",
+"text": "My address.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "my address",
+"replacement": "12 Elm Road",
+"isSnippet": true
+}
+],
+"platform": "android"
+},
+"raw": "my address"
+},
+{
+"id": "dict_snippet_whole_ctx",
+"kind": "apply",
+"text": "My address.",
+"ctx": {
+"before": "so "
+},
+"cfg": {
+"dictionary": [
+{
+"word": "my address",
+"replacement": "12 Elm Road",
+"isSnippet": true
+}
+]
+},
+"raw": "my address"
+},
+{
+"id": "dict_snippet_multiline",
+"kind": "apply",
+"text": "My sig.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "my sig",
+"replacement": "Thanks,\nAnn",
+"isSnippet": true
+}
+]
+},
+"raw": "my sig"
+},
+{
+"id": "dict_repl_then_ctx",
+"kind": "apply",
+"text": "cubernetes failed.",
+"ctx": {
+"before": "and "
+},
+"cfg": {
+"dictionary": [
+{
+"word": "cubernetes",
+"replacement": "Kubernetes"
+}
+]
+}
+},
+{
+"id": "dict_repl_lower_then_ctx",
+"kind": "apply",
+"text": "Zfoo failed.",
+"ctx": {
+"before": "and "
+},
+"cfg": {
+"dictionary": [
+{
+"word": "zfoo",
+"replacement": "zbar"
+}
+]
+}
+},
+{
+"id": "snip_my address",
+"kind": "snippet",
+"text": "my address",
+"dict": [
+{
+"word": "my address",
+"replacement": "12 Elm Road",
+"isSnippet": true
+},
+{
+"word": "zen",
+"replacement": "Zen"
+}
+]
+},
+{
+"id": "snip_My address",
+"kind": "snippet",
+"text": "My address",
+"dict": [
+{
+"word": "my address",
+"replacement": "12 Elm Road",
+"isSnippet": true
+},
+{
+"word": "zen",
+"replacement": "Zen"
+}
+]
+},
+{
+"id": "snip_my address.",
+"kind": "snippet",
+"text": "my address.",
+"dict": [
+{
+"word": "my address",
+"replacement": "12 Elm Road",
+"isSnippet": true
+},
+{
+"word": "zen",
+"replacement": "Zen"
+}
+]
+},
+{
+"id": "snip_  my address  ",
+"kind": "snippet",
+"text": "  my address  ",
+"dict": [
+{
+"word": "my address",
+"replacement": "12 Elm Road",
+"isSnippet": true
+},
+{
+"word": "zen",
+"replacement": "Zen"
+}
+]
+},
+{
+"id": "snip_my  address",
+"kind": "snippet",
+"text": "my  address",
+"dict": [
+{
+"word": "my address",
+"replacement": "12 Elm Road",
+"isSnippet": true
+},
+{
+"word": "zen",
+"replacement": "Zen"
+}
+]
+},
+{
+"id": "snip_My Address!",
+"kind": "snippet",
+"text": "My Address!",
+"dict": [
+{
+"word": "my address",
+"replacement": "12 Elm Road",
+"isSnippet": true
+},
+{
+"word": "zen",
+"replacement": "Zen"
+}
+]
+},
+{
+"id": "snip_say my address",
+"kind": "snippet",
+"text": "say my address",
+"dict": [
+{
+"word": "my address",
+"replacement": "12 Elm Road",
+"isSnippet": true
+},
+{
+"word": "zen",
+"replacement": "Zen"
+}
+]
+},
+{
+"id": "snip_my addresses",
+"kind": "snippet",
+"text": "my addresses",
+"dict": [
+{
+"word": "my address",
+"replacement": "12 Elm Road",
+"isSnippet": true
+},
+{
+"word": "zen",
+"replacement": "Zen"
+}
+]
+},
+{
+"id": "snip_MY ADDRESS?",
+"kind": "snippet",
+"text": "MY ADDRESS?",
+"dict": [
+{
+"word": "my address",
+"replacement": "12 Elm Road",
+"isSnippet": true
+},
+{
+"word": "zen",
+"replacement": "Zen"
+}
+]
+},
+{
+"id": "snip_nonsnippet",
+"kind": "snippet",
+"text": "zen",
+"dict": [
+{
+"word": "zen",
+"replacement": "Zen"
+}
+]
+},
+{
+"id": "snip_two",
+"kind": "snippet",
+"text": "sig two",
+"dict": [
+{
+"word": "sig",
+"replacement": "A",
+"isSnippet": true
+},
+{
+"word": "sig two",
+"replacement": "B",
+"isSnippet": true
+}
+]
+},
+{
+"id": "enter_Send it press enter.",
+"kind": "apply",
+"text": "Send it press enter.",
+"ctx": {},
+"cfg": {
+"press_enter_enabled": true
+}
+},
+{
+"id": "enter_Send it. Press enter.",
+"kind": "apply",
+"text": "Send it. Press enter.",
+"ctx": {},
+"cfg": {
+"press_enter_enabled": true
+}
+},
+{
+"id": "enter_Send it, press enter",
+"kind": "apply",
+"text": "Send it, press enter",
+"ctx": {},
+"cfg": {
+"press_enter_enabled": true
+}
+},
+{
+"id": "enter_press enter",
+"kind": "apply",
+"text": "press enter",
+"ctx": {},
+"cfg": {
+"press_enter_enabled": true
+}
+},
+{
+"id": "enter_Press Enter.",
+"kind": "apply",
+"text": "Press Enter.",
+"ctx": {},
+"cfg": {
+"press_enter_enabled": true
+}
+},
+{
+"id": "enter_Press enter now.",
+"kind": "apply",
+"text": "Press enter now.",
+"ctx": {},
+"cfg": {
+"press_enter_enabled": true
+}
+},
+{
+"id": "enter_Send it press enter!",
+"kind": "apply",
+"text": "Send it press enter!",
+"ctx": {},
+"cfg": {
+"press_enter_enabled": true
+}
+},
+{
+"id": "enter_Send it press the enter.",
+"kind": "apply",
+"text": "Send it press the enter.",
+"ctx": {},
+"cfg": {
+"press_enter_enabled": true
+}
+},
+{
+"id": "enter_Send it hit enter.",
+"kind": "apply",
+"text": "Send it hit enter.",
+"ctx": {},
+"cfg": {
+"press_enter_enabled": true
+}
+},
+{
+"id": "enter_Send it press return.",
+"kind": "apply",
+"text": "Send it press return.",
+"ctx": {},
+"cfg": {
+"press_enter_enabled": true
+}
+},
+{
+"id": "enter_disabled",
+"kind": "apply",
+"text": "Send it press enter.",
+"ctx": {},
+"cfg": {}
+},
+{
+"id": "enter_android",
+"kind": "apply",
+"text": "Send it press enter.",
+"ctx": {},
+"cfg": {
+"press_enter_enabled": true,
+"platform": "android"
+}
+},
+{
+"id": "enter_raw_only",
+"kind": "apply",
+"text": "Send it.",
+"ctx": {},
+"cfg": {
+"press_enter_enabled": true
+},
+"raw": "send it press enter"
+},
+{
+"id": "enter_ctx",
+"kind": "apply",
+"text": "Send it press enter.",
+"ctx": {
+"before": "ok "
+},
+"cfg": {
+"press_enter_enabled": true
+}
+},
+{
+"id": "enter_personal",
+"kind": "apply",
+"text": "Send it press enter.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"press_enter_enabled": true
+}
+},
+{
+"id": "ide_Cursor.exe",
+"kind": "apply",
+"text": "Open main.rs and fix it.",
+"ctx": {
+"app_id": "Cursor.exe",
+"file_names": [
+"main.rs",
+"lib.rs"
+]
+},
+"cfg": {}
+},
+{
+"id": "ide_cursor.exe",
+"kind": "apply",
+"text": "Open main.rs and fix it.",
+"ctx": {
+"app_id": "cursor.exe",
+"file_names": [
+"main.rs",
+"lib.rs"
+]
+},
+"cfg": {}
+},
+{
+"id": "ide_Windsurf.exe",
+"kind": "apply",
+"text": "Open main.rs and fix it.",
+"ctx": {
+"app_id": "Windsurf.exe",
+"file_names": [
+"main.rs",
+"lib.rs"
+]
+},
+"cfg": {}
+},
+{
+"id": "ide_Code.exe",
+"kind": "apply",
+"text": "Open main.rs and fix it.",
+"ctx": {
+"app_id": "Code.exe",
+"file_names": [
+"main.rs",
+"lib.rs"
+]
+},
+"cfg": {}
+},
+{
+"id": "ide_Open main.rs and fix it.",
+"kind": "apply",
+"text": "Open main.rs and fix it.",
+"ctx": {
+"app_id": "Cursor.exe",
+"file_names": [
+"main.rs",
+"lib.rs",
+"README.md",
+"user_service.py"
+]
+},
+"cfg": {}
+},
+{
+"id": "ide_Look at main dot rs.",
+"kind": "apply",
+"text": "Look at main dot rs.",
+"ctx": {
+"app_id": "Cursor.exe",
+"file_names": [
+"main.rs",
+"lib.rs",
+"README.md",
+"user_service.py"
+]
+},
+"cfg": {}
+},
+{
+"id": "ide_Check lib.rs, then main.rs.",
+"kind": "apply",
+"text": "Check lib.rs, then main.rs.",
+"ctx": {
+"app_id": "Cursor.exe",
+"file_names": [
+"main.rs",
+"lib.rs",
+"README.md",
+"user_service.py"
+]
+},
+"cfg": {}
+},
+{
+"id": "ide_Read readme.md first.",
+"kind": "apply",
+"text": "Read readme.md first.",
+"ctx": {
+"app_id": "Cursor.exe",
+"file_names": [
+"main.rs",
+"lib.rs",
+"README.md",
+"user_service.py"
+]
+},
+"cfg": {}
+},
+{
+"id": "ide_Edit user service dot py.",
+"kind": "apply",
+"text": "Edit user service dot py.",
+"ctx": {
+"app_id": "Cursor.exe",
+"file_names": [
+"main.rs",
+"lib.rs",
+"README.md",
+"user_service.py"
+]
+},
+"cfg": {}
+},
+{
+"id": "ide_Edit user_service.py now.",
+"kind": "apply",
+"text": "Edit user_service.py now.",
+"ctx": {
+"app_id": "Cursor.exe",
+"file_names": [
+"main.rs",
+"lib.rs",
+"README.md",
+"user_service.py"
+]
+},
+"cfg": {}
+},
+{
+"id": "ide_Edit main.",
+"kind": "apply",
+"text": "Edit main.",
+"ctx": {
+"app_id": "Cursor.exe",
+"file_names": [
+"main.rs",
+"lib.rs",
+"README.md",
+"user_service.py"
+]
+},
+"cfg": {}
+},
+{
+"id": "ide_Open main.rsx too.",
+"kind": "apply",
+"text": "Open main.rsx too.",
+"ctx": {
+"app_id": "Cursor.exe",
+"file_names": [
+"main.rs",
+"lib.rs",
+"README.md",
+"user_service.py"
+]
+},
+"cfg": {}
+},
+{
+"id": "ide_Open @main.rs please.",
+"kind": "apply",
+"text": "Open @main.rs please.",
+"ctx": {
+"app_id": "Cursor.exe",
+"file_names": [
+"main.rs",
+"lib.rs",
+"README.md",
+"user_service.py"
+]
+},
+"cfg": {}
+},
+{
+"id": "ide_Open main.rs",
+"kind": "apply",
+"text": "Open main.rs",
+"ctx": {
+"app_id": "Cursor.exe",
+"file_names": [
+"main.rs",
+"lib.rs",
+"README.md",
+"user_service.py"
+]
+},
+"cfg": {}
+},
+{
+"id": "ide_main.rs is broken.",
+"kind": "apply",
+"text": "main.rs is broken.",
+"ctx": {
+"app_id": "Cursor.exe",
+"file_names": [
+"main.rs",
+"lib.rs",
+"README.md",
+"user_service.py"
+]
+},
+"cfg": {}
+},
+{
+"id": "ide_android",
+"kind": "apply",
+"text": "Open main.rs and fix it.",
+"ctx": {
+"app_id": "Cursor.exe",
+"file_names": [
+"main.rs",
+"lib.rs",
+"README.md",
+"user_service.py"
+]
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "ide_nofiles",
+"kind": "apply",
+"text": "Open main.rs and fix it.",
+"ctx": {
+"app_id": "Cursor.exe"
+},
+"cfg": {}
+},
+{
+"id": "sig_app_outlook.exe",
+"kind": "apply",
+"text": "Hi Tom, the report is attached and ready for your review today.",
+"ctx": {
+"app_id": "outlook.exe"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "sig_app_olk.exe",
+"kind": "apply",
+"text": "Hi Tom, the report is attached and ready for your review today.",
+"ctx": {
+"app_id": "olk.exe"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "sig_app_thunderbird.exe",
+"kind": "apply",
+"text": "Hi Tom, the report is attached and ready for your review today.",
+"ctx": {
+"app_id": "thunderbird.exe"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "sig_app_OUTLOOK.EXE",
+"kind": "apply",
+"text": "Hi Tom, the report is attached and ready for your review today.",
+"ctx": {
+"app_id": "OUTLOOK.EXE"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "sig_app_chrome.exe",
+"kind": "apply",
+"text": "Hi Tom, the report is attached and ready for your review today.",
+"ctx": {
+"app_id": "chrome.exe"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "sig_gmail",
+"kind": "apply",
+"text": "Hi Tom, the report is attached and ready for your review today.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "mail.google.com"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "sig_greeting_short",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "outlook.exe"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "sig_dear",
+"kind": "apply",
+"text": "Dear Tom, thanks.",
+"ctx": {
+"app_id": "outlook.exe"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "sig_hey",
+"kind": "apply",
+"text": "Hey! Thanks.",
+"ctx": {
+"app_id": "outlook.exe"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "sig_short",
+"kind": "apply",
+"text": "Thanks for that.",
+"ctx": {
+"app_id": "outlook.exe"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "sig_ten",
+"kind": "apply",
+"text": "one two three four five six seven eight nine ten.",
+"ctx": {
+"app_id": "outlook.exe"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "sig_nine",
+"kind": "apply",
+"text": "one two three four five six seven eight nine.",
+"ctx": {
+"app_id": "outlook.exe"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "sig_ten_numbers",
+"kind": "apply",
+"text": "one two three four five 6 7 8 9 10.",
+"ctx": {
+"app_id": "outlook.exe"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "sig_already_before",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "outlook.exe",
+"before": "Body\n— Ann"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "sig_already_after",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "outlook.exe",
+"after": "\n\nann"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "sig_in_text",
+"kind": "apply",
+"text": "Hi Tom, thanks. Ann",
+"ctx": {
+"app_id": "outlook.exe"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "sig_nbsp",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "outlook.exe",
+"after": "— Ann"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "sig_plain",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "outlook.exe"
+},
+"cfg": {
+"email_signature": "Ann"
+}
+},
+{
+"id": "sig_dash",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "outlook.exe"
+},
+"cfg": {
+"email_signature": "-- Ann"
+}
+},
+{
+"id": "sig_multiline",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "outlook.exe"
+},
+"cfg": {
+"email_signature": "Ann\nLumo Ltd"
+}
+},
+{
+"id": "sig_unknown_ctx",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "outlook.exe",
+"context_known": false
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "sig_android",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "com.google.android.gm"
+},
+"cfg": {
+"email_signature": "— Ann",
+"platform": "android"
+}
+},
+{
+"id": "sig_cat_email_only",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_category": "email"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "sig_empty",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "outlook.exe"
+},
+"cfg": {
+"email_signature": ""
+}
+},
+{
+"id": "sig_with_before",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "outlook.exe",
+"before": "Draft: "
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "sig_with_after",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "outlook.exe",
+"after": "Old text"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "skip_Notion.exe_",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Notion.exe",
+"url_host": "",
+"before": "so "
+},
+"cfg": {}
+},
+{
+"id": "skip_notion.exe_",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "notion.exe",
+"url_host": "",
+"before": "so "
+},
+"cfg": {}
+},
+{
+"id": "skip_chrome.exe_www.notion.so",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "www.notion.so",
+"before": "so "
+},
+"cfg": {}
+},
+{
+"id": "skip_chrome.exe_notion.so",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "notion.so",
+"before": "so "
+},
+"cfg": {}
+},
+{
+"id": "skip_Flow Clone.exe_",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Flow Clone.exe",
+"url_host": "",
+"before": "so "
+},
+"cfg": {}
+},
+{
+"id": "skip_flow-windows.exe_",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"url_host": "",
+"before": "so "
+},
+"cfg": {}
+},
+{
+"id": "skip_dev.flowclone_",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "dev.flowclone",
+"url_host": "",
+"before": "so "
+},
+"cfg": {}
+},
+{
+"id": "skip_Dictate Pro.exe_",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Dictate Pro.exe",
+"url_host": "",
+"before": "so "
+},
+"cfg": {}
+},
+{
+"id": "chat_WhatsApp.exe",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {}
+},
+{
+"id": "chat1_WhatsApp.exe",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {}
+},
+{
+"id": "chat_Telegram.exe",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_id": "Telegram.exe"
+},
+"cfg": {}
+},
+{
+"id": "chat1_Telegram.exe",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "Telegram.exe"
+},
+"cfg": {}
+},
+{
+"id": "chat_slack.exe",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_id": "slack.exe"
+},
+"cfg": {}
+},
+{
+"id": "chat1_slack.exe",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "slack.exe"
+},
+"cfg": {}
+},
+{
+"id": "chat_Discord.exe",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_id": "Discord.exe"
+},
+"cfg": {}
+},
+{
+"id": "chat1_Discord.exe",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "Discord.exe"
+},
+"cfg": {}
+},
+{
+"id": "chat_ms-teams.exe",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_id": "ms-teams.exe"
+},
+"cfg": {}
+},
+{
+"id": "chat1_ms-teams.exe",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "ms-teams.exe"
+},
+"cfg": {}
+},
+{
+"id": "chat_com.whatsapp",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_id": "com.whatsapp"
+},
+"cfg": {}
+},
+{
+"id": "chat1_com.whatsapp",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.whatsapp"
+},
+"cfg": {}
+},
+{
+"id": "chat_org.telegram.messenger",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_id": "org.telegram.messenger"
+},
+"cfg": {}
+},
+{
+"id": "chat1_org.telegram.messenger",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "org.telegram.messenger"
+},
+"cfg": {}
+},
+{
+"id": "stack_vc_personal_id",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "stack_casual_personal_cat",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "term_WindowsTerminal.exe",
+"kind": "apply",
+"text": "List the files.",
+"ctx": {
+"app_id": "WindowsTerminal.exe",
+"before": "$ "
+},
+"cfg": {}
+},
+{
+"id": "term_cmd.exe",
+"kind": "apply",
+"text": "List the files.",
+"ctx": {
+"app_id": "cmd.exe",
+"before": "$ "
+},
+"cfg": {}
+},
+{
+"id": "term_powershell.exe",
+"kind": "apply",
+"text": "List the files.",
+"ctx": {
+"app_id": "powershell.exe",
+"before": "$ "
+},
+"cfg": {}
+},
+{
+"id": "term_com.termux",
+"kind": "apply",
+"text": "List the files.",
+"ctx": {
+"app_id": "com.termux",
+"before": "$ "
+},
+"cfg": {}
+},
+{
+"id": "cat_windows_slack.exe_",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "slack.exe",
+"url_host": ""
+}
+},
+{
+"id": "cat_windows_Slack.exe_",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "Slack.exe",
+"url_host": ""
+}
+},
+{
+"id": "cat_windows_outlook.exe_",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "outlook.exe",
+"url_host": ""
+}
+},
+{
+"id": "cat_windows_olk.exe_",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "olk.exe",
+"url_host": ""
+}
+},
+{
+"id": "cat_windows_thunderbird.exe_",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "thunderbird.exe",
+"url_host": ""
+}
+},
+{
+"id": "cat_windows_WhatsApp.exe_",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"url_host": ""
+}
+},
+{
+"id": "cat_windows_Telegram.exe_",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "Telegram.exe",
+"url_host": ""
+}
+},
+{
+"id": "cat_windows_Discord.exe_",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "Discord.exe",
+"url_host": ""
+}
+},
+{
+"id": "cat_windows_ms-teams.exe_",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "ms-teams.exe",
+"url_host": ""
+}
+},
+{
+"id": "cat_windows_Teams.exe_",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "Teams.exe",
+"url_host": ""
+}
+},
+{
+"id": "cat_windows_signal.exe_",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "signal.exe",
+"url_host": ""
+}
+},
+{
+"id": "cat_windows_chrome.exe_",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": ""
+}
+},
+{
+"id": "cat_windows_chrome.exe_mail.google.com",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "mail.google.com"
+}
+},
+{
+"id": "cat_windows_chrome.exe_outlook.live.com",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "outlook.live.com"
+}
+},
+{
+"id": "cat_windows_chrome.exe_app.slack.com",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "app.slack.com"
+}
+},
+{
+"id": "cat_windows_chrome.exe_web.whatsapp.com",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "web.whatsapp.com"
+}
+},
+{
+"id": "cat_windows_chrome.exe_chatgpt.com",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "chatgpt.com"
+}
+},
+{
+"id": "cat_windows_chrome.exe_claude.ai",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "claude.ai"
+}
+},
+{
+"id": "cat_windows_chrome.exe_docs.google.com",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "docs.google.com"
+}
+},
+{
+"id": "cat_windows_chrome.exe_github.com",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "github.com"
+}
+},
+{
+"id": "cat_windows_msedge.exe_teams.microsoft.com",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "msedge.exe",
+"url_host": "teams.microsoft.com"
+}
+},
+{
+"id": "cat_windows_WindowsTerminal.exe_",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "WindowsTerminal.exe",
+"url_host": ""
+}
+},
+{
+"id": "cat_windows_cmd.exe_",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "cmd.exe",
+"url_host": ""
+}
+},
+{
+"id": "cat_windows_powershell.exe_",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "powershell.exe",
+"url_host": ""
+}
+},
+{
+"id": "cat_windows_pwsh.exe_",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "pwsh.exe",
+"url_host": ""
+}
+},
+{
+"id": "cat_windows_Code.exe_",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "Code.exe",
+"url_host": ""
+}
+},
+{
+"id": "cat_windows_Cursor.exe_",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "Cursor.exe",
+"url_host": ""
+}
+},
+{
+"id": "cat_windows_WINWORD.EXE_",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "WINWORD.EXE",
+"url_host": ""
+}
+},
+{
+"id": "cat_windows_winword.exe_",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "winword.exe",
+"url_host": ""
+}
+},
+{
+"id": "cat_windows_Notion.exe_",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "Notion.exe",
+"url_host": ""
+}
+},
+{
+"id": "cat_windows_ChatGPT.exe_",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "ChatGPT.exe",
+"url_host": ""
+}
+},
+{
+"id": "cat_windows_Claude.exe_",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "Claude.exe",
+"url_host": ""
+}
+},
+{
+"id": "cat_windows_notepad.exe_",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "notepad.exe",
+"url_host": ""
+}
+},
+{
+"id": "cat_android_com.whatsapp_",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.whatsapp",
+"url_host": ""
+}
+},
+{
+"id": "cat_android_com.slack_",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.slack",
+"url_host": ""
+}
+},
+{
+"id": "cat_android_com.google.android.gm_",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.google.android.gm",
+"url_host": ""
+}
+},
+{
+"id": "cat_android_com.microsoft.office.outlook_",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.microsoft.office.outlook",
+"url_host": ""
+}
+},
+{
+"id": "cat_android_org.telegram.messenger_",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "org.telegram.messenger",
+"url_host": ""
+}
+},
+{
+"id": "cat_android_com.discord_",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.discord",
+"url_host": ""
+}
+},
+{
+"id": "cat_android_com.termux_",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.termux",
+"url_host": ""
+}
+},
+{
+"id": "cat_android_com.openai.chatgpt_",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.openai.chatgpt",
+"url_host": ""
+}
+},
+{
+"id": "cat_android_com.anthropic.claude_",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.anthropic.claude",
+"url_host": ""
+}
+},
+{
+"id": "cat_android_com.android.chrome_mail.google.com",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "mail.google.com"
+}
+},
+{
+"id": "cat_android_com.android.chrome_",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": ""
+}
+},
+{
+"id": "cat_android_com.google.android.apps.docs.editors.docs_",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.google.android.apps.docs.editors.docs",
+"url_host": ""
+}
+},
+{
+"id": "cat_android_com.samsung.android.messaging_",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.samsung.android.messaging",
+"url_host": ""
+}
+},
+{
+"id": "cat_android_com.google.android.apps.messaging_",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.google.android.apps.messaging",
+"url_host": ""
+}
+},
+{
+"id": "cat_android_org.thoughtcrime.securesms_",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "org.thoughtcrime.securesms",
+"url_host": ""
+}
+},
+{
+"id": "cat_android_com.facebook.orca_",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.facebook.orca",
+"url_host": ""
+}
+},
+{
+"id": "cat_android_com.microsoft.teams_",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.microsoft.teams",
+"url_host": ""
+}
+},
+{
+"id": "cat_android_com.linkedin.android_",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.linkedin.android",
+"url_host": ""
+}
+},
+{
+"id": "cat_android_com.instagram.android_",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.instagram.android",
+"url_host": ""
+}
+},
+{
+"id": "cat_windows_com.whatsapp_",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "com.whatsapp",
+"url_host": ""
+}
+},
+{
+"id": "cat_android_slack.exe_",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "slack.exe",
+"url_host": ""
+}
+},
+{
+"id": "cat_android__mail.google.com",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "",
+"url_host": "mail.google.com"
+}
+},
+{
+"id": "cat_windows__",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "",
+"url_host": ""
+}
+},
+{
+"id": "cat_shell_wins",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "outlook.exe",
+"app_category": "work_chat"
+}
+},
+{
+"id": "learn_basic",
+"kind": "learn",
+"pasted": "ping the zentrix team",
+"edited": "ping the Zentrix team",
+"dict": []
+},
+{
+"id": "learn_two_runs",
+"kind": "learn",
+"pasted": "ask gina about lumo",
+"edited": "ask Jenna about Lumio",
+"dict": []
+},
+{
+"id": "learn_insert",
+"kind": "learn",
+"pasted": "call me",
+"edited": "call me now",
+"dict": []
+},
+{
+"id": "learn_delete",
+"kind": "learn",
+"pasted": "call me now",
+"edited": "call me",
+"dict": []
+},
+{
+"id": "learn_five",
+"kind": "learn",
+"pasted": "a b c d e",
+"edited": "v w x y z",
+"dict": []
+},
+{
+"id": "learn_punct_kept",
+"kind": "learn",
+"pasted": "meet at lumo.",
+"edited": "meet at Lumio.",
+"dict": []
+},
+{
+"id": "learn_case_only_initial",
+"kind": "learn",
+"pasted": "zentrix is down",
+"edited": "Zentrix is down",
+"dict": []
+},
+{
+"id": "learn_case_only_mid",
+"kind": "learn",
+"pasted": "the zentrix is down",
+"edited": "the Zentrix is down",
+"dict": []
+},
+{
+"id": "learn_stop_mixed",
+"kind": "learn",
+"pasted": "go to the lumo",
+"edited": "go to a Lumio",
+"dict": []
+},
+{
+"id": "learn_dict_repl_target",
+"kind": "learn",
+"pasted": "ping the zentrics team",
+"edited": "ping the Zentrix team",
+"dict": [
+{
+"word": "zentrics",
+"replacement": "Zentrix"
+}
+]
+},
+{
+"id": "learn_dict_word_case",
+"kind": "learn",
+"pasted": "ping the zentrix team",
+"edited": "ping the Zentrix team",
+"dict": [
+{
+"word": "zentrix"
+}
+]
+},
+{
+"id": "learn_numbers",
+"kind": "learn",
+"pasted": "room 42",
+"edited": "room 43",
+"dict": []
+},
+{
+"id": "learn_contraction_edit",
+"kind": "learn",
+"pasted": "it is lumo",
+"edited": "it's Lumio",
+"dict": []
+},
+{
+"id": "learn_empty",
+"kind": "learn",
+"pasted": "",
+"edited": "something",
+"dict": []
+},
+{
+"id": "learn_whitespace",
+"kind": "learn",
+"pasted": "a  b",
+"edited": "a b",
+"dict": []
+},
+{
+"id": "learn_dup",
+"kind": "learn",
+"pasted": "lumo and lumo",
+"edited": "Lumio and Lumio",
+"dict": []
+},
+{
+"id": "learn_after_typing",
+"kind": "learn",
+"pasted": "see you at lumo",
+"edited": "see you at Lumio tomorrow then bye",
+"dict": []
+},
+{
+"id": "learn_unicode",
+"kind": "learn",
+"pasted": "meet at cafe",
+"edited": "meet at Café",
+"dict": []
+},
+{
+"id": "learn_adjacent_words",
+"kind": "learn",
+"pasted": "the lumo nova kit",
+"edited": "the Lumio Novva kit",
+"dict": []
+},
+{
+"id": "learn_mixed_run",
+"kind": "learn",
+"pasted": "the big lumo box",
+"edited": "the small Lumio box",
+"dict": []
+},
+{
+"id": "st_default_WhatsApp.exe_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_default_WhatsApp.exe_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_default_WhatsApp.exe_q",
+"kind": "apply",
+"text": "Are you there? Call me.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_default_WhatsApp.exe_nl",
+"kind": "apply",
+"text": "See you soon.\nBring the map.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_default_WhatsApp.exe_long",
+"kind": "apply",
+"text": "I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_default_com.whatsapp_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_id": "com.whatsapp"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_default_com.whatsapp_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_id": "com.whatsapp"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_default_com.whatsapp_q",
+"kind": "apply",
+"text": "Are you there? Call me.",
+"ctx": {
+"app_id": "com.whatsapp"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_default_com.whatsapp_nl",
+"kind": "apply",
+"text": "See you soon.\nBring the map.",
+"ctx": {
+"app_id": "com.whatsapp"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_default_com.whatsapp_long",
+"kind": "apply",
+"text": "I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map.",
+"ctx": {
+"app_id": "com.whatsapp"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_default_slack.exe_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_id": "slack.exe"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_default_slack.exe_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_id": "slack.exe"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_default_slack.exe_q",
+"kind": "apply",
+"text": "Are you there? Call me.",
+"ctx": {
+"app_id": "slack.exe"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_default_slack.exe_nl",
+"kind": "apply",
+"text": "See you soon.\nBring the map.",
+"ctx": {
+"app_id": "slack.exe"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_default_slack.exe_long",
+"kind": "apply",
+"text": "I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map.",
+"ctx": {
+"app_id": "slack.exe"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_default_com.slack_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_id": "com.slack"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_default_com.slack_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_id": "com.slack"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_default_com.slack_q",
+"kind": "apply",
+"text": "Are you there? Call me.",
+"ctx": {
+"app_id": "com.slack"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_default_com.slack_nl",
+"kind": "apply",
+"text": "See you soon.\nBring the map.",
+"ctx": {
+"app_id": "com.slack"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_default_com.slack_long",
+"kind": "apply",
+"text": "I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map.",
+"ctx": {
+"app_id": "com.slack"
+},
+"cfg": {
+"styles": {
+"personal": "default",
+"work": "default",
+"email": "default",
+"other": "default"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_casual_WhatsApp.exe_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_casual_WhatsApp.exe_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_casual_WhatsApp.exe_q",
+"kind": "apply",
+"text": "Are you there? Call me.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_casual_WhatsApp.exe_nl",
+"kind": "apply",
+"text": "See you soon.\nBring the map.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_casual_WhatsApp.exe_long",
+"kind": "apply",
+"text": "I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_casual_com.whatsapp_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_id": "com.whatsapp"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_casual_com.whatsapp_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_id": "com.whatsapp"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_casual_com.whatsapp_q",
+"kind": "apply",
+"text": "Are you there? Call me.",
+"ctx": {
+"app_id": "com.whatsapp"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_casual_com.whatsapp_nl",
+"kind": "apply",
+"text": "See you soon.\nBring the map.",
+"ctx": {
+"app_id": "com.whatsapp"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_casual_com.whatsapp_long",
+"kind": "apply",
+"text": "I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map.",
+"ctx": {
+"app_id": "com.whatsapp"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_casual_slack.exe_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_id": "slack.exe"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_casual_slack.exe_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_id": "slack.exe"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_casual_slack.exe_q",
+"kind": "apply",
+"text": "Are you there? Call me.",
+"ctx": {
+"app_id": "slack.exe"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_casual_slack.exe_nl",
+"kind": "apply",
+"text": "See you soon.\nBring the map.",
+"ctx": {
+"app_id": "slack.exe"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_casual_slack.exe_long",
+"kind": "apply",
+"text": "I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map.",
+"ctx": {
+"app_id": "slack.exe"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_casual_com.slack_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_id": "com.slack"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_casual_com.slack_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_id": "com.slack"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_casual_com.slack_q",
+"kind": "apply",
+"text": "Are you there? Call me.",
+"ctx": {
+"app_id": "com.slack"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_casual_com.slack_nl",
+"kind": "apply",
+"text": "See you soon.\nBring the map.",
+"ctx": {
+"app_id": "com.slack"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_casual_com.slack_long",
+"kind": "apply",
+"text": "I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map.",
+"ctx": {
+"app_id": "com.slack"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_very_casual_WhatsApp.exe_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_very_casual_WhatsApp.exe_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_very_casual_WhatsApp.exe_q",
+"kind": "apply",
+"text": "Are you there? Call me.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_very_casual_WhatsApp.exe_nl",
+"kind": "apply",
+"text": "See you soon.\nBring the map.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_very_casual_WhatsApp.exe_long",
+"kind": "apply",
+"text": "I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_very_casual_com.whatsapp_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_id": "com.whatsapp"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_very_casual_com.whatsapp_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_id": "com.whatsapp"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_very_casual_com.whatsapp_q",
+"kind": "apply",
+"text": "Are you there? Call me.",
+"ctx": {
+"app_id": "com.whatsapp"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_very_casual_com.whatsapp_nl",
+"kind": "apply",
+"text": "See you soon.\nBring the map.",
+"ctx": {
+"app_id": "com.whatsapp"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_very_casual_com.whatsapp_long",
+"kind": "apply",
+"text": "I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map.",
+"ctx": {
+"app_id": "com.whatsapp"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_very_casual_slack.exe_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_id": "slack.exe"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_very_casual_slack.exe_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_id": "slack.exe"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_very_casual_slack.exe_q",
+"kind": "apply",
+"text": "Are you there? Call me.",
+"ctx": {
+"app_id": "slack.exe"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_very_casual_slack.exe_nl",
+"kind": "apply",
+"text": "See you soon.\nBring the map.",
+"ctx": {
+"app_id": "slack.exe"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_very_casual_slack.exe_long",
+"kind": "apply",
+"text": "I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map.",
+"ctx": {
+"app_id": "slack.exe"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_very_casual_com.slack_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_id": "com.slack"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_very_casual_com.slack_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_id": "com.slack"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_very_casual_com.slack_q",
+"kind": "apply",
+"text": "Are you there? Call me.",
+"ctx": {
+"app_id": "com.slack"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_very_casual_com.slack_nl",
+"kind": "apply",
+"text": "See you soon.\nBring the map.",
+"ctx": {
+"app_id": "com.slack"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_very_casual_com.slack_long",
+"kind": "apply",
+"text": "I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map.",
+"ctx": {
+"app_id": "com.slack"
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_excited_WhatsApp.exe_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_excited_WhatsApp.exe_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_excited_WhatsApp.exe_q",
+"kind": "apply",
+"text": "Are you there? Call me.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_excited_WhatsApp.exe_nl",
+"kind": "apply",
+"text": "See you soon.\nBring the map.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_excited_WhatsApp.exe_long",
+"kind": "apply",
+"text": "I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_excited_com.whatsapp_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_id": "com.whatsapp"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_excited_com.whatsapp_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_id": "com.whatsapp"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_excited_com.whatsapp_q",
+"kind": "apply",
+"text": "Are you there? Call me.",
+"ctx": {
+"app_id": "com.whatsapp"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_excited_com.whatsapp_nl",
+"kind": "apply",
+"text": "See you soon.\nBring the map.",
+"ctx": {
+"app_id": "com.whatsapp"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_excited_com.whatsapp_long",
+"kind": "apply",
+"text": "I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map.",
+"ctx": {
+"app_id": "com.whatsapp"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_excited_slack.exe_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_id": "slack.exe"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_excited_slack.exe_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_id": "slack.exe"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_excited_slack.exe_q",
+"kind": "apply",
+"text": "Are you there? Call me.",
+"ctx": {
+"app_id": "slack.exe"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_excited_slack.exe_nl",
+"kind": "apply",
+"text": "See you soon.\nBring the map.",
+"ctx": {
+"app_id": "slack.exe"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_excited_slack.exe_long",
+"kind": "apply",
+"text": "I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map.",
+"ctx": {
+"app_id": "slack.exe"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_excited_com.slack_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_id": "com.slack"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_excited_com.slack_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_id": "com.slack"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_excited_com.slack_q",
+"kind": "apply",
+"text": "Are you there? Call me.",
+"ctx": {
+"app_id": "com.slack"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_excited_com.slack_nl",
+"kind": "apply",
+"text": "See you soon.\nBring the map.",
+"ctx": {
+"app_id": "com.slack"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_excited_com.slack_long",
+"kind": "apply",
+"text": "I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map.",
+"ctx": {
+"app_id": "com.slack"
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_formal_WhatsApp.exe_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_formal_WhatsApp.exe_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_formal_WhatsApp.exe_q",
+"kind": "apply",
+"text": "Are you there? Call me.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_formal_WhatsApp.exe_nl",
+"kind": "apply",
+"text": "See you soon.\nBring the map.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_formal_WhatsApp.exe_long",
+"kind": "apply",
+"text": "I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_formal_com.whatsapp_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_id": "com.whatsapp"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_formal_com.whatsapp_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_id": "com.whatsapp"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_formal_com.whatsapp_q",
+"kind": "apply",
+"text": "Are you there? Call me.",
+"ctx": {
+"app_id": "com.whatsapp"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_formal_com.whatsapp_nl",
+"kind": "apply",
+"text": "See you soon.\nBring the map.",
+"ctx": {
+"app_id": "com.whatsapp"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_formal_com.whatsapp_long",
+"kind": "apply",
+"text": "I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map.",
+"ctx": {
+"app_id": "com.whatsapp"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_formal_slack.exe_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_id": "slack.exe"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_formal_slack.exe_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_id": "slack.exe"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_formal_slack.exe_q",
+"kind": "apply",
+"text": "Are you there? Call me.",
+"ctx": {
+"app_id": "slack.exe"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_formal_slack.exe_nl",
+"kind": "apply",
+"text": "See you soon.\nBring the map.",
+"ctx": {
+"app_id": "slack.exe"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_formal_slack.exe_long",
+"kind": "apply",
+"text": "I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map.",
+"ctx": {
+"app_id": "slack.exe"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+},
+"platform": "windows"
+}
+},
+{
+"id": "st_formal_com.slack_3s",
+"kind": "apply",
+"text": "See you soon. Bring the map. Call Mara first.",
+"ctx": {
+"app_id": "com.slack"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_formal_com.slack_2s",
+"kind": "apply",
+"text": "See you soon. Bring the map.",
+"ctx": {
+"app_id": "com.slack"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_formal_com.slack_q",
+"kind": "apply",
+"text": "Are you there? Call me.",
+"ctx": {
+"app_id": "com.slack"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_formal_com.slack_nl",
+"kind": "apply",
+"text": "See you soon.\nBring the map.",
+"ctx": {
+"app_id": "com.slack"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+},
+"platform": "android"
+}
+},
+{
+"id": "st_formal_com.slack_long",
+"kind": "apply",
+"text": "I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map.",
+"ctx": {
+"app_id": "com.slack"
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+},
+"platform": "android"
+}
+},
+{
+"id": "pl_com.whatsapp",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.whatsapp",
+"before": "ok "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "pl_at_com.whatsapp",
+"kind": "apply",
+"text": "Ask at Mara about it.",
+"ctx": {
+"app_id": "com.whatsapp",
+"screen_words": [
+"Mara"
+]
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "pl_com.google.android.gm",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.google.android.gm",
+"before": "ok "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "pl_at_com.google.android.gm",
+"kind": "apply",
+"text": "Ask at Mara about it.",
+"ctx": {
+"app_id": "com.google.android.gm",
+"screen_words": [
+"Mara"
+]
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "pl_com.slack.Slack",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.slack.Slack",
+"before": "ok "
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "pl_at_com.slack.Slack",
+"kind": "apply",
+"text": "Ask at Mara about it.",
+"ctx": {
+"app_id": "com.slack.Slack",
+"screen_words": [
+"Mara"
+]
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "pl_com.tinyspeck.slackmacgap",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.tinyspeck.slackmacgap",
+"before": "ok "
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "pl_at_com.tinyspeck.slackmacgap",
+"kind": "apply",
+"text": "Ask at Mara about it.",
+"ctx": {
+"app_id": "com.tinyspeck.slackmacgap",
+"screen_words": [
+"Mara"
+]
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "ctx_bad_sel",
+"kind": "apply",
+"text": "New.",
+"ctx": {
+"selected": "x",
+"before": "Hello.",
+"after": "World"
+},
+"cfg": {}
+},
+{
+"id": "ctx_after_lower_period",
+"kind": "apply",
+"text": "Done.",
+"ctx": {
+"after": "and more"
+},
+"cfg": {}
+},
+{
+"id": "ctx_after_lower_q",
+"kind": "apply",
+"text": "Done?",
+"ctx": {
+"after": "and more"
+},
+"cfg": {}
+},
+{
+"id": "ctx_after_upper_ws",
+"kind": "apply",
+"text": "Done.",
+"ctx": {
+"after": " Next"
+},
+"cfg": {}
+},
+{
+"id": "ctx_after_cjk_punct",
+"kind": "apply",
+"text": "好的。",
+"ctx": {
+"after": "x"
+},
+"cfg": {}
+},
+{
+"id": "ctx_before_digit",
+"kind": "apply",
+"text": "items.",
+"ctx": {
+"before": "42"
+},
+"cfg": {}
+},
+{
+"id": "ctx_before_open_quote",
+"kind": "apply",
+"text": "Items.",
+"ctx": {
+"before": "“"
+},
+"cfg": {}
+},
+{
+"id": "ctx_before_tab",
+"kind": "apply",
+"text": "Items.",
+"ctx": {
+"before": "a\t"
+},
+"cfg": {}
+},
+{
+"id": "ctx_before_nbsp",
+"kind": "apply",
+"text": "Items.",
+"ctx": {
+"before": "a "
+},
+"cfg": {}
+},
+{
+"id": "ctx_before_ellipsis_nospace",
+"kind": "apply",
+"text": "Items.",
+"ctx": {
+"before": "wait..."
+},
+"cfg": {}
+},
+{
+"id": "ctx_before_excl_nospace",
+"kind": "apply",
+"text": "Items.",
+"ctx": {
+"before": "wow!"
+},
+"cfg": {}
+},
+{
+"id": "ctx_before_hyphen",
+"kind": "apply",
+"text": "Items.",
+"ctx": {
+"before": "well-"
+},
+"cfg": {}
+},
+{
+"id": "ctx_before_slash",
+"kind": "apply",
+"text": "Items.",
+"ctx": {
+"before": "a/"
+},
+"cfg": {}
+},
+{
+"id": "ctx_before_at",
+"kind": "apply",
+"text": "Items.",
+"ctx": {
+"before": "mail@"
+},
+"cfg": {}
+},
+{
+"id": "ctx_mid_two",
+"kind": "apply",
+"text": "Items. More.",
+"ctx": {
+"before": "so ",
+"after": " and"
+},
+"cfg": {}
+},
+{
+"id": "ctx_mid_both_comma",
+"kind": "apply",
+"text": "Items, more.",
+"ctx": {
+"before": "so ",
+"after": " and"
+},
+"cfg": {}
+},
+{
+"id": "ctx_text_trailing_space",
+"kind": "apply",
+"text": "Items. ",
+"ctx": {},
+"cfg": {}
+},
+{
+"id": "ctx_text_empty",
+"kind": "apply",
+"text": "",
+"ctx": {},
+"cfg": {}
+},
+{
+"id": "ctx_text_only_space",
+"kind": "apply",
+"text": "  ",
+"ctx": {
+"before": "x "
+},
+"cfg": {}
+},
+{
+"id": "ctx_upper_word_mid",
+"kind": "apply",
+"text": "The NASA plan.",
+"ctx": {
+"before": "so "
+},
+"cfg": {}
+},
+{
+"id": "ctx_mixed_iphone",
+"kind": "apply",
+"text": "IPhone works.",
+"ctx": {
+"before": "so "
+},
+"cfg": {}
+},
+{
+"id": "ctx_mixed_iphone2",
+"kind": "apply",
+"text": "iPhone works.",
+"ctx": {
+"before": "so "
+},
+"cfg": {}
+},
+{
+"id": "ctx_casual_after",
+"kind": "apply",
+"text": "See you.",
+"ctx": {
+"app_category": "personal_chat",
+"after": "Bye"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "ctx_name_multi",
+"kind": "apply",
+"text": "Mara Quill called.",
+"ctx": {
+"before": "and "
+},
+"cfg": {
+"user_names": [
+"Mara Quill"
+]
+}
+},
+{
+"id": "ctx_name_second",
+"kind": "apply",
+"text": "Quill called.",
+"ctx": {
+"before": "and "
+},
+"cfg": {
+"user_names": [
+"Mara Quill"
+]
+}
+},
+{
+"id": "ctx_dict_repl_target",
+"kind": "apply",
+"text": "Kubernetes failed.",
+"ctx": {
+"before": "and "
+},
+"cfg": {
+"dictionary": [
+{
+"word": "cube",
+"replacement": "Kubernetes"
+}
+]
+}
+},
+{
+"id": "ctx_screen_case",
+"kind": "apply",
+"text": "quillon is down.",
+"ctx": {
+"before": "and ",
+"screen_words": [
+"Quillon"
+]
+},
+"cfg": {}
+},
+{
+"id": "ctx_I_contraction_curly",
+"kind": "apply",
+"text": "I’ll go.",
+"ctx": {
+"before": "and "
+},
+"cfg": {}
+},
+{
+"id": "ctx_quote_start",
+"kind": "apply",
+"text": "\"Hello\" she said.",
+"ctx": {
+"before": "and "
+},
+"cfg": {}
+},
+{
+"id": "ctx_after_close_quote_sp",
+"kind": "apply",
+"text": "Done.",
+"ctx": {
+"after": "\" said"
+},
+"cfg": {}
+},
+{
+"id": "ctx_before_lower_word_period_in_text",
+"kind": "apply",
+"text": "Done. Next step.",
+"ctx": {
+"before": "ok "
+},
+"cfg": {}
+},
+{
+"id": "ctx_after_lower_multi",
+"kind": "apply",
+"text": "First. Second.",
+"ctx": {
+"after": " and"
+},
+"cfg": {}
+},
+{
+"id": "ctx_selection_cap",
+"kind": "apply",
+"text": "new words.",
+"ctx": {
+"before": "Done. ",
+"selected": "x"
+},
+"cfg": {}
+},
+{
+"id": "ctx_selection_cap2",
+"kind": "apply",
+"text": "New words.",
+"ctx": {
+"before": "so ",
+"selected": "x",
+"after": "."
+},
+"cfg": {}
+},
+{
+"id": "sel_Bad words.",
+"kind": "apply",
+"text": "New words.",
+"ctx": {
+"selected": "Bad words."
+},
+"cfg": {}
+},
+{
+"id": "sel_mid_Bad words.",
+"kind": "apply",
+"text": "New words.",
+"ctx": {
+"before": "Hello. ",
+"selected": "Bad words.",
+"after": " Then"
+},
+"cfg": {}
+},
+{
+"id": "sel_Bad words",
+"kind": "apply",
+"text": "New words.",
+"ctx": {
+"selected": "Bad words"
+},
+"cfg": {}
+},
+{
+"id": "sel_mid_Bad words",
+"kind": "apply",
+"text": "New words.",
+"ctx": {
+"before": "Hello. ",
+"selected": "Bad words",
+"after": " Then"
+},
+"cfg": {}
+},
+{
+"id": "sel_bad words.",
+"kind": "apply",
+"text": "New words.",
+"ctx": {
+"selected": "bad words."
+},
+"cfg": {}
+},
+{
+"id": "sel_mid_bad words.",
+"kind": "apply",
+"text": "New words.",
+"ctx": {
+"before": "Hello. ",
+"selected": "bad words.",
+"after": " Then"
+},
+"cfg": {}
+},
+{
+"id": "sel_BAD",
+"kind": "apply",
+"text": "New words.",
+"ctx": {
+"selected": "BAD"
+},
+"cfg": {}
+},
+{
+"id": "sel_mid_BAD",
+"kind": "apply",
+"text": "New words.",
+"ctx": {
+"before": "Hello. ",
+"selected": "BAD",
+"after": " Then"
+},
+"cfg": {}
+},
+{
+"id": "sel_x",
+"kind": "apply",
+"text": "New words.",
+"ctx": {
+"selected": "x"
+},
+"cfg": {}
+},
+{
+"id": "sel_mid_x",
+"kind": "apply",
+"text": "New words.",
+"ctx": {
+"before": "Hello. ",
+"selected": "x",
+"after": " Then"
+},
+"cfg": {}
+},
+{
+"id": "sel_Bad words?",
+"kind": "apply",
+"text": "New words.",
+"ctx": {
+"selected": "Bad words?"
+},
+"cfg": {}
+},
+{
+"id": "sel_mid_Bad words?",
+"kind": "apply",
+"text": "New words.",
+"ctx": {
+"before": "Hello. ",
+"selected": "Bad words?",
+"after": " Then"
+},
+"cfg": {}
+},
+{
+"id": "sel_ Bad words. ",
+"kind": "apply",
+"text": "New words.",
+"ctx": {
+"selected": " Bad words. "
+},
+"cfg": {}
+},
+{
+"id": "sel_mid_ Bad words. ",
+"kind": "apply",
+"text": "New words.",
+"ctx": {
+"before": "Hello. ",
+"selected": " Bad words. ",
+"after": " Then"
+},
+"cfg": {}
+},
+{
+"id": "sel_two_sentences",
+"kind": "apply",
+"text": "New words. More here.",
+"ctx": {
+"selected": "bad"
+},
+"cfg": {}
+},
+{
+"id": "sel_question",
+"kind": "apply",
+"text": "Is it new?",
+"ctx": {
+"selected": "bad"
+},
+"cfg": {}
+},
+{
+"id": "sel_casual",
+"kind": "apply",
+"text": "New words.",
+"ctx": {
+"selected": "Bad words.",
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "enter_off",
+"kind": "apply",
+"text": "Send it press enter.",
+"ctx": {},
+"cfg": {
+"press_enter_enabled": false
+}
+},
+{
+"id": "enter_off_raw",
+"kind": "apply",
+"text": "Send it.",
+"ctx": {},
+"cfg": {
+"press_enter_enabled": false
+},
+"raw": "send it press enter"
+},
+{
+"id": "enter_casual",
+"kind": "apply",
+"text": "Send it press enter.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"press_enter_enabled": true,
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "enter_after",
+"kind": "apply",
+"text": "Send it press enter.",
+"ctx": {
+"after": " more"
+},
+"cfg": {
+"press_enter_enabled": true
+}
+},
+{
+"id": "enter_mid_nl",
+"kind": "apply",
+"text": "Send it.\nPress enter.",
+"ctx": {},
+"cfg": {
+"press_enter_enabled": true
+}
+},
+{
+"id": "lower_snippet",
+"kind": "apply",
+"text": "My address.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "my address",
+"replacement": "12 Elm Road",
+"isSnippet": true
+}
+],
+"all_lowercase": true
+},
+"raw": "my address"
+},
+{
+"id": "lower_dict",
+"kind": "apply",
+"text": "deploy the cubernetes job.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "cubernetes",
+"replacement": "Kubernetes"
+}
+],
+"all_lowercase": true
+}
+},
+{
+"id": "lower_casual",
+"kind": "apply",
+"text": "See You Soon.",
+"ctx": {
+"app_category": "personal_chat"
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+},
+"all_lowercase": true
+}
+},
+{
+"id": "sig2_olk.exe",
+"kind": "apply",
+"text": "Hi Tom, the report is attached and ready for your review today.",
+"ctx": {
+"app_id": "olk.exe"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "sig2_WINWORD.EXE",
+"kind": "apply",
+"text": "Hi Tom, the report is attached and ready for your review today.",
+"ctx": {
+"app_id": "WINWORD.EXE"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+}
+]
