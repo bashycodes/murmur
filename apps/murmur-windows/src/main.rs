@@ -3,11 +3,11 @@
 
 #[cfg(windows)]
 fn main() {
-    flow_windows::app::run();
+    murmur_windows::app::run();
 }
 
 #[cfg(not(windows))]
 fn main() {
-    eprintln!("flow-windows is the Windows shell; build it on Windows (see README.md).");
+    eprintln!("murmur-windows is the Windows shell; build it on Windows (see README.md).");
     std::process::exit(1);
 }

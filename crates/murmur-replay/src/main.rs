@@ -1,13 +1,13 @@
-//! flow-replay: run saved recordings through speech models x cleanup
+//! murmur-replay: run saved recordings through speech models x cleanup
 //! models x prompt versions (see the crate docs and tools/replay/README.md).
 //!
-//! flow-replay --in CORPUS --out DIR [--asr LIST] [--cleanup LIST]
+//! murmur-replay --in CORPUS --out DIR [--asr LIST] [--cleanup LIST]
 //!   [--prompt LIST] [--max-spend USD] [--session FILE] [--threads N]
 //!   [--llm GGUF] [--llm-lib SO] [--key-file FILE] [--no-local-fallback]
 //!   [--only ID,...]
 //!
-//! * `--asr`: `parakeet[=DIR]` (default `$FLOW_PARAKEET_DIR`),
-//!   `whisper[=GGML]` (default `$FLOW_WHISPER_MODEL`), `or-stt[=MODEL]`
+//! * `--asr`: `parakeet[=DIR]` (default `$MURMUR_PARAKEET_DIR`),
+//!   `whisper[=GGML]` (default `$MURMUR_WHISPER_MODEL`), `or-stt[=MODEL]`
 //!   (OpenRouter cloud STT, default the product's whisper-large-v3-turbo).
 //!   Default `parakeet`.
 //! * `--cleanup`: `none` (fallback rules), `local` (the on-device pipeline:
@@ -23,7 +23,7 @@
 //! Writes `DIR/rows.jsonl` (one row per combination), `DIR/recordings.jsonl`
 //! (the corpus with the phone's results) and `DIR/run.json` (matrix, spend).
 //! The OpenRouter key is read from the key file (default
-//! `$HOME/.config/flow-clone/openrouter.key`) only when an OpenRouter slot
+//! `$HOME/.config/murmur/openrouter.key`) only when an OpenRouter slot
 //! is asked for, and goes only into the request header: it is never
 //! printed, logged or written.
 
@@ -32,15 +32,15 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use flow_core::cleanup::Cleaner;
-use flow_core::config::SessionConfig;
-use flow_replay::{
+use murmur_core::cleanup::Cleaner;
+use murmur_core::config::SessionConfig;
+use murmur_replay::{
     load_corpus, parse_prompt, phone_session, prompt_name, AsrSlot, CleanupSlot, Matrix,
 };
-use flow_router::SecretString;
+use murmur_router::SecretString;
 
 fn die(msg: impl std::fmt::Display) -> ! {
-    eprintln!("flow-replay: {msg}");
+    eprintln!("murmur-replay: {msg}");
     std::process::exit(2)
 }
 
@@ -76,7 +76,7 @@ fn env_or(arg: Option<&str>, var: &str, what: &str) -> String {
 fn load_key(a: &Args) -> SecretString {
     let path = a.get("--key-file").map(PathBuf::from).unwrap_or_else(|| {
         PathBuf::from(std::env::var("HOME").unwrap_or_default())
-            .join(".config/flow-clone/openrouter.key")
+            .join(".config/murmur/openrouter.key")
     });
     let k = std::fs::read_to_string(&path).unwrap_or_else(|e| {
         die(format!(
@@ -93,7 +93,7 @@ fn load_key(a: &Args) -> SecretString {
 }
 
 fn key_usage(key: &SecretString) -> Option<f64> {
-    flow_cloud::keyinfo::fetch(key).ok().and_then(|k| k.usage)
+    murmur_cloud::keyinfo::fetch(key).ok().and_then(|k| k.usage)
 }
 
 fn asr_slot(spec: &str, threads: usize, key: &dyn Fn() -> SecretString) -> AsrSlot {
@@ -105,9 +105,10 @@ fn asr_slot(spec: &str, threads: usize, key: &dyn Fn() -> SecretString) -> AsrSl
     let slot = match kind {
         #[cfg(feature = "parakeet")]
         "parakeet" => {
-            let dir = env_or(arg, "FLOW_PARAKEET_DIR", "parakeet model dir");
-            let e = flow_core::parakeet::ParakeetAsr::load_with(&dir, threads, Default::default())
-                .unwrap_or_else(|e| die(format!("parakeet {dir}: {e}")));
+            let dir = env_or(arg, "MURMUR_PARAKEET_DIR", "parakeet model dir");
+            let e =
+                murmur_core::parakeet::ParakeetAsr::load_with(&dir, threads, Default::default())
+                    .unwrap_or_else(|e| die(format!("parakeet {dir}: {e}")));
             let name = PathBuf::from(&dir)
                 .file_name()
                 .map_or("parakeet".into(), |n| n.to_string_lossy().into_owned());
@@ -123,8 +124,8 @@ fn asr_slot(spec: &str, threads: usize, key: &dyn Fn() -> SecretString) -> AsrSl
         }
         #[cfg(feature = "whisper")]
         "whisper" => {
-            let path = env_or(arg, "FLOW_WHISPER_MODEL", "whisper ggml model");
-            let e = flow_core::whisper::WhisperEngine::load(&path, threads)
+            let path = env_or(arg, "MURMUR_WHISPER_MODEL", "whisper ggml model");
+            let e = murmur_core::whisper::WhisperEngine::load(&path, threads)
                 .unwrap_or_else(|e| die(format!("whisper {path}: {e}")))
                 .with_fit_ctx(true);
             let name = PathBuf::from(&path)
@@ -137,12 +138,12 @@ fn asr_slot(spec: &str, threads: usize, key: &dyn Fn() -> SecretString) -> AsrSl
             }
         }
         "or-stt" => {
-            let settings = flow_cloud::SttSettings {
-                model: arg.unwrap_or(flow_cloud::DEFAULT_STT_MODEL).to_string(),
+            let settings = murmur_cloud::SttSettings {
+                model: arg.unwrap_or(murmur_cloud::DEFAULT_STT_MODEL).to_string(),
                 ..Default::default()
             };
             let name = format!("or-stt:{}", settings.model);
-            let asr = Arc::new(flow_cloud::CloudAsr::new(settings, key()));
+            let asr = Arc::new(murmur_cloud::CloudAsr::new(settings, key()));
             let a2 = asr.clone();
             AsrSlot {
                 name,
@@ -222,7 +223,7 @@ fn main() {
         Some(m) => {
             let t = Instant::now();
             let c =
-                flow_core::llama::LlamaCleaner::load(&m, threads, a.get("--llm-lib").as_deref())
+                murmur_core::llama::LlamaCleaner::load(&m, threads, a.get("--llm-lib").as_deref())
                     .unwrap_or_else(|e| die(format!("llm {m}: {e}")));
             eprintln!("llm loaded in {} ms", t.elapsed().as_millis());
             Some(Arc::new(c))
@@ -255,10 +256,10 @@ fn main() {
             },
             o if o.starts_with("or:") => {
                 let model = o.trim_start_matches("or:").to_string();
-                if !flow_cloud::settings::valid_model_id(&model) {
+                if !murmur_cloud::settings::valid_model_id(&model) {
                     die(format!("bad model id {model:?}"));
                 }
-                let settings = flow_cloud::CleanupSettings {
+                let settings = murmur_cloud::CleanupSettings {
                     model,
                     ..Default::default()
                 };
@@ -267,7 +268,7 @@ fn main() {
                 } else {
                     o.to_string()
                 };
-                let cl = flow_cloud::OpenRouterCleaner::new(settings, key_fn());
+                let cl = murmur_cloud::OpenRouterCleaner::new(settings, key_fn());
                 CleanupSlot {
                     name,
                     cloud: Some(Arc::new(cl)),
@@ -295,7 +296,7 @@ fn main() {
     let mut n = 0usize;
     let spend = m.run(
         &recs,
-        &mut |r| flow_core::audio::read_wav_16k_mono(&r.wav),
+        &mut |r| murmur_core::audio::read_wav_16k_mono(&r.wav),
         &mut |row| {
             n += 1;
             writeln!(rows_f, "{}", serde_json::to_string(row).unwrap()).unwrap();
@@ -328,7 +329,7 @@ fn main() {
         "max_spend_usd": max_spend,
         "spend_usd": {"asr": spend.asr, "cleanup": spend.cleanup, "total": spend.total(),
                       "key_usage_delta": usage_delta},
-        "flow_core": flow_core::VERSION, "postprocess_rev": flow_core::POSTPROCESS_REV,
+        "murmur_core": murmur_core::VERSION, "postprocess_rev": murmur_core::POSTPROCESS_REV,
     });
     std::fs::write(
         out_dir.join("run.json"),

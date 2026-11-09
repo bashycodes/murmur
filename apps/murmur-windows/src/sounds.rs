@@ -2,7 +2,7 @@
 //! files to ship) and played with `PlaySoundW(SND_MEMORY|SND_ASYNC)`.
 //!
 //! A user can replace any cue with their own file,
-//! `%APPDATA%\FlowClone\sounds\<name>.wav` ([`file_name`]). The table is
+//! `%APPDATA%\Murmur\sounds\<name>.wav` ([`file_name`]). The table is
 //! built once, at the first cue, so new files need a restart. A missing
 //! file uses the built-in tone; an unreadable, non-WAV or oversized one
 //! does too, with one `[sounds]` line on stderr.
@@ -156,7 +156,7 @@ pub fn file_name(s: Sound) -> &'static str {
     }
 }
 
-/// `%APPDATA%\FlowClone\sounds`.
+/// `%APPDATA%\Murmur\sounds`.
 pub fn sounds_dir(appdata: Option<&str>) -> PathBuf {
     appdata
         .map(PathBuf::from)
@@ -371,7 +371,7 @@ mod tests {
 
     #[test]
     fn load_reads_files_from_the_sounds_dir() {
-        let dir = std::env::temp_dir().join(format!("flow-sounds-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("murmur-sounds-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let custom = wav_bytes(&[1, 2, 3], 8000);
         std::fs::write(dir.join("start.wav"), &custom).unwrap();
@@ -385,7 +385,7 @@ mod tests {
     #[test]
     fn sounds_dir_and_names() {
         let d = sounds_dir(Some("AD"));
-        assert!(d.ends_with(Path::new("FlowClone").join("sounds")));
+        assert!(d.ends_with(Path::new("Murmur").join("sounds")));
         let names: Vec<_> = ALL.iter().map(|s| file_name(*s)).collect();
         assert_eq!(
             names,

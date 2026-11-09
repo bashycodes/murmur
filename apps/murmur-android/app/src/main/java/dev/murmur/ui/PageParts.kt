@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.view.Gravity
 import android.view.View
@@ -10,8 +10,8 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.ScrollView
-import dev.flowclone.R
-import dev.flowclone.data.ShellPages
+import dev.murmur.R
+import dev.murmur.data.ShellPages
 
 /**
  * Parts the secondary screens (History, Notes, Insights, note editor) share on top of [DevUi]:

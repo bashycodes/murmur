@@ -6,10 +6,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
-use flow_core::asr::{AsrEngine, AsrError, AsrOutput, AsrRequest};
-use flow_core::cleanup::{CleanError, CleanPrompt, Cleaner};
-use flow_core::config::SessionConfig;
-use flow_core::FlowCore;
+use murmur_core::asr::{AsrEngine, AsrError, AsrOutput, AsrRequest};
+use murmur_core::cleanup::{CleanError, CleanPrompt, Cleaner};
+use murmur_core::config::SessionConfig;
+use murmur_core::MurmurCore;
 
 /// Reports a fixed transcript in a fixed language.
 struct Said(&'static str, &'static str);
@@ -41,7 +41,7 @@ impl Cleaner for Local {
 /// the on-device model run, and with what fallback reason?
 fn dictate(text: &'static str, language: &'static str) -> (usize, Option<String>) {
     let local = Arc::new(Local::default());
-    let core = FlowCore::from_engines(Arc::new(Said(text, language)), Some(local.clone()));
+    let core = MurmurCore::from_engines(Arc::new(Said(text, language)), Some(local.clone()));
     let cfg = SessionConfig {
         languages: vec![language.into()],
         ..Default::default()

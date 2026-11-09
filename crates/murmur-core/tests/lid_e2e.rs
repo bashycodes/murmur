@@ -1,22 +1,22 @@
 //! H6 / D34: whisper.cpp language ID on real he/en speech. Env-gated:
-//! skips (passes with a note) unless `FLOW_LID_MODEL` (a multilingual ggml
-//! model, e.g. `ggml-tiny.bin`), `FLOW_LID_HE_DIR` and `FLOW_LID_EN_DIR`
+//! skips (passes with a note) unless `MURMUR_LID_MODEL` (a multilingual ggml
+//! model, e.g. `ggml-tiny.bin`), `MURMUR_LID_HE_DIR` and `MURMUR_LID_EN_DIR`
 //! (16 kHz mono WAVs: FLEURS he_il dev, LibriSpeech) are set. Audio and
 //! models are never committed.
 //!
-//! `cargo test -p flow-core --features whisper,wav --release --test lid_e2e -- --nocapture`
+//! `cargo test -p murmur-core --features whisper,wav --release --test lid_e2e -- --nocapture`
 //! prints accuracy and latency for the full and the shrunk encoder window.
 
 use std::path::Path;
 use std::time::Instant;
 
-use flow_core::lid::{choose, LanguageId, WhisperLid, LID_SAMPLES, ROUTE_MIN_PROB};
-use flow_core::{audio, vad};
+use murmur_core::lid::{choose, LanguageId, WhisperLid, LID_SAMPLES, ROUTE_MIN_PROB};
+use murmur_core::{audio, vad};
 
-/// White noise at `FLOW_LID_SNR` dB below the clip's RMS (unset = clean),
+/// White noise at `MURMUR_LID_SNR` dB below the clip's RMS (unset = clean),
 /// deterministic (LCG), like the 2026-10-23 phone-noise probe.
 fn noisy(mut pcm: Vec<f32>) -> Vec<f32> {
-    let Some(snr) = std::env::var("FLOW_LID_SNR")
+    let Some(snr) = std::env::var("MURMUR_LID_SNR")
         .ok()
         .and_then(|v| v.parse::<f32>().ok())
     else {
@@ -61,20 +61,20 @@ fn head(pcm: &[f32], secs: f32) -> &[f32] {
 #[test]
 fn whisper_lid_he_vs_en() {
     let (Ok(model), Ok(he), Ok(en)) = (
-        std::env::var("FLOW_LID_MODEL"),
-        std::env::var("FLOW_LID_HE_DIR"),
-        std::env::var("FLOW_LID_EN_DIR"),
+        std::env::var("MURMUR_LID_MODEL"),
+        std::env::var("MURMUR_LID_HE_DIR"),
+        std::env::var("MURMUR_LID_EN_DIR"),
     ) else {
-        eprintln!("SKIP: set FLOW_LID_MODEL, FLOW_LID_HE_DIR, FLOW_LID_EN_DIR");
+        eprintln!("SKIP: set MURMUR_LID_MODEL, MURMUR_LID_HE_DIR, MURMUR_LID_EN_DIR");
         return;
     };
-    let threads = std::env::var("FLOW_THREADS")
+    let threads = std::env::var("MURMUR_THREADS")
         .ok()
         .and_then(|t| t.parse().ok())
         .unwrap_or(4);
     let (he, en) = (clips(&he), clips(&en));
     let cands = vec!["en".to_string(), "he".to_string()];
-    let fits: Vec<bool> = match std::env::var("FLOW_LID_FIT").as_deref() {
+    let fits: Vec<bool> = match std::env::var("MURMUR_LID_FIT").as_deref() {
         Ok("1") => vec![true],
         Ok("0") => vec![false],
         _ => vec![true, false],
@@ -145,18 +145,18 @@ fn whisper_lid_he_vs_en() {
 fn flowcore_routes_real_speech_by_language() {
     use std::collections::BTreeMap;
 
-    use flow_core::config::{AsrBackend, LanguageModel, ModelConfig, SessionConfig};
-    use flow_core::FlowCore;
+    use murmur_core::config::{AsrBackend, LanguageModel, ModelConfig, SessionConfig};
+    use murmur_core::MurmurCore;
 
     let (Ok(model), Ok(he), Ok(en)) = (
-        std::env::var("FLOW_LID_MODEL"),
-        std::env::var("FLOW_LID_HE_DIR"),
-        std::env::var("FLOW_LID_EN_DIR"),
+        std::env::var("MURMUR_LID_MODEL"),
+        std::env::var("MURMUR_LID_HE_DIR"),
+        std::env::var("MURMUR_LID_EN_DIR"),
     ) else {
-        eprintln!("SKIP: set FLOW_LID_MODEL, FLOW_LID_HE_DIR, FLOW_LID_EN_DIR");
+        eprintln!("SKIP: set MURMUR_LID_MODEL, MURMUR_LID_HE_DIR, MURMUR_LID_EN_DIR");
         return;
     };
-    let core = FlowCore::load_models(&ModelConfig {
+    let core = MurmurCore::load_models(&ModelConfig {
         asr_backend: AsrBackend::Mock {
             text: "english".into(),
         },

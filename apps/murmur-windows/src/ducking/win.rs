@@ -25,7 +25,7 @@ impl Ducker {
     pub fn spawn() -> Ducker {
         let (tx, rx) = mpsc::channel::<Cmd>();
         let _ = std::thread::Builder::new()
-            .name("flow-duck".into())
+            .name("murmur-duck".into())
             .spawn(move || unsafe {
                 let inited = CoInitializeEx(None, COINIT_MULTITHREADED).is_ok();
                 let mut ducked: Vec<(ISimpleAudioVolume, DuckEntry)> = Vec::new();

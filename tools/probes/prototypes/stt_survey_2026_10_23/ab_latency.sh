@@ -5,7 +5,7 @@
 # warm page cache) on the ~11 s and ~29 s concatenated clips, 3 reps each.
 # Usage: ab_latency.sh [ROUNDS] [THREADS]; scores via score.py.
 set -euo pipefail
-CACHE=${CACHE:-$HOME/.cache/flow-clone}
+CACHE=${CACHE:-$HOME/.cache/murmur}
 HERE=$(cd "$(dirname "$0")" && pwd)
 BIN=$CACHE/stt-survey-target-2/release/stt_survey_2026_10_23
 OUT=$CACHE/results/stt-survey-2026-10-23/ab-$(date +%Y%m%d-%H%M%S)

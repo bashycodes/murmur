@@ -1,7 +1,7 @@
-package dev.flowclone.bubble
+package dev.murmur.bubble
 
-import dev.flowclone.session.DictationHint
-import dev.flowclone.session.DictationState
+import dev.murmur.session.DictationHint
+import dev.murmur.session.DictationState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -56,13 +56,13 @@ class PreviewLogicTest {
     }
 
     @Test fun liveRouteLabels() {
-        assertEquals("via phone", RouteLabel.of(dev.flowclone.core.SessionRoute("local")))
-        assertEquals("via server", RouteLabel.of(dev.flowclone.core.SessionRoute("remote", server = "100.64.0.10:7313")))
+        assertEquals("via phone", RouteLabel.of(dev.murmur.core.SessionRoute("local")))
+        assertEquals("via server", RouteLabel.of(dev.murmur.core.SessionRoute("remote", server = "100.64.0.10:7313")))
         assertEquals(
             "via OpenRouter (openai/gpt-transcribe)",
-            RouteLabel.of(dev.flowclone.core.SessionRoute("cloud", provider = "openrouter-1", model = "openai/gpt-transcribe")) { if (it == "openrouter-1") "OpenRouter" else null },
+            RouteLabel.of(dev.murmur.core.SessionRoute("cloud", provider = "openrouter-1", model = "openai/gpt-transcribe")) { if (it == "openrouter-1") "OpenRouter" else null },
         )
-        assertEquals("via phone · server unreachable", RouteLabel.of(dev.flowclone.core.SessionRoute("local", fallback = "disconnected")))
+        assertEquals("via phone · server unreachable", RouteLabel.of(dev.murmur.core.SessionRoute("local", fallback = "disconnected")))
         assertEquals(null, RouteLabel.of(null))
     }
 
@@ -77,7 +77,7 @@ class PreviewLogicTest {
     }
 
     @Test fun loadingPhoneModelLabel() {
-        assertEquals("Loading phone model… · server unreachable", RouteLabel.of(dev.flowclone.core.SessionRoute("local", fallback = "connect_failed", loading = true)))
-        assertEquals("Loading phone model… · paused after failures", RouteLabel.of(dev.flowclone.core.SessionRoute("local", fallback = "circuit_open", loading = true)))
+        assertEquals("Loading phone model… · server unreachable", RouteLabel.of(dev.murmur.core.SessionRoute("local", fallback = "connect_failed", loading = true)))
+        assertEquals("Loading phone model… · paused after failures", RouteLabel.of(dev.murmur.core.SessionRoute("local", fallback = "circuit_open", loading = true)))
     }
 }

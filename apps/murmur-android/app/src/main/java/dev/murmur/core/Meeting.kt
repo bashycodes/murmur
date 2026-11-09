@@ -1,10 +1,10 @@
-package dev.flowclone.core
+package dev.murmur.core
 
 import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Long-recording transcription (D44 `flow_core::meeting`, D46 Calls): a recording of any length
+ * Long-recording transcription (D44 `murmur_core::meeting`, D46 Calls): a recording of any length
  * cut into 8-30 s chunks at pauses, each chunk one ordinary dictation on an engine the job owns.
  * Kotlin mirror of JNI_CONTRACT.md "Meeting transcription".
  */
@@ -89,32 +89,32 @@ object MeetingJson {
 
 /** `nativeMeeting*` over a job handle (review C1's [HandleLease]: [close] never frees under a running call). */
 class NativeMeeting internal constructor(handle: Long) : MeetingJob {
-    private val lease = HandleLease(handle, { NativeFlowCore.nativeMeetingClose(it) })
+    private val lease = HandleLease(handle, { NativeMurmurCore.nativeMeetingClose(it) })
 
     private fun closed(): Nothing = throw MeetingException("cancelled", MeetingException.CANCELLED)
 
-    override fun setTotalSamples(samples: Long) = lease.use({}) { h -> NativeFlowCore.nativeMeetingSetTotal(h, samples) }
+    override fun setTotalSamples(samples: Long) = lease.use({}) { h -> NativeMurmurCore.nativeMeetingSetTotal(h, samples) }
 
     override fun push(pcm: ShortArray, length: Int): List<MeetingSegment> = lease.use(::closed) { h ->
         BlockingCalls.check("nativeMeetingPush")
-        segments(NativeFlowCore.nativeMeetingPush(h, pcm, length))
+        segments(NativeMurmurCore.nativeMeetingPush(h, pcm, length))
     }
 
     override fun finish(): List<MeetingSegment> = lease.use(::closed) { h ->
         BlockingCalls.check("nativeMeetingFinish")
-        segments(NativeFlowCore.nativeMeetingFinish(h))
+        segments(NativeMurmurCore.nativeMeetingFinish(h))
     }
 
-    override fun progress(): MeetingProgress = lease.use({ MeetingProgress() }) { h -> MeetingJson.decodeProgress(NativeFlowCore.nativeMeetingProgress(h)) }
+    override fun progress(): MeetingProgress = lease.use({ MeetingProgress() }) { h -> MeetingJson.decodeProgress(NativeMurmurCore.nativeMeetingProgress(h)) }
 
-    override fun cancel() = lease.use({}) { h -> NativeFlowCore.nativeMeetingCancel(h) }
+    override fun cancel() = lease.use({}) { h -> NativeMurmurCore.nativeMeetingCancel(h) }
 
     override fun close() = lease.close()
 
     private fun segments(json: String?): List<MeetingSegment> {
         if (json != null) return MeetingJson.decodeSegments(json)
-        val kind = runCatching { NativeFlowCore.nativeLastErrorKind() }.getOrNull()
-        throw MeetingException(NativeFlowCore.nativeLastError() ?: "transcription failed", kind)
+        val kind = runCatching { NativeMurmurCore.nativeLastErrorKind() }.getOrNull()
+        throw MeetingException(NativeMurmurCore.nativeLastError() ?: "transcription failed", kind)
     }
 
     companion object {
@@ -123,16 +123,16 @@ class NativeMeeting internal constructor(handle: Long) : MeetingJob {
          * moves to the job whatever happens; [engine] is unusable afterwards.
          * @throws CoreException
          */
-        fun open(engine: NativeFlowCore, session: SessionConfig, paramsJson: String = MeetingJson.DEFAULT_PARAMS): MeetingJob {
+        fun open(engine: NativeMurmurCore, session: SessionConfig, paramsJson: String = MeetingJson.DEFAULT_PARAMS): MeetingJob {
             val h = engine.release()
             if (h == 0L) throw CoreException("Speech engine was unloaded, try again in a moment.", "local_not_ready")
             val m = try {
-                NativeFlowCore.nativeMeetingOpen(h, CoreJson.encode(session), paramsJson)
+                NativeMurmurCore.nativeMeetingOpen(h, CoreJson.encode(session), paramsJson)
             } catch (e: UnsatisfiedLinkError) {
                 // A library from before D46 (the handle is lost with it; the process frees it on exit).
                 throw CoreException("This build's speech library cannot transcribe recordings (rebuild the native libraries).", "bad_config")
             }
-            if (m == 0L) throw NativeFlowCore.lastError("meeting_open failed")
+            if (m == 0L) throw NativeMurmurCore.lastError("meeting_open failed")
             return NativeMeeting(m)
         }
     }

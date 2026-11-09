@@ -9,13 +9,13 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use flow_core::asr::{AbortFlag, MockAsr};
-use flow_core::cleanup::{
+use murmur_core::asr::{AbortFlag, MockAsr};
+use murmur_core::cleanup::{
     build_prompt, CleanError, CleanPrompt, CleanUsage, Cleaner, PromptScope, RoutedCleaner,
 };
-use flow_core::config::{AppCategory, CleanupLevel, FieldContext, SessionConfig, Style};
-use flow_core::dictionary::{DictEntry, Dictionary};
-use flow_core::{CommitResult, CommitStatus, FlowCore, Usd};
+use murmur_core::config::{AppCategory, CleanupLevel, FieldContext, SessionConfig, Style};
+use murmur_core::dictionary::{DictEntry, Dictionary};
+use murmur_core::{CommitResult, CommitStatus, MurmurCore, Usd};
 
 /// Returns `out` (or `err`) after `delay`; counts calls; records prompts.
 struct Fake {
@@ -123,7 +123,7 @@ fn speech(ms: usize) -> Vec<i16> {
         .collect()
 }
 
-fn dictate_cfg(core: &FlowCore, cfg: SessionConfig) -> CommitResult {
+fn dictate_cfg(core: &MurmurCore, cfg: SessionConfig) -> CommitResult {
     core.start_session(cfg).unwrap();
     core.set_context(FieldContext {
         app_category: AppCategory::Other,
@@ -136,7 +136,7 @@ fn dictate_cfg(core: &FlowCore, cfg: SessionConfig) -> CommitResult {
     core.commit()
 }
 
-fn dictate(core: &FlowCore) -> CommitResult {
+fn dictate(core: &MurmurCore) -> CommitResult {
     dictate_cfg(core, SessionConfig::default())
 }
 
@@ -149,8 +149,8 @@ fn routed(cloud: &Arc<Fake>, local: Option<&Arc<Fake>>) -> Arc<dyn Cleaner> {
 
 /// A core with on-device LLM `local` (if any) and the cloud cleaner
 /// installed the way the router does (`set_cleaner`).
-fn core_with(raw: &str, cloud: &Arc<Fake>, local: Option<&Arc<Fake>>) -> FlowCore {
-    let core = FlowCore::from_engines(
+fn core_with(raw: &str, cloud: &Arc<Fake>, local: Option<&Arc<Fake>>) -> MurmurCore {
+    let core = MurmurCore::from_engines(
         Arc::new(MockAsr::new(raw)),
         local.map(|l| l.clone() as Arc<dyn Cleaner>),
     );
@@ -160,7 +160,7 @@ fn core_with(raw: &str, cloud: &Arc<Fake>, local: Option<&Arc<Fake>>) -> FlowCor
 
 /// Today's pipeline: the same dictation with no cloud cleaner.
 fn today(raw: &str, local: Option<Arc<Fake>>) -> CommitResult {
-    let core = FlowCore::from_engines(
+    let core = MurmurCore::from_engines(
         Arc::new(MockAsr::new(raw)),
         local.map(|l| l as Arc<dyn Cleaner>),
     );
@@ -198,7 +198,7 @@ fn cloud_gets_the_raw_transcript_with_prompt_v5_and_no_rules_pre_pass() {
     );
     // Prompt v5, not v2 (nor its predecessor v4c).
     let build = |v| {
-        flow_core::cleanup::build_prompt_versioned(
+        murmur_core::cleanup::build_prompt_versioned(
             RAW,
             CleanupLevel::Light,
             Style::Default,
@@ -208,12 +208,12 @@ fn cloud_gets_the_raw_transcript_with_prompt_v5_and_no_rules_pre_pass() {
             v,
         )
     };
-    let v5 = build(flow_core::cleanup::PromptVersion::V5);
+    let v5 = build(murmur_core::cleanup::PromptVersion::V5);
     assert_eq!(p.system, v5.system);
     assert_eq!(p.examples, v5.examples);
     assert_ne!(
         p.system,
-        build(flow_core::cleanup::PromptVersion::V4c).system
+        build(murmur_core::cleanup::PromptVersion::V4c).system
     );
     // The cloud's minimal scope still holds.
     assert!(!p.user.contains("SCREENSECRET"));
@@ -349,7 +349,7 @@ fn a_bare_cloud_cleaner_falls_back_to_the_rules() {
     // `cleanup_order = [cloud]` / no phone model: the router installs the
     // gate alone.
     let cloud = Arc::new(Fake::ok("").cloud());
-    let core = FlowCore::from_engines(Arc::new(MockAsr::new(RAW)), None);
+    let core = MurmurCore::from_engines(Arc::new(MockAsr::new(RAW)), None);
     core.set_cleaner(Some(cloud.clone() as Arc<dyn Cleaner>));
     let r = dictate(&core);
     assert_eq!(r.cloud_fallback.as_deref(), Some("llm_empty"));
@@ -367,7 +367,7 @@ fn cloud_off_is_todays_pipeline() {
         llm_skip_clean: false,
         ..Default::default()
     };
-    let core = FlowCore::from_engines(
+    let core = MurmurCore::from_engines(
         Arc::new(MockAsr::new(RAW)),
         Some(local.clone() as Arc<dyn Cleaner>),
     );
@@ -382,7 +382,7 @@ fn cloud_off_is_todays_pipeline() {
     // A local-first routed cleaner (cleanup_order [local, cloud] with the
     // phone model loaded) is not AI cleanup either.
     let cloud = Arc::new(Fake::ok(AI).cloud());
-    let core2 = FlowCore::from_engines(Arc::new(MockAsr::new(RAW)), None);
+    let core2 = MurmurCore::from_engines(Arc::new(MockAsr::new(RAW)), None);
     core2.set_cleaner(Some(Arc::new(RoutedCleaner::new(
         local.clone(),
         Some(cloud.clone() as Arc<dyn Cleaner>),
@@ -505,10 +505,10 @@ fn dictated_parentheses_quotes_and_a_formula_pass_through_ai_cleanup() {
 #[test]
 fn dictated_parentheses_quotes_and_a_formula_pass_through_the_local_llm() {
     // The on-device path (fallback rules, then the local LLM; the phone's
-    // and the PC's local cleanup, and flow-server's).
+    // and the PC's local cleanup, and murmur-server's).
     for (raw, ai) in STRUCTURED {
         let local = Arc::new(Fake::ok(ai));
-        let core = FlowCore::from_engines(
+        let core = MurmurCore::from_engines(
             Arc::new(MockAsr::new(raw)),
             Some(local.clone() as Arc<dyn Cleaner>),
         );
@@ -572,7 +572,7 @@ fn cloud_off_json_has_no_detail_and_the_local_answer_is_used() {
     // the transcript does not back): today's result, with no new keys.
     let local = Arc::new(Fake::ok("Please buy a new car tomorrow."));
     let r = dictate_cfg(
-        &FlowCore::from_engines(
+        &MurmurCore::from_engines(
             Arc::new(MockAsr::new(RAW)),
             Some(local.clone() as Arc<dyn Cleaner>),
         ),
@@ -610,6 +610,6 @@ fn the_fallback_detail_keeps_its_guard_detail_json_key() {
     );
     let route =
         serde_json::json!({"engine": "local", "guard_detail": "error: x", "rejected_text": "y"});
-    let route: flow_core::RouteInfo = serde_json::from_value(route).unwrap();
+    let route: murmur_core::RouteInfo = serde_json::from_value(route).unwrap();
     assert_eq!(route.fallback_detail.as_deref(), Some("error: x"));
 }

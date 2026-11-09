@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.app.Activity
 import android.graphics.Typeface
@@ -10,9 +10,9 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.Switch
 import android.widget.TextView
-import dev.flowclone.FlowApp
-import dev.flowclone.R
-import dev.flowclone.ui.UiTestKit.walk
+import dev.murmur.MurmurApp
+import dev.murmur.R
+import dev.murmur.ui.UiTestKit.walk
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertSame
@@ -30,7 +30,7 @@ import org.robolectric.annotation.Config
  * progress, stats in the serif face, and the font fallback.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], application = FlowApp::class)
+@Config(sdk = [34], application = MurmurApp::class)
 class KitUiTest {
     private fun activity(): Activity = Robolectric.buildActivity(Activity::class.java).setup().get()
 

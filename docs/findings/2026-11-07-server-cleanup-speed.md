@@ -1,6 +1,6 @@
-# 2026-11-07: faster flow-server cleanup on long clips (D69)
+# 2026-11-07: faster murmur-server cleanup on long clips (D69)
 
-**Question.** On the parity main set, flow-server's commit→result was
+**Question.** On the parity main set, murmur-server's commit→result was
 4.9 s p50 / 9.4 s max without the dictionary and 7.9 / 12.8 s with it
 (1.5B cleanup on the home server's CPU). Target: p50 ≤ 3 s on the home
 server, no quality loss on the parity scorecard.
@@ -9,13 +9,13 @@ server, no quality loss on the parity scorecard.
 (scripts only; clips, cases and outputs stay private). Home server = this
 box (i7-6700, 4 cores / 8 threads, shared with other builds at load 5–24,
 so single numbers are noisy: variants run interleaved, 2–3 rounds).
-Qwen2.5-1.5B-Instruct Q4_K_M, `threads` 4, prompt v2 as flow-server sends
+Qwen2.5-1.5B-Instruct Q4_K_M, `threads` 4, prompt v2 as murmur-server sends
 it (never skipped), the session's budget (3 s + 15 ms/char, cap 8 s).
 Two harnesses:
 
 - **runner**: the 13 main-set transcripts (parakeet unified, greedy)
-  straight into the real `FlowCore` commit with the plugin, LLM time only.
-- **live**: a local flow-server build (own port, state dir and token, same
+  straight into the real `MurmurCore` commit with the plugin, LLM time only.
+- **live**: a local murmur-server build (own port, state dir and token, same
   models and config as the home server) fed the 13 clips by the parity
   eval's `run_paths.py server` at 4× real time, as the ticket's numbers.
 
@@ -84,7 +84,7 @@ runs no LLM. No prompt wording or few-shot changes. Test:
 
 ## Live
 
-Local flow-server build, same models and config as the home server,
+Local murmur-server build, same models and config as the home server,
 13 clips, 4× pacing (as the ticket), 2 interleaved rounds; base = the
 integration build (no drafting, raw-partial prefill-ahead). Box load 5–24.
 
@@ -119,13 +119,13 @@ line after the transcript so prefill-ahead survives a changed term list
 
 ## Change
 
-- flow-llm: drafting length is per engine (`Engine::set_draft`), exported
-  as the optional ABI-1 symbol `flow_llm_set_draft`; `FLOW_LLM_DRAFT`
-  still overrides; `flow_llm_info` reports `draft`.
-- flow-core: `ModelConfig::llm_draft` (absent = the plugin's default,
+- murmur-llm: drafting length is per engine (`Engine::set_draft`), exported
+  as the optional ABI-1 symbol `murmur_llm_set_draft`; `MURMUR_LLM_DRAFT`
+  still overrides; `murmur_llm_info` reports `draft`.
+- murmur-core: `ModelConfig::llm_draft` (absent = the plugin's default,
   off); the loader calls `set_draft` when the plugin has it.
-- flow-server: `[model] llm_draft` defaults to 4; `0` turns it off.
+- murmur-server: `[model] llm_draft` defaults to 4; `0` turns it off.
 - Phone and PC unchanged (drafting stays off; not measured there).
 
-**Deploy.** Rebuild and install flow-server and `libflow_llm.so` on the
+**Deploy.** Rebuild and install murmur-server and `libmurmur_llm.so` on the
 home server (`tools/server/install.sh --llm`), restart. No config change.

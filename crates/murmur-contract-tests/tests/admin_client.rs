@@ -1,13 +1,13 @@
-//! D39: flow-remote's admin client (what Windows and, through flow-ffi,
-//! Android use) against a real flow-server, over ws-style plain HTTP and
+//! D39: murmur-remote's admin client (what Windows and, through murmur-ffi,
+//! Android use) against a real murmur-server, over ws-style plain HTTP and
 //! over TLS with a pinned self-signed certificate.
 
-use flow_contract_tests::*;
-use flow_protocol::admin::code;
-use flow_remote::admin::AdminClient;
+use murmur_contract_tests::*;
+use murmur_protocol::admin::code;
+use murmur_remote::admin::AdminClient;
 use sha2::{Digest, Sha256};
 
-fn client(cfg: flow_router::ServerConfig) -> AdminClient {
+fn client(cfg: murmur_router::ServerConfig) -> AdminClient {
     AdminClient::new(cfg, "contract-tests")
 }
 
@@ -57,7 +57,7 @@ fn admin_client_over_pinned_tls() {
         .map(|b| format!("{b:02x}"))
         .collect();
     let mut cfg = server_cfg(mock_model("x"));
-    cfg.tls = Some(flow_server::config::TlsConfig { cert, key });
+    cfg.tls = Some(murmur_server::config::TlsConfig { cert, key });
     let s = spawn_server(cfg);
     let mk = |t: &str| {
         let mut c = server_config(s.addr(), t);

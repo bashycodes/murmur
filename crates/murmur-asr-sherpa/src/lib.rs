@@ -15,7 +15,7 @@
 //! as ivrit-ai's zipformer2 Hebrew model; both implement
 //! [`SherpaTranscriber`].
 //!
-//! The crate does not depend on flow-core; flow-core's `parakeet` module
+//! The crate does not depend on murmur-core; murmur-core's `parakeet` module
 //! adapts it to the `AsrEngine` trait.
 
 use std::path::{Path, PathBuf};
@@ -347,7 +347,7 @@ impl ParakeetEngine {
                     beam_cfg = Some(b);
                 }
                 // No writable place for the vocab: still transcribe, unbiased.
-                Err(e) => eprintln!("flow-asr-sherpa: hotwords disabled: {e}"),
+                Err(e) => eprintln!("murmur-asr-sherpa: hotwords disabled: {e}"),
             }
         }
         let want_greedy = beam_cfg.is_none() || cfg.greedy_fallback;
@@ -543,13 +543,13 @@ fn vocab_path(
     let dir = scratch_dir.map_or_else(std::env::temp_dir, Path::to_path_buf);
     static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let path = dir.join(format!("flow-sherpa-{}-{n}.vocab", std::process::id()));
+    let path = dir.join(format!("murmur-sherpa-{}-{n}.vocab", std::process::id()));
     std::fs::write(&path, bpe_vocab_from_tokens(&tokens))
         .map_err(|e| format!("{}: {e}", path.display()))?;
     Ok((path, true))
 }
 
-/// The decode interface both engines share, so flow-core's sherpa adapter
+/// The decode interface both engines share, so murmur-core's sherpa adapter
 /// (beam/greedy retry, piecewise fallback) can drive either one. Object
 /// safe; phrases are `String`s because that is what core passes.
 pub trait SherpaTranscriber: Send + Sync {
@@ -617,7 +617,7 @@ mod tests {
 
     #[test]
     fn model_files_prefer_int8_and_report_missing() {
-        let d = std::env::temp_dir().join(format!("flow-sherpa-files-{}", std::process::id()));
+        let d = std::env::temp_dir().join(format!("murmur-sherpa-files-{}", std::process::id()));
         std::fs::create_dir_all(&d).unwrap();
         for f in [
             "encoder.onnx",
@@ -646,7 +646,7 @@ mod tests {
 
     #[test]
     fn model_type_is_read_from_the_metadata_without_the_graph() {
-        let d = std::env::temp_dir().join(format!("flow-sherpa-meta-{}", std::process::id()));
+        let d = std::env::temp_dir().join(format!("murmur-sherpa-meta-{}", std::process::id()));
         std::fs::create_dir_all(&d).unwrap();
         let entry =
             |k: &[u8], v: &[u8]| len_field(14, &[len_field(1, k), len_field(2, v)].concat());

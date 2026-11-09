@@ -1,6 +1,6 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.data.DevSettings.Route
+import dev.murmur.data.DevSettings.Route
 
 /**
  * The OpenRouter page's state changes (ui/OpenRouterActivity, ui/ModelPickerActivity), pure for

@@ -61,13 +61,7 @@ impl ChordRecorder {
     /// key held since before recording began (a modifier held while
     /// clicking Record): it passes and is not recorded, so its key-up
     /// passes too and the key can't stick.
-    pub fn handle_hook(
-        &mut self,
-        vk: u16,
-        scan: u32,
-        down: bool,
-        os_down: bool,
-    ) -> RecordDecision {
+    pub fn handle_hook(&mut self, vk: u16, scan: u32, down: bool, os_down: bool) -> RecordDecision {
         // AltGr's fake Left Ctrl is not a key the user pressed; let it
         // through untouched (like the matcher does) so Ctrl never sticks.
         if is_altgr_fake_ctrl(vk, scan) {
@@ -199,7 +193,11 @@ mod tests {
 
     #[test]
     fn lone_modifiers_keep_their_side() {
-        for (vk, name) in [(RCTRL, "Right Ctrl"), (LALT, "Left Alt"), (LSHIFT, "Left Shift")] {
+        for (vk, name) in [
+            (RCTRL, "Right Ctrl"),
+            (LALT, "Left Alt"),
+            (LSHIFT, "Left Shift"),
+        ] {
             let mut r = ChordRecorder::new();
             assert_eq!(done(press_release(&mut r, &[vk])), name);
         }
@@ -210,17 +208,29 @@ mod tests {
         let mut r = ChordRecorder::new();
         assert_eq!(done(press_release(&mut r, &[LWIN, LCTRL])), "Ctrl+Win");
         let mut r = ChordRecorder::new();
-        assert_eq!(done(press_release(&mut r, &[LCTRL, LWIN, SPACE])), "Ctrl+Win+Space");
+        assert_eq!(
+            done(press_release(&mut r, &[LCTRL, LWIN, SPACE])),
+            "Ctrl+Win+Space"
+        );
         let mut r = ChordRecorder::new();
-        assert_eq!(done(press_release(&mut r, &[LWIN, LALT, b'1' as u16])), "Win+Alt+1");
+        assert_eq!(
+            done(press_release(&mut r, &[LWIN, LALT, b'1' as u16])),
+            "Win+Alt+1"
+        );
         let mut r = ChordRecorder::new();
-        assert_eq!(done(press_release(&mut r, &[LSHIFT, LALT, b'Z' as u16])), "Alt+Shift+Z");
+        assert_eq!(
+            done(press_release(&mut r, &[LSHIFT, LALT, b'Z' as u16])),
+            "Alt+Shift+Z"
+        );
     }
 
     #[test]
     fn right_alt_stays_right_alt_in_a_combination() {
         let mut r = ChordRecorder::new();
-        assert_eq!(done(press_release(&mut r, &[RALT, SPACE])), "Right Alt+Space");
+        assert_eq!(
+            done(press_release(&mut r, &[RALT, SPACE])),
+            "Right Alt+Space"
+        );
         let mut r = ChordRecorder::new();
         assert_eq!(done(press_release(&mut r, &[LALT, RALT])), "Alt");
     }
@@ -231,7 +241,10 @@ mod tests {
         let mut r = ChordRecorder::new();
         r.handle_raw(LCTRL, REAL_CTRL_SCAN, true);
         r.handle_raw(LWIN, 0, true);
-        assert_eq!(r.handle_raw(LCTRL, REAL_CTRL_SCAN, false).step, RecordStep::Pending);
+        assert_eq!(
+            r.handle_raw(LCTRL, REAL_CTRL_SCAN, false).step,
+            RecordStep::Pending
+        );
         assert_eq!(done(r.handle_raw(LWIN, 0, false).step), "Ctrl+Win");
     }
 
@@ -297,7 +310,12 @@ mod tests {
         let c = done(press_release(&mut r, &[LCTRL, 0xBA]));
         assert_eq!(c, "Ctrl+VKBA");
         assert_eq!(Chord::parse_validated(&c, false).unwrap().to_string(), c);
-        for s in ["Right Alt", "Ctrl+Win+Space", "Win+Alt+1", "Right Alt+Space"] {
+        for s in [
+            "Right Alt",
+            "Ctrl+Win+Space",
+            "Win+Alt+1",
+            "Right Alt+Space",
+        ] {
             assert!(Chord::parse_validated(s, false).is_ok(), "{s}");
         }
     }

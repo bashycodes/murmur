@@ -82,7 +82,7 @@ const engine = `
     "Nothing leaves this PC",
 ])}
       ${engineCard("server", ICON.server, "Your server", "A faster computer you own does the work. Good for older laptops.", [
-    "Needs flow-server running at home or on a VPN",
+    "Needs murmur-server running at home or on a VPN",
     "Audio goes only to your server",
     "This PC can step in if it’s offline",
 ])}
@@ -99,8 +99,8 @@ const engine = `
         <div class="fl-row-control"><input id="ob_host" class="fl-input is-wide" spellcheck="false" placeholder="100.64.0.10 or mybox.local" /></div>
       </div>
       <div class="fl-row">
-        <div class="fl-row-text"><label class="fl-row-title" for="ob_token">Access token</label><div class="fl-row-desc">From <code>flow-server gen-token</code>. Stored encrypted for your Windows account. <small class="field-err" id="ob_token_err"></small></div></div>
-        <div class="fl-row-control"><input id="ob_token" class="fl-input" type="password" autocomplete="off" spellcheck="false" placeholder="from flow-server gen-token" /><button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" id="ob_test_conn">Test</button></div>
+        <div class="fl-row-text"><label class="fl-row-title" for="ob_token">Access token</label><div class="fl-row-desc">From <code>murmur-server gen-token</code>. Stored encrypted for your Windows account. <small class="field-err" id="ob_token_err"></small></div></div>
+        <div class="fl-row-control"><input id="ob_token" class="fl-input" type="password" autocomplete="off" spellcheck="false" placeholder="from murmur-server gen-token" /><button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" id="ob_test_conn">Test</button></div>
       </div>
       <div class="lw-ob-status" id="ob_server_status"></div>
       <p class="lw-ob-small lw-ob-help"><span id="ob_server_help">No server yet? Pick This PC above, or</span> ${extLink(SERVER_HELP, "set up a server →", "lw-link lw-ob-copy")}</p>

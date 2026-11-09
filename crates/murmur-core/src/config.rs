@@ -110,7 +110,7 @@ pub struct SessionConfig {
     pub llm_timeout_ms: u64,
     /// Extra LLM budget per character of the text the model rewrites, on
     /// top of `llm_timeout_ms` (a long dictation decodes more tokens).
-    /// `None` (default) = the fixed `llm_timeout_ms`. flow-server sets it
+    /// `None` (default) = the fixed `llm_timeout_ms`. murmur-server sets it
     /// from its config when the client does not. See [`Self::llm_budget_ms`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub llm_timeout_per_char_ms: Option<u32>,
@@ -153,7 +153,7 @@ pub struct SessionConfig {
     pub spoken_cleanup: bool,
     /// Hands-free endpointing (D19): after at least 300 ms of speech, this
     /// much trailing silence sets `SessionPoll.endpoint_reached` (see
-    /// `FlowCore::poll`). The core never stops by itself; the shell commits
+    /// `MurmurCore::poll`). The core never stops by itself; the shell commits
     /// when it sees the signal. `None` (default) = off. Values below 300
     /// are raised to 300; `endpoint::RECOMMENDED_SILENCE_MS` = 1500 (was 2000
     /// before D22).
@@ -291,7 +291,7 @@ impl Default for FieldContext {
 ///
 /// Adding a backend (as [`AsrBackend::SherpaOnline`] was) takes
 /// three small changes: a variant here, its [`AsrBackend::name`], and one
-/// arm in `FlowCore`'s engine loader (`engine::load_asr`). Routing,
+/// arm in `MurmurCore`'s engine loader (`engine::load_asr`). Routing,
 /// language reporting and the per-language map need nothing new.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -362,12 +362,12 @@ pub struct ModelConfig {
     pub asr_path: String,
     /// GGUF instruct model for LLM cleanup (feature `llm`); `None` = no LLM.
     pub llm_path: Option<String>,
-    /// Path of the `flow-llm` plugin library; `None` = default lookup
-    /// (see `flow_core::llama`).
+    /// Path of the `murmur-llm` plugin library; `None` = default lookup
+    /// (see `murmur_core::llama`).
     pub llm_lib: Option<String>,
     /// LLM cleanup: tokens the plugin guesses ahead per decode step by
     /// copying the transcript (prompt-lookup drafting; the model checks
-    /// every guess). `None` = the plugin's default (off). flow-server
+    /// every guess). `None` = the plugin's default (off). murmur-server
     /// turns it on (D69); omitted from JSON when `None`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub llm_draft: Option<usize>,

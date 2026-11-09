@@ -1,7 +1,7 @@
-package dev.flowclone.bubble
+package dev.murmur.bubble
 
-import dev.flowclone.session.DictationState
-import dev.flowclone.session.DictationState.ErrorKind
+import dev.murmur.session.DictationState
+import dev.murmur.session.DictationState.ErrorKind
 
 /** What the bubble shows. */
 data class BubbleUi(
@@ -14,9 +14,9 @@ data class BubbleUi(
     val repair: Boolean = false,
     /** Window shown at all (presence policy: snooze, shake reveal, repair). */
     val visible: Boolean = state != DictationState.Idle,
-    /** "Bubble size" setting: multiplies every bubble dimension ([dev.flowclone.data.Settings.bubbleScale]). */
+    /** "Bubble size" setting: multiplies every bubble dimension ([dev.murmur.data.Settings.bubbleScale]). */
     val scale: Float = 1f,
-    /** "Shrink to a dot" setting ([dev.flowclone.data.Settings.shrinkToDot]): the minimised look is a plain 16dp dot. */
+    /** "Shrink to a dot" setting ([dev.murmur.data.Settings.shrinkToDot]): the minimised look is a plain 16dp dot. */
     val dot: Boolean = true,
     /**
      * Command Mode button (✎) next to the mic while resting: shown when the focused field has a

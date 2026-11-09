@@ -1,4 +1,4 @@
-//! flow-cloud's own view of the OpenRouter settings (D28,
+//! murmur-cloud's own view of the OpenRouter settings (D28,
 //! `docs/proposals/openrouter-only-cloud.md` §2.6). Field names match the
 //! router's schema-2 JSON (`cloud.openrouter.{privacy,stt,cleanup}`); the
 //! glue in `lib.rs` converts from the router's config types. Keys are
@@ -128,7 +128,7 @@ impl Default for SttSettings {
 
 /// What the cleanup prompt may contain beyond the transcript, category,
 /// style and dictionary (§2.5 "context minimisation"). Default: nothing.
-/// Mirrors `flow_core::cleanup::PromptScope`.
+/// Mirrors `murmur_core::cleanup::PromptScope`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CleanupScope {
     pub surrounding_text: bool,
@@ -180,10 +180,10 @@ impl CleanupSettings {
     }
 }
 
-// ---- schema-2 router config → flow-cloud settings --------------------------
+// ---- schema-2 router config → murmur-cloud settings --------------------------
 
-impl From<&flow_router::cloud::Privacy> for Privacy {
-    fn from(p: &flow_router::cloud::Privacy) -> Self {
+impl From<&murmur_router::cloud::Privacy> for Privacy {
+    fn from(p: &murmur_router::cloud::Privacy) -> Self {
         Privacy {
             zdr: p.zdr,
             data_collection: if p.data_collection_deny() {
@@ -195,8 +195,8 @@ impl From<&flow_router::cloud::Privacy> for Privacy {
     }
 }
 
-impl From<&flow_router::OpenRouterConfig> for SttSettings {
-    fn from(o: &flow_router::OpenRouterConfig) -> Self {
+impl From<&murmur_router::OpenRouterConfig> for SttSettings {
+    fn from(o: &murmur_router::OpenRouterConfig) -> Self {
         let s = &o.stt;
         SttSettings {
             model: if s.model.trim().is_empty() {
@@ -214,8 +214,8 @@ impl From<&flow_router::OpenRouterConfig> for SttSettings {
     }
 }
 
-impl From<&flow_router::OpenRouterConfig> for CleanupSettings {
-    fn from(o: &flow_router::OpenRouterConfig) -> Self {
+impl From<&murmur_router::OpenRouterConfig> for CleanupSettings {
+    fn from(o: &murmur_router::OpenRouterConfig) -> Self {
         let c = &o.cleanup;
         CleanupSettings {
             model: if c.model.trim().is_empty() {
@@ -319,13 +319,13 @@ mod tests {
 
     #[test]
     fn router_config_converts() {
-        let mut o = flow_router::OpenRouterConfig::default();
+        let mut o = murmur_router::OpenRouterConfig::default();
         assert_eq!(SttSettings::from(&o), SttSettings::default());
         assert_eq!(CleanupSettings::from(&o), CleanupSettings::default());
-        assert_eq!(DEFAULT_STT_MODEL, flow_router::cloud::DEFAULT_STT_MODEL);
+        assert_eq!(DEFAULT_STT_MODEL, murmur_router::cloud::DEFAULT_STT_MODEL);
         assert_eq!(
             DEFAULT_CLEANUP_MODEL,
-            flow_router::cloud::DEFAULT_CLEANUP_MODEL
+            murmur_router::cloud::DEFAULT_CLEANUP_MODEL
         );
         o.stt.stt_path = "chat_audio".into();
         o.privacy.zdr = false;

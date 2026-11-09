@@ -1,9 +1,9 @@
-//! On-device benchmark hook (debug harness `dev.flowclone.debug.BenchActivity`,
+//! On-device benchmark hook (debug harness `dev.murmur.debug.BenchActivity`,
 //! `tools/probes/android_bench/`): run the AI-cleanup text path on a given
 //! transcript with a bare core handle's own cleaner (the on-device LLM).
 //!
 //! Two modes, one JSON request each:
-//! * `prod`: [`flow_core::refinish`], i.e. the text half of a commit exactly
+//! * `prod`: [`murmur_core::refinish`], i.e. the text half of a commit exactly
 //!   as shipped (fallback rules, prompt v2, post-processing) on
 //!   `input` as if ASR had returned it. Returns the product's `output` plus
 //!   the LLM's raw answer and timing (recorded by a pass-through wrapper).
@@ -18,12 +18,12 @@
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use flow_core::asr::AbortFlag;
-use flow_core::cleanup::{
+use murmur_core::asr::AbortFlag;
+use murmur_core::cleanup::{
     self, CleanError, CleanPrompt, CleanUsage, Cleaner, PromptScope, PromptVersion,
 };
-use flow_core::config::{FieldContext, SessionConfig};
-use flow_core::{CommitResult, FlowCore};
+use murmur_core::config::{FieldContext, SessionConfig};
+use murmur_core::{CommitResult, MurmurCore};
 use serde_json::{json, Value};
 
 #[derive(serde::Deserialize)]
@@ -131,7 +131,7 @@ fn info(cl: &dyn Cleaner) -> Value {
 }
 
 /// A RAW_TRANSCRIPT result holding `text`, as a server without an LLM
-/// returns it (the input of [`flow_core::refinish`]).
+/// returns it (the input of [`murmur_core::refinish`]).
 fn transcript(text: &str) -> Result<CommitResult, String> {
     serde_json::from_value(json!({
         "status": "RAW_TRANSCRIPT", "asr_text": text, "final_text": "", "language": null,
@@ -143,14 +143,14 @@ fn transcript(text: &str) -> Result<CommitResult, String> {
 }
 
 /// Runs one request on `core`'s cleaner; `{"error": …}` when it cannot.
-pub fn clean(core: &FlowCore, req_json: &str) -> Value {
+pub fn clean(core: &MurmurCore, req_json: &str) -> Value {
     match run(core, req_json) {
         Ok(v) => v,
         Err(e) => json!({ "error": e }),
     }
 }
 
-fn run(core: &FlowCore, req_json: &str) -> Result<Value, String> {
+fn run(core: &MurmurCore, req_json: &str) -> Result<Value, String> {
     let req: Request =
         serde_json::from_str(req_json).map_err(|e| format!("bad bench request: {e}"))?;
     let inner = core.cleaner().ok_or("no LLM loaded on this handle")?;
@@ -163,7 +163,7 @@ fn run(core: &FlowCore, req_json: &str) -> Result<Value, String> {
     let t = Instant::now();
     let mut out = match req.mode.as_deref().unwrap_or("prod") {
         "prod" => {
-            let r = flow_core::refinish(
+            let r = murmur_core::refinish(
                 &cfg,
                 &ctx,
                 Some(rec.clone() as Arc<dyn Cleaner>),
@@ -174,7 +174,7 @@ fn run(core: &FlowCore, req_json: &str) -> Result<Value, String> {
                    "core_llm_ms": r.timings.llm_ms})
         }
         "v4c" => {
-            ctx.app_category = flow_core::postprocess::effective_category(cfg.platform, &ctx);
+            ctx.app_category = murmur_core::postprocess::effective_category(cfg.platform, &ctx);
             let p = cleanup::build_prompt_versioned(
                 &req.input,
                 cfg.cleanup_level,
@@ -209,7 +209,7 @@ fn run(core: &FlowCore, req_json: &str) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use flow_core::asr::MockAsr;
+    use murmur_core::asr::MockAsr;
 
     struct Echo;
     impl Cleaner for Echo {
@@ -218,8 +218,8 @@ mod tests {
         }
     }
 
-    fn core(cl: Option<Arc<dyn Cleaner>>) -> FlowCore {
-        FlowCore::from_engines(Arc::new(MockAsr::new("x")), cl)
+    fn core(cl: Option<Arc<dyn Cleaner>>) -> MurmurCore {
+        MurmurCore::from_engines(Arc::new(MockAsr::new("x")), cl)
     }
 
     fn req(mode: &str, input: &str) -> String {

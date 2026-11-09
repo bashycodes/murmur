@@ -1,4 +1,4 @@
-# Your own server (flow-server)
+# Your own server (murmur-server)
 
 One Linux machine does the dictation for your PCs and phones and hands the
 models to the apps. It listens only on your network and accepts only
@@ -7,12 +7,12 @@ loopback, LAN and VPN addresses. It never stores audio or text.
 ## What you need
 
 * Docker on a Linux machine (x86_64, 4 GB RAM free).
-* The Flow Clone source: `git clone` of the repo, or the source archive of
-  a release (GitHub → Releases → *Source code*), unpacked. With a Flow
-  Clone bundle you can skip the build (below).
+* The Murmur source: `git clone` of the repo, or the source archive of
+  a release (GitHub → Releases → *Source code*), unpacked. With a Murmur
+  bundle you can skip the build (below).
 * A **models folder**: one folder per model, each with a small
   `model.toml` label. Either
-  * the `library/` folder of a Flow Clone bundle's speech-models zip (and
+  * the `library/` folder of a Murmur bundle's speech-models zip (and
     its cleanup zip unzipped into the same place), as it is, or
   * the folder the download loop in [`air-gapped.md`](air-gapped.md)
     ("Download the models") makes.
@@ -26,26 +26,26 @@ loopback, LAN and VPN addresses. It never stores audio or text.
 From the source folder:
 
 ```sh
-docker build -t flow-server -f deploy/docker/Dockerfile .
-docker volume create flow_data
-docker run -d --name flow-server --restart unless-stopped -p 0.0.0.0:7313:7313 \
-  -v /path/to/models:/models:ro -v flow_data:/data flow-server
-docker exec flow-server cat /data/admin.token
+docker build -t murmur-server -f deploy/docker/Dockerfile .
+docker volume create murmur_data
+docker run -d --name murmur-server --restart unless-stopped -p 0.0.0.0:7313:7313 \
+  -v /path/to/models:/models:ro -v murmur_data:/data murmur-server
+docker exec murmur-server cat /data/admin.token
 ```
 
 The build compiles the server (10-15 minutes the first time). The last
 command shows the admin key: treat it like a password. The log
-(`docker logs -f flow-server`) names the models it picked, then, about a
+(`docker logs -f murmur-server`) names the models it picked, then, about a
 minute later, says `ready`.
 
-**With a Flow Clone bundle:** its `docker/` folder has the image, so
-there is nothing to build: `docker load -i docker/flow-server-image-<version>.tar`,
+**With a Murmur bundle:** its `docker/` folder has the image, so
+there is nothing to build: `docker load -i docker/murmur-server-image-<version>.tar`,
 then the same `docker volume create` and `docker run` (the image is called
-`flow-server`). Or unpack `docker/flow-server-source-<version>.tar.gz` and
+`murmur-server`). Or unpack `docker/murmur-server-source-<version>.tar.gz` and
 run the `docker build` above in it.
 
 Docker Compose does the same:
-`FLOW_MODELS_PATH=/path/to/models docker compose -f deploy/docker-compose.yml up -d --build`.
+`MURMUR_MODELS_PATH=/path/to/models docker compose -f deploy/docker-compose.yml up -d --build`.
 
 ## Connect your app
 
@@ -65,16 +65,16 @@ a firewall fails to connect.
 ## Everyday commands
 
 ```sh
-docker exec flow-server flow-server keys add alice-phone   # a new key, shown once
-docker exec flow-server flow-server keys list
-docker exec flow-server flow-server keys revoke alice-phone
-docker exec flow-server flow-server library list           # models the apps can download
-docker logs flow-server                                    # what it is doing
+docker exec murmur-server murmur-server keys add alice-phone   # a new key, shown once
+docker exec murmur-server murmur-server keys list
+docker exec murmur-server murmur-server keys revoke alice-phone
+docker exec murmur-server murmur-server library list           # models the apps can download
+docker logs murmur-server                                    # what it is doing
 ```
 
 Update: get the newer source, run the `docker build` again, then
-`docker rm -f flow-server` and the same `docker run`. Keys stay in
-`flow_data`; models stay in your folder.
+`docker rm -f murmur-server` and the same `docker run`. Keys stay in
+`murmur_data`; models stay in your folder.
 
 ## Safety
 

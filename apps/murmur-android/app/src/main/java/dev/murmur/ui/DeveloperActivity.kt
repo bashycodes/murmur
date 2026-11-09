@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.app.Activity
 import android.app.AlertDialog
@@ -12,25 +12,25 @@ import android.widget.TextView
 import android.widget.Toast
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
-import dev.flowclone.FlowApp
-import dev.flowclone.R
-import dev.flowclone.core.CommitStatus
-import dev.flowclone.core.CoreException
-import dev.flowclone.core.DevText
-import dev.flowclone.core.HealthReport
-import dev.flowclone.core.NativeFlowCore
-import dev.flowclone.core.ParakeetDecoding
-import dev.flowclone.core.SessionConfig
-import dev.flowclone.data.CloudText
-import dev.flowclone.data.OpenRouter
-import dev.flowclone.data.CustomServer
-import dev.flowclone.data.DevDraft
-import dev.flowclone.data.DevPages
-import dev.flowclone.data.DevPages.Page
-import dev.flowclone.data.DevSettings
-import dev.flowclone.data.DevSettingsForm
-import dev.flowclone.data.DevSettingsForm.Field
-import dev.flowclone.data.DevSummary
+import dev.murmur.MurmurApp
+import dev.murmur.R
+import dev.murmur.core.CommitStatus
+import dev.murmur.core.CoreException
+import dev.murmur.core.DevText
+import dev.murmur.core.HealthReport
+import dev.murmur.core.NativeMurmurCore
+import dev.murmur.core.ParakeetDecoding
+import dev.murmur.core.SessionConfig
+import dev.murmur.data.CloudText
+import dev.murmur.data.OpenRouter
+import dev.murmur.data.CustomServer
+import dev.murmur.data.DevDraft
+import dev.murmur.data.DevPages
+import dev.murmur.data.DevPages.Page
+import dev.murmur.data.DevSettings
+import dev.murmur.data.DevSettingsForm
+import dev.murmur.data.DevSettingsForm.Field
+import dev.murmur.data.DevSummary
 import java.text.DateFormat
 import java.util.Date
 import kotlin.concurrent.thread
@@ -53,7 +53,7 @@ import kotlin.concurrent.thread
  * ([DevDraft], [DevSettingsForm]); settings apply from the next dictation.
  */
 class DeveloperActivity : Activity() {
-    private val app get() = FlowApp.of(this)
+    private val app get() = MurmurApp.of(this)
     private val caps get() = app.caps
     private lateinit var ui: DevUi
     private lateinit var page: Page
@@ -164,7 +164,7 @@ class DeveloperActivity : Activity() {
 
             sectionLabel("DICTATION")
             card {
-                val speech = navRow(R.drawable.ic_dev_route, "Speech to text", "") { SettingsActivity.open(this@DeveloperActivity, dev.flowclone.data.SettingsPages.Page.SPEECH) }
+                val speech = navRow(R.drawable.ic_dev_route, "Speech to text", "") { SettingsActivity.open(this@DeveloperActivity, dev.murmur.data.SettingsPages.Page.SPEECH) }
                 val engines = navRow(R.drawable.ic_dev_engine, TITLES.getValue(Page.ENGINES)) { open(Page.ENGINES) }
                 refreshers += {
                     speech.setSubtitle("Engines and order · " + DevSummary.routing(app.dev.load(), caps))
@@ -196,7 +196,7 @@ class DeveloperActivity : Activity() {
 
             sectionLabel("BUILD")
             card {
-                infoRow("Version", dev.flowclone.data.AppVersion.current.detail())
+                infoRow("Version", dev.murmur.data.AppVersion.current.detail())
                 infoRow("Flavour · native library", "${caps.flavor} · ${capabilitiesLine()}")
                 navRow(R.drawable.ic_dev_reset, "Reset to defaults", "Developer settings and the OpenRouter key", danger = true, chevron = false) { confirmResetDefaults() }
                 if (!caps.remote) navRow(R.drawable.ic_dev_lock, "Lock", "Hide Developer settings again", chevron = false) {
@@ -211,7 +211,7 @@ class DeveloperActivity : Activity() {
     private fun open(p: Page) = open(this, p)
 
     private fun probeIntent(): Intent? = Intent().setClassName(this, PROBE_ACTIVITY)
-        .takeIf { dev.flowclone.BuildConfig.DEBUG && packageManager.resolveActivity(it, 0) != null }
+        .takeIf { dev.murmur.BuildConfig.DEBUG && packageManager.resolveActivity(it, 0) != null }
 
     /**
      * D28 one-time notice (another provider was removed / the model changed) until dismissed.
@@ -267,7 +267,7 @@ class DeveloperActivity : Activity() {
                 app.dev.parakeetDecodingOverride,
             ) { m ->
                 app.dev.parakeetDecodingOverride = m
-                if (app.settings.load().asrEngine == dev.flowclone.core.AsrEngine.PARAKEET) app.engine.reload()
+                if (app.settings.load().asrEngine == dev.murmur.core.AsrEngine.PARAKEET) app.engine.reload()
                 Toast.makeText(this@DeveloperActivity, "Parakeet decoding: ${decodingLabel(m)}", Toast.LENGTH_SHORT).show()
             }
         }
@@ -288,7 +288,7 @@ class DeveloperActivity : Activity() {
                 ((if (ok) "OK: " else "Unexpected: ") + DevText.lastDictation(r)) to ok
             } catch (e: CoreException) {
                 app.debugLog.event("test_session", e.message, e)
-                "Failed: ${dev.flowclone.core.RouterErrors.userMessage(e.kind, e.message ?: "error")}" to false
+                "Failed: ${dev.murmur.core.RouterErrors.userMessage(e.kind, e.message ?: "error")}" to false
             }
             runOnUiThread { line.show(text, if (ok) Tone.OK else Tone.BAD); refresh() }
         }
@@ -327,7 +327,7 @@ class DeveloperActivity : Activity() {
             }
             sectionLabel("AUTHENTICATION")
             card {
-                token = secretRow("Token", s.token, "From `flow-server gen-token`, at least ${DevSettings.MIN_TOKEN_LEN} characters", "token", onEdit = edit)
+                token = secretRow("Token", s.token, "From `murmur-server gen-token`, at least ${DevSettings.MIN_TOKEN_LEN} characters", "token", onEdit = edit)
             }
             sectionLabel("TIMEOUTS")
             card {
@@ -360,7 +360,7 @@ class DeveloperActivity : Activity() {
         probeResult?.show("Testing ${s.host}:${s.port}…")
         val json = s.effective(caps).toServerConfigJson().toString()
         thread(name = "dev-probe") {
-            val h = NativeFlowCore.probeServer(json)
+            val h = NativeMurmurCore.probeServer(json)
             if (!h.ok) app.debugLog.event("server_probe", DevText.probe(h)) else rememberServerModel(h)
             runOnUiThread { lastProbe = h; probeResult?.show(DevText.probe(h), if (h.ok) Tone.OK else Tone.BAD); refresh() }
         }
@@ -384,7 +384,7 @@ class DeveloperActivity : Activity() {
             sectionLabel("DEBUG LOG")
             card {
                 debugToggle = toggleRow("Debug log", "Includes transcripts", app.dev.debugLog)
-                note("Writes what you dictate, the app it went to and the timings to this phone's log (logcat tag FlowDebug) and to a file in the app's storage. Nothing is sent anywhere unless you tap Share.")
+                note("Writes what you dictate, the app it went to and the timings to this phone's log (logcat tag MurmurDebug) and to a file in the app's storage. Nothing is sent anywhere unless you tap Share.")
                 debugCount = infoRow("Entries")
                 chipRow(
                     chip("View") { onViewDebugLog() }.apply { contentDescription = "View the debug log" },
@@ -394,10 +394,10 @@ class DeveloperActivity : Activity() {
             }
             sectionLabel("DICTATION AUDIO")
             card {
-                val keep = toggleRow("Keep last dictation audio", "Debug: WAVs of the last ${dev.flowclone.debug.DebugAudioStore.MAX_FILES} dictations", app.dev.keepDebugAudio)
+                val keep = toggleRow("Keep last dictation audio", "Debug: WAVs of the last ${dev.murmur.debug.DebugAudioStore.MAX_FILES} dictations", app.dev.keepDebugAudio)
                 note(
                     "Saved in the app's private storage (files/debug/audio/), named like the debug log's ts and linked from its \"audio\" field. " +
-                        "Never for password fields, banking or excluded apps. Deleted after ${dev.flowclone.debug.DebugAudioStore.MAX_AGE_MS / 3_600_000} hours. Nothing is sent anywhere.",
+                        "Never for password fields, banking or excluded apps. Deleted after ${dev.murmur.debug.DebugAudioStore.MAX_AGE_MS / 3_600_000} hours. Nothing is sent anywhere.",
                 )
                 audioCount = infoRow("Files")
                 chipRow(chip("Clear audio") { clearDebugAudio() }.apply { contentDescription = "Clear kept dictation audio" })
@@ -448,7 +448,7 @@ class DeveloperActivity : Activity() {
             val n = runCatching { app.debugFile.size() }.getOrDefault(0)
             val errs = app.debugLog.errors.get(); val dropped = app.debugLog.dropped.get()
             val extra = listOfNotNull(errs.takeIf { it > 0 }?.let { "$it write errors" }, dropped.takeIf { it > 0 }?.let { "$it dropped" })
-            val line = "$n entries (newest ${dev.flowclone.debug.DebugLogFile.MAX_ENTRIES} kept)" + extra.joinToString("") { " · $it" } +
+            val line = "$n entries (newest ${dev.murmur.debug.DebugLogFile.MAX_ENTRIES} kept)" + extra.joinToString("") { " · $it" } +
                 if (app.dev.debugLog) "" else " · logging off"
             runOnUiThread { v.text = line }
         }
@@ -456,7 +456,7 @@ class DeveloperActivity : Activity() {
 
     private fun onViewDebugLog() {
         thread(name = "dev-debug-view") {
-            val rows = runCatching { app.debugFile.newestFirst().map(dev.flowclone.debug.DebugFormat::summary) }.getOrElse { listOf("Could not read the log: ${it.message}") }
+            val rows = runCatching { app.debugFile.newestFirst().map(dev.murmur.debug.DebugFormat::summary) }.getOrElse { listOf("Could not read the log: ${it.message}") }
             runOnUiThread {
                 if (isFinishing) return@runOnUiThread
                 val tv = TextView(this).apply {
@@ -519,7 +519,7 @@ class DeveloperActivity : Activity() {
             card { info = infoRow("Server") }
             sectionLabel("BUILD")
             card {
-                infoRow("Version", dev.flowclone.data.AppVersion.current.detail())
+                infoRow("Version", dev.murmur.data.AppVersion.current.detail())
                 infoRow("Flavour · native library", "${caps.flavor} · ${capabilitiesLine()}")
             }
             refreshers += {
@@ -553,8 +553,8 @@ class DeveloperActivity : Activity() {
     }
 
     private fun capabilitiesLine(): String {
-        val c = NativeFlowCore.capabilities() ?: return "native library not loaded"
-        val cc = NativeFlowCore.cloudCapabilities()
+        val c = NativeMurmurCore.capabilities() ?: return "native library not loaded"
+        val cc = NativeMurmurCore.cloudCapabilities()
         val mismatch = if (c.local != caps.local || c.remote != caps.remote || cc.cloud != caps.cloud) " · ⚠ native library flavour mismatch" else ""
         return "native: local=${c.local} remote=${c.remote} cloud=${cc.cloud} asr=${c.asrEngines.joinToString("/").ifEmpty { "-" }} llm=${c.llm} proto=${c.proto} core ${c.coreVersion}$mismatch"
     }
@@ -638,7 +638,7 @@ class DeveloperActivity : Activity() {
 
     companion object {
         const val EXTRA_PAGE = "page"
-        private const val PROBE_ACTIVITY = "dev.flowclone.probe.EnglishProbeActivity"
+        private const val PROBE_ACTIVITY = "dev.murmur.probe.EnglishProbeActivity"
 
         val TITLES = mapOf(
             Page.HUB to "Developer settings", Page.ENGINES to "Engine options", Page.SERVER to "Server",

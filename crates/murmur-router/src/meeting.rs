@@ -6,13 +6,13 @@
 //! cancels any open dictation and vice versa. A shell that dictates while
 //! a meeting runs gives the meeting its own `Router` (and local engine).
 
-pub use flow_core::meeting::{
+pub use murmur_core::meeting::{
     chunk_session, clock, transcribe_pcm, transcribe_stream, CancelHandle, ChunkTranscriber,
     MeetingError, MeetingParams, MeetingTranscriber, Progress, Segment, Transcript,
 };
 
-use flow_core::config::SessionConfig;
-use flow_core::CommitResult;
+use murmur_core::config::SessionConfig;
+use murmur_core::CommitResult;
 
 use crate::Router;
 

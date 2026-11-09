@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Hebrew STT latency through the installed flow_whisper_vulkan.dll (dated probe, 2026-11-02;
-runs ON the laptop). Drives the plugin's C ABI (crates/flow-whisper/src/lib.rs, ABI v1) with
+"""Hebrew STT latency through the installed murmur_whisper_vulkan.dll (dated probe, 2026-11-02;
+runs ON the laptop). Drives the plugin's C ABI (crates/murmur-whisper/src/lib.rs, ABI v1) with
 ctypes, the same calls the app makes (core_adapter::whisper_engine: fit_ctx false, the app's
 default thread count), so the decode is the app's own. One resident engine, clips one after
-another, so latency = flow_whisper_transcribe wall time (no model load, no process start).
+another, so latency = murmur_whisper_transcribe wall time (no model load, no process start).
 
-  python plugin_bench.py --dll "<install>/flow_whisper_vulkan.dll" --model M.bin \
+  python plugin_bench.py --dll "<install>/murmur_whisper_vulkan.dll" --model M.bin \
       --audio audio-he --manifest he_manifest.json [--ids a,b,...] [--limit N] --out x.jsonl
-  FLOW_WHISPER_DEVICE=cpu forces the plugin's CPU path (set it in the environment).
+  MURMUR_WHISPER_DEVICE=cpu forces the plugin's CPU path (set it in the environment).
 
-Some FLEURS he recordings sit under the app's silence gate (RMS < 0.003, flow-core
+Some FLEURS he recordings sit under the app's silence gate (RMS < 0.003, murmur-core
 whisper.rs SILENCE_RMS), where the engine returns "" without decoding. Those clips are
 scaled to RMS 0.05 unless --no-lift (the row records rms + gain).
 
@@ -63,20 +63,20 @@ def main():
 
     os.add_dll_directory(str(pathlib.Path(a.dll).parent))
     L = ctypes.CDLL(a.dll)
-    L.flow_whisper_abi_version.restype = ctypes.c_uint32
-    L.flow_whisper_backends.restype = ctypes.c_void_p
-    L.flow_whisper_load.restype = ctypes.c_void_p
-    L.flow_whisper_load.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_void_p)]
-    L.flow_whisper_info.restype = ctypes.c_void_p
-    L.flow_whisper_info.argtypes = [ctypes.c_void_p]
-    L.flow_whisper_transcribe.restype = ctypes.c_int32
-    L.flow_whisper_transcribe.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t,
+    L.murmur_whisper_abi_version.restype = ctypes.c_uint32
+    L.murmur_whisper_backends.restype = ctypes.c_void_p
+    L.murmur_whisper_load.restype = ctypes.c_void_p
+    L.murmur_whisper_load.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_void_p)]
+    L.murmur_whisper_info.restype = ctypes.c_void_p
+    L.murmur_whisper_info.argtypes = [ctypes.c_void_p]
+    L.murmur_whisper_transcribe.restype = ctypes.c_int32
+    L.murmur_whisper_transcribe.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t,
                                           ctypes.c_char_p, ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p)]
-    L.flow_whisper_free_string.argtypes = [ctypes.c_void_p]
+    L.murmur_whisper_free_string.argtypes = [ctypes.c_void_p]
 
     def take(p):
         s = ctypes.string_at(p).decode("utf-8", "replace")
-        L.flow_whisper_free_string(p)
+        L.murmur_whisper_free_string(p)
         return s
 
     out = open(a.out, "w", encoding="utf-8")
@@ -86,15 +86,15 @@ def main():
         out.flush()
         print(json.dumps({k: v for k, v in row.items() if k != "hyp"})[:300], flush=True)
 
-    emit({"kind": "env", "abi": L.flow_whisper_abi_version(), "backends": json.loads(take(L.flow_whisper_backends())),
-          "FLOW_WHISPER_DEVICE": os.environ.get("FLOW_WHISPER_DEVICE"), "threads": a.threads})
+    emit({"kind": "env", "abi": L.murmur_whisper_abi_version(), "backends": json.loads(take(L.murmur_whisper_backends())),
+          "MURMUR_WHISPER_DEVICE": os.environ.get("MURMUR_WHISPER_DEVICE"), "threads": a.threads})
     err = ctypes.c_void_p()
     opts = json.dumps({"threads": a.threads, "fit_ctx": False, "vad_model": None}).encode()
-    h = L.flow_whisper_load(a.model.encode(), opts, ctypes.byref(err))
+    h = L.murmur_whisper_load(a.model.encode(), opts, ctypes.byref(err))
     if not h:
         emit({"kind": "load_error", "error": take(err.value)})
         sys.exit(1)
-    info = json.loads(take(L.flow_whisper_info(h)))
+    info = json.loads(take(L.murmur_whisper_info(h)))
     emit({"kind": "info", **info})
 
     m = json.load(open(a.manifest, encoding="utf-8"))["utterances"]
@@ -109,7 +109,7 @@ def main():
         buf, n, rms, gain = pcm(a.audio / f"{u['id']}.wav", not a.no_lift)
         o = ctypes.c_void_p()
         t0 = time.perf_counter()
-        rc = L.flow_whisper_transcribe(h, buf, n, req, None, ctypes.byref(o))
+        rc = L.murmur_whisper_transcribe(h, buf, n, req, None, ctypes.byref(o))
         ms = (time.perf_counter() - t0) * 1000
         s = take(o.value)
         if rc != 0:

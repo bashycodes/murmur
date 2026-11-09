@@ -1,16 +1,16 @@
-package dev.flowclone.session
+package dev.murmur.session
 
-import dev.flowclone.command.CommandRecord
-import dev.flowclone.command.CommandTarget
-import dev.flowclone.command.SelectionSnapshot
-import dev.flowclone.core.CommandOutcome
-import dev.flowclone.core.CommitResult
-import dev.flowclone.core.FakeFlowCore
-import dev.flowclone.core.FieldContext
-import dev.flowclone.core.SessionConfig
-import dev.flowclone.debug.DictationTrace
-import dev.flowclone.debug.InsertOutcome
-import dev.flowclone.session.DictationState.ErrorKind
+import dev.murmur.command.CommandRecord
+import dev.murmur.command.CommandTarget
+import dev.murmur.command.SelectionSnapshot
+import dev.murmur.core.CommandOutcome
+import dev.murmur.core.CommitResult
+import dev.murmur.core.FakeMurmurCore
+import dev.murmur.core.FieldContext
+import dev.murmur.core.SessionConfig
+import dev.murmur.debug.DictationTrace
+import dev.murmur.debug.InsertOutcome
+import dev.murmur.session.DictationState.ErrorKind
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -64,7 +64,7 @@ class CommandModeTest {
 
     private val audio = FakeAudio()
     private val host = Host()
-    private val core = FakeFlowCore(transcript = "make it shorter")
+    private val core = FakeMurmurCore(transcript = "make it shorter")
 
     private fun TestScope.settle() { advanceTimeBy(1_000); runCurrent() }
 
@@ -128,7 +128,7 @@ class CommandModeTest {
     }
 
     @Test fun noAiLeavesTheTextUntouchedWithAClearMessage() = runTest {
-        val c = controller() // FakeFlowCore without a reply = no LLM
+        val c = controller() // FakeMurmurCore without a reply = no LLM
         speakCommand(c)
         assertEquals(DictationState.Error(ErrorKind.CommandFailed(CommandOutcome.NO_LLM_MESSAGE)), c.state.value)
         assertTrue(FeedbackEvent.CommandFailed in host.events)

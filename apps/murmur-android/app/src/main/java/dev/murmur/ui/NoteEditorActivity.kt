@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.app.Activity
 import android.content.Context
@@ -14,12 +14,12 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import dev.flowclone.FlowApp
-import dev.flowclone.R
-import dev.flowclone.notes.Autosaver
-import dev.flowclone.notes.DocumentStore
-import dev.flowclone.notes.NotesView
-import dev.flowclone.notes.TextStats
+import dev.murmur.MurmurApp
+import dev.murmur.R
+import dev.murmur.notes.Autosaver
+import dev.murmur.notes.DocumentStore
+import dev.murmur.notes.NotesView
+import dev.murmur.notes.TextStats
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.SupervisorJob
@@ -28,14 +28,14 @@ import kotlinx.coroutines.SupervisorJob
  * One plain-text note to dictate into, edit and copy out: the Quick note
  * ([DocumentStore.SCRATCHPAD], main screen → *Quick note*, or its launcher shortcut) or any note
  * from [NotesActivity] ([EXTRA_DOC]). [ACTION_NEW_NOTE] (*New note* in Notes and the launcher
- * shortcut) opens a fresh id from [dev.flowclone.notes.NotesStore.newId]; nothing is written until
+ * shortcut) opens a fresh id from [dev.murmur.notes.NotesStore.newId]; nothing is written until
  * there is text, so backing out of an untouched new note leaves no empty note behind. The id is
  * kept across recreation (rotation, process death).
  *
  * Dictation: the field is an ordinary EditText, so the bubble and the accessibility service type
  * into it like into any other app. While this screen is in front it registers itself as
- * [FlowApp.dictationSurface], the one exception to "no bubble on our own screens"
- * ([dev.flowclone.policy.OwnAppGate]). Nothing here inserts dictated text itself, so a
+ * [MurmurApp.dictationSurface], the one exception to "no bubble on our own screens"
+ * ([dev.murmur.policy.OwnAppGate]). Nothing here inserts dictated text itself, so a
  * dictation goes in once, through the same commitText path as everywhere else. A new note does
  * not start recording by itself: the mic session belongs to the bubble's service and starts from
  * a bubble tap (starting it from here would need a new service entry point and a mic start
@@ -47,7 +47,7 @@ import kotlinx.coroutines.SupervisorJob
  * word count, and the text on a white 24 dp card (no artboard of its own; Android*.dc.html parts).
  */
 class NoteEditorActivity : Activity() {
-    private val app get() = FlowApp.of(this)
+    private val app get() = MurmurApp.of(this)
     private lateinit var docId: String
     private lateinit var edit: EditText
     private lateinit var count: TextView
@@ -56,7 +56,7 @@ class NoteEditorActivity : Activity() {
     /** Swapping in another note's text ([onNewIntent]): not an edit. */
     private var loading = false
 
-    /** On [FlowApp.documentsIo]; not cancelled on destroy: the last flush must still reach the disk. */
+    /** On [MurmurApp.documentsIo]; not cancelled on destroy: the last flush must still reach the disk. */
     private val io by lazy { CoroutineScope(SupervisorJob() + app.documentsIo.asCoroutineDispatcher()) }
 
     /** The note open right now (tests). */
@@ -222,7 +222,7 @@ class NoteEditorActivity : Activity() {
         /** Screen title (default [TITLE] for the Quick note, [NOTE_TITLE] for other notes). */
         const val EXTRA_TITLE = "title"
         /** Open a fresh note (res/xml/shortcuts.xml names this action too). */
-        const val ACTION_NEW_NOTE = "dev.flowclone.action.NEW_NOTE"
+        const val ACTION_NEW_NOTE = "dev.murmur.action.NEW_NOTE"
         const val TITLE = NotesView.QUICK_NOTE
         const val NOTE_TITLE = "Note"
         private const val STATE_DOC = "doc_id"

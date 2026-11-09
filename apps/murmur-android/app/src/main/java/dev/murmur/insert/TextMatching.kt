@@ -1,6 +1,6 @@
-package dev.flowclone.insert
+package dev.murmur.insert
 
-import dev.flowclone.policy.PolicyLists
+import dev.murmur.policy.PolicyLists
 import java.text.Normalizer
 
 /** Verification / node-write matching rules. Pure functions. */

@@ -47,7 +47,7 @@ pub struct AppInfo {
     pub bucket: Bucket,
     pub is_terminal: bool,
     pub is_notion: bool,
-    pub is_flow_app: bool,
+    pub is_murmur_app: bool,
 }
 
 impl AppInfo {
@@ -111,7 +111,7 @@ pub fn classify(platform: Platform, bundle: &str, url: &str) -> AppInfo {
                 bucket,
                 is_terminal,
                 is_notion,
-                is_flow_app: groups::windows("flow").app(bundle),
+                is_murmur_app: groups::windows("murmur").app(bundle),
             }
         }
         Platform::Android => {
@@ -137,7 +137,7 @@ pub fn classify(platform: Platform, bundle: &str, url: &str) -> AppInfo {
                 bucket,
                 is_terminal: groups::android("terminal").app(bundle),
                 is_notion,
-                is_flow_app: false,
+                is_murmur_app: false,
             }
         }
     }
@@ -170,8 +170,8 @@ mod tests {
         }
         assert!(win("slack.exe").is_messaging);
         assert!(win("Slack.EXE").is_messaging);
-        assert!(win("murmur.exe").is_flow_app);
-        assert!(win("Flow-Windows.exe").is_flow_app);
+        assert!(win("murmur.exe").is_murmur_app);
+        assert!(win("Murmur-Windows.exe").is_murmur_app);
         assert!(!win("notepad.exe").is_messaging);
         assert_eq!(win("notepad.exe").category(), AppCategory::Other);
     }
@@ -192,6 +192,6 @@ mod tests {
                 "{id} {host}"
             );
         }
-        assert!(!classify(Platform::Android, "dev.flowclone", "").is_flow_app);
+        assert!(!classify(Platform::Android, "dev.murmur", "").is_murmur_app);
     }
 }

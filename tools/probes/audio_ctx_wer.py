@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Score crates/flow-core/tests/audio_ctx_bench.rs output (dated probe,
+"""Score crates/murmur-core/tests/audio_ctx_bench.rs output (dated probe,
 2026-10-22): WER and total ASR time per (model, fit_ctx), plus the clips
 whose WER changed between the full window and audio_ctx.
 

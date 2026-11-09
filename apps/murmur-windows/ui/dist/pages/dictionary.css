@@ -46,7 +46,7 @@
   flex: 1;
 }
 
-/* ---- tabs (Flow design system .fl-tabs, not yet in components.css) ---- */
+/* ---- tabs (Murmur design system .fl-tabs, not yet in components.css) ---- */
 .lw-dict .fl-tabs {
   display: flex;
   align-items: center;

@@ -1,6 +1,6 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.data.ModelPages.Screen
+import dev.murmur.data.ModelPages.Screen
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -17,7 +17,7 @@ class ModelPagesTest {
         }
     }
 
-    /** The AI cleanup list is the one flow-core's llm_e2e measures (ModelFiles.LLM_RECOMMENDATIONS). */
+    /** The AI cleanup list is the one murmur-core's llm_e2e measures (ModelFiles.LLM_RECOMMENDATIONS). */
     @Test fun aiCleanupRecommendationsAreTheMeasuredPair() {
         assertEquals(ModelFiles.LLM_RECOMMENDATIONS.map { it.file to it.url }, ModelPages.recommended(Screen.LLM).map { it.file to it.url })
     }

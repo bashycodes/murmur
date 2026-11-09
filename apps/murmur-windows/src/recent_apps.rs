@@ -2,7 +2,7 @@
 //!
 //! Only exe names are kept (`slack.exe`): no window titles, no text, no
 //! times. Newest first, at most [`MAX_RECENT`]. Stored in
-//! `%APPDATA%\FlowClone\recent_apps.json`, written atomically like
+//! `%APPDATA%\Murmur\recent_apps.json`, written atomically like
 //! `prefs.json`, and only when the order changes (dictating into the same
 //! app again writes nothing).
 
@@ -224,7 +224,7 @@ mod tests {
 
     #[test]
     fn store_round_trips_and_skips_unchanged_writes() {
-        let d = std::env::temp_dir().join(format!("flow-recent-{}", std::process::id()));
+        let d = std::env::temp_dir().join(format!("murmur-recent-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         let p = d.join(FILE_NAME);
         let mut st = RecentAppStore::open(&p);

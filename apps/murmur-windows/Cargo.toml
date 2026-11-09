@@ -1,5 +1,5 @@
 [package]
-name = "flow-windows"
+name = "murmur-windows"
 version = "1.1.2"
 edition = "2021"
 description = "Windows shell (Tauri 2) of the dictation app"
@@ -7,7 +7,7 @@ license-file = "../../COPYRIGHT"
 publish = false
 
 # Standalone workspace root (Tauri + Win32 deps stay out of the core
-# workspace's lockfile); flow-core comes in as a path dependency.
+# workspace's lockfile); murmur-core comes in as a path dependency.
 [workspace]
 
 # whisper.cpp is unusably slow unoptimised (same as the root workspace).
@@ -15,11 +15,11 @@ publish = false
 opt-level = 3
 
 [lib]
-name = "flow_windows"
+name = "murmur_windows"
 path = "src/lib.rs"
 
 [[bin]]
-name = "flow-windows"
+name = "murmur-windows"
 path = "src/main.rs"
 required-features = ["app"]
 
@@ -28,29 +28,29 @@ required-features = ["app"]
 #   client-only: --no-default-features --features local,app
 #   server-only: --no-default-features --features remote,app
 default = ["local", "remote", "tls", "cloud", "download"]
-# On-device ASR ("client"): the FlowCoreAdapter local backend + whisper.
+# On-device ASR ("client"): the MurmurCoreAdapter local backend + whisper.
 local = ["whisper"]
 # The local backend without a native ASR engine: what the MSVC cross-check
 # builds (whisper.cpp/sherpa can't cross-compile from Linux).
 local-engine = []
-# Real local ASR (whisper.cpp via flow-core). Separate from `app` because
+# Real local ASR (whisper.cpp via murmur-core). Separate from `app` because
 # whisper-rs-sys' cmake/C++ build cannot cross-compile to MSVC from Linux:
 # the Linux cross-check runs `--no-default-features --features app`.
-whisper = ["local-engine", "flow-core/whisper"]
+whisper = ["local-engine", "murmur-core/whisper"]
 # Parakeet-TDT (D12) via sherpa-onnx: links sherpa-onnx-c-api + onnxruntime
 # (SHERPA_ONNX_LIB_DIR at build time; the DLLs ship next to the exe).
-parakeet = ["local-engine", "flow-core/parakeet"]
-# Self-hosted flow-server over WebSocket ("server"): the only network code.
+parakeet = ["local-engine", "murmur-core/parakeet"]
+# Self-hosted murmur-server over WebSocket ("server"): the only network code.
 # Also the server's model library (D41): with a server set, model
 # downloads come from it instead of Hugging Face (src/server_library.rs).
-remote = ["dep:flow-remote", "flow-remote/library"]
+remote = ["dep:murmur-remote", "murmur-remote/library"]
 # wss:// to a server outside your LAN/VPN (rustls + ring). In the default
 # build; separate so the Linux MSVC cross-check can leave ring's C out.
-tls = ["remote", "flow-remote/tls"]
+tls = ["remote", "murmur-remote/tls"]
 # Opt-in third-party cloud speech-to-text (D18, docs/cloud-stt.md): HTTPS
 # (reqwest + rustls) to the provider the user configured. In the default
 # (hybrid) build only; never in `local,app` (tools/check-build-matrix.sh).
-cloud = ["dep:flow-cloud"]
+cloud = ["dep:murmur-cloud"]
 # Speech-model downloader (D31): HTTPS to Hugging Face, only when the user
 # presses Download for a catalogue model (src/model_download.rs). In the
 # default (hybrid) build; never in `local,app` (no network code there).
@@ -63,27 +63,27 @@ app = ["dep:tauri", "dep:tauri-build"]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 base64 = "0.22"
-# `llm` = only a libloading loader for the flow_llm plugin (llama.cpp lives
+# `llm` = only a libloading loader for the murmur_llm plugin (llama.cpp lives
 # in that separate DLL, docs/DECISIONS.md D10), so it is always on and
 # cross-checks for MSVC like any pure-Rust crate. `whisper-plugin` = the
-# same for the GPU whisper.cpp (flow_whisper_vulkan.dll, crate flow-whisper).
-flow-build-info = { path = "../../crates/flow-build-info" }
-flow-core = { path = "../../crates/flow-core", features = ["llm", "whisper-plugin", "wav"] }
+# same for the GPU whisper.cpp (murmur_whisper_vulkan.dll, crate murmur-whisper).
+murmur-build-info = { path = "../../crates/murmur-build-info" }
+murmur-core = { path = "../../crates/murmur-core", features = ["llm", "whisper-plugin", "wav"] }
 # Meeting recordings (Notetaker, D45): the two streams are written as WAVs
-# while recording and read back block by block (flow-core `wav`). Pure Rust.
+# while recording and read back block by block (murmur-core `wav`). Pure Rust.
 hound = "3"
 # Local history (audio is never stored). `bundled` = no system sqlite needed.
 # D17: every dictation goes through the router (no network code in it;
 # the remote backend is injected by `remote`).
-flow-router = { path = "../../crates/flow-router" }
-flow-remote = { path = "../../crates/flow-remote", optional = true }
+murmur-router = { path = "../../crates/murmur-router" }
+murmur-remote = { path = "../../crates/murmur-remote", optional = true }
 # Wire types, no network code: model library (D40/D41, `server_library`)
 # and admin API (D39, Users & keys, always built; the client is
-# flow-remote's, behind `remote`).
-flow-protocol = { path = "../../crates/flow-protocol" }
-flow-cloud = { path = "../../crates/flow-cloud", optional = true }
+# murmur-remote's, behind `remote`).
+murmur-protocol = { path = "../../crates/murmur-protocol" }
+murmur-cloud = { path = "../../crates/murmur-cloud", optional = true }
 rusqlite = { version = "0.32", features = ["bundled"] }
-# Model downloader (feature `download`, D31): same client stack as flow-cloud.
+# Model downloader (feature `download`, D31): same client stack as murmur-cloud.
 reqwest = { version = "0.12", optional = true, default-features = false, features = ["blocking", "rustls-tls-webpki-roots"] }
 # Pinned SHA-256 of downloaded models (pure Rust, no network).
 sha2 = "0.10"
@@ -128,8 +128,8 @@ windows = { version = "0.58", features = [
 ] }
 
 [dev-dependencies]
-# tests/router_integration.rs: an in-process flow-server (MockAsr).
-flow-server = { path = "../../crates/flow-server", default-features = false }
+# tests/router_integration.rs: an in-process murmur-server (MockAsr).
+murmur-server = { path = "../../crates/murmur-server", default-features = false }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "macros"] }
-# tests/cloud_integration.rs: flow-cloud's in-process mock provider.
-flow-cloud = { path = "../../crates/flow-cloud", features = ["mock-server"] }
+# tests/cloud_integration.rs: murmur-cloud's in-process mock provider.
+murmur-cloud = { path = "../../crates/murmur-cloud", features = ["mock-server"] }

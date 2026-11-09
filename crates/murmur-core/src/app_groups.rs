@@ -1,6 +1,6 @@
 //! App groups: which apps get special handling (style bucket, insert
 //! checks, bubble rules), by app id and web host. One source,
-//! `data/app-groups.json`, for flow-core on both platforms, the Windows
+//! `data/app-groups.json`, for murmur-core on both platforms, the Windows
 //! app and (through a parity test) the Android `PolicyLists.kt`. Its
 //! `about` lines document the method and the public sources (D81).
 
@@ -149,7 +149,7 @@ pub const WINDOWS_GROUPS: &[&str] = &[
     "ai",
     "terminal",
     "document",
-    "flow",
+    "murmur",
 ];
 
 /// Lowercase exact app ids of a Windows group (for the Settings table).

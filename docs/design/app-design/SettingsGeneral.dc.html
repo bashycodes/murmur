@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <title>Settings: General</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="flow-theme.css">
-<link rel="stylesheet" href="ds/flow/components/bundle.css">
-<script src="ds/flow/components/bundle.js"></script>
+<link rel="stylesheet" href="murmur-theme.css">
+<link rel="stylesheet" href="ds/murmur/components/bundle.css">
+<script src="ds/murmur/components/bundle.js"></script>
 </head>
 <body>
 <x-dc>
@@ -45,23 +45,23 @@ a{color:#1a1a1a}a:hover{color:#30302f}
       <div class="fl-group">
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Push to talk</div><div class="fl-row-desc">Hold, speak, let go to paste.</div></div>
-          <div class="fl-row-control" style="gap: 12px; align-items: center;"><x-import component-from-global-scope="Flow.Kbd" keys="{{kPtt}}"></x-import><x-import component-from-global-scope="Flow.Button" variant="secondary" size="sm" style="width: 88px;">Change</x-import></div>
+          <div class="fl-row-control" style="gap: 12px; align-items: center;"><x-import component-from-global-scope="Murmur.Kbd" keys="{{kPtt}}"></x-import><x-import component-from-global-scope="Murmur.Button" variant="secondary" size="sm" style="width: 88px;">Change</x-import></div>
         </div>
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Hands-free</div><div class="fl-row-desc">Or double-tap push to talk. Stops by itself when you go quiet.</div></div>
-          <div class="fl-row-control" style="gap: 12px; align-items: center;"><x-import component-from-global-scope="Flow.Kbd" keys="{{kHands}}"></x-import><x-import component-from-global-scope="Flow.Button" variant="secondary" size="sm" style="width: 88px;">Change</x-import></div>
+          <div class="fl-row-control" style="gap: 12px; align-items: center;"><x-import component-from-global-scope="Murmur.Kbd" keys="{{kHands}}"></x-import><x-import component-from-global-scope="Murmur.Button" variant="secondary" size="sm" style="width: 88px;">Change</x-import></div>
         </div>
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Cancel</div></div>
-          <div class="fl-row-control" style="gap: 12px; align-items: center;"><x-import component-from-global-scope="Flow.Kbd" keys="{{kCancel}}"></x-import><x-import component-from-global-scope="Flow.Button" variant="secondary" size="sm" style="width: 88px;">Change</x-import></div>
+          <div class="fl-row-control" style="gap: 12px; align-items: center;"><x-import component-from-global-scope="Murmur.Kbd" keys="{{kCancel}}"></x-import><x-import component-from-global-scope="Murmur.Button" variant="secondary" size="sm" style="width: 88px;">Change</x-import></div>
         </div>
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Paste last dictation</div></div>
-          <div class="fl-row-control" style="gap: 12px; align-items: center;"><x-import component-from-global-scope="Flow.Kbd" keys="{{kPaste}}"></x-import><x-import component-from-global-scope="Flow.Button" variant="secondary" size="sm" style="width: 88px;">Change</x-import></div>
+          <div class="fl-row-control" style="gap: 12px; align-items: center;"><x-import component-from-global-scope="Murmur.Kbd" keys="{{kPaste}}"></x-import><x-import component-from-global-scope="Murmur.Button" variant="secondary" size="sm" style="width: 88px;">Change</x-import></div>
         </div>
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Copy last dictation</div></div>
-          <div class="fl-row-control" style="gap: 12px; align-items: center;"><x-import component-from-global-scope="Flow.Kbd" keys="{{kCopy}}"></x-import><x-import component-from-global-scope="Flow.Button" variant="secondary" size="sm" style="width: 88px;">Change</x-import></div>
+          <div class="fl-row-control" style="gap: 12px; align-items: center;"><x-import component-from-global-scope="Murmur.Kbd" keys="{{kCopy}}"></x-import><x-import component-from-global-scope="Murmur.Button" variant="secondary" size="sm" style="width: 88px;">Change</x-import></div>
         </div>
       </div>
 
@@ -69,26 +69,26 @@ a{color:#1a1a1a}a:hover{color:#30302f}
       <div class="fl-group">
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Microphone</div><div class="fl-row-desc">Auto-detect (Microphone Array, Realtek Audio)</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Button" variant="secondary">Change</x-import></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Button" variant="secondary">Change</x-import></div>
         </div>
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Languages</div><div class="fl-row-desc">English. Parakeet only understands English; <a class="lw-link" href="SettingsSpeech.dc.html">switch to Whisper →</a> for other languages.</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Button" variant="secondary">Change</x-import></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Button" variant="secondary">Change</x-import></div>
         </div>
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Hands-free stops after</div><div class="fl-row-desc">How long you can pause before dictation ends.</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Select" options="{{silenceOpts}}" default-value="2" width="{{w160}}"></x-import></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Select" options="{{silenceOpts}}" default-value="2" width="{{w160}}"></x-import></div>
         </div>
         <div class="fl-row">
-          <div class="fl-row-text"><div class="fl-row-title">Live preview</div><div class="fl-row-desc">Show words in the Flow bar while you speak.</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Live preview"></x-import></div>
+          <div class="fl-row-text"><div class="fl-row-title">Live preview</div><div class="fl-row-desc">Show words in the Murmur bar while you speak.</div></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Toggle" default-checked="{{yes}}" label="Live preview"></x-import></div>
         </div>
       </div>
 
       <div class="fl-group" style="margin-top: 32px;">
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Theme</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Select" options="{{themeOpts}}" default-value="system" width="{{w160}}"></x-import></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Select" options="{{themeOpts}}" default-value="system" width="{{w160}}"></x-import></div>
         </div>
       </div>
     </div>

@@ -170,7 +170,7 @@ pub fn unicode_text(text: &str) -> Vec<Stroke> {
 
 /// `dwExtraInfo` on every event we inject; our hook passes events carrying
 /// it straight to `CallNextHookEx`.
-pub const EXTRA_INFO_TAG: usize = 0x464C_4F57; // "FLOW"
+pub const EXTRA_INFO_TAG: usize = 0x4D52_4D52; // "MRMR"
 
 #[cfg(windows)]
 pub mod win {

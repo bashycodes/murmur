@@ -3,12 +3,12 @@
 
 use std::sync::Arc;
 
-use flow_core::asr::MockAsr;
+use murmur_core::asr::MockAsr;
 #[cfg(any(feature = "whisper", feature = "llm"))]
-use flow_core::config::ModelConfig;
-use flow_core::config::{FieldContext, SessionConfig};
-use flow_core::paste::{PasteKey, PasteSegment};
-use flow_core::FlowCore;
+use murmur_core::config::ModelConfig;
+use murmur_core::config::{FieldContext, SessionConfig};
+use murmur_core::paste::{PasteKey, PasteSegment};
+use murmur_core::MurmurCore;
 
 fn speech(ms: usize) -> Vec<i16> {
     (0..ms * 16)
@@ -16,8 +16,8 @@ fn speech(ms: usize) -> Vec<i16> {
         .collect()
 }
 
-fn run_text(asr_text: &str, cfg: SessionConfig, ctx: FieldContext) -> flow_core::CommitResult {
-    let core = FlowCore::from_engines(Arc::new(MockAsr::new(asr_text)), None);
+fn run_text(asr_text: &str, cfg: SessionConfig, ctx: FieldContext) -> murmur_core::CommitResult {
+    let core = MurmurCore::from_engines(Arc::new(MockAsr::new(asr_text)), None);
     core.start_session(cfg).unwrap();
     core.set_context(ctx);
     core.push_audio(&speech(300));
@@ -38,8 +38,8 @@ fn missing_whisper_model_is_model_not_found() {
         asr_path: "/nonexistent/ggml-x.bin".into(),
         ..Default::default()
     };
-    match FlowCore::load_models(&cfg) {
-        Err(flow_core::CoreError::ModelNotFound { path }) => {
+    match MurmurCore::load_models(&cfg) {
+        Err(murmur_core::CoreError::ModelNotFound { path }) => {
             assert_eq!(path, "/nonexistent/ggml-x.bin")
         }
         Err(e) => panic!("wrong error: {e:?}"),
@@ -51,12 +51,12 @@ fn missing_whisper_model_is_model_not_found() {
 #[test]
 fn missing_llm_model_is_model_not_found() {
     let cfg = ModelConfig {
-        asr_backend: flow_core::config::AsrBackend::Mock { text: "x".into() },
+        asr_backend: murmur_core::config::AsrBackend::Mock { text: "x".into() },
         llm_path: Some("/nonexistent/q.gguf".into()),
         ..Default::default()
     };
-    match FlowCore::load_models(&cfg) {
-        Err(flow_core::CoreError::ModelNotFound { path }) => {
+    match MurmurCore::load_models(&cfg) {
+        Err(murmur_core::CoreError::ModelNotFound { path }) => {
             assert_eq!(path, "/nonexistent/q.gguf")
         }
         Err(e) => panic!("wrong error: {e:?}"),
@@ -69,14 +69,17 @@ fn missing_llm_model_is_model_not_found() {
 fn missing_llm_plugin_is_llm_lib_not_found() {
     let model = concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml");
     let cfg = ModelConfig {
-        asr_backend: flow_core::config::AsrBackend::Mock { text: "x".into() },
+        asr_backend: murmur_core::config::AsrBackend::Mock { text: "x".into() },
         llm_path: Some(model.into()),
-        llm_lib: Some("/nonexistent/libflow_llm.so".into()),
+        llm_lib: Some("/nonexistent/libmurmur_llm.so".into()),
         ..Default::default()
     };
-    match FlowCore::load_models(&cfg) {
-        Err(e @ flow_core::CoreError::LlmLibNotFound { .. }) => {
-            assert!(e.to_string().contains("/nonexistent/libflow_llm.so"), "{e}")
+    match MurmurCore::load_models(&cfg) {
+        Err(e @ murmur_core::CoreError::LlmLibNotFound { .. }) => {
+            assert!(
+                e.to_string().contains("/nonexistent/libmurmur_llm.so"),
+                "{e}"
+            )
         }
         Err(e) => panic!("wrong error: {e:?}"),
         Ok(_) => panic!("loaded without a plugin"),
@@ -85,7 +88,7 @@ fn missing_llm_plugin_is_llm_lib_not_found() {
 
 #[test]
 fn error_kind_is_stable_snake_case() {
-    use flow_core::CoreError;
+    use murmur_core::CoreError;
     assert_eq!(
         CoreError::ModelNotFound { path: "p".into() }.kind(),
         "model_not_found"
@@ -141,7 +144,7 @@ fn press_enter_is_a_trailing_enter_segment() {
 
 #[test]
 fn empty_commit_has_no_segments() {
-    let core = FlowCore::from_engines(Arc::new(MockAsr::new("x")), None);
+    let core = MurmurCore::from_engines(Arc::new(MockAsr::new("x")), None);
     core.start_session(SessionConfig::default()).unwrap();
     let r = core.commit();
     assert!(r.segments.is_empty());
@@ -163,13 +166,13 @@ fn segments_serialize_as_text_or_key_objects() {
     let mut old = j.clone();
     old.as_object_mut().unwrap().remove("segments");
     old.as_object_mut().unwrap().remove("plain_text");
-    let back: flow_core::CommitResult = serde_json::from_value(old).unwrap();
+    let back: murmur_core::CommitResult = serde_json::from_value(old).unwrap();
     assert!(back.segments.is_empty());
 }
 
 #[test]
 fn segment_splitter_handles_adjacent_markers() {
-    use flow_core::paste::segments;
+    use murmur_core::paste::segments;
     assert_eq!(
         segments("{{TAB}}{{BREAK}}", false),
         vec![key(PasteKey::Tab), key(PasteKey::Break)]
@@ -194,7 +197,7 @@ fn core_never_sets_route_and_omits_it_from_json() {
 #[test]
 fn route_info_round_trips_and_old_json_still_parses() {
     let mut r = run_text("hello", SessionConfig::default(), FieldContext::default());
-    r.route = Some(flow_core::RouteInfo {
+    r.route = Some(murmur_core::RouteInfo {
         engine: "remote".into(),
         fallback: None,
         server: Some("100.64.0.10:7313".into()),
@@ -204,33 +207,33 @@ fn route_info_round_trips_and_old_json_still_parses() {
         ..Default::default()
     });
     let j = serde_json::to_string(&r).unwrap();
-    let back: flow_core::CommitResult = serde_json::from_str(&j).unwrap();
+    let back: murmur_core::CommitResult = serde_json::from_str(&j).unwrap();
     assert_eq!(back, r);
     // A CommitResult serialised before `route` existed still parses.
     let mut v = serde_json::to_value(&r).unwrap();
     v.as_object_mut().unwrap().remove("route");
-    let old: flow_core::CommitResult = serde_json::from_value(v).unwrap();
+    let old: murmur_core::CommitResult = serde_json::from_value(v).unwrap();
     assert!(old.route.is_none());
 }
 
 #[test]
 fn postprocess_rev_and_version_are_exposed() {
-    assert!(!flow_core::POSTPROCESS_REV.is_empty());
-    assert_eq!(flow_core::VERSION, env!("CARGO_PKG_VERSION"));
+    assert!(!murmur_core::POSTPROCESS_REV.is_empty());
+    assert_eq!(murmur_core::VERSION, env!("CARGO_PKG_VERSION"));
 }
 
 // ---- D18 (cloud STT) additions -------------------------------------------
 
 /// Records every request; answers "x".
-struct Spy(std::sync::Mutex<Vec<flow_core::asr::AsrRequest>>);
-impl flow_core::asr::AsrEngine for Spy {
+struct Spy(std::sync::Mutex<Vec<murmur_core::asr::AsrRequest>>);
+impl murmur_core::asr::AsrEngine for Spy {
     fn transcribe(
         &self,
         _pcm: &[f32],
-        req: &flow_core::asr::AsrRequest,
-    ) -> Result<flow_core::asr::AsrOutput, flow_core::asr::AsrError> {
+        req: &murmur_core::asr::AsrRequest,
+    ) -> Result<murmur_core::asr::AsrOutput, murmur_core::asr::AsrError> {
         self.0.lock().unwrap().push(req.clone());
-        Ok(flow_core::asr::AsrOutput {
+        Ok(murmur_core::asr::AsrOutput {
             text: "x".into(),
             ..Default::default()
         })
@@ -239,10 +242,10 @@ impl flow_core::asr::AsrEngine for Spy {
 
 #[test]
 fn asr_request_carries_dictionary_and_screen_terms_separately() {
-    use flow_core::asr::AsrPurpose;
-    use flow_core::dictionary::{DictEntry, Dictionary};
+    use murmur_core::asr::AsrPurpose;
+    use murmur_core::dictionary::{DictEntry, Dictionary};
     let spy = Arc::new(Spy(Default::default()));
-    let core = FlowCore::from_engines(spy.clone(), None);
+    let core = MurmurCore::from_engines(spy.clone(), None);
     let cfg = SessionConfig {
         dictionary: Dictionary {
             entries: vec![
@@ -271,9 +274,9 @@ fn asr_request_carries_dictionary_and_screen_terms_separately() {
 
 #[test]
 fn partial_requests_are_marked_partial() {
-    use flow_core::asr::AsrPurpose;
+    use murmur_core::asr::AsrPurpose;
     let spy = Arc::new(Spy(Default::default()));
-    let core = FlowCore::from_engines(spy.clone(), None);
+    let core = MurmurCore::from_engines(spy.clone(), None);
     core.start_session(SessionConfig {
         partial_interval_ms: Some(100),
         ..Default::default()
@@ -295,39 +298,39 @@ fn partial_requests_are_marked_partial() {
 #[test]
 fn cleaner_accessor_returns_the_shared_cleaner() {
     struct C;
-    impl flow_core::cleanup::Cleaner for C {
+    impl murmur_core::cleanup::Cleaner for C {
         fn clean(
             &self,
-            _p: &flow_core::cleanup::CleanPrompt,
+            _p: &murmur_core::cleanup::CleanPrompt,
             _d: std::time::Instant,
-        ) -> Result<String, flow_core::cleanup::CleanError> {
+        ) -> Result<String, murmur_core::cleanup::CleanError> {
             Ok(String::new())
         }
     }
-    let c: Arc<dyn flow_core::cleanup::Cleaner> = Arc::new(C);
-    let core = FlowCore::from_engines(Arc::new(MockAsr::new("x")), Some(c.clone()));
+    let c: Arc<dyn murmur_core::cleanup::Cleaner> = Arc::new(C);
+    let core = MurmurCore::from_engines(Arc::new(MockAsr::new("x")), Some(c.clone()));
     assert!(Arc::ptr_eq(&core.cleaner().unwrap(), &c));
-    let bare = FlowCore::from_engines(Arc::new(MockAsr::new("x")), None);
+    let bare = MurmurCore::from_engines(Arc::new(MockAsr::new("x")), None);
     assert!(bare.cleaner().is_none());
 }
 
 #[test]
 fn route_info_cloud_fields_round_trip_and_are_omitted_when_none() {
-    let r = flow_core::RouteInfo {
+    let r = murmur_core::RouteInfo {
         engine: "cloud".into(),
         provider: Some("openrouter-1".into()),
         model: Some("openai/gpt-transcribe".into()),
         billed_audio_ms: Some(3200),
-        cost_usd: Some(flow_core::Usd(0.00024)),
+        cost_usd: Some(murmur_core::Usd(0.00024)),
         cost_estimated: Some(false),
         ..Default::default()
     };
     let j = serde_json::to_value(&r).unwrap();
     assert_eq!(j["cost_usd"], serde_json::json!(0.00024));
     assert_eq!(j["billed_audio_ms"], 3200);
-    let back: flow_core::RouteInfo = serde_json::from_value(j).unwrap();
+    let back: murmur_core::RouteInfo = serde_json::from_value(j).unwrap();
     assert_eq!(back, r);
-    let local = serde_json::to_value(flow_core::RouteInfo::default()).unwrap();
+    let local = serde_json::to_value(murmur_core::RouteInfo::default()).unwrap();
     for k in [
         "provider",
         "model",
@@ -350,7 +353,7 @@ fn hands_free(ms: u32) -> SessionConfig {
 
 #[test]
 fn endpoint_off_by_default() {
-    let core = FlowCore::from_engines(Arc::new(MockAsr::new("hello")), None);
+    let core = MurmurCore::from_engines(Arc::new(MockAsr::new("hello")), None);
     core.start_session(SessionConfig::default()).unwrap();
     core.push_audio(&speech(800));
     core.push_audio(&vec![0; 16 * 5000]);
@@ -362,7 +365,7 @@ fn endpoint_off_by_default() {
 
 #[test]
 fn endpoint_reached_after_trailing_silence_then_commit_keeps_the_words() {
-    let core = FlowCore::from_engines(Arc::new(MockAsr::new("hello there")), None);
+    let core = MurmurCore::from_engines(Arc::new(MockAsr::new("hello there")), None);
     core.start_session(hands_free(1000)).unwrap();
     for c in speech(1200).chunks(640) {
         core.push_audio(c);
@@ -384,12 +387,12 @@ fn endpoint_reached_after_trailing_silence_then_commit_keeps_the_words() {
     let r = core.commit();
     assert_eq!(r.final_text.trim(), "hello there");
     // Commit ends the session: nothing to report any more.
-    assert_eq!(core.poll(), flow_core::SessionPoll::default());
+    assert_eq!(core.poll(), murmur_core::SessionPoll::default());
 }
 
 #[test]
 fn endpoint_resets_per_session() {
-    let core = FlowCore::from_engines(Arc::new(MockAsr::new("x")), None);
+    let core = MurmurCore::from_engines(Arc::new(MockAsr::new("x")), None);
     core.start_session(hands_free(300)).unwrap();
     core.push_audio(&speech(500));
     core.push_audio(&vec![0; 16 * 400]);
@@ -402,9 +405,9 @@ fn endpoint_resets_per_session() {
 
 #[test]
 fn session_poll_json_defaults() {
-    let p: flow_core::SessionPoll = serde_json::from_str("{}").unwrap();
-    assert_eq!(p, flow_core::SessionPoll::default());
-    let v = serde_json::to_value(flow_core::SessionPoll::default()).unwrap();
+    let p: murmur_core::SessionPoll = serde_json::from_str("{}").unwrap();
+    assert_eq!(p, murmur_core::SessionPoll::default());
+    let v = serde_json::to_value(murmur_core::SessionPoll::default()).unwrap();
     assert_eq!(
         v,
         serde_json::json!({"partial":null,"endpoint_reached":false,"speech_ms":0,"trailing_silence_ms":0})
@@ -413,7 +416,7 @@ fn session_poll_json_defaults() {
 
 // ---- spoken layout without the LLM -------------------------------------------
 
-fn in_app(app_id: &str, cat: flow_core::config::AppCategory) -> FieldContext {
+fn in_app(app_id: &str, cat: murmur_core::config::AppCategory) -> FieldContext {
     FieldContext {
         app_id: app_id.into(),
         app_category: cat,
@@ -423,7 +426,7 @@ fn in_app(app_id: &str, cat: flow_core::config::AppCategory) -> FieldContext {
 
 #[test]
 fn numbered_list_survives_the_whole_pipeline() {
-    use flow_core::config::AppCategory;
+    use murmur_core::config::AppCategory;
     let r = run_text(
         "The steps are, first, clone the repo. Second, run the install script. And third, start the dev server.",
         SessionConfig::default(),
@@ -439,7 +442,7 @@ fn numbered_list_survives_the_whole_pipeline() {
 
 #[test]
 fn email_layout_survives_the_whole_pipeline() {
-    use flow_core::config::AppCategory;
+    use murmur_core::config::AppCategory;
     let asr = "Hello team, the meeting is moved to Tuesday, no wait, Wednesday at 10. Please update your calendars. Thanks, Raj.";
     let r = run_text(
         asr,
@@ -468,8 +471,8 @@ fn email_layout_survives_the_whole_pipeline() {
 
 // ---- 2026-10-24: blank_asr diagnostics (docs/findings/2026-10-24-phone-local-only.md) ----
 
-fn commit_pcm(asr_text: &str, cfg: SessionConfig, pcm: &[i16]) -> flow_core::CommitResult {
-    let core = FlowCore::from_engines(Arc::new(MockAsr::new(asr_text)), None);
+fn commit_pcm(asr_text: &str, cfg: SessionConfig, pcm: &[i16]) -> murmur_core::CommitResult {
+    let core = MurmurCore::from_engines(Arc::new(MockAsr::new(asr_text)), None);
     core.start_session(cfg).unwrap();
     core.push_audio(pcm);
     core.commit()
@@ -491,7 +494,7 @@ fn speech_ms_is_zero_on_no_speech_and_absent_with_vad_off() {
     let r = commit_pcm("x", SessionConfig::default(), &quiet);
     assert_eq!(r.empty_reason.as_deref(), Some("no_speech"));
     assert_eq!(r.timings.speech_ms, Some(0));
-    assert_eq!(r.timings.peak_dbfs, Some(flow_core::PEAK_DBFS_FLOOR));
+    assert_eq!(r.timings.peak_dbfs, Some(murmur_core::PEAK_DBFS_FLOOR));
     let off = SessionConfig {
         vad: false,
         ..Default::default()
@@ -519,7 +522,7 @@ fn segmented_commit_sums_piece_speech() {
 
 #[test]
 fn diagnostics_are_omitted_from_json_when_unset() {
-    let j = serde_json::to_value(flow_core::Timings::default()).unwrap();
+    let j = serde_json::to_value(murmur_core::Timings::default()).unwrap();
     assert!(
         j.get("speech_ms").is_none() && j.get("peak_dbfs").is_none(),
         "{j}"

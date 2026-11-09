@@ -1,18 +1,18 @@
-package dev.flowclone.server
+package dev.murmur.server
 
 import android.os.Handler
 import android.os.Looper
 import android.widget.LinearLayout
 import android.widget.Toast
-import dev.flowclone.FlowApp
-import dev.flowclone.R
-import dev.flowclone.data.DevPages
-import dev.flowclone.data.ModelPages
-import dev.flowclone.ui.DevUi
-import dev.flowclone.ui.DeveloperActivity
-import dev.flowclone.ui.ServerModelsHost
-import dev.flowclone.ui.ServerModelsSection
-import dev.flowclone.ui.Tone
+import dev.murmur.MurmurApp
+import dev.murmur.R
+import dev.murmur.data.DevPages
+import dev.murmur.data.ModelPages
+import dev.murmur.ui.DevUi
+import dev.murmur.ui.DeveloperActivity
+import dev.murmur.ui.ServerModelsHost
+import dev.murmur.ui.ServerModelsSection
+import dev.murmur.ui.Tone
 import java.io.File
 import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.atomic.AtomicBoolean
@@ -23,7 +23,7 @@ internal object ServerModels {
     const val AVAILABLE = true
 
     fun section(host: ServerModelsHost): ServerModelsSection? =
-        if (FlowApp.of(host.activity).caps.local) ServerModelsUi(host) else null
+        if (MurmurApp.of(host.activity).caps.local) ServerModelsUi(host) else null
 }
 
 /**
@@ -52,7 +52,7 @@ internal object ServerDownloads {
     private fun notifyMain() = main.post { listeners.forEach { it() } }
 
     @Synchronized
-    fun start(app: FlowApp, model: LibraryModel, plan: Plan, screen: ModelPages.Screen, serverJson: String): Boolean {
+    fun start(app: MurmurApp, model: LibraryModel, plan: Plan, screen: ModelPages.Screen, serverJson: String): Boolean {
         if (job != null) return false
         val j = Job(model.id, model.title, screen)
         job = j
@@ -81,7 +81,7 @@ internal object ServerDownloads {
 
 /** The block itself (views rebuilt by each [render]; the list and messages live here). */
 internal class ServerModelsUi(private val host: ServerModelsHost) : ServerModelsSection {
-    private val app = FlowApp.of(host.activity)
+    private val app = MurmurApp.of(host.activity)
     private val ui: DevUi get() = host.ui
     private var models: List<LibraryModel>? = null
     private var listing = false

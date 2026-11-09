@@ -1,13 +1,13 @@
 //! Opt-in third-party cloud STT: config, secrets and usage types (D18,
 //! `docs/cloud-stt.md` §3, §8). No network code: the provider clients live
-//! in `flow-cloud`, injected through [`crate::CloudFactory`]. Client-only
+//! in `murmur-cloud`, injected through [`crate::CloudFactory`]. Client-only
 //! builds parse these types but can never reach a provider.
 
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-pub use flow_core::Usd;
+pub use murmur_core::Usd;
 
 use crate::net;
 
@@ -16,7 +16,7 @@ use crate::net;
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum Route {
-    /// Own flow-server (engine `remote`).
+    /// Own murmur-server (engine `remote`).
     Server,
     /// On-device engine (engine `local`).
     Client,
@@ -115,7 +115,7 @@ pub const CLEANUP_TIMEOUT_RANGE_MS: (u64, u64) = (800, 8000);
 /// Transcription models with no Zero-Data-Retention endpoint in OpenRouter's
 /// `/api/v1/endpoints/zdr` on 2026-10-24 (spec §1.1). Used once, by the
 /// migration: a migrated model from this list is replaced by the default
-/// while ZDR is on. Runtime checks use the live catalogue (flow-cloud).
+/// while ZDR is on. Runtime checks use the live catalogue (murmur-cloud).
 pub const NO_ZDR_STT_MODELS_2026_10_24: [&str; 7] = [
     "openai/gpt-transcribe",
     "openai/gpt-4o-transcribe",
@@ -135,7 +135,7 @@ pub enum CleanupRoute {
     Local,
     /// OpenRouter chat completions.
     Cloud,
-    /// The configured flow-server's LLM (D36, text-only `clean`), whatever
+    /// The configured murmur-server's LLM (D36, text-only `clean`), whatever
     /// route transcribed the dictation.
     Server,
 }
@@ -256,7 +256,7 @@ impl CloudConfig {
 
     /// What a cloud cleanup prompt may contain. One set of switches for
     /// both providers (stored in `openrouter.cleanup`, its pre-D52 home).
-    pub fn cleanup_scope(&self) -> flow_core::cleanup::PromptScope {
+    pub fn cleanup_scope(&self) -> murmur_core::cleanup::PromptScope {
         self.openrouter.cleanup.scope()
     }
 
@@ -671,8 +671,8 @@ impl CleanupConfig {
         consent_ok(&self.consent_host, self.consent_at_ms)
     }
 
-    pub fn scope(&self) -> flow_core::cleanup::PromptScope {
-        flow_core::cleanup::PromptScope {
+    pub fn scope(&self) -> murmur_core::cleanup::PromptScope {
+        murmur_core::cleanup::PromptScope {
             surrounding_text: self.send_surrounding_text,
             screen_words: self.send_screen_words,
             app_id: self.send_app_name,
@@ -835,7 +835,7 @@ impl CloudProviderConfig {
             ));
         }
         let BaseUrl { https, host, .. } = parse_base_url(&self.base_url)?;
-        // Names (`*.local`, single-label, `*.ts.net`) pass here; flow-cloud
+        // Names (`*.local`, single-label, `*.ts.net`) pass here; murmur-cloud
         // resolves them before an http:// call and requires every address
         // to be private (S6).
         if !https && !net::classify(&host).plaintext_ok() {
@@ -1143,7 +1143,10 @@ mod tests {
         assert_eq!(o.stt.model, DEFAULT_STT_MODEL);
         assert_eq!(o.cleanup.model, DEFAULT_CLEANUP_MODEL);
         assert_eq!(o.cleanup.timeout_ms, 2500);
-        assert_eq!(o.cleanup.scope(), flow_core::cleanup::PromptScope::MINIMAL);
+        assert_eq!(
+            o.cleanup.scope(),
+            murmur_core::cleanup::PromptScope::MINIMAL
+        );
         assert!(!o.stt.consent_ok() && !o.cleanup.consent_ok());
         // Spec §2.6 JSON shape.
         let j = serde_json::to_value(&c).unwrap();

@@ -1,4 +1,4 @@
-package dev.flowclone.insert
+package dev.murmur.insert
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -51,7 +51,7 @@ class ClipboardGuard(
             // Keep the user's own clip (never one of ours) to put back afterwards.
             previous = port.current()?.takeIf { it.marker == null }?.raw
         }
-        val m = "flow-clip-${++counter}-${port.now()}"
+        val m = "murmur-clip-${++counter}-${port.now()}"
         port.setSensitive(text, m)
         marker = m
         setAt = port.now()

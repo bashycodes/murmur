@@ -142,7 +142,7 @@ impl OnlineEngine {
                     }
                     beam_cfg = Some(b);
                 }
-                Err(e) => eprintln!("flow-asr-sherpa: online hotwords disabled: {e}"),
+                Err(e) => eprintln!("murmur-asr-sherpa: online hotwords disabled: {e}"),
             }
         }
         let want_greedy = beam_cfg.is_none() || cfg.greedy_fallback;

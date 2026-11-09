@@ -5,7 +5,7 @@ usage: score_he.py CASES.jsonl ROWS.jsonl [ROWS.jsonl ...] [--show]
 
 Per file: rows the LLM ran on; of those, how many model answers (`raw`) and
 how many final texts (`text`) are Hebrew (Hebrew share of letters >= 0.5,
-the same test as flow_core::script_lock::drifted); how many final texts
+the same test as murmur_core::script_lock::drifted); how many final texts
 the model changed (status "formatted"); the mean share of the input's
 Hebrew words still in the final text (word kept) over Hebrew finals, and how
 many lost more than 20 % of them (cut); and

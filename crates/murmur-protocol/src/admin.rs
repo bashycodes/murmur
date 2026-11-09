@@ -122,7 +122,7 @@ pub struct KeyView {
     /// split (they show it as "last seen").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_seen: Option<u64>,
-    /// `hello.client` of its last connection (e.g. `flow-android 1.0.0`).
+    /// `hello.client` of its last connection (e.g. `murmur-android 1.0.0`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client: Option<String>,
     pub dictations: u64,

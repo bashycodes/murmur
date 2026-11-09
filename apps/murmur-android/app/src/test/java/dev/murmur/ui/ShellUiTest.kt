@@ -1,15 +1,15 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.content.Intent
 import android.view.View
-import dev.flowclone.FlowApp
-import dev.flowclone.data.AppVersion
-import dev.flowclone.data.ShellPages
-import dev.flowclone.data.ShellPages.Tab
-import dev.flowclone.ui.UiTestKit.idle
-import dev.flowclone.ui.UiTestKit.rowTitled
-import dev.flowclone.ui.UiTestKit.texts
-import dev.flowclone.ui.UiTestKit.walk
+import dev.murmur.MurmurApp
+import dev.murmur.data.AppVersion
+import dev.murmur.data.ShellPages
+import dev.murmur.data.ShellPages.Tab
+import dev.murmur.ui.UiTestKit.idle
+import dev.murmur.ui.UiTestKit.rowTitled
+import dev.murmur.ui.UiTestKit.texts
+import dev.murmur.ui.UiTestKit.walk
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -25,7 +25,7 @@ import org.robolectric.shadows.ShadowToast
 
 /** App shell: bottom navigation, the drawer (stats, engines, links, extras, version) and Back. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], application = FlowApp::class)
+@Config(sdk = [34], application = MurmurApp::class)
 class ShellUiTest {
     @After fun reset() { ShadowSettings.setCanDrawOverlays(false) }
 
@@ -59,7 +59,7 @@ class ShellUiTest {
             "Notes", "Quick note", "Insights", "History", "Start / show bubble", "Stop bubble",
         )) assertTrue("$want in $t", want in t)
         assertTrue(ShellPages.versionLine(AppVersion.current.version) in t)
-        val app = FlowApp.of(a)
+        val app = MurmurApp.of(a)
         assertEquals(app.caps.local, "Speech model" in t)
         assertEquals(app.dev.visible, "Developer settings" in t)
         // Nothing granted under Robolectric: mic, overlay, a11y, battery, notifications.

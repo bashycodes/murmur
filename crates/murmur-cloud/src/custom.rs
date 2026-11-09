@@ -3,7 +3,7 @@
 //! cloud speech-to-text stays OpenRouter-only.
 //!
 //! The base URL is whatever the user typed (normalised by
-//! `flow_router::cloud::normalize_custom_base_url`); plain http is allowed
+//! `murmur_router::cloud::normalize_custom_base_url`); plain http is allowed
 //! to any host by the owner's choice (D52 notes the risk). Requests are
 //! plain OpenAI chat completions, streamed, with none of OpenRouter's
 //! extensions (`provider`, `reasoning`, `include_reasoning`, `/key`,
@@ -17,10 +17,10 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
-use flow_core::asr::AbortFlag;
-use flow_core::cleanup::{CleanError, CleanPrompt, CleanUsage, Cleaner, PromptScope};
-use flow_router::cloud::{valid_custom_model_id, CustomCleanupConfig};
-use flow_router::SecretString;
+use murmur_core::asr::AbortFlag;
+use murmur_core::cleanup::{CleanError, CleanPrompt, CleanUsage, Cleaner, PromptScope};
+use murmur_router::cloud::{valid_custom_model_id, CustomCleanupConfig};
+use murmur_router::SecretString;
 
 use crate::budget;
 use crate::cleaner::{clean_error, read_stream, CleanupCall, PREFILL_INTERVAL};
@@ -49,7 +49,7 @@ fn auth(rb: http::RequestBuilder, key: Option<&SecretString>) -> http::RequestBu
     }
 }
 
-/// Cleaner for the custom server: `flow_core::cleanup::Cleaner`, wrapped by
+/// Cleaner for the custom server: `murmur_core::cleanup::Cleaner`, wrapped by
 /// the router's gate like the OpenRouter one.
 pub struct CustomCleaner {
     /// Normalised API root, or why the configured URL is unusable.
@@ -282,7 +282,7 @@ pub fn list_models(
     key: Option<&SecretString>,
     timeout: Duration,
 ) -> Result<Vec<String>, CloudError> {
-    let base = flow_router::cloud::normalize_custom_base_url(base_url)
+    let base = murmur_router::cloud::normalize_custom_base_url(base_url)
         .map_err(|_| CloudError::Connect("bad_base_url".into()))?;
     let deadline = Instant::now() + timeout;
     let rb = client(timeout.min(Duration::from_secs(5))).get(format!("{base}/models"));
@@ -327,12 +327,12 @@ pub struct CleanupTest {
 pub fn test_cleanup(cfg: &CustomCleanupConfig, key: Option<SecretString>) -> CleanupTest {
     let model = cfg.model.trim().to_string();
     let c = CustomCleaner::new(cfg, PromptScope::default(), key);
-    let prompt = flow_core::cleanup::build_prompt(
+    let prompt = murmur_core::cleanup::build_prompt(
         TEST_SAMPLE,
-        flow_core::config::CleanupLevel::Light,
-        flow_core::config::Style::default(),
-        &flow_core::config::FieldContext::default(),
-        &flow_core::dictionary::Dictionary::default(),
+        murmur_core::config::CleanupLevel::Light,
+        murmur_core::config::Style::default(),
+        &murmur_core::config::FieldContext::default(),
+        &murmur_core::dictionary::Dictionary::default(),
     );
     let t0 = Instant::now();
     let deadline = t0 + Duration::from_millis(cfg.timeout_ms.max(800) * 2);

@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.app.Activity
 import android.app.AlertDialog
@@ -12,17 +12,17 @@ import android.widget.TextView
 import android.widget.Toast
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
-import dev.flowclone.FlowApp
-import dev.flowclone.R
-import dev.flowclone.core.DictEntry
-import dev.flowclone.data.DictionaryDraft
-import dev.flowclone.data.DictionaryEdit
-import dev.flowclone.data.DictionaryPages
-import dev.flowclone.data.DictionaryPages.Kind
+import dev.murmur.MurmurApp
+import dev.murmur.R
+import dev.murmur.core.DictEntry
+import dev.murmur.data.DictionaryDraft
+import dev.murmur.data.DictionaryEdit
+import dev.murmur.data.DictionaryPages
+import dev.murmur.data.DictionaryPages.Kind
 
 /**
  * Add / edit one dictionary word or snippet, opened from the Dictionary and Snippets tabs
- * ([dev.flowclone.ui.tabs.DictionaryTab]): a top bar with Back and, trailing, Save (enabled when
+ * ([dev.murmur.ui.tabs.DictionaryTab]): a top bar with Back and, trailing, Save (enabled when
  * changed + valid, [DictionaryDraft]) and Delete (existing entries; asks first); word / trigger,
  * replacement / expansion and the snippet switch, with inline errors. Back on a changed form asks
  * to discard.
@@ -32,7 +32,7 @@ import dev.flowclone.data.DictionaryPages.Kind
  * toast and close, so the shell's tabs need no activity-result plumbing.
  */
 class DictionaryActivity : Activity() {
-    private val app get() = FlowApp.of(this)
+    private val app get() = MurmurApp.of(this)
     private lateinit var ui: DevUi
     private var page = PAGE_EDIT
     private var kind = Kind.WORDS
@@ -183,7 +183,7 @@ class DictionaryActivity : Activity() {
     @Suppress("DEPRECATION")
     private fun export() = startActivityForResult(
         Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json")
-            .putExtra(Intent.EXTRA_TITLE, "flow-dictionary.json"),
+            .putExtra(Intent.EXTRA_TITLE, "murmur-dictionary.json"),
         REQ_EXPORT,
     )
 

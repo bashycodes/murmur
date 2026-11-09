@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.app.Activity
 import android.app.AlertDialog
@@ -10,19 +10,19 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import dev.flowclone.FlowApp
-import dev.flowclone.R
-import dev.flowclone.core.DevText
-import dev.flowclone.core.NativeFlowCore
-import dev.flowclone.data.CloudCatalog
-import dev.flowclone.data.CloudInput
-import dev.flowclone.data.CloudText
-import dev.flowclone.data.CloudUsage
-import dev.flowclone.data.CleanupProvider
-import dev.flowclone.data.CustomServer
-import dev.flowclone.data.DevSettings
-import dev.flowclone.data.OpenRouter
-import dev.flowclone.data.OpenRouterPage
+import dev.murmur.MurmurApp
+import dev.murmur.R
+import dev.murmur.core.DevText
+import dev.murmur.core.NativeMurmurCore
+import dev.murmur.data.CloudCatalog
+import dev.murmur.data.CloudInput
+import dev.murmur.data.CloudText
+import dev.murmur.data.CloudUsage
+import dev.murmur.data.CleanupProvider
+import dev.murmur.data.CustomServer
+import dev.murmur.data.DevSettings
+import dev.murmur.data.OpenRouter
+import dev.murmur.data.OpenRouterPage
 import java.text.DateFormat
 import java.util.Date
 import kotlin.concurrent.thread
@@ -42,7 +42,7 @@ import kotlin.concurrent.thread
  * Every change applies at once (store + live router), like the old consent dialog did.
  */
 class OpenRouterActivity : Activity() {
-    private val app get() = FlowApp.of(this)
+    private val app get() = MurmurApp.of(this)
     private val caps get() = app.caps
     private lateinit var ui: DevUi
     /** Redraws, each given the one settings value [refresh] loaded (one custom-address lookup per refresh, D52). */
@@ -394,14 +394,14 @@ class OpenRouterActivity : Activity() {
      * `GET {base}/models` off the main thread with the typed key only (the router lends the stored
      * one just for the consented host); [then] on the UI thread.
      */
-    private fun fetchCustomModels(busy: String, then: (dev.flowclone.core.CustomModels) -> Unit) {
+    private fun fetchCustomModels(busy: String, then: (dev.murmur.core.CustomModels) -> Unit) {
         val url = app.dev.load().cloud.customCleanup.baseUrl
         if (url.isEmpty()) { customResult.show("Set the server address first.", Tone.BAD); return }
-        val typed = dev.flowclone.data.CustomModelsKey.typedOnly(customKeyField.text.toString())
+        val typed = dev.murmur.data.CustomModelsKey.typedOnly(customKeyField.text.toString())
         customResult.show(busy)
         thread(name = "custom-models") {
             val m = runCatching { app.engine.customCleanupModels(url, typed) }
-                .getOrElse { dev.flowclone.core.CustomModels(error = "error", message = it.javaClass.simpleName) }
+                .getOrElse { dev.murmur.core.CustomModels(error = "error", message = it.javaClass.simpleName) }
             m.error?.let { app.debugLog.event("custom_models", "error=$it") }
             runOnUiThread { if (!isFinishing) then(m) }
         }
@@ -469,7 +469,7 @@ class OpenRouterActivity : Activity() {
         if (!app.cloudKeys.has(OpenRouter.ID)) { keyResult.show("No key stored: paste one and tap Save key.", Tone.BAD); return }
         keyResult.show("Checking the key with OpenRouter…")
         thread(name = "or-key-info") {
-            val k = runCatching { r.cloudKeyInfo() }.getOrElse { dev.flowclone.core.CloudKeyInfo(error = "error") }
+            val k = runCatching { r.cloudKeyInfo() }.getOrElse { dev.murmur.core.CloudKeyInfo(error = "error") }
             k.limitRemaining?.let { rem -> app.debugLog.event("cloud_key_info", "limit_remaining=$rem usage_monthly=${k.usageMonthly}") }
             runOnUiThread { if (!isFinishing) keyResult.show(DevText.keyInfo(k), if (k.error == null) (if (k.warnNoLimit) Tone.WARN else Tone.OK) else Tone.BAD) }
         }
@@ -483,7 +483,7 @@ class OpenRouterActivity : Activity() {
         testResult.show("Testing ${s.cloud.stt.model}…")
         val json = s.cloud.openRouterJson().toString()
         thread(name = "or-probe") {
-            val h = app.engine.router()?.probeCloud(json, key) ?: NativeFlowCore.probeCloud(json, key)
+            val h = app.engine.router()?.probeCloud(json, key) ?: NativeMurmurCore.probeCloud(json, key)
             if (!h.ok) app.debugLog.event("cloud_probe", DevText.cloudProbe(h))
             runOnUiThread { if (!isFinishing) { testResult.show(DevText.cloudProbe(h), if (h.ok) Tone.OK else Tone.BAD); refresh() } }
         }
@@ -545,8 +545,8 @@ class OpenRouterActivity : Activity() {
     /** Background catalogue refresh (24 h cache: usually no network at all). */
     private fun refreshCatalog() {
         thread(name = "or-catalog") {
-            runCatching { NativeFlowCore.setCloudCacheDir(cacheDir.path) }
-            val st = runCatching { app.engine.router()?.refreshCloudCatalog(false) ?: NativeFlowCore.refreshCloudCatalog(false) }.getOrNull()
+            runCatching { NativeMurmurCore.setCloudCacheDir(cacheDir.path) }
+            val st = runCatching { app.engine.router()?.refreshCloudCatalog(false) ?: NativeMurmurCore.refreshCloudCatalog(false) }.getOrNull()
             st?.let { app.debugLog.event("cloud_catalog_refresh", it) }
         }
     }

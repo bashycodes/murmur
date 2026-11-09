@@ -1,6 +1,6 @@
 /* Scratchpad and Notetaker pages (ui/src/pages/scratchpad.ts), after
    PageScratchpad.dc.html / PageNotetaker.dc.html. The banner and lumen
-   button rules are the design system's (docs/design/app-design/ds/flow/
+   button rules are the design system's (docs/design/app-design/ds/murmur/
    components/bundle.css), copied as is (the base banner rules are also in
    pages/style.css; identical, so either file can go first). lw-sp-* and
    lw-nt-* are these pages' layout. Colours are theme.css tokens. */

@@ -1,9 +1,9 @@
-"""Headless check of the Flow bar overlay (overlay.html) against mock-overlay.js.
+"""Headless check of the Murmur bar overlay (overlay.html) against mock-overlay.js.
 
 Probe (Playwright + its bundled Chromium):
     python3 tools/probes/settings_mock/serve.py 8765 &
-    python3 tools/probes/settings_mock/check_flowbar.py [port] [shot-dir]
-Drives each artboard state (docs/design/app-design/FlowBar.dc.html) in light
+    python3 tools/probes/settings_mock/check_murmurbar.py [port] [shot-dir]
+Drives each artboard state (docs/design/app-design/MurmurBar.dc.html) in light
 and dark, checks the hands-free pill geometry that src/overlay.rs hit-tests
 (187 x 36, bottom 14 px), that ✕ / ■ send overlay_action and that the
 error / fell-back bubbles' "Fix →" / "Choose a model →" open their page,
@@ -36,7 +36,7 @@ STATES = {
         ("dictation:status", {"state": "active_ptt"}),
         ("audio:level", 0.12),
         ("dictation:live-route", {"text": "Transcribing via this PC…", "engine": "local"}),
-        ("dictation:preview", "so the plan for tomorrow is to ship the flow bar"),
+        ("dictation:preview", "so the plan for tomorrow is to ship the murmur bar"),
     ],
     "handsfree": [("dictation:status", {"state": "active_locked"}), ("audio:level", 0.2)],
     "handsfree-maxwarn": [

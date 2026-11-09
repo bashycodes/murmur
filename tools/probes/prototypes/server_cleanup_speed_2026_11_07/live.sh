@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Start a local flow-server build, send every clip through it as a live
+# Start a local murmur-server build, send every clip through it as a live
 # session (the parity eval's `run_paths.py server`), stop it.
 #
 #   live.sh OUT_DIR TAG SPEED [extra run_paths.py args, e.g. --dict D.json]
 #
-# env: SERVER (flow-server binary), CONFIG (its config.toml: own port, own
+# env: SERVER (murmur-server binary), CONFIG (its config.toml: own port, own
 # state dir and token file, same models as the home server), PORT,
 # TOKEN (that config's token file; read by run_paths.py, never printed),
 # RUN_PATHS (the parity eval's run_paths.py), CLIPS (WAV dir), SESSION,
-# LD_LIBRARY_PATH (sherpa-onnx libs). Extra server env (FLOW_LLM_DRAFT=...)
+# LD_LIBRARY_PATH (sherpa-onnx libs). Extra server env (MURMUR_LLM_DRAFT=...)
 # passes through. Output: OUT_DIR/server_TAG.jsonl, server log OUT_DIR/TAG.log.
 set -uo pipefail
 OUT=$1; TAG=$2; SPEED=$3; shift 3

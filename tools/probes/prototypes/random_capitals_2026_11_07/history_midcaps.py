@@ -2,7 +2,7 @@
 """Count mid-sentence capitals per stage in a history.sqlite (2026-11-07).
 
 Probe for the random-capitals bug (docs/findings/2026-11-07-random-capitals.md).
-Reads a copy of a Flow Clone history database and reports, per row, the
+Reads a copy of a Murmur history database and reports, per row, the
 capitalised words that are not at a sentence start, for each stored stage
 (`raw` = ASR text after segment joins, `formatted` = AI cleanup output,
 `pasted` = what was inserted). Prints counts only unless `--show` is given;

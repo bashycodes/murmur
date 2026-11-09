@@ -1,4 +1,4 @@
-package dev.flowclone.debug
+package dev.murmur.debug
 
 import java.io.File
 import java.nio.ByteBuffer
@@ -63,7 +63,7 @@ object Wav {
  * Developer "Keep last dictation audio (debug)", default off: what the mic delivered for each of
  * the last [maxFiles] dictations, as WAV in app-private storage (`files/debug/audio/`), named by
  * the D21 line's `ts` (colons → dashes) and linked from its `audio` field, so a bad line can be
- * replayed on the host (flow-cli). Files older than [maxAgeMs] are deleted on every save and at
+ * replayed on the host (murmur-cli). Files older than [maxAgeMs] are deleted on every save and at
  * app start. Never written for protected targets ([DebugRedact.keepsAudio]); never uploaded.
  */
 class DebugAudioStore(

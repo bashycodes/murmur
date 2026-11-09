@@ -1,12 +1,12 @@
-package dev.flowclone.core
+package dev.murmur.core
 
 import org.json.JSONException
 import org.json.JSONObject
 
 /**
- * Command Mode (2026-10-28): what `nativeCommand` answered, i.e. flow-core
+ * Command Mode (2026-10-28): what `nativeCommand` answered, i.e. murmur-core
  * `command::result_json` (`{"ok":true,"text"}` / `{"ok":false,"kind","error"}`). The wire
- * shape is pinned by crates/flow-core/fixtures/command/command_results.json.
+ * shape is pinned by crates/murmur-core/fixtures/command/command_results.json.
  */
 sealed interface CommandOutcome {
     /** The rewrite (or generated text) to put in place of the selection / at the cursor. */

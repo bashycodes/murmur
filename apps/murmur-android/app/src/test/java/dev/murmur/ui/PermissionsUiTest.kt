@@ -1,12 +1,12 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.Manifest
 import android.provider.Settings
 import android.view.accessibility.AccessibilityNodeInfo
-import dev.flowclone.FlowApp
-import dev.flowclone.ui.UiTestKit.rowTitled
-import dev.flowclone.ui.UiTestKit.texts
-import dev.flowclone.ui.UiTestKit.walk
+import dev.murmur.MurmurApp
+import dev.murmur.ui.UiTestKit.rowTitled
+import dev.murmur.ui.UiTestKit.texts
+import dev.murmur.ui.UiTestKit.walk
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -23,7 +23,7 @@ import org.robolectric.shadows.ShadowSettings
 
 /** Permissions page (AndroidSetup): progress, callout, featured step, one card per step, OEM steps, a11y. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], application = FlowApp::class)
+@Config(sdk = [34], application = MurmurApp::class)
 class PermissionsUiTest {
     private val app get() = RuntimeEnvironment.getApplication()
     private fun launch() = Robolectric.buildActivity(PermissionsActivity::class.java).setup().get()
@@ -48,13 +48,13 @@ class PermissionsUiTest {
         val a = launch()
         val t = texts(a)
         for (want in listOf("STATUS", "Native engine", "Speech engine", "Language", "Version")) assertTrue("$want in $t", want in t)
-        assertTrue(dev.flowclone.data.AppVersion.current.label(FlowApp.of(a).caps.flavor) in t)
+        assertTrue(dev.murmur.data.AppVersion.current.label(MurmurApp.of(a).caps.flavor) in t)
         val lang = rowTitled(a, "Language")
         assertTrue(lang.contentDescription.toString(), lang.contentDescription.endsWith("Opens Language settings"))
         lang.performClick()
         val i = shadowOf(a).nextStartedActivity
         assertEquals(SettingsActivity::class.java.name, i.component?.className)
-        assertEquals(dev.flowclone.data.SettingsPages.Page.LANGUAGE.name, i.getStringExtra(SettingsActivity.EXTRA_PAGE))
+        assertEquals(dev.murmur.data.SettingsPages.Page.LANGUAGE.name, i.getStringExtra(SettingsActivity.EXTRA_PAGE))
     }
 
     @Test fun backButtonFinishes() {

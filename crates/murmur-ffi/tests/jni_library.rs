@@ -1,5 +1,5 @@
-//! D41: the model-library JNI exports (`dev.flowclone.server.ServerLibraryNative`)
-//! in a real JVM against an in-process flow-server: list, a verified download
+//! D41: the model-library JNI exports (`dev.murmur.server.ServerLibraryNative`)
+//! in a real JVM against an in-process murmur-server: list, a verified download
 //! with progress callbacks, and cancel through the listener (a throwing
 //! listener method is cleared, never left pending). Skips without `java`.
 #![cfg(all(feature = "jni", feature = "library"))]
@@ -27,7 +27,7 @@ fn jvm_lists_and_downloads() {
             "build",
             "-q",
             "-p",
-            "flow-ffi",
+            "murmur-ffi",
             "--features",
             &features.join(","),
             "--lib",
@@ -38,7 +38,7 @@ fn jvm_lists_and_downloads() {
     let exe = std::env::current_exe().unwrap();
     let lib_dir = exe.parent().unwrap().parent().unwrap().to_path_buf();
     let src = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/java/dev/flowclone/server/ServerLibraryNative.java");
+        .join("tests/java/dev/murmur/server/ServerLibraryNative.java");
     let s = LibraryServer::start();
     let d = tempfile::tempdir().unwrap();
     let dest = d.path().join("ggml-custom.bin");

@@ -5,7 +5,7 @@
 //! speech model. The cleanup LLM is the same in both, and loading it again
 //! costs ~38 s on the phone (Qwen2.5-1.5B, mostly the static prompt
 //! prefill). Before freeing the old engine the shell calls
-//! [`crate::FlowCore::keep_llm`]: that engine's own LLM is then held here,
+//! [`crate::MurmurCore::keep_llm`]: that engine's own LLM is then held here,
 //! and the next load whose config names the same model, thread count and
 //! plugin takes it instead of loading it again.
 //!
@@ -75,7 +75,7 @@ impl LlmSlot {
 /// The process's slot (one engine at a time on a RAM-tight shell).
 pub(crate) static SLOT: LlmSlot = LlmSlot::new();
 
-/// Drop an LLM [`crate::FlowCore::keep_llm`] holds (low-memory unload with
+/// Drop an LLM [`crate::MurmurCore::keep_llm`] holds (low-memory unload with
 /// no load to follow).
 pub fn release() {
     SLOT.release()

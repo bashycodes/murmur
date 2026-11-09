@@ -5,10 +5,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
-use flow_core::asr::MockAsr;
-use flow_core::FlowCore;
-use flow_router::meeting::{transcribe_pcm, MeetingParams};
-use flow_router::*;
+use murmur_core::asr::MockAsr;
+use murmur_core::MurmurCore;
+use murmur_router::meeting::{transcribe_pcm, MeetingParams};
+use murmur_router::*;
 
 const S: usize = 16_000;
 
@@ -72,7 +72,7 @@ fn router(local: bool, tries: Arc<AtomicUsize>) -> Router {
         ..Default::default()
     };
     let core: Option<Arc<dyn Backend>> = local.then(|| {
-        Arc::new(FlowCore::from_engines(
+        Arc::new(MurmurCore::from_engines(
             Arc::new(MockAsr::new("we agreed to ship on friday")),
             None,
         )) as Arc<dyn Backend>

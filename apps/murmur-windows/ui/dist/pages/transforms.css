@@ -1,6 +1,6 @@
 /* Transforms page (ui/src/pages/transforms.ts), after PageTransforms.dc.html.
    The banner, lumen and link-light rules are the design system's
-   (docs/design/app-design/ds/flow/components/bundle.css), copied as is
+   (docs/design/app-design/ds/murmur/components/bundle.css), copied as is
    (the base banner rules are also in pages/scratchpad-page.css and
    pages/style.css; identical, so either file can go first). lw-tf-* is
    this page's layout. Colours are theme.css tokens. */

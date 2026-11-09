@@ -3,8 +3,8 @@
 //! `UrlParseFixtureTest`) must stay true for the Rust parser the router
 //! uses (review S2), so the Kotlin mirror can't drift from it unnoticed.
 
-use flow_router::cloud::parse_base_url;
-use flow_router::CloudProviderConfig;
+use murmur_router::cloud::parse_base_url;
+use murmur_router::CloudProviderConfig;
 use serde_json::Value;
 
 fn fixture() -> Value {

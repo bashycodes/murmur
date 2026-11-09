@@ -8,7 +8,7 @@
 out=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    -V) echo "GNU windres (flow-windows check-only shim)"; exit 0 ;;
+    -V) echo "GNU windres (murmur-windows check-only shim)"; exit 0 ;;
     --output) out="$2"; shift ;;
   esac
   shift

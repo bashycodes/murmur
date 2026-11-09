@@ -1,19 +1,19 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.app.Activity
 import android.widget.ImageButton
 import android.widget.Switch
-import dev.flowclone.FlowApp
-import dev.flowclone.data.DevPages
-import dev.flowclone.data.DevSettings
-import dev.flowclone.data.DevSettings.Route
-import dev.flowclone.data.SettingsPages.Page
-import dev.flowclone.data.SettingsStore
-import dev.flowclone.data.SettingsSummary
-import dev.flowclone.ui.UiTestKit.idle
-import dev.flowclone.ui.UiTestKit.rowTitled
-import dev.flowclone.ui.UiTestKit.texts
-import dev.flowclone.ui.UiTestKit.walk
+import dev.murmur.MurmurApp
+import dev.murmur.data.DevPages
+import dev.murmur.data.DevSettings
+import dev.murmur.data.DevSettings.Route
+import dev.murmur.data.SettingsPages.Page
+import dev.murmur.data.SettingsStore
+import dev.murmur.data.SettingsSummary
+import dev.murmur.ui.UiTestKit.idle
+import dev.murmur.ui.UiTestKit.rowTitled
+import dev.murmur.ui.UiTestKit.texts
+import dev.murmur.ui.UiTestKit.walk
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -34,10 +34,10 @@ import org.robolectric.shadows.ShadowAlertDialog
  * Transcribe while I speak.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], application = FlowApp::class)
+@Config(sdk = [34], application = MurmurApp::class)
 class SpeechUiTest {
     private val ctx get() = RuntimeEnvironment.getApplication()
-    private val app get() = FlowApp.of(ctx)
+    private val app get() = MurmurApp.of(ctx)
 
     private fun launch(): Activity =
         Robolectric.buildActivity(SettingsActivity::class.java, SettingsActivity.intent(ctx, Page.SPEECH)).setup().visible().get()
@@ -45,7 +45,7 @@ class SpeechUiTest {
     @After fun reset() {
         app.dev.save(DevSettings.defaults(app.caps))
         app.dev.saveCloud(allowCloud = false, cloud = app.dev.load().cloud)
-        app.settings.save(app.settings.load().copy(decodeWhileSpeaking = dev.flowclone.data.Settings().decodeWhileSpeaking))
+        app.settings.save(app.settings.load().copy(decodeWhileSpeaking = dev.murmur.data.Settings().decodeWhileSpeaking))
     }
 
     private fun engineRow(a: Activity, r: Route) = rowTitled(a, SettingsSummary.engineName(r))

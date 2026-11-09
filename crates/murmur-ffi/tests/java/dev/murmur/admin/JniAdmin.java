@@ -1,11 +1,11 @@
-package dev.flowclone.admin;
+package dev.murmur.admin;
 
 // Single-file source launch: `java -Djava.library.path=DIR JniAdmin.java <cfgJson> <cfgJsonTemplate>`.
-// Mirrors apps/flow-android/JNI_CONTRACT.md "Admin API": static natives on
-// dev.flowclone.admin.NativeAdmin. Prints one answer per line (never the secret).
+// Mirrors apps/murmur-android/JNI_CONTRACT.md "Admin API": static natives on
+// dev.murmur.admin.NativeAdmin. Prints one answer per line (never the secret).
 public class JniAdmin {
     public static void main(String[] args) {
-        System.loadLibrary("flow_ffi");
+        System.loadLibrary("murmur_ffi");
         String cfg = args[0];
         String template = args[1]; // "TOKEN" is replaced by the new key's secret
         System.out.println(NativeAdmin.nativeAdminWhoami(cfg));

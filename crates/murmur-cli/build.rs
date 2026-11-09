@@ -1,4 +1,4 @@
-// With `parakeet`, flow-cli needs libsherpa-onnx-c-api.so / libonnxruntime.so
+// With `parakeet`, murmur-cli needs libsherpa-onnx-c-api.so / libonnxruntime.so
 // at runtime. sherpa-onnx-sys copies them next to the binary, but its rpath
 // link arg does not reach this crate's binaries, so add `$ORIGIN` here.
 fn main() {

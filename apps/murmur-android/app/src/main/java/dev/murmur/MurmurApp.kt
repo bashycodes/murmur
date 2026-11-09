@@ -1,76 +1,76 @@
-package dev.flowclone
+package dev.murmur
 
-import dev.flowclone.core.RouterErrors
-import dev.flowclone.debug.DebugAudioStore
-import dev.flowclone.debug.DebugLogFile
-import dev.flowclone.debug.DebugLogger
-import dev.flowclone.core.BlockingCalls
-import dev.flowclone.insert.ClipboardGuard
-import dev.flowclone.service.AndroidClipPort
-import dev.flowclone.data.EngineMismatch
-import dev.flowclone.data.HebrewModels
-import dev.flowclone.core.AsrEngine
-import dev.flowclone.core.LanguageModel
-import dev.flowclone.core.ParakeetDecoding
-import dev.flowclone.data.KeyboardLanguage
-import dev.flowclone.data.LanguageDefault
-import dev.flowclone.data.Settings
-import dev.flowclone.data.LastDictation
-import dev.flowclone.data.CloudKeyStore
-import dev.flowclone.data.CloudMigration
-import dev.flowclone.data.OpenRouter
-import dev.flowclone.data.CustomServer
-import dev.flowclone.data.CustomModelsKey
-import dev.flowclone.data.RouterOpener
-import dev.flowclone.data.LoadSet
-import dev.flowclone.data.LoadTimingsLog
-import dev.flowclone.data.ParakeetFiles
-import dev.flowclone.data.EngineRoute
-import dev.flowclone.data.DevSettings
-import dev.flowclone.data.DevStore
-import dev.flowclone.data.BuildCaps
+import dev.murmur.core.RouterErrors
+import dev.murmur.debug.DebugAudioStore
+import dev.murmur.debug.DebugLogFile
+import dev.murmur.debug.DebugLogger
+import dev.murmur.core.BlockingCalls
+import dev.murmur.insert.ClipboardGuard
+import dev.murmur.service.AndroidClipPort
+import dev.murmur.data.EngineMismatch
+import dev.murmur.data.HebrewModels
+import dev.murmur.core.AsrEngine
+import dev.murmur.core.LanguageModel
+import dev.murmur.core.ParakeetDecoding
+import dev.murmur.data.KeyboardLanguage
+import dev.murmur.data.LanguageDefault
+import dev.murmur.data.Settings
+import dev.murmur.data.LastDictation
+import dev.murmur.data.CloudKeyStore
+import dev.murmur.data.CloudMigration
+import dev.murmur.data.OpenRouter
+import dev.murmur.data.CustomServer
+import dev.murmur.data.CustomModelsKey
+import dev.murmur.data.RouterOpener
+import dev.murmur.data.LoadSet
+import dev.murmur.data.LoadTimingsLog
+import dev.murmur.data.ParakeetFiles
+import dev.murmur.data.EngineRoute
+import dev.murmur.data.DevSettings
+import dev.murmur.data.DevStore
+import dev.murmur.data.BuildCaps
 import android.app.Application
 import android.util.Log
-import dev.flowclone.core.CoreException
-import dev.flowclone.service.FlowAccessibilityService
-import dev.flowclone.core.FieldContext
-import dev.flowclone.core.PasteKey
-import dev.flowclone.core.FakeFlowCore
-import dev.flowclone.core.FlowCore
-import dev.flowclone.core.FlowCoreLoader
-import dev.flowclone.session.LoadWait
-import dev.flowclone.session.LoadedEngine
+import dev.murmur.core.CoreException
+import dev.murmur.service.MurmurAccessibilityService
+import dev.murmur.core.FieldContext
+import dev.murmur.core.PasteKey
+import dev.murmur.core.FakeMurmurCore
+import dev.murmur.core.MurmurCore
+import dev.murmur.core.MurmurCoreLoader
+import dev.murmur.session.LoadWait
+import dev.murmur.session.LoadedEngine
 import kotlinx.coroutines.flow.first
-import dev.flowclone.core.NativeFlowCore
-import dev.flowclone.core.CustomModels
-import dev.flowclone.data.DictionaryStore
-import dev.flowclone.notes.NotesStore
-import dev.flowclone.data.SuggestionStore
-import dev.flowclone.data.HistoryStore
-import dev.flowclone.data.InsightsStore
-import dev.flowclone.data.EnginePlan
-import dev.flowclone.data.SettingsStore
-import dev.flowclone.health.A11ySetting
-import dev.flowclone.health.AccessibilityHealth
-import dev.flowclone.policy.BubbleVisibilityPolicy
+import dev.murmur.core.NativeMurmurCore
+import dev.murmur.core.CustomModels
+import dev.murmur.data.DictionaryStore
+import dev.murmur.notes.NotesStore
+import dev.murmur.data.SuggestionStore
+import dev.murmur.data.HistoryStore
+import dev.murmur.data.InsightsStore
+import dev.murmur.data.EnginePlan
+import dev.murmur.data.SettingsStore
+import dev.murmur.health.A11ySetting
+import dev.murmur.health.AccessibilityHealth
+import dev.murmur.policy.BubbleVisibilityPolicy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
-import dev.flowclone.calls.CallEngine
-import dev.flowclone.calls.AutoCalls
-import dev.flowclone.calls.AutoQueue
-import dev.flowclone.calls.CallJobService
-import dev.flowclone.calls.CallJobs
-import dev.flowclone.calls.MediaStoreRecordings
-import dev.flowclone.calls.CallsStore
-import dev.flowclone.calls.Decoders
+import dev.murmur.calls.CallEngine
+import dev.murmur.calls.AutoCalls
+import dev.murmur.calls.AutoQueue
+import dev.murmur.calls.CallJobService
+import dev.murmur.calls.CallJobs
+import dev.murmur.calls.MediaStoreRecordings
+import dev.murmur.calls.CallsStore
+import dev.murmur.calls.Decoders
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import java.io.File
 
-/** Process-wide singletons. Single process: the a11y service and FlowService share these. */
-class FlowApp : Application() {
+/** Process-wide singletons. Single process: the a11y service and MurmurService share these. */
+class MurmurApp : Application() {
     lateinit var settings: SettingsStore; private set
     lateinit var dictionary: DictionaryStore; private set
     /** Learn-from-edits suggestions waiting for Add / Dismiss (Dictionary screen). */
@@ -94,7 +94,7 @@ class FlowApp : Application() {
     lateinit var debugAudio: DebugAudioStore; private set
     /** One low-priority writer for [debugAudio]; dictation never waits on it. */
     val debugAudioWriter: java.util.concurrent.ExecutorService by lazy {
-        java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "flow-debug-audio").apply { isDaemon = true; priority = Thread.MIN_PRIORITY } }
+        java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "murmur-debug-audio").apply { isDaemon = true; priority = Thread.MIN_PRIORITY } }
     }
     val caps: BuildCaps = BuildCaps.current()
 
@@ -121,7 +121,7 @@ class FlowApp : Application() {
     /**
      * The dictation screen of ours in front right now (any note editor sets itself on resume,
      * clears on pause), or null. While set, the accessibility service treats our own field like any
-     * other app's ([dev.flowclone.policy.OwnAppGate]); otherwise our screens get no bubble.
+     * other app's ([dev.murmur.policy.OwnAppGate]); otherwise our screens get no bubble.
      */
     @Volatile var dictationSurface: Any? = null
 
@@ -133,7 +133,7 @@ class FlowApp : Application() {
      * after another one paused reads the text that pause just saved.
      */
     val documentsIo: java.util.concurrent.ExecutorService by lazy {
-        java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "flow-documents").apply { isDaemon = true } }
+        java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "murmur-documents").apply { isDaemon = true } }
     }
 
     /** D46 Calls: call transcripts, app-private `files/calls/`. */
@@ -154,7 +154,7 @@ class FlowApp : Application() {
     @Volatile private var autoCallsRef: AutoQueue? = null
 
     /**
-     * D46: a dictation is recording or being processed (FlowService sets it). A call transcription
+     * D46: a dictation is recording or being processed (MurmurService sets it). A call transcription
      * waits between chunks while this is true, so dictation always comes first.
      */
     val dictationBusy = MutableStateFlow(false)
@@ -173,7 +173,7 @@ class FlowApp : Application() {
     fun accessibilityHealth(): AccessibilityHealth.Status {
         val enabled = A11ySetting.isEnabled(
             android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES),
-            packageName, FlowAccessibilityService::class.java.name,
+            packageName, MurmurAccessibilityService::class.java.name,
         )
         val screenOn = getSystemService(android.os.PowerManager::class.java)?.isInteractive ?: true
         val now = android.os.SystemClock.elapsedRealtime()
@@ -194,7 +194,7 @@ class FlowApp : Application() {
         super.onCreate()
         // Review C2: a blocking native call on Main is a bug (ANR on the server route); say so loudly.
         BlockingCalls.isMainThread = { android.os.Looper.myLooper() == android.os.Looper.getMainLooper() }
-        BlockingCalls.onViolation = { Log.e("FlowEngine", "blocking native call on the main thread: $it", Throwable("C2")) }
+        BlockingCalls.onViolation = { Log.e("MurmurEngine", "blocking native call on the main thread: $it", Throwable("C2")) }
         settings = SettingsStore(this)
         dictionary = DictionaryStore(this)
         suggestions = SuggestionStore(this)
@@ -211,7 +211,7 @@ class FlowApp : Application() {
         )
         // D36: before anything reads the cleanup order (AI cleanup off before the upgrade stays off).
         runCatching { dev.migrateCleanupD36(phoneAiWasOn = settings.load().llmEnabled) }
-            .onFailure { Log.w("FlowEngine", "cleanup order migration: ${it.message}") }
+            .onFailure { Log.w("MurmurEngine", "cleanup order migration: ${it.message}") }
         migrateCloud()
         engine = EngineHolder(this)
         // D68: the first dictionary word switches Parakeet to beam search, the last one back to greedy.
@@ -228,13 +228,13 @@ class FlowApp : Application() {
             },
         )
         // D49: watch for new call recordings again (when the owner opted in); off the main thread.
-        Thread({ AutoCalls.arm(this) }, "flow-calls-arm").apply { isDaemon = true }.start()
+        Thread({ AutoCalls.arm(this) }, "murmur-calls-arm").apply { isDaemon = true }.start()
         debugAudio = DebugAudioStore.inFilesDir(filesDir)
         // 72 h limit also when the option was turned off meanwhile.
         runCatching { debugAudioWriter.execute { runCatching { debugAudio.prune() } } }
     }
 
-    /** The language the next dictation uses ([dev.flowclone.data.LanguageDefault]). */
+    /** The language the next dictation uses ([dev.murmur.data.LanguageDefault]). */
     fun effectiveLanguage(s: Settings = settings.load()): String = resolveLanguage(s).language
 
     /** [effectiveLanguage] and where it came from (D37: keyboard / phone / fixed). */
@@ -266,8 +266,8 @@ class FlowApp : Application() {
     fun migrateCloud() {
         if (dev.legacyCloudJson() == null) return
         val r = runCatching {
-            CloudMigration.run(dev, cloudKeys) { NativeFlowCore.migrateCloud(it) }
-        }.onFailure { Log.w("FlowEngine", "cloud migration: ${it.message}") }.getOrNull() ?: return
+            CloudMigration.run(dev, cloudKeys) { NativeMurmurCore.migrateCloud(it) }
+        }.onFailure { Log.w("MurmurEngine", "cloud migration: ${it.message}") }.getOrNull() ?: return
         // Ids and names only; never a key.
         debugLog.event("cloud_migration", "migrated=${r.migrated} removed=${r.removedNames.size} key_moved=${r.keyFrom != null} cloud_disabled=${r.cloudDisabled}")
     }
@@ -282,19 +282,19 @@ class FlowApp : Application() {
     }
 
     companion object {
-        fun of(ctx: android.content.Context) = ctx.applicationContext as FlowApp
+        fun of(ctx: android.content.Context) = ctx.applicationContext as MurmurApp
     }
 }
 
-/** What FlowService needs from FlowAccessibilityService (same process). */
+/** What MurmurService needs from MurmurAccessibilityService (same process). */
 interface AccessibilityBridge {
     suspend fun insertTextAndVerify(text: String): Boolean
     /** Enter / Tab through the a11y InputMethod's connection (paste segments). */
     suspend fun sendKey(key: PasteKey): Boolean
     fun captureFieldContext(): FieldContext?
     fun onDictationActive(active: Boolean)
-    /** S12: may the transcript go into the field focused now (see [dev.flowclone.policy.InsertGuard])? */
-    fun insertTarget(explicit: Boolean): dev.flowclone.session.InsertTarget = dev.flowclone.session.InsertTarget.OK
+    /** S12: may the transcript go into the field focused now (see [dev.murmur.policy.InsertGuard])? */
+    fun insertTarget(explicit: Boolean): dev.murmur.session.InsertTarget = dev.murmur.session.InsertTarget.OK
     /** Health probe: does the system still answer this service (window query)? False or throwing = dead binding. */
     fun probeAlive(): Boolean = true
     /** D21 debug log: status + step trail of the last [insertTextAndVerify]. */
@@ -305,29 +305,29 @@ interface AccessibilityBridge {
      * Learn from my edits: a reader of the field pinned by [captureFieldContext], or null when
      * that field must not be re-read (password / sensitive / banking / no field).
      */
-    fun editReader(): dev.flowclone.learn.FieldReader? = null
+    fun editReader(): dev.murmur.learn.FieldReader? = null
 
     /**
      * Command Mode: the focused field's text + selection, or why it is refused (password /
      * sensitive / banking / denylisted / no field). Pins the field like [captureFieldContext].
      */
-    fun captureCommand(): dev.flowclone.command.CommandTarget =
-        dev.flowclone.command.CommandTarget.Refused(dev.flowclone.command.CommandTarget.NO_FIELD_MESSAGE)
+    fun captureCommand(): dev.murmur.command.CommandTarget =
+        dev.murmur.command.CommandTarget.Refused(dev.murmur.command.CommandTarget.NO_FIELD_MESSAGE)
 
     /** Command Mode: replace [target]'s selection with [text] (at the cursor without one). False = field unchanged. */
-    suspend fun applyCommand(target: dev.flowclone.command.CommandTarget.Field, text: String): Boolean = false
+    suspend fun applyCommand(target: dev.murmur.command.CommandTarget.Field, text: String): Boolean = false
 }
 
 /**
  * Keeps the speech engine warm for the FGS lifetime (core `load_models` / `unload`).
- * Selection: mock engine setting → [FakeFlowCore]; else (D17) the local engine when this
+ * Selection: mock engine setting → [FakeMurmurCore]; else (D17) the local engine when this
  * flavour has one and the client route needs it, wrapped by the native router
  * (`nativeOpenRouter`), which also owns the server route. All sessions go to the router.
  */
 class EngineHolder(
-    private val app: FlowApp,
-    private val loader: FlowCoreLoader = NativeFlowCore,
-    private val opener: RouterOpener = NativeFlowCore.routerOpener,
+    private val app: MurmurApp,
+    private val loader: MurmurCoreLoader = NativeMurmurCore,
+    private val opener: RouterOpener = NativeMurmurCore.routerOpener,
     /** Test seam: the load set the next dictation needs (null = [wantedSet] from the settings). */
     private val setProbe: (() -> LoadSet)? = null,
     /** Test seam: builds the engine for a load set instead of the native load (null = the real load). */
@@ -355,12 +355,12 @@ class EngineHolder(
         data object Loading : State
         /** [asr]: the on-device ASR the router got (null: none, e.g. server / cloud only); [mock]: the mock engine. */
         data class Ready(
-            val core: FlowCore, val description: String, val llm: EnginePlan.LlmStatus = EnginePlan.LlmStatus.Off,
-            val asr: dev.flowclone.data.LoadedAsr? = null, val mock: Boolean = false,
+            val core: MurmurCore, val description: String, val llm: EnginePlan.LlmStatus = EnginePlan.LlmStatus.Off,
+            val asr: dev.murmur.data.LoadedAsr? = null, val mock: Boolean = false,
             /** D24: why the phone can't take over when the server is unreachable (null = it can). */
             val clientNote: String? = null,
             /** D24: the on-device ASR the router loads on demand (keep warm off), for the debug log. */
-            val onDemandAsr: dev.flowclone.data.LoadedAsr? = null,
+            val onDemandAsr: dev.murmur.data.LoadedAsr? = null,
             /** D55: the plan loaded a phone speech model before the router opened ([EngineRoute.needsLocal]). */
             val localPlanned: Boolean = false,
         ) : State
@@ -418,9 +418,9 @@ class EngineHolder(
     /**
      * D68: the dictionary was saved, so the wanted Parakeet search may have changed. The switch
      * frees the loaded core, so it never runs on the caller's (UI) thread nor while a dictation
-     * records or processes: it waits until [FlowApp.dictationBusy] is false, then [ensureLanguage]
+     * records or processes: it waits until [MurmurApp.dictationBusy] is false, then [ensureLanguage]
      * (a no-op when the search did not change). A dictation started first applies it itself at
-     * its start (FlowService.beforeStart → [ensureLanguage]), before it records.
+     * its start (MurmurService.beforeStart → [ensureLanguage]), before it records.
      */
     fun dictionaryChanged() {
         scope.launch {
@@ -476,7 +476,7 @@ class EngineHolder(
      * the engine about to be freed, is kept for the next load (~38 s for the 1.5B on the phone).
      * Called under this lock while that engine is still alive.
      */
-    private fun keepLlmForSwitch(core: FlowCore?) {
+    private fun keepLlmForSwitch(core: MurmurCore?) {
         if (core != null && runCatching { core.keepLlm() }.getOrDefault(false)) llmKept = true
     }
 
@@ -488,7 +488,7 @@ class EngineHolder(
     }
 
     /** Native library status, for the UI. */
-    fun libraryState(): NativeFlowCore.LibraryState = NativeFlowCore.loadLibrary()
+    fun libraryState(): NativeMurmurCore.LibraryState = NativeMurmurCore.loadLibrary()
 
     @Synchronized
     fun ensureLoaded() {
@@ -510,7 +510,7 @@ class EngineHolder(
                         null
                     } else next
                 } ?: break
-                Log.i("FlowEngine", "language or dictionary changed during the load: dropping the $loadedSet model")
+                Log.i("MurmurEngine", "language or dictionary changed during the load: dropping the $loadedSet model")
                 synchronized(this@EngineHolder) { keepLlmForSwitch((stale as? State.Ready)?.core) }
                 drop(stale)
                 next = load()
@@ -524,7 +524,7 @@ class EngineHolder(
     private fun drop(s: State) {
         val core = (s as? State.Ready)?.core ?: return
         core.unload()
-        (core as? NativeFlowCore)?.let { unloading = it }
+        (core as? NativeMurmurCore)?.let { unloading = it }
     }
 
     @Synchronized
@@ -534,7 +534,7 @@ class EngineHolder(
     }
 
     /** The engine [unload] let go of; [load] waits until its native memory is really freed. */
-    @Volatile private var unloading: NativeFlowCore? = null
+    @Volatile private var unloading: NativeMurmurCore? = null
 
     /**
      * Never blocks (review C1): a push/commit/poll still running keeps the native engine alive,
@@ -558,13 +558,13 @@ class EngineHolder(
         runCatching { persistCloudUsage() }
         val core = (_state.value as? State.Ready)?.core
         core?.unload()
-        (core as? NativeFlowCore)?.let { unloading = it }
+        (core as? NativeMurmurCore)?.let { unloading = it }
         _state.value = State.NotLoaded
         loadedWithLocal = null
     }
 
     /** For DictationController: the warm core, or why there isn't one. */
-    fun current(): FlowCore = when (val s = _state.value) {
+    fun current(): MurmurCore = when (val s = _state.value) {
         is State.Ready -> s.core
         State.Loading -> throw CoreException(loadingLabel ?: "Speech model is still loading…", CoreException.KIND_LOADING)
         is State.Failed -> throw CoreException(s.message, s.kind)
@@ -614,10 +614,10 @@ class EngineHolder(
     fun clientNote(): String? = (_state.value as? State.Ready)?.clientNote
 
     /** The on-device ASR that loaded, or null (not loaded, mock, server / cloud only). */
-    fun loadedAsr(): dev.flowclone.data.LoadedAsr? = (_state.value as? State.Ready)?.asr
+    fun loadedAsr(): dev.murmur.data.LoadedAsr? = (_state.value as? State.Ready)?.asr
 
     /** The router handle, when the native router is the active engine. */
-    fun router(): NativeFlowCore? = ((_state.value as? State.Ready)?.core as? NativeFlowCore)?.takeIf { it.isRouter }
+    fun router(): NativeMurmurCore? = ((_state.value as? State.Ready)?.core as? NativeMurmurCore)?.takeIf { it.isRouter }
 
     /**
      * Developer settings were saved (§5 "Settings → router"): `update_config` in place, applied
@@ -629,7 +629,7 @@ class EngineHolder(
         val wantLocal = EngineRoute.needsLocal(dev.effective(app.caps), app.caps)
         if (r != null && loadedWithLocal == wantLocal && !dev.effective(app.caps).bothOff) {
             try { r.updateRouter(dev.routerConfigFor(app.caps)); return } catch (e: CoreException) {
-                Log.w("FlowEngine", "update_config: ${e.message}")
+                Log.w("MurmurEngine", "update_config: ${e.message}")
                 app.debugLog.event("router_config", e.message, e)
             }
         }
@@ -643,10 +643,10 @@ class EngineHolder(
      * JSON) and this month's persisted usage counters. A notice from a legacy config the router
      * migrated itself (should the shell's migration not have run) is kept for the banner.
      */
-    private fun syncCloud(r: NativeFlowCore) {
+    private fun syncCloud(r: NativeMurmurCore) {
         if (!app.caps.cloud) return
         for (id in listOf(OpenRouter.ID, CustomServer.ID)) app.cloudKeys.get(id)?.let { key ->
-            runCatching { r.setCloudKey(id, key) }.onFailure { Log.w("FlowEngine", "set_cloud_key: ${it.message}") }
+            runCatching { r.setCloudKey(id, key) }.onFailure { Log.w("MurmurEngine", "set_cloud_key: ${it.message}") }
         }
         app.dev.cloudUsageJson?.let { r.setCloudUsage(it) }
         r.cloudNotice()?.let { app.dev.cloudNotice = it; r.ackCloudNotice() }
@@ -654,7 +654,7 @@ class EngineHolder(
 
     /** A key was saved / cleared: tell the live router (D28 id `openrouter`, D52 `custom`). */
     fun setCloudKey(key: String?, id: String = OpenRouter.ID) {
-        runCatching { router()?.setCloudKey(id, key) }.onFailure { Log.w("FlowEngine", "set_cloud_key: ${it.message}") }
+        runCatching { router()?.setCloudKey(id, key) }.onFailure { Log.w("MurmurEngine", "set_cloud_key: ${it.message}") }
     }
 
     /**
@@ -664,7 +664,7 @@ class EngineHolder(
      */
     fun customCleanupModels(baseUrl: String, key: String?): CustomModels {
         val typed = CustomModelsKey.typedOnly(key)
-        return router()?.customCleanupModels(baseUrl, typed) ?: NativeFlowCore.customCleanupModels(baseUrl, typed)
+        return router()?.customCleanupModels(baseUrl, typed) ?: NativeMurmurCore.customCleanupModels(baseUrl, typed)
     }
 
     /** Persist the router's cloud counters (after a cloud dictation, and on Reset counters). */
@@ -672,7 +672,7 @@ class EngineHolder(
         router()?.cloudUsageJson()?.let { app.dev.cloudUsageJson = it }
     }
 
-    /** Load 3: one `engine_load_timings` debug-log event (also logcat tag FlowDebug) per native load, debug log on only. */
+    /** Load 3: one `engine_load_timings` debug-log event (also logcat tag MurmurDebug) per native load, debug log on only. */
     private fun logLoadTimings(timings: String, set: LoadSet, threads: Int) {
         if (!app.debugLog.isEnabled()) return
         val cpus = runCatching {
@@ -698,14 +698,14 @@ class EngineHolder(
     }
 
     private fun loadEngine(): State {
-        unloading?.let { if (!it.awaitFreed(UNLOAD_WAIT_MS)) Log.w("FlowEngine", "previous engine still busy after ${UNLOAD_WAIT_MS} ms; loading anyway") }
+        unloading?.let { if (!it.awaitFreed(UNLOAD_WAIT_MS)) Log.w("MurmurEngine", "previous engine still busy after ${UNLOAD_WAIT_MS} ms; loading anyway") }
         unloading = null
         val threads = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 4)
         val s = app.settings.load()
         // Parakeet derives bpe.vocab for hotwords into TMPDIR (core-architecture "Android: Parakeet" 4).
         runCatching { android.system.Os.setenv("TMPDIR", app.cacheDir.path, true) }
         // D28: the catalogue cache (no network here; the router's STT / cleanup resolve models from it).
-        if (app.caps.cloud) runCatching { NativeFlowCore.setCloudCacheDir(app.cacheDir.path) }
+        if (app.caps.cloud) runCatching { NativeMurmurCore.setCloudCacheDir(app.cacheDir.path) }
         app.migrateCloud()
         val set = wantedSet(s)
         loadingLabel = labelFor(set, switching = loadingLabel != null || set != loadedSet)
@@ -722,7 +722,7 @@ class EngineHolder(
             language = app.effectiveLanguage(s), hebrew = hebrew, keepBoth = s.keepBothLanguages,
         )
         return when (val plan = EngineRoute.plan(local, app.dev.load(), app.caps)) {
-            EngineRoute.Plan.Mock -> State.Ready(FakeFlowCore("This is a test of on-device dictation."), "mock engine", mock = true)
+            EngineRoute.Plan.Mock -> State.Ready(FakeMurmurCore("This is a test of on-device dictation."), "mock engine", mock = true)
             is EngineRoute.Plan.Unavailable -> {
                 app.debugLog.event("engine_load", "${plan.kind ?: "unavailable"}: ${plan.message}")
                 State.Failed(plan.message, plan.kind)
@@ -732,20 +732,20 @@ class EngineHolder(
                 val r = EngineRoute.assemble(plan, loader, opener)
                 loader.takeLoadTimings()?.let { logLoadTimings(it, set, threads) }
                 if (r.llm is EnginePlan.LlmStatus.Failed) {
-                    Log.w("FlowEngine", "LLM disabled: ${(r.llm as EnginePlan.LlmStatus.Failed).message}")
+                    Log.w("MurmurEngine", "LLM disabled: ${(r.llm as EnginePlan.LlmStatus.Failed).message}")
                     app.debugLog.event("llm_load", (r.llm as EnginePlan.LlmStatus.Failed).message)
                 }
                 if (r.core == null) {
-                    Log.w("FlowEngine", "load failed: ${r.error}")
+                    Log.w("MurmurEngine", "load failed: ${r.error}")
                     app.debugLog.event("engine_load", "${r.errorKind ?: "error"}: ${r.error}")
                     State.Failed(RouterErrors.userMessage(r.errorKind, r.error ?: "Speech engine failed to load"), r.errorKind)
                 } else {
                     EngineMismatch.message(EnginePlan.selectedEngine(s, plan.local), plan.local, r.asr, r.description)?.let {
-                        Log.w("FlowEngine", "engine mismatch: $it")
+                        Log.w("MurmurEngine", "engine mismatch: $it")
                         app.debugLog.event("engine_mismatch", it)
                     }
                     loadedWithLocal = plan.local != null
-                    (r.core as? NativeFlowCore)?.takeIf { it.isRouter }?.let(::syncCloud)
+                    (r.core as? NativeMurmurCore)?.takeIf { it.isRouter }?.let(::syncCloud)
                     State.Ready(
                         r.core, r.description, r.llm, asr = r.asr, clientNote = r.clientNote, onDemandAsr = r.onDemandAsr,
                         localPlanned = plan.local != null,

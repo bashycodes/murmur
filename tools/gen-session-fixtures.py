@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Generate crates/flow-contract-tests/fixtures/sessions/*.json.
+"""Generate crates/murmur-contract-tests/fixtures/sessions/*.json.
 
 Each fixture is one dictation the equivalence suite runs both locally
-(FlowCore) and through Router -> flow-remote -> flow-server, comparing the
+(MurmurCore) and through Router -> murmur-remote -> murmur-server, comparing the
 results byte for byte (minus timings/route):
 
   {name, asr: {"mock": text} | "whisper-tiny" | "parakeet",
@@ -11,7 +11,7 @@ results byte for byte (minus timings/route):
    learn?: {pasted, edited}}
 
 Sources: the post-processing test vectors in
-crates/flow-core/tests/vectors/ (every case expressible as ASR text + config
+crates/murmur-core/tests/vectors/ (every case expressible as ASR text + config
 + context) plus hand-written core-p1 cases (spoken cleanup, empty reasons).
 Re-run after the vectors change; the output is deterministic.
 """
@@ -23,8 +23,8 @@ import sys
 from urllib.parse import urlparse
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-VEC = os.path.join(ROOT, "crates/flow-core/tests/vectors")
-OUT = os.path.join(ROOT, "crates/flow-contract-tests/fixtures/sessions")
+VEC = os.path.join(ROOT, "crates/murmur-core/tests/vectors")
+OUT = os.path.join(ROOT, "crates/murmur-contract-tests/fixtures/sessions")
 
 STAGES = {"pipeline", "match_context", "dictionary_replace", "press_enter",
           "cursor_tag", "slack_tag", "app_type"}

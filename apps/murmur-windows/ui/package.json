@@ -1,5 +1,5 @@
 {
-  "name": "flow-windows-ui",
+  "name": "murmur-windows-ui",
   "private": true,
   "version": "1.1.2",
   "description": "Overlay pill + settings front-end. Plain TS -> JS, no bundler, no runtime deps, no network assets.",

@@ -129,7 +129,7 @@ export function progressLine(p: DlProgress & { started?: number; via?: "import" 
 
 // ------------------------------------------------------------ pickers + links
 
-/** Where "Set up a server" points (flow-server's instructions). */
+/** Where "Set up a server" points (murmur-server's instructions). */
 export const SERVER_HELP = "https://github.com/bashycodes/murmur/blob/integration/docs/server-setup.md";
 
 export async function pickPath(kind: "folder" | "file", title: string, filters?: Filter[]): Promise<string | null> {
@@ -700,7 +700,7 @@ let heStatus: HeStatus = null;
 /** Where whisper would run on this PC (`whisper_backend`); undefined = not asked, null = asking. */
 let whisperBackend: LlmBackend | null | undefined;
 
-/** Ask once (the backend loads the GPU whisper plugin, flow_whisper_vulkan.dll, to list the GPUs). */
+/** Ask once (the backend loads the GPU whisper plugin, murmur_whisper_vulkan.dll, to list the GPUs). */
 function askWhisperBackend(): void {
   if (whisperBackend !== undefined) return;
   whisperBackend = null;

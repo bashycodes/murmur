@@ -1,6 +1,6 @@
 //! Host-side check of the commit-time speech gate on wav files.
 //!
-//! cargo run -p flow-core --features wav --example vad_gate -- [--dump DIR] WAV...
+//! cargo run -p murmur-core --features wav --example vad_gate -- [--dump DIR] WAV...
 //!
 //! Prints, per clip, what a commit with VAD on would do before ASR:
 //! `no_speech` (the VAD found none), `blank_asr` (the VAD passed but the
@@ -9,7 +9,7 @@
 //! clip RMS, speech_ms, and the RMS of what the ASR receives. `--dump DIR`
 //! writes that ASR input as DIR/<clip>.wav (16-bit) for decoding elsewhere.
 
-use flow_core::vad;
+use murmur_core::vad;
 
 /// The whole-clip RMS gate inside the sherpa and whisper engines.
 const ENGINE_SILENCE_RMS: f32 = 0.003;

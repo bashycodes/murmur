@@ -42,7 +42,7 @@ session):
 | path | identifier lines (6) | synthetic negatives (12) | English set WER, terms (37) | main set WER, terms (15) | synthetic LLM p50 |
 |---|---|---|---|---|---|
 | phone (v2, 1.5B) | 0 -> 3 | 11 -> 11 | 9.0 -> 8.7 %, 27 -> 28 | 10.2 -> 9.8 %, 8 -> 8 | 1365 -> 1357 ms |
-| flow-server (v2, 1.5B) | 0 -> 3 | 11 -> 11 | 9.3 -> 9.0 %, 27 -> 28 | 10.5 -> 9.8 %, 8 -> 8 | 1368 -> 1324 ms |
+| murmur-server (v2, 1.5B) | 0 -> 3 | 11 -> 11 | 9.3 -> 9.0 %, 27 -> 28 | 10.5 -> 9.8 %, 8 -> 8 | 1368 -> 1324 ms |
 | AI cleanup (v5, 1.5B) | 0 -> 3 | 12 -> 12 | 8.7 -> 8.3 %, 29 -> 30 | 12.2 -> 12.2 %, 8 -> 8 | 1623 -> 1778 ms |
 | AI cleanup (v5, 3B) | 0 -> 3 | 12 -> 12 | 6.6 -> 8.0 %, 30 -> 29 | 15.7 -> 15.5 %, 8 -> 8 | 2981 -> 3102 ms |
 
@@ -54,7 +54,7 @@ session):
   that hit the 30 s time limit on a heavily loaded machine (raw text
   pasted). The other 27 outputs are byte-identical to base. The main
   set's 3B also had one timeout.
-- **Negatives.** The phone and flow-server negatives miss the same case as
+- **Negatives.** The phone and murmur-server negatives miss the same case as
   base; no output changed.
 - **Synthetic set.** Totals moved by at most 2 cases per path (variance;
   the prompt is the same).
@@ -82,7 +82,7 @@ after:
 | path | total (38) | tuned half (19) | held half (19) |
 |---|---|---|---|
 | phone (v2, 1.5B) | 21 -> 26 | 8 -> 14 | 13 -> 12 |
-| flow-server (v2, 1.5B) | 23 -> 28 | 9 -> 15 | 14 -> 13 |
+| murmur-server (v2, 1.5B) | 23 -> 28 | 9 -> 15 | 14 -> 13 |
 | AI cleanup (v5, 1.5B) | 20 -> 25 | 8 -> 13 | 12 -> 12 |
 | AI cleanup (v5, 3B) | 23 -> 25 | 11 -> 12 | 12 -> 13 |
 

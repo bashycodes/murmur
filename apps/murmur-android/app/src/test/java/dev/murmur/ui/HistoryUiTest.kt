@@ -1,15 +1,15 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.app.Activity
 import android.content.Intent
-import dev.flowclone.FlowApp
-import dev.flowclone.data.HistoryRow
-import dev.flowclone.data.Retention
-import dev.flowclone.data.SettingsPages
-import dev.flowclone.ui.UiTestKit.idle
-import dev.flowclone.ui.UiTestKit.rowTitled
-import dev.flowclone.ui.UiTestKit.texts
-import dev.flowclone.ui.UiTestKit.walk
+import dev.murmur.MurmurApp
+import dev.murmur.data.HistoryRow
+import dev.murmur.data.Retention
+import dev.murmur.data.SettingsPages
+import dev.murmur.ui.UiTestKit.idle
+import dev.murmur.ui.UiTestKit.rowTitled
+import dev.murmur.ui.UiTestKit.texts
+import dev.murmur.ui.UiTestKit.walk
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -27,10 +27,10 @@ import org.robolectric.shadows.ShadowToast
 
 /** History list (day groups, outcome badge, not-inserted recovery) and detail page. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], application = FlowApp::class)
+@Config(sdk = [34], application = MurmurApp::class)
 class HistoryUiTest {
     private val ctx get() = RuntimeEnvironment.getApplication()
-    private val app get() = FlowApp.of(ctx)
+    private val app get() = MurmurApp.of(ctx)
 
     @After fun clear() { app.history.clear() }
 
@@ -139,7 +139,7 @@ class HistoryUiTest {
     @Test fun aCorrectionWithoutALoadedEngineSaysItsWordsWereNotLearned() {
         add("ask gina about it")
         val id = app.history.recent().first().id
-        org.junit.Assume.assumeFalse(app.engine.state.value is dev.flowclone.EngineHolder.State.Ready)
+        org.junit.Assume.assumeFalse(app.engine.state.value is dev.murmur.EngineHolder.State.Ready)
         val a = settle(Robolectric.buildActivity(HistoryActivity::class.java, HistoryActivity.detailIntent(ctx, id)).setup().visible().get()) { "DETAILS" in texts(it) }
         walk(a.window.decorView).first { it is android.widget.Button && it.text == HistoryActivity.CORRECT }.performClick()
         val d = ShadowAlertDialog.getLatestAlertDialog()

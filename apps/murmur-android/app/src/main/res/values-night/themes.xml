@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Dark: the accent (dialog buttons, cursor, selection) is the dark theme's ink (ui/Tokens.kt). -->
-    <style name="Theme.Flow" parent="@android:style/Theme.DeviceDefault.DayNight">
+    <style name="Theme.Murmur" parent="@android:style/Theme.DeviceDefault.DayNight">
         <item name="android:colorAccent">#FFE9E8E1</item>
     </style>
 </resources>

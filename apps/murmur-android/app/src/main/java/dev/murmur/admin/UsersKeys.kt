@@ -1,9 +1,9 @@
-package dev.flowclone.admin
+package dev.murmur.admin
 
 import android.content.Context
-import dev.flowclone.core.BlockingCalls
-import dev.flowclone.data.BuildCaps
-import dev.flowclone.data.DevSettings
+import dev.murmur.core.BlockingCalls
+import dev.murmur.data.BuildCaps
+import dev.murmur.data.DevSettings
 import org.json.JSONObject
 import java.text.DateFormat
 import java.util.Date
@@ -11,7 +11,7 @@ import java.util.Locale
 
 /**
  * Settings → Your server → Users & keys (D39), the Android twin of the Windows page
- * (apps/flow-windows/src/server_admin.rs): the owner lists, creates and revokes the server's
+ * (apps/murmur-windows/src/server_admin.rs): the owner lists, creates and revokes the server's
  * named keys (D38) when this app's saved token is an admin key. The page and its entry are
  * hidden for a non-admin key (`forbidden` / `whoami.admin == false`) and in the `local`
  * flavour (no network code, no admin natives).
@@ -22,7 +22,7 @@ import java.util.Locale
 data class WhoAmI(val id: String, val name: String, val admin: Boolean)
 
 /**
- * One key with its usage (`flow_protocol::admin::KeyView`). Times are Unix seconds.
+ * One key with its usage (`murmur_protocol::admin::KeyView`). Times are Unix seconds.
  * [lastUsed]: last dictation, text-only cleanup or model download; [lastConnected]: last
  * authenticated request of any kind (D50).
  */
@@ -54,7 +54,7 @@ sealed interface AdminResult<out T> {
     data class Err(val code: String, val message: String = "") : AdminResult<Nothing>
 }
 
-/** `flow_protocol::admin::code` values, plus the app's own [NOT_IN_BUILD]. */
+/** `murmur_protocol::admin::code` values, plus the app's own [NOT_IN_BUILD]. */
 object AdminCode {
     const val UNAUTHORIZED = "unauthorized"
     const val FORBIDDEN = "forbidden"
@@ -146,7 +146,7 @@ object UsersKeys {
 
     /** The client for the saved settings, or null when [available] is false. Tests replace it. */
     @Volatile var factory: (Context) -> AdminApi? = { ctx ->
-        val app = dev.flowclone.FlowApp.of(ctx)
+        val app = dev.murmur.MurmurApp.of(ctx)
         clientFor(app.caps, app.dev.load())
     }
 
@@ -161,7 +161,7 @@ object UsersKeys {
             AdminCode.UNAUTHORIZED -> "The server no longer accepts this app's key."
             AdminCode.LAST_ADMIN -> "This is the last admin key: create another admin key first."
             AdminCode.NAME_TAKEN -> "A key with this name already exists."
-            AdminCode.UNSUPPORTED -> "This server is too old for key management: update flow-server."
+            AdminCode.UNSUPPORTED -> "This server is too old for key management: update murmur-server."
             AdminCode.AUTH_OFF -> "This server runs without keys."
             AdminCode.CONNECT_FAILED -> "Can't reach the server."
             AdminCode.NOT_IN_BUILD -> "This build has no key management."

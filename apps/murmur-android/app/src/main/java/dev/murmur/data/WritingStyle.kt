@@ -1,17 +1,17 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.core.CommitResult
-import dev.flowclone.core.CommitStatus
-import dev.flowclone.core.Style
-import dev.flowclone.core.Styles
-import dev.flowclone.policy.AppCategorizer.Category
+import dev.murmur.core.CommitResult
+import dev.murmur.core.CommitStatus
+import dev.murmur.core.Style
+import dev.murmur.core.Styles
+import dev.murmur.policy.AppCategorizer.Category
 
 /**
  * Settings → Writing style (D27 layer 1, docs/findings/2026-10-24-formatting-gap.md §7): one style
- * per bucket, picked by the app the dictation goes into ([dev.flowclone.policy.AppCategorizer],
+ * per bucket, picked by the app the dictation goes into ([dev.murmur.policy.AppCategorizer],
  * plus the user's per-app [Settings.appBuckets]).
  *
- * What a style does in flow-core: FORMAL keeps every period; CASUAL drops the final period (≤ 10
+ * What a style does in murmur-core: FORMAL keeps every period; CASUAL drops the final period (≤ 10
  * sentences, cursor context permitting); VERY_CASUAL always drops it, and with AI cleanup on the
  * model also writes all lowercase. EXCITED ("!") exists in the core but is not offered here.
  */

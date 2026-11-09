@@ -1,5 +1,5 @@
 // OpenRouter (D28, docs/proposals/openrouter-only-cloud.md §2.2-§2.6): the
-// only cloud. One key (Credential Manager flow-clone/cloud/openrouter,
+// only cloud. One key (Credential Manager murmur/cloud/openrouter,
 // never sent back to this page), two separately consented uses (speech =
 // audio, cleanup = text), shared privacy + budget. Every change is applied
 // at once by a `dev_or_set_*` command that returns the whole OrView.
@@ -7,7 +7,7 @@
 // groups of SettingsSpeech / SettingsCleanup.
 // D52: text cleanup can go to the user's own OpenAI-compatible server
 // instead (provider selector on the cleanup card; its own optional key
-// `flow-clone/cloud/custom` and consent bound to the typed host).
+// `murmur/cloud/custom` and consent bound to the typed host).
 import { $, askDialog, el, setStatus, setValue, when } from "../lib/dom.js";
 import { iconEl } from "../lib/icons.js";
 import { cleanupBlockedLine, cleanupEngineName, cleanupTestFailText, plainHint } from "../lib/cleanup-state.js";

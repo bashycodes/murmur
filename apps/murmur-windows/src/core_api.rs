@@ -1,7 +1,7 @@
-//! Seam to `flow-core` (the shell-facing v2 API).
+//! Seam to `murmur-core` (the shell-facing v2 API).
 //!
 //! The shell codes against [`CoreApi`] only; `core_adapter.rs` implements it
-//! on top of `flow_core::FlowCore` (the shell's types are mapped there, so
+//! on top of `murmur_core::MurmurCore` (the shell's types are mapped there, so
 //! controller tests never need a model). [`StubCore`] stays as a model-free
 //! stand-in for tests: it reports what it heard as a duration string.
 //!
@@ -13,9 +13,9 @@ use std::sync::Mutex;
 
 /// The paste plan (core-p1 CR-2) is plain data, so the shell reuses the
 /// core's type rather than mirroring it: `{"text": ".."}` / `{"key": "Enter"|"Tab"|"Break"}`.
-pub use flow_core::paste::{PasteKey, PasteSegment};
+pub use murmur_core::paste::{PasteKey, PasteSegment};
 /// Which engine produced a result (D17), filled by the router.
-pub use flow_core::RouteInfo;
+pub use murmur_core::RouteInfo;
 
 /// Shared dictionary/snippet export shape: `{word, replacement, isSnippet}`.
 /// No replacement = vocabulary word (ASR bias); replacement = deterministic
@@ -201,7 +201,7 @@ pub struct CommitResult {
     /// D28: what the LLM step cost / which engine ran it (`None`: LLM off,
     /// skipped, or every cleaner refused up front).
     #[serde(default)]
-    pub llm: Option<flow_core::cleanup::CleanUsage>,
+    pub llm: Option<murmur_core::cleanup::CleanUsage>,
 }
 
 impl CommitResult {
@@ -229,8 +229,8 @@ impl CommitResult {
         let text = text.into();
         CommitResult {
             asr_text: text.clone(),
-            segments: flow_core::paste::segments(&text, press_enter),
-            plain_text: flow_core::paste::plain_text(&text),
+            segments: murmur_core::paste::segments(&text, press_enter),
+            plain_text: murmur_core::paste::plain_text(&text),
             final_text: text,
             press_enter,
             ..Self::with_status(status)
@@ -241,7 +241,7 @@ impl CommitResult {
     /// that carry none (a pre-core-p1 producer).
     pub fn paste_segments(&self) -> Vec<PasteSegment> {
         if self.segments.is_empty() && !self.final_text.is_empty() {
-            flow_core::paste::segments(&self.final_text, self.press_enter)
+            murmur_core::paste::segments(&self.final_text, self.press_enter)
         } else {
             self.segments.clone()
         }
@@ -250,7 +250,7 @@ impl CommitResult {
     /// What the user ended up with, without markers.
     pub fn plain(&self) -> String {
         if self.plain_text.is_empty() {
-            flow_core::paste::plain_text(&self.final_text)
+            murmur_core::paste::plain_text(&self.final_text)
         } else {
             self.plain_text.clone()
         }
@@ -275,7 +275,7 @@ pub struct LearnCandidate {
 
 /// Where the live session runs (router `poll().route` /
 /// `start_session_info().route`): `local` / `remote` / `cloud` + details.
-pub use flow_router::SessionRoute;
+pub use murmur_router::SessionRoute;
 
 /// One tick of the partial timer: preview text, hands-free endpoint (D19)
 /// and the route in use right now.
@@ -352,7 +352,7 @@ pub fn live_route_label(
     let (via, title) = match engine.as_str() {
         "remote" => (
             "server".to_string(),
-            r.server.as_ref().map(|s| format!("Your flow-server {s}")),
+            r.server.as_ref().map(|s| format!("Your murmur-server {s}")),
         ),
         "cloud" => {
             let id = r.provider.clone().unwrap_or_default();
@@ -406,7 +406,7 @@ pub trait CoreApi: Send + Sync {
     fn cancel(&self);
     fn learn_edit(&self, pasted: &str, edited: &str) -> Vec<LearnCandidate>;
     /// Command Mode: run the spoken `instruction` on `selected` (`None` =
-    /// write new text) with the cleanup LLM route (`flow_core::command`),
+    /// write new text) with the cleanup LLM route (`murmur_core::command`),
     /// blocking up to `timeout`. `Ok` = the text to paste, `Err` = pill
     /// text. Default: no LLM available.
     fn command(
@@ -415,25 +415,25 @@ pub trait CoreApi: Send + Sync {
         selected: Option<&str>,
         timeout: std::time::Duration,
     ) -> Result<String, String> {
-        flow_core::command::run(None, instruction, selected, timeout).map_err(|e| e.to_string())
+        murmur_core::command::run(None, instruction, selected, timeout).map_err(|e| e.to_string())
     }
     /// Transforms: run a saved `instruction` on `text` (a selection or a
-    /// dictation, see `flow_core::transform::Source`) with the cleanup LLM
+    /// dictation, see `murmur_core::transform::Source`) with the cleanup LLM
     /// route, blocking up to `timeout`. `Ok` = the text to paste, `Err` =
     /// pill text. Default: no LLM available.
     fn transform(
         &self,
         instruction: &str,
         text: &str,
-        source: flow_core::transform::Source,
+        source: murmur_core::transform::Source,
         timeout: std::time::Duration,
     ) -> Result<String, String> {
-        flow_core::transform::run_transform(None, instruction, text, source, timeout)
+        murmur_core::transform::run_transform(None, instruction, text, source, timeout)
             .map_err(|e| e.to_string())
     }
 }
 
-/// Model-free stand-in for `flow-core`: counts samples and returns
+/// Model-free stand-in for `murmur-core`: counts samples and returns
 /// "[stub: N.N s of audio]" so the full shell path can be exercised.
 #[derive(Default)]
 pub struct StubCore {
@@ -458,7 +458,7 @@ struct StubState {
     /// Scripted transform answer and the (instruction, text, source)
     /// triples it was asked.
     transform_reply: Option<Result<String, String>>,
-    transforms: Vec<(String, String, flow_core::transform::Source)>,
+    transforms: Vec<(String, String, murmur_core::transform::Source)>,
 }
 
 impl StubCore {
@@ -508,7 +508,7 @@ impl StubCore {
     }
 
     /// (instruction, text, source) of every `transform()` call.
-    pub fn transforms(&self) -> Vec<(String, String, flow_core::transform::Source)> {
+    pub fn transforms(&self) -> Vec<(String, String, murmur_core::transform::Source)> {
         self.inner.lock().unwrap().transforms.clone()
     }
 }
@@ -601,7 +601,7 @@ impl CoreApi for StubCore {
         };
         match reply {
             Some(r) => r,
-            None => flow_core::command::run(None, instruction, selected, timeout)
+            None => murmur_core::command::run(None, instruction, selected, timeout)
                 .map_err(|e| e.to_string()),
         }
     }
@@ -610,7 +610,7 @@ impl CoreApi for StubCore {
         &self,
         instruction: &str,
         text: &str,
-        source: flow_core::transform::Source,
+        source: murmur_core::transform::Source,
         timeout: std::time::Duration,
     ) -> Result<String, String> {
         let reply = {
@@ -621,7 +621,7 @@ impl CoreApi for StubCore {
         };
         match reply {
             Some(r) => r,
-            None => flow_core::transform::run_transform(None, instruction, text, source, timeout)
+            None => murmur_core::transform::run_transform(None, instruction, text, source, timeout)
                 .map_err(|e| e.to_string()),
         }
     }
@@ -749,7 +749,7 @@ mod tests {
 
     #[test]
     fn live_route_labels() {
-        use flow_router::EngineKind;
+        use murmur_router::EngineKind;
         let none = |_: &str| None;
         let local = SessionRoute::default();
         assert_eq!(

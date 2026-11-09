@@ -1,4 +1,4 @@
-package dev.flowclone.data
+package dev.murmur.data
 
 /** In-memory [KeyValue] (SharedPreferences twin) for the JVM tests. */
 internal class MemKV : KeyValue {

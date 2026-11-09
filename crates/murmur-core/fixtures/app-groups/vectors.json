@@ -1,5 +1,5 @@
 {
-  "about": "App-group vectors (data/app-groups.json, D81), checked by flow-core (tests/app_groups_vectors.rs) and the Android app (AppGroupsVectorsTest). group: app or host -> expect. bucket: Android style bucket for app + host. Package names are public Google Play ids; com.example.* are made up to pin the rules.",
+  "about": "App-group vectors (data/app-groups.json, D81), checked by murmur-core (tests/app_groups_vectors.rs) and the Android app (AppGroupsVectorsTest). group: app or host -> expect. bucket: Android style bucket for app + host. Package names are public Google Play ids; com.example.* are made up to pin the rules.",
   "vectors": [
     {"platform": "android", "group": "restricted", "app": "com.chase.sig.android", "expect": true},
     {"platform": "android", "group": "restricted", "app": "com.pnc.ecommerce.mobile", "expect": true},
@@ -128,7 +128,7 @@
     {"platform": "windows", "group": "terminal", "app": "pwsh", "expect": true},
     {"platform": "windows", "group": "document", "app": "notepad", "expect": true},
     {"platform": "windows", "group": "document", "host": "docs.google.com", "expect": true},
-    {"platform": "windows", "group": "flow", "app": "flow-windows", "expect": true},
+    {"platform": "windows", "group": "murmur", "app": "murmur-windows", "expect": true},
     {"platform": "windows", "group": "messaging", "app": "calc", "expect": false},
     {"platform": "android", "bucket": "work", "app": "com.cisco.wx2.android"},
     {"platform": "android", "bucket": "work", "app": "com.figma.mirror"},

@@ -1,4 +1,4 @@
-package dev.flowclone.data
+package dev.murmur.data
 
 import android.content.Context
 import android.content.SharedPreferences
@@ -86,7 +86,7 @@ object AndroidKeystoreKeys : VaultKeys {
 
 /**
  * AES-GCM under the Keystore key [alias]; only ciphertext ("iv:ct", base64) is stored.
- * `flow_dev_token` seals the server token (D17 §2.5); `flow_cloud_<id>` a cloud API key (D18
+ * `murmur_dev_token` seals the server token (D17 §2.5); `murmur_cloud_<id>` a cloud API key (D18
  * §8.1). D28: the only id is `openrouter`; the one-time migration moves a legacy OpenRouter
  * entry's key there and destroys every other provider's vault.
  */
@@ -109,18 +109,18 @@ class SecretVault(val alias: String, private val keys: VaultKeys = AndroidKeysto
     override fun toString() = "SecretVault($alias)"
 
     companion object {
-        fun cloudAlias(providerId: String) = "flow_cloud_$providerId"
+        fun cloudAlias(providerId: String) = "murmur_cloud_$providerId"
     }
 }
 
 /** §2.5: the server token's vault (same format as before the generalisation). */
-val TokenVault: SecretBox = SecretVault("flow_dev_token")
+val TokenVault: SecretBox = SecretVault("murmur_dev_token")
 
 /**
- * D18 C3: cloud API keys at rest. One [SecretVault] (`flow_cloud_<id>`) per id; only the
+ * D18 C3: cloud API keys at rest. One [SecretVault] (`murmur_cloud_<id>`) per id; only the
  * ciphertext is in the `dev` prefs (`cloud.key_sealed.<id>`, backup disabled app-wide). Keys never
  * enter [DevSettings], router JSON, logs or exports; they reach native code only through
- * `NativeFlowCore.setCloudKey`. D28: one key, id [OpenRouter.ID].
+ * `NativeMurmurCore.setCloudKey`. D28: one key, id [OpenRouter.ID].
  */
 class CloudKeyStore(private val kv: KeyValue, private val vaultFor: (String) -> SecretBox) {
     constructor(context: Context) : this(
@@ -338,8 +338,8 @@ class DevStore(private val kv: KeyValue, private val caps: BuildCaps, private va
      * follow the dictionary ([EnginePlan.parakeetDecoding]: greedy while it is empty, beam with
      * its words as hotwords once it has some, one recognizer either way).
      */
-    var parakeetDecodingOverride: dev.flowclone.core.ParakeetDecoding?
-        get() = dev.flowclone.core.ParakeetDecoding.fromWire(kv.getString(PARAKEET_DECODING))
+    var parakeetDecodingOverride: dev.murmur.core.ParakeetDecoding?
+        get() = dev.murmur.core.ParakeetDecoding.fromWire(kv.getString(PARAKEET_DECODING))
         set(v) = kv.edit { if (v == null) remove(PARAKEET_DECODING) else putString(PARAKEET_DECODING, v.wire) }
 
     companion object {

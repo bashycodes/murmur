@@ -1,9 +1,9 @@
 /*
- * Host-JVM stand-in for libflow_ffi.so that implements every symbol in
+ * Host-JVM stand-in for libmurmur_ffi.so that implements every symbol in
  * JNI_CONTRACT.md with trivial behaviour. Built by tools/probes/jni_stub/run.sh
- * and loaded by NativeFlowCoreStubTest to prove the Kotlin `external` declarations
+ * and loaded by NativeMurmurCoreStubTest to prove the Kotlin `external` declarations
  * (static natives, names, descriptors) link against the documented C symbols.
- * Not shipped; the real library comes from crates/flow-ffi.
+ * Not shipped; the real library comes from crates/murmur-ffi.
  */
 #include <jni.h>
 #include <stdio.h>
@@ -14,9 +14,9 @@
 typedef struct { int active; long samples; int signal; } Core;
 static __thread char last_error[256];
 
-#define FN(name) Java_dev_flowclone_core_NativeFlowCore_##name
+#define FN(name) Java_dev_murmur_core_NativeMurmurCore_##name
 
-JNIEXPORT jstring JNICALL FN(nativeVersion)(JNIEnv *env, jclass c) { return (*env)->NewStringUTF(env, "flow-ffi-stub 0"); }
+JNIEXPORT jstring JNICALL FN(nativeVersion)(JNIEnv *env, jclass c) { return (*env)->NewStringUTF(env, "murmur-ffi-stub 0"); }
 
 JNIEXPORT jstring JNICALL FN(nativeLastError)(JNIEnv *env, jclass c) {
     return last_error[0] ? (*env)->NewStringUTF(env, last_error) : NULL;

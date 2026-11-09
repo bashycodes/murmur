@@ -75,7 +75,7 @@ impl CommandError {
     }
 }
 
-/// The wire shape of a command's outcome (FFI `flow_command`, JNI
+/// The wire shape of a command's outcome (FFI `murmur_command`, JNI
 /// `nativeCommand`): `{"ok":true,"text":…}` or `{"ok":false,"kind":…,
 /// "error":…}`. Pinned by `fixtures/command/command_results.json`, which the
 /// Android shell's decoder is checked against too.
@@ -385,7 +385,7 @@ fn ask_once(
     let (tx, rx) = mpsc::channel();
     let cl = cl.clone();
     std::thread::Builder::new()
-        .name("flow-command".into())
+        .name("murmur-command".into())
         .spawn(move || {
             let _ = tx.send(cl.clean_metered(&prompt, deadline, &flag).0);
         })

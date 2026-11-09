@@ -1,10 +1,10 @@
 """Probe (stray "yeah", 2026-11-07, D72 parity check): run every WAV in a
-folder through `flow-cli transcribe --json --level none` and append one row
+folder through `murmur-cli transcribe --json --level none` and append one row
 per clip to OUT.jsonl ({clip, raw, status, segments}). Lines on stderr that
 start with a tag (default `[DEBUG-sy72]`, a temporary piece-gain trace in
 an instrumented build) go to OUT.debug, prefixed with the clip.
 
-Usage: python3 -I parity_ab.py CLI SESSION.json CLIPS_DIR OUT.jsonl [flow-cli args...]
+Usage: python3 -I parity_ab.py CLI SESSION.json CLIPS_DIR OUT.jsonl [murmur-cli args...]
 Evidence (clips, rows) stays outside the repo; prints counts only.
 """
 

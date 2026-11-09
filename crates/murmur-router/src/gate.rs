@@ -16,8 +16,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use flow_core::asr::AbortFlag;
-use flow_core::cleanup::{CleanError, CleanPrompt, CleanUsage, Cleaner, PromptScope};
+use murmur_core::asr::AbortFlag;
+use murmur_core::cleanup::{CleanError, CleanPrompt, CleanUsage, Cleaner, PromptScope};
 
 use crate::cloud::{
     month_of, CloudConfig, CloudProvider, CloudUsage, SecretString, Usd, PURPOSE_CLEANUP,
@@ -237,7 +237,7 @@ impl Cleaner for Gate {
         (r, u)
     }
 
-    /// Nothing with content is sent (flow-cloud warms its connection);
+    /// Nothing with content is sent (murmur-cloud warms its connection);
     /// still only when a call would be admitted.
     fn prefill(&self, prompt: &CleanPrompt) {
         let inner = Self::check_static(&self.st.lk()).ok();

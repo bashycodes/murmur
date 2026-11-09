@@ -1,7 +1,7 @@
-package dev.flowclone.service
+package dev.murmur.service
 
-import dev.flowclone.R
-import dev.flowclone.session.FeedbackEvent
+import dev.murmur.R
+import dev.murmur.session.FeedbackEvent
 
 /** The toast a dictation [FeedbackEvent] shows, if any; [long] = Toast.LENGTH_LONG. */
 data class FeedbackToast(val res: Int, val long: Boolean = false) {

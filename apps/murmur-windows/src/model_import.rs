@@ -18,7 +18,9 @@
 //! * Zip entries are streamed straight into the `.part` path; their names
 //!   never become paths (no zip-slip).
 
-use crate::model_download::{copy_verified, intact, part_path, CatalogEntry, ModelFile, Progress, State, Stop};
+use crate::model_download::{
+    copy_verified, intact, part_path, CatalogEntry, ModelFile, Progress, State, Stop,
+};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -51,30 +53,51 @@ enum Source {
 
 impl Source {
     fn open(src: &Path) -> Result<Source, String> {
-        let meta = std::fs::metadata(src).map_err(|e| format!("could not open {}: {e}", src.display()))?;
+        let meta =
+            std::fs::metadata(src).map_err(|e| format!("could not open {}: {e}", src.display()))?;
         if meta.is_dir() {
             let mut out = vec![];
             walk(src, 0, &mut out)?;
             return Ok(Source::Files(out));
         }
         if is_zip(src) {
-            let f = std::fs::File::open(src).map_err(|e| format!("could not open {}: {e}", src.display()))?;
-            let mut z = zip::ZipArchive::new(f).map_err(|e| format!("{} is not a readable zip: {e}", src.display()))?;
+            let f = std::fs::File::open(src)
+                .map_err(|e| format!("could not open {}: {e}", src.display()))?;
+            let mut z = zip::ZipArchive::new(f)
+                .map_err(|e| format!("{} is not a readable zip: {e}", src.display()))?;
             let mut out = vec![];
             for i in 0..z.len().min(MAX_FILES) {
-                let e = z.by_index_raw(i).map_err(|e| format!("{} is not a readable zip: {e}", src.display()))?;
+                let e = z
+                    .by_index_raw(i)
+                    .map_err(|e| format!("{} is not a readable zip: {e}", src.display()))?;
                 if e.is_dir() {
                     continue;
                 }
-                let name = e.name().rsplit(['/', '\\']).next().unwrap_or_default().to_string();
+                let name = e
+                    .name()
+                    .rsplit(['/', '\\'])
+                    .next()
+                    .unwrap_or_default()
+                    .to_string();
                 if !name.is_empty() {
-                    out.push(Candidate { name, size: e.size(), at: Loc::Zip(i) });
+                    out.push(Candidate {
+                        name,
+                        size: e.size(),
+                        at: Loc::Zip(i),
+                    });
                 }
             }
             return Ok(Source::Zip(z, out));
         }
-        let name = src.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        Ok(Source::Files(vec![Candidate { name, size: meta.len(), at: Loc::Path(src.to_path_buf()) }]))
+        let name = src
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        Ok(Source::Files(vec![Candidate {
+            name,
+            size: meta.len(),
+            at: Loc::Path(src.to_path_buf()),
+        }]))
     }
 
     fn candidates(&self) -> &[Candidate] {
@@ -87,12 +110,15 @@ impl Source {
 /// A zip by its magic (`PK\x03\x04`, or `PK\x05\x06` for an empty one).
 fn is_zip(p: &Path) -> bool {
     let mut head = [0u8; 4];
-    std::fs::File::open(p).and_then(|mut f| f.read_exact(&mut head)).is_ok()
+    std::fs::File::open(p)
+        .and_then(|mut f| f.read_exact(&mut head))
+        .is_ok()
         && (head == *b"PK\x03\x04" || head == *b"PK\x05\x06")
 }
 
 fn walk(dir: &Path, depth: usize, out: &mut Vec<Candidate>) -> Result<(), String> {
-    let rd = std::fs::read_dir(dir).map_err(|e| format!("could not read {}: {e}", dir.display()))?;
+    let rd =
+        std::fs::read_dir(dir).map_err(|e| format!("could not read {}: {e}", dir.display()))?;
     for ent in rd.flatten() {
         if out.len() >= MAX_FILES {
             break;
@@ -109,7 +135,11 @@ fn walk(dir: &Path, depth: usize, out: &mut Vec<Candidate>) -> Result<(), String
                 let name = ent.file_name().to_string_lossy().into_owned();
                 // Our own leftovers are never a source.
                 if !name.ends_with(".part") {
-                    out.push(Candidate { name, size: m.len(), at: Loc::Path(p) });
+                    out.push(Candidate {
+                        name,
+                        size: m.len(),
+                        at: Loc::Path(p),
+                    });
                 }
             }
         }
@@ -174,7 +204,10 @@ pub fn run_import(
             Ok(None) => missing.push(f.name),
             Err(size) => {
                 matched += 1;
-                wrong.push(format!("{} is {size} bytes, {} needs {}", f.name, e.title, f.size));
+                wrong.push(format!(
+                    "{} is {size} bytes, {} needs {}",
+                    f.name, e.title, f.size
+                ));
             }
         }
     }
@@ -188,7 +221,10 @@ pub fn run_import(
         )));
     }
     if !wrong.is_empty() {
-        return Err(Stop::Failed(format!("{}: a different version or an incomplete copy. Nothing was installed.", wrong.join("; "))));
+        return Err(Stop::Failed(format!(
+            "{}: a different version or an incomplete copy. Nothing was installed.",
+            wrong.join("; ")
+        )));
     }
     if !missing.is_empty() {
         return Err(Stop::Failed(format!(
@@ -202,12 +238,20 @@ pub fn run_import(
         std::fs::create_dir_all(e.dest_path(models_dir))
             .map_err(|er| Stop::Failed(format!("could not create the models folder: {er}")))?;
     } else {
-        std::fs::create_dir_all(models_dir).map_err(|er| Stop::Failed(format!("could not create the models folder: {er}")))?;
+        std::fs::create_dir_all(models_dir)
+            .map_err(|er| Stop::Failed(format!("could not create the models folder: {er}")))?;
     }
     let total: u64 = steps.iter().map(|s| s.f.size).sum();
     let id = e.id.to_string();
     let mut report = |received: u64, state: State| {
-        emit(Progress { id: id.clone(), received, total, state, error: None, path: None })
+        emit(Progress {
+            id: id.clone(),
+            received,
+            total,
+            state,
+            error: None,
+            path: None,
+        })
     };
     report(0, State::Importing);
     let mut parts: Vec<PathBuf> = vec![];
@@ -220,7 +264,9 @@ pub fn run_import(
     for s in &steps {
         let part = part_path(&s.target, s.f);
         parts.push(part.clone());
-        let r = copy_one(&mut source, s, &part, cancel, &mut |n| report(done + n, State::Importing));
+        let r = copy_one(&mut source, s, &part, cancel, &mut |n| {
+            report(done + n, State::Importing)
+        });
         report(done + s.f.size, State::Verifying);
         match r {
             Ok(digest) if digest == s.f.sha256 => {}
@@ -288,11 +334,21 @@ mod tests {
 
     fn sha(b: &[u8]) -> &'static str {
         let d = Sha256::digest(b);
-        Box::leak(d.iter().map(|x| format!("{x:02x}")).collect::<String>().into_boxed_str())
+        Box::leak(
+            d.iter()
+                .map(|x| format!("{x:02x}"))
+                .collect::<String>()
+                .into_boxed_str(),
+        )
     }
 
     fn mf(name: &'static str, b: &[u8]) -> ModelFile {
-        ModelFile { name, url: "https://huggingface.co/r/resolve/x/f", size: b.len() as u64, sha256: sha(b) }
+        ModelFile {
+            name,
+            url: "https://huggingface.co/r/resolve/x/f",
+            size: b.len() as u64,
+            sha256: sha(b),
+        }
     }
 
     fn entry(engine: ModelEngine, files: Vec<ModelFile>, extras: Vec<ModelFile>) -> CatalogEntry {
@@ -317,7 +373,7 @@ mod tests {
     }
 
     fn tmp(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("flow-imp-{name}-{}", std::process::id()));
+        let d = std::env::temp_dir().join(format!("murmur-imp-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
@@ -335,14 +391,24 @@ mod tests {
         }
         let mut v = vec![];
         walk(d, &mut v);
-        let mut s: Vec<String> = v.iter().map(|p| p.strip_prefix(d).unwrap().display().to_string().replace('\\', "/")).collect();
+        let mut s: Vec<String> = v
+            .iter()
+            .map(|p| {
+                p.strip_prefix(d)
+                    .unwrap()
+                    .display()
+                    .to_string()
+                    .replace('\\', "/")
+            })
+            .collect();
         s.sort();
         s
     }
 
     fn zip_of(path: &Path, files: &[(&str, &[u8])]) {
         let mut z = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
-        let opt = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        let opt = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
         for (name, b) in files {
             z.start_file(*name, opt).unwrap();
             z.write_all(b).unwrap();
@@ -352,7 +418,9 @@ mod tests {
 
     fn import(e: &CatalogEntry, models: &Path, src: &Path) -> (Result<PathBuf, Stop>, Vec<State>) {
         let mut seen = vec![];
-        let r = run_import(e, models, src, &AtomicBool::new(false), &mut |p| seen.push(p.state));
+        let r = run_import(e, models, src, &AtomicBool::new(false), &mut |p| {
+            seen.push(p.state)
+        });
         (r, seen)
     }
 
@@ -379,13 +447,20 @@ mod tests {
         let mut prefs = crate::prefs::Prefs::default();
         e.apply_to(&mut prefs, &models);
         assert!(prefs.llm_enabled);
-        assert_eq!(prefs.llm_model_path.as_deref(), Some(models.join("m.gguf").display().to_string().as_str()));
+        assert_eq!(
+            prefs.llm_model_path.as_deref(),
+            Some(models.join("m.gguf").display().to_string().as_str())
+        );
         let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
     fn a_folder_model_imports_from_a_nested_folder() {
-        let e = entry(ModelEngine::Parakeet, vec![mf("encoder.onnx", b"enc"), mf("tokens.txt", b"tokens")], vec![]);
+        let e = entry(
+            ModelEngine::Parakeet,
+            vec![mf("encoder.onnx", b"enc"), mf("tokens.txt", b"tokens")],
+            vec![],
+        );
         let d = tmp("folder");
         let src = d.join("src/sherpa-onnx-thing");
         std::fs::create_dir_all(&src).unwrap();
@@ -395,7 +470,10 @@ mod tests {
         let models = d.join("models");
         let (r, _) = import(&e, &models, &d.join("src"));
         assert_eq!(r.unwrap(), models.join("pk-dir"));
-        assert_eq!(files_in(&models), vec!["pk-dir/encoder.onnx", "pk-dir/tokens.txt"]);
+        assert_eq!(
+            files_in(&models),
+            vec!["pk-dir/encoder.onnx", "pk-dir/tokens.txt"]
+        );
         assert!(e.installed(&models));
         let _ = std::fs::remove_dir_all(&d);
     }
@@ -404,16 +482,29 @@ mod tests {
     fn a_zip_with_a_top_folder_imports_with_its_extra() {
         let e = entry(
             ModelEngine::SherpaOnline,
-            vec![mf("encoder.int8.onnx", b"encoder bytes"), mf("tokens.txt", b"tok")],
+            vec![
+                mf("encoder.int8.onnx", b"encoder bytes"),
+                mf("tokens.txt", b"tok"),
+            ],
             vec![mf("lid.bin", b"language id")],
         );
         let d = tmp("zip");
         let z = d.join("model.zip");
-        zip_of(&z, &[("he/encoder.int8.onnx", b"encoder bytes"), ("he/tokens.txt", b"tok"), ("he/lid.bin", b"language id")]);
+        zip_of(
+            &z,
+            &[
+                ("he/encoder.int8.onnx", b"encoder bytes"),
+                ("he/tokens.txt", b"tok"),
+                ("he/lid.bin", b"language id"),
+            ],
+        );
         let models = d.join("models");
         let (r, _) = import(&e, &models, &z);
         r.unwrap();
-        assert_eq!(files_in(&models), vec!["lid.bin", "pk-dir/encoder.int8.onnx", "pk-dir/tokens.txt"]);
+        assert_eq!(
+            files_in(&models),
+            vec!["lid.bin", "pk-dir/encoder.int8.onnx", "pk-dir/tokens.txt"]
+        );
         assert!(e.complete(&models));
         // A zip entry's name never becomes a path: "../x" lands as the model file.
         let evil = d.join("evil.zip");
@@ -429,12 +520,21 @@ mod tests {
     fn missing_extras_are_skipped_and_can_be_imported_later() {
         let e = entry(
             ModelEngine::SherpaOnline,
-            vec![mf("encoder.int8.onnx", b"encoder bytes"), mf("tokens.txt", b"tok")],
+            vec![
+                mf("encoder.int8.onnx", b"encoder bytes"),
+                mf("tokens.txt", b"tok"),
+            ],
             vec![mf("lid.bin", b"language id")],
         );
         let d = tmp("extras");
         let z = d.join("model.zip");
-        zip_of(&z, &[("encoder.int8.onnx", b"encoder bytes"), ("tokens.txt", b"tok")]);
+        zip_of(
+            &z,
+            &[
+                ("encoder.int8.onnx", b"encoder bytes"),
+                ("tokens.txt", b"tok"),
+            ],
+        );
         let models = d.join("models");
         import(&e, &models, &z).0.unwrap();
         assert!(e.installed(&models) && !e.complete(&models));
@@ -449,7 +549,11 @@ mod tests {
     fn a_hash_mismatch_installs_nothing() {
         // Two files: the first matches, the second has the right size but
         // other bytes. Neither may land, and no .part is left.
-        let e = entry(ModelEngine::Parakeet, vec![mf("encoder.onnx", b"enc"), mf("tokens.txt", b"tokens")], vec![]);
+        let e = entry(
+            ModelEngine::Parakeet,
+            vec![mf("encoder.onnx", b"enc"), mf("tokens.txt", b"tokens")],
+            vec![],
+        );
         let d = tmp("badhash");
         let src = d.join("src");
         std::fs::create_dir_all(&src).unwrap();
@@ -457,7 +561,10 @@ mod tests {
         std::fs::write(src.join("tokens.txt"), b"TOKENS").unwrap();
         let models = d.join("models");
         let (r, _) = import(&e, &models, &src);
-        assert!(failed(&r, "tokens.txt did not match its fingerprint"), "{r:?}");
+        assert!(
+            failed(&r, "tokens.txt did not match its fingerprint"),
+            "{r:?}"
+        );
         assert!(failed(&r, "Nothing was installed"));
         assert!(files_in(&models).is_empty(), "{:?}", files_in(&models));
         assert!(!e.installed(&models));
@@ -473,7 +580,11 @@ mod tests {
     fn unknown_files_are_refused() {
         let e = entry(ModelEngine::Llm, vec![mf("m.gguf", b"gguf bytes")], vec![]);
         let d = tmp("unknown");
-        std::fs::write(d.join("custom-finetune.gguf"), b"some other model, not ours").unwrap();
+        std::fs::write(
+            d.join("custom-finetune.gguf"),
+            b"some other model, not ours",
+        )
+        .unwrap();
         let models = d.join("models");
         let (r, seen) = import(&e, &models, &d.join("custom-finetune.gguf"));
         assert!(failed(&r, "none of the files of Test model"), "{r:?}");
@@ -484,14 +595,21 @@ mod tests {
         std::fs::write(d.join("m.gguf"), b"short").unwrap();
         let src = d.join("m.gguf");
         let (r, _) = import(&e, &models, &src);
-        assert!(failed(&r, "m.gguf is 5 bytes, Test model needs 10"), "{r:?}");
+        assert!(
+            failed(&r, "m.gguf is 5 bytes, Test model needs 10"),
+            "{r:?}"
+        );
         assert!(!models.exists());
         let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
     fn a_folder_missing_a_file_or_with_a_wrong_size_installs_nothing() {
-        let e = entry(ModelEngine::Parakeet, vec![mf("encoder.onnx", b"enc"), mf("tokens.txt", b"tokens")], vec![]);
+        let e = entry(
+            ModelEngine::Parakeet,
+            vec![mf("encoder.onnx", b"enc"), mf("tokens.txt", b"tokens")],
+            vec![],
+        );
         let d = tmp("partial");
         let src = d.join("src");
         std::fs::create_dir_all(&src).unwrap();
@@ -502,18 +620,31 @@ mod tests {
         assert!(files_in(&models).is_empty());
         std::fs::write(src.join("tokens.txt"), b"tokens, but a newer version").unwrap();
         let (r, _) = import(&e, &models, &src);
-        assert!(failed(&r, "tokens.txt is 27 bytes, Test model needs 6"), "{r:?}");
+        assert!(
+            failed(&r, "tokens.txt is 27 bytes, Test model needs 6"),
+            "{r:?}"
+        );
         assert!(files_in(&models).is_empty());
         let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
     fn a_cancel_leaves_no_part_file() {
-        let e = entry(ModelEngine::Whisper, vec![mf("m.bin", b"whisper bytes")], vec![]);
+        let e = entry(
+            ModelEngine::Whisper,
+            vec![mf("m.bin", b"whisper bytes")],
+            vec![],
+        );
         let d = tmp("cancel");
         std::fs::write(d.join("m.bin"), b"whisper bytes").unwrap();
         let models = d.join("models");
-        let r = run_import(&e, &models, &d.join("m.bin"), &AtomicBool::new(true), &mut |_| {});
+        let r = run_import(
+            &e,
+            &models,
+            &d.join("m.bin"),
+            &AtomicBool::new(true),
+            &mut |_| {},
+        );
         assert_eq!(r, Err(Stop::Cancelled));
         assert!(files_in(&models).is_empty());
         let _ = std::fs::remove_dir_all(&d);
@@ -521,13 +652,20 @@ mod tests {
 
     #[test]
     fn importing_the_installed_file_itself_is_a_no_op() {
-        let e = entry(ModelEngine::Whisper, vec![mf("m.bin", b"whisper bytes")], vec![]);
+        let e = entry(
+            ModelEngine::Whisper,
+            vec![mf("m.bin", b"whisper bytes")],
+            vec![],
+        );
         let d = tmp("self");
         let models = d.join("models");
         std::fs::create_dir_all(&models).unwrap();
         std::fs::write(models.join("m.bin"), b"whisper bytes").unwrap();
         import(&e, &models, &models.join("m.bin")).0.unwrap();
-        assert_eq!(std::fs::read(models.join("m.bin")).unwrap(), b"whisper bytes");
+        assert_eq!(
+            std::fs::read(models.join("m.bin")).unwrap(),
+            b"whisper bytes"
+        );
         assert_eq!(files_in(&models), vec!["m.bin"]);
         let _ = std::fs::remove_dir_all(&d);
     }
@@ -539,10 +677,19 @@ mod tests {
         for e in crate::model_download::CATALOG {
             let cands: Vec<Candidate> = e
                 .all_files()
-                .map(|(f, _)| Candidate { name: f.name.into(), size: f.size, at: Loc::Path(PathBuf::from(f.name)) })
+                .map(|(f, _)| Candidate {
+                    name: f.name.into(),
+                    size: f.size,
+                    at: Loc::Path(PathBuf::from(f.name)),
+                })
                 .collect();
             for (f, _) in e.all_files() {
-                assert!(matches!(find(&cands, f), Ok(Some(c)) if c.name == f.name), "{} {}", e.id, f.name);
+                assert!(
+                    matches!(find(&cands, f), Ok(Some(c)) if c.name == f.name),
+                    "{} {}",
+                    e.id,
+                    f.name
+                );
             }
         }
     }

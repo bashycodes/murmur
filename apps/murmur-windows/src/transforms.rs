@@ -2,10 +2,10 @@
 //! the auto-apply choice, the "view changes" shortcut and the saved
 //! transforms with their shortcuts. Stored in `prefs.json` as
 //! `transforms`; the instructions themselves run through
-//! `flow_core::transform`.
+//! `murmur_core::transform`.
 
 use crate::hotkeys::{Chord, Key};
-use flow_core::transform::{
+use murmur_core::transform::{
     self as core, Transform, MAX_DESCRIPTION_CHARS, MAX_INSTRUCTION_CHARS, MAX_NAME_CHARS,
     MAX_TRANSFORMS,
 };

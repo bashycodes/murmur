@@ -1,4 +1,4 @@
-package dev.flowclone.bubble
+package dev.murmur.bubble
 
 import android.animation.ValueAnimator
 import android.content.Context
@@ -17,7 +17,7 @@ import android.view.WindowManager
 import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
 import android.widget.TextView
-import dev.flowclone.session.DictationState
+import dev.murmur.session.DictationState
 
 /**
  * The `TYPE_APPLICATION_OVERLAY` bubble window. Never focusable (taking focus
@@ -67,7 +67,7 @@ class BubbleOverlay(
     ).apply {
         gravity = Gravity.TOP or Gravity.START
         windowAnimations = 0
-        title = "FlowCloneBubble"
+        title = "MurmurBubble"
     }
 
     /**
@@ -255,7 +255,7 @@ class BubbleOverlay(
             background = GradientDrawable().apply { cornerRadius = 12 * density; setColor(BubbleColors.surface) }
         }
         private val lp = satelliteParams(
-            WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.START, "FlowClonePreview",
+            WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.START, "MurmurPreview",
         )
 
         fun show(line: PreviewContent.Line) {
@@ -292,7 +292,7 @@ class BubbleOverlay(
                 c.drawText("zZ", width / 2f, height / 2f - (glyph.descent() + glyph.ascent()) / 2, glyph)
             }
         }
-        private val lp = satelliteParams(WindowManager.LayoutParams.MATCH_PARENT, 0, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL, "FlowCloneSnooze")
+        private val lp = satelliteParams(WindowManager.LayoutParams.MATCH_PARENT, 0, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL, "MurmurSnooze")
 
         fun show(g: SnoozeTarget) {
             if (shown) return

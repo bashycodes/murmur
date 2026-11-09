@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.app.Activity
 import android.content.Context
@@ -27,11 +27,11 @@ import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.Switch
 import android.widget.TextView
-import dev.flowclone.R
+import dev.murmur.R
 
 /**
  * Colour roles every screen uses, mapped onto the design tokens ([Tokens], from
- * docs/design/app-design/flow-theme.css). Light / dark follows the system (uiMode).
+ * docs/design/app-design/murmur-theme.css). Light / dark follows the system (uiMode).
  * The design is monochrome: the "accent" role is the ink colour.
  */
 internal class DevPalette(

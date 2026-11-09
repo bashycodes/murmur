@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.app.Activity
 import android.view.View
@@ -6,11 +6,11 @@ import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.Switch
 import android.widget.TextView
-import dev.flowclone.BuildConfig
-import dev.flowclone.FlowApp
-import dev.flowclone.data.AppVersion
-import dev.flowclone.data.DevUnlock
-import dev.flowclone.data.SettingsPages.Page
+import dev.murmur.BuildConfig
+import dev.murmur.MurmurApp
+import dev.murmur.data.AppVersion
+import dev.murmur.data.DevUnlock
+import dev.murmur.data.SettingsPages.Page
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -29,7 +29,7 @@ import org.robolectric.shadows.ShadowAlertDialog
  * switches, and the Save / Discard behaviour of a form page.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], application = FlowApp::class)
+@Config(sdk = [34], application = MurmurApp::class)
 class SettingsUiTest {
     private fun launch(p: Page = Page.HUB): Activity =
         Robolectric.buildActivity(SettingsActivity::class.java, SettingsActivity.intent(androidx_ctx(), p)).setup().get()
@@ -52,7 +52,7 @@ class SettingsUiTest {
     @Test fun hubShowsEverySectionAndTheFlavourGates() {
         val a = launch()
         val t = texts(a)
-        val caps = FlowApp.of(a).caps
+        val caps = MurmurApp.of(a).caps
         // AndroidSettings.dc.html: General / Models / Connections / Data & privacy.
         for (want in listOf("General", "Models", "Data & privacy", "Advanced", "About", "Language", "Writing style", "Chats casual · Email formal",
             "Bubble size", "Excluded apps", "Timing and limits", "Speech to text", "Keep history", "Debug log", "Learn from my edits", "Mock engine")) {
@@ -64,10 +64,10 @@ class SettingsUiTest {
         assertEquals(BuildConfig.CAP_LOCAL || caps.cloud, "AI cleanup" in t)
         assertEquals(caps.remote || caps.cloud, "Connections" in t)
         assertEquals(caps.remote, "Your server" in t)
-        assertEquals(caps.cloud, dev.flowclone.data.OpenRouter.NAME in t)
+        assertEquals(caps.cloud, dev.murmur.data.OpenRouter.NAME in t)
         assertTrue(t.any { it.startsWith("Version ") && "(${caps.flavor})" in it })
         // remote always shows Developer settings; local / hybrid only once unlocked.
-        assertEquals(FlowApp.of(a).dev.visible, "Developer settings" in t)
+        assertEquals(MurmurApp.of(a).dev.visible, "Developer settings" in t)
     }
 
     @Test fun hubHasATopBarWithBackAndNoOptionsMenu() {
@@ -81,7 +81,7 @@ class SettingsUiTest {
 
     @Test fun aboutRowShowsTheAppVersionLabelAndSevenTapsStillUnlock() {
         val a = launch()
-        val app = FlowApp.of(a)
+        val app = MurmurApp.of(a)
         val label = AppVersion.current.label(app.caps.flavor)
         // D26: the About row names the commit, like the main screen.
         assertTrue(label, label in texts(a))
@@ -109,7 +109,7 @@ class SettingsUiTest {
 
     @Test fun debugLogRowAppliesAtOnce() {
         val a = launch()
-        val app = FlowApp.of(a)
+        val app = MurmurApp.of(a)
         val was = app.dev.debugLog
         val row = rowTitled(a, "Debug log")
         assertEquals(Switch::class.java.name, row.createAccessibilityNodeInfo().className)
@@ -138,7 +138,7 @@ class SettingsUiTest {
         assertTrue(info.text.toString().startsWith("Mock engine. "))
         // The inner Switch is not a separate TalkBack stop.
         assertTrue(walk(row).filterIsInstance<Switch>().all { it.importantForAccessibility == View.IMPORTANT_FOR_ACCESSIBILITY_NO && !it.isFocusable })
-        val app = FlowApp.of(a)
+        val app = MurmurApp.of(a)
         row.performClick()
         assertTrue("applies without Save", app.settings.load().mockEngine)
         assertTrue(row.createAccessibilityNodeInfo().isChecked)
@@ -148,7 +148,7 @@ class SettingsUiTest {
 
     @Test fun bubbleSizeSliderShowsThePercentAndAppliesAtOnce() {
         val a = launch(Page.BUBBLE)
-        val app = FlowApp.of(a)
+        val app = MurmurApp.of(a)
         val bar = walk(a.window.decorView).filterIsInstance<android.widget.SeekBar>().single()
         assertEquals("Bubble size", bar.contentDescription)
         assertTrue(texts(a).toString(), "100%" in texts(a))
@@ -162,13 +162,13 @@ class SettingsUiTest {
         shadowOf(bar).onSeekBarChangeListener.onProgressChanged(bar, bar.min, true)
         assertEquals(0.75f, app.settings.load().bubbleScale)
         // Persisted: a fresh store over the same prefs reads it back.
-        assertEquals(0.75f, dev.flowclone.data.SettingsStore(a).load().bubbleScale)
+        assertEquals(0.75f, dev.murmur.data.SettingsStore(a).load().bubbleScale)
         app.settings.save(app.settings.load().copy(bubbleScale = 1f))
     }
 
     @Test fun shrinkToADotSitsUnderShrinkBubbleAndNeedsIt() {
         val a = launch(Page.BUBBLE)
-        val app = FlowApp.of(a)
+        val app = MurmurApp.of(a)
         val t = texts(a)
         assertTrue(t.toString(), t.indexOf("Shrink bubble") in 0 until t.indexOf("Shrink to a dot"))
         val dot = rowTitled(a, "Shrink to a dot")
@@ -178,7 +178,7 @@ class SettingsUiTest {
         dot.performClick()
         assertFalse("applies without Save", app.settings.load().shrinkToDot)
         assertFalse("the running bubble sees it", app.settings.shrinkToDot.value)
-        assertFalse("persisted", dev.flowclone.data.SettingsStore(a).load().shrinkToDot)
+        assertFalse("persisted", dev.murmur.data.SettingsStore(a).load().shrinkToDot)
         dot.performClick()
         assertTrue(app.settings.load().shrinkToDot)
         // Only active while "Shrink bubble" is on.
@@ -209,7 +209,7 @@ class SettingsUiTest {
         assertNotNull(d); assertTrue(d.isShowing)
         d.getButton(android.content.DialogInterface.BUTTON_NEGATIVE).performClick()
         shadowOf(android.os.Looper.getMainLooper()).idle()
-        assertEquals(dev.flowclone.data.Retention.KEEP, FlowApp.of(a).settings.load().retention)
+        assertEquals(dev.murmur.data.Retention.KEEP, MurmurApp.of(a).settings.load().retention)
         assertTrue(rowTitled(a, "Keep").createAccessibilityNodeInfo().isChecked)
     }
 
@@ -236,11 +236,11 @@ class SettingsUiTest {
         assertFalse(a.isFinishing)
         d.dismiss()
         save.performClick()
-        assertEquals(12, FlowApp.of(a).settings.load().capMinutes)
+        assertEquals(12, MurmurApp.of(a).settings.load().capMinutes)
         assertFalse("clean after Save", save.isEnabled)
         back.performClick()
         assertTrue("clean page leaves without asking", a.isFinishing)
-        FlowApp.of(a).settings.save(FlowApp.of(a).settings.load().copy(capMinutes = dev.flowclone.data.Settings().capMinutes))
+        MurmurApp.of(a).settings.save(MurmurApp.of(a).settings.load().copy(capMinutes = dev.murmur.data.Settings().capMinutes))
     }
 
     /** D27: one choice group per bucket, apply at once, with an example line per choice. */
@@ -249,15 +249,15 @@ class SettingsUiTest {
         val t = texts(a)
         for (want in listOf("PERSONAL MESSAGES", "WORK MESSAGES", "EMAIL", "OTHER", "Style per app", "Built-in list only")) assertTrue(want, want in t)
         assertTrue(t.toString(), t.any { it.startsWith("“Sounds good. See you at 7:30”") })
-        val app = FlowApp.of(a)
+        val app = MurmurApp.of(a)
         // Second "Very casual" row = Work messages (bucket order: personal, work, email, other).
         val rows = walk(a.window.decorView).filter { v -> v.isClickable && v is ViewGroup && walk(v).any { it is TextView && it.text.toString() == "Very casual" } }
         assertEquals(4, rows.size)
         rows[1].performClick()
-        assertEquals(dev.flowclone.core.Style.VERY_CASUAL, app.settings.load().styles.work)
-        assertEquals(dev.flowclone.core.Style.CASUAL, app.settings.load().styles.personal)
+        assertEquals(dev.murmur.core.Style.VERY_CASUAL, app.settings.load().styles.work)
+        assertEquals(dev.murmur.core.Style.CASUAL, app.settings.load().styles.personal)
         assertTrue(rows[1].createAccessibilityNodeInfo().isChecked)
-        app.settings.save(app.settings.load().copy(styles = dev.flowclone.core.Styles()))
+        app.settings.save(app.settings.load().copy(styles = dev.murmur.core.Styles()))
     }
 
     @Test fun pageMissingFromThisBuildOpensTheHub() {
@@ -268,11 +268,11 @@ class SettingsUiTest {
     @Test fun hubOffersBackupAndRestoreThroughTheSystemFilePicker() {
         val a = launch()
         val t = texts(a)
-        for (want in listOf("Back up & restore", "Export all data", "Restore from a backup", dev.flowclone.data.Backup.SECRETS_NOTE)) assertTrue(want, want in t)
+        for (want in listOf("Back up & restore", "Export all data", "Restore from a backup", dev.murmur.data.Backup.SECRETS_NOTE)) assertTrue(want, want in t)
         rowTitled(a, "Export all data").performClick()
         val export = shadowOf(a).nextStartedActivityForResult.intent
         assertEquals(android.content.Intent.ACTION_CREATE_DOCUMENT, export.action)
-        assertTrue(export.getStringExtra(android.content.Intent.EXTRA_TITLE)!!.matches(Regex("""flow-clone-backup-\d{4}-\d{2}-\d{2}\.json""")))
+        assertTrue(export.getStringExtra(android.content.Intent.EXTRA_TITLE)!!.matches(Regex("""murmur-backup-\d{4}-\d{2}-\d{2}\.json""")))
         rowTitled(a, "Restore from a backup").performClick()
         assertEquals(android.content.Intent.ACTION_OPEN_DOCUMENT, shadowOf(a).nextStartedActivityForResult.intent.action)
     }

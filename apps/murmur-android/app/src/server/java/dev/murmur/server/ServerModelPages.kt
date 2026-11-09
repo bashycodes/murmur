@@ -1,6 +1,6 @@
-package dev.flowclone.server
+package dev.murmur.server
 
-import dev.flowclone.data.ModelPages
+import dev.murmur.data.ModelPages
 
 /** D41: the words of the "From your server" block (JVM-tested; the views are [ServerModelsUi]). */
 object ServerModelPages {

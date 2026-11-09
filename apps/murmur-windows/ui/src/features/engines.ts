@@ -47,7 +47,7 @@ let tokenCleared = false;
 
 const HINTS: Record<string, string> = {
   auth_failed: "token rejected — copy it again from the server's token file",
-  connect_failed: "is flow-server running / LAN or VPN up?",
+  connect_failed: "is murmur-server running / LAN or VPN up?",
   proto_mismatch: "client and server protocol versions differ — update one of them",
   server_not_configured: "enter the server host first",
   timeout: "the server is too slow or stuck",
@@ -115,7 +115,7 @@ function fillDev(f: DevForm): void {
 function showTokenSaved(saved: boolean): void {
   $<HTMLInputElement>("dev_token").placeholder = saved
     ? "saved (hidden) — leave empty to keep it"
-    : "from flow-server gen-token";
+    : "from murmur-server gen-token";
 }
 
 /** Which engines this build (and the OpenRouter page) offers. */
@@ -344,7 +344,7 @@ async function saveSwitch(patch: Partial<DevForm>): Promise<void> {
 function healthText(h: Health): string {
   if (!h.ok) {
     const code = h.error ?? "error";
-    // flow-remote refuses ws:// to an address that is not private/VPN (S6).
+    // murmur-remote refuses ws:// to an address that is not private/VPN (S6).
     if (/plaintext (refused|to public address)/.test(h.message ?? "")) {
       return "Server needs TLS — its address is not private (or resolves to a public one); turn on TLS and set a certificate pin";
     }
@@ -372,7 +372,7 @@ function showResult(ok: boolean | null, lead: string, rest: string): void {
   t.append(rest);
 }
 
-/** "38 ms · flow-server 0.6.0 · parakeet · same pipeline version as this app". */
+/** "38 ms · murmur-server 0.6.0 · parakeet · same pipeline version as this app". */
 function connectedLine(h: Health): string {
   const pp =
     h.postprocess_match === false

@@ -33,7 +33,7 @@ const BOOL_FIELDS = [
   "enable_sounds",
   "mute_audio_while_dictating",
   "launch_at_login",
-  "show_flow_bar_always",
+  "show_murmur_bar_always",
   "use_ax_context",
   "restore_clipboard",
   "live_preview",

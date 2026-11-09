@@ -8,7 +8,7 @@ import { ICON, iconEl } from "../lib/icons.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { router, type Page } from "../lib/router.js";
 
-/** `flow_core::insights::Summary` (counts only; computed on this PC). */
+/** `murmur_core::insights::Summary` (counts only; computed on this PC). */
 export interface InsightsSummary {
   total_words: number;
   week_words: number;

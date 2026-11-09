@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run JVM unit tests and print a compact pass/fail summary.
-# Usage: tools/unit.sh [extra gradle args, e.g. --tests 'dev.flowclone.insert.*']
+# Usage: tools/unit.sh [extra gradle args, e.g. --tests 'dev.murmur.insert.*']
 set -uo pipefail
 cd "$(dirname "$0")/.."
 task=testDebugUnitTest; [[ $# -gt 0 ]] && task=testLocalDebugUnitTest  # --tests needs a concrete variant task

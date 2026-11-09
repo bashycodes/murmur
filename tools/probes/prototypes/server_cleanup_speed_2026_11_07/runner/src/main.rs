@@ -1,6 +1,6 @@
 //! server-speed-clean (copy of the dictionary_2026_11_07 runner; adds the
 //! plugin's `last` counters (prompt / prefill / generated tokens and their
-//! ms) per row): replay raw transcripts through the real `FlowCore` commit
+//! ms) per row): replay raw transcripts through the real `MurmurCore` commit
 //! path with one cleaner.
 //!
 //!   server-speed-clean --cases CASES.jsonl --session SESSION.json
@@ -18,10 +18,10 @@
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use flow_core::asr::{AbortFlag, AsrEngine, AsrError, AsrOutput, AsrRequest};
-use flow_core::cleanup::{CleanError, CleanPrompt, Cleaner};
-use flow_core::config::{FieldContext, SessionConfig};
-use flow_core::FlowCore;
+use murmur_core::asr::{AbortFlag, AsrEngine, AsrError, AsrOutput, AsrRequest};
+use murmur_core::cleanup::{CleanError, CleanPrompt, Cleaner};
+use murmur_core::config::{FieldContext, SessionConfig};
+use murmur_core::MurmurCore;
 
 /// The transcript to "recognise" and the language to report (`--language`,
 /// default en).
@@ -151,7 +151,7 @@ fn main() {
         "rules" => None,
         m @ ("local" | "server" | "cloud") => {
             let t = Instant::now();
-            let llm = flow_core::llama::LlamaCleaner::load(
+            let llm = murmur_core::llama::LlamaCleaner::load(
                 &get("--llm").expect("--llm"),
                 threads,
                 get("--llm-lib").as_deref(),
@@ -178,7 +178,7 @@ fn main() {
         m => panic!("unknown --mode {m}"),
     };
     let text = Arc::new(Mutex::new(String::new()));
-    let core = FlowCore::from_engines(
+    let core = MurmurCore::from_engines(
         Arc::new(TextAsr(
             text.clone(),
             get("--language").unwrap_or_else(|| "en".into()),
@@ -213,17 +213,17 @@ fn main() {
             // cases do not time out on it.
             if let Some(w) = &wrapper {
                 let v = if mode == "cloud" {
-                    flow_core::cleanup::PromptVersion::V5
+                    murmur_core::cleanup::PromptVersion::V5
                 } else {
-                    flow_core::cleanup::PromptVersion::V2
+                    murmur_core::cleanup::PromptVersion::V2
                 };
-                let p = flow_core::cleanup::build_prompt_versioned(
+                let p = murmur_core::cleanup::build_prompt_versioned(
                     "This is a warm up sentence for the cache.",
                     session.cleanup_level,
                     session.styles.for_category(ctx.app_category),
                     &ctx,
                     &session.dictionary,
-                    flow_core::cleanup::PromptScope::FULL,
+                    murmur_core::cleanup::PromptScope::FULL,
                     v,
                 );
                 let t = Instant::now();

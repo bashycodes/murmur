@@ -1,13 +1,13 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.core.CleanupLevel
-import dev.flowclone.core.DictEntry
-import dev.flowclone.core.FieldContext
-import dev.flowclone.core.SessionConfig
-import dev.flowclone.policy.AppCategorizer
-import dev.flowclone.policy.BubbleVisibilityPolicy
-import dev.flowclone.policy.EditorInputType
-import dev.flowclone.session.SessionCap
+import dev.murmur.core.CleanupLevel
+import dev.murmur.core.DictEntry
+import dev.murmur.core.FieldContext
+import dev.murmur.core.SessionConfig
+import dev.murmur.policy.AppCategorizer
+import dev.murmur.policy.BubbleVisibilityPolicy
+import dev.murmur.policy.EditorInputType
+import dev.murmur.session.SessionCap
 
 /** History retention pref: keep / 24 h / never. */
 enum class Retention(val key: String) {
@@ -50,7 +50,7 @@ data class Settings(
     val capMinutes: Int = 5,
     val mockEngine: Boolean = false,
     val userDenylist: Set<String> = emptySet(),
-    /** Local LLM cleanup (flow-llm plugin + an imported GGUF). Off by default. */
+    /** Local LLM cleanup (murmur-llm plugin + an imported GGUF). Off by default. */
     val llmEnabled: Boolean = false,
     /** Live preview of partial transcripts next to the bubble. */
     val livePreview: Boolean = true,
@@ -67,7 +67,7 @@ data class Settings(
     /** core-p1 deterministic spoken cleanup ("Auto-format punctuation, fillers and corrections"). */
     val spokenCleanup: Boolean = true,
     /** On-device ASR engine; Parakeet is English-only (D4/D12). */
-    val asrEngine: dev.flowclone.core.AsrEngine = dev.flowclone.core.AsrEngine.WHISPER,
+    val asrEngine: dev.murmur.core.AsrEngine = dev.murmur.core.AsrEngine.WHISPER,
     /** D19: a hands-free (tap) dictation ends after this much trailing silence; 0 = only when tapped again. */
     val endpointSilenceMs: Int = DEFAULT_ENDPOINT_SILENCE_MS,
     /**
@@ -77,7 +77,7 @@ data class Settings(
      */
     val decodeWhileSpeaking: Boolean = true,
     /** D27 "Writing style": per-bucket style; chats casual, email + other formal ([Styles] defaults). */
-    val styles: dev.flowclone.core.Styles = dev.flowclone.core.Styles(),
+    val styles: dev.murmur.core.Styles = dev.murmur.core.Styles(),
     /** "Writing style → Apps": package → bucket, over the built-in [AppCategorizer] lists. */
     val appBuckets: Map<String, AppCategorizer.Category> = emptyMap(),
     /**
@@ -145,11 +145,11 @@ data class Settings(
         /** Phones decode slower than the desktop default budget of 1.5 s. */
         const val ANDROID_LLM_TIMEOUT_MS = 3_000L
         const val PARTIAL_INTERVAL_MS = 1_500
-        /** D22: `flow_core::endpoint::RECOMMENDED_SILENCE_MS` (was 2000 until 2026-10-23). */
+        /** D22: `murmur_core::endpoint::RECOMMENDED_SILENCE_MS` (was 2000 until 2026-10-23). */
         const val DEFAULT_ENDPOINT_SILENCE_MS = 1_500
         const val OLD_DEFAULT_ENDPOINT_SILENCE_MS = 2_000
         val ENDPOINT_RANGE_MS = 300..10_000
-        /** D22: `flow_core::segment::RECOMMENDED_PAUSE_MS`. */
+        /** D22: `murmur_core::segment::RECOMMENDED_PAUSE_MS`. */
         const val SEGMENT_PAUSE_MS = 800
 
         /**
@@ -236,7 +236,7 @@ object LanguageDefault {
 
     /** English-only whisper files: `*.en.bin`, `*.en-q5_1.bin`, distil-whisper. Parakeet: English only. */
     fun isMultilingual(asr: LoadedAsr): Boolean {
-        if (asr.engine != dev.flowclone.core.AsrEngine.WHISPER) return false
+        if (asr.engine != dev.murmur.core.AsrEngine.WHISPER) return false
         val n = asr.model.lowercase()
         return !Regex("""\.en([._-]|$)""").containsMatchIn(n) && "distil" !in n
     }

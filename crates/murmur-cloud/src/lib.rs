@@ -1,4 +1,4 @@
-//! flow-cloud: opt-in OpenRouter cloud speech-to-text and text cleanup
+//! murmur-cloud: opt-in OpenRouter cloud speech-to-text and text cleanup
 //! (D18, D28; `docs/cloud-stt.md`, `docs/proposals/openrouter-only-cloud.md`).
 //!
 //! The only crate in the product that sends audio or text to a third
@@ -9,14 +9,14 @@
 //! server the user typed in ([`custom`]; never a compiled-in host). It is
 //! linked only into builds that enable the shell's `cloud` feature (C2).
 //!
-//! * [`CloudAsr`] is a `flow_core::asr::AsrEngine`: it uploads the
+//! * [`CloudAsr`] is a `murmur_core::asr::AsrEngine`: it uploads the
 //!   VAD-trimmed utterance at commit (batch) through path A
 //!   (`/audio/transcriptions`) or path B (chat `input_audio`), chosen per
 //!   model from the [`catalog`].
-//! * [`CloudBackend`] wraps it in a local `FlowCore` (VAD, hallucination guard, spoken
+//! * [`CloudBackend`] wraps it in a local `MurmurCore` (VAD, hallucination guard, spoken
 //!   cleanup, dictionary, LLM, post-processing stay on the device, C5) and
-//!   implements `flow_router::Backend` for the router's `cloud` route.
-//! * [`cleaner::OpenRouterCleaner`] is a `flow_core::cleanup::Cleaner` for
+//!   implements `murmur_router::Backend` for the router's `cloud` route.
+//! * [`cleaner::OpenRouterCleaner`] is a `murmur_core::cleanup::Cleaner` for
 //!   the separate cleanup opt-in; [`custom::CustomCleaner`] is the same for
 //!   the user's own OpenAI-compatible server (D52).
 //! * [`catalog`], [`keyinfo`], [`generation`], [`budget`]: model list,
@@ -45,11 +45,11 @@ pub mod testing;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use flow_core::asr::{AsrEngine, AsrError, AsrOutput, AsrPurpose, AsrRequest};
-use flow_core::cleanup::Cleaner;
-use flow_core::config::{FieldContext, SessionConfig, SAMPLE_RATE};
-use flow_core::{CommitResult, CommitStatus, FlowCore, RouteInfo};
-use flow_router::{
+use murmur_core::asr::{AsrEngine, AsrError, AsrOutput, AsrPurpose, AsrRequest};
+use murmur_core::cleanup::Cleaner;
+use murmur_core::config::{FieldContext, SessionConfig, SAMPLE_RATE};
+use murmur_core::{CommitResult, CommitStatus, MurmurCore, RouteInfo};
+use murmur_router::{
     Backend, BackendError, CleanupFactory, CleanupPlan, CloudFactory, CustomCleanupFactory,
     EngineKind, Failure, HealthReport, OpenRouterConfig, Router, SecretString, StartInfo, Usd,
 };
@@ -81,13 +81,13 @@ pub const PROVIDER_ID: &str = "openrouter";
 pub const TEST_CLIP: &[u8] = include_bytes!("../assets/test_clip_3s.s16le");
 
 /// Plug the cloud route and the cloud cleanup factory into a router:
-/// `cleaner` is the shell's local LLM cleaner (`FlowCore::cleaner()`),
+/// `cleaner` is the shell's local LLM cleaner (`MurmurCore::cleaner()`),
 /// shared so the model is loaded once.
 pub fn attach(router: Router, cleaner: Option<Arc<dyn Cleaner>>) -> Router {
     attach_with(router, move || cleaner.clone())
 }
 
-/// `flow_router::CloudFactory` building a [`CloudBackend`].
+/// `murmur_router::CloudFactory` building a [`CloudBackend`].
 pub fn factory(cleaner: Option<Arc<dyn Cleaner>>) -> CloudFactory {
     factory_with(move || cleaner.clone())
 }
@@ -103,14 +103,14 @@ pub fn factory_with(
     })
 }
 
-/// `flow_router::CleanupFactory` building an [`OpenRouterCleaner`].
+/// `murmur_router::CleanupFactory` building an [`OpenRouterCleaner`].
 pub fn cleanup_factory() -> CleanupFactory {
     Box::new(|o: &OpenRouterConfig, key: SecretString| {
         Arc::new(OpenRouterCleaner::new(o.into(), key)) as Arc<dyn Cleaner>
     })
 }
 
-/// `flow_router::CustomCleanupFactory` building a [`CustomCleaner`] (D52).
+/// `murmur_router::CustomCleanupFactory` building a [`CustomCleaner`] (D52).
 pub fn custom_cleanup_factory() -> CustomCleanupFactory {
     Box::new(|c, scope, key| Arc::new(CustomCleaner::new(c, scope, key)) as Arc<dyn Cleaner>)
 }
@@ -436,9 +436,9 @@ impl AsrEngine for CloudAsr {
     }
 }
 
-/// The router's `cloud` backend: a local `FlowCore` around [`CloudAsr`].
+/// The router's `cloud` backend: a local `MurmurCore` around [`CloudAsr`].
 pub struct CloudBackend {
-    inner: Option<(FlowCore, Arc<CloudAsr>)>,
+    inner: Option<(MurmurCore, Arc<CloudAsr>)>,
     llm_timeout_ms: Mutex<u64>,
 }
 
@@ -454,7 +454,7 @@ impl CloudBackend {
     pub fn from_asr(asr: CloudAsr, cleaner: Option<Arc<dyn Cleaner>>) -> Self {
         let asr = Arc::new(asr);
         Self {
-            inner: Some((FlowCore::from_engines(asr.clone(), cleaner), asr)),
+            inner: Some((MurmurCore::from_engines(asr.clone(), cleaner), asr)),
             llm_timeout_ms: Mutex::new(0),
         }
     }
@@ -630,10 +630,10 @@ mod tests {
     #[test]
     fn one_adapter_and_a_refusing_backend() {
         assert_eq!(ADAPTERS, ["openrouter"]);
-        assert_eq!(ADAPTERS, flow_router::cloud::ADAPTERS);
-        assert_eq!(BASE_URL, flow_router::cloud::OPENROUTER_BASE_URL);
-        assert_eq!(HOST, flow_router::cloud::OPENROUTER_HOST);
-        assert_eq!(PROVIDER_ID, flow_router::cloud::OPENROUTER_ID);
+        assert_eq!(ADAPTERS, murmur_router::cloud::ADAPTERS);
+        assert_eq!(BASE_URL, murmur_router::cloud::OPENROUTER_BASE_URL);
+        assert_eq!(HOST, murmur_router::cloud::OPENROUTER_HOST);
+        assert_eq!(PROVIDER_ID, murmur_router::cloud::OPENROUTER_ID);
         assert!(!CloudBackend::refusing().ready());
     }
 }

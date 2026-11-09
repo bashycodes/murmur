@@ -17,5 +17,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "flow-android"
+rootProject.name = "murmur-android"
 include(":app")

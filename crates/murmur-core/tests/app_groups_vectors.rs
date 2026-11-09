@@ -2,9 +2,9 @@
 //! The Android `AppGroupsVectorsTest` checks the same file against
 //! `PolicyLists`, so both sides read `data/app-groups.json` the same way.
 
-use flow_core::app_groups;
-use flow_core::config::Platform;
-use flow_core::postprocess::apps;
+use murmur_core::app_groups;
+use murmur_core::config::Platform;
+use murmur_core::postprocess::apps;
 use serde_json::Value;
 
 fn vectors() -> Vec<Value> {

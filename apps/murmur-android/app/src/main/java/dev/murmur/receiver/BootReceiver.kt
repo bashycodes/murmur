@@ -1,4 +1,4 @@
-package dev.flowclone.receiver
+package dev.murmur.receiver
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -9,37 +9,37 @@ import android.content.Context
 import android.content.Intent
 import android.provider.Settings
 import android.util.Log
-import dev.flowclone.FlowApp
-import dev.flowclone.R
-import dev.flowclone.health.A11ySetting
-import dev.flowclone.service.FlowAccessibilityService
-import dev.flowclone.service.FlowService
-import dev.flowclone.ui.MainActivity
+import dev.murmur.MurmurApp
+import dev.murmur.R
+import dev.murmur.health.A11ySetting
+import dev.murmur.service.MurmurAccessibilityService
+import dev.murmur.service.MurmurService
+import dev.murmur.ui.MainActivity
 
 /**
  * Boot / update / unlock recovery:
- * accessibility enabled → start FlowService (the system rebinds the a11y service itself,
+ * accessibility enabled → start MurmurService (the system rebinds the a11y service itself,
  * which also starts it; doing both covers OEMs that delay the rebind); otherwise post a
- * "turn Murmur back on" notification (id 901). FlowService starts as
+ * "turn Murmur back on" notification (id 901). MurmurService starts as
  * `specialUse`, which Android 14/15 still allow from BOOT_COMPLETED (microphone isn't).
  */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action ?: return
         if (action !in ACTIONS) return
-        val app = FlowApp.of(context)
+        val app = MurmurApp.of(context)
         // D49: JobScheduler forgets the call-recording triggers across a reboot; arm them again.
         // (App start does it too; this covers a boot where nothing else starts the app.)
-        dev.flowclone.calls.AutoCalls.arm(context)
+        dev.murmur.calls.AutoCalls.arm(context)
         if (app.settings.serviceStoppedByUser || !Settings.canDrawOverlays(context)) return
         val enabled = A11ySetting.isEnabled(
             Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES),
-            context.packageName, FlowAccessibilityService::class.java.name,
+            context.packageName, MurmurAccessibilityService::class.java.name,
         )
-        Log.i("FlowBoot", "$action: accessibility enabled=$enabled")
+        Log.i("MurmurBoot", "$action: accessibility enabled=$enabled")
         if (enabled) {
-            runCatching { context.startForegroundService(Intent(context, FlowService::class.java).setAction(FlowService.ACTION_SHOW)) }
-                .onFailure { Log.w("FlowBoot", "could not start FlowService", it) }
+            runCatching { context.startForegroundService(Intent(context, MurmurService::class.java).setAction(MurmurService.ACTION_SHOW)) }
+                .onFailure { Log.w("MurmurBoot", "could not start MurmurService", it) }
         } else {
             notifyReEnable(context)
         }
@@ -48,13 +48,13 @@ class BootReceiver : BroadcastReceiver() {
     private fun notifyReEnable(context: Context) {
         val nm = context.getSystemService(NotificationManager::class.java) ?: return
         nm.createNotificationChannel(
-            NotificationChannel(FlowService.CHANNEL_STATUS, context.getString(R.string.notif_channel_status), NotificationManager.IMPORTANCE_DEFAULT),
+            NotificationChannel(MurmurService.CHANNEL_STATUS, context.getString(R.string.notif_channel_status), NotificationManager.IMPORTANCE_DEFAULT),
         )
-        val n = Notification.Builder(context, FlowService.CHANNEL_STATUS)
+        val n = Notification.Builder(context, MurmurService.CHANNEL_STATUS)
             .setContentTitle(context.getString(R.string.notif_boot_title))
             .setContentText(context.getString(R.string.notif_boot_text))
             .setStyle(Notification.BigTextStyle().bigText(context.getString(R.string.notif_boot_text)))
-            .setSmallIcon(R.drawable.ic_flow)
+            .setSmallIcon(R.drawable.ic_murmur)
             .setAutoCancel(true)
             .setContentIntent(
                 PendingIntent.getActivity(

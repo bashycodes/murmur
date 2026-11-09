@@ -1,4 +1,4 @@
-package dev.flowclone.policy
+package dev.murmur.policy
 
 import android.util.Log
 import org.json.JSONArray
@@ -8,10 +8,10 @@ import org.json.JSONObject
  * Which apps get special handling, by package name (and, for the style buckets, by the host of
  * the page open in a browser).
  *
- * The groups are not kept here: they are read from `crates/flow-core/data/app-groups.json`, which
- * the Gradle build packs as a Java resource. flow-core (Rust, both platforms) and the Windows
+ * The groups are not kept here: they are read from `crates/murmur-core/data/app-groups.json`, which
+ * the Gradle build packs as a Java resource. murmur-core (Rust, both platforms) and the Windows
  * app read the same file, so the apps cannot disagree on a style bucket or a browser, and the
- * shared vectors (`crates/flow-core/fixtures/app-groups/vectors.json`) are checked on both sides.
+ * shared vectors (`crates/murmur-core/fixtures/app-groups/vectors.json`) are checked on both sides.
  *
  * Method (decision D81; the file's `about` lines say the same): each group is defined by what its
  * caller does with it. Membership comes from public sources only: a package name is the id in the
@@ -124,7 +124,7 @@ object PolicyLists {
 
     private val EMPTY = Group()
 
-    // ---- Insertion (V3Inserter, FlowAccessibilityService keep-alive) ----
+    // ---- Insertion (V3Inserter, MurmurAccessibilityService keep-alive) ----
 
     /** Chat apps whose IME session goes stale: stale-session probe + keep-alive nudge. */
     fun isRestartProne(pkg: String?) = group("restart_prone").app(pkg)

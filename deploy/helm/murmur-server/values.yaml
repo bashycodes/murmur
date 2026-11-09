@@ -1,10 +1,10 @@
-# flow-server Helm chart values (docs/container.md "Helm").
+# murmur-server Helm chart values (docs/container.md "Helm").
 
 # Built locally and loaded into the node's container runtime (no registry):
-#   docker build -f deploy/docker/Dockerfile -t flow-server:local .
-#   docker save flow-server:local | <runtime import>   (docs/container.md)
+#   docker build -f deploy/docker/Dockerfile -t murmur-server:local .
+#   docker save murmur-server:local | <runtime import>   (docs/container.md)
 image:
-  repository: flow-server
+  repository: murmur-server
   tag: local
   # Never: the image must already be on the node.
   pullPolicy: Never
@@ -14,7 +14,7 @@ image:
 gpu:
   enabled: false
   image:
-    repository: flow-server
+    repository: murmur-server
     tag: local-cuda
   resourceName: nvidia.com/gpu
   count: 1
@@ -30,8 +30,8 @@ gpu:
 bindPodIP: true
 insecureBindAny: false
 
-# wss:// terminated by flow-server itself (cert pinned in the apps):
-# a kubernetes.io/tls Secret mounted at /etc/flow-server/tls.
+# wss:// terminated by murmur-server itself (cert pinned in the apps):
+# a kubernetes.io/tls Secret mounted at /etc/murmur-server/tls.
 serverTls:
   enabled: false
   secretName: ""
@@ -49,14 +49,14 @@ service:
 ingress:
   enabled: false
   className: ""
-  host: flow.example.lan
+  host: murmur.example.lan
   annotations: {}
     # nginx: long-lived WebSocket sessions (sessions run up to 20 min)
     # nginx.ingress.kubernetes.io/proxy-read-timeout: "1300"
     # nginx.ingress.kubernetes.io/proxy-send-timeout: "1300"
   tls:
     enabled: true
-    secretName: flow-server-tls
+    secretName: murmur-server-tls
 
 persistence:
   # ASR model dirs, GGUF, and library/ (models served to the apps, D40).
@@ -66,7 +66,7 @@ persistence:
     size: 10Gi
     storageClass: ""
     accessModes: [ReadWriteOnce]
-  # keys.json, key-usage.json, library-hashes.json at /var/lib/flow-server.
+  # keys.json, key-usage.json, library-hashes.json at /var/lib/murmur-server.
   state:
     existingClaim: ""
     size: 256Mi
@@ -74,12 +74,12 @@ persistence:
     accessModes: [ReadWriteOnce]
 
 # config.toml (the ConfigMap). Reference:
-# crates/flow-server/dist/config.example.toml. With serverTls.enabled the
+# crates/murmur-server/dist/config.example.toml. With serverTls.enabled the
 # chart appends the [tls] table; keep it out of here.
 config: |
   # bind is replaced by 127.0.0.1 + the pod IP while bindPodIP is true.
   bind = ["0.0.0.0:7313"]
-  state_dir = "/var/lib/flow-server"
+  state_dir = "/var/lib/murmur-server"
   workers = 1
   max_queue = 2
 

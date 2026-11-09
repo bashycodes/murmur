@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Hybrid end-to-end smoke test + latency: a real flow-server (release,
+# Hybrid end-to-end smoke test + latency: a real murmur-server (release,
 # Parakeet) in the foreground on 127.0.0.1, then the same WAVs dictated
-# locally and through Router → flow-remote → server
-# (crates/flow-contract-tests/examples/hybrid_latency.rs). The server is
+# locally and through Router → murmur-remote → server
+# (crates/murmur-contract-tests/examples/hybrid_latency.rs). The server is
 # stopped at the end. Nothing is installed; state lives in target/hybrid-smoke.
 #
 # Env: PARAKEET_DIR (model dir), AUDIO_DIR (16 kHz WAVs), N (files, default 10),
@@ -19,10 +19,10 @@ S="$ROOT/target/hybrid-smoke"
 export LD_LIBRARY_PATH="${SHERPA_ONNX_LIB_DIR:?sherpa-onnx lib dir}:${LD_LIBRARY_PATH:-}"
 rm -rf "$S"; mkdir -p "$S/state"
 
-cargo build --release -p flow-server --no-default-features --features parakeet,tls
-cargo build --release -p flow-contract-tests --features parakeet --example hybrid_latency
+cargo build --release -p murmur-server --no-default-features --features parakeet,tls
+cargo build --release -p murmur-contract-tests --features parakeet --example hybrid_latency
 
-target/release/flow-server gen-token --out "$S/token"
+target/release/murmur-server gen-token --out "$S/token"
 cat > "$S/config.toml" <<CONF
 bind = ["127.0.0.1:$PORT"]
 token_file = "$S/token"
@@ -35,7 +35,7 @@ threads = 4
 level = "info"
 CONF
 
-(cd "$S/state" && HOME="$S/state" TMPDIR="$S/state" exec "$ROOT/target/release/flow-server" --config "$S/config.toml") 2> "$S/server.log" &
+(cd "$S/state" && HOME="$S/state" TMPDIR="$S/state" exec "$ROOT/target/release/murmur-server" --config "$S/config.toml") 2> "$S/server.log" &
 SRV=$!
 trap 'kill -TERM $SRV 2>/dev/null; wait $SRV 2>/dev/null || true' EXIT
 for _ in $(seq 120); do grep -q " ready" "$S/server.log" && break; sleep 0.5; done

@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.app.Activity
 import android.app.AlertDialog
@@ -15,20 +15,20 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
-import dev.flowclone.FlowApp
-import dev.flowclone.R
-import dev.flowclone.data.AppStyles
-import dev.flowclone.data.Settings
-import dev.flowclone.policy.AppCategorizer.Category
+import dev.murmur.MurmurApp
+import dev.murmur.R
+import dev.murmur.data.AppStyles
+import dev.murmur.data.Settings
+import dev.murmur.policy.AppCategorizer.Category
 import kotlin.concurrent.thread
 
 /**
- * Settings → Writing style → Style per app ([dev.flowclone.data.SettingsPages.Page.APP_STYLES]):
+ * Settings → Writing style → Style per app ([dev.murmur.data.SettingsPages.Page.APP_STYLES]):
  * one row per override (app icon + label, group dropdown, remove) and "Add app", a searchable list
  * of launchable apps with the ones dictated into recently first. Changes apply at once through
  * [update] (SettingsActivity.applyNow); storage is [Settings.appBuckets] as before.
  *
- * The Style tab ([dev.flowclone.ui.tabs.StyleTab]) uses it without [render]: [apps] / [icon] for
+ * The Style tab ([dev.murmur.ui.tabs.StyleTab]) uses it without [render]: [apps] / [icon] for
  * its icon row ([onLoaded] when they arrive) and [openPicker] for its "+".
  *
  * App visibility: the manifest's `<queries>` launcher intent (not QUERY_ALL_PACKAGES), so an
@@ -39,7 +39,7 @@ internal class AppStylesPage(
     private val ui: DevUi,
     private val update: (Settings.() -> Settings) -> Unit,
 ) {
-    private val app get() = FlowApp.of(activity)
+    private val app get() = MurmurApp.of(activity)
     private val pm: PackageManager get() = activity.packageManager
     private lateinit var list: LinearLayout
 

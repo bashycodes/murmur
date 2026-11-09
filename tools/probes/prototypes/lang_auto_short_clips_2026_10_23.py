@@ -4,23 +4,23 @@ base-q5_1 with language "auto" mis-detect / garble short English clips, vs
 --lang en and vs the English-only base.en model?
 
 Clips: the bench core set (jfk + 12 LibriSpeech), full + first 2 s / 3 s crops,
-clean + with white noise at ~15 dB SNR (phone-ish). Runs flow-cli transcribe. Env: SNR_DB (default 15), CFGS (subset), OUT.
-Writes JSONL to $OUT (default ~/.cache/flow-clone/diag-2026-10-23/lang_auto.jsonl)
+clean + with white noise at ~15 dB SNR (phone-ish). Runs murmur-cli transcribe. Env: SNR_DB (default 15), CFGS (subset), OUT.
+Writes JSONL to $OUT (default ~/.cache/murmur/diag-2026-10-23/lang_auto.jsonl)
 and prints a summary table. Not promoted; findings in
 docs/findings/2026-10-23-phone-quality-regression.md.
 
-usage: python3 -I lang_auto_short_clips_2026_10_23.py FLOW_CLI MANIFEST WER_PY AUDIO_DIR JFK_WAV
+usage: python3 -I lang_auto_short_clips_2026_10_23.py MURMUR_CLI MANIFEST WER_PY AUDIO_DIR JFK_WAV
 """
 import json, math, os, random, struct, subprocess, sys, tempfile, wave, importlib.util
 
 cli, manifest, wer_py, audio_dir, jfk = sys.argv[1:6]
-M = os.path.expanduser("~/.cache/flow-clone/models")
+M = os.path.expanduser("~/.cache/murmur/models")
 CONFIGS = {
     "base-q5_1/auto": ["--model", f"{M}/ggml-base-q5_1.bin"],
     "base-q5_1/en": ["--model", f"{M}/ggml-base-q5_1.bin", "--lang", "en"],
     "base.en": ["--model", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "models", "ggml-base.en.bin")],
 }
-out_path = os.environ.get("OUT", os.path.expanduser("~/.cache/flow-clone/diag-2026-10-23/lang_auto.jsonl"))
+out_path = os.environ.get("OUT", os.path.expanduser("~/.cache/murmur/diag-2026-10-23/lang_auto.jsonl"))
 spec = importlib.util.spec_from_file_location("wer", wer_py); W = importlib.util.module_from_spec(spec); spec.loader.exec_module(W)
 wer_fn = getattr(W, "wer", None)
 

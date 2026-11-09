@@ -1,8 +1,8 @@
-package dev.flowclone.data
+package dev.murmur.data
 
 /**
  * JVM-test stand-in for `nativeCustomCleanupAddress` (the router's `custom_server_address`; its
- * real rules are tested in flow-router). Good enough for the plain hosts the tests use: http(s),
+ * real rules are tested in murmur-router). Good enough for the plain hosts the tests use: http(s),
  * lower-cased host, default port dropped, `/v1` when there is no path, no trailing slash.
  */
 object FakeCustomAddress : CustomAddressCheck {

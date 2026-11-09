@@ -1,4 +1,4 @@
-package dev.flowclone.calls
+package dev.murmur.calls
 
 import org.json.JSONArray
 import org.json.JSONObject
@@ -212,6 +212,6 @@ class AutoQueue(private val file: File, private val source: RecordingSource, pri
     companion object {
         const val MAX_ATTEMPTS = 3
         const val KEEP = 500
-        const val NO_ACCESS = "Flow Clone can't read the call recordings: allow Music and audio for it."
+        const val NO_ACCESS = "Murmur can't read the call recordings: allow Music and audio for it."
     }
 }

@@ -18,7 +18,7 @@ user's S25+ numbers and `docs/model-benchmarks.md`.
 
 ### 1.1 `total − asr` (llm = 0): the commit waits for a live-preview decode that is still running
 
-The work between `FlowCore::commit()` (t0) and the result (`engine.rs`):
+The work between `MurmurCore::commit()` (t0) and the result (`engine.rs`):
 1. snapshot, then `Ctrl::Commit` is sent to the **single** worker thread;
 2. the worker drains the ring (i16→f32), then runs `vad::detect` over the whole buffer;
 3. ASR (`asr_ms` is timed here and covers only this step);
@@ -62,7 +62,7 @@ off; same clip, same engine):
 | whisper base q5_1 | 29.9 s | 41 / 500 ms | 2 ms |
 
 **Remote route.** The `total_ms` the phone shows for a server result is the
-**server's** `FlowCore::commit` wall time (`ws.rs` → `ServerMsg::Result`;
+**server's** `MurmurCore::commit` wall time (`ws.rs` → `ServerMsg::Result`;
 the router does not overwrite it). It does **not** include network upload
 or RTT. The shell copies its `SessionConfig`, including
 `partial_interval_ms`, to the server, so the server runs Parakeet partials
@@ -99,14 +99,14 @@ reported.
 `long_040s.wav` (41.7 s, 7 LibriSpeech utterances joined with 700 ms gaps)
 gives `""` → EMPTY `blank_asr` **3/3 runs** with the shipped config
 (`modified_beam_search`, beam 4, bpe vocab for hotwords). With
-`FLOW_PARAKEET_HOTWORDS_SCORE=0` (greedy) it gives the correct text. The
+`MURMUR_PARAKEET_HOTWORDS_SCORE=0` (greedy) it gives the correct text. The
 33.9, 34.3, 44.5 and 62 s clips are fine, so the trigger is not length
 alone. A user dictating for ~40 s through the server **loses the whole
 dictation**. The same clip cut at pauses transcribes fine (§2, WER 1.1-2.3%).
 Independent fix (Phase 0): if the beam result is empty and the VAD saw at
 least 1 s of speech, re-decode in ≤ 20 s pieces at the longest pauses
 (the same segmenter as below), or keep a greedy recognizer as the
-fallback. The CLI artefact: `flow-cli` pushes the whole file at once, so
+fallback. The CLI artefact: `murmur-cli` pushes the whole file at once, so
 past 30 s it overflows the default 30 s ring (`dropped_samples`).
 `ring_capacity_samples` raised to 130 s for the probe; shells push in
 real time and are not affected.
@@ -141,8 +141,8 @@ texts are joined with a space, and WER is scored against the reference
 
 ## 3. Design (recommended): core-side pause segmentation, "segment-ahead"
 
-One mechanism inside `FlowCore`, opt-in per session through
-`SessionConfig`. It works the same way in-process, on flow-server (which
+One mechanism inside `MurmurCore`, opt-in per session through
+`SessionConfig`. It works the same way in-process, on murmur-server (which
 runs the unmodified core), and on fallback replay, so the router and the
 wire protocol need no message changes.
 
@@ -159,7 +159,7 @@ Older servers ignore the field (no `deny_unknown_fields` on
 `SessionConfig`). They behave exactly as today, and the result is still
 complete.
 
-### 3.2 Segmenter (new `flow-core/src/segment.rs`)
+### 3.2 Segmenter (new `murmur-core/src/segment.rs`)
 
 * It is a streaming detector over the f32 buffer the worker already
   holds. It reuses `vad::frame_stats` and `Thresholds`, like `endpoint.rs`,
@@ -297,10 +297,10 @@ default can be tuned on the user's own data.
 Expected: local 28 s from 3.8 s → ≈ 3.0 s; the remote gap from 0.76 s →
 ≤ 0.4 s. Still linear.
 
-**Phase 1: segment-ahead in flow-core (S)**: `segment.rs`, `engine.rs`
+**Phase 1: segment-ahead in murmur-core (S)**: `segment.rs`, `engine.rs`
 scheduling and finalize, the config fields, `AsrRequest.prior_text`,
 `AsrEngine::segmentable`, the whisper prompt, per-segment guard, new
-timings, flow-ffi header/JSON docs, and the core-architecture "Changelog
+timings, murmur-ffi header/JSON docs, and the core-architecture "Changelog
 for shells".
 
 **Phase 2: server / protocol (S)**: no message change. Optional, additive:
@@ -310,13 +310,13 @@ row can show it. Golden fixtures for the new `SessionConfig` and
 tests in §5.
 
 **Phase 3: shells**
-* **A** (`apps/flow-android`): `FlowCore.kt` SessionConfig
+* **A** (`apps/murmur-android`): `MurmurCore.kt` SessionConfig
   `segmentPauseMs`, `CoreJson.kt` (de)serialisation, `DataLogic.kt`
   default 800 ms (Developer toggle "Decode while speaking"), endpoint
   default 1500. History shows `segments` / `wait`. Preview uses the
   partial as before (the core already joins it). Tests:
   `DataLogicTest`, `CoreJsonTest` fixtures.
-* **W** (`apps/flow-windows`): `core_api.rs` and `core_adapter.rs` map
+* **W** (`apps/murmur-windows`): `core_api.rs` and `core_adapter.rs` map
   the field, `prefs.rs` default 800 / endpoint 1500, overlay unchanged.
   Tests in `core_adapter.rs`.
 
@@ -354,7 +354,7 @@ Core (S):
   chapters ≥ 30 s, if fetched.
 * Regression: `long_040s` on Parakeet is not EMPTY (Phase 0).
 
-Contract (S, `flow-contract-tests`):
+Contract (S, `murmur-contract-tests`):
 * `equivalence_segmented`: the 119 fixtures with `segment_pause_ms` set
   give identical results locally and through the server (mock and real
   Parakeet on the long clips).
@@ -381,7 +381,7 @@ records `segments` / `pre_asr_ms` / `wait_ms`.
 
 ## 7. DECISIONS row (applied as D22 in docs/DECISIONS.md)
 
-| D22 | Release→text latency for long dictations (2026-10-23) | Opt-in `SessionConfig.segment_pause_ms` (recommended 800; `segment_min_ms` 4000, `segment_soft_max_ms` 20000). The core's worker cuts the buffer at pauses with a streaming D16 VAD (cuts a pure function of the audio), decodes each closed segment while the user keeps talking (priority over partials, which shrink to the open segment), and at commit decodes only the tail, joins, then runs guard / spoken cleanup / LLM / post-processing on the joined text. whisper gets the previous segment's last words as prompt; engines that must not pre-upload (cloud, D18) opt out. Runs inside FlowCore, so flow-server, router fallback replay and the equivalence suite need no protocol change. Hands-free endpoint default 2000 → 1500 ms. Phase 0 also caps the partial window at 12 s and adds a Parakeet empty-on-speech fallback | Field (S25+): `total − asr` up to 0.9 s is the commit queued behind an unabortable live-preview decode (whisper encoder, any sherpa decode); ASR is linear-to-superlinear in length (3.5-3.8 s at 24-28 s). Probe `tools/probes/prototypes/segmented_asr_2026_10_23.py`: on 8 clips of 19-62 s, pause-segmented WER equals the whole clip (Parakeet 1.38%, whisper base 4.05% at P = 800 ms), and Parakeet beam search returns EMPTY on a 41.7 s clip that segmenting fixes. Forecast: release→text ≈ 0.4-0.9 s at any length, hands-free ≈ endpoint + 50 ms |
+| D22 | Release→text latency for long dictations (2026-10-23) | Opt-in `SessionConfig.segment_pause_ms` (recommended 800; `segment_min_ms` 4000, `segment_soft_max_ms` 20000). The core's worker cuts the buffer at pauses with a streaming D16 VAD (cuts a pure function of the audio), decodes each closed segment while the user keeps talking (priority over partials, which shrink to the open segment), and at commit decodes only the tail, joins, then runs guard / spoken cleanup / LLM / post-processing on the joined text. whisper gets the previous segment's last words as prompt; engines that must not pre-upload (cloud, D18) opt out. Runs inside MurmurCore, so murmur-server, router fallback replay and the equivalence suite need no protocol change. Hands-free endpoint default 2000 → 1500 ms. Phase 0 also caps the partial window at 12 s and adds a Parakeet empty-on-speech fallback | Field (S25+): `total − asr` up to 0.9 s is the commit queued behind an unabortable live-preview decode (whisper encoder, any sherpa decode); ASR is linear-to-superlinear in length (3.5-3.8 s at 24-28 s). Probe `tools/probes/prototypes/segmented_asr_2026_10_23.py`: on 8 clips of 19-62 s, pause-segmented WER equals the whole clip (Parakeet 1.38%, whisper base 4.05% at P = 800 ms), and Parakeet beam search returns EMPTY on a 41.7 s clip that segmenting fixes. Forecast: release→text ≈ 0.4-0.9 s at any length, hands-free ≈ endpoint + 50 ms |
 
 ## 8. Measured on this box (2026-10-23, after implementation)
 
@@ -389,8 +389,8 @@ records `segments` / `pre_asr_ms` / `wait_ms`.
 `hybrid_latency` example pushes each clip in 100 ms frames at real-time
 pace, with the Android shell's preview setting (`partial_interval_ms`
 1500), then times `commit` (release → text). It runs both in-process
-(local Parakeet v2 int8, 4 threads) and through Router → flow-remote → a
-test flow-server on 127.0.0.1 (one worker, same model). Clips are the
+(local Parakeet v2 int8, 4 threads) and through Router → murmur-remote → a
+test murmur-server on 127.0.0.1 (one worker, same model). Clips are the
 probe's LibriSpeech joins (700 ms gaps). "before" = base commit `0d61885`;
 "P0" = this branch without segmentation; "D22" = this branch with
 `segment_pause_ms: 800`. Raw TSVs and server logs:

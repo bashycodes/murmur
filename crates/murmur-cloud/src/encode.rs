@@ -1,7 +1,7 @@
 //! Audio encoding for upload (docs/cloud-stt.md §6.3) and chunking at
 //! quiet points (§6.2). Input is the core's 16 kHz mono f32.
 
-use flow_core::config::SAMPLE_RATE;
+use murmur_core::config::SAMPLE_RATE;
 
 /// Wire format of an upload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

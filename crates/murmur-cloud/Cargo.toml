@@ -1,5 +1,5 @@
 [package]
-name = "flow-cloud"
+name = "murmur-cloud"
 version.workspace = true
 edition.workspace = true
 license-file.workspace = true
@@ -11,8 +11,8 @@ default = []
 mock-server = []
 
 [dependencies]
-flow-core = { path = "../flow-core", default-features = false }
-flow-router = { path = "../flow-router" }
+murmur-core = { path = "../murmur-core", default-features = false }
+murmur-router = { path = "../murmur-router" }
 serde.workspace = true
 serde_json.workspace = true
 base64 = "0.22"
@@ -21,6 +21,6 @@ reqwest = { version = "0.12", default-features = false, features = ["blocking", 
 
 [dev-dependencies]
 claxon = "0.4"
-flow-cloud = { path = ".", features = ["mock-server"] }
-flow-core = { path = "../flow-core", features = ["wav"] }
+murmur-cloud = { path = ".", features = ["mock-server"] }
+murmur-core = { path = "../murmur-core", features = ["wav"] }
 hound = "3"

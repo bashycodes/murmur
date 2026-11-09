@@ -3,8 +3,8 @@
 //! These vectors are the contract the Kotlin mirror (`CloudSettings.kt`)
 //! must match.
 
-use flow_router::cloud::{parse_base_url, BaseUrl};
-use flow_router::*;
+use murmur_router::cloud::{parse_base_url, BaseUrl};
+use murmur_router::*;
 
 fn provider(url: &str) -> CloudProviderConfig {
     CloudProviderConfig {

@@ -1,4 +1,4 @@
-package dev.flowclone.debug
+package dev.murmur.debug
 
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals

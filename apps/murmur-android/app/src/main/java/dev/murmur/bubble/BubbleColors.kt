@@ -1,10 +1,10 @@
-package dev.flowclone.bubble
+package dev.murmur.bubble
 
 import android.graphics.Color
-import dev.flowclone.ui.Tokens
+import dev.murmur.ui.Tokens
 
 /**
- * Bubble colours from the app design (docs/design/app-design/AndroidBubble.dc.html, flow-theme.css).
+ * Bubble colours from the app design (docs/design/app-design/AndroidBubble.dc.html, murmur-theme.css).
  * The bubble is always dark (it floats over any app, either theme), so it takes fixed token
  * values from [Tokens] where the design shares them; `raised` (vast-875) has no token of its own.
  */

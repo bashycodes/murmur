@@ -17,7 +17,7 @@
 //! the Win32 calls are in [`win`].
 
 /// `identifier` in `tauri.conf.json` (a test keeps the two in step).
-pub const APP_ID: &str = "dev.flowclone.windows";
+pub const APP_ID: &str = "dev.murmur.windows";
 
 /// The mutex that marks the primary instance (per user session).
 pub fn mutex_name(id: &str) -> String {
@@ -236,12 +236,12 @@ mod tests {
     #[test]
     fn names_are_per_user_and_distinct() {
         assert_eq!(
-            mutex_name("dev.flowclone.windows"),
-            "Local\\Murmur-dev.flowclone.windows"
+            mutex_name("dev.murmur.windows"),
+            "Local\\Murmur-dev.murmur.windows"
         );
         assert_eq!(
-            event_name("dev.flowclone.windows"),
-            "Local\\Murmur-dev.flowclone.windows-show"
+            event_name("dev.murmur.windows"),
+            "Local\\Murmur-dev.murmur.windows-show"
         );
         assert_ne!(mutex_name(APP_ID), event_name(APP_ID));
     }
@@ -283,7 +283,7 @@ mod tests {
     fn other_identifiers_do_not_collide() {
         let os = FakeOs::default();
         assert!(is_primary(&start(&os, APP_ID)));
-        assert!(is_primary(&start(&os, "dev.flowclone.other")));
+        assert!(is_primary(&start(&os, "dev.murmur.other")));
         assert!(os.raised.borrow().is_empty());
     }
 

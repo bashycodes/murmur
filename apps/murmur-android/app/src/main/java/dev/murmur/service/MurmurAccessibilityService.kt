@@ -1,4 +1,4 @@
-package dev.flowclone.service
+package dev.murmur.service
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.InputMethod
@@ -11,30 +11,30 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import android.widget.Toast
-import dev.flowclone.AccessibilityBridge
-import dev.flowclone.FlowApp
-import dev.flowclone.R
-import dev.flowclone.command.CommandApply
-import dev.flowclone.command.CommandField
-import dev.flowclone.command.CommandGuard
-import dev.flowclone.command.CommandTarget
-import dev.flowclone.command.SelectionSnapshot
-import dev.flowclone.core.FieldContext
-import dev.flowclone.data.FieldContextBuilder
-import dev.flowclone.health.AccessibilityHealth
-import dev.flowclone.health.ServiceWatchdog
-import dev.flowclone.insert.ClipboardPort
-import dev.flowclone.insert.EditableNode
-import dev.flowclone.insert.ImeKeepAlive
-import dev.flowclone.insert.InputConnectionPort
-import dev.flowclone.insert.InsertionCoordinator
-import dev.flowclone.insert.InsertionEnvironment
-import dev.flowclone.insert.V3Inserter
-import dev.flowclone.policy.BubbleVisibilityPolicy
-import dev.flowclone.policy.EditorInputType
-import dev.flowclone.policy.InsertGuard
-import dev.flowclone.policy.OwnAppGate
-import dev.flowclone.policy.PolicyLists
+import dev.murmur.AccessibilityBridge
+import dev.murmur.MurmurApp
+import dev.murmur.R
+import dev.murmur.command.CommandApply
+import dev.murmur.command.CommandField
+import dev.murmur.command.CommandGuard
+import dev.murmur.command.CommandTarget
+import dev.murmur.command.SelectionSnapshot
+import dev.murmur.core.FieldContext
+import dev.murmur.data.FieldContextBuilder
+import dev.murmur.health.AccessibilityHealth
+import dev.murmur.health.ServiceWatchdog
+import dev.murmur.insert.ClipboardPort
+import dev.murmur.insert.EditableNode
+import dev.murmur.insert.ImeKeepAlive
+import dev.murmur.insert.InputConnectionPort
+import dev.murmur.insert.InsertionCoordinator
+import dev.murmur.insert.InsertionEnvironment
+import dev.murmur.insert.V3Inserter
+import dev.murmur.policy.BubbleVisibilityPolicy
+import dev.murmur.policy.EditorInputType
+import dev.murmur.policy.InsertGuard
+import dev.murmur.policy.OwnAppGate
+import dev.murmur.policy.PolicyLists
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -50,7 +50,7 @@ import kotlinx.coroutines.withContext
  * Events only poke a CONFLATED channel; one loop evaluates state then sleeps 50 ms
  * (≈20 Hz), which keeps the main thread free under event storms.
  */
-class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
+class MurmurAccessibilityService : AccessibilityService(), AccessibilityBridge {
     private var scope = newScope()
     private val wake = Channel<Unit>(Channel.CONFLATED)
     private var inputMethod: ShellInputMethod? = null
@@ -69,7 +69,7 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
     private val watchdog = ServiceWatchdog()
 
     private fun newScope() = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val app get() = FlowApp.of(this)
+    private val app get() = MurmurApp.of(this)
 
     override fun onCreateInputMethod(): InputMethod =
         ShellInputMethod(this) { wake.trySend(Unit) }.also { inputMethod = it }
@@ -81,7 +81,7 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
         keepAlive = ImeKeepAlive(KeepAliveDeps(env), SystemClock::elapsedRealtime)
         connected()
         // Host the bubble. Starting the FGS from a bound a11y service is allowed.
-        if (!app.settings.serviceStoppedByUser) startFlowService()
+        if (!app.settings.serviceStoppedByUser) startMurmurService()
     }
 
     private fun connected() {
@@ -92,24 +92,24 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
         startHealthTick()
     }
 
-    private fun startFlowService() {
-        runCatching { startForegroundService(Intent(this, FlowService::class.java).setAction(FlowService.ACTION_SHOW)) }
-            .onFailure { Log.w(TAG, "could not start FlowService", it) }
+    private fun startMurmurService() {
+        runCatching { startForegroundService(Intent(this, MurmurService::class.java).setAction(MurmurService.ACTION_SHOW)) }
+            .onFailure { Log.w(TAG, "could not start MurmurService", it) }
     }
 
     /**
      * Every 15 s: prove the binding is alive (a `getWindows()` probe that returns windows is
-     * the heartbeat the ghost check reads), and respawn FlowService if it died unexpectedly
+     * the heartbeat the ghost check reads), and respawn MurmurService if it died unexpectedly
      * (`MainServiceWatchdog`, ≥ 5 s apart).
      */
     private fun startHealthTick() {
         scope.launch {
             while (true) {
                 if (probeAlive()) app.a11yHeartbeatAt = SystemClock.elapsedRealtime()
-                val wanted = android.provider.Settings.canDrawOverlays(this@FlowAccessibilityService) && !app.settings.serviceStoppedByUser
-                if (watchdog.shouldRestart(wanted, FlowService.running, SystemClock.elapsedRealtime())) {
-                    Log.w(TAG, "FlowService not running; restarting")
-                    startFlowService()
+                val wanted = android.provider.Settings.canDrawOverlays(this@MurmurAccessibilityService) && !app.settings.serviceStoppedByUser
+                if (watchdog.shouldRestart(wanted, MurmurService.running, SystemClock.elapsedRealtime())) {
+                    Log.w(TAG, "MurmurService not running; restarting")
+                    startMurmurService()
                 }
                 delay(AccessibilityHealth.HEARTBEAT_INTERVAL_MS)
             }
@@ -239,7 +239,7 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
         pinStart(pkg, node)
         val editor = inputMethod?.focusedEditor ?: FocusedEditor.EMPTY
         val type = editor.inputType.takeIf { editor.packageName != null } ?: node?.inputType ?: 0
-        startFieldProtected = dev.flowclone.debug.DebugRedact.isProtectedField(
+        startFieldProtected = dev.murmur.debug.DebugRedact.isProtectedField(
             type, node?.isPassword == true, Build.VERSION.SDK_INT >= 34 && node?.isAccessibilityDataSensitive == true,
         )
         if (node?.isPassword == true) return FieldContextBuilder.build(pkg, 0x81, null, 0, 0)
@@ -247,7 +247,7 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
         if (s != null) return FieldContextBuilder.build(pkg, type, s.first, s.second, s.third)
         // IME read null → node text with selection.
         val text = node?.let { NodeAdapter(it).snapshot() }?.let {
-            dev.flowclone.insert.TextMatching.readNodeText(it, editor.hintText, emptySet())
+            dev.murmur.insert.TextMatching.readNodeText(it, editor.hintText, emptySet())
         }
         return FieldContextBuilder.build(pkg, type, text, node?.textSelectionStart ?: -1, node?.textSelectionEnd ?: -1)
     }
@@ -258,23 +258,23 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
      * that turns protected (or focus moving to another field or app) ends the watch before any
      * text is read.
      */
-    override fun editReader(): dev.flowclone.learn.FieldReader? {
+    override fun editReader(): dev.murmur.learn.FieldReader? {
         val snap = startSnapshot ?: return null
         if (startFieldProtected || BubbleVisibilityPolicy.isRestricted(snap.pkg)) return null
-        return dev.flowclone.learn.FieldReader { readEditedField(snap) }
+        return dev.murmur.learn.FieldReader { readEditedField(snap) }
     }
 
-    private fun readEditedField(snap: StartSnapshot): dev.flowclone.learn.FieldRead {
-        val node = focusedNode() ?: return dev.flowclone.learn.FieldRead.Unavailable
-        if (node.packageName?.toString() != snap.pkg) return dev.flowclone.learn.FieldRead.FocusChanged
-        if (snap.looseHash != null && FocusedNodeFinder.identityHash(node, false) != snap.looseHash) return dev.flowclone.learn.FieldRead.FocusChanged
+    private fun readEditedField(snap: StartSnapshot): dev.murmur.learn.FieldRead {
+        val node = focusedNode() ?: return dev.murmur.learn.FieldRead.Unavailable
+        if (node.packageName?.toString() != snap.pkg) return dev.murmur.learn.FieldRead.FocusChanged
+        if (snap.looseHash != null && FocusedNodeFinder.identityHash(node, false) != snap.looseHash) return dev.murmur.learn.FieldRead.FocusChanged
         val editor = inputMethod?.focusedEditor ?: FocusedEditor.EMPTY
         val type = editor.inputType.takeIf { editor.packageName != null } ?: node.inputType
-        if (dev.flowclone.debug.DebugRedact.isProtectedField(type, node.isPassword, Build.VERSION.SDK_INT >= 34 && node.isAccessibilityDataSensitive) ||
+        if (dev.murmur.debug.DebugRedact.isProtectedField(type, node.isPassword, Build.VERSION.SDK_INT >= 34 && node.isAccessibilityDataSensitive) ||
             FocusedNodeFinder.isExcludedField(node) || EditorInputType.isContentExtractionExcluded(type)
-        ) return dev.flowclone.learn.FieldRead.FocusChanged
-        val text = dev.flowclone.insert.TextMatching.readNodeText(NodeAdapter(node).snapshot(), editor.hintText, emptySet())
-        return text?.let { dev.flowclone.learn.FieldRead.Text(it) } ?: dev.flowclone.learn.FieldRead.Unavailable
+        ) return dev.murmur.learn.FieldRead.FocusChanged
+        val text = dev.murmur.insert.TextMatching.readNodeText(NodeAdapter(node).snapshot(), editor.hintText, emptySet())
+        return text?.let { dev.murmur.learn.FieldRead.Text(it) } ?: dev.murmur.learn.FieldRead.Unavailable
     }
 
     // ---- Command Mode ----
@@ -287,7 +287,7 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
         val editor = inputMethod?.focusedEditor ?: FocusedEditor.EMPTY
         val type = editor.inputType.takeIf { editor.packageName != null } ?: node?.inputType ?: 0
         val sensitive = Build.VERSION.SDK_INT >= 34 && node?.isAccessibilityDataSensitive == true
-        startFieldProtected = dev.flowclone.debug.DebugRedact.isProtectedField(type, node?.isPassword == true, sensitive)
+        startFieldProtected = dev.murmur.debug.DebugRedact.isProtectedField(type, node?.isPassword == true, sensitive)
         val appPkg = pkg ?: node?.packageName?.toString()
         CommandGuard.refusal(
             hasField = node != null || inputMethod?.isInputSessionActive == true, inputType = type,
@@ -298,7 +298,7 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
             return CommandTarget.Refused(it)
         }
         // The node: the whole text + selection (what ACTION_SET_TEXT rewrites).
-        val nodeText = node?.let { dev.flowclone.insert.TextMatching.readNodeText(NodeAdapter(it).snapshot(), editor.hintText, emptySet()) }
+        val nodeText = node?.let { dev.murmur.insert.TextMatching.readNodeText(NodeAdapter(it).snapshot(), editor.hintText, emptySet()) }
         val fromNode = SelectionSnapshot.of(nodeText, node?.textSelectionStart ?: -1, node?.textSelectionEnd ?: -1)
         if (fromNode?.hasSelection == true) return CommandTarget.Field(appPkg, fromNode)
         // The IME: a window around its selection (apps whose node hides the selection).
@@ -318,7 +318,7 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
         val field = object : CommandField {
             override fun readText(): String? = node?.let {
                 runCatching { it.refresh() }
-                dev.flowclone.insert.TextMatching.readNodeText(NodeAdapter(it).snapshot(), hint, emptySet())
+                dev.murmur.insert.TextMatching.readNodeText(NodeAdapter(it).snapshot(), hint, emptySet())
             }
             override val canSetText: Boolean get() = node != null && NodeAdapter(node).canSetText
             override fun setText(text: String): Boolean = node != null && NodeAdapter(node).setText(text)
@@ -338,18 +338,18 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
         ok
     }
 
-    override suspend fun sendKey(key: dev.flowclone.core.PasteKey): Boolean = withContext(Dispatchers.Main) {
+    override suspend fun sendKey(key: dev.murmur.core.PasteKey): Boolean = withContext(Dispatchers.Main) {
         val code = when (key) {
-            dev.flowclone.core.PasteKey.ENTER -> android.view.KeyEvent.KEYCODE_ENTER
-            dev.flowclone.core.PasteKey.TAB -> android.view.KeyEvent.KEYCODE_TAB
-            dev.flowclone.core.PasteKey.BREAK -> return@withContext true
+            dev.murmur.core.PasteKey.ENTER -> android.view.KeyEvent.KEYCODE_ENTER
+            dev.murmur.core.PasteKey.TAB -> android.view.KeyEvent.KEYCODE_TAB
+            dev.murmur.core.PasteKey.BREAK -> return@withContext true
         }
         val ok = inputMethod?.sendKey(code) == true
         Log.i(TAG, "sendKey $key ok=$ok")
         ok
     }
 
-    override fun insertTarget(explicit: Boolean): dev.flowclone.session.InsertTarget {
+    override fun insertTarget(explicit: Boolean): dev.murmur.session.InsertTarget {
         runCatching { evaluateCurrentState() }
         val pkg = currentPackageName
         val node = focusedNode()
@@ -369,7 +369,7 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
         val start = startSnapshot?.let { InsertGuard.Field(it.pkg, it.looseHash) }
         val now = InsertGuard.Field(pkg ?: node?.packageName?.toString(), node?.let { FocusedNodeFinder.identityHash(it, false) })
         val r = InsertGuard.check(start, now, allowed, explicit)
-        if (r != dev.flowclone.session.InsertTarget.OK) Log.i(TAG, "insert target $r (explicit=$explicit)")
+        if (r != dev.murmur.session.InsertTarget.OK) Log.i(TAG, "insert target $r (explicit=$explicit)")
         return r
     }
 
@@ -452,12 +452,12 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
     private inner class Clipboard : ClipboardPort {
         override fun copySensitive(text: String) {
             app.clipboard.copy(text)
-            Toast.makeText(this@FlowAccessibilityService, R.string.toast_copied_for_a_minute, Toast.LENGTH_SHORT).show()
+            Toast.makeText(this@MurmurAccessibilityService, R.string.toast_copied_for_a_minute, Toast.LENGTH_SHORT).show()
         }
     }
 
     companion object {
-        private const val TAG = "FlowA11y"
+        private const val TAG = "MurmurA11y"
         /** Command Mode via the IME: characters read on each side of the selection. */
         private const val COMMAND_WINDOW = 2000
     }

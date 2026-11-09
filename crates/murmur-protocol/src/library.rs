@@ -58,7 +58,7 @@ pub fn engines_hint() -> String {
 
 /// A model of the apps' download catalogue: the ids a tag's `catalogue_id`
 /// may name. The pins live with each app's catalogue
-/// (`apps/flow-windows/src/model_download.rs` `CATALOG`, Android
+/// (`apps/murmur-windows/src/model_download.rs` `CATALOG`, Android
 /// `ServerCatalog`); tests keep both in step with this list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CatalogueModel {

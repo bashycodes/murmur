@@ -1,6 +1,6 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.BuildConfig
+import dev.murmur.BuildConfig
 
 /**
  * This APK's build identity (D26, docs/versioning.md): the product version from the repo's

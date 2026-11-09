@@ -1,6 +1,6 @@
-//! flow-core: shared Rust core of Murmur, a self-hosted dictation app.
+//! murmur-core: shared Rust core of Murmur, a self-hosted dictation app.
 //!
-//! See `docs/core-architecture.md`. Entry point: [`FlowCore`].
+//! See `docs/core-architecture.md`. Entry point: [`MurmurCore`].
 pub mod align;
 pub mod app_groups;
 pub mod asr;
@@ -38,11 +38,11 @@ pub mod whisper_plugin;
 
 pub use endpoint::EndpointState;
 pub use engine::{
-    refinish, CommitResult, CommitStatus, CoreError, FlowCore, RouteInfo, SessionPoll, Timings,
+    refinish, CommitResult, CommitStatus, CoreError, MurmurCore, RouteInfo, SessionPoll, Timings,
     Usd, PEAK_DBFS_FLOOR,
 };
 
-/// flow-core version (reported by the hybrid router and server).
+/// murmur-core version (reported by the hybrid router and server).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Revision of the deterministic pipeline (VAD, hallucination guard,

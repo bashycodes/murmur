@@ -1,6 +1,6 @@
-package dev.flowclone.debug
+package dev.murmur.debug
 
-import dev.flowclone.BuildConfig
+import dev.murmur.BuildConfig
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -10,7 +10,7 @@ class DebugWavReceiverTest {
     private val variant = BuildConfig.FLAVOR + BuildConfig.BUILD_TYPE.replaceFirstChar { it.uppercase() }
 
     @Test fun receiverClassShipsInDebug() {
-        Class.forName("dev.flowclone.debug.WavMicReceiver")
+        Class.forName("dev.murmur.debug.WavMicReceiver")
     }
 
     @Test fun mergedDebugManifestDeclaresItPermissionGuarded() {

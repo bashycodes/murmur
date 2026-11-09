@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/flow-build-info", "crates/flow-core", "crates/flow-ffi", "crates/flow-cli", "crates/flow-llm", "crates/flow-whisper", "crates/flow-asr-sherpa", "crates/flow-protocol", "crates/flow-router", "crates/flow-remote", "crates/flow-server", "crates/flow-contract-tests", "crates/flow-cloud", "crates/flow-replay"]
+members = ["crates/murmur-build-info", "crates/murmur-core", "crates/murmur-ffi", "crates/murmur-cli", "crates/murmur-llm", "crates/murmur-whisper", "crates/murmur-asr-sherpa", "crates/murmur-protocol", "crates/murmur-router", "crates/murmur-remote", "crates/murmur-server", "crates/murmur-contract-tests", "crates/murmur-cloud", "crates/murmur-replay"]
 
 [workspace.package]
 edition = "2021"

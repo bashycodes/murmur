@@ -6,14 +6,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use flow_core::asr::{AbortFlag, MockAsr};
-use flow_core::cleanup::{
+use murmur_core::asr::{AbortFlag, MockAsr};
+use murmur_core::cleanup::{
     build_prompt_scoped, clean_text, ChainCleaner, CleanError, CleanPrompt, CleanRequest, Cleaner,
     PromptScope, PromptVersion,
 };
-use flow_core::config::{AppCategory, CleanupLevel, FieldContext, SessionConfig, Style};
-use flow_core::dictionary::{DictEntry, Dictionary};
-use flow_core::{refinish, CommitStatus, FlowCore};
+use murmur_core::config::{AppCategory, CleanupLevel, FieldContext, SessionConfig, Style};
+use murmur_core::dictionary::{DictEntry, Dictionary};
+use murmur_core::{refinish, CommitStatus, MurmurCore};
 
 /// A scripted hop: answer, delay, scope, engine; records what it saw.
 struct Hop {
@@ -359,8 +359,8 @@ fn session() -> SessionConfig {
 }
 
 /// What a server without its LLM returns (`cleanup_level: none`).
-fn server_result(text: &str) -> flow_core::CommitResult {
-    let core = FlowCore::from_engines(Arc::new(MockAsr::new(text)), None);
+fn server_result(text: &str) -> murmur_core::CommitResult {
+    let core = MurmurCore::from_engines(Arc::new(MockAsr::new(text)), None);
     let mut cfg = session();
     cfg.cleanup_level = CleanupLevel::None;
     core.start_session(cfg).unwrap();
@@ -417,11 +417,11 @@ fn refinish_leaves_empty_and_error_results_alone() {
 
 #[test]
 fn a_failed_local_hop_falls_back_inside_a_real_commit() {
-    // FlowCore with a chain cleaner: local refuses, "server" answers.
+    // MurmurCore with a chain cleaner: local refuses, "server" answers.
     let local = Arc::new(Hop::new("local", Err(CleanError::Unavailable("x".into()))));
     let server = Arc::new(Hop::new("server", Ok("The demo is on Thursday, right?")));
     let chain: Arc<dyn Cleaner> = Arc::new(chain(&[&local, &server]));
-    let core = FlowCore::from_engines(
+    let core = MurmurCore::from_engines(
         Arc::new(MockAsr::new("the demo is on thursday right")),
         Some(chain),
     );
@@ -491,7 +491,7 @@ fn an_unreachable_server_before_the_cloud_does_not_skip_ai_cleanup() {
         let server = refusing_server();
         let cloud = cloud_hop(out);
         let chain: Arc<dyn Cleaner> = Arc::new(chain(&[&server, &cloud]));
-        let core = FlowCore::from_engines(Arc::new(MockAsr::new(raw)), Some(chain));
+        let core = MurmurCore::from_engines(Arc::new(MockAsr::new(raw)), Some(chain));
         let cfg = SessionConfig {
             languages: vec!["en".into()],
             ..Default::default()
@@ -530,7 +530,7 @@ fn an_unreachable_server_before_the_cloud_does_not_skip_ai_cleanup() {
 fn a_dictionary_replacement_fixes_misheard_terms_without_any_ai() {
     // No cleaner at all (phone AI off, no OpenRouter): replacements still
     // apply in post-processing.
-    let core = FlowCore::from_engines(
+    let core = MurmurCore::from_engines(
         Arc::new(MockAsr::new("generate a UID four with pie test")),
         None,
     );
@@ -555,8 +555,8 @@ fn a_dictionary_replacement_fixes_misheard_terms_without_any_ai() {
 
 /// A tidy dictation (D27's `llm_can_help` says no) through `chain`, with
 /// the default skip on.
-fn dictate_tidy(chain: Arc<dyn Cleaner>) -> flow_core::CommitResult {
-    let core = FlowCore::from_engines(
+fn dictate_tidy(chain: Arc<dyn Cleaner>) -> murmur_core::CommitResult {
+    let core = MurmurCore::from_engines(
         Arc::new(MockAsr::new("The demo is on Thursday.")),
         Some(chain),
     );

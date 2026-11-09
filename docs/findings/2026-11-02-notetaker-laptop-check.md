@@ -3,7 +3,7 @@
 > **Status:** device check of D45, D47 and D48 (tickets "Notetaker 1/2/3") on the laptop: Core Ultra 9 288V, Windows 11 Home, hybrid build, speech to text on Parakeet on this PC, then the server. CI run 41448883609.
 
 ## Setup
-- **Install:** hybrid NSIS `Murmur_1.0.0_x64-setup_hybrid.exe` (sha256 `5e613048…794f`), `/S` over 1.0.0, exit 0. `%APPDATA%\FlowClone` (without `models`) was backed up first. Prefs and history were the same afterwards, apart from the new build's own keys `hebrew_model_dir` and `lid_model_path`.
+- **Install:** hybrid NSIS `Murmur_1.0.0_x64-setup_hybrid.exe` (sha256 `5e613048…794f`), `/S` over 1.0.0, exit 0. `%APPDATA%\Murmur` (without `models`) was backed up first. Prefs and history were the same afterwards, apart from the new build's own keys `hebrew_model_dir` and `lid_model_path`.
 - **Launch:** the app ran from an interactive scheduled task with stderr going to a temp log.
 - **Driving the UI:** UI Automation on the settings window (Meetings → Start/Stop recording, the detection select, Delete).
 - **Laptop state:** locked throughout (`LockApp` in the foreground). UI Automation, playback and WASAPI loopback all worked while locked.
@@ -18,7 +18,7 @@
 | 3 (clip twice, dictation during the job) | 105.3 s | −17.3 dBFS | −38.5 dBFS | 21.7 s | 7 Others |
 
 - **Indicators:**
-  - The Flow bar chip read "Recording meeting · 0:04".
+  - The Murmur bar chip read "Recording meeting · 0:04".
   - The Meetings page read "Recording · your mic and the PC's sound", then "Transcribing a meeting. 0%. Dictation keeps priority.", then done.
 - **Accuracy:** in meeting 1, 91 of the 92 Others words are in the reference. The only miss: "Missus Poyser" came out as "misses Poyser".
 - **Gaps fill correctly:** loopback captured 44 s of the 75 s, and the system WAV was padded to the full length with silence.

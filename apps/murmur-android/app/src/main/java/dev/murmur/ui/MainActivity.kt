@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.app.Activity
 import android.content.Intent
@@ -14,17 +14,17 @@ import android.widget.LinearLayout
 import android.widget.Toast
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
-import dev.flowclone.EngineHolder
-import dev.flowclone.FlowApp
-import dev.flowclone.R
-import dev.flowclone.core.NativeFlowCore
-import dev.flowclone.data.AppVersion
-import dev.flowclone.data.DevSummary
-import dev.flowclone.data.SetupChecklist
-import dev.flowclone.data.ShellPages
-import dev.flowclone.data.ShellPages.Extra
-import dev.flowclone.data.ShellPages.Tab
-import dev.flowclone.service.FlowService
+import dev.murmur.EngineHolder
+import dev.murmur.MurmurApp
+import dev.murmur.R
+import dev.murmur.core.NativeMurmurCore
+import dev.murmur.data.AppVersion
+import dev.murmur.data.DevSummary
+import dev.murmur.data.SetupChecklist
+import dev.murmur.data.ShellPages
+import dev.murmur.data.ShellPages.Extra
+import dev.murmur.data.ShellPages.Tab
+import dev.murmur.service.MurmurService
 import kotlin.concurrent.thread
 
 /**
@@ -37,7 +37,7 @@ import kotlin.concurrent.thread
  * [LaunchTab] remains for a destination that has to be its own activity.
  */
 class MainActivity : Activity() {
-    private val app get() = FlowApp.of(this)
+    private val app get() = MurmurApp.of(this)
     private lateinit var ui: DevUi
     internal lateinit var frame: ShellFrame
         private set
@@ -100,9 +100,9 @@ class MainActivity : Activity() {
     /** The extension point: which [ShellTab] hosts each bottom-nav destination. */
     private fun createTab(t: Tab): ShellTab = when (t) {
         Tab.HOME -> HomeTab(this, ui)
-        Tab.DICTIONARY -> dev.flowclone.ui.tabs.DictionaryTab(this, ui)
-        Tab.STYLE -> dev.flowclone.ui.tabs.StyleTab(this, ui)
-        Tab.SNIPPETS -> dev.flowclone.ui.tabs.SnippetsTab(this, ui)
+        Tab.DICTIONARY -> dev.murmur.ui.tabs.DictionaryTab(this, ui)
+        Tab.STYLE -> dev.murmur.ui.tabs.StyleTab(this, ui)
+        Tab.SNIPPETS -> dev.murmur.ui.tabs.SnippetsTab(this, ui)
     }
 
     internal fun tab(t: Tab): ShellTab = tabs.getOrPut(t) { createTab(t) }
@@ -140,15 +140,15 @@ class MainActivity : Activity() {
             out += HomeTab.Notice(lead, text.replace(" below.", " in Permissions."), ::openPermissions)
         }
         when (val lib = app.engine.libraryState()) {
-            is NativeFlowCore.LibraryState.Unavailable -> out += HomeTab.Notice(
+            is NativeMurmurCore.LibraryState.Unavailable -> out += HomeTab.Notice(
                 "Speech engine unavailable.",
-                "This build was packaged without libflow_ffi.so (${lib.message}). Dictation needs it, or turn on the mock engine in Settings.",
+                "This build was packaged without libmurmur_ffi.so (${lib.message}). Dictation needs it, or turn on the mock engine in Settings.",
             ) { startActivity(SettingsActivity.intent(this)) }
-            is NativeFlowCore.LibraryState.Loaded -> NativeFlowCore.capabilities()?.let { c ->
+            is NativeMurmurCore.LibraryState.Loaded -> NativeMurmurCore.capabilities()?.let { c ->
                 // BuildConfig.CAP_* must equal nativeCapabilities() (D17 §1.4).
                 if (c.local != app.caps.local || c.remote != app.caps.remote) out += HomeTab.Notice(
                     "Native library flavour mismatch.",
-                    "This is the ${app.caps.flavor} APK but libflow_ffi.so was built with local=${c.local} remote=${c.remote}.",
+                    "This is the ${app.caps.flavor} APK but libmurmur_ffi.so was built with local=${c.local} remote=${c.remote}.",
                 ) {}
             }
         }
@@ -270,7 +270,7 @@ class MainActivity : Activity() {
             Extra.HISTORY -> startActivity(Intent(this, HistoryActivity::class.java))
             Extra.CALLS -> startActivity(Intent(this, CallsActivity::class.java))
             Extra.START_BUBBLE -> startBubble()
-            Extra.STOP_BUBBLE -> runCatching { startService(Intent(this, FlowService::class.java).setAction(FlowService.ACTION_STOP)) }
+            Extra.STOP_BUBBLE -> runCatching { startService(Intent(this, MurmurService::class.java).setAction(MurmurService.ACTION_STOP)) }
             Extra.SPEECH_MODEL -> startActivity(Intent(this, ModelImportActivity::class.java))
             Extra.DEVELOPER -> startActivity(Intent(this, DeveloperActivity::class.java))
         }
@@ -281,7 +281,7 @@ class MainActivity : Activity() {
             Toast.makeText(this, "Allow Display over other apps first (Permissions).", Toast.LENGTH_LONG).show()
             return
         }
-        runCatching { startForegroundService(Intent(this, FlowService::class.java).setAction(FlowService.ACTION_SHOW)) }
+        runCatching { startForegroundService(Intent(this, MurmurService::class.java).setAction(MurmurService.ACTION_SHOW)) }
     }
 
     private companion object {

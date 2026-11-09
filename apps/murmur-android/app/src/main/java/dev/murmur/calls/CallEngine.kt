@@ -1,17 +1,17 @@
-package dev.flowclone.calls
+package dev.murmur.calls
 
-import dev.flowclone.FlowApp
-import dev.flowclone.core.CleanupLevel
-import dev.flowclone.core.CoreException
-import dev.flowclone.core.FlowCoreLoader
-import dev.flowclone.core.MeetingJob
-import dev.flowclone.core.NativeFlowCore
-import dev.flowclone.core.NativeMeeting
-import dev.flowclone.core.SessionConfig
-import dev.flowclone.data.EnginePlan
-import dev.flowclone.data.HebrewModels
-import dev.flowclone.data.ParakeetFiles
-import dev.flowclone.data.Settings
+import dev.murmur.MurmurApp
+import dev.murmur.core.CleanupLevel
+import dev.murmur.core.CoreException
+import dev.murmur.core.MurmurCoreLoader
+import dev.murmur.core.MeetingJob
+import dev.murmur.core.NativeMurmurCore
+import dev.murmur.core.NativeMeeting
+import dev.murmur.core.SessionConfig
+import dev.murmur.data.EnginePlan
+import dev.murmur.data.HebrewModels
+import dev.murmur.data.ParakeetFiles
+import dev.murmur.data.Settings
 import java.io.File
 
 /**
@@ -23,12 +23,12 @@ import java.io.File
  */
 object CallEngine {
     /** Why this build / phone can't transcribe calls, or null when it can. */
-    fun unavailable(app: FlowApp): String? = when {
+    fun unavailable(app: MurmurApp): String? = when {
         !app.caps.local -> "This build has no on-device speech engine, so it can't transcribe recordings."
         else -> null
     }
 
-    fun plan(app: FlowApp, language: String): EnginePlan.Plan {
+    fun plan(app: MurmurApp, language: String): EnginePlan.Plan {
         val s = app.settings.load().copy(llmEnabled = false, mockEngine = false)
         val hebrew = app.engine.hebrewLanguageModel()
         val threads = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 4)
@@ -40,14 +40,14 @@ object CallEngine {
         )
     }
 
-    /** The session every chunk runs with (`flow_core::meeting::chunk_session` opens its limits). */
-    fun session(s: Settings, dictionary: List<dev.flowclone.core.DictEntry>, language: String): SessionConfig =
+    /** The session every chunk runs with (`murmur_core::meeting::chunk_session` opens its limits). */
+    fun session(s: Settings, dictionary: List<dev.murmur.core.DictEntry>, language: String): SessionConfig =
         s.toSessionConfig(dictionary, language = language).copy(
             cleanupLevel = CleanupLevel.NONE, rawMode = true, partialIntervalMs = null, segmentPauseMs = null, endpointSilenceMs = null,
         )
 
     /** Blocking (model load): the job's engine + meeting transcriber. @throws CoreException */
-    fun open(app: FlowApp, language: String, loader: FlowCoreLoader = NativeFlowCore): MeetingJob {
+    fun open(app: MurmurApp, language: String, loader: MurmurCoreLoader = NativeMurmurCore): MeetingJob {
         unavailable(app)?.let { throw CoreException(it) }
         runCatching { android.system.Os.setenv("TMPDIR", app.cacheDir.path, true) }
         val p = when (val plan = plan(app, language)) {
@@ -56,11 +56,11 @@ object CallEngine {
             EnginePlan.Plan.Mock -> throw CoreException("The mock engine can't transcribe recordings.")
         }
         val loaded = EnginePlan.load(p, loader)
-        val core = loaded.core as? NativeFlowCore ?: throw CoreException(loaded.error ?: "The speech model failed to load")
+        val core = loaded.core as? NativeMurmurCore ?: throw CoreException(loaded.error ?: "The speech model failed to load")
         val s = app.settings.load()
         return NativeMeeting.open(core, session(s, app.dictionary.all(), language))
     }
 
     /** The page's default language: Hebrew when dictation is in Hebrew, else English. */
-    fun defaultLanguage(app: FlowApp): String = if (HebrewModels.isHebrew(app.effectiveLanguage())) HebrewModels.LANGUAGE else "en"
+    fun defaultLanguage(app: MurmurApp): String = if (HebrewModels.isHebrew(app.effectiveLanguage())) HebrewModels.LANGUAGE else "en"
 }

@@ -1,6 +1,6 @@
-# flow-server: Docker quick start (2026-11-08, D77)
+# murmur-server: Docker quick start (2026-11-08, D77)
 
-Owner: "The flow-server setup is way too overcomplicated. A 10 step, 500
+Owner: "The murmur-server setup is way too overcomplicated. A 10 step, 500
 line setup.md file proves that. I want it to be as close to a simple docker
 setup as possible" (n8n as the model). After the first version (published
 image, models downloaded on first start), two more decisions: "make it
@@ -16,7 +16,7 @@ containing all the models and a metadata file".
 | steps | fetch models, build sherpa-onnx or point at its libs, run `install.sh` (sudo), `gen-token`, edit `bind`, add `lid_path` / `[model.languages.he]` / `llm_path` by hand, firewall, restart | `docker build`, `docker volume create`, `docker run` (models folder + volume), `docker exec … cat /data/admin.token` |
 | Docker path before | build the image, copy models into a host folder, copy and edit `config.toml`, `docker compose up`, `docker compose exec … keys add owner --admin` | no config to copy or edit: it is derived from the models folder |
 | models | manual download or copy, then name each path in the config | mount any D40 library folder (a bundle's unzipped `library/`, the `air-gapped.md` loop's folder) read-only at `/models`; the tags pick the models |
-| admin key | `keys add` by hand | written to the volume on the first start; never logged; `docker exec flow-server cat /data/admin.token` |
+| admin key | `keys add` by hand | written to the volume on the first start; never logged; `docker exec murmur-server cat /data/admin.token` |
 
 Moved out of the quick start: install without Docker (systemd,
 `install.sh`), keys in detail, TLS, firewall, app settings, Hebrew / AI
@@ -32,8 +32,8 @@ From each `/models/<id>/model.toml` (`kind`, `engine`): speech =
 first `stt` by name; `lid`, `llm`, `hebrew` likewise with
 `whisper-tiny-lid`, `qwen2.5-1.5b-instruct-q4_k_m`, `zipformer-he-int8`
 preferred. Whisper and GGUF models point at the file in the folder,
-sherpa-onnx ones at the folder. `FLOW_STT` / `FLOW_LID` / `FLOW_LLM` /
-`FLOW_HEBREW` override (folder id or `none`). `/models` is also the
+sherpa-onnx ones at the folder. `MURMUR_STT` / `MURMUR_LID` / `MURMUR_LLM` /
+`MURMUR_HEBREW` override (folder id or `none`). `/models` is also the
 `[library] dir`, so the apps download the same copies (the hash cache is in
 `/data`; the server never writes to the library folder, so `:ro` works).
 
@@ -60,7 +60,7 @@ sherpa-onnx ones at the folder. `FLOW_STT` / `FLOW_LID` / `FLOW_LLM` /
   and paths, overrides and `none`, wrong-kind override, own
   `/data/config.toml` used by serve and CLI, key never in the output,
   errors (no folder, no speech model, gen-token failure, unwritable
-  `/data`), Helm-style `FLOW_CONFIG` waits for keys, `flow-server` name.
+  `/data`), Helm-style `MURMUR_CONFIG` waits for keys, `murmur-server` name.
 * hadolint clean; shellcheck clean; `docker compose config` clean (both
   profiles); colleague-bundle test passes. Helm not installed here: the
   chart change (one env var) is not rendered.

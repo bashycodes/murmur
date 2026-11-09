@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.Manifest
 import android.app.Activity
@@ -7,21 +7,21 @@ import android.content.DialogInterface
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
-import dev.flowclone.FlowApp
-import dev.flowclone.calls.AutoQueue
-import dev.flowclone.calls.CallJobService
-import dev.flowclone.calls.CallJobState
-import dev.flowclone.calls.Recording
-import dev.flowclone.calls.RecordingSource
-import dev.flowclone.calls.CallJobs
-import dev.flowclone.calls.CallTranscript
-import dev.flowclone.calls.CallsView
-import dev.flowclone.calls.CallRequest
-import dev.flowclone.core.MeetingSegment
-import dev.flowclone.ui.UiTestKit.idle
-import dev.flowclone.ui.UiTestKit.rowTitled
-import dev.flowclone.ui.UiTestKit.texts
-import dev.flowclone.ui.UiTestKit.walk
+import dev.murmur.MurmurApp
+import dev.murmur.calls.AutoQueue
+import dev.murmur.calls.CallJobService
+import dev.murmur.calls.CallJobState
+import dev.murmur.calls.Recording
+import dev.murmur.calls.RecordingSource
+import dev.murmur.calls.CallJobs
+import dev.murmur.calls.CallTranscript
+import dev.murmur.calls.CallsView
+import dev.murmur.calls.CallRequest
+import dev.murmur.core.MeetingSegment
+import dev.murmur.ui.UiTestKit.idle
+import dev.murmur.ui.UiTestKit.rowTitled
+import dev.murmur.ui.UiTestKit.texts
+import dev.murmur.ui.UiTestKit.walk
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -39,10 +39,10 @@ import java.io.File
 
 /** D46 Calls page: list, open, copy, delete, pick, progress + cancel. Synthetic transcripts. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], application = FlowApp::class)
+@Config(sdk = [34], application = MurmurApp::class)
 class CallsUiTest {
     private val ctx get() = RuntimeEnvironment.getApplication()
-    private val app get() = FlowApp.of(ctx)
+    private val app get() = MurmurApp.of(ctx)
 
     @After fun cleanup() { File(ctx.filesDir, "calls").deleteRecursively(); File(ctx.filesDir, "calls-auto.json").delete() }
 

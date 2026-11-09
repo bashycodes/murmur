@@ -20,7 +20,7 @@ on. All WER numbers are percentages; lower is better.
 
 | pick | model | why, in one line |
 |---|---|---|
-| **Best for our CPU** (flow-server i7-6700; also the Windows PC and phone) | **zipformer2-66m-streaming-he int8** | Within 0.2 points of the best open model on conversational Hebrew, 20× faster than real time, streaming, 72 MB, and it runs on the sherpa-onnx stack we already ship. |
+| **Best for our CPU** (murmur-server i7-6700; also the Windows PC and phone) | **zipformer2-66m-streaming-he int8** | Within 0.2 points of the best open model on conversational Hebrew, 20× faster than real time, streaming, 72 MB, and it runs on the sherpa-onnx stack we already ship. |
 | **Best ignoring compute** | **ivrit-ai/whisper-large-v3** (turbo as the practical GPU variant) | Lowest WER of any open model on 4 of 5 leaderboard sets. It needs an NVIDIA GPU with ≈ 4.5 GB VRAM (fp16) or ≈ 3 GB (int8) [11]. Turbo is within 0.7 points (and 0.1 better on whatsapp) at roughly half the cost: 0.5–0.7 s per 5–15 s clip on a 2080 Ti or T4 [2]. |
 
 Day-1 shortcut: Parakeet-v3-he int8 needs **no code**. It is the same
@@ -35,13 +35,13 @@ has to be a per-language route, not a new default model.
 ## 1. Where we are
 
 * ASR today (`DECISIONS.md` D4/D23):
-  * English: Parakeet-unified-en-0.6b int8 on sherpa-onnx (`flow-asr-sherpa`, offline `nemo_transducer`). Parakeet v2 is the fallback and the Android model.
+  * English: Parakeet-unified-en-0.6b int8 on sherpa-onnx (`murmur-asr-sherpa`, offline `nemo_transducer`). Parakeet v2 is the fallback and the Android model.
   * Other languages or auto-detect: whisper.cpp base q5_1, with small q5_1 as an opt-in.
   * Streaming: D22 pause-segmented decoding, which works with any offline engine. A sherpa `OnlineRecognizer` engine is planned (D23 "next", for Nemotron) but does not exist yet: there is no `OnlineRecognizer` in `crates/`.
   * The Android settings already list `he` as a language.
 * `docs/proposals/stt-model-survey.md` (2026-10-23) already flagged that **no sherpa package covered Hebrew** at the time. It named the ivrit.ai zipformer and the ivrit turbo ggml as untested options. This doc tests them.
 * "Our CPU":
-  * flow-server box: Intel i7-6700 (Skylake 2015), 4 cores / 8 threads, AVX2/FMA, no AVX-512, 19 GB RAM, no GPU (`lscpu`/`free` on 2026-10-28; matches `docs/model-benchmarks.md`).
+  * murmur-server box: Intel i7-6700 (Skylake 2015), 4 cores / 8 threads, AVX2/FMA, no AVX-512, 19 GB RAM, no GPU (`lscpu`/`free` on 2026-10-28; matches `docs/model-benchmarks.md`).
   * Windows PC: the repo docs do not record its hardware. **Assumption:** a desktop x86-64 CPU at least as fast as the i7-6700, and no usable GPU unless the user says otherwise.
   * Phone: Galaxy S25+ (survey doc).
 
@@ -133,7 +133,7 @@ Conclusion: sentence-level mixing is partly OK. A pure-English dictation must no
   * RTF 0.05, about 2.5× cheaper than our English Parakeet (RTF 0.12–0.14).
   * The text is ready about 50 ms after the user stops, at any utterance length. This is the "streaming" property D23 wanted from Nemotron, with a Hebrew model.
 * **Size:** 72 MB int8, so it also fits the Windows app and the phone. The model card says the int8 build runs in a browser via WASM [7].
-* **Cost:** a new `OnlineRecognizer` engine in `flow-asr-sherpa`. This is the same work D23 already queued for Nemotron, so one adapter serves both.
+* **Cost:** a new `OnlineRecognizer` engine in `murmur-asr-sherpa`. This is the same work D23 already queued for Nemotron, so one adapter serves both.
   * The probe's `online` kind is the reference: feed chunks, then flush with about 1.5 s of silence and `input_finished()` [7].
   * `model_type` is auto-detected from the ONNX metadata (zipformer2).
   * Until the adapter exists, the engine can be fed the whole buffer at commit, which is still RTF 0.05.
@@ -155,7 +155,7 @@ Conclusion: sentence-level mixing is partly OK. A pure-English dictation must no
 
 ### 4.3 Integration notes and risks
 
-* **Routing, not replacement.** `AsrRequest.language` already exists in `flow-core`.
+* **Routing, not replacement.** `AsrRequest.language` already exists in `murmur-core`.
   * `he` → Hebrew engine; `en` → Parakeet (unchanged).
   * Auto mode needs language ID before decoding. Options: whisper tiny/base LID on the first ~2–3 s (whisper.cpp is already in core), or sherpa-onnx's whisper-based spoken-language-identification binary, which is already in the cached sherpa build.
   * Per-segment routing with D22 pieces would handle sentence-level mixing.

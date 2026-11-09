@@ -1,4 +1,4 @@
-package dev.flowclone.ui.tabs
+package dev.murmur.ui.tabs
 
 import android.app.Activity
 import android.graphics.Color
@@ -11,18 +11,18 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import dev.flowclone.FlowApp
-import dev.flowclone.R
-import dev.flowclone.data.AppStyles
-import dev.flowclone.data.Settings
-import dev.flowclone.data.ShellPages
-import dev.flowclone.data.WritingStyle
-import dev.flowclone.policy.AppCategorizer.Category
-import dev.flowclone.ui.AppStylesPage
-import dev.flowclone.ui.DevUi
-import dev.flowclone.ui.LwDrawables
-import dev.flowclone.ui.ShellTab
-import dev.flowclone.ui.TypeScale
+import dev.murmur.MurmurApp
+import dev.murmur.R
+import dev.murmur.data.AppStyles
+import dev.murmur.data.Settings
+import dev.murmur.data.ShellPages
+import dev.murmur.data.WritingStyle
+import dev.murmur.policy.AppCategorizer.Category
+import dev.murmur.ui.AppStylesPage
+import dev.murmur.ui.DevUi
+import dev.murmur.ui.LwDrawables
+import dev.murmur.ui.ShellTab
+import dev.murmur.ui.TypeScale
 
 /**
  * Style tab (AndroidStyle.dc.html): pill tabs per group (Personal / Work / Email / Other), the
@@ -34,7 +34,7 @@ import dev.flowclone.ui.TypeScale
  * the core). Per-app moves beyond "+" stay in Settings → Writing style → Style per app.
  */
 internal class StyleTab(private val activity: Activity, private val ui: DevUi) : ShellTab {
-    private val app get() = FlowApp.of(activity)
+    private val app get() = MurmurApp.of(activity)
     override val title = ShellPages.APP_NAME
 
     /** The selected group. */
@@ -241,7 +241,7 @@ internal class StyleTab(private val activity: Activity, private val ui: DevUi) :
     private companion object {
         /** Icons before "+N" (the artboard shows four; five still fit 390 dp with the "+"). */
         const val MAX_ICONS = 5
-        /** flow-theme.css --dawn-500 (the bubble's avatar dot), --dawn-700 on dark. */
+        /** murmur-theme.css --dawn-500 (the bubble's avatar dot), --dawn-700 on dark. */
         val DAWN_500 = Color.parseColor("#f0d7ff")
         val DAWN_700 = Color.parseColor("#a26ec1")
     }

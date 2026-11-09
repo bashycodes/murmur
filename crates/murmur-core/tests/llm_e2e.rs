@@ -2,16 +2,16 @@
 //! → LlamaCleaner plugin → post-processing; no output guard, D59).
 //!
 //! Skips with a note when the model or the plugin is missing:
-//! * model: `FLOW_LLM_MODEL`, else `models/qwen2.5-0.5b-instruct-q4_k_m.gguf`
+//! * model: `MURMUR_LLM_MODEL`, else `models/qwen2.5-0.5b-instruct-q4_k_m.gguf`
 //!   (`tools/fetch-models.sh --llm`);
-//! * plugin: `libflow_llm.so`, built by `cargo test --workspace --all-features`
-//!   (or `cargo build -p flow-llm`) next to the test binary.
+//! * plugin: `libmurmur_llm.so`, built by `cargo test --workspace --all-features`
+//!   (or `cargo build -p murmur-llm`) next to the test binary.
 //!
 //! Two passes over 8 messy dictations:
 //! 1. at the real budget (`SessionConfig::llm_timeout_ms`, 1.5 s, or
-//!    `FLOW_LLM_BUDGET_MS`): latency is printed, the safety contract asserted;
-//! 2. at a generous budget (`FLOW_LLM_QUALITY_BUDGET_MS`, 30 s): quality is
-//!    graded per case and at least `FLOW_LLM_MIN_GOOD` (3) must pass.
+//!    `MURMUR_LLM_BUDGET_MS`): latency is printed, the safety contract asserted;
+//! 2. at a generous budget (`MURMUR_LLM_QUALITY_BUDGET_MS`, 30 s): quality is
+//!    graded per case and at least `MURMUR_LLM_MIN_GOOD` (3) must pass.
 //!
 //! The safety contract: never ERROR, never an empty paste, never a
 //! preamble/HTML/label pasted, cleanup never over budget. Pass 1 is not
@@ -23,11 +23,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
-use flow_core::config::{AppCategory, AsrBackend, FieldContext, ModelConfig, SessionConfig};
-use flow_core::{CommitStatus, FlowCore};
+use murmur_core::config::{AppCategory, AsrBackend, FieldContext, ModelConfig, SessionConfig};
+use murmur_core::{CommitStatus, MurmurCore};
 
 fn model_path() -> Option<PathBuf> {
-    let p = std::env::var_os("FLOW_LLM_MODEL")
+    let p = std::env::var_os("MURMUR_LLM_MODEL")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
             PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -37,7 +37,7 @@ fn model_path() -> Option<PathBuf> {
 }
 
 fn plugin_present() -> bool {
-    flow_core::llama::plugin_candidates(None)
+    murmur_core::llama::plugin_candidates(None)
         .iter()
         .any(|p| p.is_absolute() && p.is_file())
 }
@@ -129,15 +129,15 @@ fn has(hay: &str, needle: &str) -> bool {
 fn messy_dictation_is_cleaned_safely_and_fast() {
     let _g = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let Some(model) = model_path() else {
-        eprintln!("SKIP: LLM model missing (tools/fetch-models.sh --llm or FLOW_LLM_MODEL)");
+        eprintln!("SKIP: LLM model missing (tools/fetch-models.sh --llm or MURMUR_LLM_MODEL)");
         return;
     };
-    if !plugin_present() && std::env::var_os("FLOW_LLM_LIB").is_none() {
-        eprintln!("SKIP: libflow_llm plugin not built (cargo build -p flow-llm)");
+    if !plugin_present() && std::env::var_os("MURMUR_LLM_LIB").is_none() {
+        eprintln!("SKIP: libmurmur_llm plugin not built (cargo build -p murmur-llm)");
         return;
     }
     let budget_ms = env_u64(
-        "FLOW_LLM_BUDGET_MS",
+        "MURMUR_LLM_BUDGET_MS",
         SessionConfig::default().llm_timeout_ms,
     );
 
@@ -147,16 +147,16 @@ fn messy_dictation_is_cleaned_safely_and_fast() {
     let text = Arc::new(std::sync::Mutex::new(String::new()));
     let text_ref = text.clone();
     let asr = Arc::new(SwapAsr(text.clone()));
-    let cleaner = flow_core::llama::LlamaCleaner::load(
+    let cleaner = murmur_core::llama::LlamaCleaner::load(
         model.to_str().unwrap(),
-        flow_core::config::default_threads(),
+        murmur_core::config::default_threads(),
         None,
     )
     .expect("load llm");
     let load_ms = t.elapsed().as_millis();
     // The plugin says where the model runs; a CPU build runs it on the CPU.
     let backend = cleaner.backend().expect("plugin reports its backend");
-    let (probe_path, probed) = flow_core::llama::probe_backend(None).expect("probe");
+    let (probe_path, probed) = murmur_core::llama::probe_backend(None).expect("probe");
     assert_eq!(probe_path, cleaner.plugin_path);
     assert_eq!(
         probed.is_gpu(),
@@ -172,7 +172,7 @@ fn messy_dictation_is_cleaned_safely_and_fast() {
         cleaner.plugin_path.display(),
         cleaner.info
     );
-    let core = FlowCore::from_engines(asr, Some(Arc::new(cleaner)));
+    let core = MurmurCore::from_engines(asr, Some(Arc::new(cleaner)));
 
     let (_, f, p50, max) = run_pass(&core, &text_ref, budget_ms);
     eprintln!(
@@ -181,9 +181,9 @@ fn messy_dictation_is_cleaned_safely_and_fast() {
     );
     // Quality is a property of model + prompt, not of how loaded the shared
     // CPU is, so it is graded on a pass with a generous budget.
-    let qbudget = env_u64("FLOW_LLM_QUALITY_BUDGET_MS", 30_000);
+    let qbudget = env_u64("MURMUR_LLM_QUALITY_BUDGET_MS", 30_000);
     let (good, f, p50, max) = run_pass(&core, &text_ref, qbudget);
-    let min_good = env_u64("FLOW_LLM_MIN_GOOD", 3) as usize;
+    let min_good = env_u64("MURMUR_LLM_MIN_GOOD", 3) as usize;
     eprintln!(
         "^ quality {good}/{} (min {min_good}) | formatted {f}/{} | llm p50 {p50} ms max {max} ms",
         CASES.len(),
@@ -202,7 +202,7 @@ fn env_u64(k: &str, d: u64) -> u64 {
 /// One dictation per case; asserts the safety contract and returns
 /// (cases meeting expectations, formatted count, p50 and max llm ms).
 fn run_pass(
-    core: &FlowCore,
+    core: &MurmurCore,
     text: &std::sync::Mutex<String>,
     budget_ms: u64,
 ) -> (usize, usize, u64, u64) {
@@ -280,13 +280,13 @@ fn run_pass(
 }
 
 struct SwapAsr(Arc<std::sync::Mutex<String>>);
-impl flow_core::asr::AsrEngine for SwapAsr {
+impl murmur_core::asr::AsrEngine for SwapAsr {
     fn transcribe(
         &self,
         _pcm: &[f32],
-        _req: &flow_core::asr::AsrRequest,
-    ) -> Result<flow_core::asr::AsrOutput, flow_core::asr::AsrError> {
-        Ok(flow_core::asr::AsrOutput {
+        _req: &murmur_core::asr::AsrRequest,
+    ) -> Result<murmur_core::asr::AsrOutput, murmur_core::asr::AsrError> {
+        Ok(murmur_core::asr::AsrOutput {
             text: self.0.lock().unwrap().clone(),
             language: Some("en".into()),
             ..Default::default()
@@ -301,11 +301,11 @@ fn load_models_wires_llm_path() {
         eprintln!("SKIP: LLM model missing");
         return;
     };
-    if !plugin_present() && std::env::var_os("FLOW_LLM_LIB").is_none() {
-        eprintln!("SKIP: libflow_llm plugin not built");
+    if !plugin_present() && std::env::var_os("MURMUR_LLM_LIB").is_none() {
+        eprintln!("SKIP: libmurmur_llm plugin not built");
         return;
     }
-    let core = FlowCore::load_models(&ModelConfig {
+    let core = MurmurCore::load_models(&ModelConfig {
         asr_backend: AsrBackend::Mock {
             text: "um hello there".into(),
         },
@@ -347,11 +347,11 @@ fn load_models_wires_llm_path() {
 
 #[test]
 fn bad_model_path_fails_load() {
-    if !plugin_present() && std::env::var_os("FLOW_LLM_LIB").is_none() {
-        eprintln!("SKIP: libflow_llm plugin not built");
+    if !plugin_present() && std::env::var_os("MURMUR_LLM_LIB").is_none() {
+        eprintln!("SKIP: libmurmur_llm plugin not built");
         return;
     }
-    let e = FlowCore::load_models(&ModelConfig {
+    let e = MurmurCore::load_models(&ModelConfig {
         asr_backend: AsrBackend::Mock { text: "x".into() },
         llm_path: Some("/nonexistent.gguf".into()),
         ..Default::default()
@@ -380,14 +380,16 @@ fn sim(a: &str, b: &str) -> f64 {
 }
 
 /// The benchmark cases through the full engine (spoken cleanup → LLM
-/// → guard → post-processing). Opt-in (`FLOW_LLM_BENCH=1`; ~2-5 min); a
+/// → guard → post-processing). Opt-in (`MURMUR_LLM_BENCH=1`; ~2-5 min); a
 /// report, not a gate: prints status and similarity per case and the mean.
-/// Budget: `FLOW_LLM_QUALITY_BUDGET_MS` (default 30 s).
+/// Budget: `MURMUR_LLM_QUALITY_BUDGET_MS` (default 30 s).
 #[test]
 fn bench_cases_through_the_engine() {
     let _g = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    if std::env::var_os("FLOW_LLM_BENCH").is_none() {
-        eprintln!("SKIP: set FLOW_LLM_BENCH=1 (and FLOW_LLM_MODEL) to run the bench-case report");
+    if std::env::var_os("MURMUR_LLM_BENCH").is_none() {
+        eprintln!(
+            "SKIP: set MURMUR_LLM_BENCH=1 (and MURMUR_LLM_MODEL) to run the bench-case report"
+        );
         return;
     }
     let Some(model) = model_path() else {
@@ -397,14 +399,14 @@ fn bench_cases_through_the_engine() {
     let j: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/bench_cleanup_cases.json")).unwrap();
     let text = Arc::new(std::sync::Mutex::new(String::new()));
-    let cleaner = flow_core::llama::LlamaCleaner::load(
+    let cleaner = murmur_core::llama::LlamaCleaner::load(
         model.to_str().unwrap(),
-        flow_core::config::default_threads(),
+        murmur_core::config::default_threads(),
         None,
     )
     .expect("load llm");
-    let core = FlowCore::from_engines(Arc::new(SwapAsr(text.clone())), Some(Arc::new(cleaner)));
-    let budget = env_u64("FLOW_LLM_QUALITY_BUDGET_MS", 30_000);
+    let core = MurmurCore::from_engines(Arc::new(SwapAsr(text.clone())), Some(Arc::new(cleaner)));
+    let budget = env_u64("MURMUR_LLM_QUALITY_BUDGET_MS", 30_000);
     let (mut sum_raw, mut sum, mut n) = (0.0, 0.0, 0.0);
     let mut statuses = std::collections::BTreeMap::<String, usize>::new();
     for c in j["cases"].as_array().unwrap() {
@@ -465,8 +467,8 @@ fn a_language_switch_reuses_the_kept_llm() {
         eprintln!("SKIP: LLM model missing");
         return;
     };
-    if !plugin_present() && std::env::var_os("FLOW_LLM_LIB").is_none() {
-        eprintln!("SKIP: libflow_llm plugin not built");
+    if !plugin_present() && std::env::var_os("MURMUR_LLM_LIB").is_none() {
+        eprintln!("SKIP: libmurmur_llm plugin not built");
         return;
     }
     let cfg = ModelConfig {
@@ -475,7 +477,7 @@ fn a_language_switch_reuses_the_kept_llm() {
         },
         languages: std::collections::BTreeMap::from([(
             "he".to_string(),
-            flow_core::config::LanguageModel {
+            murmur_core::config::LanguageModel {
                 asr_backend: AsrBackend::Mock {
                     text: "מילים בעברית".into(),
                 },
@@ -485,7 +487,7 @@ fn a_language_switch_reuses_the_kept_llm() {
         llm_path: Some(model.to_string_lossy().into_owned()),
         ..Default::default()
     };
-    let en = FlowCore::load_models_for(&cfg, Some("en")).expect("load en");
+    let en = MurmurCore::load_models_for(&cfg, Some("en")).expect("load en");
     let first = en.load_timings().llm().expect("llm timing").clone();
     assert!(!first.reused && first.ms > 0, "{first:?}");
     let before = Arc::as_ptr(&en.cleaner().unwrap()) as *const () as usize;
@@ -493,7 +495,7 @@ fn a_language_switch_reuses_the_kept_llm() {
     drop(en);
 
     let t = Instant::now();
-    let he = FlowCore::load_models_for(&cfg, Some("he")).expect("load he");
+    let he = MurmurCore::load_models_for(&cfg, Some("he")).expect("load he");
     let llm = he.load_timings().llm().unwrap();
     assert!(llm.reused && llm.ms == 0, "{llm:?}");
     assert_eq!(
@@ -508,6 +510,6 @@ fn a_language_switch_reuses_the_kept_llm() {
     );
     // Kept for one load only: without a new keep_llm() the next load loads it.
     drop(he);
-    let en = FlowCore::load_models_for(&cfg, Some("en")).expect("reload en");
+    let en = MurmurCore::load_models_for(&cfg, Some("en")).expect("reload en");
     assert!(!en.load_timings().llm().unwrap().reused);
 }

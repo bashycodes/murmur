@@ -10,9 +10,9 @@
 # Refuses: a version that is not MAJOR.MINOR.PATCH or not newer than VERSION,
 # an existing tag, an empty [Unreleased], a tree whose copies already
 # disagree, and (with --apply) uncommitted changes to tracked files or a
-# branch other than `integration` (FLOW_RELEASE_ANY_BRANCH=1 allows one).
-# Env: FLOW_RELEASE_DATE=YYYY-MM-DD (default today, UTC);
-#      FLOW_REPO_URL=https://… adds Keep-a-Changelog compare links.
+# branch other than `integration` (MURMUR_RELEASE_ANY_BRANCH=1 allows one).
+# Env: MURMUR_RELEASE_DATE=YYYY-MM-DD (default today, UTC);
+#      MURMUR_REPO_URL=https://… adds Keep-a-Changelog compare links.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
@@ -38,7 +38,7 @@ if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then die "tag $tag alr
 branch=$(git symbolic-ref --short -q HEAD || echo "(detached)")
 if [[ $branch != integration ]]; then
   msg="on branch $branch, releases are tagged on integration"
-  if [[ $apply == 1 && -z ${FLOW_RELEASE_ANY_BRANCH:-} ]]; then die "$msg (FLOW_RELEASE_ANY_BRANCH=1 to override)"; fi
+  if [[ $apply == 1 && -z ${MURMUR_RELEASE_ANY_BRANCH:-} ]]; then die "$msg (MURMUR_RELEASE_ANY_BRANCH=1 to override)"; fi
   warn "$msg"
 fi
 if [[ -n $(git status --porcelain --untracked-files=no) ]]; then
@@ -48,16 +48,16 @@ fi
 
 tools/check-version.sh >/dev/null || die "the version copies already disagree (tools/check-version.sh)"
 [[ -n $(py unreleased) ]] || die "CHANGELOG.md [Unreleased] is empty: write the release notes first"
-date=${FLOW_RELEASE_DATE:-$(date -u +%F)}
-[[ $date =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || die "FLOW_RELEASE_DATE must be YYYY-MM-DD"
+date=${MURMUR_RELEASE_DATE:-$(date -u +%F)}
+[[ $date =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || die "MURMUR_RELEASE_DATE must be YYYY-MM-DD"
 cl_args=()
-[[ -n ${FLOW_REPO_URL:-} ]] && cl_args=(--repo-url "$FLOW_REPO_URL")
+[[ -n ${MURMUR_REPO_URL:-} ]] && cl_args=(--repo-url "$MURMUR_REPO_URL")
 
 # Every file the stamp/changelog step may touch (= tools/versioning/versioning.py collect()).
 files=(VERSION Cargo.toml Cargo.lock CHANGELOG.md
-  apps/flow-windows/Cargo.toml apps/flow-windows/Cargo.lock apps/flow-windows/tauri.conf.json
-  apps/flow-windows/ui/package.json apps/flow-windows/ui/package-lock.json
-  apps/flow-android/app/build.gradle.kts)
+  apps/murmur-windows/Cargo.toml apps/murmur-windows/Cargo.lock apps/murmur-windows/tauri.conf.json
+  apps/murmur-windows/ui/package.json apps/murmur-windows/ui/package-lock.json
+  apps/murmur-android/app/build.gradle.kts)
 
 echo "release: $cur -> $new (tag $tag, $date, versionCode $(py code "$new"))"
 
@@ -94,7 +94,7 @@ tools/check-version.sh --tag "$tag" >/dev/null || {
 # --filter-platform: offline, only this host's crates have to be in the cache.
 if command -v cargo >/dev/null; then
   host=$(rustc -vV | sed -n 's/^host: //p')
-  for d in . apps/flow-windows; do
+  for d in . apps/murmur-windows; do
     (cd "$d" && cargo metadata --locked --offline --format-version 1 --filter-platform "$host" >/dev/null) \
       || die "cargo rejects $d/Cargo.lock after the stamp; 'git checkout -- .' to undo"
   done

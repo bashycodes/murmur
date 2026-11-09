@@ -1,4 +1,4 @@
-package dev.flowclone.debug
+package dev.murmur.debug
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -80,7 +80,7 @@ class DebugLogTest {
 
     /** D26: each line pins the exact APK (version + commit), so a log excerpt identifies the build. */
     @Test fun everyLineNamesTheBuild() {
-        val cur = dev.flowclone.data.AppVersion.current
+        val cur = dev.murmur.data.AppVersion.current
         for (line in listOf(DebugFormat.dictation(trace), DebugFormat.event(DebugEvent(0, "engine_load", null)))) {
             val o = JSONObject(line)
             assertEquals(line, cur.version, o.getString("app_version"))
@@ -88,7 +88,7 @@ class DebugLogTest {
         }
         val keep = DebugFormat.build
         try {
-            DebugFormat.build = dev.flowclone.data.AppBuild("0.2.0", 200, "abc1234-dirty", "0.2.0+abc1234.dirty")
+            DebugFormat.build = dev.murmur.data.AppBuild("0.2.0", 200, "abc1234-dirty", "0.2.0+abc1234.dirty")
             val o = JSONObject(DebugFormat.dictation(trace))
             assertEquals("0.2.0", o.getString("app_version"))
             assertEquals("abc1234-dirty", o.getString("build"))
@@ -240,7 +240,7 @@ class DebugLogTest {
         assertTrue(DebugFormat.summary(DebugFormat.event(DebugEvent(0, "a11y_health", "GHOST"))).contains("a11y_health: GHOST"))
     }
 
-    // ---- D22 fields (same names as apps/flow-windows) ----
+    // ---- D22 fields (same names as apps/murmur-windows) ----
 
     @Test fun dictationLineCarriesStreamingFields() {
         val o = JSONObject(DebugFormat.dictation(trace.copy(waitMs = 120, segments = 3, preAsrMs = 2400, clientMs = 610)))
@@ -253,10 +253,10 @@ class DebugLogTest {
     }
 
     @Test fun commitLineHasStreamingTimingsAndNoText() {
-        val r = dev.flowclone.core.CommitResult(
-            dev.flowclone.core.CommitStatus.RAW_TRANSCRIPT, asrText = "secret words", finalText = "secret words",
-            timings = dev.flowclone.core.Timings(audioMs = 30_000, asrMs = 400, totalMs = 520, waitMs = 120, segments = 4, preAsrMs = 2400),
-            route = dev.flowclone.core.RouteInfo("remote", clientMs = 610),
+        val r = dev.murmur.core.CommitResult(
+            dev.murmur.core.CommitStatus.RAW_TRANSCRIPT, asrText = "secret words", finalText = "secret words",
+            timings = dev.murmur.core.Timings(audioMs = 30_000, asrMs = 400, totalMs = 520, waitMs = 120, segments = 4, preAsrMs = 2400),
+            route = dev.murmur.core.RouteInfo("remote", clientMs = 610),
         )
         val line = CommitLine.of(r)
         for (part in listOf("wait=120ms", "segments=4", "pre_asr=2400ms", "client=610ms")) assertTrue(line, line.contains(part))
@@ -298,8 +298,8 @@ class DebugLogTest {
     }
 
     @Test fun engineAndModelPerRoute() {
-        val whisper = dev.flowclone.data.LoadedAsr(dev.flowclone.core.AsrEngine.WHISPER, "ggml-base-q5_1.bin")
-        val parakeet = dev.flowclone.data.LoadedAsr(dev.flowclone.core.AsrEngine.PARAKEET, "parakeet-int8")
+        val whisper = dev.murmur.data.LoadedAsr(dev.murmur.core.AsrEngine.WHISPER, "ggml-base-q5_1.bin")
+        val parakeet = dev.murmur.data.LoadedAsr(dev.murmur.core.AsrEngine.PARAKEET, "parakeet-int8")
         assertEquals("whisper" to "ggml-base-q5_1.bin", DebugEngine.of("local", mock = false, asr = whisper, serverModel = "x", routeModel = null))
         assertEquals("parakeet" to "parakeet-int8", DebugEngine.of("local", false, parakeet, null, null))
         assertEquals("server" to "parakeet-tdt-0.6b-v2", DebugEngine.of("remote", false, whisper, "parakeet-tdt-0.6b-v2", null))

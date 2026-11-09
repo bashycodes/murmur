@@ -1,5 +1,5 @@
 {
-  "_comment": "Command Mode outcome wire shape (flow_core::command::result_json; FFI flow_command, JNI nativeCommand). Checked by crates/flow-core/tests/command_vectors.rs and the Android CommandVectorsTest. `input` names the Rust value: ok = the answer text, err = CommandError::kind() (+ its field).",
+  "_comment": "Command Mode outcome wire shape (murmur_core::command::result_json; FFI murmur_command, JNI nativeCommand). Checked by crates/murmur-core/tests/command_vectors.rs and the Android CommandVectorsTest. `input` names the Rust value: ok = the answer text, err = CommandError::kind() (+ its field).",
   "cases": [
     {
       "input": {"ok": "Meeting moved to Friday."},

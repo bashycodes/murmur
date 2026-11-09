@@ -1,16 +1,16 @@
-package dev.flowclone.learn
+package dev.murmur.learn
 
-import dev.flowclone.core.FieldContext
+import dev.murmur.core.FieldContext
 
 /**
- * "Learn from my edits" (Windows `apps/flow-windows/src/learn.rs`),
+ * "Learn from my edits" (Windows `apps/murmur-windows/src/learn.rs`),
  * platform-free.
  *
  * After an insert the accessibility service keeps re-reading the field the dictation went into
  * for up to [WatchOpts.windowMs]. The dictated region is found between two anchors taken from
  * the field context at dictation start (the text just before and just after the caret), so
  * edits elsewhere in the field don't count. When the watch ends, the last region is
- * word-aligned against what was inserted (`FlowCore.learnEdit`) and the surviving
+ * word-aligned against what was inserted (`MurmurCore.learnEdit`) and the surviving
  * substitutions become **suggestions** ([Suggestions]): nothing reaches the dictionary
  * without the user's Add.
  *

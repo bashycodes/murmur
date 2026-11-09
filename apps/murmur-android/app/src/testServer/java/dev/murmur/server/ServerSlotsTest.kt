@@ -1,14 +1,14 @@
-package dev.flowclone.server
+package dev.murmur.server
 
-import dev.flowclone.data.HebrewModels
-import dev.flowclone.data.ModelPages
+import dev.murmur.data.HebrewModels
+import dev.murmur.data.ModelPages
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
-/** D41: kind + engine → slot, mirroring apps/flow-windows/src/server_library.rs `plan`. */
+/** D41: kind + engine → slot, mirroring apps/murmur-windows/src/server_library.rs `plan`. */
 class ServerSlotsTest {
     private val dirs = ModelDirs(File("/m"), File("/p"), File("/h"), File("/l"))
     private fun plan(m: LibraryModel, local: Boolean = true) = ServerSlots.plan(m, dirs, local)

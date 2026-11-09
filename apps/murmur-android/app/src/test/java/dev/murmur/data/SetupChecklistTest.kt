@@ -1,8 +1,8 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.data.SetupChecklist.Item
-import dev.flowclone.data.SetupChecklist.Need
-import dev.flowclone.health.AccessibilityHealth.Status
+import dev.murmur.data.SetupChecklist.Item
+import dev.murmur.data.SetupChecklist.Need
+import dev.murmur.health.AccessibilityHealth.Status
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull

@@ -1,20 +1,20 @@
-package dev.flowclone.debug
+package dev.murmur.debug
 
-import dev.flowclone.session.DictationState
-import dev.flowclone.session.InsertTarget
+import dev.murmur.session.DictationState
+import dev.murmur.session.InsertTarget
 import java.io.File
 
 /**
- * Debug "WAV as microphone" (debug builds only: the receiver lives in src/debug and FlowService
+ * Debug "WAV as microphone" (debug builds only: the receiver lives in src/debug and MurmurService
  * acts on [ACTION] only when BuildConfig.DEBUG). The host pushes a 16 kHz mono WAV into
  * `files/debug/` and broadcasts to `.debug.WavMicReceiver` (tools/phone/play-wav.sh); one
  * normal dictation then runs on that audio instead of the mic.
  */
 object DebugWav {
-    /** FlowService action (not exported: only the in-app receiver sends it). */
-    const val ACTION = "dev.flowclone.action.DEBUG_WAV"
+    /** MurmurService action (not exported: only the in-app receiver sends it). */
+    const val ACTION = "dev.murmur.action.DEBUG_WAV"
     /** Broadcast action of the debug receiver. */
-    const val BROADCAST = "dev.flowclone.debug.PLAY_WAV"
+    const val BROADCAST = "dev.murmur.debug.PLAY_WAV"
     /** Path of the WAV, relative to the app's data dir (`files/debug/…`) or to `files/`. */
     const val EXTRA_PATH = "path"
     /** true = feed as fast as the pipeline takes it, not in real time. */

@@ -1,10 +1,10 @@
-package dev.flowclone.service
+package dev.murmur.service
 
-import dev.flowclone.learn.Anchors
-import dev.flowclone.learn.EditLearning
-import dev.flowclone.learn.EditWatch
-import dev.flowclone.learn.FieldRead
-import dev.flowclone.learn.runWatch
+import dev.murmur.learn.Anchors
+import dev.murmur.learn.EditLearning
+import dev.murmur.learn.EditWatch
+import dev.murmur.learn.FieldRead
+import dev.murmur.learn.runWatch
 import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
@@ -33,29 +33,29 @@ import android.os.Vibrator
 import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
-import dev.flowclone.FlowApp
-import dev.flowclone.R
-import dev.flowclone.bubble.BubbleButton
-import dev.flowclone.bubble.BubbleOverlay
-import dev.flowclone.bubble.BubblePresence
-import dev.flowclone.bubble.PreviewContent
-import dev.flowclone.bubble.ShakeDetector
-import dev.flowclone.bubble.BubbleUi
-import dev.flowclone.bubble.BubbleView
-import dev.flowclone.bubble.ErrorTap
-import dev.flowclone.core.CommitResult
-import dev.flowclone.core.FieldContext
-import dev.flowclone.data.HistoryRow
-import dev.flowclone.health.AccessibilityHealth
-import dev.flowclone.session.DictationController
-import dev.flowclone.session.DictationState
-import dev.flowclone.session.FeedbackEvent
-import dev.flowclone.ui.MainActivity
-import dev.flowclone.ui.PermissionsActivity
-import dev.flowclone.audio.AudioSwitch
-import dev.flowclone.audio.MicRecorder
-import dev.flowclone.audio.WavAudioSource
-import dev.flowclone.debug.DebugWav
+import dev.murmur.MurmurApp
+import dev.murmur.R
+import dev.murmur.bubble.BubbleButton
+import dev.murmur.bubble.BubbleOverlay
+import dev.murmur.bubble.BubblePresence
+import dev.murmur.bubble.PreviewContent
+import dev.murmur.bubble.ShakeDetector
+import dev.murmur.bubble.BubbleUi
+import dev.murmur.bubble.BubbleView
+import dev.murmur.bubble.ErrorTap
+import dev.murmur.core.CommitResult
+import dev.murmur.core.FieldContext
+import dev.murmur.data.HistoryRow
+import dev.murmur.health.AccessibilityHealth
+import dev.murmur.session.DictationController
+import dev.murmur.session.DictationState
+import dev.murmur.session.FeedbackEvent
+import dev.murmur.ui.MainActivity
+import dev.murmur.ui.PermissionsActivity
+import dev.murmur.audio.AudioSwitch
+import dev.murmur.audio.MicRecorder
+import dev.murmur.audio.WavAudioSource
+import dev.murmur.debug.DebugWav
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -72,29 +72,29 @@ import kotlinx.coroutines.withContext
  * Starts as `specialUse`; re-promotes to `microphone|specialUse` on the bubble touch that
  * starts recording (an overlay touch is a while-in-use exemption on Android 14+).
  */
-class FlowService : Service() {
+class MurmurService : Service() {
     companion object {
-        const val ACTION_SHOW = "dev.flowclone.action.SHOW"
-        const val ACTION_RELOAD_ENGINE = "dev.flowclone.action.RELOAD_ENGINE"
-        const val ACTION_UNSNOOZE = "dev.flowclone.action.UNSNOOZE"
-        const val ACTION_STOP = "dev.flowclone.action.STOP"
+        const val ACTION_SHOW = "dev.murmur.action.SHOW"
+        const val ACTION_RELOAD_ENGINE = "dev.murmur.action.RELOAD_ENGINE"
+        const val ACTION_UNSNOOZE = "dev.murmur.action.UNSNOOZE"
+        const val ACTION_STOP = "dev.murmur.action.STOP"
         /** Tap on the "Dictation not inserted" notification: copy that text (2026-10-24). */
-        const val ACTION_COPY_UNSENT = "dev.flowclone.action.COPY_UNSENT"
+        const val ACTION_COPY_UNSENT = "dev.murmur.action.COPY_UNSENT"
         /**
          * History → "Insert with the bubble": arm the bubble's ✓ insert with history row
          * [EXTRA_HISTORY_ID] (the text is read here from the store, never carried in the intent).
          */
-        const val ACTION_OFFER_INSERT = "dev.flowclone.action.OFFER_INSERT"
+        const val ACTION_OFFER_INSERT = "dev.murmur.action.OFFER_INSERT"
         const val EXTRA_HISTORY_ID = "history_id"
         /**
          * D35 History → "Retry with current settings": transcribe row [EXTRA_HISTORY_ID]'s kept
          * recording again with the settings active now. The result becomes the row's newest
          * version; nothing is inserted.
          */
-        const val ACTION_RETRY = "dev.flowclone.action.RETRY"
-        private const val CHANNEL_SERVICE = "flow_service"
-        private const val CHANNEL_LIMIT = "flow_session_limit"
-        const val CHANNEL_STATUS = "flow_status"
+        const val ACTION_RETRY = "dev.murmur.action.RETRY"
+        private const val CHANNEL_SERVICE = "murmur_service"
+        private const val CHANNEL_LIMIT = "murmur_session_limit"
+        const val CHANNEL_STATUS = "murmur_status"
         private const val NOTIF_ID = 1001
         private const val NOTIF_LIMIT_ID = 3001
         private const val NOTIF_SNOOZE_ID = 789
@@ -105,11 +105,11 @@ class FlowService : Service() {
         @Volatile var running = false; private set
         private const val COPY_DELAY_MS = 2000L
         private const val COPY_AUTOHIDE_MS = 5000L
-        private const val TAG = "FlowService"
+        private const val TAG = "MurmurService"
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val app get() = FlowApp.of(this)
+    private val app get() = MurmurApp.of(this)
     private lateinit var controller: DictationController
     /** The mic, or (debug builds, one dictation) a WAV armed by [playDebugWav]. */
     private val audio = AudioSwitch(MicRecorder())
@@ -175,9 +175,9 @@ class FlowService : Service() {
         scope.launch {
             combine(controller.state, controller.partial, controller.hint, presence.presence, controller.route) { s, p, h, _, r ->
                 // D18 C7: "C" whenever the last dictation went to a cloud provider, even with the badge off.
-                val badge = dev.flowclone.core.DevText.bubbleBadge(app.lastRoute.value?.result?.route, app.dev.load().showEngineBadge)
+                val badge = dev.murmur.core.DevText.bubbleBadge(app.lastRoute.value?.result?.route, app.dev.load().showEngineBadge)
                 // Live route ("via phone | server | provider"), relabelled on failover.
-                val route = dev.flowclone.bubble.RouteLabel.of(r) { id -> if (id == dev.flowclone.data.OpenRouter.ID) dev.flowclone.data.OpenRouter.NAME else null }
+                val route = dev.murmur.bubble.RouteLabel.of(r) { id -> if (id == dev.murmur.data.OpenRouter.ID) dev.murmur.data.OpenRouter.NAME else null }
                 PreviewContent.line(s, p, h, app.settings.load().livePreview, badge, route)
             }.collect { overlay.renderPreview(it) }
         }
@@ -192,8 +192,8 @@ class FlowService : Service() {
         scope.launch {
             app.engine.state.collect { e ->
                 when (e) {
-                    is dev.flowclone.EngineHolder.State.Ready -> controller.engineSettled(failure = null)
-                    is dev.flowclone.EngineHolder.State.Failed -> controller.engineSettled(failure = e.message)
+                    is dev.murmur.EngineHolder.State.Ready -> controller.engineSettled(failure = null)
+                    is dev.murmur.EngineHolder.State.Failed -> controller.engineSettled(failure = e.message)
                     else -> Unit
                 }
             }
@@ -234,7 +234,7 @@ class FlowService : Service() {
                 scope.launch {
                     val text = withContext(Dispatchers.IO) {
                         runCatching { app.history.recent().firstOrNull { it.id == id } }.getOrNull()
-                    }?.let(dev.flowclone.data.HistoryPages::copyText)
+                    }?.let(dev.murmur.data.HistoryPages::copyText)
                     val armed = text != null && controller.offerInsert(text)
                     toast(if (armed) R.string.toast_offer_insert else R.string.toast_offer_insert_busy)
                 }
@@ -246,7 +246,7 @@ class FlowService : Service() {
             }
             DebugWav.ACTION -> {
                 // Compile-time false in release: the branch is dead code there and no receiver sends it.
-                if (dev.flowclone.BuildConfig.DEBUG) playDebugWav(intent)
+                if (dev.murmur.BuildConfig.DEBUG) playDebugWav(intent)
                 return START_STICKY
             }
             else -> app.settings.serviceStoppedByUser = false
@@ -323,7 +323,7 @@ class FlowService : Service() {
                 },
             ),
         )
-        .setSmallIcon(R.drawable.ic_flow)
+        .setSmallIcon(R.drawable.ic_murmur)
         .setOngoing(true)
         .setContentIntent(openAppIntent())
         .build()
@@ -332,7 +332,7 @@ class FlowService : Service() {
         val n = Notification.Builder(this, CHANNEL_LIMIT)
             .setContentTitle(getString(R.string.notif_limit_title))
             .setContentText(getString(R.string.notif_limit_text, app.settings.load().capMinutes))
-            .setSmallIcon(R.drawable.ic_flow)
+            .setSmallIcon(R.drawable.ic_murmur)
             .setAutoCancel(true)
             .setContentIntent(openAppIntent())
             .build()
@@ -343,13 +343,13 @@ class FlowService : Service() {
     private fun unsentNotification(text: String, outcome: String) {
         unsentText = text
         val n = Notification.Builder(this, CHANNEL_STATUS)
-            .setContentTitle(dev.flowclone.session.NotInsertedNotice.TITLE)
-            .setContentText(dev.flowclone.session.NotInsertedNotice.text(outcome, text))
-            .setSmallIcon(R.drawable.ic_flow)
+            .setContentTitle(dev.murmur.session.NotInsertedNotice.TITLE)
+            .setContentText(dev.murmur.session.NotInsertedNotice.text(outcome, text))
+            .setSmallIcon(R.drawable.ic_murmur)
             .setAutoCancel(true)
             .setContentIntent(
                 PendingIntent.getService(
-                    this, 2, Intent(this, FlowService::class.java).setAction(ACTION_COPY_UNSENT),
+                    this, 2, Intent(this, MurmurService::class.java).setAction(ACTION_COPY_UNSENT),
                     PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
                 ),
             )
@@ -378,12 +378,12 @@ class FlowService : Service() {
         val n = Notification.Builder(this, CHANNEL_STATUS)
             .setContentTitle(getString(R.string.notif_snooze_title))
             .setContentText(getString(R.string.notif_snooze_text))
-            .setSmallIcon(R.drawable.ic_flow)
+            .setSmallIcon(R.drawable.ic_murmur)
             .setAutoCancel(true)
             .setTimeoutAfter(BubblePresence.SNOOZE_MS)
             .setContentIntent(
                 PendingIntent.getService(
-                    this, 1, Intent(this, FlowService::class.java).setAction(ACTION_UNSNOOZE),
+                    this, 1, Intent(this, MurmurService::class.java).setAction(ACTION_UNSNOOZE),
                     PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
                 ),
             )
@@ -464,8 +464,8 @@ class FlowService : Service() {
                 { if (stop.get()) FieldRead.FocusChanged else reader.read() }, watch, SystemClock::elapsedRealtime, { delay(it) },
                 stillWanted = { app.settings.load().learnFromEdits },
             )
-            val core = (app.engine.state.value as? dev.flowclone.EngineHolder.State.Ready)?.core
-            var added: List<dev.flowclone.learn.Suggestion> = emptyList()
+            val core = (app.engine.state.value as? dev.murmur.EngineHolder.State.Ready)?.core
+            var added: List<dev.murmur.learn.Suggestion> = emptyList()
             if (core != null && outcome.edited != null) {
                 app.suggestions.update { cur ->
                     val r = EditLearning.learn(pasted, outcome, cur, app.dictionary.all(), ctx.appId, System.currentTimeMillis(), core::learnEdit)
@@ -496,26 +496,26 @@ class FlowService : Service() {
                 val loaded = withContext(Dispatchers.IO) { runCatching { app.history.row(id) to app.history.audio.load(id) }.getOrNull() }
                 val row = loaded?.first
                 val pcm = loaded?.second
-                if (row == null || pcm == null || row.isCommand) dev.flowclone.data.RetryLogic.GONE
+                if (row == null || pcm == null || row.isCommand) dev.murmur.data.RetryLogic.GONE
                 else {
                     val s = app.settings.load()
-                    val bucket = row.appCategory ?: dev.flowclone.policy.AppCategorizer.categorize(row.appId, null).coreName
+                    val bucket = row.appCategory ?: dev.murmur.policy.AppCategorizer.categorize(row.appId, null).coreName
                     val ctx = s.withAppBucket(FieldContext(appId = row.appId.orEmpty(), appCategory = bucket))
                     when (val out = controller.retry(pcm, ctx.takeIf { row.appId != null })) {
-                        is dev.flowclone.session.RetryOutcome.Failed -> out.message
-                        is dev.flowclone.session.RetryOutcome.Done -> withContext(Dispatchers.IO) {
+                        is dev.murmur.session.RetryOutcome.Failed -> out.message
+                        is dev.murmur.session.RetryOutcome.Done -> withContext(Dispatchers.IO) {
                             val r = out.result
                             val applied = runCatching { app.history.applyRetry(id, r) }.getOrNull()
-                            if (applied == null) dev.flowclone.data.RetryLogic.GONE
+                            if (applied == null) dev.murmur.data.RetryLogic.GONE
                             else {
                                 val (old, _) = applied
                                 runCatching {
                                     app.insights.retried(
-                                        old.createdAt, dev.flowclone.data.RetryLogic.countedWords(old.status, old.finalText),
-                                        dev.flowclone.data.RetryLogic.countedWords(r.status.name, r.historyText), old.audioMs, old.appId,
+                                        old.createdAt, dev.murmur.data.RetryLogic.countedWords(old.status, old.finalText),
+                                        dev.murmur.data.RetryLogic.countedWords(r.status.name, r.historyText), old.audioMs, old.appId,
                                     )
                                 }
-                                dev.flowclone.data.RetryLogic.DONE
+                                dev.murmur.data.RetryLogic.DONE
                             }
                         }
                     }
@@ -551,7 +551,7 @@ class FlowService : Service() {
                 FeedbackEvent.CapWarning -> haptic(VibrationEffect.EFFECT_HEAVY_CLICK)
                 FeedbackEvent.CapReached -> limitNotification()
                 FeedbackEvent.NeedMicPermission ->
-                    startActivity(PermissionsActivity.intent(this@FlowService).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    startActivity(PermissionsActivity.intent(this@MurmurService).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 FeedbackEvent.PasteRetryFailed, FeedbackEvent.NoSpeech, FeedbackEvent.TargetChanged,
                 FeedbackEvent.TargetProtected, FeedbackEvent.MicLost -> Unit
                 // Command Mode: the error tone (the reason is the bubble's toast); the field was not touched.
@@ -577,15 +577,15 @@ class FlowService : Service() {
             return ok
         }
 
-        override suspend fun sendKey(key: dev.flowclone.core.PasteKey): Boolean = app.accessibility?.sendKey(key) ?: false
+        override suspend fun sendKey(key: dev.murmur.core.PasteKey): Boolean = app.accessibility?.sendKey(key) ?: false
 
         override fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?, outcome: String?) =
             recordHistory(result, inserted, appId, outcome, null)
 
         override fun keepRetryAudio(): Boolean = app.settings.load().let { it.retryAudioKeep > 0 && it.retention.stores }
 
-        override fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?, outcome: String?, recording: dev.flowclone.session.Recording?) {
-            app.lastRoute.value = dev.flowclone.data.LastDictation.of(result, System.currentTimeMillis())
+        override fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?, outcome: String?, recording: dev.murmur.session.Recording?) {
+            app.lastRoute.value = dev.murmur.data.LastDictation.of(result, System.currentTimeMillis())
             // D18 / D28: persist this month's cloud counters (speech or cleanup). A cloud failover shows in the live route label.
             if (result.route?.engine == "cloud" || result.route?.llmEngine == "cloud") scope.launch(Dispatchers.IO) { runCatching { app.engine.persistCloudUsage() } }
             val settings = app.settings.load()
@@ -598,17 +598,17 @@ class FlowService : Service() {
             )
             // D35: never from a password / sensitive field, a banking or denylisted app, or a protected target.
             val keep = recording?.takeIf {
-                dev.flowclone.data.RetryLogic.keepsRecording(
+                dev.murmur.data.RetryLogic.keepsRecording(
                     settings.retryAudioKeep, retention, command = false, outcome = outcome,
                     protectedField = app.accessibility?.startFieldProtected == true,
-                    protectedApp = dev.flowclone.debug.DebugRedact.isProtectedApp(appId, settings.userDenylist),
+                    protectedApp = dev.murmur.debug.DebugRedact.isProtectedApp(appId, settings.userDenylist),
                 )
             }
-            Log.i(TAG, dev.flowclone.debug.CommitLine.of(result))
+            Log.i(TAG, dev.murmur.debug.CommitLine.of(result))
             scope.launch(Dispatchers.IO) {
                 // Insights first, in the same coroutine: its one-time backfill from History must
                 // not already see this row, or it would be counted twice. Kept whatever the retention.
-                if (result.status != dev.flowclone.core.CommitStatus.ERROR) {
+                if (result.status != dev.murmur.core.CommitStatus.ERROR) {
                     runCatching { app.insights.record(row.createdAt, result.historyText, t.audioMs, appId) }
                         .onFailure { Log.w(TAG, "insights: ${it.message}") }
                 }
@@ -621,11 +621,11 @@ class FlowService : Service() {
 
         override fun hasMicPermission() = hasMic()
 
-        override fun captureCommand(): dev.flowclone.command.CommandTarget =
+        override fun captureCommand(): dev.murmur.command.CommandTarget =
             app.accessibility?.captureCommand()
-                ?: dev.flowclone.command.CommandTarget.Refused(dev.flowclone.command.CommandTarget.NO_FIELD_MESSAGE)
+                ?: dev.murmur.command.CommandTarget.Refused(dev.murmur.command.CommandTarget.NO_FIELD_MESSAGE)
 
-        override suspend fun applyCommand(target: dev.flowclone.command.CommandTarget.Field, text: String): Boolean {
+        override suspend fun applyCommand(target: dev.murmur.command.CommandTarget.Field, text: String): Boolean {
             val bridge = app.accessibility ?: return false
             val ok = bridge.applyCommand(target, text)
             runCatching { insertSteps += bridge.lastInsertSteps }
@@ -633,7 +633,7 @@ class FlowService : Service() {
         }
 
         /** History only (instruction, original, result): a command is not dictated text, so Insights skips it. */
-        override fun recordCommand(record: dev.flowclone.command.CommandRecord) {
+        override fun recordCommand(record: dev.murmur.command.CommandRecord) {
             val retention = app.settings.load().retention
             val row = HistoryRow.ofCommand(record, System.currentTimeMillis())
             scope.launch(Dispatchers.IO) { runCatching { app.history.add(row, retention) } }
@@ -646,27 +646,27 @@ class FlowService : Service() {
         }
 
         /** Debug `llm_off`: a dictation with a transcript but no AI cleanup step says why (not Command Mode). */
-        private fun llmOffReason(trace: dev.flowclone.debug.DictationTrace, ready: dev.flowclone.EngineHolder.State.Ready?): String? {
+        private fun llmOffReason(trace: dev.murmur.debug.DictationTrace, ready: dev.murmur.EngineHolder.State.Ready?): String? {
             if (trace.llm != null || trace.raw == null || trace.mode == "command") return null
             val s = app.settings.load()
             val d = app.dev.load()
-            return dev.flowclone.data.LlmOutcome.offReason(
-                phoneOn = dev.flowclone.data.CleanupEngines.on(d, s, dev.flowclone.data.DevSettings.CleanupRoute.LOCAL),
+            return dev.murmur.data.LlmOutcome.offReason(
+                phoneOn = dev.murmur.data.CleanupEngines.on(d, s, dev.murmur.data.DevSettings.CleanupRoute.LOCAL),
                 phone = ready?.llm,
                 offPhone = d.effective(app.caps).offPhoneCleanup,
             )
         }
 
         /** D21: redact protected targets, attach the insert steps, enqueue. Never blocks, never throws. */
-        override fun onDictationTrace(trace: dev.flowclone.debug.DictationTrace) {
+        override fun onDictationTrace(trace: dev.murmur.debug.DictationTrace) {
             try {
                 if (!app.debugLog.isEnabled()) return
                 val steps = synchronized(insertSteps) { insertSteps.toList() }
-                val ready = app.engine.state.value as? dev.flowclone.EngineHolder.State.Ready
-                val (engine, model) = dev.flowclone.debug.DebugEngine.of(
+                val ready = app.engine.state.value as? dev.murmur.EngineHolder.State.Ready
+                val (engine, model) = dev.murmur.debug.DebugEngine.of(
                     trace.route, ready?.mock == true, ready?.asr ?: ready?.onDemandAsr, app.dev.serverAsrModel, trace.model,
                 )
-                val t = dev.flowclone.debug.DebugRedact.apply(
+                val t = dev.murmur.debug.DebugRedact.apply(
                     trace.copy(
                         insert = trace.insert.copy(steps = steps), engine = engine, model = model,
                         routeOrder = runCatching { app.dev.load().routeOrderWire(app.caps) }.getOrNull(),
@@ -676,7 +676,7 @@ class FlowService : Service() {
                             ?.let { runCatching { app.dev.load().cloud.cleanupProvider.wire }.getOrNull() },
                     ),
                     protectedField = app.accessibility?.startFieldProtected == true,
-                    protectedApp = dev.flowclone.debug.DebugRedact.isProtectedApp(trace.target, app.settings.load().userDenylist),
+                    protectedApp = dev.murmur.debug.DebugRedact.isProtectedApp(trace.target, app.settings.load().userDenylist),
                 )
                 app.debugLog.dictation(t)
             } catch (_: Throwable) {
@@ -687,15 +687,15 @@ class FlowService : Service() {
         override fun keepDictationAudio(): Boolean = app.dev.keepDebugAudio
 
         /** Never for protected targets; the WAV is written on the debug-audio thread. Never throws. */
-        override fun onDictationAudio(trace: dev.flowclone.debug.DictationTrace, pcm: ShortArray): String? = try {
-            val keep = app.dev.keepDebugAudio && dev.flowclone.debug.DebugRedact.keepsAudio(
+        override fun onDictationAudio(trace: dev.murmur.debug.DictationTrace, pcm: ShortArray): String? = try {
+            val keep = app.dev.keepDebugAudio && dev.murmur.debug.DebugRedact.keepsAudio(
                 trace,
                 protectedField = app.accessibility?.startFieldProtected == true,
-                protectedApp = dev.flowclone.debug.DebugRedact.isProtectedApp(trace.target, app.settings.load().userDenylist),
+                protectedApp = dev.murmur.debug.DebugRedact.isProtectedApp(trace.target, app.settings.load().userDenylist),
             )
             if (!keep) null else {
                 app.debugAudioWriter.execute { runCatching { app.debugAudio.save(trace.tsMs, pcm) }.onFailure { Log.w(TAG, "debug audio: ${it.message}") } }
-                dev.flowclone.debug.DebugAudioStore.nameFor(trace.tsMs)
+                dev.murmur.debug.DebugAudioStore.nameFor(trace.tsMs)
             }
         } catch (_: Throwable) { null }
 
@@ -729,7 +729,7 @@ class FlowService : Service() {
         override fun endpointSilenceMs(): Int? = app.settings.load().handsFreeEndpointMs()
 
         override fun insertTarget(explicit: Boolean) =
-            app.accessibility?.insertTarget(explicit) ?: dev.flowclone.session.InsertTarget.OK
+            app.accessibility?.insertTarget(explicit) ?: dev.murmur.session.InsertTarget.OK
 
         override fun onInserted(pasted: String, context: FieldContext?, sentKey: Boolean) =
             watchForEdits(pasted, context, sentKey)
@@ -758,7 +758,7 @@ class FlowService : Service() {
         scope.launch {
             val file = path?.let { DebugWav.resolve(filesDir, it) }
                 ?: return@launch refuse("no WAV file under files/debug/: $path")
-            val pcm = withContext(Dispatchers.IO) { runCatching { dev.flowclone.debug.Wav.decode(file.readBytes()) } }
+            val pcm = withContext(Dispatchers.IO) { runCatching { dev.murmur.debug.Wav.decode(file.readBytes()) } }
                 .getOrElse { return@launch refuse("${file.name}: ${it.message}") }
             DebugWav.refusal(controller.state.value, app.accessibility?.insertTarget(explicit = true))
                 ?.let { return@launch refuse(it) }
@@ -767,7 +767,7 @@ class FlowService : Service() {
             beforeStart()
             controller.toggle(hold)
             if (audio.disarm()) refuse("did not start (${controller.state.value::class.simpleName})")
-            else Log.i(TAG, "debug wav: ${file.name}, ${pcm.size * 1000L / dev.flowclone.session.SAMPLE_RATE} ms, ${if (fast) "fast" else "real time"}")
+            else Log.i(TAG, "debug wav: ${file.name}, ${pcm.size * 1000L / dev.murmur.session.SAMPLE_RATE} ms, ${if (fast) "fast" else "real time"}")
         }
     }
 
@@ -807,14 +807,14 @@ class FlowService : Service() {
                 BubbleButton.DISMISS -> when ((s as? DictationState.Error)?.let { ErrorTap.of(it.kind) } ?: ErrorTap.Action.DISMISS) {
                     ErrorTap.Action.RECHECK -> recheck()
                     ErrorTap.Action.OPEN_APP -> {
-                        startActivity(Intent(this@FlowService, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        startActivity(Intent(this@MurmurService, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                         controller.dismissError()
                     }
                     ErrorTap.Action.DISMISS -> controller.dismissError()
                 }
                 BubbleButton.MAIN -> if (repair.value && (s == DictationState.Ready || s == DictationState.Idle)) {
                     // The repair alert (Accessibility stopped): straight to where it is fixed.
-                    startActivity(PermissionsActivity.intent(this@FlowService).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    startActivity(PermissionsActivity.intent(this@MurmurService).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 } else when (s) {
                     DictationState.Ready, DictationState.Idle -> {
                         presence.touch()

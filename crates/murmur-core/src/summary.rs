@@ -34,7 +34,7 @@ use crate::cleanup::{
 use crate::script_lock::{self, Script};
 
 /// Characters of transcript (or notes) one call may carry on the
-/// on-device LLM and the server: both run flow-llm with a 4096-token
+/// on-device LLM and the server: both run murmur-llm with a 4096-token
 /// context, which must hold the prompt (~400 tokens), the text (Hebrew
 /// takes about one token per 1.5-2 characters) and the answer.
 pub const SMALL_CONTEXT_CHARS: usize = 2_500;
@@ -560,7 +560,7 @@ fn call(
         let (tx, rx) = mpsc::channel();
         let (engine, call_prompt) = (hop.clone(), prompt.clone());
         std::thread::Builder::new()
-            .name("flow-summary-call".into())
+            .name("murmur-summary-call".into())
             .spawn(move || {
                 let _ = tx.send(engine.clean_metered(&call_prompt, deadline, &abort));
             })

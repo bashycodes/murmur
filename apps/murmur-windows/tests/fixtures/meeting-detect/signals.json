@@ -2,8 +2,8 @@
   "_about": "Synthetic snapshots of what the Windows probe sees (src/meetings/detect.rs Snapshot). Not captures: shapes follow docs/findings/2026-11-02-meeting-detection-signals.md. Exe names lowercase; only windows and audio sessions of known clients are listed, as the probe reports them.",
 
   "nothing": {
-    "processes": ["explorer.exe", "outlook.exe", "flow-windows.exe"],
-    "audio": [{ "exe": "flow-windows.exe", "flow": "capture", "active": true }]
+    "processes": ["explorer.exe", "outlook.exe", "murmur-windows.exe"],
+    "audio": [{ "exe": "murmur-windows.exe", "flow": "capture", "active": true }]
   },
 
   "zoom_open": {

@@ -1,6 +1,6 @@
 //! Opt-in debug log (Settings → Developer → "Debug log (includes
 //! transcripts)"; off by default). One JSON line per dictation, and one per
-//! non-dictation error, appended to `%APPDATA%\FlowClone\debug\
+//! non-dictation error, appended to `%APPDATA%\Murmur\debug\
 //! dictations.jsonl` (last [`MAX_LINES`] kept) and echoed to stdout as
 //! `[debug] {json}`. Device-local only: nothing here touches the network.
 //!
@@ -123,7 +123,7 @@ pub struct Entry {
     /// generation id. `null` when the LLM did not run.
     pub llm_engine: Option<String>,
     pub llm_model: Option<String>,
-    pub llm_cost_usd: Option<flow_core::Usd>,
+    pub llm_cost_usd: Option<murmur_core::Usd>,
     pub llm_ttft_ms: Option<u32>,
     pub llm_generation_id: Option<String>,
     /// D30: what produced the text when AI cleanup (cloud) was tried
@@ -141,7 +141,7 @@ pub struct Entry {
     /// D28: OpenRouter speech-to-text model and cost of this dictation
     /// (`null` unless `route` is `cloud`).
     pub stt_model: Option<String>,
-    pub stt_cost_usd: Option<flow_core::Usd>,
+    pub stt_cost_usd: Option<murmur_core::Usd>,
     /// D37: language sent to the engine (`null` = auto-detect) and where
     /// it came from: `keyboard` (the foreground window's layout), `fixed`
     /// (Settings → Languages) or `auto`. Android writes the same keys
@@ -232,7 +232,7 @@ pub trait Sink: Send {
     fn clear(&mut self) -> io::Result<()>;
 }
 
-/// `%APPDATA%\FlowClone\debug\dictations.jsonl`.
+/// `%APPDATA%\Murmur\debug\dictations.jsonl`.
 pub fn default_path(appdata: Option<&str>) -> PathBuf {
     let base = appdata.map(PathBuf::from).unwrap_or_default();
     base.join(crate::prefs::APP_DIR).join(DIR).join(FILE_NAME)
@@ -388,7 +388,7 @@ impl DebugLog {
         let w = inner.clone();
         // No writer thread = entries just age out of the queue.
         let _ = std::thread::Builder::new()
-            .name("flow-debug-log".into())
+            .name("murmur-debug-log".into())
             .spawn(move || writer(w));
         DebugLog {
             enabled: AtomicBool::new(enabled),
@@ -436,10 +436,10 @@ impl DebugLog {
         }
         let (version, build) = e.build_mut();
         if version.is_empty() {
-            *version = flow_build_info::VERSION.to_string();
+            *version = murmur_build_info::VERSION.to_string();
         }
         if build.is_empty() {
-            *build = flow_build_info::BUILD.to_string();
+            *build = murmur_build_info::BUILD.to_string();
         }
         let mut q = lock(&self.inner.queue);
         if q.len() >= QUEUE_CAP {
@@ -606,7 +606,7 @@ pub fn iso8601_ms(ms: u64) -> String {
     )
 }
 
-/// flow-router failure codes (`Failure::as_str`) worth naming in
+/// murmur-router failure codes (`Failure::as_str`) worth naming in
 /// `fallback` when only an error text is left (server-only failures).
 pub const FAILURE_CODES: &[&str] = &[
     "connect_failed",
@@ -699,7 +699,7 @@ pub(crate) mod tests {
 
     fn tmp(name: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!(
-            "flow-debuglog-{name}-{}-{}",
+            "murmur-debuglog-{name}-{}-{}",
             std::process::id(),
             now_unix_ms()
         ));
@@ -852,14 +852,14 @@ pub(crate) mod tests {
         assert!(b["ts"].as_str().unwrap().ends_with('Z'));
         // D26: both lines pin the build, right after `ts`.
         for v in [&a, &b] {
-            assert_eq!(v["app_version"], flow_build_info::VERSION);
-            assert_eq!(v["build"], flow_build_info::BUILD);
+            assert_eq!(v["app_version"], murmur_build_info::VERSION);
+            assert_eq!(v["build"], murmur_build_info::BUILD);
         }
         assert!(
             lines[1].starts_with(&format!(
                 "{{\"kind\":\"event\",\"ts\":{},\"app_version\":\"{}\",\"build\":",
                 b["ts"],
-                flow_build_info::VERSION
+                murmur_build_info::VERSION
             )),
             "{}",
             lines[1]
@@ -979,7 +979,7 @@ pub(crate) mod tests {
         assert_eq!(
             p,
             PathBuf::from("AD")
-                .join("FlowClone")
+                .join("Murmur")
                 .join("debug")
                 .join("dictations.jsonl")
         );

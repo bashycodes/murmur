@@ -1,13 +1,13 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.app.Activity
 import android.content.DialogInterface
-import dev.flowclone.FlowApp
-import dev.flowclone.data.HistoryRow
-import dev.flowclone.data.Retention
-import dev.flowclone.ui.UiTestKit.idle
-import dev.flowclone.ui.UiTestKit.texts
-import dev.flowclone.ui.UiTestKit.walk
+import dev.murmur.MurmurApp
+import dev.murmur.data.HistoryRow
+import dev.murmur.data.Retention
+import dev.murmur.ui.UiTestKit.idle
+import dev.murmur.ui.UiTestKit.texts
+import dev.murmur.ui.UiTestKit.walk
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -23,10 +23,10 @@ import java.io.File
 
 /** Insights page: stats from the aggregate, refresh on return, History independence, Reset. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], application = FlowApp::class)
+@Config(sdk = [34], application = MurmurApp::class)
 class InsightsUiTest {
     private val ctx get() = RuntimeEnvironment.getApplication()
-    private val app get() = FlowApp.of(ctx)
+    private val app get() = MurmurApp.of(ctx)
 
     @After fun cleanup() { app.history.clear(); File(ctx.filesDir, "insights.json").delete() }
 

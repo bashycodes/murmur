@@ -1,20 +1,20 @@
-package dev.flowclone.session
+package dev.murmur.session
 
-import dev.flowclone.bubble.RouteLabel
-import dev.flowclone.core.CommitResult
-import dev.flowclone.core.CommitStatus
-import dev.flowclone.core.CoreException
-import dev.flowclone.core.CorePoll
-import dev.flowclone.core.FakeFlowCore
-import dev.flowclone.core.FieldContext
-import dev.flowclone.core.FlowCore
-import dev.flowclone.core.RouteDiag
-import dev.flowclone.core.RouteInfo
-import dev.flowclone.core.SessionConfig
-import dev.flowclone.core.SessionRoute
-import dev.flowclone.core.StartInfo
-import dev.flowclone.debug.DictationTrace
-import dev.flowclone.debug.InsertOutcome
+import dev.murmur.bubble.RouteLabel
+import dev.murmur.core.CommitResult
+import dev.murmur.core.CommitStatus
+import dev.murmur.core.CoreException
+import dev.murmur.core.CorePoll
+import dev.murmur.core.FakeMurmurCore
+import dev.murmur.core.FieldContext
+import dev.murmur.core.MurmurCore
+import dev.murmur.core.RouteDiag
+import dev.murmur.core.RouteInfo
+import dev.murmur.core.SessionConfig
+import dev.murmur.core.SessionRoute
+import dev.murmur.core.StartInfo
+import dev.murmur.debug.DictationTrace
+import dev.murmur.debug.InsertOutcome
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -57,8 +57,8 @@ class NeverFailFallbackTest {
     }
 
     /** What the router does with the server down and keep_local_warm off: starts at once, loading. */
-    private class ColdRouter(val loadPolls: Int = 2) : FlowCore {
-        val inner = FakeFlowCore("hello from the phone")
+    private class ColdRouter(val loadPolls: Int = 2) : MurmurCore {
+        val inner = FakeMurmurCore("hello from the phone")
         var polls = 0; var cancels = 0; var commits = 0; var prewarms = 0
         val route = SessionRoute("local", fallback = "connect_failed")
         override fun startSession(cfg: SessionConfig) = inner.startSession(cfg)
@@ -78,7 +78,7 @@ class NeverFailFallbackTest {
     private val audio = Audio()
     private val host = Host()
     private fun TestScope.settle() { advanceTimeBy(1_000); runCurrent() }
-    private fun TestScope.controller(c: () -> FlowCore) = DictationController(
+    private fun TestScope.controller(c: () -> MurmurCore) = DictationController(
         backgroundScope, audio, host, c, StandardTestDispatcher(testScheduler), now = { currentTime },
     ).also { it.onFieldFocusChanged(true) }
 
@@ -120,7 +120,7 @@ class NeverFailFallbackTest {
 
     @Test fun noRoutePossibleSaysExactlyWhy() = runTest {
         host.note = "No speech model imported. Open Murmur → Speech model."
-        val dead = object : FlowCore by FakeFlowCore() {
+        val dead = object : MurmurCore by FakeMurmurCore() {
             override fun startSessionInfo(cfg: SessionConfig): StartInfo =
                 throw CoreException("server_unavailable: connect_failed: no handshake within 2500 ms", "server_unavailable")
         }
@@ -133,7 +133,7 @@ class NeverFailFallbackTest {
     }
 
     @Test fun phoneModelLoadFailureIsNamedInTheError() = runTest {
-        val failed = object : FlowCore by FakeFlowCore("x") {
+        val failed = object : MurmurCore by FakeMurmurCore("x") {
             override fun commit() = CommitResult(
                 CommitStatus.ERROR,
                 error = "server_unavailable: connect_failed: no handshake within 2500 ms; phone model failed to load: out of memory",
@@ -161,7 +161,7 @@ class NeverFailFallbackTest {
 
     @Test fun prewarmFailureNeverBreaksDictation() = runTest {
         var calls = 0
-        val c = controller { calls++; if (calls == 1) throw CoreException("Speech model is loading…") else FakeFlowCore("ok words") }
+        val c = controller { calls++; if (calls == 1) throw CoreException("Speech model is loading…") else FakeMurmurCore("ok words") }
         runCurrent()
         c.toggle(hold = false); audio.speak(500); advanceTimeBy(600); c.toggle(hold = false)
         settle()

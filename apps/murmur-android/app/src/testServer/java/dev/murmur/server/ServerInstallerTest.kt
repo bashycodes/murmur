@@ -1,7 +1,7 @@
-package dev.flowclone.server
+package dev.murmur.server
 
-import dev.flowclone.core.AsrEngine
-import dev.flowclone.data.HebrewModels
+import dev.murmur.core.AsrEngine
+import dev.murmur.data.HebrewModels
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

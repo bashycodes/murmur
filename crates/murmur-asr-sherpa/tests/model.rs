@@ -1,20 +1,20 @@
 //! Real Parakeet-TDT model on real speech. Skips (passes with a note) when
 //! the model dir is missing: `tools/fetch-models.sh --parakeet`, or set
-//! FLOW_PARAKEET_DIR.
+//! MURMUR_PARAKEET_DIR.
 
 use std::path::PathBuf;
 use std::time::Instant;
 
-use flow_asr_sherpa::{ParakeetConfig, ParakeetEngine, Search};
+use murmur_asr_sherpa::{ParakeetConfig, ParakeetEngine, Search};
 
 fn models() -> PathBuf {
-    std::env::var_os("FLOW_MODELS_DIR")
+    std::env::var_os("MURMUR_MODELS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../models"))
 }
 
 fn model_dir() -> Option<PathBuf> {
-    let d = std::env::var_os("FLOW_PARAKEET_DIR")
+    let d = std::env::var_os("MURMUR_PARAKEET_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| models().join("sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8"));
     if d.join("tokens.txt").is_file() && models().join("jfk.wav").is_file() {
@@ -63,7 +63,7 @@ fn bad_dir_is_a_load_error() {
 
 /// Default load (hotwords on): beam + greedy recognizers; no hotwords →
 /// greedy, hotwords → beam. The unified-en model dir (survey D23
-/// candidate) loads the same way when FLOW_PARAKEET_UNIFIED_DIR is set.
+/// candidate) loads the same way when MURMUR_PARAKEET_UNIFIED_DIR is set.
 #[test]
 fn greedy_without_hotwords_beam_with() {
     let Some(dir) = model_dir() else { return };
@@ -84,7 +84,7 @@ fn greedy_without_hotwords_beam_with() {
     let beam_only = ParakeetEngine::load(&cfg).unwrap();
     assert!(!beam_only.has_greedy());
     assert_eq!(beam_only.default_search::<&str>(&[]), Search::Beam);
-    if let Some(u) = std::env::var_os("FLOW_PARAKEET_UNIFIED_DIR") {
+    if let Some(u) = std::env::var_os("MURMUR_PARAKEET_UNIFIED_DIR") {
         let eng = ParakeetEngine::load(&ParakeetConfig::new(PathBuf::from(u), 4)).expect("unified");
         let t = eng.transcribe::<&str>(&pcm, &[]).unwrap();
         assert!(
@@ -96,15 +96,15 @@ fn greedy_without_hotwords_beam_with() {
 
 /// Parakeet-v3-he int8 (krut42/voice-parakeet-he-int8, pinned in
 /// docs/findings/2026-10-30-hebrew-model-pins.md) on the unchanged
-/// `nemo_transducer` path. Runs when FLOW_PARAKEET_HE_DIR and FLOW_HE_WAV
+/// `nemo_transducer` path. Runs when MURMUR_PARAKEET_HE_DIR and MURMUR_HE_WAV
 /// (16 kHz mono Hebrew wav, int16 or float) are set.
 #[test]
 fn parakeet_he_loads_on_nemo_path() {
     let (Some(dir), Some(wav)) = (
-        std::env::var_os("FLOW_PARAKEET_HE_DIR"),
-        std::env::var_os("FLOW_HE_WAV"),
+        std::env::var_os("MURMUR_PARAKEET_HE_DIR"),
+        std::env::var_os("MURMUR_HE_WAV"),
     ) else {
-        eprintln!("SKIP: FLOW_PARAKEET_HE_DIR / FLOW_HE_WAV unset");
+        eprintln!("SKIP: MURMUR_PARAKEET_HE_DIR / MURMUR_HE_WAV unset");
         return;
     };
     let mut r = hound::WavReader::open(&wav).unwrap();

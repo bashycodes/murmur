@@ -2,15 +2,15 @@
 //! preset → schema 2. Fixtures in `fixtures/migration/` are shared with
 //! the shells (input `<case>.v1.json`, output `<case>.v2.json`, report
 //! `<case>.report.json`). Regenerate:
-//! `FLOW_REGEN_FIXTURES=1 cargo test -p flow-router --test migration`.
+//! `MURMUR_REGEN_FIXTURES=1 cargo test -p murmur-router --test migration`.
 
 use std::path::PathBuf;
 
-use flow_router::cloud::{DEFAULT_STT_MODEL, OPENROUTER_HOST};
-use flow_router::*;
+use murmur_router::cloud::{DEFAULT_STT_MODEL, OPENROUTER_HOST};
+use murmur_router::*;
 use serde_json::{json, Value};
 
-/// The D18 preset table (flow-cloud `presets()` before D28), frozen here
+/// The D18 preset table (murmur-cloud `presets()` before D28), frozen here
 /// because the migration must keep reading it after the presets are gone.
 fn legacy_provider(preset: &str) -> Value {
     let (adapter, label, base, model, zdr) = match preset {
@@ -130,7 +130,7 @@ fn cases() -> Vec<(String, Value)> {
 #[test]
 fn fixtures_match_for_every_old_preset() {
     std::fs::create_dir_all(dir()).unwrap();
-    let regen = std::env::var_os("FLOW_REGEN_FIXTURES").is_some();
+    let regen = std::env::var_os("MURMUR_REGEN_FIXTURES").is_some();
     for (name, input) in cases() {
         let mut c = parse(&input);
         let rep = c.migrate_d28();

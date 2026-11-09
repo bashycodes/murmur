@@ -76,7 +76,7 @@ The same 15 clips are EMPTY on both models.
 * These FLEURS recordings are very quiet, at about −60 dBFS. The PCM16 files are
   identical to the laptop bench's (converted with `soundfile`), so the conversion is not
   the cause.
-* `flow_core::vad` treats a frame as speech only above `ABS_MIN = 0.004` (about 131 in
+* `murmur_core::vad` treats a frame as speech only above `ABS_MIN = 0.004` (about 131 in
   PCM16). These clips never reach it, so the app reports no speech. The laptop and server
   benches fed audio to the recognizer directly, with no VAD, which is why they have no
   EMPTY rows.
@@ -87,7 +87,7 @@ The same 15 clips are EMPTY on both models.
 
 ## AI cleanup (Qwen2.5-1.5B Q4_K_M, CPU)
 
-`prod` is the app's own path: `flow_core::refinish` with the fallback rules, prompt v2,
+`prod` is the app's own path: `murmur_core::refinish` with the fallback rules, prompt v2,
 the guard, post-processing and the 3 s Android budget.
 
 | | qwen1.5b `prod` |

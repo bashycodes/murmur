@@ -1,4 +1,4 @@
-package dev.flowclone.server
+package dev.murmur.server
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -6,17 +6,17 @@ import org.junit.Test
 import java.io.File
 
 /**
- * D41: the Android catalogue ids and pins are the Windows ones (apps/flow-windows/src/model_download.rs),
- * and its ids and tag engines are in the shared list (crates/flow-protocol/src/library.rs `CATALOGUE`, `ENGINES`).
+ * D41: the Android catalogue ids and pins are the Windows ones (apps/murmur-windows/src/model_download.rs),
+ * and its ids and tag engines are in the shared list (crates/murmur-protocol/src/library.rs `CATALOGUE`, `ENGINES`).
  */
 class ServerCatalogTest {
-    private val windows: String = File(requireNotNull(System.getProperty("flow.windowsCatalog")) { "flow.windowsCatalog not set by build.gradle.kts" }).readText()
-    private val protocol: String = File(requireNotNull(System.getProperty("flow.protocolLibrary")) { "flow.protocolLibrary not set by build.gradle.kts" }).readText()
+    private val windows: String = File(requireNotNull(System.getProperty("murmur.windowsCatalog")) { "murmur.windowsCatalog not set by build.gradle.kts" }).readText()
+    private val protocol: String = File(requireNotNull(System.getProperty("murmur.protocolLibrary")) { "murmur.protocolLibrary not set by build.gradle.kts" }).readText()
 
     @Test fun everyIdIsInTheSharedList() {
         val shared = Regex("""cat\(\s*"([^"]+)"""").findAll(protocol).map { it.groupValues[1] }.toSet()
-        assertTrue("no ids read from flow-protocol", shared.size >= ServerCatalog.ALL.size)
-        for (e in ServerCatalog.ALL) assertTrue("${e.id} is not in flow_protocol::library::CATALOGUE", e.id in shared)
+        assertTrue("no ids read from murmur-protocol", shared.size >= ServerCatalog.ALL.size)
+        for (e in ServerCatalog.ALL) assertTrue("${e.id} is not in murmur_protocol::library::CATALOGUE", e.id in shared)
     }
 
     @Test fun enginesAreTheSharedList() {

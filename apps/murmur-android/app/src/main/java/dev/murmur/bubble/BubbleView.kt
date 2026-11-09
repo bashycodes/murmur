@@ -1,4 +1,4 @@
-package dev.flowclone.bubble
+package dev.murmur.bubble
 
 import android.annotation.SuppressLint
 import android.content.Context
@@ -11,9 +11,9 @@ import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
-import dev.flowclone.R
-import dev.flowclone.session.DictationState
-import dev.flowclone.session.DictationState.ErrorKind
+import dev.murmur.R
+import dev.murmur.session.DictationState
+import dev.murmur.session.DictationState.ErrorKind
 
 /**
  * Canvas-drawn bubble: circle (Ready), minimised dot or small circle, recording row X·waveform·✓ (tap mode),
@@ -40,7 +40,7 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
     private val smoother = Waveform.Smoother()
     /** The buttons as last drawn, for hit-testing a touch. */
     private var slots = emptyList<BubbleGeometry.Slot>()
-    private val mic: Drawable = context.getDrawable(R.drawable.ic_flow)!!.mutate().apply { setTint(BubbleColors.onSurface) }
+    private val mic: Drawable = context.getDrawable(R.drawable.ic_murmur)!!.mutate().apply { setTint(BubbleColors.onSurface) }
 
     // Design: dark vast-950 pill, light sand-50 glyphs and bars, red only for errors (BubbleColors).
     private val pill = Paint(Paint.ANTI_ALIAS_FLAG).apply {

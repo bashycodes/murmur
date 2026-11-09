@@ -4,7 +4,7 @@
 //! count, and only an explicit accept turns it into a dictionary entry.
 //! Dismissed words are remembered so they are not suggested again.
 //!
-//! Stored in `%APPDATA%\FlowClone\suggestions.json` (words only, no
+//! Stored in `%APPDATA%\Murmur\suggestions.json` (words only, no
 //! transcripts), written atomically like `prefs.json`.
 
 use crate::core_api::{DictEntry, LearnCandidate};
@@ -201,10 +201,7 @@ mod tests {
     fn add_skips_known_and_dismissed_and_counts_repeats() {
         let mut s = Suggestions::default();
         let n = s.add(
-            &[
-                cand("Korra", "cora"),
-                cand("Kubernetes", "cooper netties"),
-            ],
+            &[cand("Korra", "cora"), cand("Kubernetes", "cooper netties")],
             "slack.exe",
             1,
             &dict(&["kubernetes"]),
@@ -216,11 +213,7 @@ mod tests {
         assert_eq!(s.pending[0].count, 2);
         assert!(s.dismiss("KORRA"));
         assert!(s.pending.is_empty());
-        assert_eq!(
-            s.add(&[cand("Korra", "cora")], "x", 3, &[]),
-            0,
-            "dismissed"
-        );
+        assert_eq!(s.add(&[cand("Korra", "cora")], "x", 3, &[]), 0, "dismissed");
     }
 
     #[test]
@@ -254,7 +247,7 @@ mod tests {
 
     #[test]
     fn store_round_trips_through_a_file() {
-        let d = std::env::temp_dir().join(format!("flow-sugg-{}", std::process::id()));
+        let d = std::env::temp_dir().join(format!("murmur-sugg-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         let p = d.join(FILE_NAME);
         let mut st = SuggestionStore::open(&p);

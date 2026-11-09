@@ -1,16 +1,16 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.content.DialogInterface
 import android.content.Intent
 import android.view.accessibility.AccessibilityEvent
 import android.widget.EditText
-import dev.flowclone.FlowApp
-import dev.flowclone.data.CloudCatalog
-import dev.flowclone.data.OpenRouter
-import dev.flowclone.ui.UiTestKit.idle
-import dev.flowclone.ui.UiTestKit.rowTitled
-import dev.flowclone.ui.UiTestKit.texts
-import dev.flowclone.ui.UiTestKit.walk
+import dev.murmur.MurmurApp
+import dev.murmur.data.CloudCatalog
+import dev.murmur.data.OpenRouter
+import dev.murmur.ui.UiTestKit.idle
+import dev.murmur.ui.UiTestKit.rowTitled
+import dev.murmur.ui.UiTestKit.texts
+import dev.murmur.ui.UiTestKit.walk
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -30,10 +30,10 @@ import org.robolectric.shadows.ShadowAlertDialog
  * own consent dialogs, privacy on, the API key never in the a11y tree, the one-time notice.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], application = FlowApp::class)
+@Config(sdk = [34], application = MurmurApp::class)
 class OpenRouterUiTest {
     private val ctx get() = RuntimeEnvironment.getApplication()
-    private val app get() = FlowApp.of(ctx)
+    private val app get() = MurmurApp.of(ctx)
 
     @Before fun cloudBuild() = assumeTrue(app.caps.cloud)
 
@@ -93,7 +93,7 @@ class OpenRouterUiTest {
         d.getButton(DialogInterface.BUTTON_POSITIVE).performClick(); idle()
         val s = app.dev.load()
         assertTrue(s.allowCloud); assertTrue(s.cloud.stt.consentOk); assertFalse(s.allowCloudCleanup)
-        assertEquals(dev.flowclone.data.DevSettings.Route.CLOUD, s.routeOrder.first())
+        assertEquals(dev.murmur.data.DevSettings.Route.CLOUD, s.routeOrder.first())
     }
 
     @Test fun turningZeroRetentionOffAsksFirst() {
@@ -146,13 +146,13 @@ class OpenRouterUiTest {
 
     @Test fun aRefreshReadsTheCustomServerAddressOnce() {
         // D52: the cleanup card and the custom-server card share one settings value per refresh.
-        val prev = dev.flowclone.data.CustomServer.check
+        val prev = dev.murmur.data.CustomServer.check
         var calls = 0
-        dev.flowclone.data.CustomServer.check = dev.flowclone.data.CustomAddressCheck { u, m -> calls++; dev.flowclone.data.FakeCustomAddress.check(u, m) }
+        dev.murmur.data.CustomServer.check = dev.murmur.data.CustomAddressCheck { u, m -> calls++; dev.murmur.data.FakeCustomAddress.check(u, m) }
         try {
             app.dev.saveCloud(cloud = app.dev.load().cloud.copy(
-                cleanupProvider = dev.flowclone.data.CleanupProvider.CUSTOM,
-                customCleanup = dev.flowclone.data.CustomCleanupSettings("http://10.0.0.5:4000", "m"),
+                cleanupProvider = dev.murmur.data.CleanupProvider.CUSTOM,
+                customCleanup = dev.murmur.data.CustomCleanupSettings("http://10.0.0.5:4000", "m"),
             ))
             val c = Robolectric.buildActivity(OpenRouterActivity::class.java, Intent(ctx, OpenRouterActivity::class.java)).setup().visible()
             assertTrue("custom card shown", "10.0.0.5" in texts(c.get()).joinToString())
@@ -160,7 +160,7 @@ class OpenRouterUiTest {
             calls = 0
             c.pause().resume()
             assertEquals(1, calls)
-        } finally { dev.flowclone.data.CustomServer.check = prev }
+        } finally { dev.murmur.data.CustomServer.check = prev }
     }
 
     @Test fun settingsHubHasTheUserFacingEntry() {

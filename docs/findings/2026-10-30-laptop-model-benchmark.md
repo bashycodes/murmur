@@ -11,7 +11,7 @@ AI-cleanup model than today's defaults, within the ≤ 1.5 s cleanup budget?
   reference closeness **0.876**. That closeness equals the OpenRouter Llama-3.3-70B
   (0.879, same guard binary). **Qwen2.5-1.5B** on Vulkan is the fast option:
   p50 0.39 s, 75 %, 0.855.
-* **On the CPU alone** (today's `flow_llm.dll`), Qwen2.5-1.5B takes p50 1.0 s / p90 1.7 s
+* **On the CPU alone** (today's `murmur_llm.dll`), Qwen2.5-1.5B takes p50 1.0 s / p90 1.7 s
   (74 %). That is faster than on the home server (1.5 s), but it is at the edge of the
   budget. The shipped default, Qwen2.5-0.5B, scores **43 %**, which is unusable for
   AI cleanup.
@@ -47,7 +47,7 @@ AI-cleanup model than today's defaults, within the ≤ 1.5 s cleanup budget?
   * sherpa-onnx **v2.0.1** `win-x64-shared-MT-Release-no-tts`.
 * **Downloads.** About 5.1 GB from the internet: the two 4B GGUFs and about 100 MB of
   binaries. The other models were copied over the LAN from the home cache. App models
-  were read in place from `%APPDATA%\FlowClone\models`. Everything was deleted
+  were read in place from `%APPDATA%\Murmur\models`. Everything was deleted
   afterwards except the binaries and results in the bench folder (252 MB).
 * **Probe:** `tools/probes/prototypes/laptop_bench_2026_10_30/` (see its README).
 * **STT.** One process per clip; latency is the engine's own compute time with model
@@ -62,11 +62,11 @@ AI-cleanup model than today's defaults, within the ≤ 1.5 s cleanup budget?
     (574 041 195 bytes, sha256 `6c1da92e…a572`).
 * **AI cleanup.** The 102 cases of the 2026-10-26 benchmark (`v4c_cases.jsonl`: the
   88-suite plus 14 reference cases) run through prompt **v4c**.
-  * Rendering: `llm_win.py` builds the messages as flow-core's
+  * Rendering: `llm_win.py` builds the messages as murmur-core's
     `build_prompt_versioned(…, PromptScope::FULL, V4c)` does, with the session
     `sessions/prod.json` (casual for chats).
   * Server: llama-server with `-c 4096 -np 1`, greedy, `max_tokens = 2 × transcript tokens + 32`
-    (the flow-llm rule), `cache_prompt`, and the static prefix prefilled once (as at
+    (the murmur-llm rule), `cache_prompt`, and the static prefix prefilled once (as at
     app model load).
   * Vulkan runs use `-ngl 99`. CPU runs use `-t 4` or `-t 8`.
   * `llm_ms` is the request wall time on the PC.
@@ -178,7 +178,7 @@ Not recommended:
 
 ## Catalogue entries (cleanup GGUFs)
 
-Same shape as `apps/flow-windows/src/model_download.rs` (`resolve/<40-hex commit>/<file>`).
+Same shape as `apps/murmur-windows/src/model_download.rs` (`resolve/<40-hex commit>/<file>`).
 The SHA-256 values are the Hugging Face LFS ids. The first two were also verified with
 `sha256sum` on the files used in this run.
 
@@ -196,10 +196,10 @@ or quantizing on the device.
 
 ## App changes needed
 
-1. **A GPU build of `flow_llm.dll`.**
+1. **A GPU build of `murmur_llm.dll`.**
    * Enable `llama-cpp-2`'s `vulkan` feature (`llama-cpp-sys-2/vulkan`) for the Windows
      build. CI needs the Vulkan SDK (`glslc`).
-   * Pass `LlamaModelParams::default().with_n_gpu_layers(99)`; `crates/flow-llm/src/engine.rs`
+   * Pass `LlamaModelParams::default().with_n_gpu_layers(99)`; `crates/murmur-llm/src/engine.rs`
      loads with default params today.
    * Fall back to the CPU when there is no Vulkan device, or ship the CPU and Vulkan
      DLLs side by side.
@@ -219,5 +219,5 @@ or quantizing on the device.
    whisper.cpp; there is no official Windows Vulkan binary to test with) is what would
    make ivrit turbo interactive.
    * **Estimate**, not measured: the turbo encoder at RTF ≈ 0.05–0.1 on this iGPU.
-6. **Avoid Gemma 3** unless flow-llm sets the SWA-full context flag; `llama-cpp-2` 0.1.160
+6. **Avoid Gemma 3** unless murmur-llm sets the SWA-full context flag; `llama-cpp-2` 0.1.160
    has no setter for it.

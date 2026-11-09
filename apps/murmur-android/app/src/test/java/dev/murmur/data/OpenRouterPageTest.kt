@@ -1,7 +1,7 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.data.DevSettings.CleanupRoute
-import dev.flowclone.data.DevSettings.Route
+import dev.murmur.data.DevSettings.CleanupRoute
+import dev.murmur.data.DevSettings.Route
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -90,11 +90,11 @@ class OpenRouterPageTest {
 
     @Test fun cloudCleanupRunsTheLlmStepEvenWithTheLocalAiOff() {
         val st = Settings()
-        assertEquals(dev.flowclone.core.CleanupLevel.NONE, st.copy(llmEnabled = false).toSessionConfig(emptyList()).cleanupLevel)
+        assertEquals(dev.murmur.core.CleanupLevel.NONE, st.copy(llmEnabled = false).toSessionConfig(emptyList()).cleanupLevel)
         val cfg = st.copy(llmEnabled = false).toSessionConfig(emptyList(), cloudCleanup = true)
-        assertEquals(dev.flowclone.core.CleanupLevel.LIGHT, cfg.cleanupLevel); assertFalse(cfg.rawMode)
-        assertEquals(dev.flowclone.core.CleanupLevel.HIGH,
-            st.copy(llmEnabled = false, cleanup = dev.flowclone.core.CleanupLevel.HIGH).toSessionConfig(emptyList(), cloudCleanup = true).cleanupLevel)
+        assertEquals(dev.murmur.core.CleanupLevel.LIGHT, cfg.cleanupLevel); assertFalse(cfg.rawMode)
+        assertEquals(dev.murmur.core.CleanupLevel.HIGH,
+            st.copy(llmEnabled = false, cleanup = dev.murmur.core.CleanupLevel.HIGH).toSessionConfig(emptyList(), cloudCleanup = true).cleanupLevel)
     }
 
     // ---- D52 custom cleanup server ----

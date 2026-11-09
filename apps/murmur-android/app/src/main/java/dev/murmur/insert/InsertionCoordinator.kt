@@ -1,4 +1,4 @@
-package dev.flowclone.insert
+package dev.murmur.insert
 
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock

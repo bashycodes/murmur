@@ -1,11 +1,11 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.core.AsrEngine
-import dev.flowclone.core.CoreException
-import dev.flowclone.core.CoreJson
-import dev.flowclone.core.FakeFlowCore
-import dev.flowclone.core.LanguageModel
-import dev.flowclone.core.ModelConfig
+import dev.murmur.core.AsrEngine
+import dev.murmur.core.CoreException
+import dev.murmur.core.CoreJson
+import dev.murmur.core.FakeMurmurCore
+import dev.murmur.core.LanguageModel
+import dev.murmur.core.ModelConfig
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -59,7 +59,7 @@ class KeepBothLanguagesTest {
         }
         val p = EnginePlan.plan(Settings(), "/m/base.bin", null, exists, 4, language = "en", hebrew = he, keepBoth = true) as EnginePlan.Plan.Native
         assertFalse(JSONObject(CoreJson.encode(p.config)).has("load_language"))
-        assertEquals("base.bin + Hebrew zipformer-he", EnginePlan.load(p) { FakeFlowCore("x") }.description)
+        assertEquals("base.bin + Hebrew zipformer-he", EnginePlan.load(p) { FakeMurmurCore("x") }.description)
     }
 
     @Test fun onWithParakeetKeepsParakeetAsTheDefault() {
@@ -71,12 +71,12 @@ class KeepBothLanguagesTest {
         assertEquals(mapOf("he" to he), p.config.languages)
         assertNull(p.config.loadLanguage)
         assertEquals(AsrEngine.PARAKEET, EnginePlan.selectedEngine(Settings(asrEngine = AsrEngine.PARAKEET), p))
-        assertEquals("Parakeet pk + Hebrew zipformer-he", EnginePlan.load(p) { FakeFlowCore("x") }.description)
+        assertEquals("Parakeet pk + Hebrew zipformer-he", EnginePlan.load(p) { FakeMurmurCore("x") }.description)
     }
 
     @Test fun bothFailingTogetherFallsBackToWhisperAndSaysWhy() {
         val p = EnginePlan.plan(Settings(), "/m/base.bin", null, exists, 4, language = "he", hebrew = he, keepBoth = true) as EnginePlan.Plan.Native
-        val r = EnginePlan.load(p) { cfg -> if (cfg.languages.isNotEmpty()) throw CoreException("model load failed: oom") else FakeFlowCore("x") }
+        val r = EnginePlan.load(p) { cfg -> if (cfg.languages.isNotEmpty()) throw CoreException("model load failed: oom") else FakeMurmurCore("x") }
         assertEquals(LoadedAsr(AsrEngine.WHISPER, "base.bin"), r.asr)
         assertTrue(r.description, r.description.contains("(Both languages failed: model load failed: oom)"))
         // EngineMismatch reads the same label back.

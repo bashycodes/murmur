@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # usage: run_det.sh
-# Scores the deterministic flow-core pipeline (no LLM) with the spoken-command
-# rules and bug fixes now in crates/flow-core (spoken.rs + spoken_commands.rs),
+# Scores the deterministic murmur-core pipeline (no LLM) with the spoken-command
+# rules and bug fixes now in crates/murmur-core (spoken.rs + spoken_commands.rs),
 # for the shipped styles (all formal) and the proposed chat=casual styles.
 # Replaces the rules_proto.py pre-pass for the det columns: the inputs are the
 # raw cases. Outputs are deterministic, so a rerun rewrites the same files.

@@ -1,15 +1,15 @@
 //! End-to-end: real whisper.cpp model + real speech through the full
-//! FlowCore pipeline. Skips (passes with a note) when the model or sample
+//! MurmurCore pipeline. Skips (passes with a note) when the model or sample
 //! is missing; fetch them with `tools/fetch-models.sh`.
 
 use std::path::PathBuf;
 
-use flow_core::config::{AsrBackend, ModelConfig, SessionConfig};
-use flow_core::dictionary::{DictEntry, Dictionary};
-use flow_core::{audio, CommitStatus, FlowCore};
+use murmur_core::config::{AsrBackend, ModelConfig, SessionConfig};
+use murmur_core::dictionary::{DictEntry, Dictionary};
+use murmur_core::{audio, CommitStatus, MurmurCore};
 
 fn models_dir() -> PathBuf {
-    std::env::var_os("FLOW_MODELS_DIR")
+    std::env::var_os("MURMUR_MODELS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../models"))
 }
@@ -17,7 +17,7 @@ fn models_dir() -> PathBuf {
 fn fixture() -> Option<(PathBuf, PathBuf)> {
     let d = models_dir();
     let model =
-        d.join(std::env::var("FLOW_TEST_MODEL").unwrap_or_else(|_| "ggml-tiny.en.bin".into()));
+        d.join(std::env::var("MURMUR_TEST_MODEL").unwrap_or_else(|_| "ggml-tiny.en.bin".into()));
     let wav = d.join("jfk.wav");
     if model.exists() && wav.exists() {
         Some((model, wav))
@@ -36,10 +36,10 @@ fn jfk_transcribes_end_to_end() {
     let Some((model, wav)) = fixture() else {
         return;
     };
-    let core = FlowCore::load_models(&ModelConfig {
+    let core = MurmurCore::load_models(&ModelConfig {
         asr_backend: AsrBackend::Whisper,
         asr_path: model.to_string_lossy().into(),
-        threads: std::env::var("FLOW_THREADS")
+        threads: std::env::var("MURMUR_THREADS")
             .ok()
             .and_then(|t| t.parse().ok())
             .unwrap_or(4),
@@ -83,14 +83,14 @@ fn missing_silero_model_is_model_not_found() {
     let Some((model, _)) = fixture() else {
         return;
     };
-    let r = FlowCore::load_models(&ModelConfig {
+    let r = MurmurCore::load_models(&ModelConfig {
         asr_backend: AsrBackend::Whisper,
         asr_path: model.to_string_lossy().into(),
         vad_model_path: Some("/nonexistent/ggml-silero.bin".into()),
         ..Default::default()
     });
     match r {
-        Err(flow_core::CoreError::ModelNotFound { path }) => {
+        Err(murmur_core::CoreError::ModelNotFound { path }) => {
             assert_eq!(path, "/nonexistent/ggml-silero.bin")
         }
         Err(e) => panic!("{e:?}"),
@@ -98,21 +98,21 @@ fn missing_silero_model_is_model_not_found() {
     }
 }
 
-/// Runs only when a Silero model is present (`FLOW_SILERO_MODEL` or
+/// Runs only when a Silero model is present (`MURMUR_SILERO_MODEL` or
 /// `models/ggml-silero-v5.1.2.bin`; never downloaded by tests).
 #[test]
 fn silero_vad_keeps_the_speech_if_model_present() {
     let Some((model, wav)) = fixture() else {
         return;
     };
-    let silero = std::env::var_os("FLOW_SILERO_MODEL")
+    let silero = std::env::var_os("MURMUR_SILERO_MODEL")
         .map(PathBuf::from)
         .unwrap_or_else(|| models_dir().join("ggml-silero-v5.1.2.bin"));
     if !silero.exists() {
         eprintln!("SKIP: {} missing", silero.display());
         return;
     }
-    let core = FlowCore::load_models(&ModelConfig {
+    let core = MurmurCore::load_models(&ModelConfig {
         asr_backend: AsrBackend::Whisper,
         asr_path: model.to_string_lossy().into(),
         vad_model_path: Some(silero.to_string_lossy().into()),
@@ -129,8 +129,8 @@ fn silero_vad_keeps_the_speech_if_model_present() {
 /// full 30 s window, on the whole clip and on a short (padded) piece.
 #[test]
 fn fit_ctx_matches_the_full_window() {
-    use flow_core::asr::{AsrEngine, AsrRequest};
-    use flow_core::whisper::WhisperEngine;
+    use murmur_core::asr::{AsrEngine, AsrRequest};
+    use murmur_core::whisper::WhisperEngine;
     let Some((model, wav)) = fixture() else {
         return;
     };
@@ -173,7 +173,7 @@ fn segmented_jfk_equals_whole_clip() {
     let Some((model, wav)) = fixture() else {
         return;
     };
-    let core = FlowCore::load_models(&ModelConfig {
+    let core = MurmurCore::load_models(&ModelConfig {
         asr_backend: AsrBackend::Whisper,
         asr_path: model.to_string_lossy().into(),
         threads: 4,

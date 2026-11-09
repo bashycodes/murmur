@@ -1,17 +1,17 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.app.Activity
 import android.widget.ImageButton
 import android.widget.Switch
-import dev.flowclone.FlowApp
-import dev.flowclone.data.CleanupEngines
-import dev.flowclone.data.DevSettings
-import dev.flowclone.data.DevSettings.CleanupRoute
-import dev.flowclone.data.SettingsPages.Page
-import dev.flowclone.ui.UiTestKit.idle
-import dev.flowclone.ui.UiTestKit.rowTitled
-import dev.flowclone.ui.UiTestKit.texts
-import dev.flowclone.ui.UiTestKit.walk
+import dev.murmur.MurmurApp
+import dev.murmur.data.CleanupEngines
+import dev.murmur.data.DevSettings
+import dev.murmur.data.DevSettings.CleanupRoute
+import dev.murmur.data.SettingsPages.Page
+import dev.murmur.ui.UiTestKit.idle
+import dev.murmur.ui.UiTestKit.rowTitled
+import dev.murmur.ui.UiTestKit.texts
+import dev.murmur.ui.UiTestKit.walk
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -29,10 +29,10 @@ import org.robolectric.shadows.ShadowAlertDialog
 
 /** D36 Settings → AI cleanup: the cleanup engines as ranked switch rows (same widget as Speech to text). */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], application = FlowApp::class)
+@Config(sdk = [34], application = MurmurApp::class)
 class CleanupUiTest {
     private val ctx get() = RuntimeEnvironment.getApplication()
-    private val app get() = FlowApp.of(ctx)
+    private val app get() = MurmurApp.of(ctx)
 
     private fun launch(): Activity =
         Robolectric.buildActivity(SettingsActivity::class.java, SettingsActivity.intent(ctx, Page.CLEANUP)).setup().visible().get()
@@ -41,7 +41,7 @@ class CleanupUiTest {
 
     @After fun reset() {
         app.dev.save(DevSettings.defaults(app.caps))
-        app.settings.save(app.settings.load().copy(llmEnabled = dev.flowclone.data.Settings().llmEnabled))
+        app.settings.save(app.settings.load().copy(llmEnabled = dev.murmur.data.Settings().llmEnabled))
     }
 
     private fun row(a: Activity, r: CleanupRoute) = rowTitled(a, CleanupEngines.name(r))

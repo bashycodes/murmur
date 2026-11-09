@@ -8,7 +8,7 @@
 //! * [`DevForm`] is what the Developer tab edits (`dev_get` / `dev_set`):
 //!   the same fields with the token in clear and numbers wide enough that
 //!   out-of-range input is a validation message, not a parse error.
-//! * [`DevSettings::router_config_json`] produces flow-router's
+//! * [`DevSettings::router_config_json`] produces murmur-router's
 //!   `RouterConfig` JSON (§1.2) — the router fixtures are the spec.
 //!
 //! Routes are an ordered list (`route_order`), not a two-way switch; the
@@ -16,7 +16,7 @@
 //! the third entry. The router's `prefer` is derived from the order; with
 //! the cloud allowed the full list goes to the router as `order`.
 //!
-//! OpenRouter (`cloud`) is flow-router's schema-2 `CloudConfig` as is: one
+//! OpenRouter (`cloud`) is murmur-router's schema-2 `CloudConfig` as is: one
 //! fixed host (`openrouter.ai`), two uses (speech-to-text, text cleanup),
 //! each with its own consent; no API key (Credential Manager,
 //! [`crate::credentials`]). The Developer form does not carry it: the
@@ -37,8 +37,8 @@
 //! Missing in the file = dictation's order and switches, followed live
 //! until the user edits the meeting list.
 
-use flow_core::config::ParakeetDecoding;
-use flow_router::{CleanupRoute, CloudConfig, MigrationReport};
+use murmur_core::config::ParakeetDecoding;
+use murmur_router::{CleanupRoute, CloudConfig, MigrationReport};
 use serde::{Deserialize, Serialize};
 use std::net::{Ipv4Addr, Ipv6Addr};
 
@@ -126,9 +126,9 @@ pub struct MeetingRoute {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Route {
-    /// Self-hosted flow-server (router `Remote`).
+    /// Self-hosted murmur-server (router `Remote`).
     Server,
-    /// On-device flow-core (router `Local`).
+    /// On-device murmur-core (router `Local`).
     Client,
     /// Opt-in third-party provider (router `Cloud`, D18).
     Cloud,
@@ -145,11 +145,11 @@ impl Route {
         }
     }
 
-    pub fn to_router(self) -> flow_router::Route {
+    pub fn to_router(self) -> murmur_router::Route {
         match self {
-            Route::Server => flow_router::Route::Server,
-            Route::Client => flow_router::Route::Client,
-            Route::Cloud => flow_router::Route::Cloud,
+            Route::Server => murmur_router::Route::Server,
+            Route::Client => murmur_router::Route::Client,
+            Route::Cloud => murmur_router::Route::Cloud,
         }
     }
 }
@@ -175,7 +175,7 @@ impl Default for ServerSettings {
             port: DEFAULT_PORT,
             tls: false,
             tls_pin_sha256: String::new(),
-            connect_timeout_ms: flow_router::DEFAULT_CONNECT_TIMEOUT_MS,
+            connect_timeout_ms: murmur_router::DEFAULT_CONNECT_TIMEOUT_MS,
             commit_timeout_base_ms: 3000,
             health_ttl_s: 30,
         }
@@ -292,7 +292,7 @@ impl DevSettings {
     }
 
     /// One-time D28 migration of a D18 provider list (openrouter-only-cloud.md §2.1, rules in
-    /// `flow_router::migrate`). Idempotent: a schema-2 config returns an
+    /// `murmur_router::migrate`). Idempotent: a schema-2 config returns an
     /// empty report. The caller applies the key moves / deletions
     /// ([`crate::credentials::apply_migration`]) and persists. When the
     /// cloud route was switched off it also moves `cloud` to the end of the
@@ -301,7 +301,7 @@ impl DevSettings {
         if !self.cloud.is_legacy() {
             return MigrationReport::default();
         }
-        let mut rc = flow_router::RouterConfig {
+        let mut rc = murmur_router::RouterConfig {
             allow_cloud: self.allow_cloud,
             order: if self.allow_cloud {
                 self.order().into_iter().map(Route::to_router).collect()
@@ -309,7 +309,7 @@ impl DevSettings {
                 Vec::new()
             },
             cloud: std::mem::take(&mut self.cloud),
-            ..flow_router::RouterConfig::default()
+            ..murmur_router::RouterConfig::default()
         };
         let rep = rc.migrate_d28();
         self.cloud = rc.cloud;
@@ -543,7 +543,7 @@ impl DevSettings {
         crate::secrets::unprotect(&self.token_dpapi).unwrap_or_default()
     }
 
-    /// flow-router `RouterConfig` JSON (§1.2). `token` is passed in so the
+    /// murmur-router `RouterConfig` JSON (§1.2). `token` is passed in so the
     /// clear token only exists in memory.
     pub fn router_config_json(&self, caps: BuildCaps, token: &str) -> serde_json::Value {
         let (srv, cli) = self.effective(caps);
@@ -1024,16 +1024,16 @@ fn parse_ipv4_strict(s: &str) -> Option<Ipv4Addr> {
 }
 
 /// §2.6: is plaintext `ws://` refused for this (normalised) host at
-/// config time? The router's classifier decides (`flow_router::net`, the
+/// config time? The router's classifier decides (`murmur_router::net`, the
 /// same one `ServerConfig::validate` uses), so the form can never disagree
 /// with the gate. Private = loopback, RFC 1918, link-local, ULA, VPN
 /// (100.64/10, fd7a:115c:a1e0::/48), `*.ts.net`, `*.local`, `localhost`
 /// and single-label names. That is only the form rule: at connect time
-/// flow-remote resolves a name and requires every address to be private
+/// murmur-remote resolves a name and requires every address to be private
 /// (review S6), so a `*.ts.net` or LAN name that resolves publicly is
 /// refused then ("server needs TLS").
 pub fn host_is_public(host: &str) -> bool {
-    !flow_router::net::classify(host).plaintext_ok()
+    !murmur_router::net::classify(host).plaintext_ok()
 }
 
 #[cfg(test)]
@@ -1431,7 +1431,7 @@ mod tests {
         );
         assert!(j.get("cleanup_off").is_none());
         assert_eq!(j["cloud"]["schema"], 2);
-        let cfg: flow_router::RouterConfig = serde_json::from_value(j).unwrap();
+        let cfg: murmur_router::RouterConfig = serde_json::from_value(j).unwrap();
         cfg.validate().unwrap();
         assert!(cfg.cloud_cleanup_wanted());
         assert!(cfg.cloud.openrouter.stt.consent_ok() && cfg.cloud.openrouter.cleanup.consent_ok());
@@ -1491,7 +1491,7 @@ mod tests {
             !d.cloud.openrouter.cleanup.consent_ok(),
             "STT consent is not cleanup consent"
         );
-        assert_eq!(d.cloud.monthly_budget_usd, Some(flow_router::Usd(2.0)));
+        assert_eq!(d.cloud.monthly_budget_usd, Some(murmur_router::Usd(2.0)));
         assert_eq!(d.cloud_notice, None, "nothing user-visible changed");
         let again = d.clone().migrate_d28();
         assert!(!again.migrated, "idempotent");

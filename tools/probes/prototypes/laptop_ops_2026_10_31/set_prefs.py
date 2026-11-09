@@ -1,9 +1,9 @@
-"""Edit %APPDATA%/FlowClone/prefs.json for the laptop model setup (app must be closed).
+"""Edit %APPDATA%/Murmur/prefs.json for the laptop model setup (app must be closed).
 Local cleanup on with Llama-3.2-3B (Vulkan picked by the app's llm_backend probe),
 cleanup order local > server > cloud (enabled flags kept; cloud stays off via
 allow_cloud=false), Hebrew = zipformer, keyboard language on, hands-free pause 0."""
 import json, os, sys
-d = os.path.join(os.environ["APPDATA"], "FlowClone")
+d = os.path.join(os.environ["APPDATA"], "Murmur")
 p = os.path.join(d, "prefs.json")
 j = json.load(open(p, encoding="utf-8"))
 models = os.path.join(d, "models")

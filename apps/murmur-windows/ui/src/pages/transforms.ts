@@ -13,7 +13,7 @@ import { captureChord, RECORDING_TEXT, stopCapture } from "../lib/keycapture.js"
 import { prefsStore, type Prefs, type TransformItem, type TransformPrefs } from "../lib/prefs-store.js";
 import type { Page } from "../lib/router.js";
 
-/** flow_core::transform limits (the backend checks them again). */
+/** murmur_core::transform limits (the backend checks them again). */
 const MAX_TRANSFORMS = 20;
 const MAX_NAME = 40;
 const MAX_DESCRIPTION = 200;

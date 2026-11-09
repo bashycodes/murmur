@@ -8,10 +8,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use flow_core::asr::{AbortFlag, MockAsr};
-use flow_core::cleanup::{CleanError, CleanPrompt, Cleaner};
-use flow_core::FlowCore;
-use flow_router::*;
+use murmur_core::asr::{AbortFlag, MockAsr};
+use murmur_core::cleanup::{CleanError, CleanPrompt, Cleaner};
+use murmur_core::MurmurCore;
+use murmur_router::*;
 
 const OR_KEY: &str = "sk-or-LEAKCHECK-d52-0123456789";
 const CUSTOM_KEY: &str = "sk-litellm-LEAKCHECK-d52";
@@ -107,7 +107,7 @@ struct Rig {
 }
 
 fn rig(c: RouterConfig, custom_cost: Option<f64>) -> Rig {
-    let core = FlowCore::from_engines(
+    let core = MurmurCore::from_engines(
         Arc::new(MockAsr::new(IN)),
         Some(Arc::new(Local) as Arc<dyn Cleaner>),
     );
@@ -263,7 +263,7 @@ fn custom_without_a_model_is_saved_but_skipped() {
 
 #[test]
 fn custom_needs_its_factory() {
-    let core = FlowCore::from_engines(
+    let core = MurmurCore::from_engines(
         Arc::new(MockAsr::new(IN)),
         Some(Arc::new(Local) as Arc<dyn Cleaner>),
     );

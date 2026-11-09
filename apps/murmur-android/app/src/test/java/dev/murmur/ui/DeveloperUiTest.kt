@@ -1,13 +1,13 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.content.Intent
 import android.widget.ImageButton
-import dev.flowclone.FlowApp
-import dev.flowclone.data.DevPages.Page
-import dev.flowclone.data.SettingsPages
-import dev.flowclone.ui.UiTestKit.rowTitled
-import dev.flowclone.ui.UiTestKit.texts
-import dev.flowclone.ui.UiTestKit.walk
+import dev.murmur.MurmurApp
+import dev.murmur.data.DevPages.Page
+import dev.murmur.data.SettingsPages
+import dev.murmur.ui.UiTestKit.rowTitled
+import dev.murmur.ui.UiTestKit.texts
+import dev.murmur.ui.UiTestKit.walk
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -21,7 +21,7 @@ import org.robolectric.annotation.Config
 
 /** Developer settings after routing moved to Settings → Speech to text: top bar, hub links, Save on Server only. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], application = FlowApp::class)
+@Config(sdk = [34], application = MurmurApp::class)
 class DeveloperUiTest {
     private val ctx get() = RuntimeEnvironment.getApplication()
 

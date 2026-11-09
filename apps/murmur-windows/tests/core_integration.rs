@@ -1,23 +1,23 @@
-//! Shell controller driven against the REAL flow-core (through
+//! Shell controller driven against the REAL murmur-core (through
 //! `core_adapter`), with only the OS side faked: proves
 //! hotkey → capture → push_audio → commit → paste plan → history.
 //!
 //! * MockAsr backend (always runs): deterministic transcript, exercises the
-//!   whole flow-core session engine + post-processing.
+//!   whole murmur-core session engine + post-processing.
 //! * whisper.cpp with the tiny model on jfk.wav (runs when the model is on
-//!   disk; set FLOW_MODEL / FLOW_WAV or fetch with `tools/fetch-models.sh`).
+//!   disk; set MURMUR_MODEL / MURMUR_WAV or fetch with `tools/fetch-models.sh`).
 
-use flow_windows::context::RawSnapshot;
-use flow_windows::controller::{AudioSink, Controller, Platform};
-use flow_windows::core_adapter::{FlowCoreAdapter, LlmSpec, LlmStatus, ModelSpec, ModelStatus};
-use flow_windows::core_api::PasteKey;
-use flow_windows::dictation::{Input, OverlayState, Phase, Sound};
-use flow_windows::history::{now_ms, History};
-use flow_windows::hotkeys::HotkeyAction;
-use flow_windows::insights::{local_date, InsightsStore};
-use flow_windows::learn::{FieldReader, Read};
-use flow_windows::prefs::{Prefs, Retention};
-use flow_windows::suggestions::SuggestionStore;
+use murmur_windows::context::RawSnapshot;
+use murmur_windows::controller::{AudioSink, Controller, Platform};
+use murmur_windows::core_adapter::{LlmSpec, LlmStatus, ModelSpec, ModelStatus, MurmurCoreAdapter};
+use murmur_windows::core_api::PasteKey;
+use murmur_windows::dictation::{Input, OverlayState, Phase, Sound};
+use murmur_windows::history::{now_ms, History};
+use murmur_windows::hotkeys::HotkeyAction;
+use murmur_windows::insights::{local_date, InsightsStore};
+use murmur_windows::learn::{FieldReader, Read};
+use murmur_windows::prefs::{Prefs, Retention};
+use murmur_windows::suggestions::SuggestionStore;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
@@ -139,12 +139,12 @@ struct Rig {
     insights: Arc<Mutex<InsightsStore>>,
 }
 
-fn rig(core: Arc<FlowCoreAdapter>, os: FakeOs, prefs: Prefs) -> Rig {
+fn rig(core: Arc<MurmurCoreAdapter>, os: FakeOs, prefs: Prefs) -> Rig {
     rig_with(core, os, prefs, None)
 }
 
 fn rig_with(
-    core: Arc<FlowCoreAdapter>,
+    core: Arc<MurmurCoreAdapter>,
     os: FakeOs,
     prefs: Prefs,
     suggestions: Option<Arc<Mutex<SuggestionStore>>>,
@@ -203,8 +203,8 @@ impl Rig {
     }
 }
 
-fn mock_core(text: &str) -> Arc<FlowCoreAdapter> {
-    let a = FlowCoreAdapter::new();
+fn mock_core(text: &str) -> Arc<MurmurCoreAdapter> {
+    let a = MurmurCoreAdapter::new();
     let st = a.load_now(&ModelSpec::Mock { text: text.into() });
     assert!(st.is_ready(), "{st:?}");
     a
@@ -354,7 +354,7 @@ fn insights_count_each_dictation_and_outlive_history() {
 
 #[test]
 fn missing_model_gives_error_pill_not_a_hang() {
-    let a = FlowCoreAdapter::new();
+    let a = MurmurCoreAdapter::new();
     let st = a.load_now(&ModelSpec::Whisper {
         path: PathBuf::from("/definitely/not/here/ggml-base.bin"),
         threads: None,
@@ -421,14 +421,14 @@ fn find(env: &str, rel: &[&str]) -> Option<PathBuf> {
 fn real_tiny_model_on_jfk_pastes_the_speech() {
     // Worktree-local models/ first, then the main checkout's.
     let model = find(
-        "FLOW_MODEL",
+        "MURMUR_MODEL",
         &[
             "../../models/ggml-tiny.en.bin",
             "../../../../../models/ggml-tiny.en.bin",
         ],
     );
     let wav = find(
-        "FLOW_WAV",
+        "MURMUR_WAV",
         &["../../models/jfk.wav", "../../../../../models/jfk.wav"],
     );
     let (Some(model), Some(wav)) = (model, wav) else {
@@ -440,7 +440,7 @@ fn real_tiny_model_on_jfk_pastes_the_speech() {
     assert_eq!((spec.sample_rate, spec.channels), (16_000, 1));
     let pcm: Vec<i16> = reader.samples::<i16>().map(Result::unwrap).collect();
 
-    let a = FlowCoreAdapter::new();
+    let a = MurmurCoreAdapter::new();
     let st = a.load_now(&ModelSpec::Whisper {
         path: model,
         threads: None,
@@ -468,11 +468,11 @@ fn real_tiny_model_on_jfk_pastes_the_speech() {
 }
 
 /// D12 through the shell: Parakeet-TDT (sherpa-onnx) chosen as the local
-/// engine. Model dir from FLOW_PARAKEET_DIR or the research cache.
+/// engine. Model dir from MURMUR_PARAKEET_DIR or the research cache.
 #[cfg(feature = "parakeet")]
 #[test]
 fn real_parakeet_on_jfk_pastes_the_speech() {
-    let dir = std::env::var("FLOW_PARAKEET_DIR")
+    let dir = std::env::var("MURMUR_PARAKEET_DIR")
         .map(PathBuf::from)
         .ok()
         .or_else(|| {
@@ -486,7 +486,7 @@ fn real_parakeet_on_jfk_pastes_the_speech() {
             .find(|p| p.is_dir())
         });
     let wav = find(
-        "FLOW_WAV",
+        "MURMUR_WAV",
         &["../../models/jfk.wav", "../../../../../models/jfk.wav"],
     );
     let (Some(dir), Some(wav)) = (dir, wav) else {
@@ -498,11 +498,11 @@ fn real_parakeet_on_jfk_pastes_the_speech() {
         .samples::<i16>()
         .map(Result::unwrap)
         .collect();
-    let a = FlowCoreAdapter::new();
+    let a = MurmurCoreAdapter::new();
     let st = a.load_now(&ModelSpec::Parakeet {
         dir,
         threads: Some(4),
-        decoding: flow_core::config::ParakeetDecoding::Auto,
+        decoding: murmur_core::config::ParakeetDecoding::Auto,
     });
     assert!(st.is_ready(), "{st:?}");
     let prefs = Prefs {
@@ -529,7 +529,7 @@ fn missing_llm_plugin_still_dictates_raw() {
     let st = a.load_llm_now(Some(LlmSpec {
         // Any existing file passes the GGUF check; the plugin lookup fails first.
         model_path: PathBuf::from(env!("CARGO_MANIFEST_PATH")),
-        lib_path: Some(PathBuf::from("/nonexistent/libflow_llm.so")),
+        lib_path: Some(PathBuf::from("/nonexistent/libmurmur_llm.so")),
         threads: Some(1),
     }));
     assert!(matches!(st, LlmStatus::PluginMissing { .. }), "{st:?}");
@@ -546,20 +546,20 @@ fn missing_llm_plugin_still_dictates_raw() {
     assert!(e.formatted.is_none());
 }
 
-/// The real llama.cpp plugin (`cargo build --release -p flow-llm` in the
+/// The real llama.cpp plugin (`cargo build --release -p murmur-llm` in the
 /// repo root) and a Qwen GGUF (`tools/fetch-models.sh --llm`); skips
-/// without them. FLOW_LLM_LIB / FLOW_LLM_MODEL override the lookup.
+/// without them. MURMUR_LLM_LIB / MURMUR_LLM_MODEL override the lookup.
 fn real_llm() -> Option<LlmSpec> {
-    let plugin = flow_windows::core_adapter::llm_plugin_file();
+    let plugin = murmur_windows::core_adapter::llm_plugin_file();
     let lib = find(
-        "FLOW_LLM_LIB",
+        "MURMUR_LLM_LIB",
         &[
             &format!("../../target/release/{plugin}"),
             &format!("../../target/debug/{plugin}"),
         ],
     );
     let model = find(
-        "FLOW_LLM_MODEL",
+        "MURMUR_LLM_MODEL",
         &[
             "../../models/qwen2.5-0.5b-instruct-q4_k_m.gguf",
             "../../../../../models/qwen2.5-0.5b-instruct-q4_k_m.gguf",
@@ -572,7 +572,7 @@ fn real_llm() -> Option<LlmSpec> {
             threads: None,
         }),
         _ => {
-            eprintln!("SKIP: flow_llm plugin or Qwen GGUF not found");
+            eprintln!("SKIP: murmur_llm plugin or Qwen GGUF not found");
             None
         }
     }
@@ -632,14 +632,14 @@ fn real_whisper_then_real_llm_in_the_shell_process() {
     let _serial = REAL_LLM.lock().unwrap_or_else(|e| e.into_inner());
     let Some(spec) = real_llm() else { return };
     let model = find(
-        "FLOW_MODEL",
+        "MURMUR_MODEL",
         &[
             "../../models/ggml-tiny.en.bin",
             "../../../../../models/ggml-tiny.en.bin",
         ],
     );
     let wav = find(
-        "FLOW_WAV",
+        "MURMUR_WAV",
         &["../../models/jfk.wav", "../../../../../models/jfk.wav"],
     );
     let (Some(model), Some(wav)) = (model, wav) else {
@@ -651,7 +651,7 @@ fn real_whisper_then_real_llm_in_the_shell_process() {
         .samples::<i16>()
         .map(Result::unwrap)
         .collect();
-    let a = FlowCoreAdapter::new();
+    let a = MurmurCoreAdapter::new();
     assert!(a
         .load_now(&ModelSpec::Whisper {
             path: model,

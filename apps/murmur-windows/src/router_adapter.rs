@@ -1,18 +1,18 @@
 //! Hybrid local/server dictation (D17): the shell's [`CoreApi`] served by
-//! `flow_router::Router` in every build (invariant I1).
+//! `murmur_router::Router` in every build (invariant I1).
 //!
-//! * [`LocalBackend`] wraps the existing [`FlowCoreAdapter`] (its two-phase
+//! * [`LocalBackend`] wraps the existing [`MurmurCoreAdapter`] (its two-phase
 //!   model/LLM load and "core of the open session" rule stay as they were)
 //!   as the router's `Local` backend.
-//! * The remote backend is `flow_remote::factory()` in builds with the
+//! * The remote backend is `murmur_remote::factory()` in builds with the
 //!   `remote` feature; client-only builds pass `None`, so they contain no
 //!   network code (I3). Cargo features only decide which side is `Some`.
-//! * [`RouterAdapter`] maps shell types onto flow-core's (the same mapping
+//! * [`RouterAdapter`] maps shell types onto murmur-core's (the same mapping
 //!   as the local path, so a remote session sees the identical
 //!   `SessionConfig`/`FieldContext`, I2), turns router errors into pill
 //!   text, and remembers the last dictation's route for the Developer page
 //!   and the optional S/L badge.
-//! * Cloud STT (D18, feature `cloud`): `flow_cloud::attach_with` adds the
+//! * Cloud STT (D18, feature `cloud`): `murmur_cloud::attach_with` adds the
 //!   opt-in third-party route; it shares the local LLM cleaner (rebuilt via
 //!   [`RouterAdapter::refresh_local`] after the two-phase load). Keys come
 //!   from Credential Manager through `Router::set_cloud_key` only. Cloud
@@ -20,13 +20,13 @@
 //!   badge, and cloud failures get user-facing text (`crate::cloud`).
 
 use crate::core_adapter::{
-    from_core_result, to_core_context, to_core_session, FlowCoreAdapter, ModelStatus, LOAD_WAIT,
+    from_core_result, to_core_context, to_core_session, ModelStatus, MurmurCoreAdapter, LOAD_WAIT,
 };
 use crate::core_api::{
     CommitResult, CommitStatus, CoreApi, FieldContext, LearnCandidate, SessionConfig,
 };
 use crate::dev_settings::{BuildCaps, DevSettings, NO_ENGINE_MSG};
-use flow_router::{
+use murmur_router::{
     Backend, BackendError, CloudCapabilities, CloudUsage, EngineKind, Failure, HealthReport,
     RemoteFactory, RouteStatus, Router, RouterConfig, RouterError, ServerConfig, SessionRoute,
     StartInfo,
@@ -46,11 +46,11 @@ fn now_ms() -> u64 {
 
 /// The router's `Local` backend: the shell's model slot.
 pub struct LocalBackend {
-    adapter: Arc<FlowCoreAdapter>,
+    adapter: Arc<MurmurCoreAdapter>,
 }
 
 impl LocalBackend {
-    pub fn new(adapter: Arc<FlowCoreAdapter>) -> Arc<Self> {
+    pub fn new(adapter: Arc<MurmurCoreAdapter>) -> Arc<Self> {
         Arc::new(LocalBackend { adapter })
     }
 }
@@ -66,7 +66,7 @@ impl Backend for LocalBackend {
 
     fn start_session(
         &self,
-        cfg: &flow_core::config::SessionConfig,
+        cfg: &murmur_core::config::SessionConfig,
     ) -> Result<StartInfo, BackendError> {
         self.adapter
             .core_start(cfg.clone())
@@ -78,7 +78,7 @@ impl Backend for LocalBackend {
         self.adapter.core_push(pcm)
     }
 
-    fn set_context(&self, ctx: &flow_core::config::FieldContext) {
+    fn set_context(&self, ctx: &murmur_core::config::FieldContext) {
         self.adapter.core_set_context(ctx.clone())
     }
 
@@ -86,7 +86,7 @@ impl Backend for LocalBackend {
         self.adapter.core_partial()
     }
 
-    fn commit(&self, _deadline: Instant) -> Result<flow_core::CommitResult, BackendError> {
+    fn commit(&self, _deadline: Instant) -> Result<murmur_core::CommitResult, BackendError> {
         self.adapter
             .core_commit()
             .ok_or_else(|| BackendError::new(Failure::Error, "no active session"))
@@ -99,12 +99,12 @@ impl Backend for LocalBackend {
     /// D36: the router's cleanup chain, kept by the model slot across
     /// reloads (without it the trait default dropped the server and cloud
     /// hops, and only this PC's LLM ever cleaned local dictations).
-    fn install_cleanup(&self, plan: Option<flow_router::CleanupPlan>) {
+    fn install_cleanup(&self, plan: Option<murmur_router::CleanupPlan>) {
         self.adapter.set_cleanup_plan(plan)
     }
 
     /// The on-device LLM only (Command Mode, D36 `server_cleans`).
-    fn llm_cleaner(&self) -> Option<Arc<dyn flow_core::cleanup::Cleaner>> {
+    fn llm_cleaner(&self) -> Option<Arc<dyn murmur_core::cleanup::Cleaner>> {
         self.adapter.cleaner()
     }
 
@@ -114,7 +114,7 @@ impl Backend for LocalBackend {
             ok: status.is_ready(),
             engine: EngineKind::Local,
             message: status.problem(),
-            postprocess_rev: Some(flow_core::POSTPROCESS_REV.into()),
+            postprocess_rev: Some(murmur_core::POSTPROCESS_REV.into()),
             postprocess_match: Some(true),
             checked_at_ms: now_ms(),
             ..HealthReport::default()
@@ -306,7 +306,7 @@ fn cloud_failure_code(r: &CommitResult, cfg: &RouterConfig) -> Option<String> {
     // The cloud was the first route the toggles allow (a skipped cloud
     // route reports e.g. `auth_failed` like a server would).
     let cloud_was_first =
-        cfg.order.iter().find(|r| cfg.route_allowed(**r)) == Some(&flow_router::Route::Cloud);
+        cfg.order.iter().find(|r| cfg.route_allowed(**r)) == Some(&murmur_router::Route::Cloud);
     (route.engine != "cloud" && (cloud_only_code || cloud_was_first)).then_some(fb)
 }
 
@@ -322,10 +322,10 @@ fn cloud_notice(r: &CommitResult, cfg: &RouterConfig) -> Option<String> {
 #[derive(Debug, Clone, Serialize)]
 pub struct RouteView {
     pub last: Option<LastDictation>,
-    pub circuit: flow_router::CircuitStatus,
+    pub circuit: murmur_router::CircuitStatus,
     pub health: Option<HealthReport>,
     /// Cloud route circuit (builds with the cloud client only).
-    pub cloud_circuit: Option<flow_router::CircuitStatus>,
+    pub cloud_circuit: Option<murmur_router::CircuitStatus>,
 }
 
 /// Result of the Developer page's "Test session" (1 s of silence).
@@ -376,9 +376,9 @@ pub fn server_config(dev: &DevSettings, token: &str) -> Result<ServerConfig, Str
 pub fn remote_factory() -> Option<RemoteFactory> {
     #[cfg(feature = "remote")]
     {
-        Some(flow_remote::factory(&format!(
-            "flow-windows {}",
-            flow_build_info::FULL
+        Some(murmur_remote::factory(&format!(
+            "murmur-windows {}",
+            murmur_build_info::FULL
         )))
     }
     #[cfg(not(feature = "remote"))]
@@ -393,7 +393,7 @@ type RouteListener = Box<dyn Fn(&LastDictation) + Send + Sync>;
 
 pub struct RouterAdapter {
     router: Router,
-    local: Option<Arc<FlowCoreAdapter>>,
+    local: Option<Arc<MurmurCoreAdapter>>,
     last: Mutex<Option<LastDictation>>,
     listener: Mutex<Option<RouteListener>>,
 }
@@ -403,7 +403,7 @@ impl RouterAdapter {
     /// (its models may still be loading). `remote`: [`remote_factory`].
     pub fn new(
         cfg: RouterConfig,
-        local: Option<Arc<FlowCoreAdapter>>,
+        local: Option<Arc<MurmurCoreAdapter>>,
         remote: Option<RemoteFactory>,
     ) -> Arc<Self> {
         let backend = local
@@ -421,7 +421,7 @@ impl RouterAdapter {
         #[cfg(feature = "cloud")]
         let router = {
             let slot = local.clone();
-            flow_cloud::attach_with(router, move || slot.as_ref().and_then(|a| a.cleaner()))
+            murmur_cloud::attach_with(router, move || slot.as_ref().and_then(|a| a.cleaner()))
         };
         Arc::new(RouterAdapter {
             router,
@@ -435,7 +435,7 @@ impl RouterAdapter {
         &self.router
     }
 
-    pub fn local(&self) -> Option<&Arc<FlowCoreAdapter>> {
+    pub fn local(&self) -> Option<&Arc<MurmurCoreAdapter>> {
         self.local.as_ref()
     }
 
@@ -504,21 +504,21 @@ impl RouterAdapter {
     }
 
     /// Hand the OpenRouter key (Credential Manager
-    /// `flow-clone/cloud/openrouter`, bound to openrouter.ai) to the router,
+    /// `murmur/cloud/openrouter`, bound to openrouter.ai) to the router,
     /// or forget it. A key stored for another host is deleted, not sent.
-    /// The optional custom cleanup server key (D52, `flow-clone/cloud/custom`)
+    /// The optional custom cleanup server key (D52, `murmur/cloud/custom`)
     /// goes to the router under its own id: it never stands in for the
     /// OpenRouter key, nor the reverse. Startup and after every key change.
     pub fn load_cloud_keys(&self, store: &dyn crate::credentials::CredentialStore) {
         let key = crate::credentials::openrouter_key(store);
         self.router.set_cloud_key(
             crate::credentials::OPENROUTER,
-            key.map(flow_router::SecretString::new),
+            key.map(murmur_router::SecretString::new),
         );
         let custom = crate::credentials::custom_key(store);
         self.router.set_cloud_key(
             crate::credentials::CUSTOM,
-            custom.map(flow_router::SecretString::new),
+            custom.map(murmur_router::SecretString::new),
         );
     }
 
@@ -674,9 +674,13 @@ impl RouterAdapter {
         let caps = self.router.capabilities();
         self.router.cloud_capabilities().cloud
             && cfg.allow_cloud
-            && cfg.order.contains(&flow_router::Route::Cloud)
-            && !(caps.remote && cfg.allow_server && cfg.order.contains(&flow_router::Route::Server))
-            && !(caps.local && cfg.allow_client && cfg.order.contains(&flow_router::Route::Client))
+            && cfg.order.contains(&murmur_router::Route::Cloud)
+            && !(caps.remote
+                && cfg.allow_server
+                && cfg.order.contains(&murmur_router::Route::Server))
+            && !(caps.local
+                && cfg.allow_client
+                && cfg.order.contains(&murmur_router::Route::Client))
     }
 
     /// Why the cloud route cannot start (budget, else setup).
@@ -719,7 +723,7 @@ impl RouterAdapter {
     }
 }
 
-/// Pill text for flow-remote's `connect_failed … plaintext refused …`:
+/// Pill text for murmur-remote's `connect_failed … plaintext refused …`:
 /// `ws://` to an address that is not private/VPN (review S6).
 pub const SERVER_NEEDS_TLS: &str =
     "Server needs TLS — its address is not private; turn on TLS in Developer settings";
@@ -872,7 +876,8 @@ impl CoreApi for RouterAdapter {
         if cleaner.is_none() && loading && !instruction.trim().is_empty() {
             return Err(LLM_LOADING_MSG.into());
         }
-        flow_core::command::run(cleaner, instruction, selected, timeout).map_err(|e| e.to_string())
+        murmur_core::command::run(cleaner, instruction, selected, timeout)
+            .map_err(|e| e.to_string())
     }
 
     /// Transforms on the same route as Command Mode (consent, budget,
@@ -882,7 +887,7 @@ impl CoreApi for RouterAdapter {
         &self,
         instruction: &str,
         text: &str,
-        source: flow_core::transform::Source,
+        source: murmur_core::transform::Source,
         timeout: std::time::Duration,
     ) -> Result<String, String> {
         let base = self.local.as_ref().and_then(|a| a.cleaner());
@@ -891,7 +896,7 @@ impl CoreApi for RouterAdapter {
         if cleaner.is_none() && loading && !text.trim().is_empty() {
             return Err(LLM_LOADING_MSG.into());
         }
-        flow_core::transform::run_transform(cleaner, instruction, text, source, timeout)
+        murmur_core::transform::run_transform(cleaner, instruction, text, source, timeout)
             .map_err(|e| e.to_string())
     }
 }
@@ -915,7 +920,7 @@ impl RouterAdapter {
     pub fn summary_cleaner(
         &self,
         wait: std::time::Duration,
-    ) -> Option<Arc<dyn flow_core::cleanup::Cleaner>> {
+    ) -> Option<Arc<dyn murmur_core::cleanup::Cleaner>> {
         let t0 = Instant::now();
         while t0.elapsed() < wait && self.local_llm_loading() {
             std::thread::sleep(std::time::Duration::from_millis(200));
@@ -985,7 +990,7 @@ impl MeetingEngine {
         remote: Option<RemoteFactory>,
         keys: Option<&dyn crate::credentials::CredentialStore>,
     ) -> Arc<MeetingEngine> {
-        let slot = local.as_ref().map(|_| FlowCoreAdapter::new());
+        let slot = local.as_ref().map(|_| MurmurCoreAdapter::new());
         let adapter = RouterAdapter::new(cfg, slot.clone(), remote);
         if let Some(k) = keys {
             adapter.load_cloud_keys(k);
@@ -1006,12 +1011,12 @@ impl MeetingEngine {
     }
 }
 
-impl flow_router::meeting::ChunkTranscriber for MeetingEngine {
+impl murmur_router::meeting::ChunkTranscriber for MeetingEngine {
     fn transcribe_chunk(
         &self,
         pcm: &[i16],
-        cfg: &flow_core::config::SessionConfig,
-    ) -> flow_core::CommitResult {
+        cfg: &murmur_core::config::SessionConfig,
+    ) -> murmur_core::CommitResult {
         self.adapter.router().transcribe_chunk(pcm, cfg)
     }
 
@@ -1033,13 +1038,13 @@ mod tests {
         cloud: true,
     };
 
-    /// A "server": a real FlowCore with MockAsr behind `kind() == Remote`,
+    /// A "server": a real MurmurCore with MockAsr behind `kind() == Remote`,
     /// that can be switched off. Counts connections (factory calls that
     /// reached `start_session`) and received samples.
     struct FakeServer {
-        core: flow_core::FlowCore,
+        core: murmur_core::MurmurCore,
         up: AtomicBool,
-        /// Answer like flow-remote refusing ws:// to a public address (S6).
+        /// Answer like murmur-remote refusing ws:// to a public address (S6).
         public: AtomicBool,
         starts: AtomicUsize,
         samples: AtomicU64,
@@ -1047,8 +1052,8 @@ mod tests {
 
     impl FakeServer {
         fn new(text: &str) -> Arc<Self> {
-            let core = flow_core::FlowCore::load_models(&flow_core::config::ModelConfig {
-                asr_backend: flow_core::config::AsrBackend::Mock { text: text.into() },
+            let core = murmur_core::MurmurCore::load_models(&murmur_core::config::ModelConfig {
+                asr_backend: murmur_core::config::AsrBackend::Mock { text: text.into() },
                 ..Default::default()
             })
             .unwrap();
@@ -1073,7 +1078,7 @@ mod tests {
         }
         fn start_session(
             &self,
-            cfg: &flow_core::config::SessionConfig,
+            cfg: &murmur_core::config::SessionConfig,
         ) -> Result<StartInfo, BackendError> {
             if self.0.public.load(Ordering::SeqCst) {
                 return Err(BackendError::new(
@@ -1091,13 +1096,13 @@ mod tests {
             self.0.samples.fetch_add(pcm.len() as u64, Ordering::SeqCst);
             Backend::push_audio(&self.0.core, pcm)
         }
-        fn set_context(&self, ctx: &flow_core::config::FieldContext) {
+        fn set_context(&self, ctx: &murmur_core::config::FieldContext) {
             Backend::set_context(&self.0.core, ctx)
         }
         fn partial(&self) -> Option<String> {
             Backend::partial(&self.0.core)
         }
-        fn commit(&self, d: Instant) -> Result<flow_core::CommitResult, BackendError> {
+        fn commit(&self, d: Instant) -> Result<murmur_core::CommitResult, BackendError> {
             if !self.0.up.load(Ordering::SeqCst) {
                 return Err(BackendError::new(Failure::Disconnected, "gone"));
             }
@@ -1142,12 +1147,12 @@ mod tests {
         // D36: server cleanup is its own switch (a configured server with
         // it on is reached for text even when it does not transcribe);
         // "server off" here means not used at all.
-        d.set_cleanup_on(flow_router::CleanupRoute::Server, server);
+        d.set_cleanup_on(murmur_router::CleanupRoute::Server, server);
         d
     }
 
     fn rig(d: &DevSettings) -> Rig {
-        let local = FlowCoreAdapter::new();
+        let local = MurmurCoreAdapter::new();
         assert!(local
             .load_now(&ModelSpec::Mock {
                 text: "from this pc".into()
@@ -1187,12 +1192,12 @@ mod tests {
     /// Echoes the command prompt's user message (proves the selection and
     /// instruction reached the LLM).
     struct EchoLlm;
-    impl flow_core::cleanup::Cleaner for EchoLlm {
+    impl murmur_core::cleanup::Cleaner for EchoLlm {
         fn clean(
             &self,
-            p: &flow_core::cleanup::CleanPrompt,
+            p: &murmur_core::cleanup::CleanPrompt,
             _deadline: Instant,
-        ) -> Result<String, flow_core::cleanup::CleanError> {
+        ) -> Result<String, murmur_core::cleanup::CleanError> {
             // Upper-case the selection (a transform's text) out of the
             // user message.
             let tag = if p.user.contains("<selected_text>") {
@@ -1212,7 +1217,7 @@ mod tests {
 
     fn command_rig(llm: bool) -> Arc<RouterAdapter> {
         use crate::core_adapter::LlmSpec;
-        let local = FlowCoreAdapter::with_llm_loader(Arc::new(|_s: &LlmSpec| {
+        let local = MurmurCoreAdapter::with_llm_loader(Arc::new(|_s: &LlmSpec| {
             Ok(crate::core_adapter::LlmLoaded {
                 cleaner: Arc::new(EchoLlm),
                 plugin: "fake-plugin".into(),
@@ -1248,7 +1253,7 @@ mod tests {
 
     #[test]
     fn transform_runs_on_the_local_llm_for_a_selection_and_a_dictation() {
-        use flow_core::transform::Source;
+        use murmur_core::transform::Source;
         let r = command_rig(true);
         let t = std::time::Duration::from_secs(5);
         for src in [Source::Selection, Source::Dictation] {
@@ -1268,7 +1273,7 @@ mod tests {
         let t = std::time::Duration::ZERO;
         let r = command_rig(true);
         let cl = r.summary_cleaner(t).expect("the local LLM is on");
-        assert_eq!(flow_core::cleanup::first_ready_engine(&cl), "local");
+        assert_eq!(murmur_core::cleanup::first_ready_engine(&cl), "local");
         // No LLM loaded and nothing else on: no engine.
         assert!(command_rig(false).summary_cleaner(t).is_none());
     }
@@ -1283,7 +1288,7 @@ mod tests {
                 std::time::Duration::from_secs(5),
             )
             .unwrap_err();
-        assert_eq!(e, flow_core::command::CommandError::NoLlm.to_string());
+        assert_eq!(e, murmur_core::command::CommandError::NoLlm.to_string());
     }
 
     #[test]
@@ -1369,7 +1374,7 @@ mod tests {
         let factory: RemoteFactory = Box::new(move |_cfg: &ServerConfig| {
             Arc::new(FakeRemote(s2.clone())) as Arc<dyn Backend>
         });
-        let local = FlowCoreAdapter::new();
+        let local = MurmurCoreAdapter::new();
         assert!(!local.is_ready(), "cold: never loaded at startup");
         let r = RouterAdapter::new(
             router_config(&d, BOTH).unwrap(),
@@ -1403,7 +1408,7 @@ mod tests {
     /// open on the dictation router; neither cancels the other.
     #[test]
     fn a_meeting_chunk_does_not_disturb_an_open_dictation() {
-        use flow_router::meeting::ChunkTranscriber;
+        use murmur_router::meeting::ChunkTranscriber;
         let d = dev(false, true);
         let rig = rig(&d);
         rig.router.start_session(session()).unwrap();
@@ -1420,9 +1425,9 @@ mod tests {
             None,
             None,
         );
-        let cfg = flow_core::config::SessionConfig {
+        let cfg = murmur_core::config::SessionConfig {
             raw_mode: true,
-            ..flow_core::config::SessionConfig::default()
+            ..murmur_core::config::SessionConfig::default()
         };
         let chunk = meeting.transcribe_chunk(&[3000; 32_000], &cfg);
         assert_eq!(chunk.final_text.trim(), "meeting words", "{chunk:?}");
@@ -1437,13 +1442,13 @@ mod tests {
 
     /// Probe (D45): the extra memory of a meeting engine next to a loaded
     /// dictation model. Linux only (reads VmRSS). Run with
-    /// `FLOW_RSS_MODEL=<ggml .bin> cargo test --lib meeting_engine_rss --
+    /// `MURMUR_RSS_MODEL=<ggml .bin> cargo test --lib meeting_engine_rss --
     /// --ignored --nocapture`.
     #[test]
-    #[ignore = "probe: needs a real model in FLOW_RSS_MODEL"]
+    #[ignore = "probe: needs a real model in MURMUR_RSS_MODEL"]
     fn meeting_engine_rss() {
-        use flow_router::meeting::ChunkTranscriber;
-        let Ok(path) = std::env::var("FLOW_RSS_MODEL") else {
+        use murmur_router::meeting::ChunkTranscriber;
+        let Ok(path) = std::env::var("MURMUR_RSS_MODEL") else {
             return;
         };
         let rss_mb = || {
@@ -1461,7 +1466,7 @@ mod tests {
             threads: None,
         };
         let base = rss_mb();
-        let dictation = FlowCoreAdapter::new();
+        let dictation = MurmurCoreAdapter::new();
         dictation.load_now(&spec);
         let one = rss_mb();
         let meeting = MeetingEngine::new(
@@ -1478,10 +1483,10 @@ mod tests {
         let pcm: Vec<i16> = (0..16_000 * 20)
             .map(|i| ((i as f32 * 0.07).sin() * 6000.0) as i16)
             .collect();
-        let cfg = flow_core::config::SessionConfig {
+        let cfg = murmur_core::config::SessionConfig {
             raw_mode: true,
             max_samples: 16_000 * 60,
-            ..flow_core::config::SessionConfig::default()
+            ..murmur_core::config::SessionConfig::default()
         };
         let r = meeting.transcribe_chunk(&pcm, &cfg);
         let ran = rss_mb();
@@ -1498,7 +1503,7 @@ mod tests {
 
     #[test]
     fn a_cold_meeting_engine_loads_its_model_on_demand() {
-        use flow_router::meeting::ChunkTranscriber;
+        use murmur_router::meeting::ChunkTranscriber;
         let mut d = dev(true, true);
         d.keep_local_warm = false;
         let server = FakeServer::new("from the server");
@@ -1520,7 +1525,7 @@ mod tests {
             None,
         );
         assert!(!meeting.adapter().local().unwrap().is_ready());
-        let cfg = flow_core::config::SessionConfig::default();
+        let cfg = murmur_core::config::SessionConfig::default();
         let r = meeting.transcribe_chunk(&[3000; 32_000], &cfg);
         assert_eq!(r.final_text.trim(), "local meeting", "{r:?}");
     }
@@ -1560,15 +1565,15 @@ mod tests {
     /// the chunk falls back to this PC, loaded on demand.
     #[test]
     fn a_meeting_follows_its_order_and_falls_back() {
-        use flow_router::meeting::ChunkTranscriber;
+        use murmur_router::meeting::ChunkTranscriber;
         let mut d = dev(true, true);
         d.route_order = vec![Route::Client, Route::Server];
         meeting_order(&mut d, &[(Route::Server, true), (Route::Client, true)]);
         let plan = meeting_plan(&d, BOTH).unwrap();
         assert!(plan.local && !plan.warm, "{plan:?}");
-        let cfg = flow_core::config::SessionConfig {
+        let cfg = murmur_core::config::SessionConfig {
             raw_mode: true,
-            ..flow_core::config::SessionConfig::default()
+            ..murmur_core::config::SessionConfig::default()
         };
 
         let up = FakeServer::new("from the server");
@@ -1592,7 +1597,7 @@ mod tests {
     /// meetings never reach the server, dictation still does.
     #[test]
     fn meeting_order_does_not_change_dictation() {
-        use flow_router::meeting::ChunkTranscriber;
+        use murmur_router::meeting::ChunkTranscriber;
         let mut d = dev(true, true);
         meeting_order(&mut d, &[(Route::Client, true), (Route::Server, false)]);
         let plan = meeting_plan(&d, BOTH).unwrap();
@@ -1601,7 +1606,7 @@ mod tests {
         let m = meeting_engine(plan, &server);
         let r = m.transcribe_chunk(
             &[3000; 32_000],
-            &flow_core::config::SessionConfig::default(),
+            &murmur_core::config::SessionConfig::default(),
         );
         assert_eq!(r.final_text.trim(), "local meeting", "{r:?}");
         assert_eq!(
@@ -1644,7 +1649,7 @@ mod tests {
         });
         let r = RouterAdapter::new(
             router_config(&d, BOTH).unwrap(),
-            Some(FlowCoreAdapter::new()),
+            Some(MurmurCoreAdapter::new()),
             Some(factory),
         );
         r.set_on_demand(Some(ModelSpec::Whisper {
@@ -1792,15 +1797,13 @@ mod tests {
     #[test]
     fn learn_edit_runs_locally_with_the_last_dictionary() {
         let r = rig(&dev(true, true));
-        let cands = r
-            .router
-            .learn_edit("I use cora note", "I use Korra Note");
+        let cands = r.router.learn_edit("I use cora note", "I use Korra Note");
         assert!(cands.iter().any(|c| c.word.contains("Korra")), "{cands:?}");
     }
 
     #[test]
     fn local_not_ready_message_names_the_model_problem() {
-        let local = FlowCoreAdapter::new();
+        let local = MurmurCoreAdapter::new();
         local.load_now(&ModelSpec::Whisper {
             path: "/nonexistent/ggml-base.bin".into(),
             threads: None,
@@ -1824,7 +1827,7 @@ mod tests {
     /// D75 fixture: a fresh install with no speech model on this PC and no
     /// server address, dictation routes in `order`.
     fn nothing_set_up(order: Vec<Route>) -> Arc<RouterAdapter> {
-        let local = FlowCoreAdapter::new();
+        let local = MurmurCoreAdapter::new();
         local.load_now(&ModelSpec::Whisper {
             path: "/nonexistent/ggml-base.bin".into(),
             threads: None,
@@ -1903,7 +1906,7 @@ mod tests {
     #[test]
     fn dev_settings_map_to_the_router_fixtures() {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../crates/flow-router/fixtures");
+            .join("../../crates/murmur-router/fixtures");
         let fixture = |name: &str| -> serde_json::Value {
             let t = std::fs::read_to_string(dir.join(name)).unwrap();
             serde_json::from_str(&t).unwrap()
@@ -1964,7 +1967,7 @@ mod tests {
         let remote_only = DevSettings {
             keep_local_warm: false,
             server: ServerSettings {
-                host: "flow.example.com".into(),
+                host: "murmur.example.com".into(),
                 port: 443,
                 tls: true,
                 tls_pin_sha256: "3f2a9c0b7e4d1f6a8b5c2e9d0a7f4b1c6e3d8a5f2b9c0e7d4a1f6b3c8e5d2a9f"
@@ -2009,7 +2012,7 @@ mod tests {
             assert!(router_config(&d, BOTH).is_ok(), "{h}");
             assert_eq!(
                 crate::dev_settings::host_is_public(&d.server.host),
-                !flow_router::net::classify(&d.server.host).plaintext_ok(),
+                !murmur_router::net::classify(&d.server.host).plaintext_ok(),
                 "{h}"
             );
         }

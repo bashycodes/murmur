@@ -1,7 +1,7 @@
-package dev.flowclone.data
+package dev.murmur.data
 
 import android.database.sqlite.SQLiteDatabase
-import dev.flowclone.FlowApp
+import dev.murmur.MurmurApp
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -13,7 +13,7 @@ import org.robolectric.annotation.Config
 
 /** history.db v3 (insert outcome + route) and the upgrade from a v2 file saved by 0.3.0. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], application = FlowApp::class)
+@Config(sdk = [34], application = MurmurApp::class)
 class HistoryStoreTest {
     private val ctx get() = RuntimeEnvironment.getApplication()
 
@@ -68,7 +68,7 @@ class HistoryStoreTest {
     /** Command Mode rows: instruction, original selection and result round-trip; Insights never counts them. */
     @Test fun commandRowsRoundTripAndStayOutOfInsights() {
         val s = HistoryStore(ctx)
-        val rec = dev.flowclone.command.CommandRecord("make it shorter", "A very long sentence.", "Short.", "com.example.notes", "inserted")
+        val rec = dev.murmur.command.CommandRecord("make it shorter", "A very long sentence.", "Short.", "com.example.notes", "inserted")
         s.add(HistoryRow.ofCommand(rec, 7L), Retention.KEEP)
         s.add(HistoryRow.ofCommand(rec.copy(original = null, result = null, outcome = "command_failed"), 8L), Retention.KEEP)
         val (failed, ok) = s.recent()

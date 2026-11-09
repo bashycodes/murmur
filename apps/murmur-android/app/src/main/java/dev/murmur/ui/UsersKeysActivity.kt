@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.app.Activity
 import android.app.AlertDialog
@@ -12,14 +12,14 @@ import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import dev.flowclone.R
-import dev.flowclone.admin.AdminApi
-import dev.flowclone.admin.AdminResult
-import dev.flowclone.admin.CreatedKey
-import dev.flowclone.admin.KeyView
-import dev.flowclone.admin.SecretClip
-import dev.flowclone.admin.UsersKeys
-import dev.flowclone.admin.WhoAmI
+import dev.murmur.R
+import dev.murmur.admin.AdminApi
+import dev.murmur.admin.AdminResult
+import dev.murmur.admin.CreatedKey
+import dev.murmur.admin.KeyView
+import dev.murmur.admin.SecretClip
+import dev.murmur.admin.UsersKeys
+import dev.murmur.admin.WhoAmI
 import kotlin.concurrent.thread
 
 /**
@@ -221,7 +221,7 @@ class UsersKeysActivity : Activity() {
         fun check() {
             val api = UsersKeys.factory(a)
             if (api == null) { show(null); askedFor = null; return }
-            val key = dev.flowclone.FlowApp.of(a).dev.load().toServerConfigJson().toString()
+            val key = dev.murmur.MurmurApp.of(a).dev.load().toServerConfigJson().toString()
             if (key == askedFor) return
             askedFor = key
             thread(name = "users-keys-whoami") {

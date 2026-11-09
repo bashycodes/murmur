@@ -1,11 +1,11 @@
-package dev.flowclone.server
+package dev.murmur.server
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** D41: flow-ffi's library JSON (JNI_CONTRACT.md "Model library") as the app reads it. */
+/** D41: murmur-ffi's library JSON (JNI_CONTRACT.md "Model library") as the app reads it. */
 class ServerLibraryJsonTest {
     @Test fun parsesTheList() {
         val r = LibraryJson.parseList(

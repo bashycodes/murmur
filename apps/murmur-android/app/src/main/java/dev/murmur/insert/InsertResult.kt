@@ -1,4 +1,4 @@
-package dev.flowclone.insert
+package dev.murmur.insert
 
 /** Outcome of one V3 insertion: failure reason and how success was verified. */
 data class InsertResult(

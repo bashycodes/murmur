@@ -1,8 +1,8 @@
-package dev.flowclone.bubble
+package dev.murmur.bubble
 
-import dev.flowclone.core.SessionRoute
-import dev.flowclone.session.DictationHint
-import dev.flowclone.session.DictationState
+import dev.murmur.core.SessionRoute
+import dev.murmur.session.DictationHint
+import dev.murmur.session.DictationState
 
 /** "via phone | server | provider" for the live route (2026-10-22 shell changelog), + why it is not the first route. */
 object RouteLabel {

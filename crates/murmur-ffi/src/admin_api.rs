@@ -1,20 +1,20 @@
 //! D39 admin API for the Android "Users & keys" page (feature `admin`, only
 //! in the `hybrid` / `remote` flavours). JSON in, JSON out over
-//! [`flow_remote::admin::AdminClient`], so the JNI layer (`jni_admin`) stays
+//! [`murmur_remote::admin::AdminClient`], so the JNI layer (`jni_admin`) stays
 //! a thin string shim and this is testable without a JVM.
 //!
 //! Every function takes the saved server config (`ServerConfig` JSON, the
 //! same one `nativeProbeServer` gets), blocks for at most
-//! `flow_remote::admin::REQUEST_TIMEOUT`, and never fails: it answers
+//! `murmur_remote::admin::REQUEST_TIMEOUT`, and never fails: it answers
 //! `{"ok":true,"value":<answer>}` or `{"ok":false,"code":"…","message":"…"}`
-//! (`code` = the `flow_protocol::admin::code` values).
+//! (`code` = the `murmur_protocol::admin::code` values).
 //!
 //! Privacy: nothing here logs. A created key's secret exists only in the
 //! returned string; the decoded copy is wiped before returning.
 
-use flow_protocol::admin::{code, AdminError};
-use flow_remote::admin::AdminClient;
-use flow_router::ServerConfig;
+use murmur_protocol::admin::{code, AdminError};
+use murmur_remote::admin::AdminClient;
+use murmur_router::ServerConfig;
 use serde::Serialize;
 
 fn client(server_json: &str) -> Result<AdminClient, AdminError> {
@@ -28,7 +28,7 @@ fn client(server_json: &str) -> Result<AdminClient, AdminError> {
     }
     Ok(AdminClient::new(
         cfg,
-        &format!("flow-android {}", flow_build_info::FULL),
+        &format!("murmur-android {}", murmur_build_info::FULL),
     ))
 }
 

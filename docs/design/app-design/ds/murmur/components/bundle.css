@@ -1,4 +1,4 @@
-/* Flow design system: component styles. Every colour is a token from tokens.css. */
+/* Murmur design system: component styles. Every colour is a token from tokens.css. */
 .fl, .fl * { box-sizing: border-box; }
 .fl { font-family: var(--font-sans); color: var(--foreground); font-size: 15px; line-height: 20px; -webkit-font-smoothing: antialiased; }
 .fl-serif { font-family: var(--font-serif); font-weight: 400; letter-spacing: -0.04em; -webkit-font-smoothing: antialiased; }

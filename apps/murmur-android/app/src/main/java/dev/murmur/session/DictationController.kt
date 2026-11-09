@@ -1,22 +1,22 @@
-package dev.flowclone.session
+package dev.murmur.session
 
-import dev.flowclone.command.CommandRecord
-import dev.flowclone.command.CommandTarget
-import dev.flowclone.core.CommandOutcome
-import dev.flowclone.core.CommitResult
-import dev.flowclone.core.CommitStatus
-import dev.flowclone.core.CoreException
-import dev.flowclone.core.FieldContext
-import dev.flowclone.core.FlowCore
-import dev.flowclone.core.PasteKey
-import dev.flowclone.core.PasteSegment
-import dev.flowclone.core.RouteDiag
-import dev.flowclone.core.RouterErrors
-import dev.flowclone.core.SessionConfig
-import dev.flowclone.core.SessionRoute
-import dev.flowclone.debug.DebugLogger
-import dev.flowclone.debug.DictationTrace
-import dev.flowclone.debug.InsertOutcome
+import dev.murmur.command.CommandRecord
+import dev.murmur.command.CommandTarget
+import dev.murmur.core.CommandOutcome
+import dev.murmur.core.CommitResult
+import dev.murmur.core.CommitStatus
+import dev.murmur.core.CoreException
+import dev.murmur.core.FieldContext
+import dev.murmur.core.MurmurCore
+import dev.murmur.core.PasteKey
+import dev.murmur.core.PasteSegment
+import dev.murmur.core.RouteDiag
+import dev.murmur.core.RouterErrors
+import dev.murmur.core.SessionConfig
+import dev.murmur.core.SessionRoute
+import dev.murmur.debug.DebugLogger
+import dev.murmur.debug.DictationTrace
+import dev.murmur.debug.InsertOutcome
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
@@ -78,7 +78,7 @@ class Recording(val pcm: ShortArray, val appCategory: String?)
 /**
  * D55: the speech engine is loading. A dictation records at once, holds its audio on the phone,
  * and [await] (suspending, cancellable) returns the engine once it is loaded, or throws
- * [dev.flowclone.core.CoreException] when the load failed. [label] names the model for the bubble.
+ * [dev.murmur.core.CoreException] when the load failed. [label] names the model for the bubble.
  */
 class LoadWait(val label: String, val await: suspend () -> LoadedEngine)
 
@@ -87,7 +87,7 @@ class LoadWait(val label: String, val await: suspend () -> LoadedEngine)
  * the held audio is transcribed there and never sent to the server (owner decision 2026-11-05);
  * otherwise (D24 on-demand route, server-only plan) the dictation starts on its normal route.
  */
-class LoadedEngine(val core: FlowCore, val phoneOnly: Boolean)
+class LoadedEngine(val core: MurmurCore, val phoneOnly: Boolean)
 
 /** D35: what History's "Retry with current settings" produced. */
 sealed interface RetryOutcome {
@@ -144,7 +144,7 @@ class DictationController(
     private val audio: AudioSource,
     private val host: Host,
     /** Loaded core; throws [CoreException] when the engine is unavailable. */
-    private val core: () -> FlowCore,
+    private val core: () -> MurmurCore,
     /** Where the blocking `commit()` runs (Dispatchers.Default in the app). */
     private val commitDispatcher: CoroutineDispatcher,
     /** Read at each recording start, so a settings change applies to the next session. */
@@ -164,7 +164,7 @@ class DictationController(
     private val loadWait: () -> LoadWait? = { null },
 ) {
     constructor(
-        scope: CoroutineScope, audio: AudioSource, host: Host, core: () -> FlowCore,
+        scope: CoroutineScope, audio: AudioSource, host: Host, core: () -> MurmurCore,
         commitDispatcher: CoroutineDispatcher, now: () -> Long,
     ) : this(scope, audio, host, core, commitDispatcher, SessionCap(), now)
 
@@ -360,10 +360,10 @@ class DictationController(
     private var lastToggleAt = Long.MIN_VALUE / 2
     private var capJob: Job? = null
     private var processingJob: Job? = null
-    private var processingCore: FlowCore? = null
-    private var session: FlowCore? = null
+    private var processingCore: MurmurCore? = null
+    private var session: MurmurCore? = null
     /** Completes with the engine once the session started (null: start failed or the dictation was dropped). */
-    private var started: Deferred<FlowCore?>? = null
+    private var started: Deferred<MurmurCore?>? = null
     /** D55: the dictation's wait for the speech model; cancelled with the dictation. */
     private var loadJob: Job? = null
     /** D55: the dictation recording (or stopped) while its engine loads; null once it started. */
@@ -433,7 +433,7 @@ class DictationController(
                     target = s.appId?.ifEmpty { null }, insert = InsertOutcome(outcome),
                     raw = result?.asrText?.ifEmpty { null }, text = text ?: result?.historyText?.ifEmpty { null },
                     error = error ?: result?.error, stack = DebugLogger.stackOf(cause),
-                    style = s.style, llm = dev.flowclone.data.LlmOutcome.code(result),
+                    style = s.style, llm = dev.murmur.data.LlmOutcome.code(result),
                     speechMs = t?.speechMs, peakDbfs = t?.peakDbfs,
                     llmEngine = result?.route?.llmEngine ?: result?.llm?.engine, llmModel = result?.route?.llmModel ?: result?.llm?.model,
                     llmCostUsd = result?.route?.llmCostUsd ?: result?.llm?.costUsd, llmTtftMs = result?.llm?.ttftMs,
@@ -611,13 +611,13 @@ class DictationController(
      * processes or starts, or another retry runs.
      */
     suspend fun retry(pcm: ShortArray, ctx: FieldContext?): RetryOutcome {
-        if (retrying) return RetryOutcome.Failed(dev.flowclone.data.RetryLogic.RUNNING)
-        if (replaying) return RetryOutcome.Failed(dev.flowclone.data.RetryLogic.BUSY)
+        if (retrying) return RetryOutcome.Failed(dev.murmur.data.RetryLogic.RUNNING)
+        if (replaying) return RetryOutcome.Failed(dev.murmur.data.RetryLogic.BUSY)
         val s = _state.value
         if (s is DictationState.Recording || s is DictationState.Processing || started?.isActive == true) {
-            return RetryOutcome.Failed(dev.flowclone.data.RetryLogic.BUSY)
+            return RetryOutcome.Failed(dev.murmur.data.RetryLogic.BUSY)
         }
-        if (pcm.isEmpty()) return RetryOutcome.Failed(dev.flowclone.data.RetryLogic.GONE)
+        if (pcm.isEmpty()) return RetryOutcome.Failed(dev.murmur.data.RetryLogic.GONE)
         retrying = true
         try {
             val c = try {
@@ -643,9 +643,9 @@ class DictationController(
             if (isCancelled(r)) return RetryOutcome.Failed("Cancelled")
             if (r.status == CommitStatus.ERROR) {
                 val routed = routerFailure(r)?.let { withClientNote(it, CoreException.kindOf(r.error), runCatching { host.clientFallbackNote() }.getOrNull()) }
-                return RetryOutcome.Failed(routed ?: dev.flowclone.data.RetryLogic.failure(r)!!)
+                return RetryOutcome.Failed(routed ?: dev.murmur.data.RetryLogic.failure(r)!!)
             }
-            dev.flowclone.data.RetryLogic.failure(r)?.let { return RetryOutcome.Failed(it) }
+            dev.murmur.data.RetryLogic.failure(r)?.let { return RetryOutcome.Failed(it) }
             return RetryOutcome.Done(r)
         } finally {
             retrying = false
@@ -661,7 +661,7 @@ class DictationController(
      * on [commitDispatcher]. Throws the start's [CoreException].
      */
     private fun replay(
-        c: FlowCore, cfg: SessionConfig, ctx: FieldContext?, pcm: ShortArray, gen: Long,
+        c: MurmurCore, cfg: SessionConfig, ctx: FieldContext?, pcm: ShortArray, gen: Long,
         phoneOnly: Boolean = false, stop: () -> Boolean,
     ): CommitResult {
         val cancelled = CommitResult(CommitStatus.ERROR, error = "cancelled")
@@ -694,7 +694,7 @@ class DictationController(
         }
         // D55: while the speech model loads, record anyway and wait for it.
         var wait: LoadWait? = null
-        val ready: FlowCore? = try {
+        val ready: MurmurCore? = try {
             core()
         } catch (e: CoreException) {
             if (e.kind == CoreException.KIND_LOADING) wait = try { loadWait() } catch (_: Exception) { null }
@@ -962,7 +962,7 @@ class DictationController(
                 _state.value = DictationState.Error(DictationState.ErrorKind.FailedToTranscribe)
                 done(InsertOutcome.TIMEOUT, error = "no result after $budget ms")
             }
-            val c: FlowCore
+            val c: MurmurCore
             val pending: Deferred<CommitResult>
             val budget: Long
             if (relangCfg == null) {
@@ -1120,7 +1120,7 @@ class DictationController(
      * failure leaves the field as it was: error tone + the reason in the bubble.
      */
     private suspend fun runCommand(
-        c: FlowCore, target: CommandTarget.Field, result: CommitResult, appId: String?, gen: Long,
+        c: MurmurCore, target: CommandTarget.Field, result: CommitResult, appId: String?, gen: Long,
         done: (outcome: String, r: CommitResult?, error: String?, text: String?) -> Unit,
     ) {
         val instruction = result.historyText.ifBlank { result.asrText }.trim()
@@ -1208,8 +1208,8 @@ object NotInsertedNotice {
         val n = words(transcript)
         val size = if (n == 1) "1 word" else "$n words"
         val why = when (outcome) {
-            dev.flowclone.debug.InsertOutcome.TARGET_CHANGED -> "You switched fields while dictating"
-            dev.flowclone.debug.InsertOutcome.TARGET_PROTECTED -> "The field is protected"
+            dev.murmur.debug.InsertOutcome.TARGET_CHANGED -> "You switched fields while dictating"
+            dev.murmur.debug.InsertOutcome.TARGET_PROTECTED -> "The field is protected"
             else -> "It could not be typed into the field"
         }
         return "$why ($size). Tap to copy it."

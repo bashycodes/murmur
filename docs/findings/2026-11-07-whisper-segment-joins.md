@@ -9,7 +9,7 @@ into the next piece, or something else? Fix it at the source.
 (scripts only; clips and transcripts stay private). Parity main set, 13
 clips, whisper small q5_1, English, session = the phone config (VAD,
 guard, no dictionary). WER uses the parity eval's normaliser. `core` = the
-real `FlowCore` commit, whole vs segmented, unpaced (same text as paced:
+real `MurmurCore` commit, whole vs segmented, unpaced (same text as paced:
 pieces and bridges decode at commit instead of while recording).
 
 ## Root cause

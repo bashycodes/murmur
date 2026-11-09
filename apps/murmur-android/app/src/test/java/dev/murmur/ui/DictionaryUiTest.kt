@@ -1,20 +1,20 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.content.DialogInterface
 import android.content.Intent
 import android.view.View
 import android.widget.EditText
-import dev.flowclone.FlowApp
-import dev.flowclone.core.DictEntry
-import dev.flowclone.data.DictionaryPages.Kind
-import dev.flowclone.data.ShellPages.Tab
-import dev.flowclone.learn.Suggestion
-import dev.flowclone.learn.Suggestions
-import dev.flowclone.ui.UiTestKit.idle
-import dev.flowclone.ui.UiTestKit.rowTitled
-import dev.flowclone.ui.UiTestKit.texts
-import dev.flowclone.ui.UiTestKit.walk
-import dev.flowclone.ui.tabs.EntryTab
+import dev.murmur.MurmurApp
+import dev.murmur.core.DictEntry
+import dev.murmur.data.DictionaryPages.Kind
+import dev.murmur.data.ShellPages.Tab
+import dev.murmur.learn.Suggestion
+import dev.murmur.learn.Suggestions
+import dev.murmur.ui.UiTestKit.idle
+import dev.murmur.ui.UiTestKit.rowTitled
+import dev.murmur.ui.UiTestKit.texts
+import dev.murmur.ui.UiTestKit.walk
+import dev.murmur.ui.tabs.EntryTab
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -34,10 +34,10 @@ import org.robolectric.shadows.ShadowAlertDialog
  * add / edit page (top-bar Save / Delete, inline errors, Discard prompt).
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], application = FlowApp::class)
+@Config(sdk = [34], application = MurmurApp::class)
 class DictionaryUiTest {
     private val ctx get() = RuntimeEnvironment.getApplication()
-    private val app get() = FlowApp.of(ctx)
+    private val app get() = MurmurApp.of(ctx)
     private val store get() = app.dictionary
 
     @After fun clear() {

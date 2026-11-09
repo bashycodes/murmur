@@ -10,9 +10,9 @@
         android:shortcutLongLabel="@string/shortcut_new_note_long">
         <!-- NoteEditorActivity.ACTION_NEW_NOTE: a fresh note, field focused, keyboard up. -->
         <intent
-            android:action="dev.flowclone.action.NEW_NOTE"
-            android:targetPackage="dev.flowclone"
-            android:targetClass="dev.flowclone.ui.NoteEditorActivity" />
+            android:action="dev.murmur.action.NEW_NOTE"
+            android:targetPackage="dev.murmur"
+            android:targetClass="dev.murmur.ui.NoteEditorActivity" />
     </shortcut>
     <shortcut
         android:shortcutId="scratchpad"
@@ -22,7 +22,7 @@
         android:shortcutLongLabel="@string/shortcut_scratchpad_long">
         <intent
             android:action="android.intent.action.VIEW"
-            android:targetPackage="dev.flowclone"
-            android:targetClass="dev.flowclone.ui.NoteEditorActivity" />
+            android:targetPackage="dev.murmur"
+            android:targetClass="dev.murmur.ui.NoteEditorActivity" />
     </shortcut>
 </shortcuts>

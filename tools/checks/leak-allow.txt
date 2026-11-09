@@ -15,7 +15,7 @@
 * [-_](?:0123456789|abcdefgh)
 # One older fixture with its marker mid-segment, exactly (the [a] keeps this
 # line from matching itself).
-crates/flow-server/tests/debug_capture.rs ^sk-or-v1-0000fake[a]pikey0000$
+crates/murmur-server/tests/debug_capture.rs ^sk-or-v1-0000fake[a]pikey0000$
 # AWS's own documentation key id.
 * ^AKIAIOSFODNN7EXAMPLE$
 
@@ -26,8 +26,8 @@ crates/flow-server/tests/debug_capture.rs ^sk-or-v1-0000fake[a]pikey0000$
 * ^100\.100\.100\.100$
 * ^100\.127\.255\.255$
 # Assignable range-boundary addresses, only in the classifier tests.
-crates/flow-server/src/net.rs ^100\.(?:64\.0\.1|127\.255\.254)$
-apps/flow-windows/src/dev_settings.rs ^100\.(?:64\.0\.1|127\.255\.254)$
+crates/murmur-server/src/net.rs ^100\.(?:64\.0\.1|127\.255\.254)$
+apps/murmur-windows/src/dev_settings.rs ^100\.(?:64\.0\.1|127\.255\.254)$
 
 # Placeholder accounts in docs and CI: /home/user, /home/runner (GitHub
 # Actions), C:\Users\u, C:\Users\you, C:\Users\Public, CI runners.

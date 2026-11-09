@@ -98,9 +98,11 @@ const EXTERNAL: &[(&str, &str)] = &[
 pub fn check_external_url(url: &str) -> Result<(), String> {
     let refuse = || Err(format!("not an allowed link: {url}"));
     if url.len() > 2048
-        || url
-            .chars()
-            .any(|c| c.is_control() || c.is_whitespace() || matches!(c, '\\' | '"' | '<' | '>' | '`' | '^' | '{' | '}' | '|'))
+        || url.chars().any(|c| {
+            c.is_control()
+                || c.is_whitespace()
+                || matches!(c, '\\' | '"' | '<' | '>' | '`' | '^' | '{' | '}' | '|')
+        })
     {
         return refuse();
     }
@@ -196,7 +198,10 @@ mod win {
     }
 
     fn com() -> Com {
-        Com(unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) }.is_ok())
+        Com(
+            unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) }
+                .is_ok(),
+        )
     }
 
     pub fn pick(owner: isize, req: &PickRequest) -> Result<Option<String>, String> {
@@ -223,8 +228,16 @@ mod win {
             dlg.SetTitle(&HSTRING::from(t.as_str()))?;
         }
         // The HSTRINGs must outlive Show (the specs point into them).
-        let names: Vec<HSTRING> = req.filters.iter().map(|f| HSTRING::from(f.name.as_str())).collect();
-        let pats: Vec<HSTRING> = req.filters.iter().map(|f| HSTRING::from(f.pattern.as_str())).collect();
+        let names: Vec<HSTRING> = req
+            .filters
+            .iter()
+            .map(|f| HSTRING::from(f.name.as_str()))
+            .collect();
+        let pats: Vec<HSTRING> = req
+            .filters
+            .iter()
+            .map(|f| HSTRING::from(f.pattern.as_str()))
+            .collect();
         if !names.is_empty() {
             let specs: Vec<COMDLG_FILTERSPEC> = names
                 .iter()
@@ -323,19 +336,35 @@ mod tests {
             name: "Whisper model".into(),
             pattern: "*.bin".into(),
         };
-        let r = PickRequest::new(PickKind::File, Some("  Choose a model  ".into()), Some(vec![bin.clone()])).unwrap();
+        let r = PickRequest::new(
+            PickKind::File,
+            Some("  Choose a model  ".into()),
+            Some(vec![bin.clone()]),
+        )
+        .unwrap();
         assert_eq!(r.title.as_deref(), Some("Choose a model"));
         assert_eq!(r.filters, vec![bin.clone()]);
         assert!(PickRequest::new(PickKind::Folder, None, None).is_ok());
         assert!(PickRequest::new(PickKind::Folder, None, Some(vec![bin.clone()])).is_err());
         assert!(PickRequest::new(PickKind::File, Some("a\u{7}".into()), None).is_err());
         assert!(PickRequest::new(PickKind::File, Some("x".repeat(200)), None).is_err());
-        for bad in ["", "*", "calc.exe", "*.b in", "*.bin;", "C:\\*.bin", "*.bin;../x"] {
+        for bad in [
+            "",
+            "*",
+            "calc.exe",
+            "*.b in",
+            "*.bin;",
+            "C:\\*.bin",
+            "*.bin;../x",
+        ] {
             let f = PickFilter {
                 name: "x".into(),
                 pattern: bad.into(),
             };
-            assert!(PickRequest::new(PickKind::File, None, Some(vec![f])).is_err(), "{bad}");
+            assert!(
+                PickRequest::new(PickKind::File, None, Some(vec![f])).is_err(),
+                "{bad}"
+            );
         }
         let ok = PickFilter {
             name: "Models".into(),
@@ -352,6 +381,8 @@ mod tests {
         let r = PickRequest::new(PickKind::Folder, None, None).unwrap();
         assert!(pick(0, r).is_err());
         assert!(open_external("https://openrouter.ai").is_err());
-        assert!(open_external("calc.exe").unwrap_err().contains("not an allowed"));
+        assert!(open_external("calc.exe")
+            .unwrap_err()
+            .contains("not an allowed"));
     }
 }

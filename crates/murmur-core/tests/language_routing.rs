@@ -5,12 +5,12 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use flow_core::asr::MockAsr;
-use flow_core::cleanup::{CleanError, CleanPrompt, Cleaner};
-use flow_core::config::{AsrBackend, CleanupLevel, LanguageModel, ModelConfig, SessionConfig};
-use flow_core::dictionary::{DictEntry, Dictionary};
-use flow_core::load_timings::{LoadBackend, ModelKind};
-use flow_core::{CommitResult, CommitStatus, FlowCore};
+use murmur_core::asr::MockAsr;
+use murmur_core::cleanup::{CleanError, CleanPrompt, Cleaner};
+use murmur_core::config::{AsrBackend, CleanupLevel, LanguageModel, ModelConfig, SessionConfig};
+use murmur_core::dictionary::{DictEntry, Dictionary};
+use murmur_core::load_timings::{LoadBackend, ModelKind};
+use murmur_core::{CommitResult, CommitStatus, MurmurCore};
 
 fn speech(ms: usize) -> Vec<i16> {
     (0..ms * 16)
@@ -18,7 +18,7 @@ fn speech(ms: usize) -> Vec<i16> {
         .collect()
 }
 
-fn dictate(core: &FlowCore, cfg: SessionConfig) -> CommitResult {
+fn dictate(core: &MurmurCore, cfg: SessionConfig) -> CommitResult {
     core.start_session(cfg).unwrap();
     for c in speech(800).chunks(640) {
         core.push_audio(c);
@@ -33,9 +33,9 @@ fn lang(l: &str) -> SessionConfig {
     }
 }
 
-fn routed(en: &str, he: &str) -> (FlowCore, Arc<MockAsr>, Arc<MockAsr>) {
+fn routed(en: &str, he: &str) -> (MurmurCore, Arc<MockAsr>, Arc<MockAsr>) {
     let (d, h) = (Arc::new(MockAsr::new(en)), Arc::new(MockAsr::new(he)));
-    let core = FlowCore::from_language_engines(d.clone(), vec![("he".into(), h.clone())], None);
+    let core = MurmurCore::from_language_engines(d.clone(), vec![("he".into(), h.clone())], None);
     (core, d, h)
 }
 
@@ -73,7 +73,7 @@ fn auto_english_and_other_languages_use_the_default_engine() {
 fn english_result_is_byte_identical_with_a_language_map() {
     let text =
         "um so the meeting is at three thirty comma right new line thanks scratch that thank you";
-    let single = FlowCore::from_engines(Arc::new(MockAsr::new(text)), None);
+    let single = MurmurCore::from_engines(Arc::new(MockAsr::new(text)), None);
     let (core, _, _) = routed(text, "שלום");
     for cfg in [SessionConfig::default(), lang("en")] {
         let mut a = dictate(&single, cfg.clone());
@@ -135,7 +135,7 @@ fn hebrew_llm_prompt_names_the_language_and_guard_accepts_hebrew() {
         Mutex::new(None),
         "אני רוצה לקבוע פגישה מחר בבוקר עם דני.",
     ));
-    let core = FlowCore::from_language_engines(
+    let core = MurmurCore::from_language_engines(
         Arc::new(MockAsr::new("hello")),
         vec![("he".into(), Arc::new(MockAsr::new(raw)))],
         Some(cl.clone()),
@@ -189,7 +189,7 @@ fn mock_config() -> ModelConfig {
 
 #[test]
 fn load_models_routes_by_the_config_map() {
-    let core = FlowCore::load_models(&mock_config()).unwrap();
+    let core = MurmurCore::load_models(&mock_config()).unwrap();
     assert_eq!(dictate(&core, lang("he")).asr_text, "מילים בעברית");
     assert_eq!(dictate(&core, lang("en")).asr_text, "english words");
     assert_eq!(
@@ -201,7 +201,7 @@ fn load_models_routes_by_the_config_map() {
 #[test]
 fn loads_report_each_model_they_loaded() {
     let cfg = mock_config();
-    let he = FlowCore::load_models_for(&cfg, Some("he")).unwrap();
+    let he = MurmurCore::load_models_for(&cfg, Some("he")).unwrap();
     let t = he.load_timings();
     assert_eq!(t.models.len(), 1, "{t:?}");
     assert_eq!(
@@ -210,7 +210,7 @@ fn loads_report_each_model_they_loaded() {
     );
     assert_eq!(t.models[0].language.as_deref(), Some("he"));
     assert!(t.llm().is_none());
-    let all = FlowCore::load_models(&cfg).unwrap();
+    let all = MurmurCore::load_models(&cfg).unwrap();
     let langs: Vec<_> = all
         .load_timings()
         .models
@@ -225,11 +225,11 @@ fn loads_report_each_model_they_loaded() {
 fn load_models_for_keeps_one_model() {
     let cfg = mock_config();
     // Hebrew only: every session decodes on it until the shell reloads.
-    let he = FlowCore::load_models_for(&cfg, Some("he")).unwrap();
+    let he = MurmurCore::load_models_for(&cfg, Some("he")).unwrap();
     assert_eq!(dictate(&he, lang("he")).asr_text, "מילים בעברית");
     assert_eq!(dictate(&he, lang("en")).asr_text, "מילים בעברית");
     for l in [None, Some("en"), Some("auto"), Some("de")] {
-        let core = FlowCore::load_models_for(&cfg, l).unwrap();
+        let core = MurmurCore::load_models_for(&cfg, l).unwrap();
         assert_eq!(
             dictate(&core, lang("en")).asr_text,
             "english words",

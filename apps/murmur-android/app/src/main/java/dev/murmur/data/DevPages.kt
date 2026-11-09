@@ -1,9 +1,9 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.core.CommitResult
-import dev.flowclone.data.DevSettings.Route
-import dev.flowclone.data.DevSettingsForm.Field
-import dev.flowclone.data.DevSettingsForm.Input
+import dev.murmur.core.CommitResult
+import dev.murmur.data.DevSettings.Route
+import dev.murmur.data.DevSettingsForm.Field
+import dev.murmur.data.DevSettingsForm.Input
 
 /**
  * Developer settings is a hub with focused sub-pages (ui/DeveloperActivity). The Server page

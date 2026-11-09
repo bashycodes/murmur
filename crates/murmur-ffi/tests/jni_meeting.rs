@@ -30,7 +30,7 @@ fn jvm_meeting_round_trip() {
             "build",
             "-q",
             "-p",
-            "flow-ffi",
+            "murmur-ffi",
             "--features",
             &features.join(","),
             "--lib",
@@ -41,7 +41,7 @@ fn jvm_meeting_round_trip() {
     let exe = std::env::current_exe().unwrap();
     let lib_dir = exe.parent().unwrap().parent().unwrap().to_path_buf();
     let src = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/java/dev/flowclone/core/JniMeeting.java");
+        .join("tests/java/dev/murmur/core/JniMeeting.java");
     let out = Command::new("java")
         .arg(format!("-Djava.library.path={}", lib_dir.display()))
         .arg("--enable-native-access=ALL-UNNAMED")

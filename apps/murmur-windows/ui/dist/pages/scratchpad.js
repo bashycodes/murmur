@@ -4,7 +4,7 @@
 // window's editor). This window never reads or writes a note's text itself:
 // it only lists (`note_list`), creates (`note_create`) and pins
 // (`note_set_pinned`) — the capability split tests/capabilities.rs checks.
-// The design's "Add to Flow bar" toggle has no backend and is left out.
+// The design's "Add to Murmur bar" toggle has no backend and is left out.
 import { $, el } from "../lib/dom.js";
 import { ICON, iconEl, iconSvg } from "../lib/icons.js";
 import { invoke } from "../lib/ipc.js";

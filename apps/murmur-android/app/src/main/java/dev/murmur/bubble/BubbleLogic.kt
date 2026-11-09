@@ -1,4 +1,4 @@
-package dev.flowclone.bubble
+package dev.murmur.bubble
 
 import kotlin.math.roundToInt
 
@@ -82,9 +82,9 @@ object ErrorTap {
         DISMISS,
     }
 
-    fun of(kind: dev.flowclone.session.DictationState.ErrorKind): Action = when (kind) {
-        is dev.flowclone.session.DictationState.ErrorKind.EngineLoading -> Action.RECHECK
-        is dev.flowclone.session.DictationState.ErrorKind.EngineUnavailable -> Action.OPEN_APP
+    fun of(kind: dev.murmur.session.DictationState.ErrorKind): Action = when (kind) {
+        is dev.murmur.session.DictationState.ErrorKind.EngineLoading -> Action.RECHECK
+        is dev.murmur.session.DictationState.ErrorKind.EngineUnavailable -> Action.OPEN_APP
         else -> Action.DISMISS
     }
 }

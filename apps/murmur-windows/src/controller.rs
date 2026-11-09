@@ -1,5 +1,5 @@
 //! Orchestrator: runs the dictation machine and executes its effects
-//! against a [`Platform`] (OS side) and a [`CoreApi`] (flow-core side).
+//! against a [`Platform`] (OS side) and a [`CoreApi`] (murmur-core side).
 //!
 //! Platform-independent so the whole hotkey → capture → commit → paste
 //! loop is integration-tested on Linux with fakes. Slow work (commit, paste,
@@ -790,7 +790,7 @@ impl Controller {
         let suggestions = self.suggestions.clone();
         let live_prefs = self.prefs.clone();
         let spawned = std::thread::Builder::new()
-            .name("flow-learn".into())
+            .name("murmur-learn".into())
             .spawn(move || {
                 let Some(mut inner) = platform.field_reader() else {
                     return;
@@ -965,42 +965,41 @@ impl Controller {
                     let tx = self.tx.clone();
                     let pending = pending.clone();
                     let start_gate = gate.clone();
-                    let spawned =
-                        std::thread::Builder::new()
-                            .name("flow-start".into())
-                            .spawn(move || {
-                                // One start at a time: a late start of a
-                                // cancelled session never overlaps the next.
-                                let _serial = shared.start_lock.lock().unwrap();
-                                let res = core.start_session_info(cfg);
-                                let live = shared.live.load(Ordering::SeqCst) == session;
-                                match res {
-                                    Ok(_) if !live => {
-                                        core.cancel();
-                                        start_gate.open(Err("cancelled".into()));
-                                    }
-                                    Ok(route) => {
-                                        // Flush what the mic captured meanwhile,
-                                        // in order, before live pushes resume.
-                                        let mut g = pending.lock().unwrap();
-                                        if let Some(buf) = g.take() {
-                                            for chunk in buf.chunks(1600) {
-                                                core.push_audio(chunk);
-                                            }
-                                        }
-                                        drop(g);
-                                        start_gate.open(Ok(()));
-                                        if let Some(route) = route {
-                                            let _ = tx.send(Input::Started { session, route });
+                    let spawned = std::thread::Builder::new()
+                        .name("murmur-start".into())
+                        .spawn(move || {
+                            // One start at a time: a late start of a
+                            // cancelled session never overlaps the next.
+                            let _serial = shared.start_lock.lock().unwrap();
+                            let res = core.start_session_info(cfg);
+                            let live = shared.live.load(Ordering::SeqCst) == session;
+                            match res {
+                                Ok(_) if !live => {
+                                    core.cancel();
+                                    start_gate.open(Err("cancelled".into()));
+                                }
+                                Ok(route) => {
+                                    // Flush what the mic captured meanwhile,
+                                    // in order, before live pushes resume.
+                                    let mut g = pending.lock().unwrap();
+                                    if let Some(buf) = g.take() {
+                                        for chunk in buf.chunks(1600) {
+                                            core.push_audio(chunk);
                                         }
                                     }
-                                    Err(message) => {
-                                        pending.lock().unwrap().take();
-                                        start_gate.open(Err(message.clone()));
-                                        let _ = tx.send(Input::StartFailed { session, message });
+                                    drop(g);
+                                    start_gate.open(Ok(()));
+                                    if let Some(route) = route {
+                                        let _ = tx.send(Input::Started { session, route });
                                     }
                                 }
-                            });
+                                Err(message) => {
+                                    pending.lock().unwrap().take();
+                                    start_gate.open(Err(message.clone()));
+                                    let _ = tx.send(Input::StartFailed { session, message });
+                                }
+                            }
+                        });
                     if let Err(e) = spawned {
                         gate.open(Err(e.to_string()));
                         let _ = self.tx.send(Input::StartFailed {
@@ -1197,11 +1196,11 @@ impl Controller {
                         // Auto-apply: the transform's text, with the
                         // dictation's spoken "press enter".
                         Some(match &i.applied {
-                            Some(_) => flow_core::paste::segments(&text, r.press_enter),
+                            Some(_) => murmur_core::paste::segments(&text, r.press_enter),
                             None => r.paste_segments(),
                         })
                     })
-                    .unwrap_or_else(|| flow_core::paste::segments(&text, false));
+                    .unwrap_or_else(|| murmur_core::paste::segments(&text, false));
                 let steps = crate::paste::plan(&segs);
                 if self.debug_on() {
                     let names = step_names(&steps, prefs.paste_method);
@@ -1281,7 +1280,7 @@ impl Controller {
         }
         let platform = self.platform.clone();
         let spawned = std::thread::Builder::new()
-            .name("flow-selection".into())
+            .name("murmur-selection".into())
             .spawn(move || {
                 platform.wait_shortcut_released();
                 let _ = tx.send(platform.capture_selection());
@@ -1331,7 +1330,7 @@ impl Controller {
                 let r = core.command(
                     &instruction,
                     sel.as_deref(),
-                    flow_core::command::DEFAULT_TIMEOUT,
+                    murmur_core::command::DEFAULT_TIMEOUT,
                 );
                 if let (Ok(text), Some(cmd)) = (
                     &r,
@@ -1398,7 +1397,7 @@ impl Controller {
         let debug = self.debug.clone();
         let instruction = item.transform.instruction;
         let spawned = std::thread::Builder::new()
-            .name("flow-transform".into())
+            .name("murmur-transform".into())
             .spawn(move || {
                 // A Ctrl+C fallback must not be read as Win+Alt+C.
                 platform.wait_shortcut_released();
@@ -1424,8 +1423,8 @@ impl Controller {
                     let r = core.transform(
                         &instruction,
                         &sel,
-                        flow_core::transform::Source::Selection,
-                        flow_core::transform::SELECTION_TIMEOUT,
+                        murmur_core::transform::Source::Selection,
+                        murmur_core::transform::SELECTION_TIMEOUT,
                     );
                     if let Ok(text) = &r {
                         set(&|c| c.result = Some(text.clone()));
@@ -1446,7 +1445,7 @@ impl Controller {
     }
 
     /// Auto-apply: run the chosen transform on a dictation's text before
-    /// the paste, within [`flow_core::transform::AUTO_APPLY_TIMEOUT`]. Any
+    /// the paste, within [`murmur_core::transform::AUTO_APPLY_TIMEOUT`]. Any
     /// failure sends the untransformed `text` back to be pasted.
     fn run_auto_transform(&self, session: SessionId, text: String) {
         let item = self
@@ -1478,13 +1477,13 @@ impl Controller {
         let debug = self.debug.clone();
         let fallback = text.clone();
         let spawned = std::thread::Builder::new()
-            .name("flow-auto-transform".into())
+            .name("murmur-auto-transform".into())
             .spawn(move || {
                 let r = core.transform(
                     &item.transform.instruction,
                     &plain,
-                    flow_core::transform::Source::Dictation,
-                    flow_core::transform::AUTO_APPLY_TIMEOUT,
+                    murmur_core::transform::Source::Dictation,
+                    murmur_core::transform::AUTO_APPLY_TIMEOUT,
                 );
                 match &r {
                     Ok(t) => {
@@ -1611,7 +1610,7 @@ impl Controller {
         let own_exe = self.own_exe.clone();
         let debug = self.debug.clone();
         let spawned = std::thread::Builder::new()
-            .name("flow-retry".into())
+            .name("murmur-retry".into())
             .spawn(move || {
                 let r = {
                     let _serial = shared.start_lock.lock().unwrap();
@@ -1650,7 +1649,7 @@ impl Controller {
 
 /// Insights change of a retry: the row's day, old and new words and routes.
 struct RetryWords {
-    day: flow_core::insights::LocalDate,
+    day: murmur_core::insights::LocalDate,
     old: i64,
     new: i64,
     app: String,
@@ -1696,8 +1695,8 @@ fn run_retry(
         core.transform(
             &item.transform.instruction,
             &plain,
-            flow_core::transform::Source::Dictation,
-            flow_core::transform::AUTO_APPLY_TIMEOUT,
+            murmur_core::transform::Source::Dictation,
+            murmur_core::transform::AUTO_APPLY_TIMEOUT,
         )
         .ok()
         .map(|t| (item.transform.name.clone(), crate::paste::plain_text(&t)))
@@ -2481,7 +2480,7 @@ mod tests {
             [(
                 polish.instruction.clone(),
                 "teh draft".to_string(),
-                flow_core::transform::Source::Selection
+                murmur_core::transform::Source::Selection
             )]
         );
         assert!(r.core.starts() == 0, "no speech session");
@@ -2521,7 +2520,7 @@ mod tests {
 
     fn auto_prefs() -> Prefs {
         let mut p = transforms_on();
-        p.transforms.auto_apply = Some(flow_core::transform::POLISH.into());
+        p.transforms.auto_apply = Some(murmur_core::transform::POLISH.into());
         p
     }
 
@@ -2549,7 +2548,7 @@ mod tests {
         );
         assert_eq!(
             r.core.transforms()[0].2,
-            flow_core::transform::Source::Dictation
+            murmur_core::transform::Source::Dictation
         );
         let e = history_latest(&r).unwrap();
         assert!(!e.command);
@@ -2783,12 +2782,9 @@ mod tests {
         };
         let store = Arc::new(Mutex::new(RecentAppStore::in_memory()));
         let prefs = Prefs {
-            app_buckets: [(
-                "murmur".to_string(),
-                crate::core_api::StyleBucket::Email,
-            )]
-            .into_iter()
-            .collect(),
+            app_buckets: [("murmur".to_string(), crate::core_api::StyleBucket::Email)]
+                .into_iter()
+                .collect(),
             ..Prefs::default()
         };
         let mut r = rig(fake, prefs);
@@ -2912,7 +2908,7 @@ mod tests {
     #[test]
     fn pill_names_the_live_route_and_follows_a_failover() {
         use crate::core_api::{Poll, SessionRoute};
-        use flow_router::EngineKind;
+        use murmur_router::EngineKind;
         let mut r = rig(Fake::default(), Prefs::default());
         let server = SessionRoute {
             engine: EngineKind::Remote,
@@ -3031,7 +3027,7 @@ mod tests {
     #[test]
     fn a_cancelled_paste_plan_inserts_nothing() {
         let fake = Fake::default();
-        let steps = crate::paste::plan(&flow_core::paste::segments("hi", true));
+        let steps = crate::paste::plan(&murmur_core::paste::segments("hi", true));
         let r = run_paste_plan_until(&fake, &steps, &Prefs::default(), &|| {
             Some(PASTE_CANCELLED.into())
         });
@@ -3357,7 +3353,7 @@ mod tests {
     #[test]
     fn debug_log_off_writes_no_file_and_no_line() {
         let dir = std::env::temp_dir().join(format!(
-            "flow-ctl-debug-off-{}-{}",
+            "murmur-ctl-debug-off-{}-{}",
             std::process::id(),
             crate::debug_log::now_unix_ms()
         ));
@@ -3636,16 +3632,16 @@ mod tests {
             engine: "cloud".into(),
             provider: Some("openrouter".into()),
             model: Some("openai/whisper-large-v3-turbo".into()),
-            cost_usd: Some(flow_core::Usd(0.0001)),
+            cost_usd: Some(murmur_core::Usd(0.0001)),
             llm_engine: Some("cloud".into()),
             llm_model: Some("meta-llama/llama-3.3-70b-instruct".into()),
-            llm_cost_usd: Some(flow_core::Usd(0.0007)),
+            llm_cost_usd: Some(murmur_core::Usd(0.0007)),
             ..Default::default()
         });
-        ok.llm = Some(flow_core::cleanup::CleanUsage {
+        ok.llm = Some(murmur_core::cleanup::CleanUsage {
             engine: Some("cloud".into()),
             model: Some("meta-llama/llama-3.3-70b-instruct".into()),
-            cost_usd: Some(flow_core::Usd(0.0007)),
+            cost_usd: Some(murmur_core::Usd(0.0007)),
             generation_id: Some("gen-1".into()),
             ttft_ms: Some(310),
             ..Default::default()
@@ -4080,7 +4076,7 @@ mod tests {
     #[test]
     fn debug_log_falls_back_to_the_live_route_when_the_commit_has_none() {
         use crate::core_api::SessionRoute;
-        use flow_router::EngineKind;
+        use murmur_router::EngineKind;
         let mem = MemSink::default();
         let (mut r, log) = logged_with(
             Prefs::default(),

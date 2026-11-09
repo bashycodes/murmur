@@ -1,14 +1,14 @@
-//! Shared helpers for the flow-cloud contract tests: a mock OpenRouter
+//! Shared helpers for the murmur-cloud contract tests: a mock OpenRouter
 //! (`testing::MockServer` + the base-URL override) and its fixtures.
 #![allow(dead_code)]
 
 use std::time::Duration;
 
-use flow_cloud::catalog::ModelInfo;
-use flow_cloud::testing::{override_base_url, BaseOverride, MockServer, Recorded, Reply};
-use flow_cloud::{CloudAsr, CloudError, SttPath, SttSettings};
-use flow_core::asr::{AsrEngine, AsrRequest};
-use flow_router::{BackendError, Failure, SecretString};
+use murmur_cloud::catalog::ModelInfo;
+use murmur_cloud::testing::{override_base_url, BaseOverride, MockServer, Recorded, Reply};
+use murmur_cloud::{CloudAsr, CloudError, SttPath, SttSettings};
+use murmur_core::asr::{AsrEngine, AsrRequest};
+use murmur_router::{BackendError, Failure, SecretString};
 
 pub const KEY: &str = "sk-or-LEAKCHECK-contract-0123456789";
 
@@ -76,7 +76,7 @@ pub fn asr(s: SttSettings) -> CloudAsr {
 
 /// The default model (whisper turbo, path A) on the mock.
 pub fn whisper() -> CloudAsr {
-    asr(settings(flow_cloud::DEFAULT_STT_MODEL))
+    asr(settings(murmur_cloud::DEFAULT_STT_MODEL))
 }
 
 /// `ms` of a loud-ish tone (speech stand-in).
@@ -105,7 +105,7 @@ pub fn run(asr: &CloudAsr, r: &AsrRequest) -> Result<String, BackendError> {
 
 /// The typed error of the last failed call (what `CloudBackend::commit`
 /// hands the router). `no_private_route` maps to `provider_error` until
-/// flow-router has the variant.
+/// murmur-router has the variant.
 pub fn last_error(asr: &CloudAsr) -> BackendError {
     let info = asr.last_call().expect("a call was made");
     let code = info.error.clone().unwrap();
@@ -130,7 +130,7 @@ pub fn check_transport_errors() {
         assert_eq!(e.kind, Failure::ConnectFailed, "{e}");
     }
     let _slow = mock_fixed(Reply::raw(200, "{}").delayed(Duration::from_secs(3)));
-    let mut s = settings(flow_cloud::DEFAULT_STT_MODEL);
+    let mut s = settings(murmur_cloud::DEFAULT_STT_MODEL);
     s.timeout_base_ms = 1000;
     let a = asr(s);
     let t = std::time::Instant::now();

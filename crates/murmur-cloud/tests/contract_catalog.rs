@@ -6,12 +6,12 @@ mod common;
 use std::time::{Duration, Instant};
 
 use common::*;
-use flow_cloud::catalog::{self, CatalogSource, CatalogStore, Filters, Use};
-use flow_cloud::testing::Reply;
-use flow_cloud::{Api, SttPath};
-use flow_router::SecretString;
+use murmur_cloud::catalog::{self, CatalogSource, CatalogStore, Filters, Use};
+use murmur_cloud::testing::Reply;
+use murmur_cloud::{Api, SttPath};
+use murmur_router::SecretString;
 
-fn healthy(r: &flow_cloud::testing::Recorded) -> Reply {
+fn healthy(r: &murmur_cloud::testing::Recorded) -> Reply {
     let q = r.query_all("output_modalities");
     match r.path() {
         "/api/v1/models" if q == ["transcription"] => {
@@ -162,7 +162,7 @@ fn oversized_answer_is_refused() {
 
 #[test]
 fn store_refresh_writes_the_cache_and_falls_back() {
-    let dir = std::env::temp_dir().join(format!("flow-cloud-store-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("murmur-cloud-store-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let f = dir.join(catalog::CACHE_FILE_NAME);
     let _ = std::fs::remove_file(&f);
@@ -249,7 +249,7 @@ fn key_info() {
     ]);
     let key = SecretString::new(KEY);
     let d = || Instant::now() + Duration::from_secs(3);
-    let k = flow_cloud::keyinfo::fetch_with(&Api::new(), &key, d()).unwrap();
+    let k = murmur_cloud::keyinfo::fetch_with(&Api::new(), &key, d()).unwrap();
     assert_eq!(k.limit, Some(10.0));
     assert_eq!(k.limit_remaining, Some(7.25));
     assert_eq!(k.usage_monthly, Some(2.75));
@@ -258,9 +258,9 @@ fn key_info() {
     let r = &srv.requests()[0];
     assert_eq!(r.path(), "/api/v1/key");
     assert_no_key_in(r, "authorization");
-    let k = flow_cloud::keyinfo::fetch_with(&Api::new(), &key, d()).unwrap();
+    let k = murmur_cloud::keyinfo::fetch_with(&Api::new(), &key, d()).unwrap();
     assert!(k.warn_no_limit() && k.is_free_tier);
-    let e = flow_cloud::keyinfo::fetch_with(&Api::new(), &key, d()).unwrap_err();
+    let e = murmur_cloud::keyinfo::fetch_with(&Api::new(), &key, d()).unwrap_err();
     assert_eq!(e.code(), "auth_failed");
     let js = serde_json::to_string(&k).unwrap();
     assert!(!js.contains(KEY));
@@ -270,7 +270,7 @@ fn key_info() {
 fn generation_lookup() {
     let srv = mock_fixed(Reply::json(200, fixture("generation_ok.json")));
     let key = SecretString::new(KEY);
-    let g = flow_cloud::generation::fetch(
+    let g = murmur_cloud::generation::fetch(
         &Api::new(),
         &key,
         "gen-stream-1",
@@ -280,7 +280,7 @@ fn generation_lookup() {
     assert_eq!(g.total_cost, Some(0.0000058));
     assert!(g.cancelled);
     assert_eq!(srv.requests()[0].query_all("id"), ["gen-stream-1"]);
-    assert!(flow_cloud::generation::fetch(
+    assert!(murmur_cloud::generation::fetch(
         &Api::new(),
         &key,
         "bad id&x=1",

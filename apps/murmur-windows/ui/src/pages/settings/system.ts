@@ -14,13 +14,13 @@ ${group(
   "App settings",
   row("Start when you sign in to Windows", "", toggle("launch_at_login", "Start when you sign in to Windows", `data-save="prefs"`)) +
     row(
-      "Keep the Flow bar on screen",
+      "Keep the Murmur bar on screen",
       "Otherwise it only appears while you dictate.",
-      toggle("show_flow_bar_always", "Keep the Flow bar on screen", `data-save="prefs"`),
+      toggle("show_murmur_bar_always", "Keep the Murmur bar on screen", `data-save="prefs"`),
     ) +
     row(
       "Show which engine was used",
-      "A small <b>L</b>, <b>S</b> or <b>C</b> on the Flow bar after each dictation: this PC, your server or the cloud.",
+      "A small <b>L</b>, <b>S</b> or <b>C</b> on the Murmur bar after each dictation: this PC, your server or the cloud.",
       toggle("dev_show_engine_badge", "Show which engine was used", `data-save="dev"`),
       `data-needs="dev"`,
     ),

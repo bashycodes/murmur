@@ -1,6 +1,6 @@
 //! Decode wav files with the online (streaming zipformer) engine.
 //!
-//! cargo run --release -p flow-asr-sherpa --example online_check -- \
+//! cargo run --release -p murmur-asr-sherpa --example online_check -- \
 //!   MODEL_DIR [--threads N] [--greedy] [--serial] [--beam N] [--score F]
 //!   [--hotwords a,b] [--tail S] [--lead S] [--skip S] [--norm] WAV...
 //! Prints `file \t ms \t RTF \t text` per clip; load time and its phases
@@ -9,7 +9,7 @@
 
 use std::time::Instant;
 
-use flow_asr_sherpa::{OnlineConfig, OnlineEngine};
+use murmur_asr_sherpa::{OnlineConfig, OnlineEngine};
 
 fn read_wav(p: &str) -> Vec<f32> {
     let mut r = hound::WavReader::open(p).unwrap();

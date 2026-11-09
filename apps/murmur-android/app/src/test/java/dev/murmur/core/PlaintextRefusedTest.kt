@@ -1,6 +1,6 @@
-package dev.flowclone.core
+package dev.murmur.core
 
-import dev.flowclone.session.DictationController
+import dev.murmur.session.DictationController
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

@@ -11,7 +11,7 @@
 # that tools/build-native.sh takes) and fails if espeak-ng or piper code is in them.
 # Needs: network (GitHub: the sherpa-onnx source, ONNX Runtime and CMake's FetchContent deps),
 # git, cmake, make, unzip, ANDROID_NDK_HOME (default NDK 27.2.12479018). Work dir:
-# $SHERPA_BUILD_DIR (default ~/.cache/flow-clone-sherpa-android-build). Jobs: $JOBS (default 2).
+# $SHERPA_BUILD_DIR (default ~/.cache/murmur-sherpa-android-build). Jobs: $JOBS (default 2).
 set -euo pipefail
 out="${1:?usage: build-sherpa-android.sh OUT_DIR}"
 VERSION=1.13.8
@@ -19,7 +19,7 @@ COMMIT=11afbd009a7f8c08f4bcf2fc1b265d0df4670fbf
 ORT=1.28.2
 ORT_SHA256=01518867f78241138b6aa25925802e843a4fa9085af8d303d49e35bbb52aff4d
 ndk="${ANDROID_NDK_HOME:-$HOME/Android/Sdk/ndk/27.2.12479018}"
-work="${SHERPA_BUILD_DIR:-$HOME/.cache/flow-clone-sherpa-android-build}"
+work="${SHERPA_BUILD_DIR:-$HOME/.cache/murmur-sherpa-android-build}"
 jobs="${JOBS:-2}"
 die() { echo "build-sherpa-android.sh: $*" >&2; exit 1; }
 [[ -f "$ndk/build/cmake/android.toolchain.cmake" ]] || die "no NDK at $ndk (set ANDROID_NDK_HOME)"

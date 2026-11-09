@@ -5,6 +5,6 @@
 set -euo pipefail
 ROOT=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
 cd "$ROOT"
-FLOW_BENCH_AUDIO=$1 FLOW_MODELS_DIR=$2 FLOW_BENCH_MODELS=$3 FLOW_BENCH_OUT=$4 FLOW_BENCH_FIT=true \
-  exec choom -n 1000 -- nice -n 10 cargo test --release -j 2 --offline -p flow-core \
+MURMUR_BENCH_AUDIO=$1 MURMUR_MODELS_DIR=$2 MURMUR_BENCH_MODELS=$3 MURMUR_BENCH_OUT=$4 MURMUR_BENCH_FIT=true \
+  exec choom -n 1000 -- nice -n 10 cargo test --release -j 2 --offline -p murmur-core \
   --features whisper,wav --test audio_ctx_bench -- --ignored --nocapture

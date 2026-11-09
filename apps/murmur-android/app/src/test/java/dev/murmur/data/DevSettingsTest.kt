@@ -1,7 +1,7 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.core.ParakeetDecoding
-import dev.flowclone.data.DevSettingsForm.Field
+import dev.murmur.core.ParakeetDecoding
+import dev.murmur.data.DevSettingsForm.Field
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -13,7 +13,7 @@ class DevSettingsTest {
     private fun form(caps: BuildCaps = BuildCaps.ALL, f: DevSettingsForm.Input.() -> DevSettingsForm.Input = { this }) =
         DevSettingsForm.validate(DevSettingsForm.Input.of(DevSettings.defaults(caps)).f(), caps)
 
-    // ---- host / port (twin of flow_router::net::validate_host's table) ----
+    // ---- host / port (twin of murmur_router::net::validate_host's table) ----
 
     /** 2026-10-24: debug-log `route_order` = the engines the router tries, in order. */
     @Test fun routeOrderWireListsTheEnabledRoutesInOrder() {
@@ -73,7 +73,7 @@ class DevSettingsTest {
     // ---- TLS / pin / token / timeouts ----
 
     @Test fun publicHostForcesAndLocksTls() {
-        val r = form { copy(host = "flow.example.com", tls = false) }
+        val r = form { copy(host = "murmur.example.com", tls = false) }
         assertTrue(r.tlsLocked)
         assertTrue(r.settings!!.tls)
         val tailnet = form { copy(host = "100.64.0.10", tls = false, token = "x".repeat(16)) }

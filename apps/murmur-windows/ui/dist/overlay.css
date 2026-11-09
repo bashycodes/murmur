@@ -1,7 +1,7 @@
-/* Flow bar — styled after the Murmur design artboard
-   docs/design/app-design/FlowBar.dc.html (Idle, Hold to talk, Hands-free,
+/* Murmur bar — styled after the Murmur design artboard
+   docs/design/app-design/MurmurBar.dc.html (Idle, Hold to talk, Hands-free,
    Working, Done with engine, Fell back, Can't dictate). Tokens are copied
-   from docs/design/app-design/flow-theme.css so the overlay stays
+   from docs/design/app-design/murmur-theme.css so the overlay stays
    self-contained (no shared stylesheet, no network fonts).
 
    The 512x614 window is transparent and click-through; the pill sits 14 px
@@ -16,7 +16,7 @@
 }
 
 :root {
-  /* Palette (flow-theme.css) */
+  /* Palette (murmur-theme.css) */
   --sand-50: #fcfcfb;
   --vast-700: #5b5b59;
   --vast-800: #464544;
@@ -40,7 +40,7 @@
   --font-sans: Figtree, "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui,
     sans-serif;
 
-  /* Flow bar roles */
+  /* Murmur bar roles */
   --bar-bg: var(--vast-950);
   --bar-fg: var(--sand-50);
   --bar-edge: transparent;
@@ -60,7 +60,7 @@
   --level: 0;
 }
 
-/* Dark: flow-theme.css `.lw-dark` values. The bar stays near-black but
+/* Dark: murmur-theme.css `.lw-dark` values. The bar stays near-black but
    gets a hairline edge so it reads on dark wallpapers. overlay.ts sets
    .lw-dark from the `theme` pref (system = Windows' app mode). */
 :root.lw-dark {

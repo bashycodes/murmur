@@ -1,4 +1,4 @@
-package dev.flowclone.debug
+package dev.murmur.debug
 
 import android.app.Activity
 import android.content.Intent
@@ -10,8 +10,8 @@ import android.util.Log
 import android.view.WindowManager
 import android.widget.ScrollView
 import android.widget.TextView
-import dev.flowclone.BuildConfig
-import dev.flowclone.core.NativeFlowCore
+import dev.murmur.BuildConfig
+import dev.murmur.core.NativeMurmurCore
 import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
@@ -21,7 +21,7 @@ import java.util.Locale
 /**
  * Debug builds only (src/debug): the on-device benchmark (tools/probes/android_bench/README.md).
  * Exported for the platform tools' shell and guarded by android.permission.DUMP, like
- * [WavMicReceiver]: `am start -n dev.flowclone/.debug.BenchActivity --es suite all --es run r1`.
+ * [WavMicReceiver]: `am start -n dev.murmur/.debug.BenchActivity --es suite all --es run r1`.
  * Reads the bundle from `files/bench/in` (copied in with run-as; `<external files>/bench/in` is
  * also tried, but files the shell puts there are unreadable to the app), writes
  * `<external files>/bench/out/<run>/`. Keeps the screen on while it runs; `--ez stop true` stops
@@ -29,7 +29,7 @@ import java.util.Locale
  */
 class BenchActivity : Activity() {
     companion object {
-        private const val TAG = "FlowBench"
+        private const val TAG = "MurmurBench"
         @Volatile private var running = false
         @Volatile private var stopRequested = false
     }
@@ -74,7 +74,7 @@ class BenchActivity : Activity() {
         if (inDir == null || !File(inDir, "manifest.json").isFile) return show("no bundle: manifest.json missing in ${File(filesDir, "bench/in")} (tools/probes/android_bench/run_on_device.sh push)")
         val run = args.run ?: SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date())
         val outDir = File(ext ?: filesDir, "bench/out/$run")
-        // Parakeet derives bpe.vocab into TMPDIR (as FlowApp.load does).
+        // Parakeet derives bpe.vocab into TMPDIR (as MurmurApp.load does).
         runCatching { android.system.Os.setenv("TMPDIR", cacheDir.path, true) }
         running = true
         stopRequested = false
@@ -83,12 +83,12 @@ class BenchActivity : Activity() {
         val device = JSONObject().put("model", Build.MODEL).put("soc", Build.SOC_MODEL).put("sdk", Build.VERSION.SDK_INT)
             .put("cores", Runtime.getRuntime().availableProcessors()).put("app_version", BuildConfig.VERSION_NAME)
             .put("app_build", BuildConfig.BUILD).put("flavor", BuildConfig.FLAVOR)
-            .put("native", runCatching { NativeFlowCore.loadLibrary().toString() }.getOrDefault("?"))
+            .put("native", runCatching { NativeMurmurCore.loadLibrary().toString() }.getOrDefault("?"))
         Thread({
             try {
                 val meta = BenchRunner(
-                    args, filesDir, inDir, outDir, NativeFlowCore,
-                    clean = { core, req -> (core as NativeFlowCore).benchClean(req) },
+                    args, filesDir, inDir, outDir, NativeMurmurCore,
+                    clean = { core, req -> (core as NativeMurmurCore).benchClean(req) },
                     device = device, log = ::show, stopped = { stopRequested },
                     extra = {
                         JSONObject().put("pss_kb", Debug.getPss()).put("native_heap_kb", Debug.getNativeHeapAllocatedSize() / 1024)
@@ -99,6 +99,6 @@ class BenchActivity : Activity() {
             } finally {
                 running = false
             }
-        }, "flow-bench").start()
+        }, "murmur-bench").start()
     }
 }

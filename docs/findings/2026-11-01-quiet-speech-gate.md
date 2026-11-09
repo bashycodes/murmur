@@ -14,18 +14,18 @@ dataset or the gate?
   dB) above the 10th-percentile floor, which is often under 1 LSB. Speech at this level
   would also come from a soft voice or a low-gain microphone.
 * **Two absolute gates dropped it.**
-  1. `no_speech`: `flow_core::vad` never counted a frame under `ABS_MIN = 0.004`
+  1. `no_speech`: `murmur_core::vad` never counted a frame under `ABS_MIN = 0.004`
      (≈ −48 dBFS, 131 PCM16), whatever the floor.
   2. `blank_asr`: the VAD passed the 3 louder clips, but only on their loudest syllables
      (180–720 ms of speech). The sherpa engines then got the trimmed span at an RMS of
      82–96 and returned "" through their own whole-clip `SILENCE_RMS = 0.003` (98 PCM16).
-     `flow_core::whisper` has the same gate.
-* **Every platform shares both gates.** Android (FFI), Windows and flow-server all run
-  `flow_core::engine` with `SessionConfig::vad = true`, and the engines are the same
-  crates. The fix is in `flow-core`, so it covers all three. The Windows GPU whisper plugin
-  (`flow-whisper`) has no RMS gate of its own.
+     `murmur_core::whisper` has the same gate.
+* **Every platform shares both gates.** Android (FFI), Windows and murmur-server all run
+  `murmur_core::engine` with `SessionConfig::vad = true`, and the engines are the same
+  crates. The fix is in `murmur-core`, so it covers all three. The Windows GPU whisper plugin
+  (`murmur-whisper`) has no RMS gate of its own.
 
-## Change (`crates/flow-core/src/vad.rs`, `engine.rs`)
+## Change (`crates/murmur-core/src/vad.rs`, `engine.rs`)
 
 1. **A relative bar for quiet recordings.**
    * When a clip's noise floor is very low, `ABS_MIN` drops to `REL_FACTOR` (8×, 18 dB) ×
@@ -47,7 +47,7 @@ dataset or the gate?
 
 ## Host-side check (no phone)
 
-`cargo run -p flow-core --features wav --example vad_gate -- [--dump DIR] WAV...` runs the
+`cargo run -p murmur-core --features wav --example vad_gate -- [--dump DIR] WAV...` runs the
 commit gate on wavs. It reports `no_speech`, `blank_asr` (the ASR input is still under
 0.003 RMS) or `asr`. Over the 49 bundle clips, the build before the change reproduced the
 phone exactly: 34 `asr`, 12 `no_speech`, 3 `blank_asr`.
@@ -73,7 +73,7 @@ phone exactly: 34 `asr`, 12 `no_speech`, 3 `blank_asr`.
 All 49 Hebrew clips now reach the ASR.
 
 **Decoded on the host** with zipformer-he: the 15 dumped ASR inputs were decoded with
-`flow-asr-sherpa`'s `online_check`.
+`murmur-asr-sherpa`'s `online_check`.
 
 | set | before | after |
 |---|---|---|

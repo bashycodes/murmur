@@ -1,6 +1,6 @@
 # 2026-10-30: AI cleanup model pins (0.11.0, Windows download catalogue)
 
-Pinned downloads for the local AI cleanup (llama.cpp, `flow_llm`) models the
+Pinned downloads for the local AI cleanup (llama.cpp, `murmur_llm`) models the
 Windows app can download from Settings → AI cleanup (D31 downloader, engine
 `llm`). Values come from the Hugging Face API, not from downloading the files:
 the revision from `https://huggingface.co/api/models/<repo>/revision/main`
@@ -22,4 +22,4 @@ The 0.5B file is saved under the name the app already looks for when no
 cleanup model is set (`DEFAULT_LLM_FILE`, D11), so a download fixes a
 "model file not found" status in place. More GGUFs (a benchmark task will
 recommend them) are one `CatalogEntry` each in
-`apps/flow-windows/src/model_download.rs` plus a row here.
+`apps/murmur-windows/src/model_download.rs` plus a row here.

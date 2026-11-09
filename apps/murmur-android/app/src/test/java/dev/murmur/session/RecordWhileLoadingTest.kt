@@ -1,16 +1,16 @@
-package dev.flowclone.session
+package dev.murmur.session
 
-import dev.flowclone.bubble.RouteLabel
-import dev.flowclone.core.CommitResult
-import dev.flowclone.core.CoreException
-import dev.flowclone.core.FakeFlowCore
-import dev.flowclone.core.FieldContext
-import dev.flowclone.core.FlowCore
-import dev.flowclone.core.SessionConfig
-import dev.flowclone.core.SessionRoute
-import dev.flowclone.core.StartInfo
-import dev.flowclone.debug.InsertOutcome
-import dev.flowclone.session.DictationState.ErrorKind
+import dev.murmur.bubble.RouteLabel
+import dev.murmur.core.CommitResult
+import dev.murmur.core.CoreException
+import dev.murmur.core.FakeMurmurCore
+import dev.murmur.core.FieldContext
+import dev.murmur.core.MurmurCore
+import dev.murmur.core.SessionConfig
+import dev.murmur.core.SessionRoute
+import dev.murmur.core.StartInfo
+import dev.murmur.debug.InsertOutcome
+import dev.murmur.session.DictationState.ErrorKind
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -43,12 +43,12 @@ class RecordWhileLoadingTest {
     private class Host : DictationController.Host {
         val inserted = mutableListOf<String>()
         val loadingNotices = mutableListOf<String>()
-        val traces = mutableListOf<dev.flowclone.debug.DictationTrace>()
+        val traces = mutableListOf<dev.murmur.debug.DictationTrace>()
         var endpointMs: Int? = null
         override fun feedback(e: FeedbackEvent) = Unit
         override suspend fun insert(text: String): Boolean { inserted += text; return true }
         /** D35 History entries: (status, outcome, kept recording's samples or null). */
-        val history = mutableListOf<Triple<dev.flowclone.core.CommitStatus, String?, Int?>>()
+        val history = mutableListOf<Triple<dev.murmur.core.CommitStatus, String?, Int?>>()
         override fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?, outcome: String?) = Unit
         override fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?, outcome: String?, recording: Recording?) {
             history += Triple(result.status, outcome, recording?.pcm?.size)
@@ -60,7 +60,7 @@ class RecordWhileLoadingTest {
         override fun onRecordingActive(active: Boolean) = Unit
         override fun endpointSilenceMs() = endpointMs
         override fun engineLoading(message: String) { loadingNotices += message }
-        override fun onDictationTrace(trace: dev.flowclone.debug.DictationTrace) { traces += trace }
+        override fun onDictationTrace(trace: dev.murmur.debug.DictationTrace) { traces += trace }
         /** D58: the keyboard's languages at the stop (null = not followed) and what preparing them does. */
         var keyboardAtStop: List<String>? = null
         var onPrepare: () -> Unit = {}
@@ -73,7 +73,7 @@ class RecordWhileLoadingTest {
      * A hybrid router with a server first in the route order: a normal start would go to the
      * server ([SessionRoute] "remote"); [startSessionLocal] is the phone-only start.
      */
-    private class HybridRouter(val inner: FakeFlowCore = FakeFlowCore("a synthetic sentence")) : FlowCore by inner {
+    private class HybridRouter(val inner: FakeMurmurCore = FakeMurmurCore("a synthetic sentence")) : MurmurCore by inner {
         var localStarts = 0
         var serverStarts = 0
         /** The engine a normal start reports ("local": the router chose the phone). */
@@ -281,7 +281,7 @@ class RecordWhileLoadingTest {
         )
         assertEquals(0, router.localStarts + router.serverStarts)
         assertEquals(InsertOutcome.START_FAILED, host.traces.single().insert.outcome)
-        assertEquals("kept for History's Retry", listOf(Triple(dev.flowclone.core.CommitStatus.ERROR, InsertOutcome.ERROR, 16_000)), host.history)
+        assertEquals("kept for History's Retry", listOf(Triple(dev.murmur.core.CommitStatus.ERROR, InsertOutcome.ERROR, 16_000)), host.history)
     }
 
     @Test fun aLoadFailureWhileRecordingStopsTheMicAndShowsTheError() = runTest {
@@ -292,7 +292,7 @@ class RecordWhileLoadingTest {
         runCurrent()
         assertEquals(DictationState.Error(ErrorKind.EngineUnavailable("The phone speech model did not load")), c.state.value)
         assertNull("microphone stopped", mic.sink)
-        assertEquals("kept for History's Retry", listOf(Triple(dev.flowclone.core.CommitStatus.ERROR, InsertOutcome.ERROR, 16_000)), host.history)
+        assertEquals("kept for History's Retry", listOf(Triple(dev.murmur.core.CommitStatus.ERROR, InsertOutcome.ERROR, 16_000)), host.history)
     }
 
     @Test fun aLoadThatNeverEndsGivesUpAfterTheBound() = runTest {
@@ -303,7 +303,7 @@ class RecordWhileLoadingTest {
         advanceTimeBy(DictationController.LOAD_WAIT_MS + 1)
         runCurrent()
         assertEquals(DictationState.Error(ErrorKind.EngineUnavailable(DictationController.LOAD_TIMEOUT)), c.state.value)
-        assertEquals(listOf(Triple(dev.flowclone.core.CommitStatus.ERROR, InsertOutcome.ERROR, 16_000)), host.history)
+        assertEquals(listOf(Triple(dev.murmur.core.CommitStatus.ERROR, InsertOutcome.ERROR, 16_000)), host.history)
     }
 
     @Test fun recordingPastTheLoadBoundStopsAndGoesToRetry() = runTest {
@@ -370,14 +370,14 @@ class RecordWhileLoadingTest {
 
     @Test fun anEngineThatCannotKeepTheRecordingOnThePhoneRefusesALocalStart() {
         var started = false
-        val engine = object : FlowCore {
+        val engine = object : MurmurCore {
             override fun startSession(cfg: SessionConfig) { started = true }
             override fun pushAudio(pcm: ShortArray, length: Int) = true
             override fun setContext(ctx: FieldContext) = Unit
             override fun partial(): String? = null
-            override fun commit() = CommitResult(dev.flowclone.core.CommitStatus.EMPTY)
+            override fun commit() = CommitResult(dev.murmur.core.CommitStatus.EMPTY)
             override fun cancel() = Unit
-            override fun learnEdit(pasted: String, edited: String) = emptyList<dev.flowclone.core.LearnCandidate>()
+            override fun learnEdit(pasted: String, edited: String) = emptyList<dev.murmur.core.LearnCandidate>()
             override fun unload() = Unit
         }
         val e = runCatching { engine.startSessionLocal(SessionConfig()) }.exceptionOrNull() as CoreException

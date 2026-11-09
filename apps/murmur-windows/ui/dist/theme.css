@@ -1,4 +1,4 @@
-/* Murmur design tokens (see docs/design/app-design/flow-theme.css):
+/* Murmur design tokens (see docs/design/app-design/murmur-theme.css):
    light and dark values. Light is the default; dark is the single class .lw-dark on <html> (ui/src/lib/theme.ts
    sets it from the theme pref, or prefers-color-scheme on "system"). */
 

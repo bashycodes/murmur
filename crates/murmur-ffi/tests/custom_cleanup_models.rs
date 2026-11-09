@@ -3,8 +3,8 @@
 //! sent as bearer, `{"error", "message"}` without the key or URL.
 #![cfg(feature = "cloud")]
 
-use flow_cloud::testing::{MockServer, Reply};
-use flow_ffi::json_api::custom_cleanup_models;
+use murmur_cloud::testing::{MockServer, Reply};
+use murmur_ffi::json_api::custom_cleanup_models;
 
 #[test]
 fn lists_models_and_reports_errors_without_secrets() {
@@ -41,7 +41,7 @@ fn lists_models_and_reports_errors_without_secrets() {
 
 #[test]
 fn address_is_normalised_by_the_router() {
-    use flow_ffi::json_api::custom_cleanup_address;
+    use murmur_ffi::json_api::custom_cleanup_address;
     let v: serde_json::Value = serde_json::from_str(&custom_cleanup_address(
         " http://[2001:DB8::0:1]:4000/ ",
         "m-1",

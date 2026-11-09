@@ -1,16 +1,16 @@
 //! Toggle matrix (§4): allow_server × allow_client × server state, through
-//! the real router, flow-remote client and an in-process flow-server.
+//! the real router, murmur-remote client and an in-process murmur-server.
 //! MockAsr records the samples it was given, so loss is measurable.
 //! Naming: matrix_<server>_<client>_<state>_<expectation>.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use flow_contract_tests::*;
-use flow_core::asr::MockAsr;
-use flow_core::config::{FieldContext, SessionConfig};
-use flow_core::{CommitResult, CommitStatus, FlowCore};
-use flow_router::{Backend, Prefer, Router, RouterConfig, RouterError};
+use murmur_contract_tests::*;
+use murmur_core::asr::MockAsr;
+use murmur_core::config::{FieldContext, SessionConfig};
+use murmur_core::{CommitResult, CommitStatus, MurmurCore};
+use murmur_router::{Backend, Prefer, Router, RouterConfig, RouterError};
 
 const TEXT: &str = "hello world";
 const AUDIO_MS: usize = 2000;
@@ -21,9 +21,9 @@ struct Rig {
     router: Router,
 }
 
-fn local() -> (Arc<MockAsr>, Arc<FlowCore>) {
+fn local() -> (Arc<MockAsr>, Arc<MurmurCore>) {
     let asr = Arc::new(MockAsr::new(TEXT));
-    (asr.clone(), Arc::new(FlowCore::from_engines(asr, None)))
+    (asr.clone(), Arc::new(MurmurCore::from_engines(asr, None)))
 }
 
 fn rig_cfg(server_on: bool, client_on: bool, tweak: impl FnOnce(&mut RouterConfig)) -> Rig {
@@ -417,8 +417,8 @@ fn warm_connection_is_reused_across_sessions() {
 
 // ---- cloud route (D18, docs/cloud-stt.md §3.2) ------------------------------
 
-use flow_cloud::testing::Reply;
-use flow_router::Route;
+use murmur_cloud::testing::Reply;
+use murmur_router::Route;
 use std::sync::atomic::{AtomicU16, Ordering};
 
 struct CloudRig {
@@ -429,7 +429,7 @@ struct CloudRig {
     status: Arc<AtomicU16>,
 }
 
-/// Real flow-server + a mock provider answering `status` (200 = "hello
+/// Real murmur-server + a mock provider answering `status` (200 = "hello
 /// world" from the cloud) + a local MockAsr core.
 fn cloud_rig(order: &[Route]) -> CloudRig {
     let server = spawn_mock_server(TEXT);
@@ -492,7 +492,7 @@ fn matrix_cloud_401_is_auth_failed_sticky_and_local_gets_everything() {
     assert_eq!(k.provider.count(), 1);
     k.router.set_cloud_key(
         CLOUD_ID,
-        Some(flow_router::SecretString::new("sk-another-key-000")),
+        Some(murmur_router::SecretString::new("sk-another-key-000")),
     );
     let (_, r) = dictate(&k.router);
     assert_eq!(engine(&r), ("cloud".into(), None));

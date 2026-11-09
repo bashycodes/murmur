@@ -1,18 +1,18 @@
-//! `flow-cli meeting`: a long WAV in, a timestamped transcript out (D44).
+//! `murmur-cli meeting`: a long WAV in, a timestamped transcript out (D44).
 //!
 //! The real-model runs are ignored by default; audio and models are never
 //! committed, the recordings are built here from public clips:
 //!
 //! * English, 30+ min: LibriSpeech test-clean clips of
-//!   `tools/probes/bench/asr_manifest_extended.json` (`FLOW_AUDIO_DIR`, as
+//!   `tools/probes/bench/asr_manifest_extended.json` (`MURMUR_AUDIO_DIR`, as
 //!   in the segment bench), looped with 0.9-3 s gaps of room noise.
-//!   `FLOW_WHISPER_BENCH_MODEL` = a whisper ggml (e.g. ggml-base-q5_1.bin).
-//! * Hebrew: FLEURS he_il dev clips (`FLOW_FLEURS_HE_DIR` = 16 kHz PCM16
-//!   WAVs, `FLOW_FLEURS_HE_TSV` = FLEURS `dev.tsv`), `FLOW_HE_MODEL` = a
+//!   `MURMUR_WHISPER_BENCH_MODEL` = a whisper ggml (e.g. ggml-base-q5_1.bin).
+//! * Hebrew: FLEURS he_il dev clips (`MURMUR_FLEURS_HE_DIR` = 16 kHz PCM16
+//!   WAVs, `MURMUR_FLEURS_HE_TSV` = FLEURS `dev.tsv`), `MURMUR_HE_MODEL` = a
 //!   Hebrew whisper ggml (ivrit.ai turbo).
 //!
-//! FLOW_AUDIO_DIR=… FLOW_WHISPER_BENCH_MODEL=… cargo test --release \
-//!   -p flow-cli --test meeting -- --ignored --nocapture
+//! MURMUR_AUDIO_DIR=… MURMUR_WHISPER_BENCH_MODEL=… cargo test --release \
+//!   -p murmur-cli --test meeting -- --ignored --nocapture
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 const S: usize = 16_000;
 
 fn bin() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_flow-cli"))
+    Command::new(env!("CARGO_BIN_EXE_murmur-cli"))
 }
 
 fn tmp(name: &str) -> PathBuf {
@@ -226,7 +226,7 @@ struct Run {
     rss_halves_mb: (u64, u64),
 }
 
-/// Run flow-cli, sampling its memory (Linux `/proc`) every 100 ms.
+/// Run murmur-cli, sampling its memory (Linux `/proc`) every 100 ms.
 fn run_cli(args: &[&str], wav: &Path) -> Run {
     let t = Instant::now();
     let child = bin()
@@ -364,7 +364,7 @@ fn check(clips: &[Clip], segs: &[Seg], min_recall: f64) -> f64 {
 }
 
 fn librispeech() -> Option<Vec<(Vec<i16>, String)>> {
-    let dir = PathBuf::from(std::env::var_os("FLOW_AUDIO_DIR")?);
+    let dir = PathBuf::from(std::env::var_os("MURMUR_AUDIO_DIR")?);
     let man = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../tools/probes/bench/asr_manifest_extended.json");
     let m: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(man).ok()?).ok()?;
@@ -373,7 +373,7 @@ fn librispeech() -> Option<Vec<(Vec<i16>, String)>> {
         .iter()
         .filter_map(|u| {
             let p = dir.join(format!("{}.wav", u["id"].as_str()?));
-            let pcm = flow_core::audio::read_wav_16k_mono(&p).ok()?;
+            let pcm = murmur_core::audio::read_wav_16k_mono(&p).ok()?;
             Some((pcm, u["ref"].as_str()?.to_string()))
         })
         .collect();
@@ -381,15 +381,17 @@ fn librispeech() -> Option<Vec<(Vec<i16>, String)>> {
 }
 
 fn threads() -> String {
-    std::env::var("FLOW_THREADS").unwrap_or_else(|_| "4".into())
+    std::env::var("MURMUR_THREADS").unwrap_or_else(|_| "4".into())
 }
 
 #[test]
 #[ignore]
 fn thirty_minute_english_meeting_end_to_end() {
-    let (Some(utts), Some(model)) = (librispeech(), std::env::var_os("FLOW_WHISPER_BENCH_MODEL"))
-    else {
-        eprintln!("SKIP: set FLOW_AUDIO_DIR and FLOW_WHISPER_BENCH_MODEL");
+    let (Some(utts), Some(model)) = (
+        librispeech(),
+        std::env::var_os("MURMUR_WHISPER_BENCH_MODEL"),
+    ) else {
+        eprintln!("SKIP: set MURMUR_AUDIO_DIR and MURMUR_WHISPER_BENCH_MODEL");
         return;
     };
     let model = model.to_string_lossy().to_string();
@@ -447,11 +449,11 @@ fn level(pcm: &[i16], dbfs: f64) -> Vec<i16> {
 #[ignore]
 fn hebrew_meeting_end_to_end() {
     let (Some(dir), Some(tsv), Some(model)) = (
-        std::env::var_os("FLOW_FLEURS_HE_DIR"),
-        std::env::var_os("FLOW_FLEURS_HE_TSV"),
-        std::env::var_os("FLOW_HE_MODEL"),
+        std::env::var_os("MURMUR_FLEURS_HE_DIR"),
+        std::env::var_os("MURMUR_FLEURS_HE_TSV"),
+        std::env::var_os("MURMUR_HE_MODEL"),
     ) else {
-        eprintln!("SKIP: set FLOW_FLEURS_HE_DIR, FLOW_FLEURS_HE_TSV and FLOW_HE_MODEL");
+        eprintln!("SKIP: set MURMUR_FLEURS_HE_DIR, MURMUR_FLEURS_HE_TSV and MURMUR_HE_MODEL");
         return;
     };
     let refs: std::collections::HashMap<String, String> = std::fs::read_to_string(&tsv)
@@ -471,7 +473,7 @@ fn hebrew_meeting_end_to_end() {
     let utts: Vec<_> = names
         .iter()
         .map(|n| {
-            let pcm = flow_core::audio::read_wav_16k_mono(&Path::new(&dir).join(n)).unwrap();
+            let pcm = murmur_core::audio::read_wav_16k_mono(&Path::new(&dir).join(n)).unwrap();
             (level(&pcm, -20.0), refs[n].clone())
         })
         .collect();

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Replay one case file through the runner in `server` mode (flow-server's
+# Replay one case file through the runner in `server` mode (murmur-server's
 # cleanup: prompt v2, never skipped) and write OUT_DIR/TAG.jsonl.
 #
 #   run.sh OUT_DIR TAG [extra runner args...]
@@ -7,7 +7,7 @@
 # env (all required unless defaulted):
 #   CASES    case file ({id, input, app_category} per line)
 #   SESSION  session JSON (llm_timeout_ms, per-char budget, dictionary, ...)
-#   MODEL    GGUF;  LIB  libflow_llm.so;  BIN  server-speed-clean
+#   MODEL    GGUF;  LIB  libmurmur_llm.so;  BIN  server-speed-clean
 #   THREADS  default 4 (the home server's [model] threads)
 #
 # Shared-box rules: refuses when MemAvailable < model size + 2000 MB, runs

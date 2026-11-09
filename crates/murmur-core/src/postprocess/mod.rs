@@ -129,7 +129,7 @@ impl Run<'_> {
         let selected = !ctx.selected.is_empty();
         // This app's own windows: inserted as is, whatever the context;
         // over a selection the text keeps its period too.
-        if self.windows && self.listed.is_flow_app {
+        if self.windows && self.listed.is_murmur_app {
             return if selected {
                 t.to_string()
             } else {
@@ -617,7 +617,7 @@ mod tests {
                 app(id),
             ]
         };
-        for id in ["murmur.exe", "flow-windows.exe"] {
+        for id in ["murmur.exe", "murmur-windows.exe"] {
             for ctx in contexts(id) {
                 assert_eq!(out(PARCEL, &win(), &ctx), PARCEL, "{ctx:?}");
             }
@@ -642,7 +642,7 @@ mod tests {
         }
         // Android's own package is not special.
         let ctx = FieldContext {
-            app_id: "dev.flowclone".into(),
+            app_id: "dev.murmur".into(),
             ..field("and ", "")
         };
         assert_eq!(out(PARCEL, &android(), &ctx), "the parcel arrived early. ");

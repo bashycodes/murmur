@@ -5,10 +5,10 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use flow_core::asr::MockAsr;
-use flow_core::config::{AsrBackend, LanguageModel, ModelConfig, SessionConfig};
-use flow_core::lid::{MockLid, LID_SAMPLES};
-use flow_core::{CommitResult, CoreError, FlowCore};
+use murmur_core::asr::MockAsr;
+use murmur_core::config::{AsrBackend, LanguageModel, ModelConfig, SessionConfig};
+use murmur_core::lid::{MockLid, LID_SAMPLES};
+use murmur_core::{CommitResult, CoreError, MurmurCore};
 
 fn speech(ms: usize) -> Vec<i16> {
     (0..ms * 16)
@@ -16,7 +16,7 @@ fn speech(ms: usize) -> Vec<i16> {
         .collect()
 }
 
-fn dictate_ms(core: &FlowCore, cfg: SessionConfig, ms: usize) -> CommitResult {
+fn dictate_ms(core: &MurmurCore, cfg: SessionConfig, ms: usize) -> CommitResult {
     core.start_session(cfg).unwrap();
     for c in speech(ms).chunks(640) {
         core.push_audio(c);
@@ -24,7 +24,7 @@ fn dictate_ms(core: &FlowCore, cfg: SessionConfig, ms: usize) -> CommitResult {
     core.commit()
 }
 
-fn dictate(core: &FlowCore, cfg: SessionConfig) -> CommitResult {
+fn dictate(core: &MurmurCore, cfg: SessionConfig) -> CommitResult {
     dictate_ms(core, cfg, 800)
 }
 
@@ -36,7 +36,7 @@ fn lang(l: &str) -> SessionConfig {
 }
 
 struct Rig {
-    core: FlowCore,
+    core: MurmurCore,
     en: Arc<MockAsr>,
     he: Arc<MockAsr>,
     lid: Arc<MockLid>,
@@ -48,7 +48,7 @@ fn rig(heard: &str) -> Rig {
         Arc::new(MockAsr::new("שלום לכולם")),
     );
     let lid = Arc::new(MockLid::new(heard));
-    let core = FlowCore::from_language_engines_with_lid(
+    let core = MurmurCore::from_language_engines_with_lid(
         en.clone(),
         vec![("he".into(), he.clone())],
         Some(lid.clone()),
@@ -86,12 +86,12 @@ fn auto_english_speech_stays_on_the_default_engine() {
 #[test]
 fn english_auto_result_is_byte_identical_apart_from_lid_ms() {
     let text = "um so the meeting is at three thirty comma right new line thanks";
-    let plain = FlowCore::from_language_engines(
+    let plain = MurmurCore::from_language_engines(
         Arc::new(MockAsr::new(text)),
         vec![("he".into(), Arc::new(MockAsr::new("שלום")))],
         None,
     );
-    let lid = FlowCore::from_language_engines_with_lid(
+    let lid = MurmurCore::from_language_engines_with_lid(
         Arc::new(MockAsr::new(text)),
         vec![("he".into(), Arc::new(MockAsr::new("שלום")))],
         Some(Arc::new(MockLid::new("en"))),
@@ -120,7 +120,7 @@ fn forced_languages_skip_language_id() {
 #[test]
 fn no_language_engines_means_no_language_id() {
     let lid = Arc::new(MockLid::new("he"));
-    let core = FlowCore::from_language_engines_with_lid(
+    let core = MurmurCore::from_language_engines_with_lid(
         Arc::new(MockAsr::new("hello there")),
         Vec::new(),
         Some(lid.clone()),
@@ -204,7 +204,7 @@ fn mock_config(lid_path: Option<&str>, with_he: bool) -> ModelConfig {
 #[test]
 fn lid_path_is_ignored_without_language_models_and_omitted_when_unset() {
     // Not loaded (not even looked for) without a language model.
-    let core = FlowCore::load_models(&mock_config(Some("/nonexistent/ggml-tiny.bin"), false));
+    let core = MurmurCore::load_models(&mock_config(Some("/nonexistent/ggml-tiny.bin"), false));
     assert!(core.is_ok());
     let j = serde_json::to_value(mock_config(None, true)).unwrap();
     assert!(j.get("lid_path").is_none(), "{j}");
@@ -215,7 +215,7 @@ fn lid_path_is_ignored_without_language_models_and_omitted_when_unset() {
 
 #[test]
 fn a_missing_lid_model_is_a_load_error() {
-    let e = FlowCore::load_models(&mock_config(Some("/nonexistent/ggml-tiny.bin"), true));
+    let e = MurmurCore::load_models(&mock_config(Some("/nonexistent/ggml-tiny.bin"), true));
     match e {
         #[cfg(feature = "whisper")]
         Err(CoreError::ModelNotFound { path }) => assert_eq!(path, "/nonexistent/ggml-tiny.bin"),

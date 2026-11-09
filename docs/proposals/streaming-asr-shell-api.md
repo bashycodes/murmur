@@ -3,7 +3,7 @@
 Status: frozen 2026-10-23 on branch `feat/streaming-asr` (core side:
 `docs/proposals/streaming-asr-latency.md`). Everything below is additive JSON.
 There are **no new C or JNI symbols**: `SessionConfig` already crosses
-`flow_start_session` / `nativeStartSession` as JSON, and `CommitResult` comes
+`murmur_start_session` / `nativeStartSession` as JSON, and `CommitResult` comes
 back as JSON. An old core or an old server ignores the new fields and still
 returns the full text, without the speed-up.
 
@@ -18,7 +18,7 @@ hands-free mode:
 | `segment_min_ms` | u32 or absent | omit (core default 4000) | Pieces shorter than this keep growing |
 | `segment_soft_max_ms` | u32 or absent | omit (core default 20000) | A piece this long is cut at its longest gap ≥ 200 ms in the last 5 s |
 
-Constants: `flow_core::segment::RECOMMENDED_PAUSE_MS` = 800,
+Constants: `murmur_core::segment::RECOMMENDED_PAUSE_MS` = 800,
 `DEFAULT_MIN_MS` = 4000, `DEFAULT_SOFT_MAX_MS` = 20000. Values below 200 are
 raised to 200.
 
@@ -34,7 +34,7 @@ raised to 200.
 
 ## 2. Hands-free endpoint: default 2000 → 1500 ms
 
-`flow_core::endpoint::RECOMMENDED_SILENCE_MS` is now **1500**. Change the
+`murmur_core::endpoint::RECOMMENDED_SILENCE_MS` is now **1500**. Change the
 shell default for the hands-free `endpoint_silence_ms` pref from 2000 to
 1500. Keep the 300–10000 range. If a user already saved 2000 explicitly, keep
 their value; only the default changes. PTT still leaves it unset.

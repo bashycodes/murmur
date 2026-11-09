@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Air-gapped end-to-end check (docs/air-gapped.md): a flow-server built from
+# Air-gapped end-to-end check (docs/air-gapped.md): a murmur-server built from
 # this checkout, on loopback, with a temp state dir and a temp model library,
-# driven by the apps' own client code (crates/flow-remote/examples/airgap_e2e.rs).
+# driven by the apps' own client code (crates/murmur-remote/examples/airgap_e2e.rs).
 #
 #   tools/e2e/airgap/run.sh [--models DIR] [--wav FILE] [--expect-text WORD]
 #                           [--port N] [--no-build] [--keep]
 #
 #   --models DIR   folder with ggml-tiny.en.bin (the server's speech model and
 #                  the library's first model) and, optionally, ggml-tiny.bin
-#                  (a second library model). Read only. Default: $FLOW_MODELS_DIR,
+#                  (a second library model). Read only. Default: $MURMUR_MODELS_DIR,
 #                  else <repo>/models.
 #   --wav FILE     16 kHz mono clip to dictate (public audio only).
 #                  Default: <models>/jfk.wav
@@ -31,7 +31,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 TARGET="${CARGO_TARGET_DIR:-$ROOT/target}"
-MODELS="${FLOW_MODELS_DIR:-$ROOT/models}"
+MODELS="${MURMUR_MODELS_DIR:-$ROOT/models}"
 WAV="" EXPECT_TEXT="country" PORT=17399 BUILD=1 KEEP=0 INNER=""
 die() { echo "airgap: $*" >&2; exit 2; }
 while [ $# -gt 0 ]; do
@@ -50,7 +50,7 @@ while [ $# -gt 0 ]; do
 done
 MODELS="$(readlink -f "$MODELS")"
 WAV="$(readlink -f "${WAV:-$MODELS/jfk.wav}")"
-SERVER="$TARGET/release/flow-server"
+SERVER="$TARGET/release/murmur-server"
 CLIENT="$TARGET/debug/examples/airgap_e2e"
 
 # ---------------------------------------------------------------- inner part
@@ -75,7 +75,7 @@ inner() {
         cat cli.log; echo "FAIL cli-admin-key"; return 1
     fi
 
-    echo "==> start flow-server on 127.0.0.1:$PORT"
+    echo "==> start murmur-server on 127.0.0.1:$PORT"
     if [ ${#STRACE[@]} -gt 0 ]; then
         "${STRACE[@]}" strace.server "$SERVER" --config config.toml >server.log 2>&1 &
     else
@@ -110,9 +110,9 @@ inner() {
         "$CLIENT" "${CARGS[@]}" | tee client.log || CRC=$?
     fi
 
-    echo "==> stop flow-server (usage is flushed at shutdown)"
+    echo "==> stop murmur-server (usage is flushed at shutdown)"
     local PID
-    PID="$(pgrep -P "$SPID" -x flow-server || echo "$SPID")"
+    PID="$(pgrep -P "$SPID" -x murmur-server || echo "$SPID")"
     kill -TERM "$PID" 2>/dev/null || true
     wait "$SPID" 2>/dev/null || true
 
@@ -156,16 +156,16 @@ fi
 [ -f "$WAV" ] || die "no clip at $WAV (--wav FILE)"
 
 if [ "$BUILD" = 1 ]; then
-    echo "==> build flow-server (release, whisper + tls) and the client example"
+    echo "==> build murmur-server (release, whisper + tls) and the client example"
     # shellcheck disable=SC2086
-    ${BUILD_PREFIX:-} cargo build --release --offline -j 2 -p flow-server --manifest-path "$ROOT/Cargo.toml"
+    ${BUILD_PREFIX:-} cargo build --release --offline -j 2 -p murmur-server --manifest-path "$ROOT/Cargo.toml"
     # shellcheck disable=SC2086
-    ${BUILD_PREFIX:-} cargo build --offline -j 2 -p flow-remote --features library \
+    ${BUILD_PREFIX:-} cargo build --offline -j 2 -p murmur-remote --features library \
         --example airgap_e2e --manifest-path "$ROOT/Cargo.toml"
 fi
 { [ -x "$SERVER" ] && [ -x "$CLIENT" ]; } || die "binaries missing (run without --no-build)"
 
-T="$(mktemp -d -t flow-airgap.XXXXXX)"
+T="$(mktemp -d -t murmur-airgap.XXXXXX)"
 if [ "$KEEP" = 1 ]; then
     trap 'echo "kept $T"' EXIT
 else

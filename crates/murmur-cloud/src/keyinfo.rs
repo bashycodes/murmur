@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use flow_router::SecretString;
+use murmur_router::SecretString;
 
 use crate::api::Api;
 use crate::http::{self, CloudError};

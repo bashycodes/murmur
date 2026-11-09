@@ -4,10 +4,10 @@
 $dir = if ($env:NOPLUGIN -eq '1') { "$env:TEMP\lw-noplugin" } else { "$env:LOCALAPPDATA\Murmur" }
 $out = "$env:TEMP\lw-settings-$($env:TAG).png"
 Remove-Item "$out.txt" -ErrorAction SilentlyContinue
-$ps = "$env:USERPROFILE\flow-bench\settings_ui.ps1"
-$a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$ps`" -Exe `"$dir\flow-windows.exe`" -Out `"$out`""
+$ps = "$env:USERPROFILE\murmur-bench\settings_ui.ps1"
+$a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$ps`" -Exe `"$dir\murmur-windows.exe`" -Out `"$out`""
 $pr = New-ScheduledTaskPrincipal -UserId (whoami) -LogonType Interactive
-Register-ScheduledTask -TaskName FlowCloneSettingsShot -Action $a -Principal $pr -Force | Out-Null
-Start-ScheduledTask FlowCloneSettingsShot; Start-Sleep 25
-Unregister-ScheduledTask FlowCloneSettingsShot -Confirm:$false
+Register-ScheduledTask -TaskName MurmurSettingsShot -Action $a -Principal $pr -Force | Out-Null
+Start-ScheduledTask MurmurSettingsShot; Start-Sleep 25
+Unregister-ScheduledTask MurmurSettingsShot -Confirm:$false
 if (Test-Path "$out.txt") { Get-Content "$out.txt" -Encoding UTF8 } else { "no output" }

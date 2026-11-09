@@ -1,4 +1,4 @@
-package dev.flowclone.data
+package dev.murmur.data
 
 import java.util.Locale
 

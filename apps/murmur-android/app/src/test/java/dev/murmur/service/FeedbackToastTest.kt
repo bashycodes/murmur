@@ -1,7 +1,7 @@
-package dev.flowclone.service
+package dev.murmur.service
 
-import dev.flowclone.R
-import dev.flowclone.session.FeedbackEvent
+import dev.murmur.R
+import dev.murmur.session.FeedbackEvent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test

@@ -1,7 +1,7 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.core.CommitStatus
-import dev.flowclone.core.DictEntry
+import dev.murmur.core.CommitStatus
+import dev.murmur.core.DictEntry
 
 /** Dictionary / snippet editor rules (03: words and snippet triggers ≤ 60 chars). */
 object DictionaryEdit {

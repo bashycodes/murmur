@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.app.Activity
 import android.text.InputType
@@ -9,9 +9,9 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
-import dev.flowclone.data.DevSettings
-import dev.flowclone.data.DevSummary
-import dev.flowclone.data.BuildCaps
+import dev.murmur.data.DevSettings
+import dev.murmur.data.DevSummary
+import dev.murmur.data.BuildCaps
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -44,7 +44,7 @@ class DevUiSecretTest {
                     toggleRow("Use TLS (wss)", "Encrypt the connection", false)
                 }
                 sectionLabel("AUTHENTICATION")
-                card { token = secretRow("Token", secret, "From `flow-server gen-token`", "token", onEdit = {}) }
+                card { token = secretRow("Token", secret, "From `murmur-server gen-token`", "token", onEdit = {}) }
                 action("Test connection") {}
             }
         }

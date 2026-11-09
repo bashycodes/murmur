@@ -1,4 +1,4 @@
-package dev.flowclone.notes
+package dev.murmur.notes
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -10,7 +10,7 @@ import java.io.File
 
 /**
  * Plain-text documents the user dictates into (the Scratchpad / Quick note and every note).
- * Platform-free and small on purpose: the editor ([dev.flowclone.ui.NoteEditorActivity]) only
+ * Platform-free and small on purpose: the editor ([dev.murmur.ui.NoteEditorActivity]) only
  * needs load + save by id; listing, pins and delete live in [NotesStore].
  */
 interface DocumentStore {

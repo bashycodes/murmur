@@ -6,9 +6,9 @@
 //! (pasting the raw input scores 0.712). The pass must beat raw on
 //! average, never make a case worse, and get the rule-shaped cases exact.
 
-use flow_core::cleanup::lists_to_plain;
-use flow_core::config::AppCategory;
-use flow_core::postprocess::spoken::{layout, spoken_cleanup};
+use murmur_core::cleanup::lists_to_plain;
+use murmur_core::config::AppCategory;
+use murmur_core::postprocess::spoken::{layout, spoken_cleanup};
 
 fn category(c: &str) -> AppCategory {
     match c {

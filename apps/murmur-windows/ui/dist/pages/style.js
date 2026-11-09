@@ -70,7 +70,7 @@ const TABS = {
     email: { label: "Email", banner: "Used when you dictate into email" },
     other: { label: "Other", banner: "Used in every other app" },
 };
-/** The four backend styles (flow-core `Style`). Casual drops optional
+/** The four backend styles (murmur-core `Style`). Casual drops optional
  *  commas and very casual lowercases only with AI cleanup on; without it
  *  both just drop the final period. */
 const OPTIONS = {

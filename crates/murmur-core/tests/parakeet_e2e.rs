@@ -1,26 +1,26 @@
-//! End-to-end: real Parakeet-TDT model through the full FlowCore pipeline.
+//! End-to-end: real Parakeet-TDT model through the full MurmurCore pipeline.
 //! Skips (passes with a note) without the model: `tools/fetch-models.sh
-//! --parakeet`, or FLOW_PARAKEET_DIR. The hotword case also needs the
-//! LibriSpeech clip 5142-36377-0008.wav in FLOW_AUDIO_DIR (default models/).
+//! --parakeet`, or MURMUR_PARAKEET_DIR. The hotword case also needs the
+//! LibriSpeech clip 5142-36377-0008.wav in MURMUR_AUDIO_DIR (default models/).
 
 use std::path::PathBuf;
 use std::time::Instant;
 
-use flow_core::config::{AsrBackend, ModelConfig, SessionConfig};
-use flow_core::dictionary::{DictEntry, Dictionary};
-use flow_core::{audio, CommitStatus, FlowCore};
+use murmur_core::config::{AsrBackend, ModelConfig, SessionConfig};
+use murmur_core::dictionary::{DictEntry, Dictionary};
+use murmur_core::{audio, CommitStatus, MurmurCore};
 
 mod common;
 use common::long_clips;
 
 fn models() -> PathBuf {
-    std::env::var_os("FLOW_MODELS_DIR")
+    std::env::var_os("MURMUR_MODELS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../models"))
 }
 
-fn load() -> Option<FlowCore> {
-    let dir = std::env::var_os("FLOW_PARAKEET_DIR")
+fn load() -> Option<MurmurCore> {
+    let dir = std::env::var_os("MURMUR_PARAKEET_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| models().join("sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8"));
     if !dir.join("tokens.txt").is_file() || !models().join("jfk.wav").is_file() {
@@ -35,12 +35,16 @@ fn load() -> Option<FlowCore> {
     }))
     .unwrap();
     assert_eq!(cfg.asr_backend, AsrBackend::Parakeet);
-    let core = FlowCore::load_models(&cfg).expect("load parakeet");
+    let core = MurmurCore::load_models(&cfg).expect("load parakeet");
     eprintln!("parakeet load_models: {} ms", t.elapsed().as_millis());
     Some(core)
 }
 
-fn dictate(core: &FlowCore, wav: &std::path::Path, cfg: SessionConfig) -> flow_core::CommitResult {
+fn dictate(
+    core: &MurmurCore,
+    wav: &std::path::Path,
+    cfg: SessionConfig,
+) -> murmur_core::CommitResult {
     let pcm = audio::read_wav_16k_mono(wav).unwrap();
     core.start_session(cfg).unwrap();
     for c in pcm.chunks(640) {
@@ -88,7 +92,7 @@ fn parakeet_jfk_end_to_end_with_dictionary_and_hotwords() {
     assert!(r.timings.asr_ms < 11_000, "asr {} ms", r.timings.asr_ms);
 
     // Contextual biasing: the dictionary word reaches sherpa as a hotword.
-    let clip = std::env::var_os("FLOW_AUDIO_DIR")
+    let clip = std::env::var_os("MURMUR_AUDIO_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(models)
         .join("5142-36377-0008.wav");
@@ -125,13 +129,13 @@ fn parakeet_silence_is_empty() {
 
 #[test]
 fn parakeet_bad_dir_fails_load() {
-    let r = FlowCore::load_models(&ModelConfig {
+    let r = MurmurCore::load_models(&ModelConfig {
         asr_backend: AsrBackend::Parakeet,
         asr_path: "/nonexistent/parakeet".into(),
         ..Default::default()
     });
     match r {
-        Err(flow_core::CoreError::ModelNotFound { path }) => {
+        Err(murmur_core::CoreError::ModelNotFound { path }) => {
             assert_eq!(path, "/nonexistent/parakeet")
         }
         Err(e) => panic!("wrong error: {e:?}"),
@@ -142,12 +146,12 @@ fn parakeet_bad_dir_fails_load() {
 /// Regression (data loss, docs/proposals/streaming-asr-latency.md §1.3):
 /// beam search returned "" for the 41.7 s probe clip 3/3 runs, an EMPTY
 /// `blank_asr` dictation. The engine now re-decodes in pieces cut at
-/// pauses. Needs FLOW_AUDIO_DIR with the LibriSpeech manifest clips.
+/// pauses. Needs MURMUR_AUDIO_DIR with the LibriSpeech manifest clips.
 #[test]
 fn parakeet_long_clip_is_not_empty() {
     let Some(core) = load() else { return };
     let Some(clips) = long_clips::audio_dir().and_then(|d| long_clips::build(&d)) else {
-        eprintln!("SKIP: FLOW_AUDIO_DIR with the manifest clips not set");
+        eprintln!("SKIP: MURMUR_AUDIO_DIR with the manifest clips not set");
         return;
     };
     for clip in clips.iter().filter(|c| c.target_s >= 32) {
@@ -193,7 +197,7 @@ fn parakeet_long_clip_is_not_empty() {
 fn parakeet_survey_long_clips_are_not_empty_with_or_without_hotwords() {
     let Some(core) = load() else { return };
     let Some(audio) = long_clips::audio_dir() else {
-        eprintln!("SKIP: FLOW_AUDIO_DIR not set");
+        eprintln!("SKIP: MURMUR_AUDIO_DIR not set");
         return;
     };
     for n in [3, 4] {
@@ -235,7 +239,7 @@ fn parakeet_survey_long_clips_are_not_empty_with_or_without_hotwords() {
 fn parakeet_segmented_long_clips_lose_no_sentence() {
     let Some(core) = load() else { return };
     let Some(clips) = long_clips::audio_dir().and_then(|d| long_clips::build(&d)) else {
-        eprintln!("SKIP: FLOW_AUDIO_DIR with the manifest clips not set");
+        eprintln!("SKIP: MURMUR_AUDIO_DIR with the manifest clips not set");
         return;
     };
     for clip in clips.iter().filter(|c| c.target_s >= 32) {
@@ -317,7 +321,7 @@ fn lowercase_after_stop(t: &str) -> Vec<String> {
 fn parakeet_segmented_joins_keep_sentence_case_and_close() {
     let Some(core) = load() else { return };
     let Some(audio) = long_clips::audio_dir() else {
-        eprintln!("SKIP: FLOW_AUDIO_DIR not set");
+        eprintln!("SKIP: MURMUR_AUDIO_DIR not set");
         return;
     };
     let Some(clips) = long_clips::build(&audio) else {
@@ -331,7 +335,7 @@ fn parakeet_segmented_joins_keep_sentence_case_and_close() {
     if let Ok(p) = audio::read_wav_16k_mono(&audio.join("1188-133604-0019.wav")) {
         set.push(("ls_1188_M".into(), p));
     }
-    let unified = std::env::var("FLOW_PARAKEET_DIR").is_ok_and(|d| d.contains("unified"));
+    let unified = std::env::var("MURMUR_PARAKEET_DIR").is_ok_and(|d| d.contains("unified"));
     for (name, pcm) in &set {
         core.start_session(SessionConfig {
             ring_capacity_samples: pcm.len() + 16_000,

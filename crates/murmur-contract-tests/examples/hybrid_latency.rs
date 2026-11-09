@@ -1,7 +1,7 @@
-//! Latency probe: the same WAV files dictated locally (in-process FlowCore)
-//! and through Router → flow-remote → a running flow-server.
+//! Latency probe: the same WAV files dictated locally (in-process MurmurCore)
+//! and through Router → murmur-remote → a running murmur-server.
 //!
-//! cargo run --release -p flow-contract-tests --features parakeet --example hybrid_latency -- \
+//! cargo run --release -p murmur-contract-tests --features parakeet --example hybrid_latency -- \
 //!     --server 127.0.0.1:7313 --token-file TOKEN --model '{"asr_engine":"parakeet","asr_path":"…","threads":4}' \
 //!     a.wav b.wav …
 //!
@@ -18,9 +18,9 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use flow_core::config::{ModelConfig, SessionConfig};
-use flow_core::{CommitResult, FlowCore};
-use flow_router::{Router, RouterConfig, ServerConfig};
+use murmur_core::config::{ModelConfig, SessionConfig};
+use murmur_core::{CommitResult, MurmurCore};
+use murmur_router::{Router, RouterConfig, ServerConfig};
 
 fn arg(name: &str) -> Option<String> {
     let a: Vec<String> = std::env::args().collect();
@@ -94,7 +94,7 @@ fn main() {
         let model: ModelConfig =
             serde_json::from_str(&arg("--model").expect("--model JSON")).unwrap();
         let t = Instant::now();
-        let c = Arc::new(FlowCore::load_models(&model).expect("local model"));
+        let c = Arc::new(MurmurCore::load_models(&model).expect("local model"));
         eprintln!("local load: {} ms", t.elapsed().as_millis());
         Some(c)
     };
@@ -110,7 +110,7 @@ fn main() {
             ..Default::default()
         },
         None,
-        Some(flow_remote::factory("hybrid_latency")),
+        Some(murmur_remote::factory("hybrid_latency")),
     );
     let h = router.probe_server();
     eprintln!(
@@ -126,7 +126,7 @@ fn main() {
     println!("file\taudio_ms\tlocal_commit_ms\tremote_commit_ms\tlocal_asr_ms\tserver_asr_ms\tsame_text\ttext");
     let (mut sl, mut sr, mut n) = (0u128, 0u128, 0u128);
     for f in files() {
-        let pcm = flow_core::audio::read_wav_16k_mono(std::path::Path::new(&f)).unwrap();
+        let pcm = murmur_core::audio::read_wav_16k_mono(std::path::Path::new(&f)).unwrap();
         for rep in 0..reps {
             let local = core.as_ref().map(|core| {
                 dictate(

@@ -1,4 +1,4 @@
-//! Compile tests/c/smoke.c against include/flow_core.h and the staticlib,
+//! Compile tests/c/smoke.c against include/murmur_core.h and the staticlib,
 //! proving the header matches the exported ABI. Skips without `cc`.
 
 use std::path::{Path, PathBuf};
@@ -12,7 +12,7 @@ use std::process::Command;
 /// `cargo test` builds only the rlib, never the staticlib, so the nested build
 /// must match the test's profile: building the default (dev) profile and then
 /// looking next to a `--release` test binary linked whatever release
-/// `libflow_ffi.a` an older build had left there (or none at all).
+/// `libmurmur_ffi.a` an older build had left there (or none at all).
 fn build_staticlib() -> PathBuf {
     let exe = std::env::current_exe().unwrap();
     let lib_dir = exe.parent().unwrap().parent().unwrap().to_path_buf();
@@ -26,7 +26,7 @@ fn build_staticlib() -> PathBuf {
         "build",
         "-q",
         "-p",
-        "flow-ffi",
+        "murmur-ffi",
         "--lib",
         "--profile",
         profile,
@@ -50,12 +50,12 @@ fn c_program_links_and_runs() {
     }
     let lib_dir = build_staticlib();
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let bin = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("flow_smoke");
+    let bin = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("murmur_smoke");
     let out = Command::new("cc")
         .arg(dir.join("tests/c/smoke.c"))
         .arg("-I")
         .arg(dir.join("include"))
-        .arg(lib_dir.join("libflow_ffi.a"))
+        .arg(lib_dir.join("libmurmur_ffi.a"))
         .args(["-lpthread", "-ldl", "-lm", "-lstdc++", "-o"])
         .arg(&bin)
         .output()

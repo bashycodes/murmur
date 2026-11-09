@@ -927,7 +927,7 @@ function initialChoices() {
     st.engine = initialEngine(first ? ENGINE_OF[first] : null, !!p?.onboarded, has);
     st.cleanup = or?.cleanup.allow ? "cloud" : p?.llm_enabled && p.cleanup_level !== "none" ? "pc" : "rules";
     $("ob_host").value = dev?.host ?? "";
-    $("ob_token").placeholder = dev?.token_saved ? "saved (hidden), leave empty to keep" : "from flow-server gen-token";
+    $("ob_token").placeholder = dev?.token_saved ? "saved (hidden), leave empty to keep" : "from murmur-server gen-token";
     $("ob_stt_consent").checked = !!or?.stt.consent;
     st.prov = or?.cleanup.provider ?? "openrouter";
     $("ob_clean_consent").checked = consentFor(st.prov);

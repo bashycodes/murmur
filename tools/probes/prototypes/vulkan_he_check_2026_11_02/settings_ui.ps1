@@ -5,7 +5,7 @@ param([string]$Exe, [string]$Out)
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Windows.Forms, System.Drawing
 Start-Process $Exe; Start-Sleep 4
 $root = [Windows.Automation.AutomationElement]::RootElement
-$cond = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ProcessIdProperty, (Get-Process flow-windows | Select -First 1).Id)
+$cond = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ProcessIdProperty, (Get-Process murmur-windows | Select -First 1).Id)
 $w = $root.FindAll([Windows.Automation.TreeScope]::Children, $cond) | ? { $_.Current.Name -eq 'Murmur' } | Select -First 1
 $res = @()
 function Click($name) {

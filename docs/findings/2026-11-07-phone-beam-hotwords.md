@@ -11,7 +11,7 @@ History correction.
 (scripts only; clips, dictionary and transcripts stay private).
 Parity English set (29 clips, 37 terms, refs from the 2026-11-05 reference
 capture), the phone's model (`sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8`),
-the parity dictionary and the phone's session config. `flow-cli transcribe`
+the parity dictionary and the phone's session config. `murmur-cli transcribe`
 runs the full dictation pipeline (VAD, guard, rules, no LLM) on the
 i7-6700 dev box, 4 threads. Terms and WER from the parity scorer. Beam
 settings are the PC's (D12): `max_active_paths` 4, hotword score 1.0.
@@ -46,7 +46,7 @@ bug). The phone's `BEAM` mode loads only the beam recognizer
 (`greedy_fallback = false`), so it has **no greedy re-decode**. Measured to
 decide:
 
-- **RAM** (`ram_modes.sh`, peak RSS of one `flow-cli transcribe` on the
+- **RAM** (`ram_modes.sh`, peak RSS of one `murmur-cli transcribe` on the
   phone's model, desktop): greedy 827 MB, beam 830 MB, **auto 1538 MB
   (+708 MB)**. The phone also holds the 1.5B cleanup model (D22 chose greedy
   to save exactly this second recognizer).
@@ -79,14 +79,14 @@ greedy re-decode through a reload.
   save (`DictionaryStore.onChange` → `EngineHolder.dictionaryChanged`)
   never switches on the UI thread or under a dictation, whose core the
   switch frees: it waits off the main thread until no dictation records or
-  processes (`FlowApp.dictationBusy`); a dictation started first applies it
+  processes (`MurmurApp.dictationBusy`); a dictation started first applies it
   at its start, before recording. It happens only on the empty ↔ non-empty
   edge, and keeps the on-device LLM (`keepLlmForSwitch`). Desktop load ≈ 3.1 s either way; the phone's
   reload is unmeasured (Parakeet-he loads in ~4.7 s there).
 - **Developer settings.** "Parakeet decoding" now defaults to "By
   dictionary"; Auto / Greedy / Beam remain as overrides.
-- **Probe knobs.** `FLOW_PARAKEET_BEAM` (beam width) next to
-  `FLOW_PARAKEET_HOTWORDS_SCORE`; `flow-cli --parakeet-decoding`.
+- **Probe knobs.** `MURMUR_PARAKEET_BEAM` (beam width) next to
+  `MURMUR_PARAKEET_HOTWORDS_SCORE`; `murmur-cli --parakeet-decoding`.
 
 ## Name learning
 
@@ -110,7 +110,7 @@ greedy re-decode through a reload.
 ## Verification
 
 - Rust: `learn` tests (names, sentence case, acronyms, mixed case, old
-  JSON without `name`), flow-core lib tests, clippy `-D warnings`.
+  JSON without `name`), murmur-core lib tests, clippy `-D warnings`.
 - Android unit tests: `ParakeetDecodingTest` (empty / snippet / blank →
   greedy, word or replacement → beam, override wins, Hebrew greedy),
   `EngineHolderTest` (a decoding change reloads once and keeps the LLM; a

@@ -9,10 +9,10 @@ use std::time::Duration;
 
 use base64::Engine;
 use common::*;
-use flow_cloud::testing::Reply;
-use flow_cloud::{SttPath, SttPathChoice, TRANSCRIBE_PROMPT};
-use flow_core::asr::AsrEngine;
-use flow_router::Failure;
+use murmur_cloud::testing::Reply;
+use murmur_cloud::{SttPath, SttPathChoice, TRANSCRIBE_PROMPT};
+use murmur_core::asr::AsrEngine;
+use murmur_router::Failure;
 
 fn b64(v: &serde_json::Value) -> Vec<u8> {
     base64::engine::general_purpose::STANDARD
@@ -74,13 +74,13 @@ fn flac_upload_round_trips_bit_exact() {
     let flac = b64(&srv.requests()[0].json()["input_audio"]["data"]);
     let mut r = claxon::FlacReader::new(std::io::Cursor::new(flac)).unwrap();
     let got: Vec<i16> = r.samples().map(|s| s.unwrap() as i16).collect();
-    assert_eq!(got, flow_cloud::encode::to_i16(&pcm));
+    assert_eq!(got, murmur_cloud::encode::to_i16(&pcm));
 }
 
 #[test]
 fn privacy_off_and_dictionary_off_omit_the_provider_block() {
     let srv = mock_fixed(Reply::json(200, fixture("transcriptions_ok.json")));
-    let mut s = settings(flow_cloud::DEFAULT_STT_MODEL);
+    let mut s = settings(murmur_cloud::DEFAULT_STT_MODEL);
     s.privacy.zdr = false;
     s.privacy.data_collection = "allow".into();
     s.send_dictionary = false;
@@ -151,7 +151,7 @@ fn format_400_twice_is_an_error_not_a_loop() {
     assert_eq!(srv.count(), 2);
 }
 
-fn chat_asr() -> flow_cloud::CloudAsr {
+fn chat_asr() -> murmur_cloud::CloudAsr {
     let mut i = info("google/gemini-3.5-flash-lite", SttPath::ChatAudio);
     i.supports.reasoning = true;
     i.reasoning_mandatory = true;
@@ -206,7 +206,7 @@ fn path_b_preamble_is_rejected_as_unverbatim() {
 #[test]
 fn path_is_chosen_per_catalogue_entry() {
     let _srv = mock_fixed(Reply::json(200, fixture("transcriptions_ok.json")));
-    let cat = flow_cloud::Catalog::baked();
+    let cat = murmur_cloud::Catalog::baked();
     let chat = cat
         .stt_models()
         .find(|m| m.stt_path == Some(SttPath::ChatAudio))
@@ -305,7 +305,7 @@ fn transport_errors() {
 #[test]
 fn redirects_are_never_followed() {
     for status in [302u16, 307, 308] {
-        let target = flow_cloud::testing::MockServer::fixed(Reply::json(
+        let target = murmur_cloud::testing::MockServer::fixed(Reply::json(
             200,
             serde_json::json!({"text": "x"}),
         ));

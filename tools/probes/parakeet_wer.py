@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Score spot_check JSONL (crates/flow-asr-sherpa/examples/spot_check.rs) with
+"""Score spot_check JSONL (crates/murmur-asr-sherpa/examples/spot_check.rs) with
 the benchmark normaliser (tools/probes/bench/wer.py) so the numbers compare
 with docs/model-benchmarks.md.  Usage: parakeet_wer.py out.jsonl [...]"""
 import json, os, sys

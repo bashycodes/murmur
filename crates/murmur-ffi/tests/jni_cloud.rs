@@ -4,8 +4,8 @@
 //! removed provider's key is ignored), catalogue search from the baked
 //! snapshot, cleanup toggle / consent gate / model selection, and that the
 //! key never appears in any output. The network paths (OpenRouter mock via
-//! `flow_cloud::testing::override_base_url`, which a separate JVM process
-//! cannot use) are in flow-contract-tests. Skips when no `java` is on PATH.
+//! `murmur_cloud::testing::override_base_url`, which a separate JVM process
+//! cannot use) are in murmur-contract-tests. Skips when no `java` is on PATH.
 #![cfg(all(feature = "jni", feature = "cloud"))]
 
 use std::path::PathBuf;
@@ -30,13 +30,13 @@ fn json(line: &str) -> serde_json::Value {
 }
 
 #[test]
-fn jvm_openrouter_flow_through_native_router() {
+fn jvm_openrouter_murmur_through_native_router() {
     if Command::new("java").arg("-version").output().is_err() {
         eprintln!("SKIP: no java on PATH");
         return;
     }
     let st = Command::new(env!("CARGO"))
-        .args(["build", "-q", "-p", "flow-ffi", "--lib", "--features"])
+        .args(["build", "-q", "-p", "murmur-ffi", "--lib", "--features"])
         .arg(features())
         .status()
         .unwrap();
@@ -45,8 +45,8 @@ fn jvm_openrouter_flow_through_native_router() {
     let lib_dir = exe.parent().unwrap().parent().unwrap().to_path_buf();
     let cache = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("jni_cloud_cache");
     std::fs::create_dir_all(&cache).unwrap();
-    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/java/dev/flowclone/core/JniCloud.java");
+    let src =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/java/dev/murmur/core/JniCloud.java");
     let out = Command::new("java")
         .arg(format!("-Djava.library.path={}", lib_dir.display()))
         .arg("--enable-native-access=ALL-UNNAMED")

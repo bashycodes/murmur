@@ -1,4 +1,4 @@
-package dev.flowclone.insert
+package dev.murmur.insert
 
 /**
  * Injectable editor abstraction for the V3 insertion state machine.

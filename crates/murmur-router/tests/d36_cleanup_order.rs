@@ -1,5 +1,5 @@
 //! D36: who cleans a dictation is decided by the cleanup order
-//! {local, server, cloud}, independent of the STT route. A real `FlowCore`
+//! {local, server, cloud}, independent of the STT route. A real `MurmurCore`
 //! (MockAsr + fake on-device LLM) is the local route; a fake remote backend
 //! is the server (STT sessions and text-only `clean`); a fake OpenRouter
 //! cleaner is the cloud.
@@ -8,12 +8,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use flow_core::asr::{AbortFlag, MockAsr};
-use flow_core::cleanup::{CleanError, CleanPrompt, CleanRequest, Cleaner};
-use flow_core::config::CleanupLevel;
-use flow_core::FlowCore;
-use flow_protocol::{Cleaned, HelloOk, FEATURE_CLEAN, FEATURE_SUMMARY};
-use flow_router::*;
+use murmur_core::asr::{AbortFlag, MockAsr};
+use murmur_core::cleanup::{CleanError, CleanPrompt, CleanRequest, Cleaner};
+use murmur_core::config::CleanupLevel;
+use murmur_core::MurmurCore;
+use murmur_protocol::{Cleaned, HelloOk, FEATURE_CLEAN, FEATURE_SUMMARY};
+use murmur_router::*;
 
 const KEY: &str = "sk-or-LEAKCHECK-d36-0123456789";
 const IN: &str = "the demo is on thursday right";
@@ -73,7 +73,7 @@ enum Answer {
     Disconnected,
 }
 
-/// Fake flow-server: records the session configs it got and the text
+/// Fake murmur-server: records the session configs it got and the text
 /// cleanup requests; its session result is "cleaned" unless the client
 /// asked it to skip the LLM (or it has no LLM).
 struct Server {
@@ -184,9 +184,9 @@ impl Backend for Server {
             llm,
             // The build with the AI model is the newer one.
             server: if llm {
-                "flow-server 0.12.0"
+                "murmur-server 0.12.0"
             } else {
-                "flow-server 0.11.0"
+                "murmur-server 0.11.0"
             }
             .into(),
             features: match (llm, *self.summary.lock().unwrap()) {
@@ -206,7 +206,7 @@ impl Backend for Server {
                 ..Default::default()
             });
         }
-        // flow-remote's refusal of a meeting task to an older server.
+        // murmur-remote's refusal of a meeting task to an older server.
         if !req.task.is_cleanup() && !*self.summary.lock().unwrap() {
             return Ok(Cleaned {
                 error: Some("no_summary".into()),
@@ -290,7 +290,7 @@ fn rig_heard(c: RouterConfig, local_llm: bool, heard: &str) -> Rig {
         calls: AtomicUsize::new(0),
         fail: Mutex::new(false),
     });
-    let core = FlowCore::from_engines(
+    let core = MurmurCore::from_engines(
         Arc::new(MockAsr::new(heard)),
         local_llm.then(|| local.clone() as Arc<dyn Cleaner>),
     );
@@ -805,12 +805,12 @@ fn a_server_with_clean_is_never_rechecked() {
 
 const SUMMARY_IN: &str = "Me: the review moves to Monday\nOthers: I will send the agenda";
 
-fn summarise(k: &Rig) -> Result<flow_core::summary::Summary, flow_core::summary::SummaryError> {
+fn summarise(k: &Rig) -> Result<murmur_core::summary::Summary, murmur_core::summary::SummaryError> {
     let base = Some(k.local.clone() as Arc<dyn Cleaner>);
-    flow_core::summary::summarise(
+    murmur_core::summary::summarise(
         k.router.cleanup_cleaner(base),
         SUMMARY_IN,
-        &flow_core::summary::Options::default(),
+        &murmur_core::summary::Options::default(),
     )
 }
 
@@ -820,7 +820,7 @@ fn summaries_follow_the_cleanup_order_server_included() {
     let s = summarise(&k).unwrap();
     assert_eq!((s.engine.as_str(), s.text.as_str()), ("server", SERVER_OUT));
     let req = k.server.cleans.lock().unwrap()[0].clone();
-    assert_eq!(req.task, flow_core::cleanup::CleanTask::MeetingSummary);
+    assert_eq!(req.task, murmur_core::cleanup::CleanTask::MeetingSummary);
     assert_eq!(req.text, SUMMARY_IN);
     assert_eq!((k.local_calls(), k.cloud_calls()), (0, 0));
     // Local first: the on-device model writes it.
@@ -866,6 +866,6 @@ fn no_engine_on_means_no_summary() {
         .is_none());
     assert_eq!(
         summarise(&k).unwrap_err(),
-        flow_core::summary::SummaryError::NoEngine
+        murmur_core::summary::SummaryError::NoEngine
     );
 }

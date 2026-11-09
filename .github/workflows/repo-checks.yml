@@ -51,22 +51,22 @@ jobs:
       # The android-build native gate on a stub toolchain: no SIGPIPE flake,
       # and a failure names its check.
       - name: Native gate test
-        run: apps/flow-android/tools/probes/check_native_so_test.sh
+        run: apps/murmur-android/tools/probes/check_native_so_test.sh
       # The colleague bundle's model list stays in step with the apps'
       # catalogue, and its install note renders.
       - name: Colleague bundle helpers
         run: tools/bundle/colleague-bundle_test.sh
-      # The flow-server container's entrypoint (D77): config from a models
+      # The murmur-server container's entrypoint (D77): config from a models
       # folder, the admin key never logged; a stub server, no Docker.
       - name: Container entrypoint
         run: tools/container/entrypoint_test.sh
       # D80: the installer notice check on stub MSI/NSIS layouts (no 7-Zip).
       - name: Installer notice check
-        run: apps/flow-windows/tools/ci/check-installer-notices_test.sh
+        run: apps/murmur-windows/tools/ci/check-installer-notices_test.sh
       # D80: NOTICE's crate section and THIRD-PARTY-LICENSES (the full texts)
       # match both lockfiles; the registry fetch is all it needs.
       - name: Third-party notices current
         run: |
           cargo fetch --locked --manifest-path Cargo.toml
-          cargo fetch --locked --manifest-path apps/flow-windows/Cargo.toml
+          cargo fetch --locked --manifest-path apps/murmur-windows/Cargo.toml
           python3 -I tools/notice/crate-licences.py --check

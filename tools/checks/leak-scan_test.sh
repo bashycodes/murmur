@@ -62,8 +62,8 @@ hit home-path "model at /ho${JOIN}me/alice/models/stt.onnx" absolute
 hit home-path "open file:///ho${JOIN}me/alice/notes.txt" file-url
 hit windows-home-path "C:\\Us${JOIN}ers\\alice\\AppData\\Roaming" backslash
 hit windows-home-path "C:\\\\Us${JOIN}ers\\\\alice\\\\AppData" escaped
-hit windows-home-path "c:/us${JOIN}ers/alice/flow" slash
-hit windows-home-path "file:///C:/Us${JOIN}ers/alice/flow" file-url
+hit windows-home-path "c:/us${JOIN}ers/alice/murmur" slash
+hit windows-home-path "file:///C:/Us${JOIN}ers/alice/murmur" file-url
 # A marker buried mid-segment is not a marker.
 hit openai-key "sk-${JOIN}or-v1-9f3Kq2Lm8FAKEx1Vb7Nc4Hd6" "mid-segment FAKE"
 
@@ -85,7 +85,7 @@ clean "tailnet CIDR" '100.64.0.0/10'
 clean "below tailnet range" '100.63.255.255'
 clean "above tailnet range" '100.128.0.1'
 clean "temp HOME in tests" 'HOME="$T/home" XDG_CONFIG_HOME="$T/home/.config"'
-clean "placeholder home" 'cd /home/user/flow-clone'
+clean "placeholder home" 'cd /home/user/murmur'
 clean "placeholder windows home" 'C:\Users\you\AppData'
 clean "PEM public key" '-----BEGIN PUBLIC KEY-----'
 

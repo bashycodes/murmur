@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.app.Activity
 import android.content.Intent
@@ -13,8 +13,8 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
-import dev.flowclone.R
-import dev.flowclone.data.ShellPages.Tab
+import dev.murmur.R
+import dev.murmur.data.ShellPages.Tab
 
 /**
  * One bottom-navigation destination of the app shell ([MainActivity]).

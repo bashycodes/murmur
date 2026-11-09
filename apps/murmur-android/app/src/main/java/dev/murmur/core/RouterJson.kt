@@ -1,12 +1,12 @@
-package dev.flowclone.core
+package dev.murmur.core
 
-import dev.flowclone.core.CoreJson.optDoubleOrNull
-import dev.flowclone.core.CoreJson.optLongOrNull
-import dev.flowclone.core.CoreJson.optStringOrNull
+import dev.murmur.core.CoreJson.optDoubleOrNull
+import dev.murmur.core.CoreJson.optLongOrNull
+import dev.murmur.core.CoreJson.optStringOrNull
 import org.json.JSONException
 import org.json.JSONObject
 
-/** flow_router `Capabilities` (`nativeCapabilities()`): what this native library can do. */
+/** murmur_router `Capabilities` (`nativeCapabilities()`): what this native library can do. */
 data class Capabilities(
     val local: Boolean = false,
     val remote: Boolean = false,
@@ -18,10 +18,10 @@ data class Capabilities(
 
 data class Rtt(val min: Long, val median: Long, val max: Long)
 
-/** flow_router `CloudCapabilities` (`nativeCloudCapabilities()`, D18): does this library carry the cloud client. */
+/** murmur_router `CloudCapabilities` (`nativeCloudCapabilities()`, D18): does this library carry the cloud client. */
 data class CloudCapabilities(val cloud: Boolean = false, val adapters: List<String> = emptyList())
 
-/** flow_router `HealthReport` (`nativeProbeServer`, `RouteStatus.health`). */
+/** murmur_router `HealthReport` (`nativeProbeServer`, `RouteStatus.health`). */
 data class HealthReport(
     val ok: Boolean,
     val engine: String = "remote",
@@ -57,7 +57,7 @@ data class CircuitStatus(
     val untilConfigChange: Boolean = false,
 )
 
-/** flow_router `RouteStatus` (`nativeRouteStatus`). */
+/** murmur_router `RouteStatus` (`nativeRouteStatus`). */
 data class RouteStatus(
     val last: RouteInfo? = null,
     val circuit: CircuitStatus = CircuitStatus(),
@@ -70,7 +70,7 @@ data class RouteStatus(
     val cleanupCircuit: CircuitStatus? = null,
 )
 
-/** D28 `nativeCleanupStatus` (`flow_router::CleanupStatus`, fixture `cleanup_status.json`). */
+/** D28 `nativeCleanupStatus` (`murmur_router::CleanupStatus`, fixture `cleanup_status.json`). */
 data class CleanupStatus(
     val supported: Boolean = false,
     val enabled: Boolean = false,
@@ -116,7 +116,7 @@ data class CloudKeyInfo(
     val checkedAtMs: Long? = null,
 )
 
-/** Router JSON (D17 §1.2) ↔ Kotlin. Pinned by RouterJsonTest against crates/flow-router/fixtures. */
+/** Router JSON (D17 §1.2) ↔ Kotlin. Pinned by RouterJsonTest against crates/murmur-router/fixtures. */
 object RouterJson {
     private fun JSONObject.optIntOrNull(k: String): Int? = if (!has(k) || isNull(k)) null else optInt(k)
     private fun JSONObject.optBoolOrNull(k: String): Boolean? = if (!has(k) || isNull(k)) null else optBoolean(k)
@@ -261,15 +261,15 @@ object RouterJson {
     }
 
     /** D52 `nativeCustomCleanupAddress`. */
-    fun decodeCustomAddress(json: String?): dev.flowclone.data.CustomAddress = try {
+    fun decodeCustomAddress(json: String?): dev.murmur.data.CustomAddress = try {
         val o = JSONObject(json ?: "{}")
         val url = o.optStringOrNull("url")
-        dev.flowclone.data.CustomAddress(
+        dev.murmur.data.CustomAddress(
             url = url, host = if (url == null) "" else o.optString("host"), modelOk = o.optBoolean("model_ok"),
             error = o.optStringOrNull("error") ?: if (url == null) "error" else null, message = o.optStringOrNull("message"),
         )
     } catch (e: JSONException) {
-        dev.flowclone.data.CustomAddress(error = "error")
+        dev.murmur.data.CustomAddress(error = "error")
     }
 
     fun decodeKeyInfo(json: String?): CloudKeyInfo = try {
@@ -297,7 +297,7 @@ object DevText {
         }
         val hint = when (h.error) {
             "auth_failed" -> "token rejected"
-            "connect_failed" -> "is flow-server running / LAN or VPN up?"
+            "connect_failed" -> "is murmur-server running / LAN or VPN up?"
             "proto_mismatch" -> "client and server protocol versions differ (server proto ${h.proto ?: "?"})"
             "server_not_configured" -> "set the server host first"
             "busy" -> "server busy, try again"
@@ -309,8 +309,8 @@ object DevText {
 
     /** D28 "Check key": label, credit left, this month's usage; a warning for a key without a limit. */
     fun keyInfo(k: CloudKeyInfo): String {
-        k.error?.let { e -> return "$e" + (dev.flowclone.data.CloudText.hint(e)?.let { ": $it" } ?: "") }
-        val u = dev.flowclone.data.CloudText::usd
+        k.error?.let { e -> return "$e" + (dev.murmur.data.CloudText.hint(e)?.let { ": $it" } ?: "") }
+        val u = dev.murmur.data.CloudText::usd
         val credit = when {
             k.limitRemaining != null && k.limit != null -> "credit left ${u(k.limitRemaining)} of ${u(k.limit)}"
             k.limitRemaining != null -> "credit left ${u(k.limitRemaining)}"
@@ -325,17 +325,17 @@ object DevText {
     fun cleanupStatus(c: CleanupStatus): String {
         if (!c.supported) return "Not in this build"
         if (!c.enabled) return "Off"
-        val why = c.blocked?.let { b -> "skipped: " + (dev.flowclone.data.CloudText.hint(b) ?: b) }
+        val why = c.blocked?.let { b -> "skipped: " + (dev.murmur.data.CloudText.hint(b) ?: b) }
         val last = c.last?.let { l ->
-            listOfNotNull("last", l.latencyMs?.let { "$it ms" }, l.ttftMs?.let { "first token $it ms" }, l.costUsd?.let { (if (l.costEstimated) "≈" else "") + dev.flowclone.data.CloudText.usd(it) }).joinToString(" ")
+            listOfNotNull("last", l.latencyMs?.let { "$it ms" }, l.ttftMs?.let { "first token $it ms" }, l.costUsd?.let { (if (l.costEstimated) "≈" else "") + dev.murmur.data.CloudText.usd(it) }).joinToString(" ")
         }
         // D52: month_cost_usd counts both providers; OpenRouter's part and the custom server's are shown apart.
-        val usd = dev.flowclone.data.CloudText::usd
+        val usd = dev.murmur.data.CloudText::usd
         val openRouter = (c.monthCostUsd - c.customMonthCostUsd).coerceAtLeast(0.0)
         val isCustom = c.provider == "custom"
         val orLine = if (!isCustom) "this month ${usd(openRouter)}" else openRouter.takeIf { it > 0 }?.let { "OpenRouter this month ${usd(it)}" }
         val custom = c.customMonthCostUsd.takeIf { it > 0 }?.let { "${usd(it)} on your server this month (not in budget)" }
-        val who = if (isCustom) dev.flowclone.data.CustomServer.NAME + (if (c.host.isEmpty()) "" else " (${c.host})") else null
+        val who = if (isCustom) dev.murmur.data.CustomServer.NAME + (if (c.host.isEmpty()) "" else " (${c.host})") else null
         return listOfNotNull("On", who, c.model, why, last, orLine, custom).joinToString(" · ")
     }
 
@@ -344,11 +344,11 @@ object DevText {
         if (h.ok) {
             return listOfNotNull(
                 "OK", h.transcript?.let { "heard \"$it\"" }, h.latencyMs?.let { "$it ms" },
-                h.costUsd?.let { dev.flowclone.data.CloudText.usd(it) }, h.model,
+                h.costUsd?.let { dev.murmur.data.CloudText.usd(it) }, h.model,
             ).joinToString(" · ")
         }
         if (RouterErrors.plaintextRefused(h.message)) return "${h.error ?: "connect_failed"}: ${RouterErrors.CLOUD_NEEDS_TLS}"
-        val hint = dev.flowclone.data.CloudText.hint(h.error)
+        val hint = dev.murmur.data.CloudText.hint(h.error)
         return listOfNotNull("${h.error ?: "error"}${hint?.let { ": $it" } ?: ""}", h.message).joinToString(" — ")
     }
 
@@ -361,7 +361,7 @@ object DevText {
             null -> "pipeline ?"
         }
         return listOf(
-            "${h.serverVersion ?: "flow-server"} · core ${h.serverCore ?: "?"} · proto ${h.proto ?: "?"}",
+            "${h.serverVersion ?: "murmur-server"} · core ${h.serverCore ?: "?"} · proto ${h.proto ?: "?"}",
             pp,
             "ASR ${h.asrBackend ?: "?"}${h.asrModel?.let { " ($it)" } ?: ""} · LLM ${if (h.llm == true) "on" else "off"} · workers ${h.workers ?: "?"} busy ${h.busy ?: "?"}",
         ).joinToString("\n")
@@ -376,11 +376,11 @@ object DevText {
 
     /** "Active engine (last dictation)" row. */
     /** [cloudName]: who the cloud cleanup route called (`CloudSettings.cleanupProviderName`, D52). */
-    fun lastDictation(r: CommitResult?, cloudName: String = dev.flowclone.data.OpenRouter.NAME): String {
+    fun lastDictation(r: CommitResult?, cloudName: String = dev.murmur.data.OpenRouter.NAME): String {
         if (r == null) return "No dictation yet in this process."
         val route = r.route
         val engine = when (route?.engine) {
-            "cloud" -> dev.flowclone.data.CloudText.engineRow(route)
+            "cloud" -> dev.murmur.data.CloudText.engineRow(route)
             "remote" -> "Server${route.server?.let { " $it" } ?: ""}"
             "local" -> "Client (on-device)"
             null -> "Client (no router info)"
@@ -396,9 +396,9 @@ object DevText {
         if (r.timings.waitMs > 0) parts += "wait ${r.timings.waitMs} ms"
         parts += r.status.name + (r.emptyReason?.let { " ($it)" } ?: "") + (r.error?.let { ": " + if (RouterErrors.plaintextRefused(it)) RouterErrors.NEEDS_TLS else it } ?: "")
         // D27: llm_skipped_clean reads as a normal result ("AI not needed"), not a failure.
-        dev.flowclone.data.LlmOutcome.label(dev.flowclone.data.LlmOutcome.code(r))?.let { parts += it }
+        dev.murmur.data.LlmOutcome.label(dev.murmur.data.LlmOutcome.code(r))?.let { parts += it }
         // D28: who cleaned it (on-device / OpenRouter) and what it cost.
-        dev.flowclone.data.CloudText.cleanupRow(route, cloudName)?.let { parts += it }
+        dev.murmur.data.CloudText.cleanupRow(route, cloudName)?.let { parts += it }
         return parts.joinToString(" · ")
     }
 

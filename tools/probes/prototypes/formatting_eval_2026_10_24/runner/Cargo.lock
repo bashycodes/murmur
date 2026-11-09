@@ -44,7 +44,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "flow-core"
+name = "murmur-core"
 version = "0.1.0"
 dependencies = [
  "fancy-regex",
@@ -61,7 +61,7 @@ dependencies = [
 name = "formatting-eval"
 version = "0.0.0"
 dependencies = [
- "flow-core",
+ "murmur-core",
  "regex",
  "serde",
  "serde_json",

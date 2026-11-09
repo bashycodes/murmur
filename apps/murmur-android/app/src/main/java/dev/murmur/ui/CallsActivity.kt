@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.Manifest
 import android.app.Activity
@@ -11,15 +11,15 @@ import android.provider.OpenableColumns
 import android.text.format.DateFormat
 import android.widget.LinearLayout
 import android.widget.Toast
-import dev.flowclone.FlowApp
-import dev.flowclone.calls.AutoCalls
-import dev.flowclone.calls.AutoQueue
-import dev.flowclone.calls.CallEngine
-import dev.flowclone.calls.CallJobService
-import dev.flowclone.calls.CallJobState
-import dev.flowclone.calls.CallRequest
-import dev.flowclone.calls.CallTranscript
-import dev.flowclone.calls.CallsView
+import dev.murmur.MurmurApp
+import dev.murmur.calls.AutoCalls
+import dev.murmur.calls.AutoQueue
+import dev.murmur.calls.CallEngine
+import dev.murmur.calls.CallJobService
+import dev.murmur.calls.CallJobState
+import dev.murmur.calls.CallRequest
+import dev.murmur.calls.CallTranscript
+import dev.murmur.calls.CallsView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -37,7 +37,7 @@ import kotlin.concurrent.thread
  * after it was turned on; the section shows what waits and what failed (tap to try again).
  */
 class CallsActivity : Activity() {
-    private val app get() = FlowApp.of(this)
+    private val app get() = MurmurApp.of(this)
     private lateinit var ui: DevUi
     private var detailId: String? = null
     private var items: List<CallTranscript> = emptyList()
@@ -143,7 +143,7 @@ class CallsActivity : Activity() {
             enableAuto()
         } else {
             autoToggle?.isChecked = false
-            toast("Allow Music and audio for Flow Clone to transcribe new call recordings")
+            toast("Allow Music and audio for Murmur to transcribe new call recordings")
         }
     }
 

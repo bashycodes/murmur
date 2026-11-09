@@ -1,6 +1,6 @@
 //! Replay harness (beta debug tool): saved dictation recordings re-run
 //! through speech models x cleanup models x prompt versions, on the real
-//! `FlowCore` pipeline (segmentation, VAD, D30 routing, fallback
+//! `MurmurCore` pipeline (segmentation, VAD, D30 routing, fallback
 //! rules, post-processing). `tools/replay/run.sh` drives the binary;
 //! `tools/replay/score.py` scores its rows.
 //!
@@ -24,13 +24,13 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use flow_core::asr::{AbortFlag, AsrEngine, AsrError, AsrOutput, AsrRequest};
-use flow_core::cleanup::{
+use murmur_core::asr::{AbortFlag, AsrEngine, AsrError, AsrOutput, AsrRequest};
+use murmur_core::cleanup::{
     session_prompt, AiParts, CleanError, CleanPrompt, CleanUsage, Cleaner, PromptScope,
     PromptVersion, RoutedCleaner,
 };
-use flow_core::config::{AppCategory, FieldContext, SessionConfig};
-use flow_core::{CommitResult, FlowCore};
+use murmur_core::config::{AppCategory, FieldContext, SessionConfig};
+use murmur_core::{CommitResult, MurmurCore};
 use serde::{Deserialize, Serialize};
 
 /// Cost of the last call of a paid engine (USD), read right after it.
@@ -282,7 +282,7 @@ impl PromptOverride {
     }
 
     fn rewrite(&self, p: &CleanPrompt) -> CleanPrompt {
-        let cat = flow_core::postprocess::effective_category(self.session.platform, &self.ctx);
+        let cat = murmur_core::postprocess::effective_category(self.session.platform, &self.ctx);
         let ctx = FieldContext {
             app_category: cat,
             ..self.ctx.clone()
@@ -361,7 +361,7 @@ fn commit(
     ctx: &FieldContext,
     pcm: &[i16],
 ) -> Result<CommitResult, String> {
-    let core = FlowCore::from_engines(asr, cleaner);
+    let core = MurmurCore::from_engines(asr, cleaner);
     let mut s = session.clone();
     s.fit_ring_to(pcm.len());
     core.start_session(s).map_err(|e| e.to_string())?;
@@ -541,7 +541,7 @@ impl Matrix {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use flow_core::dictionary::{DictEntry, Dictionary};
+    use murmur_core::dictionary::{DictEntry, Dictionary};
 
     struct Echo;
     impl Cleaner for Echo {
@@ -565,7 +565,7 @@ mod tests {
             app_id: "com.example.notes".into(),
             ..Default::default()
         };
-        let cat = flow_core::postprocess::effective_category(session.platform, &ctx);
+        let cat = murmur_core::postprocess::effective_category(session.platform, &ctx);
         let engine_ctx = FieldContext {
             app_category: cat,
             ..ctx.clone()

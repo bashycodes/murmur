@@ -2,7 +2,7 @@
 # Dated probe 2026-10-23: does a model drop whole utterances in one long
 # (43 s / 60 s) decode? (sherpa-onnx PR #4084 reports this for Parakeet int8.)
 set -euo pipefail
-CACHE=${CACHE:-$HOME/.cache/flow-clone}
+CACHE=${CACHE:-$HOME/.cache/murmur}
 HERE=$(cd "$(dirname "$0")" && pwd)
 BIN=$CACHE/stt-survey-target-2/release/stt_survey_2026_10_23
 OUT=$CACHE/results/stt-survey-2026-10-23/longdel-$(date +%Y%m%d-%H%M%S)

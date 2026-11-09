@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.app.Activity
 import android.content.Context
@@ -9,13 +9,13 @@ import android.content.pm.PackageInfo
 import android.content.pm.ResolveInfo
 import android.widget.ImageButton
 import android.widget.Spinner
-import dev.flowclone.FlowApp
-import dev.flowclone.data.SettingsPages.Page
-import dev.flowclone.data.SettingsStore
-import dev.flowclone.policy.AppCategorizer.Category
-import dev.flowclone.ui.UiTestKit.idle
-import dev.flowclone.ui.UiTestKit.texts
-import dev.flowclone.ui.UiTestKit.walk
+import dev.murmur.MurmurApp
+import dev.murmur.data.SettingsPages.Page
+import dev.murmur.data.SettingsStore
+import dev.murmur.policy.AppCategorizer.Category
+import dev.murmur.ui.UiTestKit.idle
+import dev.murmur.ui.UiTestKit.texts
+import dev.murmur.ui.UiTestKit.walk
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -31,10 +31,10 @@ import org.robolectric.shadows.ShadowAlertDialog
 
 /** Settings → Writing style → Style per app: override rows, the "Add app" picker, and what is stored. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], application = FlowApp::class)
+@Config(sdk = [34], application = MurmurApp::class)
 class AppStylesUiTest {
     private val ctx get() = RuntimeEnvironment.getApplication()
-    private val app get() = FlowApp.of(ctx)
+    private val app get() = MurmurApp.of(ctx)
 
     private fun install(pkg: String, label: String) {
         val ai = ApplicationInfo().apply { packageName = pkg; nonLocalizedLabel = label }
@@ -75,7 +75,7 @@ class AppStylesUiTest {
 
     @Test fun typedOverridesShowAsRowsAndUninstalledOnesCanBeRemoved() {
         // As the old text page stored them: one `package = bucket` line each.
-        ctx.getSharedPreferences("flow_settings", Context.MODE_PRIVATE).edit()
+        ctx.getSharedPreferences("murmur_settings", Context.MODE_PRIVATE).edit()
             .putString("app_buckets", "com.gone.app = work\ncom.google.android.gm = personal").commit()
         val a = launch()
         val t = texts(a)
@@ -98,7 +98,7 @@ class AppStylesUiTest {
         assertEquals(mapOf("com.google.android.gm" to Category.EMAIL), SettingsStore(a).load().appBuckets)
         assertEquals(
             "com.google.android.gm = email",
-            ctx.getSharedPreferences("flow_settings", Context.MODE_PRIVATE).getString("app_buckets", null),
+            ctx.getSharedPreferences("murmur_settings", Context.MODE_PRIVATE).getString("app_buckets", null),
         )
     }
 
@@ -121,8 +121,8 @@ class AppStylesUiTest {
 
     @Test fun pickerPutsRecentlyDictatedAppsFirstAndSearches() {
         app.history.add(
-            dev.flowclone.data.HistoryRow(0, System.currentTimeMillis(), "com.Slack", "RAW_TRANSCRIPT", "hi", "hi", true, 1_000),
-            dev.flowclone.data.Retention.KEEP,
+            dev.murmur.data.HistoryRow(0, System.currentTimeMillis(), "com.Slack", "RAW_TRANSCRIPT", "hi", "hi", true, 1_000),
+            dev.murmur.data.Retention.KEEP,
         )
         try {
             val a = launch()

@@ -1,26 +1,26 @@
 [package]
-name = "flow-cli"
+name = "murmur-cli"
 version.workspace = true
 edition.workspace = true
 license-file.workspace = true
-description = "Dev harness: run the full flow-core pipeline on a WAV file"
+description = "Dev harness: run the full murmur-core pipeline on a WAV file"
 
 [features]
 default = ["whisper", "llm"]
-whisper = ["flow-core/whisper"]
-# Needs the flow-llm plugin at runtime (`cargo build -p flow-llm`); the
+whisper = ["murmur-core/whisper"]
+# Needs the murmur-llm plugin at runtime (`cargo build -p murmur-llm`); the
 # feature itself only adds the loader.
-llm = ["flow-core/llm"]
+llm = ["murmur-core/llm"]
 # `--engine parakeet`: links libsherpa-onnx-c-api + libonnxruntime, which the
 # build copies next to the binary (build.rs adds an $ORIGIN rpath).
-parakeet = ["flow-core/parakeet"]
-# `meeting --router` with a server route (links flow-remote's network code).
-remote = ["dep:flow-remote"]
+parakeet = ["murmur-core/parakeet"]
+# `meeting --router` with a server route (links murmur-remote's network code).
+remote = ["dep:murmur-remote"]
 
 [dependencies]
-flow-core = { path = "../flow-core", features = ["wav"] }
-flow-router = { path = "../flow-router" }
-flow-remote = { path = "../flow-remote", optional = true, features = ["tls"] }
+murmur-core = { path = "../murmur-core", features = ["wav"] }
+murmur-router = { path = "../murmur-router" }
+murmur-remote = { path = "../murmur-remote", optional = true, features = ["tls"] }
 serde_json.workspace = true
 serde.workspace = true
 

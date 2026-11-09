@@ -9,7 +9,7 @@
     "PageDictionary.dc.html": {"x": 1360, "y": 0, "w": 1280, "h": 800, "title": "Dictionary"},
     "PageSnippets.dc.html": {"x": 2720, "y": 0, "w": 1280, "h": 800, "title": "Snippets"},
     "PageStyle.dc.html": {"x": 4080, "y": 0, "w": 1280, "h": 800, "title": "Style", "is_interactive": true},
-    "FlowBar.dc.html": {"x": 5440, "y": 0, "w": 760, "h": 800, "title": "Flow bar states"},
+    "MurmurBar.dc.html": {"x": 5440, "y": 0, "w": 760, "h": 800, "title": "Murmur bar states"},
     "PageInsights.dc.html": {"x": 0, "y": 920, "w": 1280, "h": 800, "title": "Insights"},
     "PageTransforms.dc.html": {"x": 1360, "y": 920, "w": 1280, "h": 800, "title": "Transforms"},
     "PageScratchpad.dc.html": {"x": 2720, "y": 920, "w": 1280, "h": 800, "title": "Scratchpad"},
@@ -49,7 +49,7 @@
     "PageDictionary.dc.html",
     "PageSnippets.dc.html",
     "PageStyle.dc.html",
-    "FlowBar.dc.html",
+    "MurmurBar.dc.html",
     "PageInsights.dc.html",
     "PageTransforms.dc.html",
     "PageScratchpad.dc.html",
@@ -91,9 +91,9 @@
     "darkTitle": {"x": 0, "y": 5720, "text": "Dark mode", "kind": "title1", "maxW": 3520},
     "setupTitle": {"x": 0, "y": 7760, "text": "First-run setup", "kind": "title1", "maxW": 6720},
     "androidTitle": {"x": 0, "y": 10080, "text": "Android", "kind": "title1", "maxW": 4620},
-    "changes20261108": {"x": 6300, "y": 0, "w": 560, "fill": "orange", "size": "s", "text": "Changes 2026-11-08\n\n1. Cloud replaces OpenRouter everywhere (nav, Settings, setup, Flow bar, sidebar, Home, Privacy, Android). Cloud = one provider: OpenRouter or LiteLLM.\n2. Settings · Cloud: provider switch, what each offers (LiteLLM speech only if the proxy has a speech model), OpenRouter key/credit or LiteLLM address/key/Test connection, http warning, per-provider consent, Paused / budget status, cost. Props: provider, status, litellmSpeech.\n3. Setup 4: Cloud option with OpenRouter / LiteLLM fields.\n4. Model downloads: 'Download from' Your server | Hugging Face in Setup 3 (+3a/3b) and Settings · Speech. Defaults to Your server when one is set up. SHA-256 check for both. 'Not on your server' when the library lacks a model. Setup 3 props: state (adds checking), source, hasServer.\n5. Setup 2: Your server is first, Recommended and preselected.\n6. Show Flow bar at all times: Off by default (copy says so).\n7. Setup 3 is optional: Skip — use my server only"}
+    "changes20261108": {"x": 6300, "y": 0, "w": 560, "fill": "orange", "size": "s", "text": "Changes 2026-11-08\n\n1. Cloud replaces OpenRouter everywhere (nav, Settings, setup, Murmur bar, sidebar, Home, Privacy, Android). Cloud = one provider: OpenRouter or LiteLLM.\n2. Settings · Cloud: provider switch, what each offers (LiteLLM speech only if the proxy has a speech model), OpenRouter key/credit or LiteLLM address/key/Test connection, http warning, per-provider consent, Paused / budget status, cost. Props: provider, status, litellmSpeech.\n3. Setup 4: Cloud option with OpenRouter / LiteLLM fields.\n4. Model downloads: 'Download from' Your server | Hugging Face in Setup 3 (+3a/3b) and Settings · Speech. Defaults to Your server when one is set up. SHA-256 check for both. 'Not on your server' when the library lacks a model. Setup 3 props: state (adds checking), source, hasServer.\n5. Setup 2: Your server is first, Recommended and preselected.\n6. Show Murmur bar at all times: Off by default (copy says so).\n7. Setup 3 is optional: Skip — use my server only"}
   },
   "designSystems": [
-    {"title": "Flow", "namespace": "flow", "artifact": "https://claude.ai/code/artifact/5f5797df-e110-47ee-a4ac-366127e8d964", "version": "1793136396-9562", "copiedAt": "2026-10-27T22:10:00Z"}
+    {"title": "Murmur", "namespace": "murmur", "artifact": "https://claude.ai/code/artifact/5f5797df-e110-47ee-a4ac-366127e8d964", "version": "1793136396-9562", "copiedAt": "2026-10-27T22:10:00Z"}
   ]
 }

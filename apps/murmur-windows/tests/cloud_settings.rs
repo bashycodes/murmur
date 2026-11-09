@@ -1,18 +1,18 @@
 //! D28 "W5" tests: the OpenRouter page's edits + the Developer form →
-//! prefs.json (no key) → router JSON == `crates/flow-router/fixtures/
+//! prefs.json (no key) → router JSON == `crates/murmur-router/fixtures/
 //! router_config_cloud.json`; the key only in the credential store
 //! (in-memory stand-in on Linux); separate consents for audio and text;
 //! the one-time migration of every old D18 preset
-//! (`crates/flow-router/fixtures/migration/`), including Credential
+//! (`crates/murmur-router/fixtures/migration/`), including Credential
 //! Manager and the usage file.
 
-use flow_router::{
+use murmur_router::{
     CleanupRoute, CloudConfig, CloudUsage, MigrationReport, ProviderUsage, RouterConfig, Usd,
 };
-use flow_windows::credentials::{self, CredentialStore, MemoryStore, OPENROUTER};
-use flow_windows::dev_settings::{BuildCaps, DevForm, DevSettings, Route};
-use flow_windows::openrouter::{self, CleanupForm, SttForm};
-use flow_windows::prefs::Prefs;
+use murmur_windows::credentials::{self, CredentialStore, MemoryStore, OPENROUTER};
+use murmur_windows::dev_settings::{BuildCaps, DevForm, DevSettings, Route};
+use murmur_windows::openrouter::{self, CleanupForm, SttForm};
+use murmur_windows::prefs::Prefs;
 use std::path::{Path, PathBuf};
 
 const ALL: BuildCaps = BuildCaps {
@@ -24,7 +24,7 @@ const KEY: &str = "sk-or-v1-LEAKCHECK-0123456789abcdef";
 
 fn fixture_path(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../crates/flow-router/fixtures")
+        .join("../../crates/murmur-router/fixtures")
         .join(name)
 }
 
@@ -38,7 +38,7 @@ fn fixture_cloud() -> CloudConfig {
 
 fn tmp(tag: &str) -> PathBuf {
     std::env::temp_dir().join(format!(
-        "flow-win-{tag}-{}-{:?}",
+        "murmur-win-{tag}-{}-{:?}",
         std::process::id(),
         std::thread::current().id()
     ))
@@ -143,7 +143,7 @@ fn a_developer_save_after_the_page_keeps_openrouter() {
 fn prefs_round_trip_without_keys() {
     let store = MemoryStore::new();
     let (mut dev, _) = configured();
-    dev.token_dpapi = flow_windows::secrets::protect("dev-token-0123456789abcdef").unwrap();
+    dev.token_dpapi = murmur_windows::secrets::protect("dev-token-0123456789abcdef").unwrap();
     credentials::store_openrouter_key(&*store, KEY).unwrap();
     let prefs = Prefs {
         developer: dev.clone(),
@@ -183,10 +183,7 @@ fn prefs_round_trip_without_keys() {
     assert_eq!(credentials::openrouter_key(&*store).as_deref(), Some(KEY));
     let ks = credentials::key_state(&*store, OPENROUTER);
     assert!(ks.set && ks.masked == "••••cdef", "{ks:?}");
-    assert_eq!(
-        store.targets(),
-        vec!["flow-clone/cloud/openrouter".to_string()]
-    );
+    assert_eq!(store.targets(), vec!["murmur/cloud/openrouter".to_string()]);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -257,7 +254,7 @@ fn legacy_store(v1: &serde_json::Value) -> std::sync::Arc<MemoryStore> {
     let s = MemoryStore::new();
     for p in v1["cloud"]["providers"].as_array().unwrap() {
         let id = p["id"].as_str().unwrap();
-        let p: flow_router::CloudProviderConfig = serde_json::from_value(p.clone()).unwrap();
+        let p: murmur_router::CloudProviderConfig = serde_json::from_value(p.clone()).unwrap();
         s.set(
             id,
             &credentials::encode(
@@ -272,7 +269,7 @@ fn legacy_store(v1: &serde_json::Value) -> std::sync::Arc<MemoryStore> {
 
 fn legacy_usage(v1: &serde_json::Value) -> CloudUsage {
     CloudUsage {
-        month: flow_router::month_of(
+        month: murmur_router::month_of(
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -316,9 +313,9 @@ fn every_old_preset_migrates_with_its_keys_and_usage() {
         let usage = legacy_usage(&v1);
         let tdir = tmp(&format!("mig-{case}"));
         let upath = tdir.join("cloud_usage.json");
-        flow_windows::cloud::save_usage(&upath, &usage).unwrap();
+        murmur_windows::cloud::save_usage(&upath, &usage).unwrap();
 
-        let m = flow_windows::cloud::migrate_d28(&mut dev, &*store, &upath).expect(&case);
+        let m = murmur_windows::cloud::migrate_d28(&mut dev, &*store, &upath).expect(&case);
         assert_eq!(m.report, want, "{case}: same report as the router fixture");
         // Settings: the router's v2 cloud section and STT switch.
         assert_eq!(
@@ -351,11 +348,7 @@ fn every_old_preset_migrates_with_its_keys_and_usage() {
         // Keys: only the OpenRouter one survives, under its new id.
         let left = store.targets();
         if want.key_from.is_some() {
-            assert_eq!(
-                left,
-                vec!["flow-clone/cloud/openrouter".to_string()],
-                "{case}"
-            );
+            assert_eq!(left, vec!["murmur/cloud/openrouter".to_string()], "{case}");
             let k = credentials::openrouter_key(&*store).unwrap();
             assert_eq!(
                 k,
@@ -368,7 +361,7 @@ fn every_old_preset_migrates_with_its_keys_and_usage() {
             assert_eq!(store.get(id).unwrap(), None, "{case}: {id}");
         }
         // Usage: same month total (the budget stays honest).
-        let after = flow_windows::cloud::load_usage(&upath).unwrap();
+        let after = murmur_windows::cloud::load_usage(&upath).unwrap();
         assert!(
             (after.total_cost() - usage.total_cost()).abs() < 1e-9,
             "{case}: {after:?}"
@@ -385,7 +378,7 @@ fn every_old_preset_migrates_with_its_keys_and_usage() {
         );
         // Once only.
         assert!(
-            flow_windows::cloud::migrate_d28(&mut dev, &*store, &upath).is_none(),
+            murmur_windows::cloud::migrate_d28(&mut dev, &*store, &upath).is_none(),
             "{case}: idempotent"
         );
         // The router accepts the result as is (no second migration).

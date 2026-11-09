@@ -30,9 +30,9 @@ pub fn manifest() -> PathBuf {
         .join("../../tools/probes/bench/asr_manifest_extended.json")
 }
 
-/// `FLOW_AUDIO_DIR` (LibriSpeech WAVs named `<id>.wav`).
+/// `MURMUR_AUDIO_DIR` (LibriSpeech WAVs named `<id>.wav`).
 pub fn audio_dir() -> Option<PathBuf> {
-    std::env::var_os("FLOW_AUDIO_DIR").map(PathBuf::from)
+    std::env::var_os("MURMUR_AUDIO_DIR").map(PathBuf::from)
 }
 
 /// All probe clips, or `None` (with a SKIP note) when the audio is missing.
@@ -80,7 +80,7 @@ pub fn build(audio: &Path) -> Option<Vec<Clip>> {
 }
 
 fn read_wav_i16(p: &Path) -> Vec<i16> {
-    flow_core::audio::read_wav_16k_mono(p).expect("16 kHz mono wav")
+    murmur_core::audio::read_wav_16k_mono(p).expect("16 kHz mono wav")
 }
 
 fn norm(s: &str) -> Vec<String> {

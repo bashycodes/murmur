@@ -1,13 +1,13 @@
-package dev.flowclone.debug
+package dev.murmur.debug
 
-import dev.flowclone.core.AsrEngine
-import dev.flowclone.core.CleanupLevel
-import dev.flowclone.core.CoreException
-import dev.flowclone.core.FakeFlowCore
-import dev.flowclone.core.FlowCore
-import dev.flowclone.core.FlowCoreLoader
-import dev.flowclone.core.ModelConfig
-import dev.flowclone.core.ParakeetDecoding
+import dev.murmur.core.AsrEngine
+import dev.murmur.core.CleanupLevel
+import dev.murmur.core.CoreException
+import dev.murmur.core.FakeMurmurCore
+import dev.murmur.core.MurmurCore
+import dev.murmur.core.MurmurCoreLoader
+import dev.murmur.core.ModelConfig
+import dev.murmur.core.ParakeetDecoding
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -41,13 +41,13 @@ class BenchRunnerTest {
         return files to inDir
     }
 
-    private class Loader : FlowCoreLoader {
+    private class Loader : MurmurCoreLoader {
         val loaded = mutableListOf<ModelConfig>()
-        val cores = mutableListOf<FakeFlowCore>()
-        override fun loadModels(cfg: ModelConfig): FlowCore {
+        val cores = mutableListOf<FakeMurmurCore>()
+        override fun loadModels(cfg: ModelConfig): MurmurCore {
             loaded += cfg
             if (cfg.asrPath.endsWith("parakeet-v3-he")) throw CoreException("model load failed: out of memory")
-            return FakeFlowCore("hello world").also { cores += it }
+            return FakeMurmurCore("hello world").also { cores += it }
         }
     }
 
