@@ -1,4 +1,4 @@
-//! `prefs.json` in `%APPDATA%\FlowClone\`. Unknown/missing fields fall back to defaults so old files
+//! `prefs.json` in `%APPDATA%\Murmur\`. Unknown/missing fields fall back to defaults so old files
 //! keep loading; a corrupt file is moved aside rather than silently lost.
 
 pub use crate::core_api::DictEntry;
@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-pub const APP_DIR: &str = "FlowClone";
+pub const APP_DIR: &str = "Murmur";
 pub const FILE_NAME: &str = "prefs.json";
 
 /// `prefs.json` schema revision ([`Prefs::migrate`]). A file without
@@ -125,7 +125,7 @@ pub enum HebrewModel {
     ParakeetHe,
     /// ivrit-ai whisper-large-v3-turbo q5_0 (574 MB file, the whisper
     /// engine): the most accurate, for a PC with a GPU (Vulkan,
-    /// `flow_whisper_vulkan.dll`); slow on a CPU. With `hebrew_model_dir`
+    /// `murmur_whisper_vulkan.dll`); slow on a CPU. With `hebrew_model_dir`
     /// set it is any whisper file from the server's library.
     IvritTurbo,
     /// No Hebrew route: Hebrew dictations use the default model.
@@ -166,9 +166,11 @@ pub struct Prefs {
     /// Mute other apps while dictating (on by default).
     pub mute_audio_while_dictating: bool,
     pub launch_at_login: bool,
-    /// Keep the Flow bar up while idle. Off by default: the bar shows only
+    /// Keep the Murmur bar up while idle. Off by default: the bar shows only
     /// while dictating (or recording a meeting).
-    pub show_flow_bar_always: bool,
+    /// D83: `show_flow_bar_always` in a `prefs.json` from before the rename.
+    #[serde(alias = "show_flow_bar_always")]
+    pub show_murmur_bar_always: bool,
     /// `system` / `light` / `dark`.
     pub theme: Theme,
     /// First-run setup finished (or skipped). False only on a fresh
@@ -197,17 +199,17 @@ pub struct Prefs {
     /// history rows so they can be re-transcribed (0 = keep none).
     pub retry_audio_keep: u32,
     pub max_dictation_minutes: u64,
-    /// Whisper ggml model; `None` = `%APPDATA%\FlowClone\models\ggml-base.bin`.
+    /// Whisper ggml model; `None` = `%APPDATA%\Murmur\models\ggml-base.bin`.
     /// Never downloaded automatically (DECISIONS D9).
     pub model_path: Option<String>,
     /// ASR threads; `None` = core default (half the logical CPUs).
     pub asr_threads: Option<usize>,
     /// Which local engine `model_path` / `parakeet_model_dir` feed.
     pub asr_engine: AsrEngineChoice,
-    /// Parakeet model directory; `None` = `%APPDATA%\FlowClone\models\`
+    /// Parakeet model directory; `None` = `%APPDATA%\Murmur\models\`
     /// `sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8`. Never downloaded.
     pub parakeet_model_dir: Option<String>,
-    /// Model for dictations in Hebrew (`%APPDATA%\FlowClone\models\<folder>`,
+    /// Model for dictations in Hebrew (`%APPDATA%\Murmur\models\<folder>`,
     /// see [`HebrewModel`]); downloaded only from Settings → Speech to text.
     pub hebrew_model: HebrewModel,
     /// A Hebrew model folder from the server's library (D41) in place of
@@ -232,14 +234,14 @@ pub struct Prefs {
     /// following speech (D19; 300-10000 ms, 0 = never). Push-to-talk is
     /// never ended by silence.
     pub hands_free_silence_ms: u32,
-    /// Local LLM cleanup (llama.cpp via the `flow_llm` plugin). Off by
+    /// Local LLM cleanup (llama.cpp via the `murmur_llm` plugin). Off by
     /// default (DECISIONS D5): deterministic post-processing always runs.
     pub llm_enabled: bool,
-    /// GGUF instruct model; `None` = `%APPDATA%\FlowClone\models\`
+    /// GGUF instruct model; `None` = `%APPDATA%\Murmur\models\`
     /// `qwen2.5-1.5b-instruct-q4_k_m.gguf`, or the older 0.5B default when
     /// only that file is there (D11). Never downloaded automatically.
     pub llm_model_path: Option<String>,
-    /// Explicit `flow_llm.dll`; `None` = next to the exe (the shipped layout).
+    /// Explicit `murmur_llm.dll`; `None` = next to the exe (the shipped layout).
     pub llm_lib_path: Option<String>,
     /// Cleanup budget per dictation before falling back to RAW_TRANSCRIPT.
     pub llm_timeout_ms: u64,
@@ -274,7 +276,7 @@ impl Default for Prefs {
             enable_sounds: true,
             mute_audio_while_dictating: true,
             launch_at_login: false,
-            show_flow_bar_always: false,
+            show_murmur_bar_always: false,
             theme: Theme::System,
             onboarded: false,
             use_ax_context: true,
@@ -301,7 +303,7 @@ impl Default for Prefs {
             spoken_cleanup: true,
             live_preview: true,
             live_preview_interval_ms: 1500,
-            hands_free_silence_ms: flow_core::endpoint::RECOMMENDED_SILENCE_MS,
+            hands_free_silence_ms: murmur_core::endpoint::RECOMMENDED_SILENCE_MS,
             llm_enabled: false,
             llm_model_path: None,
             llm_lib_path: None,
@@ -326,7 +328,7 @@ pub enum LoadOutcome {
 }
 
 impl Prefs {
-    /// `%APPDATA%\FlowClone\prefs.json` (falls back to the CWD).
+    /// `%APPDATA%\Murmur\prefs.json` (falls back to the CWD).
     pub fn default_path(appdata: Option<&str>) -> PathBuf {
         let base = appdata.map(PathBuf::from).unwrap_or_default();
         base.join(APP_DIR).join(FILE_NAME)
@@ -362,13 +364,13 @@ impl Prefs {
     /// on, 2000 is an explicit choice and is kept.
     pub fn migrate(&mut self) {
         if self.prefs_rev < 1 && self.hands_free_silence_ms == OLD_HANDS_FREE_SILENCE_MS {
-            self.hands_free_silence_ms = flow_core::endpoint::RECOMMENDED_SILENCE_MS;
+            self.hands_free_silence_ms = murmur_core::endpoint::RECOMMENDED_SILENCE_MS;
         }
         // D24: 800 ms was the default and is too tight over a VPN relay.
         if self.prefs_rev < 2
-            && self.developer.server.connect_timeout_ms == flow_router::LEGACY_CONNECT_TIMEOUT_MS
+            && self.developer.server.connect_timeout_ms == murmur_router::LEGACY_CONNECT_TIMEOUT_MS
         {
-            self.developer.server.connect_timeout_ms = flow_router::DEFAULT_CONNECT_TIMEOUT_MS;
+            self.developer.server.connect_timeout_ms = murmur_router::DEFAULT_CONNECT_TIMEOUT_MS;
         }
         if self.prefs_rev < 3 {
             // D27. Untouched old defaults move to the new ones; anything the
@@ -407,7 +409,10 @@ impl Prefs {
         // An upgrade from "No AI", or from no AI engine on (this PC's model
         // off and no cloud cleanup), keeps AI cleanup off: server starts off.
         let cleanup_was_on = self.cleanup_level != CleanupLevel::None
-            && (self.llm_enabled || self.developer.cleanup_on(flow_router::CleanupRoute::Cloud));
+            && (self.llm_enabled
+                || self
+                    .developer
+                    .cleanup_on(murmur_router::CleanupRoute::Cloud));
         self.developer.migrate_d36(cleanup_was_on);
         // Transforms: a file from before them was seeded with the
         // built-ins by serde; ids and the auto-apply choice are tidied.
@@ -563,7 +568,7 @@ impl Prefs {
             segment_pause_ms: self
                 .developer
                 .decode_while_speaking
-                .then_some(flow_core::segment::RECOMMENDED_PAUSE_MS),
+                .then_some(murmur_core::segment::RECOMMENDED_PAUSE_MS),
             ..SessionConfig::default()
         }
     }
@@ -618,7 +623,7 @@ impl Prefs {
         }
     }
 
-    /// `%APPDATA%\FlowClone\models\ggml-base.bin` unless overridden.
+    /// `%APPDATA%\Murmur\models\ggml-base.bin` unless overridden.
     pub fn resolved_model_path(&self, appdata: Option<&str>) -> PathBuf {
         match self.model_path.as_deref().map(str::trim) {
             Some(p) if !p.is_empty() => PathBuf::from(p),
@@ -634,7 +639,7 @@ mod tests {
 
     fn tmpdir(tag: &str) -> PathBuf {
         let d =
-            std::env::temp_dir().join(format!("flow-windows-prefs-{tag}-{}", std::process::id()));
+            std::env::temp_dir().join(format!("murmur-windows-prefs-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         d
     }
@@ -684,7 +689,7 @@ mod tests {
         crate::openrouter::apply_custom_cleanup(
             &mut p.developer,
             &crate::openrouter::CustomCleanupForm {
-                provider: flow_router::CloudProvider::LiteLlm,
+                provider: murmur_router::CloudProvider::LiteLlm,
                 base_url: "http://100.64.0.99:4100".into(),
                 model: String::new(),
                 timeout_ms: 4000,
@@ -697,7 +702,7 @@ mod tests {
         let (q, o) = Prefs::load(&path);
         assert_eq!(o, LoadOutcome::Loaded);
         let c = &q.developer.cloud;
-        assert_eq!(c.provider, flow_router::CloudProvider::LiteLlm);
+        assert_eq!(c.provider, murmur_router::CloudProvider::LiteLlm);
         assert_eq!(c.custom_cleanup.base_url, "http://100.64.0.99:4100/v1");
         assert_eq!(q.developer.cloud, p.developer.cloud);
         // With a model and consent too.
@@ -711,19 +716,25 @@ mod tests {
     }
 
     #[test]
-    fn flow_bar_always_defaults_off_and_a_saved_on_survives() {
-        // Owner walkthrough: a fresh install hides the Flow bar when idle.
-        assert!(!Prefs::default().show_flow_bar_always);
-        let d = tmpdir("flow-bar-always");
+    fn the_bar_setting_saved_under_its_old_name_is_read() {
+        let p: Prefs = serde_json::from_str(r#"{"show_flow_bar_always":true}"#).unwrap();
+        assert!(p.show_murmur_bar_always);
+    }
+
+    #[test]
+    fn murmur_bar_always_defaults_off_and_a_saved_on_survives() {
+        // Owner walkthrough: a fresh install hides the Murmur bar when idle.
+        assert!(!Prefs::default().show_murmur_bar_always);
+        let d = tmpdir("murmur-bar-always");
         let path = d.join(FILE_NAME);
-        assert!(!Prefs::load(&path).0.show_flow_bar_always);
+        assert!(!Prefs::load(&path).0.show_murmur_bar_always);
         // An existing user's saved choice (On) is kept.
         let mut p = Prefs::default();
-        p.show_flow_bar_always = true;
+        p.show_murmur_bar_always = true;
         p.save(&path).unwrap();
         let (q, o) = Prefs::load(&path);
         assert_eq!(o, LoadOutcome::Loaded);
-        assert!(q.show_flow_bar_always);
+        assert!(q.show_murmur_bar_always);
         let _ = std::fs::remove_dir_all(&d);
     }
 
@@ -906,11 +917,11 @@ mod tests {
     fn hands_free_endpoint_only_for_locked_sessions() {
         use crate::dictation::Mode;
         let mut p = Prefs::default();
-        // D22: flow_core::endpoint::RECOMMENDED_SILENCE_MS.
+        // D22: murmur_core::endpoint::RECOMMENDED_SILENCE_MS.
         assert_eq!(p.hands_free_silence_ms, 1500);
         assert_eq!(
             p.hands_free_silence_ms,
-            flow_core::endpoint::RECOMMENDED_SILENCE_MS
+            murmur_core::endpoint::RECOMMENDED_SILENCE_MS
         );
         assert_eq!(p.session_config_for(Mode::Ptt).endpoint_silence_ms, None);
         assert_eq!(
@@ -939,7 +950,10 @@ mod tests {
 
     #[test]
     fn d37_detect_automatically_moves_to_keyboard_language_once() {
-        assert!(Prefs::default().keyboard_language, "new installs follow the keyboard");
+        assert!(
+            Prefs::default().keyboard_language,
+            "new installs follow the keyboard"
+        );
         let (p, _) = load_str("kbl-auto", r#"{"prefs_rev":3,"languages":[]}"#);
         assert!(p.keyboard_language);
         assert_eq!(p.prefs_rev, PREFS_REV);
@@ -948,15 +962,24 @@ mod tests {
         let (p, _) = load_str("kbl-en", r#"{"prefs_rev":3,"languages":["en"]}"#);
         assert!(!p.keyboard_language, "an explicit language stays");
         assert_eq!(p.languages, ["en"]);
-        let (p, _) = load_str("kbl-he", r#"{"prefs_rev":3,"languages":["he"],"keyboard_language":true}"#);
+        let (p, _) = load_str(
+            "kbl-he",
+            r#"{"prefs_rev":3,"languages":["he"],"keyboard_language":true}"#,
+        );
         assert!(!p.keyboard_language);
         // After the migration both are the user's choice.
         let (p, _) = load_str(
             "kbl-off",
             &format!(r#"{{"prefs_rev":{PREFS_REV},"languages":[],"keyboard_language":false}}"#),
         );
-        assert!(!p.keyboard_language, "Detect automatically picked after D37");
-        let (p, _) = load_str("kbl-on", &format!(r#"{{"prefs_rev":{PREFS_REV},"keyboard_language":true}}"#));
+        assert!(
+            !p.keyboard_language,
+            "Detect automatically picked after D37"
+        );
+        let (p, _) = load_str(
+            "kbl-on",
+            &format!(r#"{{"prefs_rev":{PREFS_REV},"keyboard_language":true}}"#),
+        );
         assert!(p.keyboard_language);
     }
 
@@ -1083,7 +1106,7 @@ mod tests {
         for m in [Mode::Ptt, Mode::Locked] {
             assert_eq!(
                 p.session_config_for(m).segment_pause_ms,
-                Some(flow_core::segment::RECOMMENDED_PAUSE_MS)
+                Some(murmur_core::segment::RECOMMENDED_PAUSE_MS)
             );
         }
         assert_eq!(p.session_config().segment_pause_ms, Some(800));

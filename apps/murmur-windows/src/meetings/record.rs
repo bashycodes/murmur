@@ -225,7 +225,7 @@ impl Recorder {
         let tracks = [Track::create(&paths[0])?, Track::create(&paths[1])?];
         let (tx, rx) = mpsc::channel();
         let join = std::thread::Builder::new()
-            .name("flow-meeting-writer".into())
+            .name("murmur-meeting-writer".into())
             .spawn(move || write_loop(rx, tracks))
             .map_err(|e| e.to_string())?;
         let start_ms = clock();
@@ -295,7 +295,7 @@ mod tests {
 
     fn tmp(name: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!(
-            "flow-meet-rec-{name}-{}-{:?}",
+            "murmur-meet-rec-{name}-{}-{:?}",
             std::process::id(),
             std::thread::current().id()
         ));

@@ -9,7 +9,7 @@
 //!   [`store::KEEP_AUDIO`] meetings keep their audio.
 //! * Summaries (D53): after a transcript is done, a summary job on the
 //!   same queue asks the user's AI cleanup order for a summary and action
-//!   items (`flow_core::summary`), stored with the meeting; Regenerate
+//!   items (`murmur_core::summary`), stored with the meeting; Regenerate
 //!   ([`Meetings::summarise`]) runs it again.
 //!
 //! [`Meetings`] is the service the shell drives (tray item, shortcut,
@@ -50,9 +50,9 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, Instant};
 
-use flow_core::cleanup::Cleaner;
-use flow_core::config::SessionConfig;
-use flow_router::meeting::{ChunkTranscriber, MeetingParams};
+use murmur_core::cleanup::Cleaner;
+use murmur_core::config::SessionConfig;
+use murmur_router::meeting::{ChunkTranscriber, MeetingParams};
 use serde::Serialize;
 
 use record::{Clock, Recorder, Sink, Source};
@@ -87,7 +87,7 @@ pub struct Summaries {
     pub engine: SummaryEngine,
     /// Call timeout and the dictation flag to yield to; `cancel` is
     /// replaced per job.
-    pub options: flow_core::summary::Options,
+    pub options: murmur_core::summary::Options,
 }
 
 /// The transcript as the summary reads it: one `Me: …` / `Others: …`
@@ -148,7 +148,7 @@ impl YieldToDictation {
 }
 
 impl ChunkTranscriber for YieldToDictation {
-    fn transcribe_chunk(&self, pcm: &[i16], cfg: &SessionConfig) -> flow_core::CommitResult {
+    fn transcribe_chunk(&self, pcm: &[i16], cfg: &SessionConfig) -> murmur_core::CommitResult {
         let t0 = Instant::now();
         while self.busy.load(Ordering::SeqCst)
             && !self.aborted.load(Ordering::SeqCst)
@@ -195,7 +195,7 @@ impl RouteTally {
 /// One chunk's route for the debug log: `route local`, `route remote
 /// (server x, core y)`, `route cloud (openrouter-1, model z)`, plus the
 /// fallback reason when the first route was not used.
-pub fn route_line(r: &flow_core::CommitResult) -> (String, String) {
+pub fn route_line(r: &murmur_core::CommitResult) -> (String, String) {
     let Some(ri) = r.route.as_ref() else {
         return ("none".into(), "route none".into());
     };
@@ -225,7 +225,7 @@ pub fn route_line(r: &flow_core::CommitResult) -> (String, String) {
 }
 
 impl ChunkTranscriber for RouteTally {
-    fn transcribe_chunk(&self, pcm: &[i16], cfg: &SessionConfig) -> flow_core::CommitResult {
+    fn transcribe_chunk(&self, pcm: &[i16], cfg: &SessionConfig) -> murmur_core::CommitResult {
         let r = self.inner.transcribe_chunk(pcm, cfg);
         let (route, line) = route_line(&r);
         let n = {
@@ -413,18 +413,18 @@ impl Inner {
         self.notify();
         let t0 = Instant::now();
         let input = summary_input(&m.turns);
-        let opts = flow_core::summary::Options {
+        let opts = murmur_core::summary::Options {
             cancel,
             ..summaries.options.clone()
         };
-        let result = flow_core::summary::summarise((summaries.engine)(), &input, &opts);
+        let result = murmur_core::summary::summarise((summaries.engine)(), &input, &opts);
         {
             let _io = self.io.lock().unwrap();
             if let Some(mut cur) = self.store.get(id) {
                 let mut s = MeetingSummary::pending(cur.summary.as_ref());
                 match &result {
                     // Quit: stays pending, made at the next start.
-                    Err(flow_core::summary::SummaryError::Cancelled) => {}
+                    Err(murmur_core::summary::SummaryError::Cancelled) => {}
                     Ok(r) => {
                         s = MeetingSummary {
                             v: store::SUMMARY_VERSION,
@@ -640,7 +640,7 @@ impl Meetings {
         });
         let weak = Arc::downgrade(&inner);
         let _ = std::thread::Builder::new()
-            .name("flow-meeting-jobs".into())
+            .name("murmur-meeting-jobs".into())
             .spawn(move || worker(weak, rx));
         Meetings { inner }
     }

@@ -15,9 +15,9 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use flow_core::config::SessionConfig;
-use flow_core::CommitResult;
-use flow_router::meeting::{
+use murmur_core::config::SessionConfig;
+use murmur_core::CommitResult;
+use murmur_router::meeting::{
     transcribe_stream, CancelHandle, ChunkTranscriber, MeetingError, MeetingParams,
     MeetingTranscriber, Segment,
 };
@@ -167,7 +167,7 @@ fn transcribe_file(
     if !path.is_file() {
         return Ok(Vec::new());
     }
-    let blocks = flow_core::audio::WavBlocks::open(path, RATE_BLOCK)?;
+    let blocks = murmur_core::audio::WavBlocks::open(path, RATE_BLOCK)?;
     let total = blocks.total_samples();
     let mut job = MeetingTranscriber::new(engine.clone(), cfg, params);
     *cancel.lock().unwrap() = Some(job.cancel_handle());

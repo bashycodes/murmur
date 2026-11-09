@@ -1,4 +1,4 @@
-//! Windows shell of Murmur, the local Wispr Flow clone.
+//! Windows shell of Murmur, the self-hosted dictation app.
 //!
 //! Pure, platform-independent logic (chord matching, dictation state machine,
 //! resampling, paste planning, context truncation/bucketing, prefs) lives in
@@ -29,6 +29,7 @@ pub mod meetings;
 pub mod model_download;
 pub mod model_import;
 pub mod notes;
+pub mod old_data;
 pub mod openrouter;
 pub mod overlay;
 pub mod paste;

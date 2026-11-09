@@ -5,7 +5,7 @@ use crate::audio::capture::{self, Capture};
 use crate::context::{uia, RawSnapshot};
 use crate::controller::{AudioSink, Controller, Platform};
 use crate::core_adapter::{
-    self, FlowCoreAdapter, LanguageSpec, LlmSpec, LlmStatus, ModelSpec, ModelStatus,
+    self, LanguageSpec, LlmSpec, LlmStatus, ModelSpec, ModelStatus, MurmurCoreAdapter,
 };
 use crate::credentials::{self, CredentialStore, KeyState};
 use crate::debug_log::{self, DebugLog};
@@ -50,7 +50,7 @@ struct AppState {
     appdata: Option<String>,
     hook: Mutex<Option<HookHandle>>,
     /// The local model slot; empty in server-only builds.
-    core: OnceLock<Arc<FlowCoreAdapter>>,
+    core: OnceLock<Arc<MurmurCoreAdapter>>,
     /// Every dictation goes through this (D17, invariant I1).
     router: OnceLock<Arc<RouterAdapter>>,
     /// Controller's "dictation running" flag (Test session must not race it).
@@ -162,7 +162,7 @@ impl Platform for WinPlatform {
 
     fn overlay(&self, st: &OverlayState) {
         *self.overlay_state.lock().unwrap() = st.clone();
-        let always = self.prefs.read().unwrap().show_flow_bar_always;
+        let always = self.prefs.read().unwrap().show_murmur_bar_always;
         // A meeting recording keeps the pill up: it carries the indicator.
         let recording = self
             .app
@@ -266,7 +266,7 @@ impl Platform for WinPlatform {
             .and_then(|t| meetings::front_app(&t.exe, &own));
         let h = self.app.clone();
         let _ = std::thread::Builder::new()
-            .name("flow-meeting-toggle".into())
+            .name("murmur-meeting-toggle".into())
             .spawn(move || toggle_meeting(&h, front));
     }
 
@@ -725,7 +725,7 @@ fn setup_meetings(app: &AppHandle, dictating: Arc<std::sync::atomic::AtomicBool>
             MEETING_MAX_YIELD,
         ))
             as Arc<
-                dyn flow_router::meeting::ChunkTranscriber + Send + Sync,
+                dyn murmur_router::meeting::ChunkTranscriber + Send + Sync,
             >)
     });
     let p = prefs.clone();
@@ -748,7 +748,7 @@ fn setup_meetings(app: &AppHandle, dictating: Arc<std::sync::atomic::AtomicBool>
         keep_audio: meetings::store::KEEP_AUDIO,
         summaries: Some(meetings::Summaries {
             engine: summary_engine(app),
-            options: flow_core::summary::Options {
+            options: murmur_core::summary::Options {
                 yield_to: Some(summary_busy),
                 max_yield: MEETING_MAX_YIELD,
                 ..Default::default()
@@ -800,7 +800,7 @@ fn show_meeting_view(app: &AppHandle, v: &meetings::View) {
     // The pill carries the chip, so it shows while recording even when
     // the resting pill is hidden.
     if let Some(w) = app.get_webview_window(OVERLAY) {
-        let always = st.prefs.read().unwrap().show_flow_bar_always;
+        let always = st.prefs.read().unwrap().show_murmur_bar_always;
         let busy = *st.overlay_state.lock().unwrap() != OverlayState::Resting;
         if let Some(h) = hwnd_of(&w) {
             let show = recording || always || busy;
@@ -953,7 +953,7 @@ fn meeting_prompt_answer(state: tauri::State<'_, AppState>, record: bool) {
     if let Some(d) = state.meeting_detect.get() {
         let d = d.clone();
         let _ = std::thread::Builder::new()
-            .name("flow-meeting-answer".into())
+            .name("murmur-meeting-answer".into())
             .spawn(move || d.answer(record));
     }
 }
@@ -1111,7 +1111,7 @@ fn log_note_writes(results: Vec<(String, Result<(), String>)>) {
 /// Writes debounced note edits (a quarter-second tick is plenty for 750 ms).
 fn spawn_note_saver(app: AppHandle) {
     let spawned = std::thread::Builder::new()
-        .name("flow-notes".into())
+        .name("murmur-notes".into())
         .spawn(move || loop {
             std::thread::sleep(Duration::from_millis(250));
             let st = app.state::<AppState>();
@@ -1210,7 +1210,7 @@ fn downloads_dir() -> Result<PathBuf, String> {
 #[tauri::command]
 fn dictionary_export(entries: Vec<crate::prefs::DictEntry>) -> Result<String, String> {
     let dir = downloads_dir()?;
-    let path = dir.join("flow-dictionary.json");
+    let path = dir.join("murmur-dictionary.json");
     std::fs::write(&path, crate::dictionary::export(&entries)).map_err(|e| e.to_string())?;
     Ok(path.display().to_string())
 }
@@ -1279,7 +1279,7 @@ fn download_origin(state: &AppState) -> crate::server_library::Origin {
 
 /// The saved server, when one is set (only builds that talk to servers).
 #[cfg(feature = "remote")]
-fn configured_server(state: &AppState) -> Option<flow_router::ServerConfig> {
+fn configured_server(state: &AppState) -> Option<murmur_router::ServerConfig> {
     let dev = state.prefs.read().unwrap().developer.clone();
     router_adapter::server_config(&dev, &dev.token())
         .ok()
@@ -1289,7 +1289,7 @@ fn configured_server(state: &AppState) -> Option<flow_router::ServerConfig> {
 /// `User-Agent` of the model library client.
 #[cfg(feature = "remote")]
 fn library_client_name() -> String {
-    format!("flow-windows {}", flow_build_info::FULL)
+    format!("murmur-windows {}", murmur_build_info::FULL)
 }
 
 /// Settings: the configured server's model library (D41), each model with
@@ -1302,13 +1302,14 @@ async fn server_models(app: AppHandle) -> Result<serde_json::Value, String> {
         use crate::server_library as sl;
         let state = app.state::<AppState>();
         let Some(cfg) = configured_server(&state) else {
-            return serde_json::to_value(sl::ServerLibraryView::default()).map_err(|e| e.to_string());
+            return serde_json::to_value(sl::ServerLibraryView::default())
+                .map_err(|e| e.to_string());
         };
         let appdata = state.appdata.clone();
         let prefs = state.prefs.read().unwrap().clone();
         let view = tauri::async_runtime::spawn_blocking(move || {
             let dir = core_adapter::models_dir(appdata.as_deref());
-            let listed = flow_remote::library::LibraryClient::new(cfg, &library_client_name())
+            let listed = murmur_remote::library::LibraryClient::new(cfg, &library_client_name())
                 .and_then(|c| c.list());
             match listed {
                 Ok(l) => sl::ServerLibraryView {
@@ -1354,7 +1355,7 @@ async fn server_model_download(app: AppHandle, id: String) -> Result<(), String>
         let state = app.state::<AppState>();
         let cfg = configured_server(&state).ok_or("no server is set")?;
         let (client, model, plan) = tauri::async_runtime::spawn_blocking(move || {
-            let c = flow_remote::library::LibraryClient::new(cfg, &library_client_name())
+            let c = murmur_remote::library::LibraryClient::new(cfg, &library_client_name())
                 .map_err(|e| e.message)?;
             let l = c.list().map_err(|e| e.message)?;
             let m = l
@@ -1390,17 +1391,18 @@ async fn server_model_download(app: AppHandle, id: String) -> Result<(), String>
     }
 }
 
-/// Where whisper models would run (GPU through `flow_whisper_vulkan.dll`,
+/// Where whisper models would run (GPU through `murmur_whisper_vulkan.dll`,
 /// or the CPU), for Settings → Speech to text: it recommends ivrit turbo
 /// as the Hebrew model on a GPU. Probes the plugin on first use (cached).
 #[tauri::command]
 async fn whisper_backend() -> Result<core_adapter::LlmBackendView, String> {
     if !cfg!(feature = "local-engine") {
-        return Ok(core_adapter::whisper_backend_view(Err(
-            flow_core::whisper_plugin::WhisperPluginError::Backend(
+        return Ok(core_adapter::whisper_backend_view(
+            Err(murmur_core::whisper_plugin::WhisperPluginError::Backend(
                 "this build has no local engine".into(),
-            ),
-        ), false));
+            )),
+            false,
+        ));
     }
     tauri::async_runtime::spawn_blocking(core_adapter::whisper_backend_probe)
         .await
@@ -1411,10 +1413,12 @@ async fn whisper_backend() -> Result<core_adapter::LlmBackendView, String> {
 /// cleanup's model recommendation. Loads the plugin on first use (cached),
 /// so the page asks only when it shows the cleanup models.
 #[tauri::command]
-async fn llm_backend(state: tauri::State<'_, AppState>) -> Result<core_adapter::LlmBackendView, String> {
+async fn llm_backend(
+    state: tauri::State<'_, AppState>,
+) -> Result<core_adapter::LlmBackendView, String> {
     if !cfg!(feature = "local-engine") {
         return Ok(core_adapter::LlmBackendView::from_probe(Err(
-            flow_core::llama::LlamaLoadError::Backend("this build has no local engine".into()),
+            murmur_core::llama::LlamaLoadError::Backend("this build has no local engine".into()),
         )));
     }
     let lib = state
@@ -1448,7 +1452,9 @@ fn model_download_start(
     #[cfg(feature = "remote")]
     let job = {
         let origin = download_origin(&state);
-        move |dir: &std::path::Path, cancel: &std::sync::atomic::AtomicBool, emit: &mut dyn FnMut(md::Progress)| {
+        move |dir: &std::path::Path,
+              cancel: &std::sync::atomic::AtomicBool,
+              emit: &mut dyn FnMut(md::Progress)| {
             crate::server_library::download_catalogue(
                 entry,
                 dir,
@@ -1462,7 +1468,9 @@ fn model_download_start(
     };
     #[cfg(not(feature = "remote"))]
     let job = {
-        move |dir: &std::path::Path, cancel: &std::sync::atomic::AtomicBool, emit: &mut dyn FnMut(md::Progress)| {
+        move |dir: &std::path::Path,
+              cancel: &std::sync::atomic::AtomicBool,
+              emit: &mut dyn FnMut(md::Progress)| {
             let fetch = hugging_face_fetch().map_err(md::Stop::Failed)?;
             md::run(entry, dir, fetch.as_ref(), cancel, emit)
         }
@@ -1619,7 +1627,7 @@ fn hotkey_capture_start(app: AppHandle, state: tauri::State<'_, AppState>) -> Re
     }
     let gen = CAPTURE_GEN.fetch_add(1, Ordering::SeqCst) + 1;
     std::thread::Builder::new()
-        .name("flow-hotkey-capture".into())
+        .name("murmur-hotkey-capture".into())
         .spawn(move || {
             let (state, chord) = match rx.recv_timeout(CAPTURE_TIMEOUT) {
                 Ok(RecordStep::Done(c)) => ("done", Some(c.to_string())),
@@ -1655,7 +1663,11 @@ fn hotkey_capture_stop(state: tauri::State<'_, AppState>) {
 /// the file; the formatting rules keep working. Speech models are not
 /// deleted from the app.
 #[tauri::command]
-fn model_delete(app: AppHandle, state: tauri::State<'_, AppState>, id: String) -> Result<(), String> {
+fn model_delete(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
     let entry = crate::model_download::entry(&id).ok_or_else(|| format!("unknown model {id}"))?;
     if !entry.is_llm() {
         return Err("only AI cleanup models can be deleted here".into());
@@ -1709,8 +1721,8 @@ async fn transform_try(app: AppHandle, id: String, text: String) -> Result<Strin
         router.transform(
             &instruction,
             &text,
-            flow_core::transform::Source::Selection,
-            flow_core::transform::SELECTION_TIMEOUT,
+            murmur_core::transform::Source::Selection,
+            murmur_core::transform::SELECTION_TIMEOUT,
         )
     })
     .await
@@ -1821,7 +1833,7 @@ fn overlay_action(
     Ok(())
 }
 
-/// The Flow bar's colour scheme (`theme` pref). The overlay is not granted
+/// The Murmur bar's colour scheme (`theme` pref). The overlay is not granted
 /// `get_prefs` (review S18: it sees no dictionary, host or history), only
 /// this; later changes arrive as `overlay:theme`.
 #[tauri::command]
@@ -1933,7 +1945,7 @@ fn dev_check(form: &DevForm, saved: &DevSettings, creds: &dyn CredentialStore) -
 struct DevView {
     form: DevForm,
     caps: BuildCaps,
-    capabilities: flow_router::Capabilities,
+    capabilities: murmur_router::Capabilities,
     visible: bool,
     /// D26: product version (`0.2.0`), commit (`abc1234[-dirty]`), both (`0.2.0+abc1234`).
     version: &'static str,
@@ -1964,7 +1976,7 @@ fn dev_view(state: &AppState) -> DevView {
         caps,
         capabilities: router
             .map(|r| r.router().capabilities())
-            .unwrap_or_else(|| flow_router::Capabilities {
+            .unwrap_or_else(|| murmur_router::Capabilities {
                 local: caps.local,
                 remote: caps.remote,
                 asr_engines: Vec::new(),
@@ -1973,9 +1985,9 @@ fn dev_view(state: &AppState) -> DevView {
                 core_version: String::new(),
             }),
         visible: dev.tab_visible(caps),
-        version: flow_build_info::VERSION,
-        build: flow_build_info::BUILD,
-        full: flow_build_info::FULL,
+        version: murmur_build_info::VERSION,
+        build: murmur_build_info::BUILD,
+        full: murmur_build_info::FULL,
         route: router.map(|r| r.route_view()),
         meetings: MeetingOrderView {
             routes: dev.meeting_order(),
@@ -2098,7 +2110,7 @@ fn probe_in_background(app: &AppHandle) {
     }
     let app = app.clone();
     let _ = std::thread::Builder::new()
-        .name("flow-probe".into())
+        .name("murmur-probe".into())
         .spawn(move || {
             let report = r.router().probe_server();
             if !report.ok {
@@ -2157,7 +2169,7 @@ fn dev_set(
 async fn dev_test_connection(
     app: AppHandle,
     form: DevForm,
-) -> Result<flow_router::HealthReport, String> {
+) -> Result<murmur_router::HealthReport, String> {
     let saved = app
         .state::<AppState>()
         .prefs
@@ -2188,7 +2200,13 @@ async fn with_admin<T: Send + 'static>(
     app: &AppHandle,
     f: impl FnOnce(&dyn crate::server_admin::AdminApi) -> Result<T, String> + Send + 'static,
 ) -> Result<T, String> {
-    let dev = app.state::<AppState>().prefs.read().unwrap().developer.clone();
+    let dev = app
+        .state::<AppState>()
+        .prefs
+        .read()
+        .unwrap()
+        .developer
+        .clone();
     tauri::async_runtime::spawn_blocking(move || {
         let api = crate::server_admin::for_settings(&dev)?;
         f(&*api)
@@ -2200,14 +2218,20 @@ async fn with_admin<T: Send + 'static>(
 /// Whether the saved token is an admin key (shows "Users & keys").
 #[tauri::command]
 async fn admin_status(app: AppHandle) -> crate::server_admin::AdminStatus {
-    let dev = app.state::<AppState>().prefs.read().unwrap().developer.clone();
+    let dev = app
+        .state::<AppState>()
+        .prefs
+        .read()
+        .unwrap()
+        .developer
+        .clone();
     tauri::async_runtime::spawn_blocking(move || crate::server_admin::status(&dev))
         .await
         .unwrap_or_default()
 }
 
 #[tauri::command]
-async fn admin_list_keys(app: AppHandle) -> Result<flow_protocol::admin::KeyList, String> {
+async fn admin_list_keys(app: AppHandle) -> Result<murmur_protocol::admin::KeyList, String> {
     with_admin(&app, |a| a.list()).await
 }
 
@@ -2218,12 +2242,15 @@ async fn admin_create_key(
     app: AppHandle,
     name: String,
     admin: bool,
-) -> Result<flow_protocol::admin::CreatedKey, String> {
+) -> Result<murmur_protocol::admin::CreatedKey, String> {
     with_admin(&app, move |a| a.create(&name, admin)).await
 }
 
 #[tauri::command]
-async fn admin_revoke_key(app: AppHandle, id: String) -> Result<flow_protocol::admin::RevokedKey, String> {
+async fn admin_revoke_key(
+    app: AppHandle,
+    id: String,
+) -> Result<murmur_protocol::admin::RevokedKey, String> {
     with_admin(&app, move |a| a.revoke(&id)).await
 }
 
@@ -2362,7 +2389,7 @@ fn edit_cloud(
 /// `{source, fetched_at_ms, snapshot_date, models, stt, cleanup}`.
 fn catalog_status() -> serde_json::Value {
     #[cfg(feature = "cloud")]
-    if let Some(s) = flow_cloud::catalog::default_store() {
+    if let Some(s) = murmur_cloud::catalog::default_store() {
         return serde_json::from_str(&s.status_json()).unwrap_or_default();
     }
     serde_json::Value::Null
@@ -2372,7 +2399,7 @@ fn catalog_status() -> serde_json::Value {
 fn model_row(purpose: &str, id: &str) -> Option<serde_json::Value> {
     #[cfg(feature = "cloud")]
     {
-        let store = flow_cloud::catalog::default_store()?;
+        let store = murmur_cloud::catalog::default_store()?;
         let rows: Vec<serde_json::Value> =
             serde_json::from_str(&store.search_json(purpose, id, r#"{"zdr_only":false}"#)).ok()?;
         rows.into_iter().find(|r| r["id"] == id)
@@ -2411,7 +2438,7 @@ fn or_view(state: &AppState) -> crate::openrouter::OrView {
 fn refresh_catalog(router: &RouterAdapter, force: bool) -> serde_json::Value {
     #[cfg(feature = "cloud")]
     {
-        let Some(store) = flow_cloud::catalog::default_store() else {
+        let Some(store) = murmur_cloud::catalog::default_store() else {
             return serde_json::json!({"error": "cloud_not_configured"});
         };
         let t0 = Instant::now();
@@ -2449,7 +2476,7 @@ fn refresh_catalog_in_background(app: &AppHandle, force: bool) {
         return;
     };
     let _ = std::thread::Builder::new()
-        .name("flow-or-catalog".into())
+        .name("murmur-or-catalog".into())
         .spawn(move || {
             let _ = refresh_catalog(&r, force);
         });
@@ -2465,7 +2492,7 @@ fn dev_or_get(state: tauri::State<'_, AppState>) -> crate::openrouter::OrView {
 #[tauri::command]
 fn dev_or_catalog(purpose: String, query: String, filters: serde_json::Value) -> serde_json::Value {
     #[cfg(feature = "cloud")]
-    if let Some(s) = flow_cloud::catalog::default_store() {
+    if let Some(s) = murmur_cloud::catalog::default_store() {
         return serde_json::from_str(&s.search_json(&purpose, &query, &filters.to_string()))
             .unwrap_or_else(|_| serde_json::json!([]));
     }
@@ -2512,7 +2539,7 @@ fn key_info(router: &RouterAdapter) -> serde_json::Value {
     {
         router.router().with_cloud_key(|k| match k {
             None => serde_json::json!({"error": "cloud_not_configured"}),
-            Some(k) => match flow_cloud::keyinfo::fetch(k) {
+            Some(k) => match murmur_cloud::keyinfo::fetch(k) {
                 Ok(i) => {
                     debug_log::event(
                         "cloud_key_info",
@@ -2659,7 +2686,7 @@ fn dev_or_ack_notice(
 async fn dev_or_test_stt(
     app: AppHandle,
     key: Option<String>,
-) -> Result<flow_router::HealthReport, String> {
+) -> Result<murmur_router::HealthReport, String> {
     let state = app.state::<AppState>();
     let router = state.router.get().cloned().ok_or("router not ready")?;
     let cfg = state
@@ -2671,7 +2698,7 @@ async fn dev_or_test_stt(
         .openrouter
         .clone();
     let key = match key.as_deref().map(str::trim) {
-        Some(k) if !k.is_empty() => Some(flow_router::SecretString::new(
+        Some(k) if !k.is_empty() => Some(murmur_router::SecretString::new(
             credentials::normalize_key(k)?,
         )),
         _ => None,
@@ -2720,12 +2747,12 @@ async fn dev_or_test_cleanup(app: AppHandle) -> Result<CleanupTest, String> {
 }
 
 fn test_custom_cleanup(
-    cc: &flow_router::cloud::CustomCleanupConfig,
+    cc: &murmur_router::cloud::CustomCleanupConfig,
     key: Option<String>,
 ) -> CleanupTest {
     #[cfg(feature = "cloud")]
     {
-        let t = flow_cloud::custom::test_cleanup(cc, key.map(flow_router::SecretString::new));
+        let t = murmur_cloud::custom::test_cleanup(cc, key.map(murmur_router::SecretString::new));
         CleanupTest {
             ok: t.ok,
             text: t.text,
@@ -2747,11 +2774,11 @@ fn test_custom_cleanup(
     }
 }
 
-fn test_cleanup(router: &RouterAdapter, cfg: &flow_router::OpenRouterConfig) -> CleanupTest {
+fn test_cleanup(router: &RouterAdapter, cfg: &murmur_router::OpenRouterConfig) -> CleanupTest {
     let model = cfg.cleanup.model.clone();
     #[cfg(feature = "cloud")]
     {
-        use flow_core::cleanup::Cleaner;
+        use murmur_core::cleanup::Cleaner;
         let Some(key) = router.router().with_cloud_key(|k| k.cloned()) else {
             return CleanupTest {
                 error: Some("cloud_not_configured".into()),
@@ -2760,13 +2787,13 @@ fn test_cleanup(router: &RouterAdapter, cfg: &flow_router::OpenRouterConfig) -> 
                 ..Default::default()
             };
         };
-        let c = flow_cloud::OpenRouterCleaner::new(cfg.into(), key);
-        let prompt = flow_core::cleanup::build_prompt(
+        let c = murmur_cloud::OpenRouterCleaner::new(cfg.into(), key);
+        let prompt = murmur_core::cleanup::build_prompt(
             crate::openrouter::CLEANUP_SAMPLE,
-            flow_core::config::CleanupLevel::Light,
-            flow_core::config::Style::default(),
-            &flow_core::config::FieldContext::default(),
-            &flow_core::dictionary::Dictionary::default(),
+            murmur_core::config::CleanupLevel::Light,
+            murmur_core::config::Style::default(),
+            &murmur_core::config::FieldContext::default(),
+            &murmur_core::dictionary::Dictionary::default(),
         );
         let t0 = Instant::now();
         let deadline = t0 + Duration::from_millis(cfg.cleanup.timeout_ms.max(800) * 2);
@@ -2806,7 +2833,7 @@ fn test_cleanup(router: &RouterAdapter, cfg: &flow_router::OpenRouterConfig) -> 
 }
 
 #[tauri::command]
-fn dev_or_cleanup_status(state: tauri::State<'_, AppState>) -> flow_router::CleanupStatus {
+fn dev_or_cleanup_status(state: tauri::State<'_, AppState>) -> murmur_router::CleanupStatus {
     state
         .router
         .get()
@@ -2844,7 +2871,7 @@ fn dev_cloud_clear_key(state: tauri::State<'_, AppState>) -> Result<KeyState, St
 }
 
 /// D52: save the custom cleanup server's optional key (Credential Manager
-/// `flow-clone/cloud/custom`), then the router. Never echoed back.
+/// `murmur/cloud/custom`), then the router. Never echoed back.
 #[tauri::command]
 fn dev_cloud_set_custom_key(
     state: tauri::State<'_, AppState>,
@@ -2875,7 +2902,7 @@ fn dev_cloud_clear_custom_key(state: tauri::State<'_, AppState>) -> Result<KeySt
 /// held back for want of consent is `{error: "consent_needed"}`, not a
 /// keyless call; `consent: true` (the page's dialog was accepted) records
 /// consent for the host first ([`crate::openrouter::apply_custom_key_consent`]).
-/// `flow_cloud::custom::models_json`: `{models}` or `{error, message}` (a
+/// `murmur_cloud::custom::models_json`: `{models}` or `{error, message}` (a
 /// code and a line that never holds the URL or the key).
 #[tauri::command]
 async fn dev_or_custom_models(
@@ -2922,8 +2949,8 @@ async fn dev_or_custom_models(
 fn custom_models(base_url: &str, key: Option<String>) -> serde_json::Value {
     #[cfg(feature = "cloud")]
     {
-        let key = key.map(flow_router::SecretString::new);
-        flow_cloud::custom::models_json(flow_cloud::custom::list_models(
+        let key = key.map(murmur_router::SecretString::new);
+        murmur_cloud::custom::models_json(murmur_cloud::custom::list_models(
             base_url,
             key.as_ref(),
             Duration::from_secs(8),
@@ -3042,7 +3069,7 @@ fn spawn_hover_watch(
     link: Arc<Mutex<Option<crate::overlay::Rect>>>,
 ) {
     let _ = std::thread::Builder::new()
-        .name("flow-overlay-hover".into())
+        .name("murmur-overlay-hover".into())
         .spawn(move || {
             let mut ignoring = true;
             loop {
@@ -3119,7 +3146,7 @@ mod autostart {
         KEY_SET_VALUE, REG_SZ,
     };
 
-    /// HKCU\…\Run\FlowClone = "<exe>" (per-user, no elevation).
+    /// HKCU\…\Run\Murmur = "<exe>" (per-user, no elevation).
     pub fn set(enabled: bool) -> windows::core::Result<()> {
         unsafe {
             let mut key = HKEY::default();
@@ -3136,9 +3163,9 @@ mod autostart {
                 let val = format!("\"{}\"", exe.display());
                 let wide: Vec<u16> = val.encode_utf16().chain(std::iter::once(0)).collect();
                 let bytes = std::slice::from_raw_parts(wide.as_ptr() as *const u8, wide.len() * 2);
-                RegSetValueExW(key, w!("FlowClone"), 0, REG_SZ, Some(bytes)).ok()
+                RegSetValueExW(key, w!("Murmur"), 0, REG_SZ, Some(bytes)).ok()
             } else {
-                let _ = RegDeleteValueW(key, PCWSTR(w!("FlowClone").as_ptr()));
+                let _ = RegDeleteValueW(key, PCWSTR(w!("Murmur").as_ptr()));
                 Ok(())
             };
             let _ = RegCloseKey(key);
@@ -3148,7 +3175,7 @@ mod autostart {
 
     /// At startup: when launch at login is on, write the Run value again so
     /// it names this exe. `set` otherwise runs only on a prefs save, so after
-    /// a reinstall to another folder (the "Flow Clone" → "Murmur"
+    /// a reinstall to another folder (an earlier product
     /// rename moved it) the value kept pointing at a deleted exe and the app
     /// silently stopped starting. Idempotent; never turns it on when off.
     pub fn refresh(enabled: bool) {
@@ -3167,6 +3194,18 @@ pub fn run() {
     // window forward and exits (one tray icon, one hook).
     let instance = crate::single_instance::win::claim_or_exit();
     let appdata = std::env::var("APPDATA").ok();
+    // D83: pick up the data folder from before the rename, once.
+    if let Some(a) = appdata.as_deref() {
+        match crate::old_data::copy_once(std::path::Path::new(a)) {
+            Ok(crate::old_data::Outcome::Copied { files, linked }) => tracing::info!(
+                files,
+                linked,
+                "copied the data folder from before the Murmur rename"
+            ),
+            Ok(_) => {}
+            Err(e) => tracing::warn!("could not copy the old data folder: {e}"),
+        }
+    }
     let path = Prefs::default_path(appdata.as_deref());
     let (mut prefs, outcome) = Prefs::load(&path);
     if let LoadOutcome::Corrupt(bak) = &outcome {
@@ -3248,7 +3287,7 @@ pub fn run() {
     // The model catalogue's cache (public data; fetched only when the
     // OpenRouter page opens or a cloud use is on).
     #[cfg(feature = "cloud")]
-    flow_cloud::catalog::set_default_store(Some(Arc::new(flow_cloud::CatalogStore::new(
+    murmur_cloud::catalog::set_default_store(Some(Arc::new(murmur_cloud::CatalogStore::new(
         crate::cloud::catalog_cache_path(appdata.as_deref()),
     ))));
 
@@ -3462,7 +3501,7 @@ pub fn run() {
                     "meeting" => {
                         let h = app.clone();
                         let _ = std::thread::Builder::new()
-                            .name("flow-meeting-toggle".into())
+                            .name("murmur-meeting-toggle".into())
                             .spawn(move || toggle_meeting(&h, None));
                     }
                     "scratchpad" => show_scratchpad(app),
@@ -3510,7 +3549,7 @@ pub fn run() {
             // Local engine (client builds): load in the background; the
             // tray notice tracks it. Server-only builds have no model slot.
             let caps = BuildCaps::current();
-            let local = caps.local.then(FlowCoreAdapter::new);
+            let local = caps.local.then(MurmurCoreAdapter::new);
             if let Some(core) = &local {
                 let h = handle.clone();
                 let item = model_item.clone();
@@ -3533,7 +3572,7 @@ pub fn run() {
                 }
                 let _ = app.state::<AppState>().core.set(core.clone());
             } else {
-                let _ = model_item.set_text("Speech: your flow-server (no local model)");
+                let _ = model_item.set_text("Speech: your murmur-server (no local model)");
                 let _ = llm_item.set_text("AI cleanup: on the server");
             }
             // Every dictation goes through the router (D17).
@@ -3623,7 +3662,7 @@ pub fn run() {
                 setup_meeting_detection(&handle, m);
             }
             std::thread::Builder::new()
-                .name("flow-controller".into())
+                .name("murmur-controller".into())
                 .spawn(move || controller.run(rx))?;
 
             let (hk_tx, hk_rx) = mpsc::channel();
@@ -3638,7 +3677,7 @@ pub fn run() {
                 }
             }
             std::thread::Builder::new()
-                .name("flow-hotkey-fwd".into())
+                .name("murmur-hotkey-fwd".into())
                 .spawn(move || {
                     for a in hk_rx {
                         if tx.send(Input::Hotkey(a)).is_err() {

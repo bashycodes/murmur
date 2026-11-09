@@ -5,7 +5,7 @@
 //! 300 Hz = the call).
 
 use super::*;
-use flow_core::CommitResult;
+use murmur_core::CommitResult;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
@@ -14,7 +14,7 @@ const S: usize = 16_000;
 
 fn tmp(name: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!(
-        "flow-meetings-{name}-{}-{:?}",
+        "murmur-meetings-{name}-{}-{:?}",
         std::process::id(),
         std::thread::current().id()
     ));
@@ -78,7 +78,7 @@ impl ChunkTranscriber for ToneAsr {
         } else {
             (result(&format!("caller sentence {n}")), "remote")
         };
-        r.route = Some(flow_core::RouteInfo {
+        r.route = Some(murmur_core::RouteInfo {
             engine: engine.into(),
             ..Default::default()
         });
@@ -274,7 +274,7 @@ fn a_recorded_meeting_becomes_me_and_others_turns_in_time_order() {
 
 #[test]
 fn route_tally_logs_route_and_engine_but_never_the_text() {
-    struct Fixed(Vec<Option<flow_core::RouteInfo>>, AtomicUsize);
+    struct Fixed(Vec<Option<murmur_core::RouteInfo>>, AtomicUsize);
     impl ChunkTranscriber for Fixed {
         fn transcribe_chunk(&self, _: &[i16], _: &SessionConfig) -> CommitResult {
             let n = self.1.fetch_add(1, Ordering::SeqCst);
@@ -283,14 +283,14 @@ fn route_tally_logs_route_and_engine_but_never_the_text() {
             r
         }
     }
-    let cloud = flow_core::RouteInfo {
+    let cloud = murmur_core::RouteInfo {
         engine: "cloud".into(),
         provider: Some("openrouter-1".into()),
         model: Some("some/model".into()),
         fallback: Some("connect_failed".into()),
         ..Default::default()
     };
-    let local = flow_core::RouteInfo {
+    let local = murmur_core::RouteInfo {
         engine: "local".into(),
         ..Default::default()
     };
@@ -713,8 +713,8 @@ fn notetaker_switch_matches_the_ui() {
 
 // ---- D53: summaries ---------------------------------------------------------
 
-use flow_core::asr::AbortFlag;
-use flow_core::cleanup::{CleanError, CleanPrompt};
+use murmur_core::asr::AbortFlag;
+use murmur_core::cleanup::{CleanError, CleanPrompt};
 
 /// A fake AI engine: answers every summary step with `answer` and keeps
 /// what it was given (synthetic transcripts only).
@@ -754,7 +754,7 @@ fn fake_llm(answer: &str) -> Arc<FakeLlm> {
 fn summaries_on(llm: Option<Arc<FakeLlm>>) -> Option<Summaries> {
     Some(Summaries {
         engine: Arc::new(move || llm.clone().map(|l| l as Arc<dyn Cleaner>)),
-        options: flow_core::summary::Options::default(),
+        options: murmur_core::summary::Options::default(),
     })
 }
 
