@@ -2150,7 +2150,7 @@ fn finish_text(
     }
     if (cfg.spoken_cleanup || cfg.cleanup_level != CleanupLevel::None) && !snippet {
         // Parakeet-unified often ends without a period, whisper on a
-        // comma; Wispr's server would close the sentence (D25).
+        // comma; a finished dictation reads as a closed sentence (D25).
         text = postprocess::terminal::close_sentence(&text);
     }
     r.status = CommitStatus::RawTranscript;
@@ -2232,7 +2232,7 @@ fn finish_text(
     post(cfg, matcher, &ctx, r, text)
 }
 
-/// Post-processing (dictionary, cursor context, paste plan) on the
+/// Post-processing (dictionary, cursor fitting, style, paste plan) on the
 /// cleaned `text`.
 fn post(
     cfg: &SessionConfig,

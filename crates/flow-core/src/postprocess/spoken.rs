@@ -1,5 +1,6 @@
-//! Deterministic "spoken cleanup" pass (clone extension). It does the parts of
-//! cleanup that local LLMs mostly got right and that rules do reliably
+//! Deterministic "spoken cleanup" pass (the fallback rules). It does the
+//! parts of cleanup that local LLMs mostly got right and that rules do
+//! reliably
 //! (docs/model-benchmarks.md, "The 30–60% of fixes …"):
 //!
 //! 1. spoken punctuation: "comma", "period", "question mark", "new line", …
@@ -1091,7 +1092,7 @@ fn degrees(c: &[String], toks: &[Tok], i: usize) -> Option<(String, usize)> {
 
 /// "am"/"pm"/"a.m."/"p.m." at `j`, or the letters the ASR split ("A M",
 /// "p m", "a. m."): (am|pm, tokens). Written lowercase with a space, as
-/// Wispr does ("7 am", "6:30 pm").
+/// ("7 am", "6:30 pm").
 fn meridiem(c: &[String], toks: &[Tok], j: usize) -> Option<(&'static str, usize)> {
     let w = c.get(j)?;
     let raw = toks[j].text.to_lowercase();
@@ -1335,7 +1336,7 @@ fn tidy(toks: Vec<Tok>) -> Vec<Tok> {
     out
 }
 
-/// "about$250" → "about" "$250": ASR (Parakeet on Android, Wispr A/B ab7)
+/// "about$250" → "about" "$250": ASR (Parakeet on Android)
 /// can write an amount with no space before the currency sign. Only a
 /// lowercase word before the sign splits, so "US$250" (and "us$250")
 /// stays.
@@ -1497,9 +1498,12 @@ pub fn unit_style(text: &str) -> String {
 
 // ---- layout: numbered lists and email structure -------------------------------
 //
-// The
-// list is written the way `cleanup::lists_to_plain` renders the LLM's
-// `<ol>`: `1. item` lines.
+// The deterministic half of the AI cleanup's formatting: 3 or more
+// enumerated items become a numbered list (2 items stay a sentence, an
+// intro sentence becomes its own paragraph), and an email gets a greeting
+// line, body paragraphs and a sign-off with the name on its own line, only
+// when they were spoken; nothing is invented. The list is written the way
+// `cleanup::lists_to_plain` renders the LLM's `<ol>`: `1. item` lines.
 
 /// Words after which an ordinal is an adjective ("the first time", "wait a
 /// second"), never a list marker.
@@ -2470,7 +2474,7 @@ mod tests {
         assert_eq!(lay(s, AppCategory::Other), s);
     }
 
-    // ---- fallback-rule fixes (ticket 6aded21e, Wispr A/B ab5/ab7/ab8) ----
+    // ---- fallback-rule fixes (ticket 6aded21e) ----
 
     #[test]
     fn ordinal_marker_phrases_leave_no_marker_words() {

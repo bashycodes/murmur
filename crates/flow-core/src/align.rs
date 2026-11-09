@@ -1,5 +1,5 @@
-//! Word-level alignment (Levenshtein with backtrace), labelled like Wispr's
-//! `parseAlignmentSteps`: C = correct, S = substitution, I = insertion
+//! Word-level alignment (Levenshtein with backtrace), each step labelled
+//! C = correct, S = substitution, I = insertion
 //! (word only in the edited text), D = deletion (word only in the original).
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,7 +30,7 @@ fn tokens(s: &str) -> Vec<&str> {
 }
 
 /// Align with exact (case-sensitive) word equality, so a casing fix like
-/// `wispr -> Wispr` shows up as a substitution.
+/// `zentrix -> Zentrix` shows up as a substitution.
 pub fn align_words(a: &str, b: &str) -> Vec<Step> {
     let (a, b) = (tokens(a), tokens(b));
     let key = |w: &str| w.trim_matches(|c: char| !c.is_alphanumeric()).to_string();
@@ -124,7 +124,7 @@ mod tests {
 
     #[test]
     fn single_substitution() {
-        assert_eq!(ops("ask whisper flow", "ask Wispr flow"), vec![C, S, C]);
+        assert_eq!(ops("ask zentrix flow", "ask Zentrix flow"), vec![C, S, C]);
     }
 
     #[test]

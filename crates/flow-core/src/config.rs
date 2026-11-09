@@ -11,7 +11,7 @@ use crate::dictionary::Dictionary;
 
 pub const SAMPLE_RATE: usize = 16_000;
 
-/// Platform whose Wispr client behaviour the post-processor mirrors where
+/// Platform whose host conventions the post-processor follows where
 /// Windows and Android differ.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -36,7 +36,7 @@ pub enum CleanupLevel {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Style {
-    /// Wispr "default": period drop only in messaging apps (<= 2 sentences).
+    /// Default: period drop only in messaging apps (<= 2 sentences).
     #[default]
     Default,
     Formal,

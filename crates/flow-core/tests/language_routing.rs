@@ -93,7 +93,7 @@ fn hebrew_skips_english_rules_but_keeps_tidy_and_closing_period() {
     let (core, _, _) = routed("x", raw);
     let r = dictate(&core, lang("he"));
     assert_eq!(r.status, CommitStatus::RawTranscript, "{r:?}");
-    // (The trailing space after a sentence end is the cursor-context step, as in English.)
+    // (The trailing space after a sentence end is the cursor-fitting rule, as in English.)
     assert_eq!(
         r.final_text,
         "שלום um מה comma twenty נשמע scratch that היום. "

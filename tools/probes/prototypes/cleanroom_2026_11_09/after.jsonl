@@ -1,0 +1,658 @@
+{"id":"ctx_empty","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"ctx_before_space","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"ctx_before_nospace","r":{"enter":false,"out":" the parcel arrived early. "}}
+{"id":"ctx_before_comma","r":{"enter":false,"out":" the parcel arrived early. "}}
+{"id":"ctx_before_comma_sp","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"ctx_before_period","r":{"enter":false,"out":" The parcel arrived early. "}}
+{"id":"ctx_before_period_sp","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"ctx_before_q","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"ctx_before_newline","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"ctx_before_colon","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"ctx_before_lower_noperiod","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"ctx_after_letter","r":{"enter":false,"out":"The parcel arrived early "}}
+{"id":"ctx_after_space_letter","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"ctx_after_upper","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"ctx_after_period","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"ctx_after_comma","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"ctx_after_paren","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"ctx_after_paren_sp","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"ctx_after_digit","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"ctx_after_space","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"ctx_after_newline","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"ctx_mid_both","r":{"enter":false,"out":"the parcel arrived early"}}
+{"id":"ctx_mid_q","r":{"enter":false,"out":"is it ready"}}
+{"id":"ctx_mid_excl","r":{"enter":false,"out":"great work"}}
+{"id":"ctx_pron_I","r":{"enter":false,"out":"I left early. "}}
+{"id":"ctx_pron_Im","r":{"enter":false,"out":"I'm on my way. "}}
+{"id":"ctx_name","r":{"enter":false,"out":"Mara called. "}}
+{"id":"ctx_name_noname","r":{"enter":false,"out":"mara called. "}}
+{"id":"ctx_screen_word","r":{"enter":false,"out":"Quillon is down. "}}
+{"id":"ctx_dict_word","r":{"enter":false,"out":"Kubernetes failed. "}}
+{"id":"ctx_acronym","r":{"enter":false,"out":"NASA called. "}}
+{"id":"ctx_selection","r":{"enter":false,"out":"new words"}}
+{"id":"ctx_selection_edges","r":{"enter":false,"out":" new words "}}
+{"id":"ctx_selection_period","r":{"enter":false,"out":"new words"}}
+{"id":"ctx_unknown","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"ctx_unknown_android","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"ctx_android","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"ctx_android_empty","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"ctx_cjk_before","r":{"enter":false,"out":"世界很好。"}}
+{"id":"ctx_cjk_end","r":{"enter":false,"out":"Hello 世界。"}}
+{"id":"ctx_cjk_after","r":{"enter":false,"out":"世界很好。"}}
+{"id":"ctx_latin_after_cjk","r":{"enter":false,"out":"hello there. "}}
+{"id":"ctx_ws_text","r":{"enter":false,"out":"spaced text. "}}
+{"id":"ctx_multi_sentence_mid","r":{"enter":false,"out":"first one. Second one. "}}
+{"id":"ctx_ellipsis_before","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"ctx_quote_before","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"ctx_paren_before","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"ctx_dash_before","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"ctx_number_start","r":{"enter":false,"out":"42 people came. "}}
+{"id":"ctx_after_quote","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"ctx_after_semicolon","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"ctx_after_q","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"ctx_text_noperiod_after","r":{"enter":false,"out":"the parcel arrived"}}
+{"id":"sty_default_personal_chat_1s","r":{"enter":false,"out":"See you soon "}}
+{"id":"sty_default_personal_chat_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"sty_default_personal_chat_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"sty_default_personal_chat_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_default_personal_chat_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_default_personal_chat_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well "}}
+{"id":"sty_default_work_chat_1s","r":{"enter":false,"out":"See you soon "}}
+{"id":"sty_default_work_chat_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"sty_default_work_chat_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"sty_default_work_chat_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_default_work_chat_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_default_work_chat_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well "}}
+{"id":"sty_default_email_1s","r":{"enter":false,"out":"See you soon. "}}
+{"id":"sty_default_email_2s","r":{"enter":false,"out":"See you soon. Bring the map. "}}
+{"id":"sty_default_email_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"sty_default_email_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_default_email_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_default_email_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well. "}}
+{"id":"sty_default_other_1s","r":{"enter":false,"out":"See you soon. "}}
+{"id":"sty_default_other_2s","r":{"enter":false,"out":"See you soon. Bring the map. "}}
+{"id":"sty_default_other_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"sty_default_other_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_default_other_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_default_other_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well. "}}
+{"id":"sty_default_ai_prompt_1s","r":{"enter":false,"out":"See you soon. "}}
+{"id":"sty_default_ai_prompt_2s","r":{"enter":false,"out":"See you soon. Bring the map. "}}
+{"id":"sty_default_ai_prompt_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"sty_default_ai_prompt_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_default_ai_prompt_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_default_ai_prompt_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well. "}}
+{"id":"sty_default_terminal_1s","r":{"enter":false,"out":"See you soon. "}}
+{"id":"sty_default_terminal_2s","r":{"enter":false,"out":"See you soon. Bring the map. "}}
+{"id":"sty_default_terminal_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"sty_default_terminal_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_default_terminal_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_default_terminal_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well. "}}
+{"id":"sty_default_document_1s","r":{"enter":false,"out":"See you soon. "}}
+{"id":"sty_default_document_2s","r":{"enter":false,"out":"See you soon. Bring the map. "}}
+{"id":"sty_default_document_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"sty_default_document_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_default_document_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_default_document_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well. "}}
+{"id":"sty_formal_personal_chat_1s","r":{"enter":false,"out":"See you soon. "}}
+{"id":"sty_formal_personal_chat_2s","r":{"enter":false,"out":"See you soon. Bring the map. "}}
+{"id":"sty_formal_personal_chat_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"sty_formal_personal_chat_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_formal_personal_chat_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_formal_personal_chat_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well. "}}
+{"id":"sty_formal_work_chat_1s","r":{"enter":false,"out":"See you soon. "}}
+{"id":"sty_formal_work_chat_2s","r":{"enter":false,"out":"See you soon. Bring the map. "}}
+{"id":"sty_formal_work_chat_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"sty_formal_work_chat_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_formal_work_chat_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_formal_work_chat_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well. "}}
+{"id":"sty_formal_email_1s","r":{"enter":false,"out":"See you soon. "}}
+{"id":"sty_formal_email_2s","r":{"enter":false,"out":"See you soon. Bring the map. "}}
+{"id":"sty_formal_email_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"sty_formal_email_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_formal_email_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_formal_email_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well. "}}
+{"id":"sty_formal_other_1s","r":{"enter":false,"out":"See you soon. "}}
+{"id":"sty_formal_other_2s","r":{"enter":false,"out":"See you soon. Bring the map. "}}
+{"id":"sty_formal_other_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"sty_formal_other_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_formal_other_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_formal_other_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well. "}}
+{"id":"sty_formal_ai_prompt_1s","r":{"enter":false,"out":"See you soon. "}}
+{"id":"sty_formal_ai_prompt_2s","r":{"enter":false,"out":"See you soon. Bring the map. "}}
+{"id":"sty_formal_ai_prompt_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"sty_formal_ai_prompt_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_formal_ai_prompt_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_formal_ai_prompt_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well. "}}
+{"id":"sty_formal_terminal_1s","r":{"enter":false,"out":"See you soon. "}}
+{"id":"sty_formal_terminal_2s","r":{"enter":false,"out":"See you soon. Bring the map. "}}
+{"id":"sty_formal_terminal_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"sty_formal_terminal_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_formal_terminal_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_formal_terminal_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well. "}}
+{"id":"sty_formal_document_1s","r":{"enter":false,"out":"See you soon. "}}
+{"id":"sty_formal_document_2s","r":{"enter":false,"out":"See you soon. Bring the map. "}}
+{"id":"sty_formal_document_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"sty_formal_document_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_formal_document_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_formal_document_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well. "}}
+{"id":"sty_casual_personal_chat_1s","r":{"enter":false,"out":"See you soon "}}
+{"id":"sty_casual_personal_chat_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"sty_casual_personal_chat_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first "}}
+{"id":"sty_casual_personal_chat_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_casual_personal_chat_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_casual_personal_chat_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well "}}
+{"id":"sty_casual_work_chat_1s","r":{"enter":false,"out":"See you soon "}}
+{"id":"sty_casual_work_chat_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"sty_casual_work_chat_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first "}}
+{"id":"sty_casual_work_chat_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_casual_work_chat_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_casual_work_chat_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well "}}
+{"id":"sty_casual_email_1s","r":{"enter":false,"out":"See you soon "}}
+{"id":"sty_casual_email_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"sty_casual_email_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first "}}
+{"id":"sty_casual_email_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_casual_email_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_casual_email_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well "}}
+{"id":"sty_casual_other_1s","r":{"enter":false,"out":"See you soon "}}
+{"id":"sty_casual_other_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"sty_casual_other_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first "}}
+{"id":"sty_casual_other_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_casual_other_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_casual_other_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well "}}
+{"id":"sty_casual_ai_prompt_1s","r":{"enter":false,"out":"See you soon "}}
+{"id":"sty_casual_ai_prompt_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"sty_casual_ai_prompt_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first "}}
+{"id":"sty_casual_ai_prompt_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_casual_ai_prompt_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_casual_ai_prompt_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well "}}
+{"id":"sty_casual_terminal_1s","r":{"enter":false,"out":"See you soon "}}
+{"id":"sty_casual_terminal_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"sty_casual_terminal_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first "}}
+{"id":"sty_casual_terminal_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_casual_terminal_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_casual_terminal_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well "}}
+{"id":"sty_casual_document_1s","r":{"enter":false,"out":"See you soon "}}
+{"id":"sty_casual_document_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"sty_casual_document_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first "}}
+{"id":"sty_casual_document_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_casual_document_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_casual_document_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well "}}
+{"id":"sty_very_casual_personal_chat_1s","r":{"enter":false,"out":"See you soon "}}
+{"id":"sty_very_casual_personal_chat_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"sty_very_casual_personal_chat_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first "}}
+{"id":"sty_very_casual_personal_chat_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_very_casual_personal_chat_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_very_casual_personal_chat_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well "}}
+{"id":"sty_very_casual_work_chat_1s","r":{"enter":false,"out":"See you soon "}}
+{"id":"sty_very_casual_work_chat_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"sty_very_casual_work_chat_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first "}}
+{"id":"sty_very_casual_work_chat_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_very_casual_work_chat_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_very_casual_work_chat_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well "}}
+{"id":"sty_very_casual_email_1s","r":{"enter":false,"out":"See you soon "}}
+{"id":"sty_very_casual_email_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"sty_very_casual_email_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first "}}
+{"id":"sty_very_casual_email_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_very_casual_email_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_very_casual_email_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well "}}
+{"id":"sty_very_casual_other_1s","r":{"enter":false,"out":"See you soon "}}
+{"id":"sty_very_casual_other_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"sty_very_casual_other_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first "}}
+{"id":"sty_very_casual_other_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_very_casual_other_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_very_casual_other_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well "}}
+{"id":"sty_very_casual_ai_prompt_1s","r":{"enter":false,"out":"See you soon "}}
+{"id":"sty_very_casual_ai_prompt_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"sty_very_casual_ai_prompt_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first "}}
+{"id":"sty_very_casual_ai_prompt_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_very_casual_ai_prompt_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_very_casual_ai_prompt_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well "}}
+{"id":"sty_very_casual_terminal_1s","r":{"enter":false,"out":"See you soon "}}
+{"id":"sty_very_casual_terminal_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"sty_very_casual_terminal_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first "}}
+{"id":"sty_very_casual_terminal_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_very_casual_terminal_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_very_casual_terminal_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well "}}
+{"id":"sty_very_casual_document_1s","r":{"enter":false,"out":"See you soon "}}
+{"id":"sty_very_casual_document_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"sty_very_casual_document_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first "}}
+{"id":"sty_very_casual_document_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_very_casual_document_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_very_casual_document_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well "}}
+{"id":"sty_excited_personal_chat_1s","r":{"enter":false,"out":"See you soon "}}
+{"id":"sty_excited_personal_chat_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"sty_excited_personal_chat_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"sty_excited_personal_chat_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_excited_personal_chat_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_excited_personal_chat_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well "}}
+{"id":"sty_excited_work_chat_1s","r":{"enter":false,"out":"See you soon "}}
+{"id":"sty_excited_work_chat_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"sty_excited_work_chat_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"sty_excited_work_chat_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_excited_work_chat_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_excited_work_chat_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well "}}
+{"id":"sty_excited_email_1s","r":{"enter":false,"out":"See you soon. "}}
+{"id":"sty_excited_email_2s","r":{"enter":false,"out":"See you soon. Bring the map. "}}
+{"id":"sty_excited_email_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"sty_excited_email_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_excited_email_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_excited_email_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well. "}}
+{"id":"sty_excited_other_1s","r":{"enter":false,"out":"See you soon. "}}
+{"id":"sty_excited_other_2s","r":{"enter":false,"out":"See you soon. Bring the map. "}}
+{"id":"sty_excited_other_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"sty_excited_other_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_excited_other_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_excited_other_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well. "}}
+{"id":"sty_excited_ai_prompt_1s","r":{"enter":false,"out":"See you soon. "}}
+{"id":"sty_excited_ai_prompt_2s","r":{"enter":false,"out":"See you soon. Bring the map. "}}
+{"id":"sty_excited_ai_prompt_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"sty_excited_ai_prompt_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_excited_ai_prompt_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_excited_ai_prompt_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well. "}}
+{"id":"sty_excited_terminal_1s","r":{"enter":false,"out":"See you soon. "}}
+{"id":"sty_excited_terminal_2s","r":{"enter":false,"out":"See you soon. Bring the map. "}}
+{"id":"sty_excited_terminal_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"sty_excited_terminal_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_excited_terminal_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_excited_terminal_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well. "}}
+{"id":"sty_excited_document_1s","r":{"enter":false,"out":"See you soon. "}}
+{"id":"sty_excited_document_2s","r":{"enter":false,"out":"See you soon. Bring the map. "}}
+{"id":"sty_excited_document_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"sty_excited_document_q","r":{"enter":false,"out":"Are you coming? "}}
+{"id":"sty_excited_document_x","r":{"enter":false,"out":"That is great! "}}
+{"id":"sty_excited_document_mix","r":{"enter":false,"out":"Hello there, Mara. I hope the trip went well. "}}
+{"id":"sty_default_personal_after","r":{"enter":false,"out":"See you soon"}}
+{"id":"sty_casual_personal_before","r":{"enter":false,"out":"see you soon "}}
+{"id":"sty_vc_personal_I","r":{"enter":false,"out":"I think I will. Ok "}}
+{"id":"sty_vc_names","r":{"enter":false,"out":"Mara and NASA agree "}}
+{"id":"sty_excited_comma","r":{"enter":false,"out":"We won, finally "}}
+{"id":"sty_formal_personal_noperiod","r":{"enter":false,"out":"see you soon "}}
+{"id":"sty_casual_dots","r":{"enter":false,"out":"Well... see you "}}
+{"id":"sty_casual_url","r":{"enter":false,"out":"Visit example.com "}}
+{"id":"sty_default_multiline","r":{"enter":false,"out":"Line one.\nLine two "}}
+{"id":"sty_default_list","r":{"enter":false,"out":"Plan:\n\n1. Buy milk.\n2. Call Mara. "}}
+{"id":"lower_basic","r":{"enter":false,"out":"mara sent the nasa report. "}}
+{"id":"lower_mid","r":{"enter":false,"out":"the report. "}}
+{"id":"lower_I","r":{"enter":false,"out":"i think so. "}}
+{"id":"dict_repl","r":{"enter":false,"out":"deploy the Kubernetes job. "}}
+{"id":"dict_repl_case","r":{"enter":false,"out":"deploy the Kubernetes job. "}}
+{"id":"dict_repl_upper","r":{"enter":false,"out":"deploy the Kubernetes job. "}}
+{"id":"dict_repl_start","r":{"enter":false,"out":"Kubernetes failed. "}}
+{"id":"dict_repl_inside_word","r":{"enter":false,"out":"the cubernetesx job. "}}
+{"id":"dict_repl_punct","r":{"enter":false,"out":"is it Kubernetes? "}}
+{"id":"dict_repl_possessive","r":{"enter":false,"out":"the Kubernetes's job. "}}
+{"id":"dict_repl_twice","r":{"enter":false,"out":"Kubernetes and Kubernetes. "}}
+{"id":"dict_repl_phrase","r":{"enter":false,"out":"we use Zentrix daily. "}}
+{"id":"dict_repl_phrase_ws","r":{"enter":false,"out":"we use Zentrix daily. "}}
+{"id":"dict_overlap_longest","r":{"enter":false,"out":"we use ZentrixHub daily. "}}
+{"id":"dict_overlap_order","r":{"enter":false,"out":"we use ZentrixHub daily. "}}
+{"id":"dict_t_guard","r":{"enter":false,"out":"I don't know. "}}
+{"id":"dict_t_guard2","r":{"enter":false,"out":"ask Don today. "}}
+{"id":"dict_apos_word","r":{"enter":false,"out":"it's the DONT rule. "}}
+{"id":"dict_vocab_case","r":{"enter":false,"out":"deploy the kubernetes job. "}}
+{"id":"dict_vocab_case_upper","r":{"enter":false,"out":"deploy the KUBERNETES job. "}}
+{"id":"dict_vocab_phrase","r":{"enter":false,"out":"we use zentrix hub. "}}
+{"id":"dict_vocab_lower_entry","r":{"enter":false,"out":"Deploy the Lumo job. "}}
+{"id":"dict_vocab_camel","r":{"enter":false,"out":"the iphone broke. "}}
+{"id":"dict_vocab_start","r":{"enter":false,"out":"kubernetes failed. "}}
+{"id":"dict_special_chars","r":{"enter":false,"out":"email me at C++. "}}
+{"id":"dict_special_key","r":{"enter":false,"out":"we like C plus plus a lot. "}}
+{"id":"dict_dot_key","r":{"enter":false,"out":"open Node.js now. "}}
+{"id":"dict_unicode","r":{"enter":false,"out":"Café Lumo time. "}}
+{"id":"dict_unicode_boundary","r":{"enter":false,"out":"the écafé time. "}}
+{"id":"dict_number_key","r":{"enter":false,"out":"room forty-two is free. "}}
+{"id":"dict_empty_word","r":{"enter":false,"out":"hello there. "}}
+{"id":"dict_ws_word","r":{"enter":false,"out":"Hi there. "}}
+{"id":"dict_repl_dollar","r":{"enter":false,"out":"pay the $5 fee. "}}
+{"id":"dict_repl_backref","r":{"enter":false,"out":"pay the $1 fee. "}}
+{"id":"dict_snippet_inline","r":{"enter":false,"out":"send 12 Elm Road please. "}}
+{"id":"dict_snippet_whole","r":{"enter":false,"out":"12 Elm Road"}}
+{"id":"dict_snippet_whole_raw_punct","r":{"enter":false,"out":"12 Elm Road"}}
+{"id":"dict_snippet_whole_android","r":{"enter":false,"out":"12 Elm Road "}}
+{"id":"dict_snippet_whole_ctx","r":{"enter":false,"out":"12 Elm Road"}}
+{"id":"dict_snippet_multiline","r":{"enter":false,"out":"Thanks,\nAnn"}}
+{"id":"dict_repl_then_ctx","r":{"enter":false,"out":"Kubernetes failed. "}}
+{"id":"dict_repl_lower_then_ctx","r":{"enter":false,"out":"zbar failed. "}}
+{"id":"snip_my address","r":{"out":"12 Elm Road"}}
+{"id":"snip_My address","r":{"out":"12 Elm Road"}}
+{"id":"snip_my address.","r":{"out":"12 Elm Road"}}
+{"id":"snip_  my address  ","r":{"out":"12 Elm Road"}}
+{"id":"snip_my  address","r":{"out":"12 Elm Road"}}
+{"id":"snip_My Address!","r":{"out":"12 Elm Road"}}
+{"id":"snip_say my address","r":{"out":null}}
+{"id":"snip_my addresses","r":{"out":null}}
+{"id":"snip_MY ADDRESS?","r":{"out":"12 Elm Road"}}
+{"id":"snip_nonsnippet","r":{"out":null}}
+{"id":"snip_two","r":{"out":"B"}}
+{"id":"enter_Send it press enter.","r":{"enter":true,"out":"Send it."}}
+{"id":"enter_Send it. Press enter.","r":{"enter":true,"out":"Send it."}}
+{"id":"enter_Send it, press enter","r":{"enter":true,"out":"Send it,"}}
+{"id":"enter_press enter","r":{"enter":true,"out":""}}
+{"id":"enter_Press Enter.","r":{"enter":true,"out":""}}
+{"id":"enter_Press enter now.","r":{"enter":false,"out":"Press enter now. "}}
+{"id":"enter_Send it press enter!","r":{"enter":true,"out":"Send it!"}}
+{"id":"enter_Send it press the enter.","r":{"enter":false,"out":"Send it press the enter. "}}
+{"id":"enter_Send it hit enter.","r":{"enter":false,"out":"Send it hit enter. "}}
+{"id":"enter_Send it press return.","r":{"enter":false,"out":"Send it press return. "}}
+{"id":"enter_disabled","r":{"enter":true,"out":"Send it."}}
+{"id":"enter_android","r":{"enter":false,"out":"Send it press enter. "}}
+{"id":"enter_raw_only","r":{"enter":true,"out":"Send it."}}
+{"id":"enter_ctx","r":{"enter":true,"out":"send it."}}
+{"id":"enter_personal","r":{"enter":true,"out":"Send it"}}
+{"id":"ide_Cursor.exe","r":{"enter":false,"out":"Open main.rs and fix it. "}}
+{"id":"ide_cursor.exe","r":{"enter":false,"out":"Open main.rs and fix it. "}}
+{"id":"ide_Windsurf.exe","r":{"enter":false,"out":"Open main.rs and fix it. "}}
+{"id":"ide_Code.exe","r":{"enter":false,"out":"Open main.rs and fix it. "}}
+{"id":"ide_Open main.rs and fix it.","r":{"enter":false,"out":"Open main.rs and fix it. "}}
+{"id":"ide_Look at main dot rs.","r":{"enter":false,"out":"Look at main dot rs. "}}
+{"id":"ide_Check lib.rs, then main.rs.","r":{"enter":false,"out":"Check lib.rs, then main.rs. "}}
+{"id":"ide_Read readme.md first.","r":{"enter":false,"out":"Read readme.md first. "}}
+{"id":"ide_Edit user service dot py.","r":{"enter":false,"out":"Edit user service dot py. "}}
+{"id":"ide_Edit user_service.py now.","r":{"enter":false,"out":"Edit user_service.py now. "}}
+{"id":"ide_Edit main.","r":{"enter":false,"out":"Edit main. "}}
+{"id":"ide_Open main.rsx too.","r":{"enter":false,"out":"Open main.rsx too. "}}
+{"id":"ide_Open @main.rs please.","r":{"enter":false,"out":"Open @main.rs please. "}}
+{"id":"ide_Open main.rs","r":{"enter":false,"out":"Open main.rs "}}
+{"id":"ide_main.rs is broken.","r":{"enter":false,"out":"main.rs is broken. "}}
+{"id":"ide_android","r":{"enter":false,"out":"Open main.rs and fix it. "}}
+{"id":"ide_nofiles","r":{"enter":false,"out":"Open main.rs and fix it. "}}
+{"id":"sig_app_outlook.exe","r":{"enter":false,"out":"Hi Tom, the report is attached and ready for your review today.\n\n— Ann"}}
+{"id":"sig_app_olk.exe","r":{"enter":false,"out":"Hi Tom, the report is attached and ready for your review today.\n\n— Ann"}}
+{"id":"sig_app_thunderbird.exe","r":{"enter":false,"out":"Hi Tom, the report is attached and ready for your review today.\n\n— Ann"}}
+{"id":"sig_app_OUTLOOK.EXE","r":{"enter":false,"out":"Hi Tom, the report is attached and ready for your review today.\n\n— Ann"}}
+{"id":"sig_app_chrome.exe","r":{"enter":false,"out":"Hi Tom, the report is attached and ready for your review today. "}}
+{"id":"sig_gmail","r":{"enter":false,"out":"Hi Tom, the report is attached and ready for your review today.\n\n— Ann"}}
+{"id":"sig_greeting_short","r":{"enter":false,"out":"Hi Tom, thanks.\n\n— Ann"}}
+{"id":"sig_dear","r":{"enter":false,"out":"Dear Tom, thanks.\n\n— Ann"}}
+{"id":"sig_hey","r":{"enter":false,"out":"Hey! Thanks.\n\n— Ann"}}
+{"id":"sig_short","r":{"enter":false,"out":"Thanks for that. "}}
+{"id":"sig_ten","r":{"enter":false,"out":"one two three four five six seven eight nine ten.\n\n— Ann"}}
+{"id":"sig_nine","r":{"enter":false,"out":"one two three four five six seven eight nine. "}}
+{"id":"sig_ten_numbers","r":{"enter":false,"out":"one two three four five 6 7 8 9 10.\n\n— Ann"}}
+{"id":"sig_already_before","r":{"enter":false,"out":" hi Tom, thanks. "}}
+{"id":"sig_already_after","r":{"enter":false,"out":"Hi Tom, thanks."}}
+{"id":"sig_in_text","r":{"enter":false,"out":"Hi Tom, thanks. Ann "}}
+{"id":"sig_nbsp","r":{"enter":false,"out":"Hi Tom, thanks."}}
+{"id":"sig_plain","r":{"enter":false,"out":"Hi Tom, thanks.\n\nAnn"}}
+{"id":"sig_dash","r":{"enter":false,"out":"Hi Tom, thanks.\n\n-- Ann"}}
+{"id":"sig_multiline","r":{"enter":false,"out":"Hi Tom, thanks.\n\nAnn\nLumo Ltd"}}
+{"id":"sig_unknown_ctx","r":{"enter":false,"out":"Hi Tom, thanks. "}}
+{"id":"sig_android","r":{"enter":false,"out":"Hi Tom, thanks. "}}
+{"id":"sig_cat_email_only","r":{"enter":false,"out":"Hi Tom, thanks.\n\n— Ann"}}
+{"id":"sig_empty","r":{"enter":false,"out":"Hi Tom, thanks. "}}
+{"id":"sig_with_before","r":{"enter":false,"out":"hi Tom, thanks.\n\n— Ann"}}
+{"id":"sig_with_after","r":{"enter":false,"out":"Hi Tom, thanks.\n\n— Ann"}}
+{"id":"skip_Notion.exe_","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"skip_notion.exe_","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"skip_chrome.exe_www.notion.so","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"skip_chrome.exe_notion.so","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"skip_Flow Clone.exe_","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"skip_flow-windows.exe_","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"skip_dev.flowclone_","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"skip_Dictate Pro.exe_","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"chat_WhatsApp.exe","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"chat1_WhatsApp.exe","r":{"enter":false,"out":"See you soon "}}
+{"id":"chat_Telegram.exe","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"chat1_Telegram.exe","r":{"enter":false,"out":"See you soon "}}
+{"id":"chat_slack.exe","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"chat1_slack.exe","r":{"enter":false,"out":"See you soon "}}
+{"id":"chat_Discord.exe","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"chat1_Discord.exe","r":{"enter":false,"out":"See you soon "}}
+{"id":"chat_ms-teams.exe","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"chat1_ms-teams.exe","r":{"enter":false,"out":"See you soon "}}
+{"id":"chat_com.whatsapp","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"chat1_com.whatsapp","r":{"enter":false,"out":"See you soon. "}}
+{"id":"chat_org.telegram.messenger","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"chat1_org.telegram.messenger","r":{"enter":false,"out":"See you soon. "}}
+{"id":"stack_vc_personal_id","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first "}}
+{"id":"stack_casual_personal_cat","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first "}}
+{"id":"term_WindowsTerminal.exe","r":{"enter":false,"out":"List the files. "}}
+{"id":"term_cmd.exe","r":{"enter":false,"out":"List the files. "}}
+{"id":"term_powershell.exe","r":{"enter":false,"out":"List the files. "}}
+{"id":"term_com.termux","r":{"enter":false,"out":"List the files. "}}
+{"id":"cat_windows_slack.exe_","r":{"out":"work_chat"}}
+{"id":"cat_windows_Slack.exe_","r":{"out":"work_chat"}}
+{"id":"cat_windows_outlook.exe_","r":{"out":"email"}}
+{"id":"cat_windows_olk.exe_","r":{"out":"email"}}
+{"id":"cat_windows_thunderbird.exe_","r":{"out":"email"}}
+{"id":"cat_windows_WhatsApp.exe_","r":{"out":"personal_chat"}}
+{"id":"cat_windows_Telegram.exe_","r":{"out":"personal_chat"}}
+{"id":"cat_windows_Discord.exe_","r":{"out":"personal_chat"}}
+{"id":"cat_windows_ms-teams.exe_","r":{"out":"work_chat"}}
+{"id":"cat_windows_Teams.exe_","r":{"out":"work_chat"}}
+{"id":"cat_windows_signal.exe_","r":{"out":"personal_chat"}}
+{"id":"cat_windows_chrome.exe_","r":{"out":"other"}}
+{"id":"cat_windows_chrome.exe_mail.google.com","r":{"out":"email"}}
+{"id":"cat_windows_chrome.exe_outlook.live.com","r":{"out":"email"}}
+{"id":"cat_windows_chrome.exe_app.slack.com","r":{"out":"work_chat"}}
+{"id":"cat_windows_chrome.exe_web.whatsapp.com","r":{"out":"personal_chat"}}
+{"id":"cat_windows_chrome.exe_chatgpt.com","r":{"out":"ai_prompt"}}
+{"id":"cat_windows_chrome.exe_claude.ai","r":{"out":"ai_prompt"}}
+{"id":"cat_windows_chrome.exe_docs.google.com","r":{"out":"document"}}
+{"id":"cat_windows_chrome.exe_github.com","r":{"out":"other"}}
+{"id":"cat_windows_msedge.exe_teams.microsoft.com","r":{"out":"work_chat"}}
+{"id":"cat_windows_WindowsTerminal.exe_","r":{"out":"terminal"}}
+{"id":"cat_windows_cmd.exe_","r":{"out":"terminal"}}
+{"id":"cat_windows_powershell.exe_","r":{"out":"terminal"}}
+{"id":"cat_windows_pwsh.exe_","r":{"out":"terminal"}}
+{"id":"cat_windows_Code.exe_","r":{"out":"ai_prompt"}}
+{"id":"cat_windows_Cursor.exe_","r":{"out":"ai_prompt"}}
+{"id":"cat_windows_WINWORD.EXE_","r":{"out":"document"}}
+{"id":"cat_windows_winword.exe_","r":{"out":"document"}}
+{"id":"cat_windows_Notion.exe_","r":{"out":"document"}}
+{"id":"cat_windows_ChatGPT.exe_","r":{"out":"ai_prompt"}}
+{"id":"cat_windows_Claude.exe_","r":{"out":"ai_prompt"}}
+{"id":"cat_windows_notepad.exe_","r":{"out":"other"}}
+{"id":"cat_android_com.whatsapp_","r":{"out":"personal_chat"}}
+{"id":"cat_android_com.slack_","r":{"out":"work_chat"}}
+{"id":"cat_android_com.google.android.gm_","r":{"out":"email"}}
+{"id":"cat_android_com.microsoft.office.outlook_","r":{"out":"email"}}
+{"id":"cat_android_org.telegram.messenger_","r":{"out":"personal_chat"}}
+{"id":"cat_android_com.discord_","r":{"out":"personal_chat"}}
+{"id":"cat_android_com.termux_","r":{"out":"terminal"}}
+{"id":"cat_android_com.openai.chatgpt_","r":{"out":"ai_prompt"}}
+{"id":"cat_android_com.anthropic.claude_","r":{"out":"ai_prompt"}}
+{"id":"cat_android_com.android.chrome_mail.google.com","r":{"out":"email"}}
+{"id":"cat_android_com.android.chrome_","r":{"out":"other"}}
+{"id":"cat_android_com.google.android.apps.docs.editors.docs_","r":{"out":"document"}}
+{"id":"cat_android_com.samsung.android.messaging_","r":{"out":"personal_chat"}}
+{"id":"cat_android_com.google.android.apps.messaging_","r":{"out":"personal_chat"}}
+{"id":"cat_android_org.thoughtcrime.securesms_","r":{"out":"personal_chat"}}
+{"id":"cat_android_com.facebook.orca_","r":{"out":"personal_chat"}}
+{"id":"cat_android_com.microsoft.teams_","r":{"out":"work_chat"}}
+{"id":"cat_android_com.linkedin.android_","r":{"out":"other"}}
+{"id":"cat_android_com.instagram.android_","r":{"out":"personal_chat"}}
+{"id":"cat_windows_com.whatsapp_","r":{"out":"other"}}
+{"id":"cat_android_slack.exe_","r":{"out":"other"}}
+{"id":"cat_android__mail.google.com","r":{"out":"email"}}
+{"id":"cat_windows__","r":{"out":"other"}}
+{"id":"cat_shell_wins","r":{"out":"work_chat"}}
+{"id":"learn_basic","r":{"out":[{"corrected":"Zentrix","looks_like_name":true,"original":"zentrix"}]}}
+{"id":"learn_two_runs","r":{"out":[{"corrected":"Jenna","looks_like_name":true,"original":"gina"},{"corrected":"Lumio","looks_like_name":true,"original":"lumo"}]}}
+{"id":"learn_insert","r":{"out":[]}}
+{"id":"learn_delete","r":{"out":[]}}
+{"id":"learn_five","r":{"out":[]}}
+{"id":"learn_punct_kept","r":{"out":[{"corrected":"Lumio","looks_like_name":true,"original":"lumo"}]}}
+{"id":"learn_case_only_initial","r":{"out":[]}}
+{"id":"learn_case_only_mid","r":{"out":[{"corrected":"Zentrix","looks_like_name":true,"original":"zentrix"}]}}
+{"id":"learn_stop_mixed","r":{"out":[{"corrected":"a Lumio","looks_like_name":false,"original":"the lumo"}]}}
+{"id":"learn_dict_repl_target","r":{"out":[]}}
+{"id":"learn_dict_word_case","r":{"out":[]}}
+{"id":"learn_numbers","r":{"out":[]}}
+{"id":"learn_contraction_edit","r":{"out":[]}}
+{"id":"learn_empty","r":{"out":[]}}
+{"id":"learn_whitespace","r":{"out":[]}}
+{"id":"learn_dup","r":{"out":[{"corrected":"Lumio","looks_like_name":true,"original":"lumo"}]}}
+{"id":"learn_after_typing","r":{"out":[{"corrected":"Lumio tomorrow then bye","looks_like_name":false,"original":"lumo"}]}}
+{"id":"learn_unicode","r":{"out":[{"corrected":"Café","looks_like_name":true,"original":"cafe"}]}}
+{"id":"learn_adjacent_words","r":{"out":[{"corrected":"Lumio Novva","looks_like_name":true,"original":"lumo nova"}]}}
+{"id":"learn_mixed_run","r":{"out":[{"corrected":"small Lumio","looks_like_name":false,"original":"big lumo"}]}}
+{"id":"st_default_WhatsApp.exe_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"st_default_WhatsApp.exe_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"st_default_WhatsApp.exe_q","r":{"enter":false,"out":"Are you there? Call me "}}
+{"id":"st_default_WhatsApp.exe_nl","r":{"enter":false,"out":"See you soon.\nBring the map "}}
+{"id":"st_default_WhatsApp.exe_long","r":{"enter":false,"out":"I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map. "}}
+{"id":"st_default_com.whatsapp_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"st_default_com.whatsapp_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"st_default_com.whatsapp_q","r":{"enter":false,"out":"Are you there? Call me "}}
+{"id":"st_default_com.whatsapp_nl","r":{"enter":false,"out":"See you soon.\nBring the map "}}
+{"id":"st_default_com.whatsapp_long","r":{"enter":false,"out":"I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map. "}}
+{"id":"st_default_slack.exe_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"st_default_slack.exe_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"st_default_slack.exe_q","r":{"enter":false,"out":"Are you there? Call me "}}
+{"id":"st_default_slack.exe_nl","r":{"enter":false,"out":"See you soon.\nBring the map "}}
+{"id":"st_default_slack.exe_long","r":{"enter":false,"out":"I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map. "}}
+{"id":"st_default_com.slack_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"st_default_com.slack_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"st_default_com.slack_q","r":{"enter":false,"out":"Are you there? Call me "}}
+{"id":"st_default_com.slack_nl","r":{"enter":false,"out":"See you soon.\nBring the map "}}
+{"id":"st_default_com.slack_long","r":{"enter":false,"out":"I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map. "}}
+{"id":"st_casual_WhatsApp.exe_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first "}}
+{"id":"st_casual_WhatsApp.exe_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"st_casual_WhatsApp.exe_q","r":{"enter":false,"out":"Are you there? Call me "}}
+{"id":"st_casual_WhatsApp.exe_nl","r":{"enter":false,"out":"See you soon.\nBring the map "}}
+{"id":"st_casual_WhatsApp.exe_long","r":{"enter":false,"out":"I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map "}}
+{"id":"st_casual_com.whatsapp_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first "}}
+{"id":"st_casual_com.whatsapp_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"st_casual_com.whatsapp_q","r":{"enter":false,"out":"Are you there? Call me "}}
+{"id":"st_casual_com.whatsapp_nl","r":{"enter":false,"out":"See you soon.\nBring the map "}}
+{"id":"st_casual_com.whatsapp_long","r":{"enter":false,"out":"I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map "}}
+{"id":"st_casual_slack.exe_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first "}}
+{"id":"st_casual_slack.exe_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"st_casual_slack.exe_q","r":{"enter":false,"out":"Are you there? Call me "}}
+{"id":"st_casual_slack.exe_nl","r":{"enter":false,"out":"See you soon.\nBring the map "}}
+{"id":"st_casual_slack.exe_long","r":{"enter":false,"out":"I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map "}}
+{"id":"st_casual_com.slack_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first "}}
+{"id":"st_casual_com.slack_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"st_casual_com.slack_q","r":{"enter":false,"out":"Are you there? Call me "}}
+{"id":"st_casual_com.slack_nl","r":{"enter":false,"out":"See you soon.\nBring the map "}}
+{"id":"st_casual_com.slack_long","r":{"enter":false,"out":"I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map "}}
+{"id":"st_very_casual_WhatsApp.exe_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first "}}
+{"id":"st_very_casual_WhatsApp.exe_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"st_very_casual_WhatsApp.exe_q","r":{"enter":false,"out":"Are you there? Call me "}}
+{"id":"st_very_casual_WhatsApp.exe_nl","r":{"enter":false,"out":"See you soon.\nBring the map "}}
+{"id":"st_very_casual_WhatsApp.exe_long","r":{"enter":false,"out":"I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map "}}
+{"id":"st_very_casual_com.whatsapp_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first "}}
+{"id":"st_very_casual_com.whatsapp_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"st_very_casual_com.whatsapp_q","r":{"enter":false,"out":"Are you there? Call me "}}
+{"id":"st_very_casual_com.whatsapp_nl","r":{"enter":false,"out":"See you soon.\nBring the map "}}
+{"id":"st_very_casual_com.whatsapp_long","r":{"enter":false,"out":"I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map "}}
+{"id":"st_very_casual_slack.exe_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first "}}
+{"id":"st_very_casual_slack.exe_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"st_very_casual_slack.exe_q","r":{"enter":false,"out":"Are you there? Call me "}}
+{"id":"st_very_casual_slack.exe_nl","r":{"enter":false,"out":"See you soon.\nBring the map "}}
+{"id":"st_very_casual_slack.exe_long","r":{"enter":false,"out":"I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map "}}
+{"id":"st_very_casual_com.slack_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first "}}
+{"id":"st_very_casual_com.slack_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"st_very_casual_com.slack_q","r":{"enter":false,"out":"Are you there? Call me "}}
+{"id":"st_very_casual_com.slack_nl","r":{"enter":false,"out":"See you soon.\nBring the map "}}
+{"id":"st_very_casual_com.slack_long","r":{"enter":false,"out":"I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map "}}
+{"id":"st_excited_WhatsApp.exe_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"st_excited_WhatsApp.exe_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"st_excited_WhatsApp.exe_q","r":{"enter":false,"out":"Are you there? Call me "}}
+{"id":"st_excited_WhatsApp.exe_nl","r":{"enter":false,"out":"See you soon.\nBring the map "}}
+{"id":"st_excited_WhatsApp.exe_long","r":{"enter":false,"out":"I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map. "}}
+{"id":"st_excited_com.whatsapp_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"st_excited_com.whatsapp_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"st_excited_com.whatsapp_q","r":{"enter":false,"out":"Are you there? Call me "}}
+{"id":"st_excited_com.whatsapp_nl","r":{"enter":false,"out":"See you soon.\nBring the map "}}
+{"id":"st_excited_com.whatsapp_long","r":{"enter":false,"out":"I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map. "}}
+{"id":"st_excited_slack.exe_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"st_excited_slack.exe_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"st_excited_slack.exe_q","r":{"enter":false,"out":"Are you there? Call me "}}
+{"id":"st_excited_slack.exe_nl","r":{"enter":false,"out":"See you soon.\nBring the map "}}
+{"id":"st_excited_slack.exe_long","r":{"enter":false,"out":"I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map. "}}
+{"id":"st_excited_com.slack_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"st_excited_com.slack_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"st_excited_com.slack_q","r":{"enter":false,"out":"Are you there? Call me "}}
+{"id":"st_excited_com.slack_nl","r":{"enter":false,"out":"See you soon.\nBring the map "}}
+{"id":"st_excited_com.slack_long","r":{"enter":false,"out":"I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map. "}}
+{"id":"st_formal_WhatsApp.exe_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"st_formal_WhatsApp.exe_2s","r":{"enter":false,"out":"See you soon. Bring the map. "}}
+{"id":"st_formal_WhatsApp.exe_q","r":{"enter":false,"out":"Are you there? Call me. "}}
+{"id":"st_formal_WhatsApp.exe_nl","r":{"enter":false,"out":"See you soon.\nBring the map. "}}
+{"id":"st_formal_WhatsApp.exe_long","r":{"enter":false,"out":"I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map. "}}
+{"id":"st_formal_com.whatsapp_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"st_formal_com.whatsapp_2s","r":{"enter":false,"out":"See you soon. Bring the map. "}}
+{"id":"st_formal_com.whatsapp_q","r":{"enter":false,"out":"Are you there? Call me. "}}
+{"id":"st_formal_com.whatsapp_nl","r":{"enter":false,"out":"See you soon.\nBring the map. "}}
+{"id":"st_formal_com.whatsapp_long","r":{"enter":false,"out":"I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map. "}}
+{"id":"st_formal_slack.exe_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"st_formal_slack.exe_2s","r":{"enter":false,"out":"See you soon. Bring the map. "}}
+{"id":"st_formal_slack.exe_q","r":{"enter":false,"out":"Are you there? Call me. "}}
+{"id":"st_formal_slack.exe_nl","r":{"enter":false,"out":"See you soon.\nBring the map. "}}
+{"id":"st_formal_slack.exe_long","r":{"enter":false,"out":"I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map. "}}
+{"id":"st_formal_com.slack_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
+{"id":"st_formal_com.slack_2s","r":{"enter":false,"out":"See you soon. Bring the map. "}}
+{"id":"st_formal_com.slack_q","r":{"enter":false,"out":"Are you there? Call me. "}}
+{"id":"st_formal_com.slack_nl","r":{"enter":false,"out":"See you soon.\nBring the map. "}}
+{"id":"st_formal_com.slack_long","r":{"enter":false,"out":"I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map. "}}
+{"id":"pl_com.whatsapp","r":{"enter":false,"out":"see you soon "}}
+{"id":"pl_at_com.whatsapp","r":{"enter":false,"out":"Ask at Mara about it "}}
+{"id":"pl_com.google.android.gm","r":{"enter":false,"out":"see you soon. "}}
+{"id":"pl_at_com.google.android.gm","r":{"enter":false,"out":"Ask at Mara about it. "}}
+{"id":"pl_com.slack.Slack","r":{"enter":false,"out":"see you soon. "}}
+{"id":"pl_at_com.slack.Slack","r":{"enter":false,"out":"Ask at Mara about it. "}}
+{"id":"pl_com.tinyspeck.slackmacgap","r":{"enter":false,"out":"see you soon. "}}
+{"id":"pl_at_com.tinyspeck.slackmacgap","r":{"enter":false,"out":"Ask at Mara about it. "}}
+{"id":"ctx_bad_sel","r":{"enter":false,"out":"new"}}
+{"id":"ctx_after_lower_period","r":{"enter":false,"out":"Done "}}
+{"id":"ctx_after_lower_q","r":{"enter":false,"out":"Done "}}
+{"id":"ctx_after_upper_ws","r":{"enter":false,"out":"Done."}}
+{"id":"ctx_after_cjk_punct","r":{"enter":false,"out":"好的"}}
+{"id":"ctx_before_digit","r":{"enter":false,"out":" items. "}}
+{"id":"ctx_before_open_quote","r":{"enter":false,"out":"Items. "}}
+{"id":"ctx_before_tab","r":{"enter":false,"out":"Items. "}}
+{"id":"ctx_before_nbsp","r":{"enter":false,"out":"items. "}}
+{"id":"ctx_before_ellipsis_nospace","r":{"enter":false,"out":" Items. "}}
+{"id":"ctx_before_excl_nospace","r":{"enter":false,"out":" Items. "}}
+{"id":"ctx_before_hyphen","r":{"enter":false,"out":"items. "}}
+{"id":"ctx_before_slash","r":{"enter":false,"out":"items. "}}
+{"id":"ctx_before_at","r":{"enter":false,"out":"Items. "}}
+{"id":"ctx_mid_two","r":{"enter":false,"out":"items. More"}}
+{"id":"ctx_mid_both_comma","r":{"enter":false,"out":"items, more"}}
+{"id":"ctx_text_trailing_space","r":{"enter":false,"out":"Items. "}}
+{"id":"ctx_text_empty","r":{"enter":false,"out":""}}
+{"id":"ctx_text_only_space","r":{"enter":false,"out":""}}
+{"id":"ctx_upper_word_mid","r":{"enter":false,"out":"the NASA plan. "}}
+{"id":"ctx_mixed_iphone","r":{"enter":false,"out":"IPhone works. "}}
+{"id":"ctx_mixed_iphone2","r":{"enter":false,"out":"iPhone works. "}}
+{"id":"ctx_casual_after","r":{"enter":false,"out":"See you "}}
+{"id":"ctx_name_multi","r":{"enter":false,"out":"Mara Quill called. "}}
+{"id":"ctx_name_second","r":{"enter":false,"out":"quill called. "}}
+{"id":"ctx_dict_repl_target","r":{"enter":false,"out":"Kubernetes failed. "}}
+{"id":"ctx_screen_case","r":{"enter":false,"out":"quillon is down. "}}
+{"id":"ctx_I_contraction_curly","r":{"enter":false,"out":"I’ll go. "}}
+{"id":"ctx_quote_start","r":{"enter":false,"out":"\"Hello\" she said. "}}
+{"id":"ctx_after_close_quote_sp","r":{"enter":false,"out":"Done."}}
+{"id":"ctx_before_lower_word_period_in_text","r":{"enter":false,"out":"done. Next step. "}}
+{"id":"ctx_after_lower_multi","r":{"enter":false,"out":"First. Second"}}
+{"id":"ctx_selection_cap","r":{"enter":false,"out":"new words"}}
+{"id":"ctx_selection_cap2","r":{"enter":false,"out":"new words"}}
+{"id":"sel_Bad words.","r":{"enter":false,"out":"New words."}}
+{"id":"sel_mid_Bad words.","r":{"enter":false,"out":"New words."}}
+{"id":"sel_Bad words","r":{"enter":false,"out":"New words"}}
+{"id":"sel_mid_Bad words","r":{"enter":false,"out":"New words"}}
+{"id":"sel_bad words.","r":{"enter":false,"out":"new words."}}
+{"id":"sel_mid_bad words.","r":{"enter":false,"out":"new words."}}
+{"id":"sel_BAD","r":{"enter":false,"out":"New words"}}
+{"id":"sel_mid_BAD","r":{"enter":false,"out":"New words"}}
+{"id":"sel_x","r":{"enter":false,"out":"new words"}}
+{"id":"sel_mid_x","r":{"enter":false,"out":"new words"}}
+{"id":"sel_Bad words?","r":{"enter":false,"out":"New words."}}
+{"id":"sel_mid_Bad words?","r":{"enter":false,"out":"New words."}}
+{"id":"sel_ Bad words. ","r":{"enter":false,"out":" New words. "}}
+{"id":"sel_mid_ Bad words. ","r":{"enter":false,"out":" New words. "}}
+{"id":"sel_two_sentences","r":{"enter":false,"out":"new words. More here"}}
+{"id":"sel_question","r":{"enter":false,"out":"is it new"}}
+{"id":"sel_casual","r":{"enter":false,"out":"New words."}}
+{"id":"enter_off","r":{"enter":false,"out":"Send it press enter. "}}
+{"id":"enter_off_raw","r":{"enter":false,"out":"Send it. "}}
+{"id":"enter_casual","r":{"enter":true,"out":"Send it"}}
+{"id":"enter_after","r":{"enter":true,"out":"Send it"}}
+{"id":"enter_mid_nl","r":{"enter":true,"out":"Send it."}}
+{"id":"lower_snippet","r":{"enter":false,"out":"12 Elm Road"}}
+{"id":"lower_dict","r":{"enter":false,"out":"deploy the Kubernetes job. "}}
+{"id":"lower_casual","r":{"enter":false,"out":"see you soon "}}
+{"id":"sig2_olk.exe","r":{"enter":false,"out":"Hi Tom, the report is attached and ready for your review today.\n\n— Ann"}}
+{"id":"sig2_WINWORD.EXE","r":{"enter":false,"out":"Hi Tom, the report is attached and ready for your review today. "}}

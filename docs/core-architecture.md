@@ -86,8 +86,8 @@ shell UI thread ──start/commit/cancel──▶ control channel (mpsc) ──
    * Default threads = logical CPUs / 2. On this HT box, 8 threads was 14× slower than 4.
    * `AsrOutput.no_speech_prob`: the highest per-segment Whisper no-speech probability.
    * **Hallucination guard** (`hallucination`, `SessionConfig.hallucination_guard`, default on). Whisper's stock silence phrases ("Thank you.", "you", "Thanks for watching!", "Bye.", repeated forms) are dropped (EMPTY `hallucination`) only with evidence of little speech: VAD speech < 400 ms or `no_speech_prob` ≥ 0.6. Subtitle credits ("Subtitles by the Amara.org community") are always dropped. Table: `tests/hallucination_vectors.rs`.
-1b. **Spoken cleanup** (`postprocess::spoken`, `SessionConfig.spoken_cleanup`, default on, skipped for whole-utterance snippets; since D27 independent of `cleanup_level` and `raw_mode`, which only switch the LLM off). Deterministic: spoken punctuation ("comma", "period", "question mark", "new line", "new paragraph", …, not after "the/a/trial/Oxford…"), fillers (um/uh/er/hmm; ", like," and ", you know," between commas; "was like $40"; a leading "so"/"okay so"), stutters ("I I" → "I"; not "that that"/"had had"), backtracking ("scratch that", "never mind", "forget that", "no wait", "actually I mean", "or rather"; the correction replaces from its first word's last match in the sentence, else the retracted clause back to its comma, else the last word; literal uses such as "don't forget that", "there's no wait", sentence-initial "Never mind the …" are left alone) and ITN for money ("$120", "$25.50"), percent, clock times ("3:30 PM", "4pm" → "4 PM") and dates ("March 5th"). Its output feeds the LLM and the Wispr port; text that becomes empty is EMPTY `only_filler`. On the benchmark's 20 cases (`tests/spoken_bench.rs`) it lifts mean similarity from 0.710 (raw) to 0.920 without an LLM, never worse than raw (the few-shot Qwen2.5-1.5B LLM scored 0.876 on the same set). The Wispr vectors call `postprocess::process`, which does not include this pass.
-   **Layout** (`spoken::layout`, same gate, 2026-10-22), the deterministic list and email layout rules: ≥ 3 enumerated items become a numbered list in the format `cleanup::lists_to_plain` gives the LLM's `<ol>` (`Intro:\n\n1. …\n2. …`). Markers are ordinals 1, 2, 3, … in order ("first … second … and third/finally"; not after a determiner: "the first time", "wait a second"), "number/step one …", or a bare "one," / "1." at a clause start; 2 items stay prose; the last item ends at its sentence end and the rest becomes a paragraph; not in terminals. In email apps a spoken greeting ("Hi Tom,", ≤ 3 words) gets its own line and a spoken sign-off ("Best regards, Anna." / "Thanks, Raj.") its own paragraph with the name on the next line; nothing is invented ("Thanks." without a name stays). Bench 20 cases: 0.920 → 0.957 (c09, c11, c12 now exact; c08's unordered list is left to the LLM).
+1b. **Spoken cleanup** (`postprocess::spoken`, `SessionConfig.spoken_cleanup`, default on, skipped for whole-utterance snippets; since D27 independent of `cleanup_level` and `raw_mode`, which only switch the LLM off). Deterministic: spoken punctuation ("comma", "period", "question mark", "new line", "new paragraph", …, not after "the/a/trial/Oxford…"), fillers (um/uh/er/hmm; ", like," and ", you know," between commas; "was like $40"; a leading "so"/"okay so"), stutters ("I I" → "I"; not "that that"/"had had"), backtracking ("scratch that", "never mind", "forget that", "no wait", "actually I mean", "or rather"; the correction replaces from its first word's last match in the sentence, else the retracted clause back to its comma, else the last word; literal uses such as "don't forget that", "there's no wait", sentence-initial "Never mind the …" are left alone) and ITN for money ("$120", "$25.50"), percent, clock times ("3:30 PM", "4pm" → "4 PM") and dates ("March 5th"). Its output feeds the LLM and post-processing; text that becomes empty is EMPTY `only_filler`. On the benchmark's 20 cases (`tests/spoken_bench.rs`) it lifts mean similarity from 0.710 (raw) to 0.920 without an LLM, never worse than raw (the few-shot Qwen2.5-1.5B LLM scored 0.876 on the same set).
+   **Layout** (`spoken::layout`, same gate, 2026-10-22), the deterministic half of the AI cleanup's formatting: ≥ 3 enumerated items become a numbered list in the format `cleanup::lists_to_plain` gives the LLM's `<ol>` (`Intro:\n\n1. …\n2. …`). Markers are ordinals 1, 2, 3, … in order ("first … second … and third/finally"; not after a determiner: "the first time", "wait a second"), "number/step one …", or a bare "one," / "1." at a clause start; 2 items stay prose; the last item ends at its sentence end and the rest becomes a paragraph; not in terminals. In email apps a spoken greeting ("Hi Tom,", ≤ 3 words) gets its own line and a spoken sign-off ("Best regards, Anna." / "Thanks, Raj.") its own paragraph with the name on the next line; nothing is invented ("Thanks." without a name stays). Bench 20 cases: 0.920 → 0.957 (c09, c11, c12 now exact; c08's unordered list is left to the LLM).
 2. **LLM cleanup** (`Cleaner` trait, optional).
    * It is skipped for raw mode, level `none` and terminal apps.
    * It is also skipped when the whole utterance is a snippet trigger.
@@ -180,49 +180,39 @@ Not yet verified: loading on bionic (first device run), and whether whisper's li
   | Qwen2.5-1.5B-Instruct | 8/8 | 1.1-1.8 s at load 6, 2.6-5.3 s at load 12 | 23-38 s |
 
   Decode runs at 15-35 tok/s for 0.5B and 7-13 tok/s for 1.5B on this contended box. The first call after an app or style switch also prefills the user-message prefix (~100 tokens, +0.3-0.8 s).
-3. **Deterministic post-processing** (`postprocess`). The dictionary matcher (look-around regex) is compiled once per distinct dictionary and shared by later sessions, instead of twice per commit (`FlowCore::dict_matcher_builds`, `postprocess::process_with`/`apply_with`). This is the client fallback path. The clone has no server, so it always runs the steps (before them, outside the port, the engine closes an open dictation of ≥ 4 words with a period, as Wispr's server formatting would: `postprocess::terminal`, D25), in this order:
-   1. all-lowercase mode;
-   2. dictionary regex. Uses `fancy-regex` look-around, JS first-alternative order, longest key first, Unicode boundaries and the `'t` guard. Personal entries override team entries;
-   3. cursor context: mid-sentence lowercasing, leading and trailing spaces, stripping `.!?` before a continuation, CJK handling, the selection path, the style-dependent trailing-period drop, and the Notion and Flow-app skips;
-   4. Slack tagging (gated on the macOS bundle IDs, as in Wispr, so it never fires);
-   5. the whole-utterance snippet trigger on raw ASR;
-   6. email signature (off unless `email_signature` is set);
-   7. "press enter" (sets `press_enter`; the shell sends the key);
-   8. Cursor/Windsurf `@file` tagging. Emits `{{BREAK}}`/`{{TAB}}` markers for the paste layer.
+3. **Deterministic post-processing** (`postprocess`; behaviour contract: `docs/specs/text-postprocess.md`). The dictionary matcher is built once per distinct dictionary and shared by later sessions (`FlowCore::dict_matcher_builds`, `postprocess::apply_with`). Before it, the engine closes an open dictation of ≥ 4 words with a period (`postprocess::terminal`, D25). The steps, in order:
+   1. whole-utterance snippet on the raw transcript (Windows): the snippet body is inserted as is and nothing else runs;
+   2. "press enter" at the end of the dictation (Windows; sets `press_enter`, the shell sends the key);
+   3. all-lowercase mode;
+   4. dictionary replacements: case-insensitive whole words, longest key first, a contraction guard ("don" leaves "don't"), personal entries over team entries;
+   5. fitting to the cursor: a leading space, a lower-case start mid-sentence (names, "I", acronyms and dictionary words kept), dropping `.!?` before a continuation, the selection's shape when replacing a selection, CJK spacing; skipped for Notion and this app's own fields;
+   6. style punctuation: casual styles drop the final period; default and excited drop it in chat apps for 1–2 sentences;
+   7. the trailing space;
+   8. email signature (Windows, off unless `email_signature` is set).
 
-   **The trailing space is intended.** the cursor-context step appends one space when nothing follows the cursor, or when a letter, a digit, or a closing mark plus a space follows it (and the text does not end in CJK punctuation), so the next dictation does not run into this one. Wispr's own ground-truth vectors expect it (38 of the 108 Windows vectors end in a space), so `final_text` normally ends with `" "` and shells insert it as is. It is left out when `context_known == false` (see below), with a selection (the selection's own edge spaces are kept instead) and on the Notion and Flow-app skips. `plain_text` keeps it (only the paste markers are removed); `asr_text` (raw ASR) has none.
+   **The trailing space is intended.** It is appended when nothing follows the cursor, or a letter or digit follows it directly (and the text does not end in CJK), so the next dictation does not run into this one; `final_text` normally ends with `" "` and shells insert it as is. It is left out on Android when `context_known == false`, with a selection (the selection's own edge spaces are kept instead), after "press enter" and on the Notion / own-app skip. `plain_text` keeps it (only the paste markers are removed); `asr_text` (raw ASR) has none.
 
-   `postprocess::apps::classify` maps an app id or URL to its type, messaging flag, style bucket and category. It uses Wispr's Windows process-name lists and Android's package/host lists (both in `crates/flow-core/data/`). A shell-supplied `app_category` takes precedence.
+   `postprocess::effective_category` maps an app id or URL host to a category from the module's own tables (spec §9) when the shell did not send one.
 
 ### Platform differences (`SessionConfig.platform`)
-Wispr Android shapes no text on the client; its server does it all (android 06). The clone runs the Windows order on Android too, with these gates:
+The Windows order runs on Android too, with these gates:
 * No whole-utterance snippet override.
 * No signature.
 * No press-enter.
-* No IDE tagging.
 * When `FieldContext.context_known == false` (the field could not be read), no trailing space is added.
 
-`postprocess::android` ports the Android shell rules (post-commit verification, the node-tier compose decision, placeholder detection, the bubble policy, excluded fields) as pure functions. `bubble_policy(.., clone_safe=true)` applies the recommended deviation: a browser + GO action does not un-hide a password field.
+`starts_with_proper_noun` is derived locally: true when the first word is a user name, a screen word or a dictionary word, or is the pronoun "I" or "I'…".
 
-### Intentional divergences from Wispr
-* `starts_with_proper_noun` was computed by Wispr's server. The core derives it locally. It is true when the first word is a user name, a screen word or a dictionary word, or is the pronoun "I" or "I'…". This fixes the `ctx_pronoun_I_quirk` lowercasing. The vector is kept and still passes against the raw port (`context::match_context`). Only the engine path diverges.
-* The press-enter first-use prompt is treated as already shown, so the command works the first time. The `enter_first_use_prompt` vector still passes with `prompt_shown=false`.
-
-## Ground-truth tests
-`crates/flow-core/tests/vectors.rs` loads every JSON file in `tests/vectors/`. Those files are copied verbatim from the RE repos; see the README there. The suite has:
-* 108 Windows vectors, produced by executing Wispr's own functions.
-* 58 Android vectors.
-* A cross-check: Android inputs run through the clone rules must equal Wispr Windows' output for the same input.
-
-To refresh the vectors, re-copy the files. A mutation check (sentence cap 2→3) confirms that the harness fails when the semantics drift.
+## Post-processing tests
+Unit tests next to the code cover the spec's examples. `tools/probes/prototypes/cleanroom_2026_11_09/` holds a probe (invented inputs through the public API) and the deterministic formatting eval runner used to compare implementations.
 
 ## learn_edit
-`align::align_words` does word-level Levenshtein with backtrace, labelling each step C/S/I/D as Wispr's `parseAlignmentSteps` does. `learn::learn_edit` then:
+`align::align_words` does word-level Levenshtein with backtrace, labelling each step C/S/I/D. `learn::learn_edit` then (spec §11):
 * takes substitution runs of ≤ 4 words;
-* drops stopwords, contractions, existing dictionary words and sentence-initial capitalisation;
-* caps the result at 4 candidates.
+* drops stopwords, contractions, punctuation-only changes, existing dictionary words, sentence-initial capitalisation and corrections without a letter;
+* merges duplicates and caps the result at 4 candidates, flagging names (`looks_like_name`).
 
-The cloud `/llm/extract_edited_words` step is left to the shell or to a future local LLM.
+Turning candidates into entries (with or without a model) is left to the shell.
 
 ## Build / test
 ```
