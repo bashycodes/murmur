@@ -359,8 +359,8 @@ Settings → AI cleanup:
   groups* list shows the default mapping read-only (overridden rows struck
   through, *Change* copies one into your table). Saved as `app_buckets`
   (exe stem or host → group), over the built-in lists
-  (`data/app-lists.json`: WhatsApp, Telegram, Signal, Messenger, Discord,
-  Instagram, Google Messages → personal; Slack, Teams → work; Outlook,
+  (flow-core `data/app-groups.json`, D81: WhatsApp, Telegram, Signal, Messenger, Discord,
+  Viber, LINE, WeChat, Instagram, Google Messages → personal; Slack, Teams, Mattermost, Zoom → work; Outlook,
   Gmail → email).
 
 ## Command Mode
@@ -404,7 +404,7 @@ before the paste.
 | `src/controller.rs` | Runs the machine's effects against a `Platform` trait plus `CoreApi`; integration-tested with fakes. Command Mode: selection capture after the chord is up, `CoreApi::command`, history row |
 | `src/audio/` | Resampler to 16 kHz mono i16 and a Wispr-style level meter (pure); `capture.rs` = cpal/WASAPI |
 | `src/paste/` | Pure strategy, restore guard and per-app restore delay; `win.rs` = clipboard snapshot → CF_UNICODETEXT plus history/monitor opt-outs → masked Alt/Win release → `[Ctrl↓,V↓]` 50 ms `[V↑,Ctrl↑]` → restore if the sequence number is unchanged. Falls back to KEYEVENTF_UNICODE |
-| `src/context/` | Truncation, password suppression, app kind and style bucket from `data/app-lists.json` (pure); `uia.rs` = UI Automation snapshot with a 300 ms timeout, and `UiaFieldReader` (re-reads the pasted-into control, `CompareElements` for focus) |
+| `src/context/` | Truncation, password suppression, app kind and style bucket from flow-core `app_groups` (`crates/flow-core/data/app-groups.json`, pure); `uia.rs` = UI Automation snapshot with a 300 ms timeout, and `UiaFieldReader` (re-reads the pasted-into control, `CompareElements` for focus) |
 | `src/ducking/` | Mute plan and restore rule (pure); `win.rs` = WASAPI sessions on an MTA thread |
 | `src/sounds.rs` | Synthesised cue WAVs (pure), optional user overrides from `%APPDATA%\FlowClone\sounds`, played with `PlaySoundW(SND_MEMORY)` |
 | `src/prefs.rs` | `%APPDATA%\FlowClone\prefs.json`: tolerant load, atomic save, validation, `prefs_rev` migration (rev 1, D22: a stored hands-free auto-stop of exactly 2000 ms, the old default, becomes 1500 once; rev 3, D27: LLM budget 1500 → 3000, all-formal styles → chats casual, None → Verbatim, raw mode → No AI; later saves keep any value) |
