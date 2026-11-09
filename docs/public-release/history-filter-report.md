@@ -4,8 +4,9 @@ For owner sign-off before anything is pushed. Nothing has been pushed; the
 rewritten repo exists only in a local scratch mirror with no remote.
 
 - Source: this branch's tip, filtered as `integration` (`SOURCE_REF=feat/public-history-filter run.sh`):
-  `origin/integration` `8bb7e62` (A5 rename merged) plus this branch's 3 commits, plus the 18 tags.
-- Run: `~/.cache/murmur-filter/work/20261109T215412Z/` (`orig/` untouched, `repo/` rewritten).
+  `origin/integration` `8bb7e62` (A5 rename merged) plus this branch's own commits (the tool,
+  this report and the HEAD-alignment commit), plus the 18 tags.
+- Run: `~/.cache/murmur-filter/work/20261109T220339Z/` (`orig/` untouched, `repo/` rewritten).
 - Tool: `tools/probes/prototypes/history_filter_2026_11_09/` (`run.sh`, which calls `mirror.sh`,
   `prepare.py`, `git filter-repo`, `verify.py` and `scan.py`).
 
@@ -13,13 +14,14 @@ rewritten repo exists only in a local scratch mirror with no remote.
 
 | | Before | After |
 |---|---|---|
-| Commits (integration + tags) | 1151 | 1111 (40 pruned, listed below) |
-| Integration first-parent commits | 313 | 313 (order kept) |
-| Tags | 18 | 18 (each on the image of its commit) |
+| Commits (integration + tags) | 1153 | 1113 (40 pruned, listed below) |
+| Integration first-parent commits | 315 | 315 (order kept) |
+| Ancestry | | every surviving commit's parents are the images of its old parents; a pruned parent stands for its own parents (a pruned merge that became degenerate keeps only the parent the other descends from) |
+| Tags | 18 annotated | 18, each on the image of its commit; object type, tagger name/email/date kept; 10 tag messages rewritten by the message rules (old product name), exactly as the rules predict: v0.9.0–v0.9.2, v0.11.0, v0.11.1, v0.12.0, v1.0.0, v1.1.0–v1.1.2 |
 | Refs | integration + 18 tags | the same; no `refs/pull`, `refs/notes`, `refs/replace`, no remote |
-| Author and committer dates | | identical (raw, with time zone) for all 1111 surviving commits |
+| Author and committer dates | | identical (raw, with time zone) for all 1113 surviving commits |
 | Identities | all noreply | all noreply; mailmap built but empty (no real-name author on integration or tags) |
-| Old-revision blobs stripped | | 122 |
+| Old-revision blobs stripped | | 122 (all 122 in `orig/`, 0 left in `repo/`) |
 | Commit subjects changed by message rules | | 10 (old product name) |
 
 ## Pruned commits (emptied by the rules)
@@ -73,11 +75,17 @@ The full list with dates is printed by `verify.sh <run>`.
 
 ## HEAD tree
 
-The integration HEAD tree comes out byte-identical (1788 files, 0 differ; `headdiff.sh` prints nothing). A HEAD commit on
-this branch already applied what the text rules would change: the old product name in
-`CHANGELOG.md` (the 0.8.0 entry now reads "Flow Clone → Murmur", accepted), two copied UI
-strings in the design export (`PageScratchpad.dc.html`, `PageTransforms.dc.html`) and the other
-app's function and field names in `docs/public-release/history-drop.md`.
+The integration HEAD tree comes out byte-identical: 1789 files, 0 differ (same paths, modes and
+blob ids; `verify.py` fails on any difference), and `headdiff.sh` prints nothing. The
+HEAD-alignment commit on this branch already applied what the text rules would change:
+
+- `CHANGELOG.md`: the old product name. The 0.8.0 entry now reads "Flow Clone → Murmur"
+  (accepted). The entries for past releases now say Murmur on purpose, because the owner chose a
+  full rename.
+- Two copied UI strings in the design export (`PageScratchpad.dc.html`,
+  `PageTransforms.dc.html`).
+- `docs/public-release/history-drop.md` itself: that doc named the other app's client functions
+  and end-reason field. It now uses the neutral words the rules write into old commits.
 
 ## Scans of the result (all blobs of all commits, all messages, all identities)
 
@@ -90,7 +98,7 @@ app's function and field names in `docs/public-release/history-drop.md`.
 Counted but not failed (info):
 
 - the word "Wispr" in nominative use (comparisons, "A/B vs Wispr", the README credit);
-- the device model (82 hits) and the TickTick project id (8 hits);
+- the device model (83 hits) and the TickTick project id (9 hits);
 - 4 audio files: the public-domain JFK sample and 3 byte-sized stubs.
 
 ## Residuals
@@ -104,14 +112,21 @@ are fixed in HEAD. Left as is:
 2. Old commits from before D82/A3/A4 no longer build, because their ported modules and copied
    lists are gone. HEAD builds as before.
 
+## Owner sign-off items
+
+1. This report: the pruned commits, the rules and the scan results above.
+2. **Default branch name.** The push below publishes `integration` as `main`, the public
+   repo's default branch. The alternative is to keep the name `integration`; in that case push
+   `refs/heads/integration:refs/heads/integration` and set it as the default on GitHub.
+
 ## Step C (after sign-off; not run)
 
-Rerun on the then-current integration first, because the rules are idempotent and the run
-directory is new each time:
+Rerun on the then-current integration first (no `SOURCE_REF`), because the rules are
+idempotent and the run directory is new each time:
 
 ```
 bash tools/probes/prototypes/history_filter_2026_11_09/run.sh     # must end verify=0 scan=0
 cd ~/.cache/murmur-filter/work/<new run>/repo
-git remote add public git@github.com:bashycodes/<public-repo>.git
-git push public refs/heads/integration refs/tags/*
+git remote add public git@github.com:bashycodes/murmur.git
+git push public refs/heads/integration:refs/heads/main 'refs/tags/*:refs/tags/*'
 ```

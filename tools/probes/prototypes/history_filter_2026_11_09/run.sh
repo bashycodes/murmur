@@ -16,9 +16,7 @@
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 SRC=${1:-$(cd "$HERE" && cd "$(git rev-parse --git-common-dir)" && pwd)}
-BASE=$HOME/.cache/murmur-filter
-PRIVATE=$BASE/private/replacements.txt
-HOSTS=$BASE/private/.hosts
+. "$HERE/common.sh"
 RUN=$BASE/work/$(date -u +%Y%m%dT%H%M%SZ)
 [[ -f $PRIVATE ]] || { echo "run.sh: missing $PRIVATE" >&2; exit 2; }
 avail=$(free -m | awk '/^Mem:/ {print $7}')
@@ -45,7 +43,8 @@ cd "$HERE"
 git -C "$RUN/repo" for-each-ref --format='delete %(refname)' refs/replace/ | git -C "$RUN/repo" update-ref --stdin
 
 set +e
-python3 "$HERE/verify.py" --orig "$RUN/orig" --new "$RUN/repo" | tee "$RUN/verify.txt"
+python3 "$HERE/verify.py" --orig "$RUN/orig" --new "$RUN/repo" \
+  --strip-blobs "$RUN/inputs/strip-blobs.txt" --replace-message "$RUN/inputs/replace-message.txt" | tee "$RUN/verify.txt"
 v=${PIPESTATUS[0]}
 nice -n 10 python3 "$HERE/scan.py" --repo "$RUN/repo" --private "$PRIVATE" --private-literals "$HOSTS" \
   --accepted "$HERE/accepted.txt" --json "$RUN/scan.json" > "$RUN/scan.txt"

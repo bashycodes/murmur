@@ -44,8 +44,11 @@ def rules(path):
 
 
 def write(path, text):
-    path.write_text(text)
-    os.chmod(path, 0o600)
+    # Created 0600 from the start: the private values never sit in a wider-mode file.
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.fchmod(fd, 0o600)  # an existing file keeps its old mode under O_CREAT
+    with os.fdopen(fd, "w") as f:
+        f.write(text)
 
 
 def descendants(repo, root):

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Rescan a whole git history: every blob, commit message and identity.
 
-Part of the public history filter (public B, see README in this folder).
+Part of the public history filter (public B, see docs/public-release/history-filter-report.md).
 Three scans, as in the pre-flip audits: secrets, personal, wispr/legal.
 
   scan.py --repo DIR [--private FILE] [--json OUT] [--context]
