@@ -1,7 +1,6 @@
 "use strict";
 // Flow bar pill, styled after the design artboard
-// docs/design/app-design/FlowBar.dc.html; behaviour matched to Wispr
-// 1.6.1167 (windows-research findings/data/overlay-spec.json). The window
+// docs/design/app-design/FlowBar.dc.html. The window
 // is a fixed 512x614 transparent canvas; states are pure CSS on
 // #pill[data-state] (+ data-done while the engine badge shows).
 // Backend events: `dictation:status` ({state, message?}), `audio:level`

@@ -410,7 +410,7 @@ before the paste.
 | `src/prefs.rs` | `%APPDATA%\FlowClone\prefs.json`: tolerant load, atomic save, validation, `prefs_rev` migration (rev 1, D22: a stored hands-free auto-stop of exactly 2000 ms, the old default, becomes 1500 once; rev 3, D27: LLM budget 1500 → 3000, all-formal styles → chats casual, None → Verbatim, raw mode → No AI; later saves keep any value) |
 | `src/core_api.rs` | §9 API seam (shell types) plus `StubCore` for tests |
 | `src/core_adapter.rs` | `CoreApi` on `flow_core::FlowCore`: two-phase background load (whisper engine, then the optional `flow_llm` cleaner, composed with `FlowCore::from_engines`), `ModelStatus` / `LlmStatus`, shell→core type mapping |
-| `src/history.rs` | Local SQLite history (`history.sqlite`, 10-clone-spec §2 columns, no audio), keep / 24 h / never retention; list/search/get/delete/clear/set_edited for the History tab |
+| `src/history.rs` | Local SQLite history (`history.sqlite`, no audio), keep / 24 h / never retention; list/search/get/delete/clear/set_edited for the History tab |
 | `src/insights.rs` | Insights tab store (`insights.json`: per-local-day words / audio ms / dictations / words per app, no text), separate from History so deleting it keeps the stats; one-time backfill from History; the math is `flow_core::insights` |
 | `src/learn.rs` | Learn-from-edits (03 §3), pure: anchor-bounded region, Wispr end reasons, watch state machine in injected time, semi-global trim of text typed after the dictation |
 | `src/recent_apps.rs` | Exe names recently dictated into (`recent_apps.json`, names only) and the picker's built-in exe → group rows |
