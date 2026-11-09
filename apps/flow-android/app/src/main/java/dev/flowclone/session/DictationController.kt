@@ -105,7 +105,7 @@ enum class DictationHint {
     OnlyFiller,
 }
 
-/** 10-clone-spec-android §3: Idle → Ready → Recording(hold|tap) → Processing → Ready | Error. */
+/** Idle → Ready → Recording(hold|tap) → Processing → Ready | Error. */
 sealed interface DictationState {
     /** No allowed field focused: bubble hidden. */
     data object Idle : DictationState

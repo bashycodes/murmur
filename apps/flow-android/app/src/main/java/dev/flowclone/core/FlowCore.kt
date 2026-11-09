@@ -1,8 +1,8 @@
 package dev.flowclone.core
 
 /**
- * Kotlin mirror of the shared Rust core API (windows-research 10-clone-spec §9 v2;
- * crates/flow-core). One loaded [FlowCore] = one §9 `Handle`; one active session at a time.
+ * Kotlin mirror of the shared Rust core API (crates/flow-core,
+ * docs/core-architecture.md). One loaded [FlowCore] = one core `Handle`; one active session at a time.
  *
  * Implementations: [NativeFlowCore] (JNI → libflow_ffi.so, see JNI_CONTRACT.md) and
  * [FakeFlowCore] (tests / "mock engine" debug setting).

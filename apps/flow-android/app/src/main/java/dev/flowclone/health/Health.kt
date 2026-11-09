@@ -101,7 +101,7 @@ class ServiceWatchdog(private val minSpacingMs: Long = 5_000L) {
 }
 
 /**
- * OEM background-kill guidance (10-clone-spec-android §7 risk: Xiaomi, Samsung, Huawei …).
+ * OEM background-kill guidance (Xiaomi, Samsung, Huawei …).
  * [intents] are best-effort deep links into the vendor's autostart / battery screens;
  * callers try each and fall back to the app's details page.
  */

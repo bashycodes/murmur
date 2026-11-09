@@ -53,8 +53,8 @@ pub fn url_host(url: &str) -> Option<String> {
     }
 }
 
-/// The app lists (windows-research `findings/data/app-lists.json`,
-/// copied verbatim into `data/`). Process names are exe stems, lowercase.
+/// App category lists (`data/app-lists.json`). Process names are exe stems,
+/// lowercase.
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 struct AppLists {

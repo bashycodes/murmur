@@ -1,6 +1,6 @@
 # PROJECT_CONTEXT — Murmur (local-only Wispr Flow clone)
 
-Core API: `docs/core-architecture.md`. Decisions: `docs/DECISIONS.md` (D1-D28). Versioning + releases: `docs/versioning.md`, `CHANGELOG.md`. Core architecture + "Changelog for shells": `docs/core-architecture.md`. Core requests from the shells: `docs/core-change-requests.md`. Model choices: `docs/model-benchmarks.md`.
+Decisions: `docs/DECISIONS.md` (D1-D28). Versioning + releases: `docs/versioning.md`, `CHANGELOG.md`. Core API, architecture + "Changelog for shells": `docs/core-architecture.md`. Core requests from the shells: `docs/core-change-requests.md`. Model choices: `docs/model-benchmarks.md`.
 
 Branch `integration` holds everything: `core`, `core-p1`, `parakeet`, `win-p1`, `android-int`, `android-p1`, the hybrid branches, `cloud-core`, `core-endpoint`, `win-cloud`, `android-cloud`, `router-route` and `server-fixes` (review fixes), and `crates-final`, `android-final`, `win-final` (the rest of the review) are merged into it.
 
@@ -178,7 +178,7 @@ Wired to the real core (from branch `win-p1`) and the hybrid router (`hybrid-win
 | Real whisper.cpp through the shell: tiny.en on jfk.wav → "ask not what your country…" pasted, `lang=en` in history | `core_integration.rs::real_tiny_model_on_jfk_pastes_the_speech` (skips without `models/`) |
 | §9 status handling: EMPTY pastes nothing; press_enter → Enter after paste; missing model → error pill naming the path, never downloads | `core_integration.rs` (silence / press_enter / missing_model), `core_adapter.rs` tests |
 | Live partials → overlay preview, cleared when listening ends | `core_integration.rs::live_partials_reach_the_overlay_preview` |
-| Local SQLite history (10-clone-spec §2 columns, no audio column), keep/24h/never retention; paste-last (Shift+Alt+Z) from it | `history.rs` tests, `core_integration.rs` (paste-last, retention never) |
+| Local SQLite history (no audio column), keep/24h/never retention; paste-last (Shift+Alt+Z) from it | `history.rs` tests, `core_integration.rs` (paste-last, retention never) |
 | Optional LLM cleanup through the shell: real `flow_llm` plugin + Qwen2.5-0.5B → FORMATTED pasted, raw ASR kept in history; whisper tiny.en + llama in one shell process; missing plugin/GGUF = `LlmStatus` notice while dictation still pastes RAW; two-phase load (ASR ready first, LLM joins without reloading whisper), supersede on toggle | `core_integration.rs::real_llm_plugin_formats_through_the_shell`, `real_whisper_then_real_llm_in_the_shell_process` (skip without plugin/GGUF), `missing_llm_plugin_still_dictates_raw`; `core_adapter.rs` two-phase tests (fake cleaner) |
 | Learn-from-edits: after a paste the field is re-read; the user's correction (`whisper flow` → `Wispr Flow`) becomes a pending suggestion (never auto-added) and fills history `edited`; Wispr end reasons, anchor-bounded region, trailing-typing trim | `core_integration.rs::user_correction_becomes_a_suggestion_not_an_entry`, `learning_off_or_untouched_paste_suggests_nothing`, `learn.rs`, `suggestions.rs` tests. UIA reader only clippy-checked |
 | History tab backend (search/get/delete/clear/set_edited, undo-AI-edit flag), copy-last (Shift+Alt+X), dictionary import/export of the shared JSON | `history.rs`, `dictionary.rs`, `chord.rs` tests, `core_integration.rs::copy_last_puts_the_transcript_on_the_clipboard` |

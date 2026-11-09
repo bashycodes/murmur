@@ -6,8 +6,7 @@ targetSdk 35, arm64-v8a. Three product flavours (D17): `local` (no `INTERNET`, o
 only), `hybrid` (own flow-server + on-device fallback), `remote` (server only, no ASR libs).
 Every session goes through the native `flow_router::Router` (`nativeOpenRouter`).
 
-Specs: android-research `findings/by-topic/07-android-shell-impl-spec.md` (primary), 05, 06,
-10. Core API: windows-research `10-clone-spec.md` §9. The JNI surface is in
+Core API: [`docs/core-architecture.md`](../../docs/core-architecture.md). The JNI surface is in
 [`JNI_CONTRACT.md`](JNI_CONTRACT.md).
 
 ## Build
@@ -74,7 +73,7 @@ Install on a phone (sideload, permissions, model import, device checklist): [`IN
 | `ui/` | Main/onboarding (mic → overlay → a11y + ghost fix → battery → notifications → OEM), model import (SAF; speech ggml, Parakeet folder, LLM GGUF), settings, Developer settings (D17 §5; D18 cloud section + `CloudProviderActivity`), dictionary editor (search, tabs, edit, shared JSON import/export), history (search, copy, delete, raw vs formatted), Scratchpad (`NoteEditorActivity`: one document to dictate into, Copy all / Share / Clear) | device only |
 
 `policy/PolicyLists.kt` is generated: `python3 -I tools/gen_policy_lists.py` from
-`policy-data/*.json`, which are verbatim copies of android-research `findings/data/`.
+`policy-data/*.json` (app package lists).
 
 ## Deviations from Wispr (deliberate)
 - V3 inserter only, with every A/B feature on. No Legacy path.
