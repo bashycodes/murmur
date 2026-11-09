@@ -1,0 +1,27 @@
+# Repo-local leak patterns, read by tools/checks/leak-scan.py.
+#
+# One pattern per line: `<name> <python-regex>` (name, one space, regex).
+# Lines starting with # and blank lines are ignored. A match is a leak unless
+# the matched text also matches a line of leak-allow.txt (the fake test values).
+#
+# Never put a real value in this file or in the allowlist: describe the shape.
+
+# OpenRouter / OpenAI style API keys: `sk-` plus at least 20 key characters.
+openai-key (?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}
+# GitHub personal / OAuth tokens and fine-grained PATs.
+github-token (?<![A-Za-z0-9])gh[po]_[A-Za-z0-9]{20,}
+github-pat (?<![A-Za-z0-9])github_pat_[A-Za-z0-9_]{20,}
+# Hugging Face access tokens.
+hf-token (?<![A-Za-z0-9])hf_[A-Za-z0-9]{20,}
+# AWS access key ids.
+aws-key-id (?<![A-Z0-9])AKIA[0-9A-Z]{16}(?![A-Z0-9])
+# PEM private keys of any kind (RSA, EC, OPENSSH, plain).
+private-key -----BEGIN [A-Z0-9 ]*PRIVATE KEY-----
+# JWT-shaped strings: base64url JSON header and payload, then a signature.
+jwt (?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}
+# Tailnet (CGNAT 100.64.0.0/10) addresses: the home server and devices.
+tailnet-ip (?<![0-9.])100\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])(?:\.[0-9]{1,3}){2}(?![0-9])
+# Absolute home paths name the account owner. Root-anchored only: `$T/home/.config`
+# in a test is a temp folder, not an account.
+home-path (?<![A-Za-z0-9_.}$)/-])/home/[a-z_][A-Za-z0-9._-]*
+windows-home-path (?i:[a-z]:(?:\\{1,2}|/)users(?:\\{1,2}|/))[A-Za-z0-9._-]+
