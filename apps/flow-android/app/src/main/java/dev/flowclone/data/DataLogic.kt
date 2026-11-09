@@ -9,7 +9,7 @@ import dev.flowclone.policy.BubbleVisibilityPolicy
 import dev.flowclone.policy.EditorInputType
 import dev.flowclone.session.SessionCap
 
-/** History retention pref (10-clone-spec-android §4.8: keep / 24 h / never). */
+/** History retention pref: keep / 24 h / never. */
 enum class Retention(val key: String) {
     KEEP("keep"), DAY("day"), NEVER("never");
 
@@ -320,7 +320,7 @@ object FieldContextBuilder {
     fun build(pkg: String?, inputType: Int, surrounding: String?, selStart: Int, selEnd: Int, browserHost: String? = null): FieldContext {
         val category = AppCategorizer.categorize(pkg, browserHost).coreName
         val base = FieldContext(appId = pkg.orEmpty(), urlHost = browserHost.orEmpty(), appCategory = category)
-        if (surrounding == null || EditorInputType.isContentExtractionExcluded(inputType) || BubbleVisibilityPolicy.isBanking(pkg)) return base
+        if (surrounding == null || EditorInputType.isContentExtractionExcluded(inputType) || BubbleVisibilityPolicy.isRestricted(pkg)) return base
         val len = surrounding.length
         val a = minOf(selStart, selEnd).coerceIn(0, len)
         val b = maxOf(selStart, selEnd).coerceIn(0, len)

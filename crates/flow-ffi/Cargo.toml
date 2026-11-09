@@ -2,7 +2,7 @@
 name = "flow-ffi"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license-file.workspace = true
 description = "C ABI + JNI bindings for flow-core"
 
 [lib]

@@ -1,5 +1,4 @@
-//! Command Mode (selected-text transforms, 10-clone-spec P1; Wispr's
-//! `/llm/command_mode {selected_text, instruction}`, 03 §2): the user
+//! Command Mode (selected-text transforms): the user
 //! selects text, holds the Command shortcut and speaks an instruction
 //! ("make this more formal", "translate to Spanish"); the selection is
 //! replaced by the LLM's rewrite. With nothing selected the instruction

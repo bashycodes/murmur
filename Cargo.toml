@@ -5,7 +5,8 @@ members = ["crates/flow-build-info", "crates/flow-core", "crates/flow-ffi", "cra
 [workspace.package]
 edition = "2021"
 version = "1.1.2"
-license = "MIT"
+# All rights reserved (COPYRIGHT); no open-source licence (D80).
+license-file = "COPYRIGHT"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }

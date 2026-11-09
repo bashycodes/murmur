@@ -1,7 +1,6 @@
 //! Local transcript history: `%APPDATA%\FlowClone\history.sqlite`.
 //!
-//! Schema per windows-research 10-clone-spec §2 (Wispr's 28-table
-//! `flow.sqlite` reduced to what the clone needs):
+//! Schema:
 //! `history(id, ts, app, url, raw, formatted, pasted, edited, duration, words, lang)`,
 //! plus `kind` / `original` for Command Mode rows, `route` (where the
 //! speech was turned into text) and `transform` (the transform applied),

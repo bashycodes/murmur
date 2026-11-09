@@ -339,25 +339,25 @@
 {"id":"enter_raw_only","r":{"enter":true,"out":"Send it. "}}
 {"id":"enter_ctx","r":{"enter":true,"out":"send it."}}
 {"id":"enter_personal","r":{"enter":true,"out":"Send it."}}
-{"id":"ide_Cursor.exe","r":{"enter":false,"out":"Open main.rs and fix it. "}}
-{"id":"ide_cursor.exe","r":{"enter":false,"out":"Open main.rs and fix it. "}}
-{"id":"ide_Windsurf.exe","r":{"enter":false,"out":"Open main.rs and fix it. "}}
+{"id":"ide_Cursor.exe","r":{"enter":false,"out":"Open @{{BREAK}}main.rs{{TAB}} and fix it."}}
+{"id":"ide_cursor.exe","r":{"enter":false,"out":"Open @{{BREAK}}main.rs{{TAB}} and fix it."}}
+{"id":"ide_Windsurf.exe","r":{"enter":false,"out":"Open @{{BREAK}}main.rs{{TAB}} and fix it."}}
 {"id":"ide_Code.exe","r":{"enter":false,"out":"Open main.rs and fix it. "}}
-{"id":"ide_Open main.rs and fix it.","r":{"enter":false,"out":"Open main.rs and fix it. "}}
-{"id":"ide_Look at main dot rs.","r":{"enter":false,"out":"Look at main dot rs. "}}
-{"id":"ide_Check lib.rs, then main.rs.","r":{"enter":false,"out":"Check lib.rs, then main.rs. "}}
-{"id":"ide_Read readme.md first.","r":{"enter":false,"out":"Read readme.md first. "}}
-{"id":"ide_Edit user service dot py.","r":{"enter":false,"out":"Edit user service dot py. "}}
-{"id":"ide_Edit user_service.py now.","r":{"enter":false,"out":"Edit user_service.py now. "}}
-{"id":"ide_Edit main.","r":{"enter":false,"out":"Edit main. "}}
-{"id":"ide_Open main.rsx too.","r":{"enter":false,"out":"Open main.rsx too. "}}
-{"id":"ide_Open @main.rs please.","r":{"enter":false,"out":"Open @main.rs please. "}}
-{"id":"ide_Open main.rs","r":{"enter":false,"out":"Open main.rs "}}
-{"id":"ide_main.rs is broken.","r":{"enter":false,"out":"main.rs is broken. "}}
+{"id":"ide_Open main.rs and fix it.","r":{"enter":false,"out":"Open @{{BREAK}}main.rs{{TAB}} and fix it."}}
+{"id":"ide_Look at main dot rs.","r":{"enter":false,"out":"Look @{{BREAK}}main.rs{{TAB}}"}}
+{"id":"ide_Check lib.rs, then main.rs.","r":{"enter":false,"out":"Check @{{BREAK}}lib.rs{{TAB}}, then @{{BREAK}}main.rs{{TAB}}"}}
+{"id":"ide_Read readme.md first.","r":{"enter":false,"out":"Read @{{BREAK}}README.md{{TAB}} first."}}
+{"id":"ide_Edit user service dot py.","r":{"enter":false,"out":"Edit @{{BREAK}}user_service.py{{TAB}}"}}
+{"id":"ide_Edit user_service.py now.","r":{"enter":false,"out":"Edit @{{BREAK}}user_service.py{{TAB}} now."}}
+{"id":"ide_Edit main.","r":{"enter":false,"out":"Edit main."}}
+{"id":"ide_Open main.rsx too.","r":{"enter":false,"out":"Open @{{BREAK}}main.rs{{TAB}} rsx too."}}
+{"id":"ide_Open @main.rs please.","r":{"enter":false,"out":"Open @{{BREAK}}main.rs{{TAB}} please."}}
+{"id":"ide_Open main.rs","r":{"enter":false,"out":"Open @{{BREAK}}main.rs{{TAB}}"}}
+{"id":"ide_main.rs is broken.","r":{"enter":false,"out":"@{{BREAK}}main.rs{{TAB}} is broken."}}
 {"id":"ide_android","r":{"enter":false,"out":"Open main.rs and fix it. "}}
 {"id":"ide_nofiles","r":{"enter":false,"out":"Open main.rs and fix it. "}}
 {"id":"sig_app_outlook.exe","r":{"enter":false,"out":"Hi Tom, the report is attached and ready for your review today. \n\n— Ann"}}
-{"id":"sig_app_olk.exe","r":{"enter":false,"out":"Hi Tom, the report is attached and ready for your review today. "}}
+{"id":"sig_app_olk.exe","r":{"enter":false,"out":"Hi Tom, the report is attached and ready for your review today. \n\n— Ann"}}
 {"id":"sig_app_thunderbird.exe","r":{"enter":false,"out":"Hi Tom, the report is attached and ready for your review today. \n\n— Ann"}}
 {"id":"sig_app_OUTLOOK.EXE","r":{"enter":false,"out":"Hi Tom, the report is attached and ready for your review today. \n\n— Ann"}}
 {"id":"sig_app_chrome.exe","r":{"enter":false,"out":"Hi Tom, the report is attached and ready for your review today. "}}
@@ -387,7 +387,7 @@
 {"id":"skip_chrome.exe_www.notion.so","r":{"enter":false,"out":"the parcel arrived early. "}}
 {"id":"skip_chrome.exe_notion.so","r":{"enter":false,"out":"The parcel arrived early."}}
 {"id":"skip_Flow Clone.exe_","r":{"enter":false,"out":"the parcel arrived early. "}}
-{"id":"skip_flow-windows.exe_","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"skip_flow-windows.exe_","r":{"enter":false,"out":"The parcel arrived early."}}
 {"id":"skip_dev.flowclone_","r":{"enter":false,"out":"the parcel arrived early. "}}
 {"id":"skip_Dictate Pro.exe_","r":{"enter":false,"out":"the parcel arrived early. "}}
 {"id":"chat_WhatsApp.exe","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
@@ -399,7 +399,7 @@
 {"id":"chat_Discord.exe","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
 {"id":"chat1_Discord.exe","r":{"enter":false,"out":"See you soon "}}
 {"id":"chat_ms-teams.exe","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
-{"id":"chat1_ms-teams.exe","r":{"enter":false,"out":"See you soon. "}}
+{"id":"chat1_ms-teams.exe","r":{"enter":false,"out":"See you soon "}}
 {"id":"chat_com.whatsapp","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
 {"id":"chat1_com.whatsapp","r":{"enter":false,"out":"See you soon. "}}
 {"id":"chat_org.telegram.messenger","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
@@ -413,13 +413,13 @@
 {"id":"cat_windows_slack.exe_","r":{"out":"work_chat"}}
 {"id":"cat_windows_Slack.exe_","r":{"out":"work_chat"}}
 {"id":"cat_windows_outlook.exe_","r":{"out":"email"}}
-{"id":"cat_windows_olk.exe_","r":{"out":"other"}}
+{"id":"cat_windows_olk.exe_","r":{"out":"email"}}
 {"id":"cat_windows_thunderbird.exe_","r":{"out":"email"}}
 {"id":"cat_windows_WhatsApp.exe_","r":{"out":"personal_chat"}}
 {"id":"cat_windows_Telegram.exe_","r":{"out":"personal_chat"}}
 {"id":"cat_windows_Discord.exe_","r":{"out":"personal_chat"}}
-{"id":"cat_windows_ms-teams.exe_","r":{"out":"other"}}
-{"id":"cat_windows_Teams.exe_","r":{"out":"other"}}
+{"id":"cat_windows_ms-teams.exe_","r":{"out":"work_chat"}}
+{"id":"cat_windows_Teams.exe_","r":{"out":"work_chat"}}
 {"id":"cat_windows_signal.exe_","r":{"out":"personal_chat"}}
 {"id":"cat_windows_chrome.exe_","r":{"out":"other"}}
 {"id":"cat_windows_chrome.exe_mail.google.com","r":{"out":"email"}}
@@ -444,7 +444,7 @@
 {"id":"cat_windows_Claude.exe_","r":{"out":"ai_prompt"}}
 {"id":"cat_windows_notepad.exe_","r":{"out":"other"}}
 {"id":"cat_android_com.whatsapp_","r":{"out":"personal_chat"}}
-{"id":"cat_android_com.slack_","r":{"out":"other"}}
+{"id":"cat_android_com.slack_","r":{"out":"work_chat"}}
 {"id":"cat_android_com.google.android.gm_","r":{"out":"email"}}
 {"id":"cat_android_com.microsoft.office.outlook_","r":{"out":"email"}}
 {"id":"cat_android_org.telegram.messenger_","r":{"out":"personal_chat"}}
@@ -503,9 +503,9 @@
 {"id":"st_default_slack.exe_nl","r":{"enter":false,"out":"See you soon.\nBring the map "}}
 {"id":"st_default_slack.exe_long","r":{"enter":false,"out":"I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map. "}}
 {"id":"st_default_com.slack_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
-{"id":"st_default_com.slack_2s","r":{"enter":false,"out":"See you soon. Bring the map. "}}
-{"id":"st_default_com.slack_q","r":{"enter":false,"out":"Are you there? Call me. "}}
-{"id":"st_default_com.slack_nl","r":{"enter":false,"out":"See you soon.\nBring the map. "}}
+{"id":"st_default_com.slack_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"st_default_com.slack_q","r":{"enter":false,"out":"Are you there? Call me "}}
+{"id":"st_default_com.slack_nl","r":{"enter":false,"out":"See you soon.\nBring the map "}}
 {"id":"st_default_com.slack_long","r":{"enter":false,"out":"I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map. "}}
 {"id":"st_casual_WhatsApp.exe_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first "}}
 {"id":"st_casual_WhatsApp.exe_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
@@ -563,9 +563,9 @@
 {"id":"st_excited_slack.exe_nl","r":{"enter":false,"out":"See you soon.\nBring the map "}}
 {"id":"st_excited_slack.exe_long","r":{"enter":false,"out":"I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map. "}}
 {"id":"st_excited_com.slack_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
-{"id":"st_excited_com.slack_2s","r":{"enter":false,"out":"See you soon. Bring the map. "}}
-{"id":"st_excited_com.slack_q","r":{"enter":false,"out":"Are you there? Call me. "}}
-{"id":"st_excited_com.slack_nl","r":{"enter":false,"out":"See you soon.\nBring the map. "}}
+{"id":"st_excited_com.slack_2s","r":{"enter":false,"out":"See you soon. Bring the map "}}
+{"id":"st_excited_com.slack_q","r":{"enter":false,"out":"Are you there? Call me "}}
+{"id":"st_excited_com.slack_nl","r":{"enter":false,"out":"See you soon.\nBring the map "}}
 {"id":"st_excited_com.slack_long","r":{"enter":false,"out":"I got the tickets for tonight and they were cheaper than I thought. We should leave by six so we are not late. Bring the map. "}}
 {"id":"st_formal_WhatsApp.exe_3s","r":{"enter":false,"out":"See you soon. Bring the map. Call Mara first. "}}
 {"id":"st_formal_WhatsApp.exe_2s","r":{"enter":false,"out":"See you soon. Bring the map. "}}
@@ -654,7 +654,7 @@
 {"id":"lower_snippet","r":{"enter":false,"out":"12 Elm Road"}}
 {"id":"lower_dict","r":{"enter":false,"out":"deploy the Kubernetes job. "}}
 {"id":"lower_casual","r":{"enter":false,"out":"see you soon "}}
-{"id":"sig2_olk.exe","r":{"enter":false,"out":"Hi Tom, the report is attached and ready for your review today. "}}
+{"id":"sig2_olk.exe","r":{"enter":false,"out":"Hi Tom, the report is attached and ready for your review today. \n\n— Ann"}}
 {"id":"sig2_WINWORD.EXE","r":{"enter":false,"out":"Hi Tom, the report is attached and ready for your review today. "}}
 {"id":"r3_chat_b_ok","r":{"enter":false,"out":"See you soon. "}}
 {"id":"r3_achat_b_ok","r":{"enter":false,"out":"See you soon. "}}
@@ -740,16 +740,16 @@
 {"id":"r3_notion_site_b5_after","r":{"enter":false,"out":"the parcel arrived early"}}
 {"id":"r3_notion_site_b2_nosp","r":{"enter":false,"out":" the parcel arrived early. "}}
 {"id":"r3_notion_site_bell_sp","r":{"enter":false,"out":"The parcel arrived early. "}}
-{"id":"r3_notion_own_empty","r":{"enter":false,"out":"The parcel arrived early. "}}
-{"id":"r3_notion_own_b1","r":{"enter":false,"out":"the parcel arrived early. "}}
-{"id":"r3_notion_own_b2","r":{"enter":false,"out":"the parcel arrived early. "}}
-{"id":"r3_notion_own_b3","r":{"enter":false,"out":"the parcel arrived early. "}}
-{"id":"r3_notion_own_b5","r":{"enter":false,"out":"the parcel arrived early. "}}
-{"id":"r3_notion_own_bell","r":{"enter":false,"out":" The parcel arrived early. "}}
-{"id":"r3_notion_own_b1_after","r":{"enter":false,"out":"the parcel arrived early "}}
-{"id":"r3_notion_own_b5_after","r":{"enter":false,"out":"the parcel arrived early"}}
-{"id":"r3_notion_own_b2_nosp","r":{"enter":false,"out":" the parcel arrived early. "}}
-{"id":"r3_notion_own_bell_sp","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_notion_own_empty","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3_notion_own_b1","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3_notion_own_b2","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3_notion_own_b3","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3_notion_own_b5","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3_notion_own_bell","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3_notion_own_b1_after","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3_notion_own_b5_after","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3_notion_own_b2_nosp","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3_notion_own_bell_sp","r":{"enter":false,"out":"The parcel arrived early."}}
 {"id":"r3_nl_list3","r":{"enter":false,"out":"Milk.\nEggs.\nBread. "}}
 {"id":"r3_nl_list3_nop","r":{"enter":false,"out":"Milk\nEggs\nBread "}}
 {"id":"r3_nl_two_lines_3s","r":{"enter":false,"out":"One. Two.\nThree. "}}
@@ -1712,7 +1712,7 @@
 {"id":"r3e_chat_host_slack","r":{"enter":false,"out":"See you soon "}}
 {"id":"r3e_chat_host_discord","r":{"enter":false,"out":"See you soon "}}
 {"id":"r3e_chat_signal","r":{"enter":false,"out":"See you soon "}}
-{"id":"r3e_chat_teams_w","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_chat_teams_w","r":{"enter":false,"out":"See you soon "}}
 {"id":"r3e_chat_a_teams","r":{"enter":false,"out":"See you soon "}}
 {"id":"r3e_chat_a_discord","r":{"enter":false,"out":"See you soon "}}
 {"id":"r3e_chat_a_signal","r":{"enter":false,"out":"See you soon "}}
@@ -1726,11 +1726,11 @@
 {"id":"r3e_sig_outlook_live","r":{"enter":false,"out":"Hi Tom, thanks. \n\n— Ann"}}
 {"id":"r3e_sig_outlook_cat_wc","r":{"enter":false,"out":"Hi Tom, thanks. \n\n— Ann"}}
 {"id":"r3e_sig_np_cat_email","r":{"enter":false,"out":"Hi Tom, thanks. "}}
-{"id":"r3e_sig_hxoutlook","r":{"enter":false,"out":"Hi Tom, thanks. "}}
+{"id":"r3e_sig_hxoutlook","r":{"enter":false,"out":"Hi Tom, thanks. \n\n— Ann"}}
 {"id":"r3e_sig_mailbird","r":{"enter":false,"out":"Hi Tom, thanks. \n\n— Ann"}}
 {"id":"r3e_cat_w_outlook","r":{"out":"email"}}
 {"id":"r3e_chatw_outlook","r":{"enter":false,"out":"See you soon. "}}
-{"id":"r3e_cat_w_olk","r":{"out":"other"}}
+{"id":"r3e_cat_w_olk","r":{"out":"email"}}
 {"id":"r3e_chatw_olk","r":{"enter":false,"out":"See you soon. "}}
 {"id":"r3e_cat_w_thunderbird","r":{"out":"email"}}
 {"id":"r3e_chatw_thunderbird","r":{"enter":false,"out":"See you soon. "}}
@@ -1740,18 +1740,18 @@
 {"id":"r3e_chatw_mailbird","r":{"enter":false,"out":"See you soon. "}}
 {"id":"r3e_cat_w_mailspring","r":{"out":"email"}}
 {"id":"r3e_chatw_mailspring","r":{"enter":false,"out":"See you soon. "}}
-{"id":"r3e_cat_w_hxoutlook","r":{"out":"other"}}
+{"id":"r3e_cat_w_hxoutlook","r":{"out":"email"}}
 {"id":"r3e_chatw_hxoutlook","r":{"enter":false,"out":"See you soon. "}}
 {"id":"r3e_cat_w_slack","r":{"out":"work_chat"}}
 {"id":"r3e_chatw_slack","r":{"enter":false,"out":"See you soon "}}
-{"id":"r3e_cat_w_ms-teams","r":{"out":"other"}}
-{"id":"r3e_chatw_ms-teams","r":{"enter":false,"out":"See you soon. "}}
-{"id":"r3e_cat_w_teams","r":{"out":"other"}}
-{"id":"r3e_chatw_teams","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_ms-teams","r":{"out":"work_chat"}}
+{"id":"r3e_chatw_ms-teams","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_cat_w_teams","r":{"out":"work_chat"}}
+{"id":"r3e_chatw_teams","r":{"enter":false,"out":"See you soon "}}
 {"id":"r3e_cat_w_zoom","r":{"out":"other"}}
 {"id":"r3e_chatw_zoom","r":{"enter":false,"out":"See you soon. "}}
-{"id":"r3e_cat_w_mattermost","r":{"out":"other"}}
-{"id":"r3e_chatw_mattermost","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_mattermost","r":{"out":"work_chat"}}
+{"id":"r3e_chatw_mattermost","r":{"enter":false,"out":"See you soon "}}
 {"id":"r3e_cat_w_whatsapp","r":{"out":"personal_chat"}}
 {"id":"r3e_chatw_whatsapp","r":{"enter":false,"out":"See you soon "}}
 {"id":"r3e_cat_w_whatsapp.root","r":{"out":"personal_chat"}}
@@ -1764,19 +1764,19 @@
 {"id":"r3e_chatw_signal","r":{"enter":false,"out":"See you soon "}}
 {"id":"r3e_cat_w_messenger","r":{"out":"personal_chat"}}
 {"id":"r3e_chatw_messenger","r":{"enter":false,"out":"See you soon "}}
-{"id":"r3e_cat_w_viber","r":{"out":"other"}}
-{"id":"r3e_chatw_viber","r":{"enter":false,"out":"See you soon. "}}
-{"id":"r3e_cat_w_line","r":{"out":"other"}}
-{"id":"r3e_chatw_line","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_viber","r":{"out":"personal_chat"}}
+{"id":"r3e_chatw_viber","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_cat_w_line","r":{"out":"personal_chat"}}
+{"id":"r3e_chatw_line","r":{"enter":false,"out":"See you soon "}}
 {"id":"r3e_cat_w_skype","r":{"out":"other"}}
 {"id":"r3e_chatw_skype","r":{"enter":false,"out":"See you soon. "}}
-{"id":"r3e_cat_w_element","r":{"out":"other"}}
-{"id":"r3e_chatw_element","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_element","r":{"out":"personal_chat"}}
+{"id":"r3e_chatw_element","r":{"enter":false,"out":"See you soon "}}
 {"id":"r3e_cat_w_chatgpt","r":{"out":"ai_prompt"}}
 {"id":"r3e_chatw_chatgpt","r":{"enter":false,"out":"See you soon. "}}
 {"id":"r3e_cat_w_claude","r":{"out":"ai_prompt"}}
 {"id":"r3e_chatw_claude","r":{"enter":false,"out":"See you soon. "}}
-{"id":"r3e_cat_w_perplexity","r":{"out":"other"}}
+{"id":"r3e_cat_w_perplexity","r":{"out":"ai_prompt"}}
 {"id":"r3e_chatw_perplexity","r":{"enter":false,"out":"See you soon. "}}
 {"id":"r3e_cat_w_cursor","r":{"out":"ai_prompt"}}
 {"id":"r3e_chatw_cursor","r":{"enter":false,"out":"See you soon. "}}
@@ -1786,7 +1786,7 @@
 {"id":"r3e_chatw_code","r":{"enter":false,"out":"See you soon. "}}
 {"id":"r3e_cat_w_windowsterminal","r":{"out":"terminal"}}
 {"id":"r3e_chatw_windowsterminal","r":{"enter":false,"out":"See you soon. "}}
-{"id":"r3e_cat_w_wt","r":{"out":"other"}}
+{"id":"r3e_cat_w_wt","r":{"out":"terminal"}}
 {"id":"r3e_chatw_wt","r":{"enter":false,"out":"See you soon. "}}
 {"id":"r3e_cat_w_cmd","r":{"out":"terminal"}}
 {"id":"r3e_chatw_cmd","r":{"enter":false,"out":"See you soon. "}}
@@ -1794,15 +1794,15 @@
 {"id":"r3e_chatw_powershell","r":{"enter":false,"out":"See you soon. "}}
 {"id":"r3e_cat_w_pwsh","r":{"out":"terminal"}}
 {"id":"r3e_chatw_pwsh","r":{"enter":false,"out":"See you soon. "}}
-{"id":"r3e_cat_w_conhost","r":{"out":"other"}}
+{"id":"r3e_cat_w_conhost","r":{"out":"terminal"}}
 {"id":"r3e_chatw_conhost","r":{"enter":false,"out":"See you soon. "}}
 {"id":"r3e_cat_w_alacritty","r":{"out":"terminal"}}
 {"id":"r3e_chatw_alacritty","r":{"enter":false,"out":"See you soon. "}}
 {"id":"r3e_cat_w_wezterm-gui","r":{"out":"terminal"}}
 {"id":"r3e_chatw_wezterm-gui","r":{"enter":false,"out":"See you soon. "}}
-{"id":"r3e_cat_w_mintty","r":{"out":"other"}}
+{"id":"r3e_cat_w_mintty","r":{"out":"terminal"}}
 {"id":"r3e_chatw_mintty","r":{"enter":false,"out":"See you soon. "}}
-{"id":"r3e_cat_w_putty","r":{"out":"other"}}
+{"id":"r3e_cat_w_putty","r":{"out":"terminal"}}
 {"id":"r3e_chatw_putty","r":{"enter":false,"out":"See you soon. "}}
 {"id":"r3e_cat_w_winword","r":{"out":"other"}}
 {"id":"r3e_chatw_winword","r":{"enter":false,"out":"See you soon. "}}
@@ -1830,8 +1830,8 @@
 {"id":"r3e_chata_net.thunderbird.android","r":{"enter":false,"out":"See you soon. "}}
 {"id":"r3e_cat_a_com.yahoo.mobile.client.android.mail","r":{"out":"email"}}
 {"id":"r3e_chata_com.yahoo.mobile.client.android.mail","r":{"enter":false,"out":"See you soon. "}}
-{"id":"r3e_cat_a_com.slack","r":{"out":"other"}}
-{"id":"r3e_chata_com.slack","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_a_com.slack","r":{"out":"work_chat"}}
+{"id":"r3e_chata_com.slack","r":{"enter":false,"out":"See you soon "}}
 {"id":"r3e_cat_a_com.microsoft.teams","r":{"out":"work_chat"}}
 {"id":"r3e_chata_com.microsoft.teams","r":{"enter":false,"out":"See you soon "}}
 {"id":"r3e_cat_a_us.zoom.videomeetings","r":{"out":"other"}}
@@ -1908,10 +1908,10 @@
 {"id":"r3e_cat_ah_teams.microsoft.com","r":{"out":"work_chat"}}
 {"id":"r3e_chath_teams.microsoft.com","r":{"enter":false,"out":"See you soon "}}
 {"id":"r3e_sigh_teams.microsoft.com","r":{"enter":false,"out":"Hi Tom, thanks "}}
-{"id":"r3e_cat_wh_teams.live.com","r":{"out":"other"}}
+{"id":"r3e_cat_wh_teams.live.com","r":{"out":"work_chat"}}
 {"id":"r3e_cat_ah_teams.live.com","r":{"out":"work_chat"}}
-{"id":"r3e_chath_teams.live.com","r":{"enter":false,"out":"See you soon. "}}
-{"id":"r3e_sigh_teams.live.com","r":{"enter":false,"out":"Hi Tom, thanks. "}}
+{"id":"r3e_chath_teams.live.com","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_sigh_teams.live.com","r":{"enter":false,"out":"Hi Tom, thanks "}}
 {"id":"r3e_cat_wh_web.whatsapp.com","r":{"out":"personal_chat"}}
 {"id":"r3e_cat_ah_web.whatsapp.com","r":{"out":"personal_chat"}}
 {"id":"r3e_chath_web.whatsapp.com","r":{"enter":false,"out":"See you soon "}}
@@ -1944,16 +1944,136 @@
 {"id":"r3e_cat_ah_gemini.google.com","r":{"out":"ai_prompt"}}
 {"id":"r3e_chath_gemini.google.com","r":{"enter":false,"out":"See you soon. "}}
 {"id":"r3e_sigh_gemini.google.com","r":{"enter":false,"out":"Hi Tom, thanks. "}}
-{"id":"r3e_cat_wh_perplexity.ai","r":{"out":"other"}}
+{"id":"r3e_cat_wh_perplexity.ai","r":{"out":"ai_prompt"}}
 {"id":"r3e_cat_ah_perplexity.ai","r":{"out":"ai_prompt"}}
 {"id":"r3e_chath_perplexity.ai","r":{"enter":false,"out":"See you soon. "}}
 {"id":"r3e_sigh_perplexity.ai","r":{"enter":false,"out":"Hi Tom, thanks. "}}
-{"id":"r3e_cat_wh_x.slack.com","r":{"out":"other"}}
+{"id":"r3e_cat_wh_x.slack.com","r":{"out":"work_chat"}}
 {"id":"r3e_cat_ah_x.slack.com","r":{"out":"work_chat"}}
-{"id":"r3e_chath_x.slack.com","r":{"enter":false,"out":"See you soon. "}}
-{"id":"r3e_sigh_x.slack.com","r":{"enter":false,"out":"Hi Tom, thanks. "}}
-{"id":"r3e_cat_wh_www.messenger.com","r":{"out":"other"}}
+{"id":"r3e_chath_x.slack.com","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_sigh_x.slack.com","r":{"enter":false,"out":"Hi Tom, thanks "}}
+{"id":"r3e_cat_wh_www.messenger.com","r":{"out":"personal_chat"}}
 {"id":"r3e_cat_ah_www.messenger.com","r":{"out":"personal_chat"}}
-{"id":"r3e_chath_www.messenger.com","r":{"enter":false,"out":"See you soon. "}}
-{"id":"r3e_sigh_www.messenger.com","r":{"enter":false,"out":"Hi Tom, thanks. "}}
+{"id":"r3e_chath_www.messenger.com","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_sigh_www.messenger.com","r":{"enter":false,"out":"Hi Tom, thanks "}}
+{"id":"r4_flow-windows.exe_empty","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_flow-windows.exe_so","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_flow-windows.exe_ok","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_flow-windows.exe_long","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_flow-windows.exe_after","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_flow-windows.exe_so_after","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_flow-windows.exe_sel","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_flow-windows.exe_nosp","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_flow-windows.exe_ell","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_flow-windows.exe_casual","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"r4_flow-windows.exe_enter","r":{"enter":true,"out":"Send it."}}
+{"id":"r4_murmur.exe_empty","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_murmur.exe_so","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_murmur.exe_ok","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_murmur.exe_long","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_murmur.exe_after","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_murmur.exe_so_after","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_murmur.exe_sel","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_murmur.exe_nosp","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_murmur.exe_ell","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_murmur.exe_casual","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"r4_murmur.exe_enter","r":{"enter":true,"out":"Send it."}}
+{"id":"r4_Murmur.exe_empty","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_Murmur.exe_so","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_Murmur.exe_ok","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_Murmur.exe_long","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_Murmur.exe_after","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_Murmur.exe_so_after","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_Murmur.exe_sel","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_Murmur.exe_nosp","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_Murmur.exe_ell","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_Murmur.exe_casual","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"r4_Murmur.exe_enter","r":{"enter":true,"out":"Send it."}}
+{"id":"r4_notion.id_empty","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r4_notion.id_so","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_notion.id_ok","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_notion.id_long","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r4_notion.id_after","r":{"enter":false,"out":"The parcel arrived early "}}
+{"id":"r4_notion.id_so_after","r":{"enter":false,"out":"the parcel arrived early "}}
+{"id":"r4_notion.id_sel","r":{"enter":false,"out":"the parcel arrived early"}}
+{"id":"r4_notion.id_nosp","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_notion.id_ell","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_notion.id_casual","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"r4_notion.id_enter","r":{"enter":false,"out":"Send it press enter. "}}
+{"id":"r4_com.notion.id_empty","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r4_com.notion.id_so","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_com.notion.id_ok","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_com.notion.id_long","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r4_com.notion.id_after","r":{"enter":false,"out":"The parcel arrived early "}}
+{"id":"r4_com.notion.id_so_after","r":{"enter":false,"out":"the parcel arrived early "}}
+{"id":"r4_com.notion.id_sel","r":{"enter":false,"out":"the parcel arrived early"}}
+{"id":"r4_com.notion.id_nosp","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_com.notion.id_ell","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_com.notion.id_casual","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"r4_com.notion.id_enter","r":{"enter":false,"out":"Send it press enter. "}}
+{"id":"r4_Notion.exe_empty","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r4_Notion.exe_so","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r4_Notion.exe_ok","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r4_Notion.exe_long","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r4_Notion.exe_after","r":{"enter":false,"out":"The parcel arrived early "}}
+{"id":"r4_Notion.exe_so_after","r":{"enter":false,"out":"the parcel arrived early "}}
+{"id":"r4_Notion.exe_sel","r":{"enter":false,"out":"the parcel arrived early"}}
+{"id":"r4_Notion.exe_nosp","r":{"enter":false,"out":" The parcel arrived early. "}}
+{"id":"r4_Notion.exe_ell","r":{"enter":false,"out":" The parcel arrived early. "}}
+{"id":"r4_Notion.exe_casual","r":{"enter":false,"out":"the parcel arrived early "}}
+{"id":"r4_Notion.exe_enter","r":{"enter":true,"out":"Send it."}}
+{"id":"r4_dev.flowclone_empty","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r4_dev.flowclone_so","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r4_dev.flowclone_ok","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r4_dev.flowclone_long","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r4_dev.flowclone_after","r":{"enter":false,"out":"The parcel arrived early "}}
+{"id":"r4_dev.flowclone_so_after","r":{"enter":false,"out":"the parcel arrived early "}}
+{"id":"r4_dev.flowclone_sel","r":{"enter":false,"out":"the parcel arrived early"}}
+{"id":"r4_dev.flowclone_nosp","r":{"enter":false,"out":" The parcel arrived early. "}}
+{"id":"r4_dev.flowclone_ell","r":{"enter":false,"out":" The parcel arrived early. "}}
+{"id":"r4_dev.flowclone_casual","r":{"enter":false,"out":"the parcel arrived early "}}
+{"id":"r4_dev.flowclone_enter","r":{"enter":false,"out":"Send it press enter. "}}
+{"id":"r4_host_notion.so_so","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_ahost_notion.so_so","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_host_notion.so_long","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r4_ahost_notion.so_long","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r4_host_notion.so/page_so","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_ahost_notion.so/page_so","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r4_host_notion.so/page_long","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r4_ahost_notion.so/page_long","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r4_host_www.notion.so_so","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r4_ahost_www.notion.so_so","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r4_host_www.notion.so_long","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r4_ahost_www.notion.so_long","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r4_host_x.notion.site_so","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r4_ahost_x.notion.site_so","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r4_host_x.notion.site_long","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r4_ahost_x.notion.site_long","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r4_host_Notion.so_so","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r4_ahost_Notion.so_so","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r4_host_Notion.so_long","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r4_ahost_Notion.so_long","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r4_chatw_olk","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r4_sigw_olk","r":{"enter":false,"out":"Hi Tom, thanks. \n\n— Ann"}}
+{"id":"r4_chatw_ms-teams","r":{"enter":false,"out":"See you soon "}}
+{"id":"r4_sigw_ms-teams","r":{"enter":false,"out":"Hi Tom, thanks "}}
+{"id":"r4_chatw_teams","r":{"enter":false,"out":"See you soon "}}
+{"id":"r4_sigw_teams","r":{"enter":false,"out":"Hi Tom, thanks "}}
+{"id":"r4_chatw_zoom","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r4_sigw_zoom","r":{"enter":false,"out":"Hi Tom, thanks. "}}
+{"id":"r4_chatw_hxoutlook","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r4_sigw_hxoutlook","r":{"enter":false,"out":"Hi Tom, thanks. \n\n— Ann"}}
+{"id":"r4_chatw_notepad","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r4_sigw_notepad","r":{"enter":false,"out":"Hi Tom, thanks. "}}
+{"id":"r4_chatw_winword","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r4_sigw_winword","r":{"enter":false,"out":"Hi Tom, thanks. "}}
+{"id":"r4_chatw_perplexity","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r4_sigw_perplexity","r":{"enter":false,"out":"Hi Tom, thanks. "}}
+{"id":"r4_chatw_kitty","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r4_sigw_kitty","r":{"enter":false,"out":"Hi Tom, thanks. "}}
+{"id":"r4_chata_com.slack","r":{"enter":false,"out":"See you soon "}}
+{"id":"r4_chata_us.zoom.videomeetings","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r4_chata_com.tencent.mm","r":{"enter":false,"out":"See you soon "}}
+{"id":"r4_chata_com.microsoft.outlook.lite","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r4_chata_com.example.mail","r":{"enter":false,"out":"See you soon. "}}
 {"id":"r3e_snip_sig_empty_text","r":{"enter":false,"out":""}}

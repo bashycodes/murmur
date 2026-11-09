@@ -153,10 +153,13 @@ cargo build --release -p flow-server --no-default-features --features whisper,pa
 cargo build --release -p flow-llm
 ```
 
-Also download the sherpa-onnx 1.13.8 libraries (9.8 MB, the speech
-engine's runtime; version fixed in `crates/flow-asr-sherpa/Cargo.toml`, no
-fingerprint) and unpack them:
-`https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-linux-x64-shared-lib.tar.bz2`.
+Also download the sherpa-onnx 1.13.8 libraries without text to speech
+(9.2 MB, the speech engine's runtime; version fixed in
+`crates/flow-asr-sherpa/Cargo.toml`; SHA-256
+`bf2d998c8b07012cd5098f3b92673bc1333fd9b927767d7cb664be8190d8bc0b`) and
+unpack them:
+`https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-linux-x64-shared-no-tts-lib.tar.bz2`.
+(The build without `no-tts` links espeak-ng, GPL-3.0; D80.)
 
 Copy the repo folder (with `target/release/flow-server` and
 `libflow_llm.so`), the unpacked libraries and `flow-models/` to the server,

@@ -5,10 +5,11 @@
 # apps/flow-android/app/src/main/jniLibs/ to package it (docs/core-architecture.md
 # "Android: Parakeet").
 # Requires: NDK 27.2.12479018, cargo-ndk, rustup target aarch64-linux-android,
-# cmake + make (whisper), and the official sherpa-onnx Android libs:
+# cmake + make (whisper), and sherpa-onnx's Android libs:
 #   SHERPA_ANDROID_LIBS=<dir with libsherpa-onnx-c-api.so + libonnxruntime.so for arm64-v8a>
-#   (from sherpa-onnx-v1.13.8-android.tar.bz2, jniLibs/arm64-v8a). If unset,
-#   sherpa-onnx-sys downloads that archive at build time.
+#   (apps/flow-android/tools/build-sherpa-android.sh: no TTS, D80). If unset,
+#   sherpa-onnx-sys downloads upstream's Android archive at build time, which
+#   links espeak-ng (GPL-3.0): a probe build only, never one to ship.
 # Usage: tools/build-android-parakeet.sh [--no-whisper]
 set -euo pipefail
 repo="$(cd "$(dirname "$0")/.." && pwd)"

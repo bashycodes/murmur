@@ -90,9 +90,9 @@ Steps, in order:
    false), even when `raw_asr` is a snippet key. Observed, kept.
 1. **Category and style.** `category = effective_category(platform, ctx)`;
    `style = cfg.styles.for_category(category)`. Separately,
-   `listed = listed_category(platform, ctx)` (§9): the category from the
-   app lists alone, ignoring `ctx.app_category`. `listed` decides "chat"
-   for §6 and "email" for §7.
+   `listed = apps::classify(platform, ctx.app_id, ctx.url_host)` (§9),
+   which ignores `ctx.app_category`: it decides "chat" for §6, "email"
+   for §7 and the skips of §5.7.
 2. **Whole-utterance snippet** (§4.3, Windows only): when
    `m.whole_snippet(raw_asr)` is `Some(body)`, the text becomes `body`
    exactly as stored and steps 3–8 are skipped (no case, space or
@@ -106,10 +106,10 @@ Steps, in order:
    text a dictionary replacement inserts.
 5. **Dictionary replacements** (§4): `m.find_and_replace(text)`.
 6. **Fit to the cursor** (§5): leading space, case, final punctuation;
-   or the Notion skip (§5.7).
+   or a skip of §5.7.
 7. **Style punctuation** (§6).
-8. **Trailing space** (§5.4), not when Press Enter fired, not after the
-   Notion skip.
+8. **Trailing space** (§5.4), not when Press Enter fired, not after a
+   §5.7 skip.
 9. **Email signature** (§7, Windows only).
 
 The result text may be empty (a dictation that was only "press enter").
@@ -380,22 +380,32 @@ selection " bad words " → " new words ".
 **Change**: over " Bad words. " the old code returned " New words "
 (it looked at the untrimmed end); now " New words. ".
 
-### 5.7 Notion skip
+### 5.7 Apps that manage their own text
 
-On the exact URL host `notion.so` (not `www.notion.so`, not
-`*.notion.site`, not the Notion desktop app), when `before` is not
+`app = apps::classify(platform, ctx.app_id, ctx.url_host)` (§9).
+
+*Notion*: when `app.is_notion`, `selected` is empty, `before` is not
 empty, `after` is empty, and either `before` ends with "..." or
 `before.split(' ')` has at most 2 pieces (empty pieces count: "so " is
 2 pieces, "so then " is 3, "so then" is 2), §5.1–§5.4 are skipped: `t`
 is used as is and no trailing space is added. Style punctuation (§6)
 still applies.
 
-Observed, kept: "so " → "The parcel arrived early."; "so then" → same;
-"we went to the shop..." → same; "so then " → "the parcel arrived
-early. "; "we went to the shop... " → "The parcel arrived early. ";
-"so " with `after` "x" → "the parcel arrived early "; empty `before` →
-"The parcel arrived early. "; `www.notion.so` with "so " → "the parcel
-arrived early. ".
+Observed, kept: on host `notion.so` (also `notion.so/page`) or Android
+package `notion.id`: "so " → "The parcel arrived early."; "so then" and
+"Done." → same; "we went to the shop..." → same; "so then " → "the
+parcel arrived early. "; "we went to the shop... " → "The parcel arrived
+early. "; "so " with `after` "x" → "the parcel arrived early "; empty
+`before` → "The parcel arrived early. ". Not Notion: `www.notion.so`,
+`Notion.so`, `*.notion.site`, the Windows app `Notion.exe`.
+
+*This app's own windows* (Windows only): when `app.is_flow_app`, §5.1–§5.6
+are skipped whatever the context: `t` is inserted as is, with no
+trailing space; style punctuation (§6) and Press Enter (§8) still apply.
+Observed, kept: `murmur.exe` / `flow-windows.exe` with any `before`,
+`after` or selection → "The parcel arrived early."; casual → "The parcel
+arrived early"; "Send it press enter." → "Send it." with `press_enter`.
+Android `dev.flowclone` is not special.
 
 ## 6. Style punctuation
 
@@ -409,7 +419,7 @@ text can be dropped (never `?`, `!`, `…` or `...`).
 | `very_casual` | always |
 | `default`, `excited` | the app is a chat app and the text has at most 2 sentences |
 
-*Chat app*: `listed` (§3 step 1) is `WorkChat` or `PersonalChat`. The
+*Chat app*: `listed.is_messaging` (§9). The
 category the shell sent (`ctx.app_category`) does not make an app a chat
 app and does not stop one being one: Notepad with a personal-chat bucket
 keeps the period; WhatsApp with an email bucket drops it.
@@ -435,15 +445,15 @@ Observed, kept: casual "See you soon. Bring the map. Call Mara first."
 → "…Call Mara first " in every app; casual with 11 sentences keeps the
 period; default in WhatsApp "See you soon. Bring the map." → "See you
 soon. Bring the map ", 3 sentences keep the period, "Are you there? Call
-me." → "Are you there? Call me "; default in Android Slack (`com.slack`,
-not a listed chat app) keeps the period even with a work-chat bucket;
+me." → "Are you there? Call me "; default in Notepad with a
+personal-chat bucket keeps the period;
 formal keeps every period; "Are you coming?" and "That is great!" keep
 their mark in every style.
 
 ## 7. Email signature (Windows)
 
-When `cfg.email_signature` is a non-empty string `sig`, `listed` (§3
-step 1) is `Email`, the context is known, and the text reads like an
+When `cfg.email_signature` is a non-empty string `sig`, the app is an
+email app (`listed.app_type == Email`, §9), the context is known, and the text reads like an
 email body, remove one trailing space from the text and append
 `"\n\n" + sig`. The text here is the output of step 8, or the snippet
 body from step 2.
@@ -495,40 +505,27 @@ text, so "Send it press enter." after " more" → "Send it", and casual
 
 ## 9. App category
 
-`effective_category(platform, ctx)`: `ctx.app_category` when it is not
-`Other`, else `listed_category(platform, ctx)`.
+Classification comes from the shared app groups (`crate::app_groups`,
+`crates/flow-core/data/app-groups.json`, D81) through
+`postprocess::apps::classify(platform, app_id, url_host) -> AppInfo`
+(that module and `AppInfo`/`AppType`/`Bucket` are kept as they are; the
+`app_groups_vectors` test reads `classify(..).bucket`). Post-processing
+has no app lists of its own.
 
-`listed_category(platform, ctx)` (internal): the category of the app id
-or URL host in the app lists. An app id is looked up only on its own
-platform (a Windows process name on Windows, case-insensitive, with or
-without `.exe`; an Android package on Android, exact). Unknown → `Other`.
+* `effective_category(platform, ctx)`: `ctx.app_category` when it is not
+  `Other`, else `classify(..).category()`.
+* `listed` (§3 step 1) is `classify(..)`, which ignores
+  `ctx.app_category`: chat (§6) = `listed.is_messaging`; email (§7) =
+  `listed.app_type == AppType::Email`; Notion and own-app (§5.7) =
+  `listed.is_notion` / `listed.is_flow_app`.
+* Windows app ids are compared case-insensitively and without a trailing
+  `.exe` ("Outlook.EXE" = "outlook"), as the Windows shell does. **Fix**:
+  `classify` passed the id with `.exe` to the groups, so on Windows no
+  app id matched (no signature in Outlook, no chat period drop in Slack,
+  no own-app skip); it now strips `.exe` first.
 
-The lists are the shared app groups (`crates/flow-core/data/app-groups.json`
-through the `app_groups` module) once those are merged; until then a
-table in code with exactly this membership (the old membership, kept):
-
-| Category | Windows app ids | Android packages |
-|---|---|---|
-| Email | outlook, thunderbird, mailbird, mailspring | com.google.android.gm, com.microsoft.office.outlook, ch.protonmail.android, com.samsung.android.email.provider, com.fsck.k9, net.thunderbird.android, com.yahoo.mobile.client.android.mail |
-| WorkChat | slack | com.microsoft.teams, com.mattermost.rn |
-| PersonalChat | whatsapp, whatsapp.root, telegram, discord, signal, messenger | com.whatsapp, com.whatsapp.w4b, org.telegram.messenger, org.thoughtcrime.securesms, com.discord, com.facebook.orca, com.instagram.android, com.viber.voip, jp.naver.line.android, com.google.android.apps.messaging, com.samsung.android.messaging |
-| AiPrompt | chatgpt, claude, cursor, windsurf, code | com.openai.chatgpt, com.anthropic.claude, com.google.android.apps.bard |
-| Terminal | windowsterminal, cmd, powershell, pwsh, alacritty, wezterm-gui | com.termux |
-
-Hosts (when the app id is not listed):
-
-| Category | Windows: exact host | Android: host or a subdomain of it |
-|---|---|---|
-| Email | mail.google.com, outlook.live.com, outlook.office.com, outlook.office365.com, mail.proton.me, mail.yahoo.com | same |
-| WorkChat | app.slack.com, teams.microsoft.com | slack.com, teams.microsoft.com, teams.live.com |
-| PersonalChat | web.whatsapp.com, web.telegram.org, discord.com, messenger.com | same |
-| AiPrompt | chatgpt.com, chat.openai.com, claude.ai, gemini.google.com | same plus perplexity.ai |
-
-Everything else is `Other`, including (observed) new Outlook `olk`,
-`ms-teams`, `teams`, `zoom`, Word, Notion, Obsidian, Notepad, Chrome
-without a listed host, `docs.google.com`, Android `com.slack`,
-`us.zoom.videomeetings`, `im.vector.app`, `com.linkedin.android`, and on
-Windows `www.messenger.com` and `x.slack.com`.
+Membership is whatever the app groups say (D81 widened it: e.g. new
+Outlook `olk`, Teams, Android Slack and WeChat are now email / chat).
 
 ## 10. Removed behaviour
 
@@ -655,3 +652,4 @@ app), so the core does not guess where the dictation ended.
 7. Dictionary keys with spaces match any whitespace run (§4.2).
 8. Learning: a letterless correction is no candidate; duplicates merge
    (§11).
+9. Fix: Windows app ids match the app groups without `.exe` (§9).

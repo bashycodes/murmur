@@ -2,7 +2,7 @@
 name = "flow-contract-tests"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license-file.workspace = true
 publish = false
 description = "Hybrid contract suites: local vs in-process server / mock cloud equivalence, toggle matrix, build matrix, key-leak checks"
 

@@ -1,9 +1,8 @@
 # flow-core architecture
 
-Shared Rust core of Murmur, the local Wispr Flow clone. It implements the §9 v2 API from
-`windows-research/findings/by-topic/10-clone-spec.md` (Android alignment in
-`10-clone-spec-android.md` §9). All speech recognition and text shaping run
-on-device; the core makes no network calls.
+Shared Rust core of Murmur, the local Wispr Flow clone. It implements
+the core API both shells call (below). All speech recognition and text
+shaping run on-device; the core makes no network calls.
 
 ```
 crates/

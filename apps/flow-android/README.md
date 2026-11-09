@@ -6,8 +6,7 @@ targetSdk 35, arm64-v8a. Three product flavours (D17): `local` (no `INTERNET`, o
 only), `hybrid` (own flow-server + on-device fallback), `remote` (server only, no ASR libs).
 Every session goes through the native `flow_router::Router` (`nativeOpenRouter`).
 
-Specs: android-research `findings/by-topic/07-android-shell-impl-spec.md` (primary), 05, 06,
-10. Core API: windows-research `10-clone-spec.md` §9. The JNI surface is in
+Core API: [`docs/core-architecture.md`](../../docs/core-architecture.md). The JNI surface is in
 [`JNI_CONTRACT.md`](JNI_CONTRACT.md).
 
 ## Build
@@ -61,7 +60,7 @@ Install on a phone (sideload, permissions, model import, device checklist): [`IN
 |---|---|---|
 | `core/` | `FlowCore` (§9 mirror), `CoreJson` (wire format), `RouterJson` + `DevText` (router JSON, D17), `NativeFlowCore` (JNI, core + router handles), `FakeFlowCore` | yes, plus the stub link test and `RouterJsonTest` on `crates/flow-router/fixtures` |
 | `insert/` | `V3Inserter` (07 §3), `InsertionCoordinator` (mutex, 3500 ms budget, sensitive clipboard), `ImeKeepAlive` (07 §3.5), `TextMatching` (06 §4), `Ports` (injectable editor abstraction) | yes |
-| `policy/` | `EditorInputType`, `BubbleVisibilityPolicy` (sensitive + banking + user denylist + clone deviations), `AppCategorizer`, `OwnAppGate` (our own screens: no bubble except the Scratchpad), generated `PolicyLists` | yes |
+| `policy/` | `EditorInputType`, `BubbleVisibilityPolicy` (sensitive + restricted (banking) apps + user denylist + clone deviations), `AppCategorizer`, `OwnAppGate` (our own screens: no bubble except the Scratchpad), `PolicyLists` (app groups and naming rules) | yes |
 | `session/` | `DictationController` (state machine, debounce, cap 239/299 s, 20 s timeout), `LevelMeter`, `AudioBatcher`, `SessionCap` | yes |
 | `bubble/` | `BubbleGesture` (tap / hold / drag), `BubblePositioner` (anchors + persistence), `Waveform`, `BubblePresence` (minimise 5 s, snooze 10 min, shake reveal), `ShakeDetector`, `SnoozeTarget`, `PreviewContent`/`PreviewPlacement` (live preview line); `BubbleView`/`BubbleOverlay` (Android: bubble + preview + snooze-target windows) | logic yes |
 | `data/` | `Retention`, `DictionaryMerge`, `Settings`, `FieldContextBuilder`, `EnginePlan` (ASR + optional LLM, ASR-only fallback), `ModelFiles` (ggml/GGUF sniffing, LLM recommendations), `DictionaryEdit`, `HistoryView`; `Stores` (SharedPreferences, JSON dictionary file, SQLite history v2); D17: `DevSettings` (+ `HostRules`, `DevSettingsForm`, `DevUnlock`), `DevStore` + `SecretVault` (Keystore AES-GCM: server token, cloud keys), `EngineRoute` (local engine → router), `ParakeetFiles`; D18: `CloudSettings` (`CloudProvider`, presets, consent, `CloudRules`, `CloudText`, `CloudUsage`), `CloudKeyStore` | logic yes |
@@ -73,8 +72,9 @@ Install on a phone (sideload, permissions, model import, device checklist): [`IN
 | `audio/` | `MicRecorder` (MIC 16 k mono PCM16, 100 ms frames → `push_audio`) | device only |
 | `ui/` | Main/onboarding (mic → overlay → a11y + ghost fix → battery → notifications → OEM), model import (SAF; speech ggml, Parakeet folder, LLM GGUF), settings, Developer settings (D17 §5; D18 cloud section + `CloudProviderActivity`), dictionary editor (search, tabs, edit, shared JSON import/export), history (search, copy, delete, raw vs formatted), Scratchpad (`NoteEditorActivity`: one document to dictate into, Copy all / Share / Clear) | device only |
 
-`policy/PolicyLists.kt` is generated: `python3 -I tools/gen_policy_lists.py` from
-`policy-data/*.json`, which are verbatim copies of android-research `findings/data/`.
+`policy/PolicyLists.kt` reads its app groups from `crates/flow-core/data/app-groups.json`
+(packed as a Java resource), the file flow-core and the Windows app use too (D81; the JSON and
+the PolicyLists header document the method and sources).
 
 ## Deviations from Wispr (deliberate)
 - V3 inserter only, with every A/B feature on. No Legacy path.

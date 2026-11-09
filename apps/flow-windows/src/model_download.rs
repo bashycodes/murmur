@@ -67,7 +67,8 @@ pub struct CatalogEntry {
     /// `None`: a default model (the engine for every language). `Some("he")`:
     /// the model of that language's route (D33 `languages.he`).
     pub language: Option<&'static str>,
-    /// Licence and attribution the model's terms ask for (CC-BY-4.0).
+    /// Licence (from the model card) and the attribution its terms ask for;
+    /// NOTICE lists the same (D80).
     pub license: Option<&'static str>,
     pub files: &'static [ModelFile],
     /// Files saved in the models folder itself, next to `dest`, that come
@@ -161,7 +162,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         recommended: true,
         recommended_gpu: false,
         language: None,
-        license: None,
+        license: Some("CC-BY-4.0 · NVIDIA (nvidia/parakeet-tdt-0.6b-v2)"),
         extras: &[],
         files: &[
             model_file!(parakeet_base!(), "encoder.int8.onnx", 652_184_296, "a32b12d17bbbc309d0686fbbcc2987b5e9b8333a7da83fa6b089f0a2acd651ab"),
@@ -180,7 +181,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         recommended: false,
         recommended_gpu: false,
         language: None,
-        license: None,
+        license: Some("MIT · OpenAI Whisper, ggml by ggerganov/whisper.cpp"),
         extras: &[],
         files: &[model_file!(whisper_base!(), "ggml-base.bin", 147_951_465, "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe")],
     },
@@ -194,7 +195,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         recommended: false,
         recommended_gpu: false,
         language: None,
-        license: None,
+        license: Some("MIT · OpenAI Whisper, ggml by ggerganov/whisper.cpp"),
         extras: &[],
         files: &[model_file!(whisper_base!(), "ggml-small-q5_1.bin", 190_085_487, "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb")],
     },
@@ -208,7 +209,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         recommended: false,
         recommended_gpu: false,
         language: None,
-        license: None,
+        license: Some("NVIDIA Open Model License · Licensed by NVIDIA Corporation under the NVIDIA Open Model License"),
         extras: &[],
         files: &[
             model_file!(parakeet_unified_base!(), "encoder.int8.onnx", 654_040_552, "6716910b7a0833997fec7a410494c995d70124001a0e9b66d6370d6aced577e0"),
@@ -227,7 +228,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         recommended: false,
         recommended_gpu: false,
         language: None,
-        license: None,
+        license: Some("MIT · OpenAI Whisper, ggml by ggerganov/whisper.cpp"),
         extras: &[],
         files: &[model_file!(whisper_base!(), "ggml-base.en-q5_1.bin", 59_721_011, "4baf70dd0d7c4247ba2b81fafd9c01005ac77c2f9ef064e00dcf195d0e2fdd2f")],
     },
@@ -241,7 +242,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         recommended: false,
         recommended_gpu: false,
         language: None,
-        license: None,
+        license: Some("MIT · OpenAI Whisper, ggml by ggerganov/whisper.cpp"),
         extras: &[],
         files: &[model_file!(whisper_base!(), "ggml-base-q5_1.bin", 59_707_625, "422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898")],
     },
@@ -255,7 +256,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         recommended: false,
         recommended_gpu: false,
         language: None,
-        license: None,
+        license: Some("MIT · OpenAI Whisper, ggml by ggerganov/whisper.cpp"),
         extras: &[],
         files: &[model_file!(whisper_base!(), "ggml-tiny.en-q5_1.bin", 32_166_155, "c77c5766f1cef09b6b7d47f21b546cbddd4157886b3b5d6d4f709e91e66c7c2b")],
     },
@@ -269,7 +270,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         recommended: false,
         recommended_gpu: false,
         language: None,
-        license: None,
+        license: Some("MIT · OpenAI Whisper, ggml by ggerganov/whisper.cpp"),
         extras: &[],
         files: &[model_file!(whisper_base!(), "ggml-small.en-q5_1.bin", 190_098_681, "bfdff4894dcb76bbf647d56263ea2a96645423f1669176f4844a1bf8e478ad30")],
     },
@@ -302,7 +303,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         recommended: false,
         recommended_gpu: false,
         language: Some(crate::core_adapter::HEBREW),
-        license: Some("CC-BY-4.0 · krut42, based on thewh1teagle/parakeet-tdt-0.6b-v3-he"),
+        license: Some("CC-BY-4.0 · NVIDIA (nvidia/parakeet-tdt-0.6b-v3), fine-tuned by thewh1teagle, int8 by krut42"),
         extras: LID_FILES,
         files: &[
             model_file!(parakeet_he_base!(), "encoder.int8.onnx", 653_215_173, "7eaf80bc88fccd579a7d3950c25e50e4c7935e5b037ec2aa1eee29bca5ca3981"),
@@ -342,7 +343,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         recommended: false,
         recommended_gpu: false,
         language: None,
-        license: None,
+        license: Some("Apache-2.0 · Qwen (Qwen/Qwen2.5-0.5B-Instruct-GGUF)"),
         extras: &[],
         files: &[model_file!(qwen05_base!(), "qwen2.5-0.5b-instruct-q4_k_m.gguf", 491_400_032, "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db")],
     },
@@ -356,7 +357,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         recommended: true,
         recommended_gpu: false,
         language: None,
-        license: None,
+        license: Some("Apache-2.0 · Qwen (Qwen/Qwen2.5-1.5B-Instruct-GGUF)"),
         extras: &[],
         files: &[model_file!(qwen15_base!(), "qwen2.5-1.5b-instruct-q4_k_m.gguf", 1_117_320_736, "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e")],
     },
@@ -1050,9 +1051,15 @@ mod tests {
         assert_eq!(entry(PARAKEET_HE_ID).unwrap().dest, crate::core_adapter::PARAKEET_HE_DIR);
         assert_eq!(entry(IVRIT_TURBO_ID).unwrap().dest, crate::core_adapter::IVRIT_TURBO_FILE);
         for e in CATALOG {
-            let credited = e.license.is_some_and(|l| l.starts_with("CC-BY-4.0") || l.starts_with("Apache-2.0 · ivrit.ai"));
-            assert_eq!(e.language.is_some(), credited, "{}", e.id);
+            // D80: every model names its licence (from its model card), as NOTICE does.
+            let l = e.license.unwrap_or_else(|| panic!("{}: no licence", e.id));
+            if e.language.is_some() {
+                assert!(l.starts_with("CC-BY-4.0") || l.starts_with("Apache-2.0 · ivrit.ai"), "{}", e.id);
+            }
         }
+        // The NVIDIA Open Model License asks for this notice with every copy.
+        assert!(entry("parakeet-unified-en-0.6b-int8").unwrap().license.unwrap()
+            .contains("Licensed by NVIDIA Corporation under the NVIDIA Open Model License"));
         // Llama's licence asks for "Built with Llama" where it is offered.
         assert!(entry(LLAMA32_3B_ID).unwrap().license.unwrap().contains("Built with Llama"));
     }
@@ -1491,7 +1498,8 @@ mod tests {
         let q = serde_json::to_value(v.iter().find(|r| r.id == "qwen2.5-0.5b-instruct-q4_k_m").unwrap()).unwrap();
         assert_eq!(q["engine"], "llm");
         let en = serde_json::to_value(pk).unwrap();
-        assert!(en.get("language").is_none() && en.get("license").is_none());
+        assert!(en.get("language").is_none());
+        assert!(en["license"].as_str().unwrap().starts_with("CC-BY-4.0 · NVIDIA"));
         let j = serde_json::to_value(Progress {
             id: "whisper-base".into(),
             received: 1,

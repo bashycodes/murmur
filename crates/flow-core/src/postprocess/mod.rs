@@ -6,10 +6,10 @@
 //! whether the shell presses Enter afterwards. Steps, in order:
 //! whole-utterance snippet (Windows), spoken "press enter" (Windows),
 //! all-lowercase, dictionary replacements, fitting to the cursor (or the
-//! Notion skip), style punctuation, trailing space, email signature
-//! (Windows).
+//! skips for apps that manage their own text), style punctuation,
+//! trailing space, email signature (Windows).
 
-mod apps;
+pub mod apps;
 mod chars;
 mod cursor;
 mod enter;
@@ -19,12 +19,25 @@ pub mod spoken;
 mod style;
 pub mod terminal;
 
-pub use apps::effective_category;
 pub use replace::DictMatcher;
 
-use crate::config::{AppCategory, FieldContext, Platform, SessionConfig};
+use crate::config::{AppCategory, FieldContext, Platform, SessionConfig, Style};
 use crate::dictionary::DictEntry;
+use apps::{AppInfo, AppType};
 use cursor::{Field, Proper};
+
+/// The category post-processing and AI cleanup use: the shell's own
+/// category when it sent one, else the app groups' (§9).
+pub fn effective_category(platform: Platform, ctx: &FieldContext) -> AppCategory {
+    if ctx.app_category != AppCategory::Other {
+        return ctx.app_category;
+    }
+    classify(platform, ctx).category()
+}
+
+fn classify(platform: Platform, ctx: &FieldContext) -> AppInfo {
+    apps::classify(platform, &ctx.app_id, &ctx.url_host)
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PostOutput {
@@ -53,7 +66,7 @@ pub fn apply_with(
     let style = cfg
         .styles
         .for_category(effective_category(cfg.platform, ctx));
-    let listed = apps::listed_category(cfg.platform, ctx);
+    let listed = classify(cfg.platform, ctx);
 
     let snippet = if windows {
         m.whole_snippet(raw_asr)
@@ -62,11 +75,11 @@ pub fn apply_with(
     };
     let (text, press_enter) = match snippet {
         Some(body) => (body, false),
-        None => body_text(text, raw_asr, cfg, ctx, m, style, listed),
+        None => body_text(text, raw_asr, cfg, ctx, m, style, &listed),
     };
 
     let mut text = text;
-    if windows && listed == AppCategory::Email && ctx.context_known {
+    if windows && listed.app_type == AppType::Email && ctx.context_known {
         if let Some(sig) = cfg.email_signature.as_deref().filter(|s| !s.is_empty()) {
             text = signature::append(text, sig, ctx);
         }
@@ -75,15 +88,15 @@ pub fn apply_with(
 }
 
 /// Steps 3–8: press Enter, all-lowercase, dictionary, cursor fitting or
-/// the Notion skip, style punctuation, trailing space.
+/// a §5.7 skip, style punctuation, trailing space.
 fn body_text(
     text: &str,
     raw_asr: &str,
     cfg: &SessionConfig,
     ctx: &FieldContext,
     m: &DictMatcher,
-    style: crate::config::Style,
-    listed: AppCategory,
+    style: Style,
+    listed: &AppInfo,
 ) -> (String, bool) {
     let windows = cfg.platform == Platform::Windows;
     let (mut text, press_enter) = if windows && cfg.press_enter_enabled {
@@ -99,6 +112,11 @@ fn body_text(
     let t = text.trim();
     if t.is_empty() {
         return (String::new(), press_enter);
+    }
+    let chat = listed.is_messaging;
+    // This app's own windows: inserted as is, whatever the context.
+    if windows && listed.is_flow_app {
+        return (style::punctuate(t, style, chat, ctx), press_enter);
     }
     let names: Vec<String> = cfg
         .user_names
@@ -116,8 +134,7 @@ fn body_text(
             press_enter,
         );
     }
-    let chat = matches!(listed, AppCategory::WorkChat | AppCategory::PersonalChat);
-    if notion_skip(ctx) {
+    if listed.is_notion && notion_skip(ctx) {
         return (style::punctuate(t, style, chat, ctx), press_enter);
     }
     let field = Field {
@@ -137,11 +154,10 @@ fn body_text(
     (out, press_enter)
 }
 
-/// §5.7: on the exact host `notion.so`, a short or "..."-ended `before`
-/// with nothing after the cursor.
+/// §5.7 in Notion: a short or "..."-ended `before` with nothing after the
+/// cursor (the selection is empty; the caller checked).
 fn notion_skip(ctx: &FieldContext) -> bool {
-    apps::is_notion_host(ctx)
-        && !ctx.before.is_empty()
+    !ctx.before.is_empty()
         && ctx.after.is_empty()
         && (ctx.before.ends_with("...") || ctx.before.split(' ').count() <= 2)
 }
@@ -495,22 +511,28 @@ mod tests {
             ),
             "See you soon "
         );
-        // Android Slack is not a listed chat app.
+        // Fix: Windows ids match without `.exe`.
         assert_eq!(
-            out(
-                "See you soon.",
-                &android(),
-                &bucket("com.slack", AppCategory::WorkChat)
-            ),
-            "See you soon. "
+            out("See you soon.", &win(), &app("Slack.exe")),
+            "See you soon "
         );
     }
 
     #[test]
     fn notion_skip() {
         let w = win();
-        for b in ["so ", "so then", "we went to the shop..."] {
+        for b in ["so ", "so then", "Done.", "we went to the shop..."] {
             assert_eq!(out(PARCEL, &w, &notion(b, "")), PARCEL, "{b:?}");
+            let page = FieldContext {
+                url_host: "notion.so/page".into(),
+                ..notion(b, "")
+            };
+            assert_eq!(out(PARCEL, &w, &page), PARCEL, "{b:?}");
+            let pkg = FieldContext {
+                app_id: "notion.id".into(),
+                ..field(b, "")
+            };
+            assert_eq!(out(PARCEL, &android(), &pkg), PARCEL, "{b:?}");
         }
         assert_eq!(
             out(PARCEL, &w, &notion("so then ", "")),
@@ -528,11 +550,17 @@ mod tests {
             out(PARCEL, &w, &notion("", "")),
             "The parcel arrived early. "
         );
-        let www = FieldContext {
-            url_host: "www.notion.so".into(),
-            ..notion("so ", "")
-        };
-        assert_eq!(out(PARCEL, &w, &www), "the parcel arrived early. ");
+        for host in ["www.notion.so", "Notion.so", "team.notion.site"] {
+            let other = FieldContext {
+                url_host: host.into(),
+                ..notion("so ", "")
+            };
+            assert_eq!(
+                out(PARCEL, &w, &other),
+                "the parcel arrived early. ",
+                "{host}"
+            );
+        }
         // The text is trimmed; style punctuation still applies.
         assert_eq!(
             out("  The parcel arrived early.  ", &w, &notion("so ", "")),
@@ -544,12 +572,50 @@ mod tests {
             out(PARCEL, &casual, &notion("so ", "")),
             "The parcel arrived early"
         );
-        // The desktop app and this app's own windows get normal fitting.
+        // The Windows desktop app gets normal fitting.
         let desktop = FieldContext {
             app_id: "Notion.exe".into(),
             ..field("so ", "")
         };
         assert_eq!(out(PARCEL, &w, &desktop), "the parcel arrived early. ");
+    }
+
+    #[test]
+    fn own_app_windows_insert_the_text_as_is() {
+        let contexts = |id: &str| {
+            [
+                FieldContext {
+                    app_id: id.into(),
+                    ..field("and", "then")
+                },
+                FieldContext {
+                    app_id: id.into(),
+                    ..field("so ", "")
+                },
+                FieldContext {
+                    app_id: id.into(),
+                    selected: "bad".into(),
+                    ..Default::default()
+                },
+                app(id),
+            ]
+        };
+        for id in ["murmur.exe", "flow-windows.exe"] {
+            for ctx in contexts(id) {
+                assert_eq!(out(PARCEL, &win(), &ctx), PARCEL, "{ctx:?}");
+            }
+            let mut casual = win();
+            casual.styles.other = Style::Casual;
+            assert_eq!(out(PARCEL, &casual, &app(id)), "The parcel arrived early");
+            let o = run("Send it press enter.", &win(), &app(id));
+            assert_eq!((o.text.as_str(), o.press_enter), ("Send it.", true));
+        }
+        // Android's own package is not special.
+        let ctx = FieldContext {
+            app_id: "dev.flowclone".into(),
+            ..field("and ", "")
+        };
+        assert_eq!(out(PARCEL, &android(), &ctx), "the parcel arrived early. ");
     }
 
     #[test]
@@ -641,12 +707,13 @@ mod tests {
             ),
             "Hi Tom, thanks.\n\n— Ann"
         );
-        // Not in new Outlook (unlisted), not on Android, not with an
-        // unknown field, not with an empty signature.
+        // Fix: the Windows id matches in any case, without `.exe`.
         assert_eq!(
-            out("Hi Tom, thanks.", &cfg, &app("olk.exe")),
-            "Hi Tom, thanks. "
+            out("Hi Tom, thanks.", &cfg, &app("Outlook.EXE")),
+            "Hi Tom, thanks.\n\n— Ann"
         );
+        // Not on Android, not with an unknown field, not with an empty
+        // signature.
         let mut a = cfg.clone();
         a.platform = Platform::Android;
         let gmail = app("com.google.android.gm");

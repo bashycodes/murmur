@@ -8,8 +8,7 @@ doesn't. Where is the gap, and which fix buys the most per millisecond?
 **Answer (short).**
 1. **Two of the biggest gaps cost 0 ms and are configuration or rules, not models.**
    * *Style.* Both shells send `formal` for every style bucket. With `formal`, the cursor-context step never
-     drops the final period, so chat apps look stiff. Wispr Android defaults personal chat to
-     **Casual**. Sending casual for chat buckets moves the casual category from 1/7 to 7/7, and
+     drops the final period, so chat apps look stiff. Sending casual for chat buckets moves the casual category from 1/7 to 7/7, and
      the deterministic pipeline overall from 44 % to 59 %.
    * *Spoken commands.* Nothing in the pipeline handles quote / unquote, open / close paren,
      "in parentheses", "in brackets" or "dash" today: 0/14 deterministic, and 0/14 with the
@@ -112,54 +111,11 @@ The user turned LLM cleanup on for both devices on 2026-10-24
 (`docs/findings/2026-10-23-server-llm-cleanup-cost.md`, update box). So the live phone path is
 Light + all formal + 3 s: column "llm (shipped)" below.
 
-## 2. What Wispr does (from our research notes only)
+## 2. What Wispr does (observed only)
 
-This section is summarised from `research/windows/findings/by-topic/03-ai-formatting-and-features.md`
-(W03), `research/windows/findings/data/style-config.json` (SC),
-`research/windows/findings/by-topic/11-postprocess-port-spec.md` (W11) and
-`research/android/findings/by-topic/06-postprocess-android.md` (A06). No vendor prompt text is
-reproduced. Wispr's dictation formatter prompt is not in either client.
-
-* **All shaping happens on the server.**
-  * The Android client inserts the server's text byte for byte (A06:14-47).
-  * The Windows client skips its own dictionary, context and period-drop steps whenever the
-    server formatted the text (W11:18-29).
-  * The server's pipeline stages are transcribe → align → format → lowercase → Slack tagging →
-    email signature. The format stage reports deletion/substitution counts and a divergence
-    score (W03:17).
-  * Backtracking, filler removal, lists and punctuation are server-side; the client only
-    detects them afterwards, to show tips (W03:38-41).
-  * The client-side fallback formatter is a fine-tuned Llama-3.1-8B with a separate email
-    variant (W03:7-8, 179).
-
-  In other words: Wispr's server runs an 8B-class, task-tuned model where we run a 1.5B
-  general instruct model with a 3 s budget on 4 cores.
-* **Styles** are formal / casual / very casual / excited (+ genz = very casual), per bucket
-  (personal / work / email / other) (SC:55-113):
-
-  | Style | What it does |
-  |---|---|
-  | formal | capitals and full punctuation |
-  | casual | capitals, fewer optional commas, no final period |
-  | very casual | all lowercase, keeps "?" |
-  | excited | "!" endings |
-
-  * Email always gets blank-line structure (greeting / body / sign-off).
-  * **Wispr Android's personal bucket defaults to Casual**; "other" defaults to Formal
-    (`research/android/findings/by-topic/03-ui-features-onboarding.md:35`). Windows defaults
-    every bucket to formal (SC:155-159). The formality detector can override the style for one
-    dictation in personal messengers, based on the user's own visible messages (W03:62).
-  * Style formatting is English-only (SC:115).
-* **Period drop rule:** the same the cursor-context step table we ported (SC:203-228, W11:35-41).
-* **Cleanup levels:**
-  * The UI levels are none / light / medium / high. The server receives a *shifted* strength:
-    UI high → MEDIUM, medium → LIGHT, light → VERBATIM (SC:43-53).
-  * Even "verbatim" on the server removes fillers and applies style, per the UI's own example.
-  * So the LLM's "light" in our prompt is stricter than what Wispr calls light.
-* **Quote / unquote, parentheses, brackets:** our notes contain **no** record of these spoken
-  commands. The only quote hits are cursor-context closing-quote handling (W11:123-165). The
-  user's live observation today is therefore our only evidence. It is consistent with a
-  server-side LLM that is asked to honour spoken formatting commands generally.
+Only the user's side-by-side observation is recorded here: Wispr turns spoken "quote / unquote"
+and "in parentheses" into marks, reads as more casual in chat apps, and places periods and commas
+well. How it does this is not documented in this repository.
 
 ## 3. Eval set
 
@@ -363,8 +319,7 @@ Model notes:
 
   Add the client→provider round trip. These are estimates from vendors' public numbers, not
   measurements.
-* *Quality.* 8B+ instruct or frontier-small models are the class Wispr itself uses (fine-tuned
-  Llama-3.1-8B fallback, W03:7-8). They are expected to handle quote / paren boundaries and
+* *Quality.* 8B+ instruct or frontier-small models are expected to handle quote / paren boundaries and
   run-ons much better than 0.5-3B.
 * *Privacy.* Only **text** leaves the device or server. Audio stays local, unlike D18 cloud
   STT, where audio leaves. It is still the full dictation plus the app category (and context
@@ -472,8 +427,7 @@ signatures.
 **E. `crates/flow-llm`.** No change needed. The plugin ABI is untouched by A-D.
 
 **F. `apps/flow-android` (owner 5).**
-* `Styles` defaults: personal = CASUAL, work = CASUAL, email = FORMAL, other = FORMAL
-  (Wispr Android's own personal default is Casual);
+* `Styles` defaults: personal = CASUAL, work = CASUAL, email = FORMAL, other = FORMAL;
 * `toSessionConfig` sends `styles`;
 * a Settings "Style" page with 4 buckets;
 * **`effectiveCleanup`: LLM off must still send `cleanup_level: light` with `raw_mode: true`,**
@@ -483,11 +437,10 @@ signatures.
 **G. `crates/flow-core/src/engine.rs` (owner 3, small).** Gate `spoken_cleanup` / `layout` /
 `close_sentence` on `spoken_cleanup && !verbatim_level`, not on `cleanup_level != none`.
 `raw_mode` already skips the LLM. This is a behaviour change for Windows "none", so it needs a
-D-row decision: none = truly verbatim, or "no LLM". Wispr's own "none" still removed fillers
-on the server.
+D-row decision: none = truly verbatim, or "no LLM".
 
-**H. `apps/flow-windows` (owner 6).** Same style defaults (or keep formal, the documented Wispr
-Windows default, but surface the setting). Raise `llm_timeout_ms` default 1500 → 3000, which
+**H. `apps/flow-windows` (owner 6).** Same style defaults (or keep formal, but surface the
+setting). Raise `llm_timeout_ms` default 1500 → 3000, which
 matches Android: the cost finding showed 1500 ms times out on nearly everything.
 
 **I. Eval as a regression gate.** Promote the probe to a `flow-core` test that runs

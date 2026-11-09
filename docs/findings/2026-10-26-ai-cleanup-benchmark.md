@@ -169,8 +169,7 @@ AI-cleanup latency by dictation length (median LLM ms; n = 52 / 41 / 5 / 4):
   `usage.cost`; a cap on the summed cost over all runs ($1.50) stops a run.
 * **Model picks** (live ZDR endpoint list, `GET /api/v1/endpoints/zdr`, 2026-10-26):
   * `meta-llama/llama-3.3-70b-instruct`: the D28 cleanup default (asked for).
-  * `meta-llama/llama-3.1-8b-instruct`: the base of Wispr's own fallback formatter (a
-    fine-tuned Llama-3.1-8B, research 03), the same model as our local 8B row, and
+  * `meta-llama/llama-3.1-8b-instruct`: the same model as our local 8B row, and
     5 ZDR providers including Groq (LPU, low latency) at $0.02–0.22 / M tokens.
   * `mistralai/ministral-8b-2512`: a second, non-reasoning 8B family with a first-party
     ZDR endpoint (Mistral), $0.15 / M. Skipped: Qwen3 / Qwen3.5 (reasoning models, extra
@@ -343,8 +342,7 @@ fillers and ITN), but at 7.5 s p50 it is 5× the budget on this CPU.
 * **3B:** 2.9 s median, 5–8 s on long dictations: twice the budget.
 * **8B (measured, server stopped):** p50 **7.5 s**; 41 of 102 calls hit the 8 s cap; the
   calls that finished had a median of 6.5 s. That is in line with the ~6–7 s the
-  1.5B → 3B ratio predicted. Wispr's own fallback formatter is a fine-tuned Llama-3.1-8B
-  (`research/windows/findings/by-topic/03-ai-formatting-and-features.md`), served on GPUs.
+  1.5B → 3B ratio predicted.
   Qwen 7B skipped (owner).
 * So on this CPU the budget is reachable only with ≤ 1.5B models and short dictations.
   An 8B-class AI cleanup in ≤ 1.5 s needs a GPU or the OpenRouter route, where the same
