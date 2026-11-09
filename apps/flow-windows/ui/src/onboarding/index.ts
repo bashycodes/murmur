@@ -17,6 +17,7 @@ import { $, el, html } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { captureChord, stopCapture } from "../lib/keycapture.js";
 import { prefsStore, type Prefs } from "../lib/prefs-store.js";
+import { pillLine, readinessErrorLine, readinessLine, RECHECK_MS, type PillState, type Readiness, type TryLine, type TryLineSource } from "../lib/setup-try.js";
 import type { DevView, FieldError, Health, KeyState, OrView, Route, RouteView } from "../lib/types.js";
 import { initialEngine, recommendedEngine } from "../lib/setup-engine.js";
 import { views } from "../lib/views.js";
@@ -65,6 +66,10 @@ const st = {
   model: null as ModelStatus | null,
   info: null as ModelInfo | null,
   openedAt: 0,
+  /** Who set the try step's line (setup-try.ts). */
+  line: "none" as TryLineSource,
+  /** When a finished dictation's result was last shown (ms). */
+  resultAt: 0,
   busy: false,
 };
 let onDone: () => void = () => {};
@@ -542,18 +547,68 @@ const WHERE: Record<string, string> = {
   cloud: "by OpenRouter",
 };
 
-function showResult(v: RouteView): void {
-  const last = v.last;
-  if (!last || last.at_ms < st.openedAt || st.step !== "try") return;
+function setResult(line: TryLine): void {
   const r = $<HTMLElement>("ob_result");
   r.hidden = false;
+  r.classList.toggle("is-bad", line.bad);
+  $<HTMLElement>("ob_result_text").textContent = line.text;
+}
+
+function tryOpen(): boolean {
+  return st.step === "try" && !$<HTMLElement>("onboarding").hidden;
+}
+
+function showResult(v: RouteView): void {
+  const last = v.last;
+  if (!last || last.at_ms < st.openedAt || !tryOpen()) return;
+  st.resultAt = Date.now();
   const good = last.status === "FORMATTED" || last.status === "RAW_TRANSCRIPT";
-  r.classList.toggle("is-bad", !good);
   const where = WHERE[last.engine ?? ""] ?? (last.engine ? `by ${last.engine}` : "");
   const secs = (ms: number): string => `${(ms / 1000).toFixed(1)} s`;
-  $<HTMLElement>("ob_result_text").textContent = good
-    ? `It works. Heard ${where} in ${secs(last.asr_ms)}${last.total_ms > last.asr_ms ? `, ready in ${secs(last.total_ms)}` : ""}.`
-    : `That didn't work: ${last.notice ?? last.empty_reason ?? last.status}. Try again, or check Settings → Speech to text after setup.`;
+  pressLine({
+    bad: !good,
+    text: good
+      ? `It works. Heard ${where} in ${secs(last.asr_ms)}${last.total_ms > last.asr_ms ? `, ready in ${secs(last.total_ms)}` : ""}.`
+      : `That didn't work: ${last.notice ?? last.empty_reason ?? last.status}. Try again, or check Settings → Speech to text after setup.`,
+  });
+}
+
+let recheckTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** D75: say up front when a press cannot work (no model, no server) instead
+ *  of leaving the step silent. A press that already reached the pill wins.
+ *  While the line is shown it is checked again every RECHECK_MS, so a server
+ *  that comes up or a model that finishes clears it. */
+async function checkReady(): Promise<void> {
+  clearTimeout(recheckTimer);
+  const opened = st.openedAt;
+  let line: TryLine | null;
+  try {
+    line = readinessLine(await invoke<Readiness>("setup_readiness"), models.busy());
+  } catch (e) {
+    line = readinessErrorLine(e);
+  }
+  if (!tryOpen() || st.openedAt !== opened || st.line === "press") return;
+  if (line) {
+    setResult(line);
+    st.line = "check";
+    recheckTimer = setTimeout(recheckReady, RECHECK_MS);
+  } else {
+    if (st.line === "check") $<HTMLElement>("ob_result").hidden = true; // ready now
+    st.line = "none";
+  }
+}
+
+/** Check again while the "can't work yet" line is up (timer, model events). */
+function recheckReady(): void {
+  if (tryOpen() && st.line === "check") void checkReady();
+}
+
+/** A press reached the pill or a dictation finished: it owns the line now. */
+function pressLine(line: TryLine): void {
+  clearTimeout(recheckTimer);
+  st.line = "press";
+  setResult(line);
 }
 
 // ------------------------------------------------------------ navigation
@@ -571,7 +626,9 @@ function show(s: Step): void {
   if (s === "try") {
     renderTry();
     st.openedAt = Date.now();
+    st.line = "none";
     $<HTMLElement>("ob_result").hidden = true;
+    void checkReady();
     $<HTMLTextAreaElement>("ob_try_box").focus();
   }
   panel(s).querySelector<HTMLElement>('[data-ob="next"]')?.focus({ preventScroll: true });
@@ -707,24 +764,35 @@ export const onboarding = {
         st.info = i;
         st.model = i.status;
         if (st.step === "model") renderModel();
+        recheckReady();
       });
     });
     void onEvent<ModelStatus>("model:status", (e) => {
       st.model = e.payload;
       if (st.step === "model") renderModel();
+      recheckReady();
     });
     void onEvent<LlmStatus>("llm:status", (e) => {
       if (st.info) st.info.llm = e.payload;
       if (st.step === "cleanup") $<HTMLElement>("ob_llm_status").textContent = llmLine(e.payload);
     });
     void onEvent<RouteView>("dev:route", (e) => showResult(e.payload));
+    // D75: the pill's state, so a press shows here too: listening, working,
+    // and why it failed (no model, server unreachable) instead of nothing.
+    void onEvent<PillState>("dictation:status", (e) => {
+      if (!tryOpen()) return;
+      const line = pillLine(e.payload);
+      if (line) pressLine(line);
+    });
     void onEvent<null>("history:changed", () => {
-      if (st.step !== "try" || !$<HTMLElement>("ob_result").hidden) return;
+      if (!tryOpen()) return;
       // Builds whose dictations bypass the router still say it arrived.
+      // A route result just before or just after this one wins.
+      const at = Date.now();
       setTimeout(() => {
-        if (!$<HTMLElement>("ob_result").hidden) return;
-        $<HTMLElement>("ob_result").hidden = false;
-        $<HTMLElement>("ob_result_text").textContent = "It works. Your dictation arrived.";
+        if (st.resultAt >= at - 2000 || !tryOpen()) return;
+        st.resultAt = Date.now();
+        pressLine({ text: "It works. Your dictation arrived.", bad: false });
       }, 300);
     });
   },

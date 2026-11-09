@@ -34,8 +34,9 @@ use crate::server_clean::ServerClean;
 use crate::{
     effective_connect_timeout_ms, now_unix_ms, Backend, BackendError, Capabilities, CircuitStatus,
     CleanupFactory, CleanupPlan, CleanupStatus, CloudCapabilities, CloudFactory,
-    CustomCleanupFactory, EngineKind, Failure, HealthReport, Prefer, RemoteFactory, RouteDiag,
-    RouteStatus, RouterConfig, RouterError, RouterPoll, ServerConfig, SessionRoute, StartInfo,
+    CustomCleanupFactory, EngineKind, Failure, HealthReport, Prefer, RemoteFactory, RouteCheck,
+    RouteDiag, RouteStatus, RouterConfig, RouterError, RouterPoll, ServerConfig, SessionRoute,
+    StartInfo,
 };
 
 /// What the cloud STT backend is built for: the privacy + STT settings
@@ -1533,6 +1534,63 @@ impl Router {
             }
         }
         h
+    }
+
+    /// D75: the dictation routes a start would walk right now, in order,
+    /// each with the reason a start would skip it *without trying* (no
+    /// server host, an open or sticky circuit with a viable fallback,
+    /// missing cloud consent/key/budget, no local engine). Read-only and
+    /// no network: a route with `skip: None` would be tried, and a server
+    /// may still fail to answer. A cold local engine with an on-demand
+    /// loader (D24) counts as triable. Additive.
+    pub fn route_checks(&self) -> Vec<RouteCheck> {
+        let st = self.state.lk();
+        if st.cfg.validate_order().is_err() {
+            return Vec::new();
+        }
+        let routes = self.routes(&st);
+        let now = Instant::now();
+        routes
+            .iter()
+            .enumerate()
+            .map(|(i, r)| {
+                let skip = match r {
+                    Route::Client => (st.warm_local().is_none() && st.lazy.is_none()).then(|| {
+                        BackendError::new(Failure::LocalNotReady, "local model not loaded")
+                    }),
+                    Route::Server => {
+                        if !st.cfg.server.is_configured() {
+                            Some(BackendError::new(
+                                Failure::ServerNotConfigured,
+                                "no server host set",
+                            ))
+                        } else if st.circuit.sticky
+                            || (st.circuit.is_open(now) && self.viable_after(&st, &routes, i))
+                        {
+                            Some(BackendError::new(
+                                st.circuit.reason.unwrap_or(Failure::CircuitOpen),
+                                "paused after recent failures",
+                            ))
+                        } else {
+                            None
+                        }
+                    }
+                    Route::Cloud => {
+                        if st.cloud_circuit.sticky
+                            || (st.cloud_circuit.is_open(now) && self.viable_after(&st, &routes, i))
+                        {
+                            Some(BackendError::new(Failure::CircuitOpen, "circuit open"))
+                        } else {
+                            st.cloud_check().err()
+                        }
+                    }
+                };
+                RouteCheck {
+                    kind: r.engine(),
+                    skip,
+                }
+            })
+            .collect()
     }
 
     pub fn route_status(&self) -> RouteStatus {

@@ -20,7 +20,7 @@
 //!   badge, and cloud failures get user-facing text (`crate::cloud`).
 
 use crate::core_adapter::{
-    from_core_result, to_core_context, to_core_session, FlowCoreAdapter, LOAD_WAIT,
+    from_core_result, to_core_context, to_core_session, FlowCoreAdapter, ModelStatus, LOAD_WAIT,
 };
 use crate::core_api::{
     CommitResult, CommitStatus, CoreApi, FieldContext, LearnCandidate, SessionConfig,
@@ -339,6 +339,20 @@ pub struct SessionTest {
     pub total_ms: u64,
 }
 
+/// D75: can a dictation start now? The setup's "try it" step asks before
+/// the user talks, so a step that cannot work says why instead of staying
+/// silent.
+/// Wire: `{"state":"ready","engine":"local"}` or
+/// `{"state":"not_ready","message":"…"}`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum Readiness {
+    /// A dictation would start on `engine`.
+    Ready { engine: EngineKind },
+    /// Nothing can start; why, in plain words (the chosen engine's reason).
+    NotReady { message: String },
+}
+
 // ------------------------------------------------------------------ config
 
 /// Developer settings → `RouterConfig` (via the §1.2 JSON, which the
@@ -571,26 +585,88 @@ impl RouterAdapter {
         }
     }
 
-    /// Will this session start on the local engine (so a model load in
-    /// progress is worth waiting for)?
-    fn local_first(&self) -> bool {
-        let cfg = self.router.config();
-        let caps = self.router.capabilities();
-        let cloud = self.cloud_ready(&cfg);
-        cfg.route_order().into_iter().find(|k| match k {
-            EngineKind::Local => caps.local,
-            EngineKind::Remote => caps.remote,
-            EngineKind::Cloud => cloud,
-            _ => false,
-        }) == Some(EngineKind::Local)
+    /// D75: would a dictation start now, and if not why? Walks
+    /// [`Router::route_checks`] (the order, toggles and circuit breakers a
+    /// start uses). The first engine that would start wins; a model still
+    /// loading counts (a start waits for it). Blocking: a server a start
+    /// would try is probed (connect timeout) with `Router::probe_server`,
+    /// which, like a failed start, records the result in the server's
+    /// circuit breaker and "Server info" health. No session is opened and
+    /// no audio is sent. When nothing would start, the message is the
+    /// reason of the first route in the order, the engine the user chose.
+    pub fn readiness(&self) -> Readiness {
+        let mut first_reason: Option<String> = None;
+        for check in self.router.route_checks() {
+            let reason = match check.kind {
+                EngineKind::Local => match self.local.as_ref().map(|l| l.status()) {
+                    // Loading also covers a cold slot loaded on demand (D24).
+                    Some(ModelStatus::Ready { .. } | ModelStatus::Loading { .. }) => None,
+                    Some(ModelStatus::Missing { path, .. }) => Some(format!(
+                        "There's no speech model on this PC yet (nothing at {path}). \
+                         Go back to the speech model step and download or choose one."
+                    )),
+                    Some(ModelStatus::Failed { message, .. }) => Some(format!(
+                        "The speech model on this PC didn't load: {}.",
+                        message.trim_end().trim_end_matches('.')
+                    )),
+                    None => Some("This build has no speech engine on this PC.".into()),
+                },
+                EngineKind::Remote => self.server_reason(check.skip),
+                _ => check
+                    .skip
+                    .map(|e| format!("{}.", crate::cloud::failure_message(e.kind.as_str(), None))),
+            };
+            match reason {
+                None => return Readiness::Ready { engine: check.kind },
+                Some(r) => {
+                    first_reason.get_or_insert(r);
+                }
+            }
+        }
+        Readiness::NotReady {
+            message: first_reason.unwrap_or_else(|| NO_ENGINE_MSG.into()),
+        }
     }
 
-    /// The cloud route would start now (no network: config, consent, key).
-    fn cloud_ready(&self, cfg: &RouterConfig) -> bool {
-        self.router.cloud_capabilities().cloud
-            && cfg.allow_cloud
-            && cfg.cloud.openrouter.stt.consent_ok()
-            && self.router.has_cloud_key(crate::credentials::OPENROUTER)
+    /// [`RouterAdapter::readiness`] for the server route: `None` = it answers.
+    fn server_reason(&self, skip: Option<BackendError>) -> Option<String> {
+        let addr = self.router.config().server.addr();
+        let detail = match skip {
+            Some(e) if e.kind == Failure::ServerNotConfigured => {
+                return Some(
+                    "There's no server address yet. Type your server's address in the \
+                     \"where speech runs\" step."
+                        .into(),
+                )
+            }
+            Some(e) => format!("{}: {}", e.kind.as_str(), e.message),
+            None => {
+                let h = self.router.probe_server();
+                if h.ok {
+                    return None;
+                }
+                h.message.or(h.error).unwrap_or_default()
+            }
+        };
+        Some(if needs_tls(&detail) {
+            SERVER_NEEDS_TLS.into()
+        } else {
+            format!(
+                "Your server at {addr} can't be reached ({detail}). Check that it's running \
+                 and that this PC can reach it."
+            )
+        })
+    }
+
+    /// Will this session start on the local engine (so a model load in
+    /// progress is worth waiting for)? The first route a start would try;
+    /// the local one counts even while its model loads.
+    fn local_first(&self) -> bool {
+        self.router
+            .route_checks()
+            .into_iter()
+            .find(|c| c.kind == EngineKind::Local || c.skip.is_none())
+            .is_some_and(|c| c.kind == EngineKind::Local)
     }
 
     /// Only the cloud route is allowed (start errors then name the cloud).
@@ -1031,8 +1107,16 @@ mod tests {
             Backend::cancel(&self.0.core)
         }
         fn probe(&self) -> HealthReport {
+            if !self.0.up.load(Ordering::SeqCst) {
+                // Like a real probe of a stopped server: a failure kind the
+                // router's circuit breaker records.
+                return HealthReport::failed(
+                    EngineKind::Remote,
+                    &BackendError::new(Failure::ConnectFailed, "connection refused"),
+                );
+            }
             HealthReport {
-                ok: self.0.up.load(Ordering::SeqCst),
+                ok: true,
                 engine: EngineKind::Remote,
                 ..HealthReport::default()
             }
@@ -1728,6 +1812,91 @@ mod tests {
         );
         let err = router.start_session(session()).unwrap_err();
         assert!(err.contains("not found"), "{err}");
+    }
+
+    fn not_ready(r: Readiness) -> String {
+        match r {
+            Readiness::NotReady { message } => message,
+            other => panic!("expected not ready, got {other:?}"),
+        }
+    }
+
+    /// D75 fixture: a fresh install with no speech model on this PC and no
+    /// server address, dictation routes in `order`.
+    fn nothing_set_up(order: Vec<Route>) -> Arc<RouterAdapter> {
+        let local = FlowCoreAdapter::new();
+        local.load_now(&ModelSpec::Whisper {
+            path: "/nonexistent/ggml-base.bin".into(),
+            threads: None,
+        });
+        let mut d = dev(true, true);
+        d.server.host = String::new();
+        d.route_order = order;
+        let factory: RemoteFactory = Box::new(|_cfg: &ServerConfig| -> Arc<dyn Backend> {
+            unreachable!("no host, no connection")
+        });
+        RouterAdapter::new(router_config(&d, BOTH).unwrap(), Some(local), Some(factory))
+    }
+
+    /// D75: "Your server" chosen (first), no address, no model: the step
+    /// leads with the server and doesn't send the user to the model step.
+    #[test]
+    fn readiness_names_the_chosen_server_not_the_missing_model() {
+        let m = not_ready(nothing_set_up(vec![Route::Server, Route::Client]).readiness());
+        assert!(m.contains("no server address"), "{m}");
+        assert!(!m.contains("speech model"), "{m}");
+    }
+
+    /// D75: "On this PC" chosen (first), no model: the model reason only.
+    #[test]
+    fn readiness_names_the_missing_model_when_this_pc_was_chosen() {
+        let m = not_ready(nothing_set_up(vec![Route::Client, Route::Server]).readiness());
+        assert!(m.contains("no speech model on this PC"), "{m}");
+        assert!(!m.contains("server"), "{m}");
+    }
+
+    #[test]
+    fn readiness_with_the_server_up_names_the_server() {
+        let r = rig(&dev(true, true));
+        assert_eq!(
+            r.router.readiness(),
+            Readiness::Ready {
+                engine: EngineKind::Remote
+            }
+        );
+    }
+
+    /// Server down but a model on this PC: a dictation falls back, so
+    /// ready. The probe records the failure like a failed start: the
+    /// circuit opens, and the next check skips the server as a start would.
+    #[test]
+    fn readiness_falls_back_like_a_dictation_and_respects_the_circuit() {
+        let r = rig(&dev(true, true));
+        r.server.up.store(false, Ordering::SeqCst);
+        let local = Readiness::Ready {
+            engine: EngineKind::Local,
+        };
+        assert_eq!(r.router.readiness(), local);
+        assert!(r.router.router().route_status().circuit.open);
+        let checks = r.router.router().route_checks();
+        assert_eq!(checks[0].kind, EngineKind::Remote);
+        assert!(checks[0].skip.is_some(), "{checks:?}");
+        assert_eq!(r.router.readiness(), local);
+    }
+
+    #[test]
+    fn readiness_server_only_and_down_says_it_cannot_be_reached() {
+        let r = rig(&dev(true, false));
+        r.server.up.store(false, Ordering::SeqCst);
+        let m = not_ready(r.router.readiness());
+        assert!(m.contains("can't be reached"), "{m}");
+        assert!(m.contains("100.64.0.10"), "{m}");
+    }
+
+    #[test]
+    fn readiness_with_every_engine_off_is_the_no_engine_message() {
+        let r = rig(&dev(false, false));
+        assert_eq!(not_ready(r.router.readiness()), NO_ENGINE_MSG);
     }
 
     /// The router fixtures are the spec for the settings → config mapping.

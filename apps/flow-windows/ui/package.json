@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc -p .",
     "check": "tsc -p . --noEmit",
-    "test": "tsc -p . && node --test tests/serial.test.mjs tests/cleanup-state.test.mjs tests/setup-engine.test.mjs"
+    "test": "tsc -p . && node --test tests/serial.test.mjs tests/cleanup-state.test.mjs tests/setup-engine.test.mjs tests/setup-try.test.mjs"
   },
   "devDependencies": {
     "typescript": "5.6.3"
