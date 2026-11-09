@@ -12,7 +12,7 @@ import java.util.TimeZone
 import java.util.concurrent.Executors
 
 /**
- * Folder batch for the parity scorecard (hybrid debug only): every WAV under
+ * Folder batch for the quality scorecard (hybrid debug only): every WAV under
  * `<external files>/nano-batch/<set>/` through each chosen engine, one after the other, from the
  * probe screen (GenAI needs the app on top). Each (file, engine) run appends one line
  * ([ProbeBatchPlan.line]) to `nano-batch/results/batch-<UTC start>.jsonl`, a new file per batch.

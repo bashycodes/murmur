@@ -45,10 +45,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Keyboard-visibility watcher + insertion channel (07 §2, §3).
+ * Keyboard-visibility watcher + insertion channel.
  *
  * Events only poke a CONFLATED channel; one loop evaluates state then sleeps 50 ms
- * (≈20 Hz), which keeps the main thread free under event storms (07 §2 notes).
+ * (≈20 Hz), which keeps the main thread free under event storms.
  */
 class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
     private var scope = newScope()
@@ -60,7 +60,7 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
     @Volatile private var replyContext = false
     @Volatile private var lastDecision: BubbleVisibilityPolicy.Decision? = null
 
-    /** Dictation-start snapshot (07 §3.2 `dictationStartSnapshot`). */
+    /** Dictation-start snapshot. */
     private data class StartSnapshot(val pkg: String?, val hash: Long?, val looseHash: Long?)
     @Volatile private var startSnapshot: StartSnapshot? = null
 
@@ -158,7 +158,7 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
         app.fieldSelection.value = false
     }
 
-    // ---- 07 §2.2 evaluateCurrentState ----
+    // ---- evaluateCurrentState ----
 
     private fun evaluateCurrentState() {
         val ws = runCatching { windows }.getOrDefault(emptyList())
@@ -245,7 +245,7 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
         if (node?.isPassword == true) return FieldContextBuilder.build(pkg, 0x81, null, 0, 0)
         val s = inputMethod?.readSurrounding(500, 500)
         if (s != null) return FieldContextBuilder.build(pkg, type, s.first, s.second, s.third)
-        // IME read null → node text with selection (06 §1).
+        // IME read null → node text with selection.
         val text = node?.let { NodeAdapter(it).snapshot() }?.let {
             dev.flowclone.insert.TextMatching.readNodeText(it, editor.hintText, emptySet())
         }
@@ -448,7 +448,7 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
         override fun onStaleTick() = staleProbeSurface(anchorPkg()) && env.reacquireStaleSession()
     }
 
-    /** 07 §3.4: ClipData with EXTRA_IS_SENSITIVE so the system clip preview stays masked; S16: removed after 60 s. */
+    /** ClipData with EXTRA_IS_SENSITIVE so the system clip preview stays masked; S16: removed after 60 s. */
     private inner class Clipboard : ClipboardPort {
         override fun copySensitive(text: String) {
             app.clipboard.copy(text)

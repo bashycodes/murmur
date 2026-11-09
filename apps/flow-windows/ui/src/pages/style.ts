@@ -71,8 +71,8 @@ const BUCKET_LABELS: Record<string, string> = {
 
 /** Tab label and banner line per group (PageStyle artboard). */
 const TABS: Record<Bucket, { label: string; banner: string }> = {
-  personal: { label: "Personal messages", banner: "Used when you dictate into chat apps for friends and family" },
-  work: { label: "Work messages", banner: "Used when you dictate into team chat apps" },
+  personal: { label: "Personal chats", banner: "Used when you dictate into chat apps for friends and family" },
+  work: { label: "Work chats", banner: "Used when you dictate into team chat apps" },
   email: { label: "Email", banner: "Used when you dictate into email" },
   other: { label: "Other", banner: "Used in every other app" },
 };

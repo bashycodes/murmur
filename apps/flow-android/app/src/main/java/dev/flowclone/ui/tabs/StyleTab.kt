@@ -30,7 +30,7 @@ import dev.flowclone.ui.TypeScale
  * Style-per-app "Add app" picker, [AppStylesPage]), and one card per writing style with its short
  * rule and an example bubble. Tapping a card saves it for the group at once ([Settings.styles]).
  *
- * Not drawn: the artboard's "Styles currently apply in English only" footer (no such limit in
+ * Not drawn: the artboard's English-only footer note (no such limit in
  * the core). Per-app moves beyond "+" stay in Settings → Writing style → Style per app.
  */
 internal class StyleTab(private val activity: Activity, private val ui: DevUi) : ShellTab {

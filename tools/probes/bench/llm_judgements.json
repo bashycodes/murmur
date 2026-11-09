@@ -1,0 +1,21 @@
+{
+ "about": "Manual judgement of bench_llm.py --prompt fewshot outputs (results llm-fewshot-20261020-160825-t4 and, for 7B, llm-fewshot-20261020-161801-t4). A = acceptable to paste as-is (minor punctuation/casing differences ok); M = safe but missed a fix (filler left, no list, sign-off not split); H = harmful: meaning changed, content dropped/added, or junk emitted. Single rater (Claude).",
+ "judgements": {
+  "fewshot/qwen2.5-0.5b-instruct-q4_k_m.gguf": {"c02":"M","c03":"H","c04":"M","c05":"A","c06":"A","c07":"M","c08":"M","c09":"A","c10":"A","c11":"M","c12":"M","c13":"M","c14":"A","c15":"A","c16":"A","c17":"A","c18":"M","c19":"A","c20":"H"},
+  "fewshot/qwen2.5-1.5b-instruct-q4_k_m.gguf": {"c02":"M","c03":"M","c04":"A","c05":"A","c06":"H","c07":"M","c08":"A","c09":"A","c10":"A","c11":"A","c12":"M","c13":"A","c14":"A","c15":"A","c16":"A","c17":"M","c18":"A","c19":"A","c20":"A"},
+  "fewshot/qwen2.5-3b-instruct-q4_k_m.gguf":   {"c02":"A","c03":"A","c04":"A","c05":"A","c06":"M","c07":"M","c08":"A","c09":"A","c10":"M","c11":"A","c12":"A","c13":"A","c14":"A","c15":"A","c16":"A","c17":"M","c18":"A","c19":"A","c20":"A"},
+  "fewshot/Llama-3.2-1B-Instruct-Q4_K_M.gguf": {"c02":"H","c03":"A","c04":"A","c05":"A","c06":"H","c07":"A","c08":"M","c09":"M","c10":"A","c11":"M","c12":"M","c13":"H","c14":"H","c15":"A","c16":"H","c17":"M","c18":"A","c19":"A","c20":"H"},
+  "fewshot/Llama-3.2-3B-Instruct-Q4_K_M.gguf": {"c02":"A","c03":"A","c04":"A","c05":"A","c06":"A","c07":"A","c08":"A","c09":"A","c10":"M","c11":"A","c12":"A","c13":"M","c14":"M","c15":"A","c16":"A","c17":"A","c18":"A","c19":"A","c20":"H"},
+  "fewshot/Qwen2.5-7B-Instruct-Q4_K_M.gguf":   {"c02":"A","c03":"A","c04":"A","c05":"M","c06":"H","c07":"M","c08":"A","c09":"A","c10":"A","c11":"A","c12":"A","c13":"A","c14":"A","c15":"A","c16":"A","c17":"A","c18":"A","c19":"A","c20":"H"}
+ },
+ "notes": {
+  "c02": "Llama-1B turns it into first person ('I'll take a look at the build') (H).",
+  "c03": "0.5B keeps the retracted version (H); 1.5B leaves 'Scratch that' in (M).",
+  "c06": "1.5B and Llama-1B drop 'Not quite' (H); 7B appends a stray CJK token (H).",
+  "c13": "Llama-1B drops the first clause (H).",
+  "c14": "Llama-1B writes 05/03 (locale-ambiguous) and rewrites to 'Reminder:' (H); Llama-3B writes 3/5 (M).",
+  "c16": "Llama-1B repeats the sentence 3x as a list (H).",
+  "c20": "Llama-3B, 7B and Llama-1B drop 'Lisa's handling the blog post' — 'never mind' over-applied (H); 0.5B invents a list (H).",
+  "rules-variant": "With the long rule prompt every <=3B model mostly echoes the input: no lists, no number formatting, no email layout; Qwen-3B answers c15 ('The capital of France is Paris.'), Llama-1B emits <ol> wrappers and stray '3:30 PM' text copied from the rule examples."
+ }
+}
