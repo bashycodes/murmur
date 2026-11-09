@@ -21713,6 +21713,954 @@
 }
 },
 {
+"id": "r5_flow-windows.exe_sel_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"selected": "abc"
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r5_flow-windows.exe_sel_very_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"selected": "abc"
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "r5_flow-windows.exe_sel_formal",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"selected": "abc"
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "r5_flow-windows.exe_sel_default",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"selected": "abc"
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r5_flow-windows.exe_sel_ba_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "so ",
+"selected": "abc",
+"after": " x"
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r5_flow-windows.exe_sel_ba_very_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "so ",
+"selected": "abc",
+"after": " x"
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "r5_flow-windows.exe_sel_ba_formal",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "so ",
+"selected": "abc",
+"after": " x"
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "r5_flow-windows.exe_sel_ba_default",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "so ",
+"selected": "abc",
+"after": " x"
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r5_flow-windows.exe_sel_ws_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"selected": "  "
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r5_flow-windows.exe_sel_ws_very_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"selected": "  "
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "r5_flow-windows.exe_sel_ws_formal",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"selected": "  "
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "r5_flow-windows.exe_sel_ws_default",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"selected": "  "
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r5_flow-windows.exe_sel_dot_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"selected": "Fine."
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r5_flow-windows.exe_sel_dot_very_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"selected": "Fine."
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "r5_flow-windows.exe_sel_dot_formal",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"selected": "Fine."
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "r5_flow-windows.exe_sel_dot_default",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"selected": "Fine."
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r5_flow-windows.exe_nosel_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "so "
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r5_flow-windows.exe_nosel_very_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "so "
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "r5_flow-windows.exe_nosel_formal",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "so "
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "r5_flow-windows.exe_nosel_default",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "so "
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r5_flow-windows.exe_line_dot_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "Done.\nso "
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r5_flow-windows.exe_line_dot_very_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "Done.\nso "
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "r5_flow-windows.exe_line_dot_formal",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "Done.\nso "
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "r5_flow-windows.exe_line_dot_default",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "Done.\nso "
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r5_flow-windows.exe_line_q_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "so ",
+"after": " ok?"
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r5_flow-windows.exe_line_q_very_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "so ",
+"after": " ok?"
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "r5_flow-windows.exe_line_q_formal",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "so ",
+"after": " ok?"
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "r5_flow-windows.exe_line_q_default",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "so ",
+"after": " ok?"
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r5_murmur.exe_sel_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"selected": "abc"
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r5_murmur.exe_sel_very_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"selected": "abc"
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "r5_murmur.exe_sel_formal",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"selected": "abc"
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "r5_murmur.exe_sel_default",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"selected": "abc"
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r5_murmur.exe_sel_ba_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"before": "so ",
+"selected": "abc",
+"after": " x"
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r5_murmur.exe_sel_ba_very_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"before": "so ",
+"selected": "abc",
+"after": " x"
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "r5_murmur.exe_sel_ba_formal",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"before": "so ",
+"selected": "abc",
+"after": " x"
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "r5_murmur.exe_sel_ba_default",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"before": "so ",
+"selected": "abc",
+"after": " x"
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r5_murmur.exe_sel_ws_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"selected": "  "
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r5_murmur.exe_sel_ws_very_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"selected": "  "
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "r5_murmur.exe_sel_ws_formal",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"selected": "  "
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "r5_murmur.exe_sel_ws_default",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"selected": "  "
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r5_murmur.exe_sel_dot_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"selected": "Fine."
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r5_murmur.exe_sel_dot_very_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"selected": "Fine."
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "r5_murmur.exe_sel_dot_formal",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"selected": "Fine."
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "r5_murmur.exe_sel_dot_default",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"selected": "Fine."
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r5_murmur.exe_nosel_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"before": "so "
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r5_murmur.exe_nosel_very_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"before": "so "
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "r5_murmur.exe_nosel_formal",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"before": "so "
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "r5_murmur.exe_nosel_default",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"before": "so "
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r5_murmur.exe_line_dot_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"before": "Done.\nso "
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r5_murmur.exe_line_dot_very_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"before": "Done.\nso "
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "r5_murmur.exe_line_dot_formal",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"before": "Done.\nso "
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "r5_murmur.exe_line_dot_default",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"before": "Done.\nso "
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r5_murmur.exe_line_q_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"before": "so ",
+"after": " ok?"
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r5_murmur.exe_line_q_very_casual",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"before": "so ",
+"after": " ok?"
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "r5_murmur.exe_line_q_formal",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"before": "so ",
+"after": " ok?"
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "r5_murmur.exe_line_q_default",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "murmur.exe",
+"before": "so ",
+"after": " ok?"
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
 "id": "r3e_snip_sig_empty_text",
 "kind": "apply",
 "text": "",

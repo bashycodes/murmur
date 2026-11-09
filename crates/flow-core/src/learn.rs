@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::align::{align_words, Op, Step};
+use crate::align::{align_words, trim_punct, Op, Step};
 use crate::dictionary::Dictionary;
 
 /// A run with more words than this on either side is a rewrite, not
@@ -112,10 +112,6 @@ fn candidate(block: &[Step], sentence_initial: bool, dict: &Dictionary) -> Optio
         original,
         corrected,
     })
-}
-
-fn trim_punct(w: &str) -> &str {
-    w.trim_matches(|c: char| !c.is_alphanumeric())
 }
 
 /// The word ends in `.`, `!` or `?`: the next word starts a sentence.

@@ -20,7 +20,7 @@ the label appeared twice.
 | Insert | one Ctrl+V; no shell step adds text |
 
 The lowercase first letter fits this account. Cursor matching
-(`postprocess::context::match_context`) saw text before the cursor ending in
+(`postprocess::context::match_context`, module removed, D82) saw text before the cursor ending in
 `": "`, which counts as mid-sentence, and lowercased the first letter of the
 answer. That first letter was the model's copy of the label.
 
