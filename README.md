@@ -17,8 +17,6 @@ crates/      Rust workspace: flow-core (session engine, ASR/LLM seams, VAD,
              post-processing), flow-ffi (C ABI + JNI), flow-cli (dev harness),
              flow-llm (llama.cpp cleanup plugin), flow-asr-sherpa (Parakeet)
 apps/        flow-windows (Tauri 2 shell), flow-android (Kotlin shell)
-research/    windows/, android/: reverse-engineering findings on the original
-             Wispr Flow apps (imported with history via git subtree)
 docs/        decisions, core and hybrid architecture, model benchmarks,
              handoffs/ (session handoff notes)
 tools/       fetch-models.sh, build-android-parakeet.sh, probes/

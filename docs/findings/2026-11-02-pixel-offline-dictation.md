@@ -138,7 +138,7 @@ and VoxPopuli. The live leaderboard data is gated
 
 1. **Context biasing.**
    * Wispr sends dictionary terms, screen words, OCR words, the user's names and file names to bias
-     its ASR (`research/windows/findings/by-topic/03-ai-formatting-and-features.md`).
+     its ASR.
    * Google's ASR has biased toward contacts and app context for years
      ([Pundak et al., "Deep context"](https://arxiv.org/abs/1808.02480)).
    * Our case: "pie test" for "pytest" and "a UID four" for "a UUID4"

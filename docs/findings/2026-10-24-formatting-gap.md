@@ -114,28 +114,25 @@ Light + all formal + 3 s: column "llm (shipped)" below.
 
 ## 2. What Wispr does (from our research notes only)
 
-This section is summarised from `research/windows/findings/by-topic/03-ai-formatting-and-features.md`
-(W03), `research/windows/findings/data/style-config.json` (SC),
-`research/windows/findings/by-topic/11-postprocess-port-spec.md` (W11) and
-`research/android/findings/by-topic/06-postprocess-android.md` (A06). No vendor prompt text is
-reproduced. Wispr's dictation formatter prompt is not in either client.
+This section is summarised from private research notes on the Windows and Android clients,
+which are not part of this repository. No vendor prompt text is reproduced. Wispr's dictation formatter prompt is not in either client.
 
 * **All shaping happens on the server.**
-  * The Android client inserts the server's text byte for byte (A06:14-47).
+  * The Android client inserts the server's text byte for byte.
   * The Windows client skips its own dictionary, context and period-drop steps whenever the
-    server formatted the text (W11:18-29).
+    server formatted the text.
   * The server's pipeline stages are transcribe → align → format → lowercase → Slack tagging →
     email signature. The format stage reports deletion/substitution counts and a divergence
-    score (W03:17).
+    score.
   * Backtracking, filler removal, lists and punctuation are server-side; the client only
-    detects them afterwards, to show tips (W03:38-41).
+    detects them afterwards, to show tips.
   * The client-side fallback formatter is a fine-tuned Llama-3.1-8B with a separate email
-    variant (W03:7-8, 179).
+    variant.
 
   In other words: Wispr's server runs an 8B-class, task-tuned model where we run a 1.5B
   general instruct model with a 3 s budget on 4 cores.
 * **Styles** are formal / casual / very casual / excited (+ genz = very casual), per bucket
-  (personal / work / email / other) (SC:55-113):
+  (personal / work / email / other):
 
   | Style | What it does |
   |---|---|
@@ -145,19 +142,18 @@ reproduced. Wispr's dictation formatter prompt is not in either client.
   | excited | "!" endings |
 
   * Email always gets blank-line structure (greeting / body / sign-off).
-  * **Wispr Android's personal bucket defaults to Casual**; "other" defaults to Formal
-    (`research/android/findings/by-topic/03-ui-features-onboarding.md:35`). Windows defaults
-    every bucket to formal (SC:155-159). The formality detector can override the style for one
-    dictation in personal messengers, based on the user's own visible messages (W03:62).
-  * Style formatting is English-only (SC:115).
-* **Period drop rule:** the same the cursor-context step table we ported (SC:203-228, W11:35-41).
+  * **Wispr Android's personal bucket defaults to Casual**; "other" defaults to Formal. Windows defaults
+    every bucket to formal. The formality detector can override the style for one
+    dictation in personal messengers, based on the user's own visible messages.
+  * Style formatting is English-only.
+* **Period drop rule:** the same the cursor-context step table we ported.
 * **Cleanup levels:**
   * The UI levels are none / light / medium / high. The server receives a *shifted* strength:
-    UI high → MEDIUM, medium → LIGHT, light → VERBATIM (SC:43-53).
+    UI high → MEDIUM, medium → LIGHT, light → VERBATIM.
   * Even "verbatim" on the server removes fillers and applies style, per the UI's own example.
   * So the LLM's "light" in our prompt is stricter than what Wispr calls light.
 * **Quote / unquote, parentheses, brackets:** our notes contain **no** record of these spoken
-  commands. The only quote hits are cursor-context closing-quote handling (W11:123-165). The
+  commands. The only quote hits are cursor-context closing-quote handling. The
   user's live observation today is therefore our only evidence. It is consistent with a
   server-side LLM that is asked to honour spoken formatting commands generally.
 
@@ -364,7 +360,7 @@ Model notes:
   Add the client→provider round trip. These are estimates from vendors' public numbers, not
   measurements.
 * *Quality.* 8B+ instruct or frontier-small models are the class Wispr itself uses (fine-tuned
-  Llama-3.1-8B fallback, W03:7-8). They are expected to handle quote / paren boundaries and
+  Llama-3.1-8B fallback). They are expected to handle quote / paren boundaries and
   run-ons much better than 0.5-3B.
 * *Privacy.* Only **text** leaves the device or server. Audio stays local, unlike D18 cloud
   STT, where audio leaves. It is still the full dictation plus the app category (and context
