@@ -1,7 +1,7 @@
-//! Dictation state machine (spec 10 §3):
+//! Dictation state machine:
 //! `idle → listening(ptt|locked|command) → processing → pasted|error → idle`.
 //!
-//! Command Mode (10-clone-spec P1): a `command` session's transcript is an
+//! Command Mode: a `command` session's transcript is an
 //! instruction, not text to paste. Processing then asks the controller to
 //! run it on the selection (`Effect::Command`) and pastes the answer that
 //! comes back (`Input::CommandFinished`); a failure pastes nothing.
@@ -192,8 +192,6 @@ pub enum Effect {
     Overlay(OverlayState),
 }
 
-/// Timings from Wispr 1.6.1167 main process (windows-research
-/// `findings/data/overlay-spec.json` `main_side_dictation_timings`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Policy {
     /// Hard stop: the dictation is committed (not discarded) at this length.

@@ -1,6 +1,6 @@
 //! Dictionary / snippets import and export.
 //!
-//! The exchange format is the one both shells share (10-clone-spec §9):
+//! The exchange format is the one both shells share:
 //! a JSON array of `{word, replacement, isSnippet}`. Import is tolerant
 //! (`is_snippet` and a bare string are accepted; unknown fields are
 //! ignored) but validated: blank words are dropped, a snippet needs a
