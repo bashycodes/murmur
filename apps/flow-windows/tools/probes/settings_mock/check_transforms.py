@@ -125,7 +125,7 @@ with sync_playwright() as p:
     check("reset: built-in loses a shortcut a custom took", items[0]["shortcut"] is None and items[1]["shortcut"] == "Win+Alt+2")
     check("reset shown", "Win Alt 1 Shorter" in texts("#tf_grid .lw-tf-card")[2])
 
-    # Try it out.
+    # Try on sample text.
     pg.click("#tf_try")
     check("try dialog lists transforms", texts("#tf_try_pick option") == ["Polish", "Prompt Builder", "Shorter"])
     pg.click("#tf_try_run")

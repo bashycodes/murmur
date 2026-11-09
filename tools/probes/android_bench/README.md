@@ -110,3 +110,5 @@ python3 -I tools/probes/android_bench/score.py $CACHE/android-bench/results/r1  
 | `meta.json` | device, app build, args, and per model: load ms, warm-up ms, PSS, thermal status, or why it was skipped |
 | `stt-<model>.jsonl` | per clip: `asr_text`, `final_text`, `status`, `audio_ms`, `push_ms`, `commit_ms`, core `asr_ms` / `total_ms` |
 | `cleanup-<llm>-<mode>.jsonl` | per case: `llm_raw`, `llm_ms`, `error`, `llm_info` (llama.cpp stats); `prod` also has `output` and `fallback_reason` |
+
+The cache default is `~/.cache/flow-clone`; set CACHE=<dir> to reuse an existing cache.

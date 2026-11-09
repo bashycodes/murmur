@@ -1689,7 +1689,7 @@ fn transforms_reset(state: tauri::State<'_, AppState>) -> Result<Prefs, String> 
     Ok(prefs)
 }
 
-/// "Try it out": run transform `id` on `text` typed in the page, with the
+/// "Try on sample text": run transform `id` on `text` typed in the page, with the
 /// same route and privacy gate as a selection (the text is the user's,
 /// like a selection). Nothing is pasted or recorded.
 #[tauri::command]
