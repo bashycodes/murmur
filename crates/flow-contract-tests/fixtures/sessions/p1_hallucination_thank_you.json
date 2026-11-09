@@ -2,7 +2,7 @@
  "asr": {
   "mock": "Thank you."
  },
- "audio": "speech:60",
+ "audio": "speech:300",
  "contexts": [],
  "name": "p1_hallucination_thank_you",
  "session_config": {}
