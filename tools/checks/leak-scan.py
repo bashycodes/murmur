@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
 """Repo-local leak scan: credentials, tailnet IPs and home paths.
 
-Patterns live in leak-patterns.txt, fake test values in leak-allow.txt (both
+Patterns live in leak-patterns.txt, allowed fakes in leak-allow.txt (both
 next to this file). Complements the owner's global `leak-scan` pre-push hook,
 which only knows private project names; this one runs in CI too, so a merge
 made on github.com (no local hook) is still scanned.
 
-  leak-scan.py --tree            every tracked file at the working tree
+  leak-scan.py --tree            every tracked file of the repo (any cwd)
   leak-scan.py BASE..HEAD        lines added in the range, plus its commit
-                                 messages and author/committer emails
+  leak-scan.py BASE...HEAD       messages and author/committer emails
+                                 (three dots: from merge-base(BASE, HEAD))
   leak-scan.py --stdin           lines on stdin (tests)
 
-Exit 0 clean, 1 on a leak, 2 on usage/config error. Hits print the file,
-line and pattern name with the matched value masked, so a CI log never
-carries the secret it caught.
+Exit 0 clean, 1 on a leak, 2 on usage, config or git error. A hit prints the
+pattern name, the location and at most 4 characters of the value (tailnet
+addresses as 100.x.x.x), so a CI log never carries the secret it caught.
 """
+import fnmatch
 import pathlib
 import re
 import subprocess
@@ -22,109 +24,155 @@ import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 # Commit identities must be GitHub noreply addresses ("Keep my email private");
-# noreply@github.com is the committer of merges made on github.com.
+# noreply@github.com is the committer of merges made on github.com, and
+# noreply@anthropic.com is the identity of commits made by coding agents
+# (their Co-Authored-By trailer uses the same address).
 IDENTITY_OK = re.compile(r"(@users\.noreply\.github\.com|^noreply@github\.com|^noreply@anthropic\.com)$")
 
 
-def load_patterns(path):
-    out = []
-    for raw in path.read_text().splitlines():
+class UsageError(Exception):
+    pass
+
+
+def load_rules(path):
+    """`<first-field> <regex>` lines of a rules file, regex compiled."""
+    rules = []
+    try:
+        text = path.read_text()
+    except OSError as err:
+        raise UsageError(f"cannot read {path}: {err.strerror}") from err
+    for lineno, raw in enumerate(text.splitlines(), 1):
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
-        name, _, rx = line.partition(" ")
-        out.append((name, re.compile(rx)))
-    return out
+        field, _, regex = line.partition(" ")
+        if not regex:
+            raise UsageError(f"{path.name}:{lineno}: expected `<field> <regex>`")
+        try:
+            rules.append((field, re.compile(regex)))
+        except re.error as err:
+            raise UsageError(f"{path.name}:{lineno}: bad regex: {err}") from err
+    if not rules:
+        raise UsageError(f"{path.name}: no rules")
+    return rules
 
 
-def load_allow(path):
-    return [re.compile(l.strip()) for l in path.read_text().splitlines()
-            if l.strip() and not l.strip().startswith("#")]
-
-
-def mask(value):
-    return value[:6] + "…" if len(value) > 6 else value
+def mask(name, value):
+    if name == "tailnet-ip":
+        return "100.x.x.x"
+    return value[:4] + "…"
 
 
 class Scanner:
-    def __init__(self, patterns, allow):
-        self.patterns, self.allow, self.hits = patterns, allow, 0
+    def __init__(self, patterns, allowlist):
+        self.patterns, self.allowlist, self.hits = patterns, allowlist, 0
 
-    def line(self, where, text):
-        for name, rx in self.patterns:
-            for m in rx.finditer(text):
-                if any(a.search(m.group(0)) for a in self.allow):
-                    continue
-                self.hits += 1
-                print(f"LEAK {where}: {name} {mask(m.group(0))}", file=sys.stderr)
+    def allowed(self, path, value):
+        return any(fnmatch.fnmatchcase(path, glob) and regex.search(value)
+                   for glob, regex in self.allowlist)
+
+    def report(self, where, what):
+        self.hits += 1
+        print(f"LEAK {where}: {what}", file=sys.stderr)
+
+    def scan_line(self, path, where, text):
+        for name, regex in self.patterns:
+            for match in regex.finditer(text):
+                if not self.allowed(path, match.group(0)):
+                    self.report(where, f"{name} {mask(name, match.group(0))}")
 
 
-def git(*args):
-    return subprocess.run(["git", *args], check=True, capture_output=True,
-                          text=True, errors="replace").stdout
+def git(*args, cwd=None):
+    proc = subprocess.run(["git", *args], cwd=cwd, capture_output=True,
+                          text=True, errors="replace")
+    if proc.returncode:
+        raise UsageError(f"git {' '.join(args)}: {proc.stderr.strip()}")
+    return proc.stdout
 
 
-def scan_tree(sc):
-    files = git("ls-files", "-z").split("\0")
-    for f in filter(None, files):
-        p = pathlib.Path(f)
-        if not p.is_file():
+def scan_tree(scanner):
+    top = pathlib.Path(git("rev-parse", "--show-toplevel").strip())
+    for rel in filter(None, git("ls-files", "-z", cwd=top).split("\0")):
+        path = top / rel
+        if not path.is_file():
             continue
-        data = p.read_bytes()
+        data = path.read_bytes()
         if b"\0" in data[:8192]:
             continue  # binary
-        for n, text in enumerate(data.decode("utf-8", "replace").splitlines(), 1):
-            sc.line(f"{f}:{n}", text)
+        for lineno, text in enumerate(data.decode("utf-8", "replace").splitlines(), 1):
+            scanner.scan_line(rel, f"{rel}:{lineno}", text)
 
 
-def scan_range(sc, rng):
+def resolve_range(spec):
+    if "..." in spec:
+        base, _, head = spec.partition("...")
+        base = git("merge-base", base or "HEAD", head or "HEAD").strip()
+    else:
+        base, _, head = spec.partition("..")
+    base, head = base or "HEAD", head or "HEAD"
+    for rev in (base, head):
+        git("rev-parse", "--verify", "--quiet", f"{rev}^{{commit}}")
+    return base, head
+
+
+def scan_range(scanner, spec):
+    base, head = resolve_range(spec)
     # Two-dot tree diff: covers merge commits, whose resolution `git log -p`
-    # would hide.
-    base, _, head = rng.partition("..")
-    f, n = "?", 0
+    # would hide. `+++ ` is a file header only between `diff --git` and the
+    # first `@@`; inside a hunk it is an added line starting with `++ `.
+    path, lineno, in_header = "?", 0, False
     for raw in git("diff", "--no-color", "--no-ext-diff", "-U0", base, head).splitlines():
-        if raw.startswith("+++ "):
-            f = raw[6:] if raw.startswith("+++ b/") else raw[4:]
+        if raw.startswith("diff --git "):
+            in_header = True
+        elif in_header and raw.startswith("+++ "):
+            path = raw[6:] if raw.startswith("+++ b/") else raw[4:]
         elif raw.startswith("@@"):
-            m = re.search(r"\+(\d+)", raw)
-            n = int(m.group(1)) if m else 0
-        elif raw.startswith("+"):
-            sc.line(f"{f}:{n}", raw[1:])
-            n += 1
-    log = git("log", "--format=%x00%h%x01%ae%x01%ce%x01%B", rng)
-    for rec in filter(None, log.split("\0")):
-        sha, ae, ce, body = rec.split("\x01", 3)
-        for kind, email in (("author", ae), ("committer", ce)):
+            in_header = False
+            found = re.search(r"\+(\d+)", raw)
+            lineno = int(found.group(1)) if found else 0
+        elif not in_header and raw.startswith("+"):
+            scanner.scan_line(path, f"{path}:{lineno}", raw[1:])
+            lineno += 1
+    log = git("log", "--format=%x00%h%x01%ae%x01%ce%x01%B", f"{base}..{head}")
+    for commit in filter(None, log.split("\0")):
+        sha, author_email, committer_email, body = commit.split("\x01", 3)
+        for role, email in (("author", author_email), ("committer", committer_email)):
             if not IDENTITY_OK.search(email):
-                sc.hits += 1
-                print(f"LEAK commit {sha}: {kind} email is not a noreply address",
-                      file=sys.stderr)
-        for i, text in enumerate(body.splitlines(), 1):
-            sc.line(f"commit {sha} message:{i}", text)
+                scanner.report(f"commit {sha}", f"{role} email is not a noreply address")
+        for lineno, text in enumerate(body.splitlines(), 1):
+            scanner.scan_line("", f"commit {sha} message:{lineno}", text)
 
 
-def main(argv):
+def run(argv):
     if len(argv) != 2:
-        print(__doc__, file=sys.stderr)
-        return 2
-    sc = Scanner(load_patterns(HERE / "leak-patterns.txt"), load_allow(HERE / "leak-allow.txt"))
+        raise UsageError("expected one argument")
+    scanner = Scanner(load_rules(HERE / "leak-patterns.txt"),
+                      load_rules(HERE / "leak-allow.txt"))
     arg = argv[1]
     if arg == "--stdin":
-        for n, text in enumerate(sys.stdin.read().splitlines(), 1):
-            sc.line(f"stdin:{n}", text)
+        for lineno, text in enumerate(sys.stdin.read().splitlines(), 1):
+            scanner.scan_line("", f"stdin:{lineno}", text)
     elif arg == "--tree":
-        scan_tree(sc)
-    elif ".." in arg:
-        scan_range(sc, arg)
+        scan_tree(scanner)
+    elif ".." in arg and not arg.startswith("-"):
+        scan_range(scanner, arg)
     else:
-        print(__doc__, file=sys.stderr)
-        return 2
-    if sc.hits:
-        print(f"leak-scan: {sc.hits} hit(s). Fake test values must carry a marker "
-              f"from tools/checks/leak-allow.txt (e.g. LEAKCHECK, FAKE).", file=sys.stderr)
+        raise UsageError(f"unknown argument {arg!r}")
+    if scanner.hits:
+        print(f"leak-scan: {scanner.hits} hit(s). Fake test values must carry a marker "
+              f"from tools/checks/leak-allow.txt (e.g. -LEAKCHECK-, -FAKE).", file=sys.stderr)
         return 1
     print("leak-scan: clean")
     return 0
+
+
+def main(argv):
+    try:
+        return run(argv)
+    except UsageError as err:
+        print(f"leak-scan: {err}", file=sys.stderr)
+        print(__doc__, file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

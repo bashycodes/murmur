@@ -32,7 +32,12 @@ jobs:
         run: |
           tools/checks/leak-scan.py --tree
           head="${PR_HEAD:-$GITHUB_SHA}"
-          base="${PR_BASE:-$BEFORE}"
+          base="$BEFORE"
+          if [ -n "$PR_BASE" ]; then
+            # From the merge-base, so lines integration deleted after the
+            # branch point don't read as added by the PR.
+            base="$(git merge-base "$PR_BASE" "$PR_HEAD")"
+          fi
           if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
             # New branch or rewritten history: scan what is not on integration.
             base="$(git merge-base origin/integration "$head" 2>/dev/null || true)"

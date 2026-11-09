@@ -1,24 +1,35 @@
-# Allowlist for tools/checks/leak-scan.py: one python regex per line, tested
-# with re.search against the matched text only (not the whole line). Keep each
-# entry narrow: a marker word a real secret never contains, or a placeholder.
+# Allowlist for tools/checks/leak-scan.py: `<path-glob> <python-regex>` per
+# line. The regex is tested (re.search) against the matched text only, never
+# the whole line; the glob (fnmatch) against the file path, `*` for anywhere
+# including commit messages. Keep entries narrow: an explicit marker token, or
+# an exact placeholder.
 
-# Fake keys and tokens in tests carry a marker word: sk-or-v1-LEAKCHECK-...,
-# sk-or-v1-FAKE..., sk-or-v1-PROBE-..., sk-or-SUPERSECRET-....
-(LEAK|FAKE|[Ff]ake|PROBE|SUPERSECRET|EXAMPLE|[Ee]xample|PLACEHOLDER|DUMMY|[Dd]ummy)
-# Counting fakes: 0123456789 / abcdefgh runs no generated key contains.
-(0123456789|abcdefgh)
+# Fake keys and tokens carry a marker token as a delimited segment after the
+# prefix: sk-or-v1-LEAKCHECK-..., sk-or-v1-FAKE..., hf_FAKE..., a JWT signature
+# .LEAKCHECK-...
+* [-_.](?:LEAKCHECK|LEAK|FAKE|PROBE|SUPERSECRET)
+# A fake PEM header names the marker as its key type.
+* ^-----BEGIN (?:FAKE|LEAKCHECK) PRIVATE KEY-----$
+# Counting fakes in older suites: a segment that opens with 0123456789 or
+# abcdefgh (sk-or-v1-0123456789abcdef, sk-abcdefghijklmnop1234).
+* [-_](?:0123456789|abcdefgh)
+# One older fixture with its marker mid-segment, exactly (the [a] keeps this
+# line from matching itself).
+crates/flow-server/tests/debug_capture.rs ^sk-or-v1-0000fake[a]pikey0000$
+# AWS's own documentation key id.
+* ^AKIAIOSFODNN7EXAMPLE$
 
-# Documentation tailnet addresses in tests and fixtures: the first /24 of the
-# range (100.64.0.x), its last addresses (range-boundary tests), Tailscale's
-# docs example 100.101.102.103, its MagicDNS resolver, and the router test's
-# 100.100.1.2. Real tailnet nodes get random addresses; don't widen this.
-^100\.64\.0\.[0-9]{1,3}$
-^100\.127\.255\.25[45]$
-^100\.101\.102\.103$
-^100\.100\.100\.100$
-^100\.100\.1\.2$
+# Tailnet addresses used as documentation examples, exactly.
+* ^100\.64\.0\.(?:0|2|5|10|11|20|98|99)$
+* ^100\.101\.102\.103$
+* ^100\.100\.1\.2$
+* ^100\.100\.100\.100$
+* ^100\.127\.255\.255$
+# Assignable range-boundary addresses, only in the classifier tests.
+crates/flow-server/src/net.rs ^100\.(?:64\.0\.1|127\.255\.254)$
+apps/flow-windows/src/dev_settings.rs ^100\.(?:64\.0\.1|127\.255\.254)$
 
 # Placeholder accounts in docs and CI: /home/user, /home/runner (GitHub
-# Actions), /home/you, C:\Users\u, C:\Users\you, C:\Users\Public, CI runners.
-^/home/(user|runner|you|me|USER|username|example|ubuntu|builder)$
-(?i:[\\/]users[\\/]{1,2}(u|me|you|user|username|public|default|example|runneradmin|circleci))$
+# Actions), C:\Users\u, C:\Users\you, C:\Users\Public, CI runners.
+* ^/home/(?:user|runner|you|me|USER|username|example|ubuntu|builder)$
+* (?i:[\\/]users[\\/]{1,2}(?:u|me|you|user|username|public|default|example|runneradmin|circleci))$

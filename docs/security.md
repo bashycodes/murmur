@@ -12,18 +12,26 @@ Two layers keep secrets and owner details out of the repo:
   layer that sees a merge made on github.com, which no local hook does.
 
 Patterns are in `tools/checks/leak-patterns.txt`: `sk-` API keys (OpenRouter,
-OpenAI), GitHub tokens (`ghp_`, `gho_`, `github_pat_`), Hugging Face `hf_`
-tokens, AWS `AKIA` key ids, PEM private keys, JWT-shaped strings, tailnet
-addresses (100.64.0.0/10), and absolute home paths (`/home/<user>`,
-`C:\Users\<name>`). Commit author and committer emails must be GitHub noreply
-addresses.
+OpenAI), GitHub tokens (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`),
+Hugging Face `hf_` tokens, AWS `AKIA`/`ASIA` key ids, PEM private keys,
+JWT-shaped strings, tailnet addresses (100.64.0.0/10), and absolute home paths
+(`/home/<user>`, `C:\Users\<name>`, also as `file://` URLs).
 
-Fake values in tests carry a marker word (`LEAKCHECK`, `FAKE`, `PROBE`, ...)
-listed in `tools/checks/leak-allow.txt`; a new fake uses one of them rather
-than a new allowlist entry. Hits print masked, so a CI log never holds the
-value it caught.
+Commit author and committer emails must be GitHub noreply addresses
+(`noreply@anthropic.com` is allowed for commits made by coding agents). A pull
+request from an outside contributor whose commits carry a personal email fails
+`repo-checks`; they need to set GitHub's "Keep my email addresses private" and
+recommit. The scan cannot tell a real name from a handle, so the name a commit
+displays is a manual check.
 
-Run it before pushing: `tools/checks/leak-scan.py origin/integration..HEAD`.
+Fake values in tests carry a marker token as a delimited segment
+(`sk-or-v1-LEAKCHECK-...`, `hf_FAKE...`; see `tools/checks/leak-allow.txt`);
+a new fake uses one of them rather than a new allowlist entry. A hit prints
+the pattern name, the location and at most 4 characters of the value
+(tailnet addresses as `100.x.x.x`). Errors (bad range, bad pattern file)
+exit 2.
+
+Run it before pushing: `tools/checks/leak-scan.py origin/integration...HEAD`.
 Tests: `tools/checks/leak-scan_test.sh`.
 
 ## GitHub settings for the public repo (`bashycodes/murmur`)
