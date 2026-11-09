@@ -5,6 +5,7 @@
 // every Save). Field names mirror `src/prefs.rs` (snake_case).
 
 import { invoke } from "./ipc.js";
+import type { ModelSource } from "./model-source.js";
 
 export interface DictEntry {
   word: string;
@@ -53,6 +54,8 @@ export interface Prefs {
   hebrew_model?: string;
   /** A Hebrew model folder from the server's library (D41); null = the catalogue folder. */
   hebrew_model_dir?: string | null;
+  /** "Download from" while a server is set (D79). */
+  model_source: ModelSource;
   /** Language-ID model from the server's library (D41); null = the default file. */
   lid_model_path?: string | null;
   spoken_cleanup: boolean;

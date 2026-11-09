@@ -5,6 +5,7 @@
 // General page's keycap / Change editors (`.lw-edit`).
 
 import { $, el, setStatus, setValue } from "../lib/dom.js";
+import type { ModelSource } from "../lib/model-source.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { captureChord, RECORDING_TEXT, stopCapture } from "../lib/keycapture.js";
 import { prefsStore, type Prefs } from "../lib/prefs-store.js";
@@ -74,6 +75,7 @@ function fill(prefs: Prefs): void {
   $<HTMLSelectElement>("asr_engine").value = prefs.asr_engine;
   setValue("parakeet_model_dir", prefs.parakeet_model_dir ?? "");
   $<HTMLSelectElement>("hebrew_model").value = prefs.hebrew_model ?? "zipformer";
+  $<HTMLSelectElement>("model_source").value = prefs.model_source;
   showEngineFields();
   setValue("ptt", prefs.shortcuts.ptt);
   setValue("hands_free", prefs.shortcuts.hands_free);
@@ -336,6 +338,7 @@ export function collectGeneral(): Partial<Prefs> {
   next.hebrew_model = $<HTMLSelectElement>("hebrew_model").value;
   // Choosing another Hebrew model leaves a server one (D41) behind.
   if (next.hebrew_model !== prefsStore.get()?.hebrew_model) next.hebrew_model_dir = null;
+  next.model_source = $<HTMLSelectElement>("model_source").value as ModelSource;
   next.microphone = $<HTMLSelectElement>("microphone").value || null;
   for (const f of BOOL_FIELDS) next[f] = $<HTMLInputElement>(f).checked;
   next.paste_method = $<HTMLSelectElement>("paste_method").value;

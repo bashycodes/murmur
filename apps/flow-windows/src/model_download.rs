@@ -583,8 +583,10 @@ pub struct CatalogView {
     /// This build runs its engine, so it can be imported from a folder,
     /// zip or file (`model_import`), with or without feature `download`.
     pub importable: bool,
-    /// A server is set (D41): downloads come from its library (Settings
-    /// lists it), never from Hugging Face, so `available` is false here.
+    /// Downloads come from the server's library (D41: a server is set and
+    /// "Download from" is Your server, D79), never from Hugging Face;
+    /// `available` then means this build runs the engine
+    /// (`server_library::catalog_for`).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub from_server: bool,
     pub files: Vec<FileView>,

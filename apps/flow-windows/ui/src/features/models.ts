@@ -8,11 +8,15 @@
 // the dialog's Download button, never by itself (D9). "Import from file…" next to each row installs
 // the same catalogue model from a folder, .zip or file on this PC (model_import_start, no network),
 // checked against the same fingerprints; its progress comes as the same `model:download` events.
+// With a server set, "Download models from" (D79) picks its library (the default) or Hugging Face;
+// a catalogue model the server lacks shows "Not on your server" instead of Download.
 
 import { $, askDialog, html } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
+import { onServer, type ModelSource } from "../lib/model-source.js";
 import { prefsStore } from "../lib/prefs-store.js";
 import type { Feature } from "../lib/router.js";
+import { views } from "../lib/views.js";
 
 export interface CatalogFile {
   name: string;
@@ -47,7 +51,7 @@ export interface CatalogEntry {
   available: boolean;
   /** This build runs its engine: it can be imported from a folder, .zip or file (no network). */
   importable?: boolean;
-  /** A server is set (D41): downloads come from its library, never Hugging Face. */
+  /** Downloads come from the server's library (D41/D79: a server is set and picked), never Hugging Face. */
   from_server?: boolean;
   files: CatalogFile[];
 }
@@ -190,9 +194,17 @@ export const models = {
     notify();
     return catalog;
   },
-  /** A server is set: downloads come from its library (D41). */
+  /** Downloads come from the server's library (D41; "Download from" = Your server, D79). */
   fromServer(): boolean {
     return catalog.some((c) => c.from_server);
+  },
+  /** Downloads come from the server, and its library (read) has no usable copy of `e`. */
+  notOnServer(e: CatalogEntry | undefined): boolean {
+    return !!e?.from_server && onServer(e.id, serverLib) === false;
+  },
+  /** Download can be pressed for `e` (this build can fetch it, from where downloads come from now). */
+  canStart(e: CatalogEntry | undefined): boolean {
+    return !!e?.available && !models.notOnServer(e);
   },
   server(): ServerLibrary | undefined {
     return serverLib;
@@ -222,7 +234,7 @@ export const models = {
   /** The confirm dialog (3a); downloads only when the user presses Download there. */
   async confirmAndStart(id: string): Promise<void> {
     const e = models.entry(id);
-    if (!e || !e.available || models.busy()) return;
+    if (!e || !models.canStart(e) || models.busy()) return;
     if (!(await confirm(e))) return;
     progress.set(id, { id, received: 0, total: e.size, state: "downloading", started: Date.now() });
     notify();
@@ -312,13 +324,30 @@ function askImport(e: CatalogEntry): Promise<string | null> {
 const isSpeech = (c: CatalogEntry): boolean => c.engine !== "llm";
 
 function confirm(e: CatalogEntry): Promise<boolean> {
+  if (e.from_server) return askDownload(e.title, serverName(), e.size, e.files.length, e.dest, CHECK_PINNED_SERVER);
   const many = e.files.length > 1;
   return askDownload(e.title, many ? e.page : e.files[0].url, e.size, e.files.length, e.dest, CHECK_PINNED);
 }
 
+/** The configured server's host ("" before the engine settings load). */
+function serverHost(): string {
+  return views.dev?.form.host.trim() ?? "";
+}
+
+/** "From" in the confirm dialog for a download from the server. */
+function serverName(): string {
+  const host = serverHost();
+  return host ? `Your server, ${host}` : "Your server's model library";
+}
+
+/** A server is set (and this build talks to servers). */
+export function hasServer(): boolean {
+  return !!views.dev?.caps.remote && serverHost() !== "";
+}
+
 /** The same dialog for a model from the server's library. */
 function confirmServer(m: ServerModel): Promise<boolean> {
-  return askDownload(m.title, "Your server's model library", m.size, m.files, m.dest, m.catalogue_id ? CHECK_PINNED : CHECK_SERVER);
+  return askDownload(m.title, serverName(), m.size, m.files, m.dest, m.catalogue_id ? CHECK_PINNED_SERVER : CHECK_SERVER);
 }
 
 function askDownload(title: string, from: string, size: number, files: number, dest: string, check: string): Promise<boolean> {
@@ -349,6 +378,8 @@ function askDownload(title: string, from: string, size: number, files: number, d
 }
 
 const CHECK_PINNED = "Against a SHA-256 fingerprint built into this version. If it doesn't match, the file is deleted and never loaded.";
+const CHECK_PINNED_SERVER =
+  "Against the SHA-256 fingerprint built into this version, which your server's copy must match. If it doesn't, the file is deleted and never loaded.";
 const CHECK_SERVER = "Against the SHA-256 your server lists for it, over your key and the server's certificate. If it doesn't match, the file is deleted and never loaded.";
 
 const CHECK = `<svg class="lw-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"></path></svg>`;
@@ -410,8 +441,10 @@ function renderSettingsRow(): void {
   const p = models.progress(id);
   const busy = models.busy();
   const e = models.entry(id);
-  $<HTMLButtonElement>("dl_start").hidden = models.busy(id) || !e?.available;
+  const missing = models.notOnServer(e);
+  $<HTMLButtonElement>("dl_start").hidden = models.busy(id) || !models.canStart(e);
   $<HTMLButtonElement>("dl_start").disabled = busy;
+  $<HTMLElement>("dl_missing").hidden = !missing || !!e?.installed;
   $<HTMLButtonElement>("dl_import").hidden = models.busy(id) || !e?.importable;
   $<HTMLButtonElement>("dl_import").disabled = busy;
   $<HTMLButtonElement>("dl_stop").hidden = !models.busy(id);
@@ -420,16 +453,20 @@ function renderSettingsRow(): void {
   bar.hidden = !models.busy(id);
   if (p && models.busy(id)) (bar.firstElementChild as HTMLElement).style.width = `${p.total ? Math.round((p.received / p.total) * 100) : 0}%`;
   if (!p) {
-    line.textContent = e?.from_server && !e.installed ? FROM_SERVER_HINT : "";
-    line.className = e?.from_server ? "hint" : "";
+    line.textContent = missing && !e?.installed ? NOT_ON_SERVER : "";
+    line.className = "hint";
     return;
   }
   line.textContent = progressLine(p, models.entry(id));
   line.className = `hint ${p.state === "error" ? "err" : p.state === "done" ? "ok" : ""}`;
 }
 
-/** Under a catalogue row when a server is set (D41). */
-const FROM_SERVER_HINT = "A server is set, so models come only from its library: see From your server below, or Import from file.";
+/** Under a catalogue model the server lacks (D79). */
+const NOT_ON_SERVER = "Your server doesn't have this one. Ask whoever runs it to add it, or download from Hugging Face.";
+
+/** The "Not on your server" badge (design: OnboardModel / SettingsSpeech). */
+export const NOT_ON_SERVER_BADGE = (id: string): string =>
+  `<span class="fl-badge fl-badge-light" id="${id}" hidden>Not on your server</span>`;
 
 // ------------------------------------------------------------ Settings → AI cleanup row
 
@@ -534,7 +571,9 @@ function renderLlmRow(): void {
   const line = $<HTMLElement>("llm_dl_status");
   const busy = Boolean(e && models.busy(e.id));
   const inUse = Boolean(e && e.installed && llmInUse(e));
-  start.hidden = !e || e.installed || busy || !e.available;
+  const missing = models.notOnServer(e);
+  $<HTMLElement>("llm_dl_missing").hidden = !e || e.installed || busy || !missing;
+  start.hidden = !e || e.installed || busy || !models.canStart(e);
   start.disabled = models.busy();
   if (e) start.textContent = `Download ${mb(e.size)}…`;
   imp.hidden = !e || e.installed || busy || !e.importable;
@@ -559,8 +598,8 @@ function renderLlmRow(): void {
   if (!e.installed) {
     line.replaceChildren();
     line.className = "hint";
-    if (e.from_server) {
-      line.append(`${e.desc}. Not downloaded yet. A server is set, so models come only from its library: Settings → Speech to text → From your server${e.importable ? ", or Import from file" : ""}.`);
+    if (missing) {
+      line.append(`${e.desc}. ${NOT_ON_SERVER}`);
       return;
     }
     line.append(`${e.desc}. Not downloaded yet${e.available ? "." : ": "}`);
@@ -606,10 +645,11 @@ export const LLM_DOWNLOAD_ROW = `
 <div class="fl-row lw-dl-row" id="llm_dl_row" data-needs="local" hidden>
   <div class="fl-row-text">
     <div class="fl-row-title"><label for="llm_dl_model">Download a model</label></div>
-    <div class="fl-row-desc">From Hugging Face, checked against a fingerprint built into this version. Only when you press Download; nothing about you is sent. A downloaded or imported model turns on cleanup on this PC.<span class="lw-status-sub"><span class="lw-dl-bar" id="llm_dl_bar" hidden><span></span></span><span id="llm_dl_status"></span></span><span class="lw-status-sub hint" id="llm_dl_hw"></span></div>
+    <div class="fl-row-desc">From your server or Hugging Face (Download models from, in Speech to text), checked against a fingerprint built into this version. Only when you press Download; nothing about you is sent. A downloaded or imported model turns on cleanup on this PC.<span class="lw-status-sub"><span class="lw-dl-bar" id="llm_dl_bar" hidden><span></span></span><span id="llm_dl_status"></span></span><span class="lw-status-sub hint" id="llm_dl_hw"></span></div>
   </div>
   <div class="fl-row-control">
     <select id="llm_dl_model" class="fl-select lw-w220" aria-label="Cleanup model to download"></select>
+    ${NOT_ON_SERVER_BADGE("llm_dl_missing")}
     <button type="button" class="fl-btn fl-btn-secondary" id="llm_dl_start">Download…</button>
     <button type="button" class="fl-btn fl-btn-secondary" id="llm_dl_import" hidden>Import from file…</button>
     <button type="button" class="fl-btn fl-btn-secondary" id="llm_dl_use" hidden>Use</button>
@@ -737,7 +777,9 @@ function renderHebrewRow(): void {
   const bar = $<HTMLElement>("he_bar");
   const busy = Boolean(e && models.busy(e.id));
   const complete = e ? (e.complete ?? e.installed) : false;
-  start.hidden = !e || complete || busy || !e.available;
+  const missing = models.notOnServer(e);
+  $<HTMLElement>("he_missing").hidden = !e || e.installed || busy || !missing;
+  start.hidden = !e || complete || busy || !models.canStart(e);
   start.disabled = models.busy();
   imp.hidden = !e || complete || busy || !e.importable;
   imp.disabled = models.busy();
@@ -773,8 +815,8 @@ function renderHebrewRow(): void {
     return;
   }
   if (!e.installed) {
-    const how = e.from_server
-      ? "a server is set, so get it from its library (From your server below)"
+    const how = missing
+      ? "your server doesn't have it; ask whoever runs it to add it, or download from Hugging Face"
       : e.available
         ? "press Download"
         : e.importable
@@ -820,6 +862,7 @@ export const HEBREW_ROW = `
       <option value="parakeet_he">Parakeet</option>
       <option value="none">None</option>
     </select>
+    ${NOT_ON_SERVER_BADGE("he_missing")}
     <button type="button" class="fl-btn fl-btn-secondary" id="he_download" hidden>Download…</button>
     <button type="button" class="fl-btn fl-btn-secondary" id="he_import" hidden>Import from file…</button>
     <button type="button" class="fl-btn fl-btn-secondary" id="he_stop" hidden>Cancel</button>
@@ -935,11 +978,56 @@ export const SERVER_MODELS_GROUP = `
   <h3 class="fl-group-title lw-title-badge">From your server <button type="button" class="fl-btn fl-btn-ghost lw-btn-sm" id="srv_refresh">Refresh</button></h3>
   <div class="fl-group">
     <div class="fl-row">
-      <div class="fl-row-text"><div class="fl-row-desc">A server is set, so models download from its library instead of Hugging Face, including models you added to it. Only when you press Download; built-in models are checked against the fingerprints in this version, your own against the fingerprint your server lists.<span class="lw-status-sub" id="srv_note"></span></div></div>
+      <div class="fl-row-text"><div class="fl-row-desc">Everything in your server's library, including models you added to it. Only when you press Download; built-in models are checked against the fingerprints in this version, your own against the fingerprint your server lists.<span class="lw-status-sub" id="srv_note"></span></div></div>
     </div>
     <div id="srv_models" class="lw-srv-list"></div>
   </div>
 </section>`;
+
+// ------------------------------------------------------------ Download models from (D79)
+
+/** Settings → Speech to text → On this PC: where downloads come from, shown while a server is set. */
+export const SOURCE_ROW = `
+<div class="fl-row" id="src_row" hidden>
+  <div class="fl-row-text">
+    <div class="fl-row-title"><label for="model_source">Download models from</label></div>
+    <div class="fl-row-desc">For speech and cleanup models. Your server works without the internet. Every file is checked against its SHA-256 fingerprint before it's used.</div>
+  </div>
+  <div class="fl-row-control">
+    <select id="model_source" class="fl-select lw-w220" data-save="prefs" aria-label="Download models from">
+      <option value="server">Your server</option>
+      <option value="huggingface">Hugging Face</option>
+    </select>
+  </div>
+</div>`;
+
+/** Where downloads come from now: the backend's answer (server_library::Origin), seen in the catalogue. */
+export function downloadSource(): ModelSource {
+  return models.fromServer() ? "server" : "huggingface";
+}
+
+let sourceKey = "";
+
+/** Show the source row, and re-read the catalogue and the server's library when the server or the choice changed. */
+function sourceChanged(): void {
+  const row = document.getElementById("src_row");
+  if (row) row.hidden = !hasServer();
+  const key = `${serverHost()}|${prefsStore.get()?.model_source ?? ""}`;
+  if (key === sourceKey) return;
+  const first = sourceKey === "";
+  sourceKey = key;
+  if (first) return;
+  serverLib = undefined;
+  void models
+    .refresh()
+    .then(() => (models.fromServer() ? models.refreshServer() : undefined))
+    .catch(() => {});
+}
+
+/** Pick where downloads come from (setup's switch; Settings saves through data-save). */
+export async function setDownloadSource(source: ModelSource): Promise<void> {
+  await prefsStore.save({ model_source: source });
+}
 
 export const modelsFeature: Feature = {
   init(): void {
@@ -997,6 +1085,8 @@ export const modelsFeature: Feature = {
       }
     });
     prefsStore.subscribe(() => renderHebrewRow());
+    prefsStore.subscribe(sourceChanged);
+    views.onDev(sourceChanged);
     document.getElementById("hebrew_model")?.addEventListener("change", renderHebrewRow);
     document.getElementById("he_download")?.addEventListener("click", () => {
       const e = hebrewEntry($<HTMLSelectElement>("hebrew_model").value);
@@ -1053,10 +1143,11 @@ export const DOWNLOAD_ROW = `
 <div class="fl-row lw-dl-row" id="dl_row" hidden>
   <div class="fl-row-text">
     <div class="fl-row-title"><label for="dl_model">Download a model</label></div>
-    <div class="fl-row-desc">From Hugging Face, or Import from file (a folder, .zip or model file you copied here, no network); either way checked against a fingerprint built into this version. Only when you press Download; nothing about you is sent.<span class="lw-status-sub"><span class="lw-dl-bar" id="dl_bar" hidden><span></span></span><span id="dl_status"></span></span></div>
+    <div class="fl-row-desc">From your server or Hugging Face (Download models from, above), or Import from file (a folder, .zip or model file you copied here, no network); either way checked against a fingerprint built into this version. Only when you press Download; nothing about you is sent.<span class="lw-status-sub"><span class="lw-dl-bar" id="dl_bar" hidden><span></span></span><span id="dl_status"></span></span></div>
   </div>
   <div class="fl-row-control">
     <select id="dl_model" class="fl-select lw-w220" aria-label="Model to download"></select>
+    ${NOT_ON_SERVER_BADGE("dl_missing")}
     <button type="button" class="fl-btn fl-btn-secondary" id="dl_start">Download…</button>
     <button type="button" class="fl-btn fl-btn-secondary" id="dl_import" hidden>Import from file…</button>
     <button type="button" class="fl-btn fl-btn-secondary" id="dl_stop" hidden>Cancel</button>

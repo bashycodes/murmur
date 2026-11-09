@@ -1252,28 +1252,34 @@ async fn open_external(url: String) -> Result<(), String> {
 
 /// The speech and AI cleanup models this build can download (D31), with
 /// where each is saved and whether it is already there. With a server set
-/// (D41) none is downloadable from Hugging Face (`from_server`): Settings
-/// lists the server's library instead (`server_models`).
+/// and "Download from" on Your server (D41/D79) they come from its library
+/// (`from_server`; the UI marks the ones `server_models` lacks).
 #[tauri::command]
 fn model_catalog(state: tauri::State<'_, AppState>) -> Vec<crate::model_download::CatalogView> {
     use crate::model_download::{catalog_view, engine_built, CAN_DOWNLOAD};
     let dir = core_adapter::models_dir(state.appdata.as_deref());
-    let server = configured_server(&state).is_some();
-    let mut v = catalog_view(&dir, CAN_DOWNLOAD, engine_built);
-    if server {
-        for r in &mut v {
-            r.from_server = true;
-            r.available = false;
-        }
+    let rows = catalog_view(&dir, CAN_DOWNLOAD, engine_built);
+    #[cfg(feature = "remote")]
+    {
+        crate::server_library::catalog_for(rows, &download_origin(&state))
     }
-    v
+    #[cfg(not(feature = "remote"))]
+    {
+        rows
+    }
 }
 
-/// The saved server, when one is set (and this build talks to servers).
+/// Where catalogue downloads come from now: the configured server's
+/// library or Hugging Face, by the "Download from" choice (D79).
+#[cfg(feature = "remote")]
+fn download_origin(state: &AppState) -> crate::server_library::Origin {
+    let source = state.prefs.read().unwrap().model_source;
+    crate::server_library::Origin::of(configured_server(state), source)
+}
+
+/// The saved server, when one is set (only builds that talk to servers).
+#[cfg(feature = "remote")]
 fn configured_server(state: &AppState) -> Option<flow_router::ServerConfig> {
-    if !cfg!(feature = "remote") {
-        return None;
-    }
     let dev = state.prefs.read().unwrap().developer.clone();
     router_adapter::server_config(&dev, &dev.token())
         .ok()
@@ -1426,10 +1432,11 @@ async fn llm_backend(state: tauri::State<'_, AppState>) -> Result<core_adapter::
 }
 
 /// Download catalogue model `id` (D9/D31: only ever sent after the user
-/// pressed Download). From the server's library when a server is set
-/// (D41: its copy must match the built-in pins; never Hugging Face then),
-/// else from Hugging Face. Progress arrives as `model:download` events; on
-/// `done` the prefs point the local engine at it and it loads.
+/// pressed Download). From the server's library when a server is set and
+/// "Download from" is Your server (D41/D79: its copy must match the
+/// built-in pins; never Hugging Face then), else from Hugging Face.
+/// Progress arrives as `model:download` events; on `done` the prefs point
+/// the local engine at it and it loads.
 #[tauri::command]
 fn model_download_start(
     app: AppHandle,
@@ -1438,10 +1445,9 @@ fn model_download_start(
 ) -> Result<(), String> {
     use crate::model_download as md;
     let entry = md::entry(&id).ok_or_else(|| format!("unknown model {id}"))?;
-    let server = configured_server(&state);
     #[cfg(feature = "remote")]
     let job = {
-        let origin = crate::server_library::Origin::of(server);
+        let origin = download_origin(&state);
         move |dir: &std::path::Path, cancel: &std::sync::atomic::AtomicBool, emit: &mut dyn FnMut(md::Progress)| {
             crate::server_library::download_catalogue(
                 entry,
@@ -1456,7 +1462,6 @@ fn model_download_start(
     };
     #[cfg(not(feature = "remote"))]
     let job = {
-        let _ = server;
         move |dir: &std::path::Path, cancel: &std::sync::atomic::AtomicBool, emit: &mut dyn FnMut(md::Progress)| {
             let fetch = hugging_face_fetch().map_err(md::Stop::Failed)?;
             md::run(entry, dir, fetch.as_ref(), cancel, emit)
@@ -1474,7 +1479,7 @@ fn model_download_start(
 }
 
 /// The Hugging Face client (feature `download`); only built for a
-/// download when no server is set.
+/// download from Hugging Face (no server, or Hugging Face picked).
 fn hugging_face_fetch() -> Result<Box<dyn crate::model_download::Fetch + Send>, String> {
     #[cfg(feature = "download")]
     {
