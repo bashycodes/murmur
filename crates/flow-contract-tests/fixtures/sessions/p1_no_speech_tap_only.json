@@ -1,0 +1,9 @@
+{
+ "asr": {
+  "mock": "Yeah."
+ },
+ "audio": "speech:60",
+ "contexts": [],
+ "name": "p1_no_speech_tap_only",
+ "session_config": {}
+}
