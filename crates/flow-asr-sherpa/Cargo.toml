@@ -2,7 +2,7 @@
 name = "flow-asr-sherpa"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license-file.workspace = true
 description = "sherpa-onnx ASR for flow-core: Parakeet-TDT (offline NeMo transducer) and streaming zipformer2 (online transducer)"
 
 # Standalone on purpose: no flow-core dependency, so flow-core can depend on
@@ -10,9 +10,12 @@ description = "sherpa-onnx ASR for flow-core: Parakeet-TDT (offline NeMo transdu
 #
 # Native libs: the official `sherpa-onnx` crate links libsherpa-onnx-c-api +
 # libonnxruntime as shared libraries. Point SHERPA_ONNX_LIB_DIR at a directory
-# that holds them (desktop: the sherpa-onnx `*-shared-lib` release, Android:
-# its jniLibs/<abi>); without it, sherpa-onnx-sys downloads the matching
-# v1.13.8 prebuilt archive at *build* time. Nothing is fetched at runtime.
+# that holds them (desktop: the sherpa-onnx `*-shared-no-tts-lib` release,
+# Android: apps/flow-android/tools/build-sherpa-android.sh's output); without
+# it, sherpa-onnx-sys downloads the default v1.13.8 prebuilt archive at
+# *build* time, which links espeak-ng (GPL-3.0) for TTS: fine for a dev
+# build, never shipped (D80, tools/checks/no-tts-libs.sh). Nothing is
+# fetched at runtime.
 # onnxruntime shares no symbols with whisper.cpp's ggml, so unlike llama.cpp
 # (D10) it can live in the same process as whisper; see
 # docs/core-architecture.md "ASR backend: Parakeet".

@@ -6,7 +6,7 @@
 name = "flow-replay"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license-file.workspace = true
 publish = false
 description = "Replay saved recordings through speech models, cleanup models and prompt versions (debug tool)"
 

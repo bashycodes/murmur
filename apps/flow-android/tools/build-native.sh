@@ -14,9 +14,10 @@
 # Options: --no-llm, --no-parakeet (smaller/faster local or hybrid builds).
 # Legacy: --whisper [--llm] without --flavor builds the old whisper(+llm) set into the local flavour.
 # Requires: NDK 27.2.12479018, cargo-ndk, rustup target aarch64-linux-android, cmake + make
-# (whisper / llm), and for parakeet the official sherpa-onnx Android libs (never downloaded here):
+# (whisper / llm), and for parakeet sherpa-onnx's Android libs without text to speech (never
+# downloaded here; D80: upstream's Android release links espeak-ng, GPL-3.0):
 #   SHERPA_ANDROID_LIBS=<dir with libsherpa-onnx-c-api.so + libonnxruntime.so for arm64-v8a>
-#   (from sherpa-onnx-v1.13.8-android.tar.bz2, jniLibs/arm64-v8a).
+#   (the output dir of tools/build-sherpa-android.sh).
 # Env: FLOW_ARM_ARCH  ggml -march for aarch64 (default armv8.2-a+dotprod+fp16, any 2018+ big
 #                     core; use armv8-a for Cortex-A53-only phones).
 set -euo pipefail
@@ -79,9 +80,11 @@ if [[ $whisper == 1 ]]; then
 fi
 if [[ $parakeet == 1 ]]; then
   if [[ -z "${SHERPA_ANDROID_LIBS:-}" || ! -f "$SHERPA_ANDROID_LIBS/libsherpa-onnx-c-api.so" ]]; then
-    echo "parakeet needs SHERPA_ANDROID_LIBS=<sherpa-onnx-v1.13.8-android jniLibs/arm64-v8a> (or pass --no-parakeet)" >&2
+    echo "parakeet needs SHERPA_ANDROID_LIBS=<tools/build-sherpa-android.sh output> (or pass --no-parakeet)" >&2
     exit 2
   fi
+  # D80: refuse a sherpa-onnx build with TTS (espeak-ng) before spending a build on it.
+  "$repo/tools/checks/no-tts-libs.sh" "$SHERPA_ANDROID_LIBS/libsherpa-onnx-c-api.so" "$SHERPA_ANDROID_LIBS/libonnxruntime.so" || exit 2
   # Point sherpa-onnx-sys at the prebuilts so it never downloads.
   export SHERPA_ONNX_LIB_DIR="$SHERPA_ANDROID_LIBS"
 fi

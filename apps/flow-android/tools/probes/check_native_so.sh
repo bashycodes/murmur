@@ -4,6 +4,7 @@
 #  2. every LOAD segment of every .so is >= 16 KB aligned (Android 15 16 KB pages);
 #  3. NEEDED libs are bionic or shipped next to it (libc++_shared.so);
 #  4. optional APK: zipalign -P 16 says the .so entries are page-aligned + stored.
+#  4b. no .so carries espeak-ng/piper (sherpa-onnx TTS, GPL-3.0; D80).
 #  5. per flavour (D17): remote ships no ASR/LLM libs and libflow_ffi.so has no whisper_/llama_
 #     symbols; local's libflow_ffi.so has no WebSocket/TLS code and no cloud STT client (D18 C2);
 #     hybrid/remote's carries the cloud client (feature `cloud`) and the D39 admin natives (`admin`)
@@ -61,6 +62,15 @@ for f in "$dir"/*.so; do
   bad=$(awk '$1=="LOAD"{a=strtonum($NF); if (a < 16384) print $NF}' <<<"$hdr")
   if [[ -n "$bad" ]]; then fail load-align "$(basename "$f"): LOAD align < 16 KB: $bad"
   else echo "$(basename "$f"): LOAD segments 16 KB aligned"; fi
+done
+# D80: no .so carries sherpa-onnx's text-to-speech code (espeak-ng, GPL-3.0; piper).
+for f in "$dir"/*.so; do
+  rc=0; tts=$(LC_ALL=C grep -a -c -E 'espeak-ng|espeak_|piper_phonemize|phontab' "$f") || rc=$?
+  case $rc in
+    0) fail no-tts "$(basename "$f"): $tts espeak-ng/piper markers (use tools/build-sherpa-android.sh's no-TTS sherpa-onnx)" ;;
+    1) echo "$(basename "$f"): no espeak-ng/piper code" ;;
+    *) fail no-tts "grep exited $rc reading $f" ;;
+  esac
 done
 for f in "$dir"/*.so; do
   dyn=$("$bin/llvm-readelf" -dW "$f")

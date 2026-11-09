@@ -2,7 +2,7 @@
 name = "flow-whisper"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license-file.workspace = true
 description = "whisper.cpp speech engine as a plugin library (the Windows GPU build: flow_whisper_vulkan.dll)"
 
 # cdylib = the plugin flow-core loads at runtime (`whisper_plugin`); rlib =
