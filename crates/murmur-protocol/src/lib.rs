@@ -25,14 +25,25 @@ pub use murmur_core::CommitResult;
 pub const PROTO_MIN: u32 = 1;
 /// Highest protocol minor this build speaks.
 pub const PROTO_MAX: u32 = 1;
+// The names as macros, so CLIENT_SUBPROTOCOLS is built from them (concat!).
+macro_rules! subprotocol {
+    () => {
+        "murmur.v1"
+    };
+}
+macro_rules! old_subprotocol {
+    () => {
+        "flow.v1"
+    };
+}
 /// WebSocket subprotocol (`Sec-WebSocket-Protocol`).
-pub const SUBPROTOCOL: &str = "murmur.v1";
+pub const SUBPROTOCOL: &str = subprotocol!();
 /// The subprotocol's name before the Murmur rename (D83). Same protocol;
 /// servers still accept it, and clients still offer it after
 /// [`SUBPROTOCOL`], for one transition period (old apps, old servers).
-pub const OLD_SUBPROTOCOL: &str = "flow.v1";
+pub const OLD_SUBPROTOCOL: &str = old_subprotocol!();
 /// What a client offers: the new name first, then the old one.
-pub const CLIENT_SUBPROTOCOLS: &str = "murmur.v1, flow.v1";
+pub const CLIENT_SUBPROTOCOLS: &str = concat!(subprotocol!(), ", ", old_subprotocol!());
 pub const PATH_STREAM: &str = "/v1/stream";
 pub const PATH_HEALTH: &str = "/v1/health";
 pub const DEFAULT_PORT: u16 = 7313;
