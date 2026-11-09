@@ -1,5 +1,7 @@
 target/
 models/
+# D80: the model licence texts (tools/notice/fetch-texts.sh) are committed.
+!third_party/licenses/models/
 /models
 *.bin
 *.gguf

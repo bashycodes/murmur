@@ -53,54 +53,21 @@ pub fn url_host(url: &str) -> Option<String> {
     }
 }
 
-/// The app lists (windows-research `findings/data/app-lists.json`,
-/// copied verbatim into `data/`). Process names are exe stems, lowercase.
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-struct AppLists {
-    ai_apps: Vec<String>,
-    email_apps: Vec<String>,
-    document_apps: Vec<String>,
-    messaging_apps: Vec<String>,
-    work_messaging_apps: Vec<String>,
-    windows_ai_process_names: Vec<String>,
-    windows_email_process_names: Vec<String>,
-    windows_messaging_process_names: Vec<String>,
-    windows_terminal_process_names: Vec<String>,
-}
-
-fn lists() -> &'static AppLists {
-    static L: std::sync::OnceLock<AppLists> = std::sync::OnceLock::new();
-    L.get_or_init(|| {
-        serde_json::from_str(include_str!("../../data/app-lists.json"))
-            .expect("data/app-lists.json is valid")
-    })
-}
-
-/// Windows process names the lists miss (new Outlook, new Teams).
-const EXTRA_EMAIL_PROCS: &[&str] = &["olk", "hxoutlook"];
-const EXTRA_WORK_PROCS: &[&str] = &["ms-teams"];
-
-fn has(list: &[String], s: &str) -> bool {
-    list.iter().any(|x| x.eq_ignore_ascii_case(s))
-}
-
-/// App category. Precedence: work chat > email > messaging > AI > terminal
-/// > document > other.
+/// App category from the Windows app groups (flow-core `app_groups`,
+/// `data/app-groups.json`; exe stems exact, hosts with subdomains).
+/// Precedence: work chat > email > messaging > AI > terminal > document > other.
 pub fn app_kind(exe: &str, host: Option<&str>) -> AppKind {
-    let l = lists();
     if let Some(h) = host {
-        let h = h.to_ascii_lowercase();
-        let h = h.strip_prefix("www.").unwrap_or(&h);
-        return if has(&l.work_messaging_apps, h) {
+        let is = |n: &str| flow_core::app_groups::windows(n).host(h);
+        return if is("work") {
             AppKind::WorkMessaging
-        } else if has(&l.email_apps, h) {
+        } else if is("email") {
             AppKind::Email
-        } else if has(&l.messaging_apps, h) {
+        } else if is("messaging") {
             AppKind::Messaging
-        } else if has(&l.ai_apps, h) {
+        } else if is("ai") {
             AppKind::Ai
-        } else if has(&l.document_apps, h) {
+        } else if is("document") {
             AppKind::Document
         } else {
             AppKind::Other
@@ -108,17 +75,18 @@ pub fn app_kind(exe: &str, host: Option<&str>) -> AppKind {
     }
     let lower = exe.to_ascii_lowercase();
     let stem = lower.strip_suffix(".exe").unwrap_or(&lower);
-    if has(&l.work_messaging_apps, stem) || EXTRA_WORK_PROCS.contains(&stem) {
+    let is = |n: &str| flow_core::app_groups::windows(n).app(stem);
+    if is("work") {
         AppKind::WorkMessaging
-    } else if has(&l.windows_email_process_names, stem) || EXTRA_EMAIL_PROCS.contains(&stem) {
+    } else if is("email") {
         AppKind::Email
-    } else if has(&l.windows_messaging_process_names, stem) {
+    } else if is("messaging") {
         AppKind::Messaging
-    } else if has(&l.windows_ai_process_names, stem) {
+    } else if is("ai") {
         AppKind::Ai
-    } else if has(&l.windows_terminal_process_names, stem) {
+    } else if is("terminal") {
         AppKind::Terminal
-    } else if has(&l.document_apps, stem) {
+    } else if is("document") {
         AppKind::Document
     } else {
         AppKind::Other
@@ -130,20 +98,13 @@ pub fn app_kind(exe: &str, host: Option<&str>) -> AppKind {
 /// the "Style per app" table so the user sees why an app is in a group.
 /// Host and macOS bundle-id entries are left out (anything with a dot).
 pub fn built_in_exe_buckets() -> Vec<(String, StyleBucket)> {
-    let l = lists();
-    let mut stems: Vec<String> = l
-        .work_messaging_apps
+    use flow_core::app_groups::windows_exact;
+    let mut stems: Vec<String> = windows_exact("work")
         .iter()
-        .chain(&l.windows_email_process_names)
-        .chain(&l.windows_messaging_process_names)
-        .map(|s| s.to_ascii_lowercase())
-        .chain(
-            EXTRA_EMAIL_PROCS
-                .iter()
-                .chain(EXTRA_WORK_PROCS)
-                .map(|s| s.to_string()),
-        )
+        .chain(windows_exact("email"))
+        .chain(windows_exact("messaging"))
         .filter(|s| !s.is_empty() && !s.contains('.'))
+        .cloned()
         .collect();
     stems.sort();
     stems.dedup();
@@ -507,7 +468,7 @@ mod tests {
     }
 
     #[test]
-    fn app_kinds_from_lists() {
+    fn app_kinds_from_app_groups() {
         assert_eq!(
             app_kind("code.exe", None),
             AppKind::Ai,
@@ -526,6 +487,21 @@ mod tests {
         assert_eq!(app_kind("outlook.exe", None), AppKind::Email);
         assert_eq!(app_kind("notepad.exe", None), AppKind::Document);
         assert_eq!(app_kind("calc.exe", None), AppKind::Other);
+        // Exact exe names (D81): variants are listed, popular apps covered.
+        assert_eq!(app_kind("Code - Insiders.exe", None), AppKind::Ai);
+        assert_eq!(app_kind("ollama app.exe", None), AppKind::Ai);
+        assert_eq!(app_kind("kitty.exe", None), AppKind::Terminal);
+        assert_eq!(app_kind("wezterm-gui.exe", None), AppKind::Terminal);
+        assert_eq!(
+            app_kind("MailClient.exe", None),
+            AppKind::Email,
+            "eM Client"
+        );
+        assert_eq!(app_kind("mailspring.exe", None), AppKind::Email);
+        assert_eq!(
+            app_kind("chrome.exe", Some("aistudio.google.com")),
+            AppKind::Ai
+        );
         assert_eq!(app_kind("chrome.exe", Some("claude.ai")), AppKind::Ai);
         assert_eq!(
             app_kind("chrome.exe", Some("docs.google.com")),

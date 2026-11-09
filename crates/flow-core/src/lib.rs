@@ -2,6 +2,7 @@
 //!
 //! See `docs/core-architecture.md`. Entry point: [`FlowCore`].
 pub mod align;
+pub mod app_groups;
 pub mod asr;
 pub mod audio;
 pub mod cleanup;

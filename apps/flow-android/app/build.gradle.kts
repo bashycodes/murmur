@@ -192,6 +192,29 @@ tasks.withType<Test>().configureEach {
     }
 }
 
+// D80: the repo's COPYRIGHT, NOTICE and THIRD-PARTY-LICENSES ship in every APK as
+// assets/licenses/{COPYRIGHT,NOTICE,THIRD-PARTY-LICENSES}.txt
+// (next to the fonts' OFL texts), copied from the repo root at build time so there is one copy.
+abstract class LegalAssets : DefaultTask() {
+    @get:InputFiles abstract val sources: ConfigurableFileCollection
+    @get:OutputDirectory abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun copy() {
+        val dir = outputDir.get().asFile.resolve("licenses")
+        dir.deleteRecursively()
+        dir.mkdirs()
+        for (f in sources.files) {
+            if (!f.isFile) throw GradleException("$f not found (D80: every APK carries it)")
+            f.copyTo(dir.resolve("${f.name}.txt"), overwrite = true)
+        }
+    }
+}
+val legalAssets = tasks.register<LegalAssets>("legalAssets") {
+    sources.from(file("../../../COPYRIGHT"), file("../../../NOTICE"), file("../../../THIRD-PARTY-LICENSES"))
+    outputDir.set(layout.buildDirectory.dir("generated/legal-assets"))
+}
+
 // ---- Per-flavour privacy / packaging gates (docs/hybrid-architecture.md §1.4) ----
 // Each reads the variant's MERGED manifest (so permissions added by any dependency count)
 // or its packaged APK. assemble*/test*UnitTest/check depend on them; ManifestPrivacyTest
@@ -327,6 +350,38 @@ abstract class VerifyApkNativeLibs : DefaultTask() {
     }
 }
 
+/**
+ * Copies flow-core's `data/app-groups.json` (D81) into a generated Java-resource dir, so that
+ * file alone ships (PolicyLists reads it); later files under crates/flow-core/data do not.
+ */
+abstract class CopyAppGroups : DefaultTask() {
+    @get:InputFile abstract val source: RegularFileProperty
+    @get:OutputDirectory abstract val outDir: DirectoryProperty
+
+    @TaskAction
+    fun copy() {
+        val d = outDir.get().asFile
+        d.deleteRecursively()
+        source.get().asFile.copyTo(File(d.apply { mkdirs() }, "app-groups.json"))
+    }
+}
+
+/** Fails when a packaged APK lacks `app-groups.json` (PolicyLists would fall back to hiding the bubble everywhere). */
+abstract class VerifyApkAppGroups : DefaultTask() {
+    @get:InputFiles abstract val apkDir: DirectoryProperty
+    @get:OutputFile abstract val report: RegularFileProperty
+
+    @TaskAction
+    fun verify() {
+        val apks = apkDir.get().asFile.walk().filter { it.isFile && it.name.endsWith(".apk") }.toList()
+        if (apks.isEmpty()) throw GradleException("no APK in ${apkDir.get().asFile}")
+        val missing = apks.filter { apk -> ZipFile(apk).use { it.getEntry("app-groups.json") == null } }.map { it.name }
+        report.get().asFile.apply { parentFile.mkdirs() }
+            .writeText(apks.joinToString("\n") { "${it.name}: app-groups.json ${if (it.name in missing) "MISSING" else "ok"}" } + "\n")
+        if (missing.isNotEmpty()) throw GradleException("app-groups.json missing from $missing (D81)")
+    }
+}
+
 androidComponents {
     // AGP 9 creates unit tests only for the tested build type (debug). Release keeps its own
     // suite (src/testRelease) so it can prove the debug-only "WAV as microphone" receiver is absent.
@@ -335,6 +390,7 @@ androidComponents {
             ?.hostTests?.get(com.android.build.api.variant.HostTestBuilder.UNIT_TEST_TYPE)?.enable = true
     }
     onVariants { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(legalAssets, LegalAssets::outputDir)
         val cap = variant.name.replaceFirstChar { it.uppercase() }
         val bt = (variant.buildType ?: "").replaceFirstChar { it.uppercase() }
         val flavor = variant.flavorName ?: ""
@@ -352,6 +408,17 @@ androidComponents {
             "local" -> tasks.register<VerifyApkNativeLibs>("verifyLocal${bt}NoNetworkCode") { mode.set("noNetCode") }
             else -> null
         }
+        // D81: PolicyLists reads app-groups.json, the app groups flow-core and the Windows app use.
+        val appGroups = tasks.register<CopyAppGroups>("copy${cap}AppGroups") {
+            source.set(rootProject.layout.projectDirectory.file("../../crates/flow-core/data/app-groups.json"))
+        }
+        variant.sources.resources?.addGeneratedSourceDirectory(appGroups, CopyAppGroups::outDir)
+        val appGroupsGate = tasks.register<VerifyApkAppGroups>("verify${cap}AppGroups") {
+            apkDir.set(variant.artifacts.get(com.android.build.api.artifact.SingleArtifact.APK))
+            report.set(layout.buildDirectory.file("reports/app-groups/${variant.name}.txt"))
+        }
+        tasks.matching { it.name == "assemble$cap" || it.name == "check" }
+            .configureEach { dependsOn(appGroupsGate) }
         apkGate?.configure {
             apkDir.set(variant.artifacts.get(com.android.build.api.artifact.SingleArtifact.APK))
             report.set(layout.buildDirectory.file("reports/native-libs/${variant.name}.txt"))
