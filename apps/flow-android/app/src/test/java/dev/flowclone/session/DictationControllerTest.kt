@@ -630,7 +630,7 @@ class DictationControllerTest {
         assertEquals(0f, c.level.value, 0f)
     }
 
-    // ---- live preview + silence hints (07 §7 HeadSilenceTracker threshold; 10 §4 partials) ----
+    // ---- live preview + silence hints (leading-silence threshold, partials) ----
 
     private fun silence(ms: Int) { repeat(ms / 100) { audio.sink?.invoke(ShortArray(1600), 1600) } }
 

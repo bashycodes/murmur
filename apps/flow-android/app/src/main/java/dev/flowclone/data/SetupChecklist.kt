@@ -3,7 +3,7 @@ package dev.flowclone.data
 import dev.flowclone.health.AccessibilityHealth
 
 /**
- * Permissions page (ui/PermissionsActivity; drawer → Permissions), in Wispr's onboarding order (03 §Onboarding, 10 §2):
+ * Permissions page (ui/PermissionsActivity; drawer → Permissions), in onboarding order:
  * mic → overlay → accessibility (prominent disclosure, ghost check) → battery → notifications.
  * Each row shows its state ("Granted") or the action that fixes it ("Grant"); [banner] is the
  * problem line (Permissions callout, Home notice) while a step is missing.

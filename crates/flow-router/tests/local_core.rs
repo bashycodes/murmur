@@ -24,14 +24,14 @@ fn local_cfg() -> RouterConfig {
 
 fn session() -> SessionConfig {
     SessionConfig {
-        dictionary: serde_json::from_str(r#"[{"word":"wispr","replacement":"Wispr"}]"#).unwrap(),
+        dictionary: serde_json::from_str(r#"[{"word":"zephyr","replacement":"Zephyr"}]"#).unwrap(),
         ..Default::default()
     }
 }
 
 #[test]
 fn local_route_equals_flowcore_directly() {
-    let asr_text = "um so wispr is great press enter";
+    let asr_text = "um so zephyr is great press enter";
     let direct = FlowCore::from_engines(Arc::new(MockAsr::new(asr_text)), None);
     direct.start_session(session()).unwrap();
     direct.set_context(FieldContext::default());

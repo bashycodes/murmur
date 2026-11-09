@@ -63,8 +63,8 @@ The question: can the server (i7-6700, 4C/8T, AVX2, no AVX-512, 19 GB RAM, no GP
     * (b) "long" clips: whole utterances joined with 0.3 s gaps, shortest first, so references stay exact.
   * CPU use = process `getrusage` user+sys over wall time.
   * WER uses the same normaliser as the earlier benches (`tools/probes/bench/wer.py`), so numbers compare with docs/model-benchmarks.md.
-* Greedy decoding unless noted. 4 threads unless noted. Results go to `~/Claude/research/wispr/.cache/results/stt-survey-2026-10-23/`, one file per run.
-* Models were downloaded from github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models into `~/Claude/research/wispr/.cache/models/survey-2026-10-23/dl-<name>/`.
+* Greedy decoding unless noted. 4 threads unless noted. Results go to `$CACHE/results/stt-survey-2026-10-23/`, one file per run (`$CACHE` = the local bench cache, outside the repo).
+* Models were downloaded from github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models into `$CACHE/models/survey-2026-10-23/dl-<name>/`.
 
 ## Measured on this box
 
@@ -214,12 +214,12 @@ Moonshine-base v2 through sherpa (135 MB, RTF ~0.05 single-thread here) would be
   * `long_deletion.sh`: 43 / 56 s drop test.
   * `score.py`: WER/RTF scoring with `bench/wer.py`.
   * `long43_manifest.json`, `long60_manifest.json`.
-  * Build: `SHERPA_ONNX_LIB_DIR=~/Claude/research/wispr/.cache/sherpa-onnx/lib CARGO_TARGET_DIR=~/Claude/research/wispr/.cache/stt-survey-target-2 cargo build --release --offline`.
-* Raw results: `~/Claude/research/wispr/.cache/results/stt-survey-2026-10-23/`
+  * Build: `SHERPA_ONNX_LIB_DIR=$CACHE/sherpa-onnx/lib CARGO_TARGET_DIR=$CACHE/stt-survey-target-2 cargo build --release --offline`.
+* Raw results: `$CACHE/results/stt-survey-2026-10-23/`
   * `*.jsonl`: one file per run;
   * `ab-20261023-*/`;
   * `longdel-*/`;
   * `beam-long-recheck.txt`;
   * `unified-beam4-long.jsonl`;
   * `run-main.log`.
-* Models: `~/Claude/research/wispr/.cache/models/survey-2026-10-23/dl-<package>/<package>/`. The Nemotron-3.5 package was downloaded but not benchmarked: its English WER is weak (new-format 9.75).
+* Models: `$CACHE/models/survey-2026-10-23/dl-<package>/<package>/`. The Nemotron-3.5 package was downloaded but not benchmarked: its English WER is weak (new-format 9.75).

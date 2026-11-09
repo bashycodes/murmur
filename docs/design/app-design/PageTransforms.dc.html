@@ -64,11 +64,11 @@ a{color:#1a1a1a}a:hover{color:#30302f}
           <div style="display: flex; flex-direction: column; gap: 10px; padding: 20px; border-radius: 12px; border: 1px solid var(--border); background: var(--background); min-height: 150px; box-sizing: border-box;">
             <x-import component-from-global-scope="Flow.Kbd" keys="{{k1}}"></x-import>
             <span style="font: 600 16px/24px var(--font-sans);">Polish</span>
-            <span style="font: 400 15px/20px var(--font-sans); color: var(--foreground-tertiary);">Improve clarity and conciseness</span>
+            <span style="font: 400 15px/20px var(--font-sans); color: var(--foreground-tertiary);">Clearer, tighter wording</span>
           </div>
           <div style="display: flex; flex-direction: column; gap: 10px; padding: 20px; border-radius: 12px; border: 1px solid var(--border); background: var(--background); min-height: 150px; box-sizing: border-box;">
             <x-import component-from-global-scope="Flow.Kbd" keys="{{k2}}"></x-import>
-            <span style="font: 600 16px/24px var(--font-sans);">Prompt Engineer</span>
+            <span style="font: 600 16px/24px var(--font-sans);">Prompt Builder</span>
             <span style="font: 400 15px/20px var(--font-sans); color: var(--foreground-tertiary);">Turns a rough ask into a clear prompt</span>
           </div>
           <button type="button" style="display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 20px; border-radius: 12px; border: 1px dashed var(--sand-700); background: transparent; min-height: 150px; box-sizing: border-box; font: inherit; color: inherit; text-align: left; cursor: pointer;">
@@ -91,7 +91,7 @@ class Component extends DCLogic {
       viewKeys: ['Win', 'Alt', 'O'],
       k1: ['Win', 'Alt', '1'],
       k2: ['Win', 'Alt', '2'],
-      tOpts: [{ value: 'polish', label: 'Polish' }, { value: 'prompt', label: 'Prompt Engineer' }]
+      tOpts: [{ value: 'polish', label: 'Polish' }, { value: 'prompt', label: 'Prompt Builder' }]
     };
   }
 }

@@ -18,3 +18,5 @@ permanent tool path.
   -> rows for the parity `score.py`), `same.py` (identical answers A vs B).
 
 Cases, sessions, clips and every output stay in `eval-private/`.
+
+The cache default is `~/.cache/flow-clone`; set CACHE=<dir> to reuse an existing cache.

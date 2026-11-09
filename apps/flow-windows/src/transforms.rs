@@ -241,7 +241,7 @@ mod tests {
         assert_eq!(t.auto_apply, None);
         assert_eq!(t.view_changes.as_ref().unwrap().to_string(), "Win+Alt+O");
         let names: Vec<_> = t.items.iter().map(|i| i.transform.name.as_str()).collect();
-        assert_eq!(names, ["Polish", "Prompt Engineer"]);
+        assert_eq!(names, ["Polish", "Prompt Builder"]);
         let keys: Vec<_> = t
             .items
             .iter()

@@ -1,7 +1,6 @@
 //! Dictionary suggestions from learn-from-edits, waiting for the user.
 //!
-//! Wispr auto-adds learned words (`shouldAutoLearnWords`); the clone never
-//! does: a candidate lands here, the tray and the Dictionary tab show a
+//! Learned words are never added automatically: a candidate lands here, the tray and the Dictionary tab show a
 //! count, and only an explicit accept turns it into a dictionary entry.
 //! Dismissed words are remembered so they are not suggested again.
 //!
@@ -203,7 +202,7 @@ mod tests {
         let mut s = Suggestions::default();
         let n = s.add(
             &[
-                cand("Wispr", "whisper"),
+                cand("Korra", "cora"),
                 cand("Kubernetes", "cooper netties"),
             ],
             "slack.exe",
@@ -212,13 +211,13 @@ mod tests {
         );
         assert_eq!(n, 1);
         assert_eq!(s.pending.len(), 1);
-        assert_eq!(s.pending[0].word, "Wispr");
-        assert_eq!(s.add(&[cand("wispr", "whisper")], "x", 2, &[]), 0);
+        assert_eq!(s.pending[0].word, "Korra");
+        assert_eq!(s.add(&[cand("korra", "cora")], "x", 2, &[]), 0);
         assert_eq!(s.pending[0].count, 2);
-        assert!(s.dismiss("WISPR"));
+        assert!(s.dismiss("KORRA"));
         assert!(s.pending.is_empty());
         assert_eq!(
-            s.add(&[cand("Wispr", "whisper")], "x", 3, &[]),
+            s.add(&[cand("Korra", "cora")], "x", 3, &[]),
             0,
             "dismissed"
         );
@@ -228,13 +227,13 @@ mod tests {
     fn accept_returns_a_word_or_a_replacement() {
         let mut s = Suggestions::default();
         s.add(
-            &[cand("Wispr", "whisper"), cand("GitHub", "get hub")],
+            &[cand("Korra", "cora"), cand("GitHub", "get hub")],
             "a",
             1,
             &[],
         );
-        let e = s.accept("wispr", false).unwrap();
-        assert_eq!((e.word.as_str(), e.replacement), ("Wispr", None));
+        let e = s.accept("korra", false).unwrap();
+        assert_eq!((e.word.as_str(), e.replacement), ("Korra", None));
         let e = s.accept("GitHub", true).unwrap();
         assert_eq!(e.word, "get hub");
         assert_eq!(e.replacement.as_deref(), Some("GitHub"));
@@ -260,7 +259,7 @@ mod tests {
         let p = d.join(FILE_NAME);
         let mut st = SuggestionStore::open(&p);
         assert!(st.data.pending.is_empty());
-        st.data.add(&[cand("Wispr", "whisper")], "a", 1, &[]);
+        st.data.add(&[cand("Korra", "cora")], "a", 1, &[]);
         st.data.dismiss("nope");
         st.save().unwrap();
         let st2 = SuggestionStore::open(&p);

@@ -6,7 +6,7 @@ import dev.flowclone.core.DictEntry
 /** Dictionary / snippet editor rules (03: words and snippet triggers ≤ 60 chars). */
 object DictionaryEdit {
     const val MAX_WORD = 60
-    /** Clone limit for snippet expansions (Wispr's ≤ 60 is too tight for signatures). */
+    /** Limit for snippet expansions: long enough for a signature or an address block. */
     const val MAX_EXPANSION = 2_000
 
     enum class Tab { ALL, WORDS, SNIPPETS }

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Dated probe (2026-11-07) for docs/findings/2026-11-07-phone-beam-hotwords.md:
-# the full dictation pipeline (`flow-cli transcribe`, through the wispr-parity
+# the full dictation pipeline (`flow-cli transcribe`, through the parity
 # runner's `asr` command) with Parakeet greedy vs beam-only + dictionary
 # hotwords, the phone's two D68 paths. Not a permanent tool.
 #
-#   RUNNER=<tools/probes/wispr_parity/run_paths.py> CLI=<release flow-cli, feature parakeet>
+#   RUNNER=<tools/probes/parity/run_paths.py> CLI=<release flow-cli, feature parakeet>
 #   MODEL=<parakeet model dir> CLIPS=<dir of WAVs> DICT=<dictionary JSON> SESSION=<session JSON>
 #   OUT=<private output dir, one per run> SHERPA_ONNX_LIB_DIR=…  pipeline_ab.sh
 #
-# Writes OUT/asr_<label>.jsonl per spec; score with wispr_parity/score.py.
+# Writes OUT/asr_<label>.jsonl per spec; score with parity/score.py.
 set -uo pipefail
 : "${RUNNER:?}" "${CLI:?}" "${MODEL:?}" "${CLIPS:?}" "${DICT:?}" "${SESSION:?}" "${OUT:?}"
 export LD_LIBRARY_PATH=${SHERPA_ONNX_LIB_DIR:-}:${LD_LIBRARY_PATH:-}

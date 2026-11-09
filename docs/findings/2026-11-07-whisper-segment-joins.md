@@ -1,7 +1,7 @@
 # 2026-11-07: whisper "repeats text at segment joins" (D66)
 
 **Question.** With D22 segmentation on (`segment_pause_ms` 800), whisper
-output on the Wispr parity main set repeated text, and one clip went from
+output on the parity main set repeated text, and one clip went from
 18% to 68% WER. Is it audio overlap at the cuts, the `prior_text` carried
 into the next piece, or something else? Fix it at the source.
 

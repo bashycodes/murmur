@@ -12,11 +12,11 @@ use flow_protocol::{code, ClientMsg, Hello, ServerMsg};
 use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::tungstenite::Message;
 
-const TEXT: &str = "um so wispr is great press enter";
+const TEXT: &str = "um so zephyr is great press enter";
 
 fn session_cfg() -> SessionConfig {
     SessionConfig {
-        dictionary: serde_json::from_str(r#"[{"word":"wispr","replacement":"Wispr"}]"#).unwrap(),
+        dictionary: serde_json::from_str(r#"[{"word":"zephyr","replacement":"Zephyr"}]"#).unwrap(),
         ..Default::default()
     }
 }

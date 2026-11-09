@@ -18,7 +18,7 @@ Qwen2.5 3B and 1.5B.
 | `score_cases.py` | Pass rate per group from a runner output (`--fails` lists the failing checks) |
 | `variants.py` | Builds prompt variants (`--override` JSON) from a dump of prompt v4c: rules only, few-shots only, both, wording and rule-order changes, and a short diagnostic prompt. Checks no example shares a 5-word run with a case |
 
-The runner is the parity eval's `wispr-parity-clean` (real `FlowCore` commit
+The runner is the parity eval's `parity-clean` (real `FlowCore` commit
 path) with an `--override` flag that swaps the system prompt and few-shots,
 kept with the private eval outputs. Variant `g_order` is what became v5.
 
@@ -26,6 +26,6 @@ kept with the private eval outputs. Variant `g_order` is what became v5.
 
     python3 gen_cases.py
     python3 variants.py PROMPT_V4C_DUMP.json OUT_DIR
-    wispr-parity-clean --mode cloud --cases cases.jsonl --session SESSION.json \
+    parity-clean --mode cloud --cases cases.jsonl --session SESSION.json \
         --llm MODEL.gguf --llm-lib libflow_llm.so [--override OUT_DIR/g_order.json] > out.jsonl
     python3 score_cases.py out.jsonl

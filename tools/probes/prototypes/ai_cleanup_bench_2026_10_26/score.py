@@ -5,16 +5,14 @@ usage: score.py LABEL=out.jsonl[:field] [...] [--fails LABEL] [--overlap]
 
 * field: which output column to score (`output` for prod/rules runs;
   `out_none` / `out_strict` / `out_loose` for ai runs). Default `output`.
-* Suite = the 88 formatting-eval cases (../formatting_eval_2026_10_24) plus the
-  14 Wispr-target cases (wispr_cases.jsonl: 10 A/B pairs + 4 owner examples).
+* Suite = the 88 formatting-eval cases (../formatting_eval_2026_10_24).
 * pass: like formatting_eval score.py (curly quotes, dash variants and
   whitespace normalised; case and line breaks kept) and, per the owner, a
   final period is ignored on both sides (also before a closing quote or
   bracket). Per category.
-* target-closeness (the 14 Wispr cases): 1 - token edit distance / max(len),
-  where tokens are words and single punctuation marks, after the same
-  normalisation. 1.0 = identical up to the final period. Also mean difflib
-  character ratio and the number of exact (period-insensitive) matches.
+* closeness() (used by tools/replay/score.py): 1 - token edit distance /
+  max(len), where tokens are words and single punctuation marks, after the
+  same normalisation. 1.0 = identical up to the final period.
 * Guard reject rate (ai runs): share of cases whose verdict_strict /
   verdict_loose is a reject, and the share where the rejected answer was
   itself a pass (a "good answer rejected").
@@ -22,7 +20,6 @@ usage: score.py LABEL=out.jsonl[:field] [...] [--fails LABEL] [--overlap]
   from this box, request to last token). Cloud rows: mean and total usage.cost.
 * --overlap: check that no prompt_v4* few-shot shares a 5-word run with a case.
 """
-import difflib
 import json
 import os
 import re
@@ -33,7 +30,6 @@ here = os.path.dirname(os.path.abspath(__file__))
 # FMT_CASES: score against another formatting-eval file (e.g. the suite as
 # it was before cases were added, to compare old and new runs on equal terms).
 FMT = os.environ.get("FMT_CASES") or os.path.join(here, "..", "formatting_eval_2026_10_24", "cases.jsonl")
-WISPR = os.path.join(here, "wispr_cases.jsonl")
 
 
 def load(p):
@@ -47,7 +43,7 @@ def norm(s):
     s = re.sub(r"[ \t]+-[ \t]+", " - ", s)
     lines = [re.sub(r"[ \t]+", " ", ln).strip() for ln in s.strip().split("\n")]
     s = "\n".join(lines)
-    # Owner: ignore final-period differences (Wispr ran in formal mode).
+    # Owner: ignore final-period differences.
     s = re.sub(r"\.(?=[\"')\]]*$)", "", s)
     return s
 
@@ -79,10 +75,9 @@ def pct(xs, q):
 
 
 def cases():
-    # The suite stays the 88 cases of phase 1: the 4 "regression" cases
-    # integration added on 2026-10-26 (5d0747b) reuse the A/B ids ab5/ab7/ab8
-    # and would collide with the Wispr cases.
-    return [c for c in load(FMT) if c["category"] != "regression"] + load(WISPR)
+    # The suite stays the 88 cases of phase 1, without the "regression" cases
+    # integration added on 2026-10-26 (5d0747b).
+    return [c for c in load(FMT) if c["category"] != "regression"]
 
 
 def passes(c, got):
@@ -92,7 +87,7 @@ def passes(c, got):
 def score(cs, outs, field):
     by = {o["id"]: o for o in outs}
     tot, ok = defaultdict(int), defaultdict(int)
-    fails, close, ratio, llm = [], [], [], []
+    fails, llm = [], []
     rej = {"strict": 0, "loose": 0}
     good_rej = {"strict": 0, "loose": 0}
     n_fmt = n_pass_fmt = 0
@@ -103,12 +98,8 @@ def score(cs, outs, field):
         p = passes(c, got)
         tot[c["category"]] += 1
         ok[c["category"]] += p
-        if c["category"] not in ("wispr_ab", "owner"):
-            n_fmt += 1
-            n_pass_fmt += p
-        else:
-            close.append(closeness(got, c["expected"]))
-            ratio.append(difflib.SequenceMatcher(None, norm(got), norm(c["expected"])).ratio())
+        n_fmt += 1
+        n_pass_fmt += p
         if "llm_ms" in o and (o.get("llm_ms") or o.get("llm_raw") is not None):
             llm.append(o["llm_ms"])
         for g in ("strict", "loose"):
@@ -123,8 +114,7 @@ def score(cs, outs, field):
             fails.append((c, got, o))
     # Spend counts every call the run made (also cases outside the suite).
     costs = [o["cloud"].get("cost_usd") or 0.0 for o in outs if o.get("cloud")]
-    return {"fallbacks": dict(fallbacks), "verdicts": verdicts, "costs": costs,"tot": tot, "ok": ok, "fmt": (n_pass_fmt, n_fmt), "close": sum(close) / len(close),
-            "ratio": sum(ratio) / len(ratio), "wexact": ok["wispr_ab"] + ok["owner"], "rej": rej,
+    return {"fallbacks": dict(fallbacks), "verdicts": verdicts, "costs": costs,"tot": tot, "ok": ok, "fmt": (n_pass_fmt, n_fmt), "rej": rej,
             "good_rej": good_rej, "n": len(cs), "llm": llm, "fails": fails}
 
 
@@ -175,9 +165,6 @@ def main():
         print(f"| {k} | {r0['tot'][k]} | " + " | ".join(f"{res[l]['ok'][k]}/{r0['tot'][k]}" for l in labels) + " |")
     n_fmt = r0["fmt"][1]
     print(f"| **88-suite pass** | {n_fmt} | " + " | ".join(f"{res[l]['fmt'][0] / n_fmt:.0%}" for l in labels) + " |")
-    print("| **Wispr exact (14)** | 14 | " + " | ".join(f"{res[l]['wexact']}/14" for l in labels) + " |")
-    print("| **target-closeness (14)** | 14 | " + " | ".join(f"{res[l]['close']:.3f}" for l in labels) + " |")
-    print("| Wispr char ratio (14) | 14 | " + " | ".join(f"{res[l]['ratio']:.3f}" for l in labels) + " |")
     for g in ("strict", "loose"):
         print(f"| guard {g} rejects (good rejected) | {r0['n']} | " + " | ".join(
             f"{res[l]['rej'][g]} ({res[l]['good_rej'][g]})" if res[l]["llm"] else "-" for l in labels) + " |")

@@ -31,7 +31,7 @@ class NativeFlowCoreStubTest {
         assertEquals(r.toString(), CommitStatus.RAW_TRANSCRIPT, r.status)
         assertEquals("Stub text.", r.finalText)
         assertEquals(100L, r.timings.audioMs)
-        assertEquals(listOf(LearnCandidate("wisper", "Wispr")), core.learnEdit("wisper", "Wispr"))
+        assertEquals(listOf(LearnCandidate("tailscail", "Tailscale")), core.learnEdit("tailscail", "Tailscale"))
         assertEquals(CommandOutcome.Text("STUB"), core.command("upper", "stub"))
         assertEquals(CommandOutcome.Failed("no_llm", "no AI in the stub"), core.command("shorter", null))
         assertEquals("""{"error":"no LLM loaded on this handle"}""", (core as NativeFlowCore).benchClean("{}"))

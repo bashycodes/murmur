@@ -1,10 +1,12 @@
 # murmur (Murmur)
 
-A privacy-first, local-only clone of Wispr Flow: push-to-talk dictation that
+A privacy-first, local-only dictation app: push-to-talk dictation that
 transcribes speech (whisper.cpp or Parakeet-TDT), cleans it up (deterministic
 post-processing plus an optional local LLM), and pastes the result into the
 focused field. There is a Windows shell (Tauri 2) and an Android shell (Kotlin),
 both on one shared Rust core.
+
+Inspired by Wispr Flow.
 
 Current state, priorities and the evidence for each working capability:
 [`PROJECT_CONTEXT.md`](PROJECT_CONTEXT.md). Design decisions:

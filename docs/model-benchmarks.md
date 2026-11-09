@@ -1,6 +1,6 @@
 # Local model benchmarks (ASR + cleanup LLM)
 
-Measured 2026-10-20 to check the defaults in `DECISIONS.md` D3–D5 against data. The scripts are in `tools/probes/bench/`. Binaries, models and audio live in `~/Claude/research/wispr/.cache/` and are not in git. To reproduce, run `tools/probes/bench/run_all.sh`; the reproduce section at the end has the details.
+Measured 2026-10-20 to check the defaults in `DECISIONS.md` D3–D5 against data. The scripts are in `tools/probes/bench/`. Binaries, models and audio live in the bench cache directory (`$CACHE`, see `run_all.sh`; default `~/.cache/flow-clone`) and are not in git. Set CACHE=<dir> to reuse an existing cache. To reproduce, run `tools/probes/bench/run_all.sh`; the reproduce section at the end has the details.
 
 ## TL;DR
 
@@ -14,8 +14,8 @@ What this changes in DECISIONS:
 * **D4 (CPU desktop = small q5).** Measured RTF on this box is 0.57–0.86, so a 10 s utterance takes 5–9 s. That is too slow to be the default. Use base q5_1 as the default (RTF 0.20, WER 3.7% vs 2.9% for small on the 40-utterance set), and add Parakeet as the English engine. Parakeet is both faster and more accurate than any whisper model on CPU: WER 1.2%, RTF 0.14.
 * **D3 (whisper only, multilingual).** Keep whisper as the multilingual engine, and ship the Parakeet backend behind the ASR trait now. It is not a later nice-to-have.
 * **D5 (LLM off by default).** Confirmed for CPU and Android. Two changes:
-  * Replace the long 03 §7.2 rule-list prompt with a **short system prompt plus few-shot turns**. On every model it improved mean similarity by 0.05–0.15 and was the only variant where the ≤3B models produced lists, digits or email layout at all.
-  * Fix the §7.1 guardrail: it rejects correct backtracking edits (details below).
+  * Replace the long rule-list prompt with a **short system prompt plus few-shot turns**. On every model it improved mean similarity by 0.05–0.15 and was the only variant where the ≤3B models produced lists, digits or email layout at all.
+  * Fix the edit-distance guardrail: it rejects correct backtracking edits (details below).
 
 ## Test machine and caveats
 
@@ -85,7 +85,7 @@ Observations:
 ## Cleanup LLM
 
 ### Setup
-* 20 hand-written cases in `cleanup_cases.json`. Case c01 is Wispr's own None→Light UI example.
+* 20 hand-written cases in `cleanup_cases.json`. Case c01 was removed later (19 cases now), so the scores below were computed on a set that still included it.
 
   | phenomenon | cases |
   |---|---|
@@ -100,9 +100,9 @@ Observations:
   | only filler → empty output | c17 |
   | already clean | c19 |
 
-  Expected outputs follow the 03 §7.2 rules at level light, style formal.
+  Expected outputs follow the rule list of the **rules** variant below, at level light, style formal.
 * Prompt variants:
-  * **rules**: `cleanup_system_prompt.txt`, the 03 §7.2 template rendered for light/formal and made app-agnostic so the KV prefix can be cached, with the §7.2 user message. About 600 prefix tokens.
+  * **rules**: `cleanup_system_prompt.txt`, a long rule-list template rendered for light/formal and made app-agnostic so the KV prefix can be cached, with a matching user message. About 600 prefix tokens.
   * **fewshot**: `cleanup_fewshot.json`, a short system prompt plus 7 example turns that do not overlap the test content. About 560 prefix tokens.
 * Runtime: `llama-server`, CPU, 4 threads, `temperature 0`, `max_tokens = min(2·words+32, 256)`, the model's own chat template, `cache_prompt` on. The constant prefix is processed once; each dictation then costs only its ~35–70 new prompt tokens plus generation. This is how the clone should run the model: keep the model resident and the prefix cached.
 * Quality metrics:
@@ -201,7 +201,7 @@ At those speeds, cleanup is cheap enough to default **ON** on GPU machines with 
    * Default on when a GPU with ≥ 6 GB VRAM is present.
    * Opt-in model: Qwen2.5-3B-Instruct Q4_K_M (Qwen2.5-1.5B on Android or slow CPUs), using the few-shot prompt with a cached prefix.
 4. Move fillers, spoken punctuation, explicit backtrack phrases and number/money/time ITN into the deterministic, always-on post-processing pass. Most of the LLM's useful work in this test was in these categories.
-5. Revise the 03 §7 prompt in `flow-core`:
+5. Revise the cleanup prompt in `flow-core`:
    * short system prompt plus few-shot examples;
    * app and category go in the user turn, so the prefix is cacheable;
    * guardrail: containment check plus a backtrack exemption.
@@ -211,7 +211,7 @@ At those speeds, cleanup is cheap enough to default **ON** on GPU machines with 
 ```
 tools/probes/bench/run_all.sh          # build, fetch models + audio, run ASR + LLM + llama-bench
 tools/probes/bench/run_all.sh skip-setup
-python3 -I tools/probes/bench/report_llm.py ~/Claude/research/wispr/.cache/results/llm-*.jsonl              # per-case outputs
+python3 -I tools/probes/bench/report_llm.py "$CACHE"/results/llm-*.jsonl              # per-case outputs
 python3 -I tools/probes/bench/report_llm.py --summary --judgements tools/probes/bench/llm_judgements.json <files>
 python3 -I tools/probes/bench/report_llm.py --latency <files>
 tools/probes/bench/fetch_models.sh llm7b   # optional 7B reference model (4.4 GB)

@@ -67,7 +67,7 @@ with sync_playwright() as p:
     pg.evaluate("window.__goPage('dictionary')")
     pg.wait_for_timeout(200)
     check("rows render heard → word", texts("#dict_rows .lw-dict-row") == ["Kubernetes", "gh → GitHub"], texts("#dict_rows .lw-dict-row"))
-    check("suggestion shown", texts("#sugg_list li .lw-dict-text") == ["whisper flow → Wispr Flow"])
+    check("suggestion shown", texts("#sugg_list li .lw-dict-text") == ["cora note → Korra Note"])
 
     # Add a plain word, then a replacement.
     pg.click("#dict_add")
@@ -128,7 +128,7 @@ with sync_playwright() as p:
     pg.click("#dict_learn")
     pg.click("#sugg_list li button:has-text('Add word')")
     pg.wait_for_timeout(150)
-    check("suggestion accepted", "Wispr Flow" in texts("#dict_rows .lw-dict-row") and not pg.is_visible("#sugg_list"))
+    check("suggestion accepted", "Korra Note" in texts("#dict_rows .lw-dict-row") and not pg.is_visible("#sugg_list"))
 
     # Import: merge (header button) then replace all.
     n = len(saved()["dictionary"])

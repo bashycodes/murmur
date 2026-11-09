@@ -4,7 +4,7 @@
 $dir = if ($env:NOPLUGIN -eq '1') { "$env:TEMP\lw-noplugin" } else { "$env:LOCALAPPDATA\Murmur" }
 $out = "$env:TEMP\lw-settings-$($env:TAG).png"
 Remove-Item "$out.txt" -ErrorAction SilentlyContinue
-$ps = "$env:USERPROFILE\wispr-bench\settings_ui.ps1"
+$ps = "$env:USERPROFILE\flow-bench\settings_ui.ps1"
 $a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$ps`" -Exe `"$dir\flow-windows.exe`" -Out `"$out`""
 $pr = New-ScheduledTaskPrincipal -UserId (whoami) -LogonType Interactive
 Register-ScheduledTask -TaskName FlowCloneSettingsShot -Action $a -Principal $pr -Force | Out-Null

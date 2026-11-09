@@ -81,7 +81,7 @@ JNIEXPORT jstring JNICALL FN(nativeCommit)(JNIEnv *env, jclass c, jlong h) {
 JNIEXPORT void JNICALL FN(nativeCancel)(JNIEnv *env, jclass c, jlong h) { ((Core *)(intptr_t)h)->active = 0; }
 
 JNIEXPORT jstring JNICALL FN(nativeLearnEdit)(JNIEnv *env, jclass c, jlong h, jstring a, jstring b) {
-    return (*env)->NewStringUTF(env, "[{\"original\":\"wisper\",\"corrected\":\"Wispr\"}]");
+    return (*env)->NewStringUTF(env, "[{\"original\":\"tailscail\",\"corrected\":\"Tailscale\"}]");
 }
 
 /* Load 3: load timings and LLM keep. The stub loads nothing, so no timings and no LLM. */

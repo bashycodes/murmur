@@ -520,7 +520,7 @@ fn save_prefs(app: &AppHandle, state: &AppState, mut prefs: Prefs) -> Result<(),
     Ok(())
 }
 
-// ------------------------------------------------- history tab (05 §3, 03 §6)
+// ------------------------------------------------- history tab
 
 fn history_db(state: &AppState) -> Result<&Arc<Mutex<History>>, String> {
     state
@@ -1689,7 +1689,7 @@ fn transforms_reset(state: tauri::State<'_, AppState>) -> Result<Prefs, String> 
     Ok(prefs)
 }
 
-/// "Try it out": run transform `id` on `text` typed in the page, with the
+/// "Try on sample text": run transform `id` on `text` typed in the page, with the
 /// same route and privacy gate as a selection (the text is the user's,
 /// like a selection). Nothing is pasted or recorded.
 #[tauri::command]
@@ -2324,7 +2324,7 @@ fn now_unix_ms() -> u64 {
 }
 
 /// Save the OpenRouter part of the settings and apply it. A use that was
-/// just switched on refreshes the model catalogue (spec §2.2 "When").
+/// just switched on refreshes the model catalogue (openrouter-only-cloud.md §2.2 "When").
 fn save_cloud(app: &AppHandle, state: &AppState, dev: DevSettings) -> Result<(), String> {
     let caps = BuildCaps::current();
     let mut prefs = state.prefs.read().unwrap().clone();
@@ -3021,7 +3021,7 @@ fn show_notes_window(app: &AppHandle, query: String) {
 }
 
 /// Never take focus from the app being dictated into; never show in
-/// Alt+Tab; click-through (02 §6 "Overlay").
+/// Alt+Tab; click-through.
 fn make_overlay_passive(w: &WebviewWindow) {
     let _ = w.set_ignore_cursor_events(true);
     if let Some(h) = hwnd_of(w) {
@@ -3103,7 +3103,7 @@ fn position_overlay(w: &WebviewWindow) {
     }
     if let Ok(size) = w.outer_size() {
         let x = wa.left + ((wa.right - wa.left) - size.width as i32) / 2;
-        // Wispr: canvas flush with the work-area bottom minus a 2 px gap.
+        // Canvas flush with the work-area bottom minus a 2 px gap.
         let gap = (2.0 * w.scale_factor().unwrap_or(1.0)).round() as i32;
         let y = wa.bottom - size.height as i32 - gap;
         let _ = w.set_position(PhysicalPosition::new(x, y));

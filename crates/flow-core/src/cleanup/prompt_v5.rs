@@ -1,8 +1,8 @@
 //! AI cleanup prompt v5 (docs/findings/2026-11-06-lists-corrections-prompt.md).
 //! Our own wording; no vendor text.
 //!
-//! v5 = v4c with spoken lists and self-corrections reworked for the 2026-11-06
-//! Wispr parity work: the correction rule names the shape ("X, no, Y" -> "Y")
+//! v5 = v4c with spoken lists and self-corrections reworked in the 2026-11-06
+//! list/correction work: the correction rule names the shape ("X, no, Y" -> "Y")
 //! and when the ordinary words stay; the list rule covers announced lists
 //! ("a few things", "bullet points") as bullets next to counted ones as
 //! numbers, and keeps the lead-in. Both rules come first in the rule list

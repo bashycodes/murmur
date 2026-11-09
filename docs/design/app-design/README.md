@@ -3,6 +3,8 @@
 Exported from the "Murmur App Design" canvas (claude.ai design artifact),
 version 1794116499-a1a1 (v53), 2026-11-08.
 
+The visual look (`flow-theme.css`, the design tokens, the fonts) is kept as it is by owner decision 2026-11-09.
+
 - `canvas.json`: artboard index (titles, sizes, grouping).
 - `*.dc.html`: one artboard each. Markup is plain HTML + inline styles; `<sc-for>`/`<sc-if>`
   are repeat/branch templates, `{{x}}` holes are filled from the `renderVals()` script at the bottom.

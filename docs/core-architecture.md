@@ -1,6 +1,6 @@
 # flow-core architecture
 
-Shared Rust core of Murmur, the local Wispr Flow clone. It implements
+Shared Rust core of Murmur. It implements
 the core API both shells call (below). All speech recognition and text
 shaping run on-device; the core makes no network calls.
 
@@ -13,9 +13,9 @@ crates/
   flow-asr-sherpa/  Parakeet-TDT ASR via the official sherpa-onnx crate (flow-core feature `parakeet`)
 ```
 
-## API (§9 v2)
+## API (v2)
 
-| §9 call | Rust (`FlowCore`) | C ABI | JNI (`com.flowclone.core.NativeFlowCore`) |
+| Call | Rust (`FlowCore`) | C ABI | JNI (`com.flowclone.core.NativeFlowCore`) |
 |---|---|---|---|
 | `load_models(ModelConfig)` | `FlowCore::load_models(&ModelConfig)` | `flow_load_models(json) -> FlowHandle*` | `loadModels(json): Long` |
 | `unload` | `unload(self)` / drop | `flow_unload` | `unload(h)` |
@@ -48,7 +48,7 @@ without a model.
 Status meanings:
 * `FORMATTED`: the LLM cleanup ran and its answer was used (no output guard, D59).
 * `RAW_TRANSCRIPT`: post-processed ASR text. This covers LLM off, LLM skipped (raw mode, level `none`, terminal) and LLM failed. `fallback_reason` says why it failed: `llm_timeout`, `llm_error: …` or `llm_empty`. (Before D59 an output guard also gave `llm_unsupported`, `llm_dropped` and, with `divergence_threshold`, `llm_diverged`.)
-* `EMPTY`: nothing to paste. `empty_reason`: `no_audio`; `no_speech` (the VAD found no speech, ASR was skipped); `blank_asr`; `hallucination` (a Whisper silence phrase was suppressed; `asr_text` holds it); `only_filler` (the spoken-cleanup pass removed everything). Blank counts as empty, which is the recommended deviation from Wispr Android, where `"   "` is inserted.
+* `EMPTY`: nothing to paste. `empty_reason`: `no_audio`; `no_speech` (the VAD found no speech, ASR was skipped); `blank_asr`; `hallucination` (a Whisper silence phrase was suppressed; `asr_text` holds it); `only_filler` (the spoken-cleanup pass removed everything). Blank counts as empty, so a whitespace-only result is never inserted.
 * `ERROR`: ASR error, no session, or the session was cancelled or superseded.
 
 Paste fields:
@@ -72,7 +72,7 @@ shell UI thread ──start/commit/cancel──▶ control channel (mpsc) ──
 * **Partials.** With `partial_interval_ms` set, the worker re-decodes the last 12 s (2026-10-23; was 30 s) of the open audio, shown with a leading `"… "` when the window does not reach back. A preview is skipped once ≥ 400 ms of silence follows speech the last preview already covered. These partials are for preview only. `commit` waits for a decode in flight (`timings.wait_ms`): neither whisper's encoder nor a sherpa decode can be interrupted.
 * **Pause segmentation** (D22, `SessionConfig.segment_pause_ms`, default off; recommended 800). `segment::Segmenter` runs the streaming VAD over the drained samples and cuts in the middle of each pause ≥ `segment_pause_ms` once the open piece is ≥ `segment_min_ms` (4 s), or at its longest ≥ 200 ms gap after `segment_soft_max_ms` (20 s). The cuts depend only on the audio (identical under any push chunking, on the server and in router fallback replay). The worker decodes each closed piece (VAD-trimmed, `AsrPurpose::Segment`, whisper `prior_text` = the last 30 words) before any preview, one decode per tick. At commit it reuses pieces whose request is unchanged, re-decodes a piece a late `set_context` changed, decodes the tail, and joins with one space. Each cut also gets a bridge decode (4 s either side, decoded while recording): `segment::splice` takes its punctuation and case for the words next to the cut, so a mid-sentence pause does not become a sentence break. A per-piece guard drops stock-phrase-only pieces and strips a trailing "Thank you." from non-final ones. Then the usual pipeline runs on the joined text. `timings.asr_ms` = ASR inside commit; `pre_asr_ms` = before it; `segments` = pieces with speech. Engines with `segmentable() == false` (cloud) ignore it. `cancel()` stops a piece in flight through a per-session abort flag.
 * **Hands-free endpointing** (D19, `SessionConfig.endpoint_silence_ms`, default off). `push_audio` also feeds a streaming copy of the VAD (`endpoint::Endpointer`: same 20 ms frames, speech bars and 60 ms runs as D16; noise floor from the last 30 s). After ≥ 300 ms of speech and `endpoint_silence_ms` (min 300; recommended 2000) of trailing silence, `poll().endpoint_reached` latches true for the rest of the session. It runs on the pushing thread (a few µs per 20 ms frame), so a slow partial decode on the worker cannot delay it. The core never commits by itself. `flow_router::Router` runs the same detector on its own pushes, so the signal is identical on every route.
-* `max_samples` is a hard safety bound only; the session-length policy lives in the shells (spec §9). Audio past the bound is discarded and `truncated` is set.
+* `max_samples` is a hard safety bound only; the session-length policy lives in the shells. Audio past the bound is discarded and `truncated` is set.
 
 ## Commit pipeline
 
@@ -91,13 +91,13 @@ shell UI thread ──start/commit/cancel──▶ control channel (mpsc) ──
    * It is skipped for raw mode, level `none` and terminal apps.
    * It is also skipped when the whole utterance is a snippet trigger.
    * It is skipped (`fallback_reason: llm_skipped_clean`) when `SessionConfig.llm_skip_clean` (default on) and `cleanup::llm_can_help` says the deterministic result leaves nothing to do: single line, ≤ 20 words, capitalised, ends in punctuation, no run-on sentence (> 14 words without a comma), no repeated word, fewer than 3 commas, and no leftover filler / correction cue / spoken command ("question mark", "new line", "I mean", "quote", "comma", …; bare "question"/"line" do not count) and, for English or unknown language, no number the rules left as words (`postprocess::spoken::has_spoken_numbers`, D63: "eleven forty", "the twelfth", "four one seven"; a lone "one"/"zero" only next to another number word or a unit; an ordinal only as a date: after a month, before "of <month>", or "the <ordinal>" ending its phrase, so "one of those", "a second ago" and "the fourth floor" do not count). Email always runs. Rationale: D27's eval skipped 48/88 calls, exactly where the LLM used to regress the rules (lines → bullets, "," → ":", dropped "that"); D63 gave up the number part of that skip because the rules leave clock times, ordinals and digit runs as words, accepting that the 1.5B again drops "that" in "Don't forget that we have dinner at eight".
-   * `cleanup::build_prompt` uses a short system prompt (prompt v2, D27: a rule list from the benchmark's few-shot variant plus spoken quote / paren / bracket / dash commands and their literal-use guard, phone numbers, run-on punctuation, "keep formatting already present", lists only for spoken enumerations, "follow STYLE"; plus one line per level; since D63 the digits rule carries time / date / digit-run examples) and 21 worked chat turns (one per command kind, preserved lines, preserved quotes, fillers, one casual turn with its `STYLE:` line, "no wait" + time, spoken punctuation + money, phone number, D63's digit-run code next to a count and time + date next to the idioms "one of" / "a second", run-on, a literal "quote"/"period", ordered list, email layout, filler-only → empty). Prompt v2 came from `docs/findings/2026-10-24-formatting-gap.md`. The long 03 §7.2 rule list made ≤3B models echo or answer the input (docs/model-benchmarks.md on the bench branch). Cursor before/after text (≤300/150 chars), the selection, the dictionary and screen words go in the user message; a `STYLE:` line appears only for non-default styles.
+   * `cleanup::build_prompt` uses a short system prompt (prompt v2, D27: a rule list from the benchmark's few-shot variant plus spoken quote / paren / bracket / dash commands and their literal-use guard, phone numbers, run-on punctuation, "keep formatting already present", lists only for spoken enumerations, "follow STYLE"; plus one line per level; since D63 the digits rule carries time / date / digit-run examples) and 21 worked chat turns (one per command kind, preserved lines, preserved quotes, fillers, one casual turn with its `STYLE:` line, "no wait" + time, spoken punctuation + money, phone number, D63's digit-run code next to a count and time + date next to the idioms "one of" / "a second", run-on, a literal "quote"/"period", ordered list, email layout, filler-only → empty). Prompt v2 came from `docs/findings/2026-10-24-formatting-gap.md`. A long rule-list prompt made ≤3B models echo or answer the input (docs/model-benchmarks.md on the bench branch). Cursor before/after text (≤300/150 chars), the selection, the dictionary and screen words go in the user message; a `STYLE:` line appears only for non-default styles.
    * HTML `<ol>`/`<ul>` lists in the LLM output become `1.` / `- ` lines.
    * Prompt layout is chosen for KV-cache reuse. The system prompt and the few-shot turns depend only on the level. Everything per dictation goes in the final user message: app, category, style, non-empty context lines and the transcript.
    * **Prefill-ahead** (`SessionConfig.llm_prefill`, default on, only when the LLM would run). While the user speaks, the worker sends `Cleaner::prefill` the prompt the commit will probably use: at session start (empty transcript), after every `set_context`, and after every new partial. The plugin coalesces stale requests, prefills in 32-token chunks and is preempted by a commit (`Cleaner::cancel_prefill` is called before the final ASR so the two do not fight for the CPU; what was decoded stays cached). Commit then decodes only from the first token that differs.
    * The cleaner runs on its own thread with a hard timeout (`SessionConfig.llm_timeout_ms`, default 1.5 s). On timeout the core raises a cancel flag (`Cleaner::clean_cancellable`) so the backend frees its context within one decode step.
    * Output scrubbing: preambles ("Here is the cleaned text:"), trailing "Note:" commentary and one layer of quotes or guillemets are stripped.
-   * No output guard (D59, owner decision 2026-11-06). The answer is used as the model gave it (after scrubbing, list flattening and the English unit style); only a timeout, an error or an empty answer falls back to the deterministic text. The support/coverage guard (`guard::check`, 2026-10-24 to D59) and the opt-in edit-distance check (`divergence_threshold`) were removed: on the 2026-11-05 Wispr parity eval the guard rejected correct dictated parentheses, quotes and math (5/31 format points) with no word-error benefit. Text quality is the prompt's and the model's job.
+   * No output guard (D59, owner decision 2026-11-06). The answer is used as the model gave it (after scrubbing, list flattening and the English unit style); only a timeout, an error or an empty answer falls back to the deterministic text. The support/coverage guard (`guard::check`, 2026-10-24 to D59) and the opt-in edit-distance check (`divergence_threshold`) were removed: on the 2026-11-05 parity eval the guard rejected correct dictated parentheses, quotes and math (5/31 format points) with no word-error benefit. Text quality is the prompt's and the model's job.
 
 ### ASR backend: Parakeet (feature `parakeet`, crate `flow-asr-sherpa`)
 D4 makes Parakeet-TDT-0.6B-v2 int8 the English default on desktops with ≥ 4 GB RAM (`docs/model-benchmarks.md`: WER 1.2% vs 3.7% for whisper base, RTF 0.14).
@@ -168,7 +168,7 @@ Not yet verified: loading on bionic (first device run), and whether whisper's li
 * **Engine.** One thread owns the model, one 4096-token context and its KV cache.
   * It renders the model's own chat template (Qwen2.5, Llama-3.2), with a ChatML fallback.
   * Prefix reuse: only the tokens after the first difference with the previous prompt are prefilled. Optional ABI-1 symbols `flow_llm_prefill(h, messages)` (non-blocking) and `flow_llm_prefill_cancel(h)` drive prefill-ahead; flow-core looks them up lazily, so an older plugin still loads. `flow_llm_info` adds `ahead{requests, completed, preempted, tokens, ms}`. `load` prefills `cleanup::warm_prompt()` (light level, empty context), whose system prompt and example turns are byte-identical to every light commit's prefix (pinned by a test), so a warm commit prefills only its user message. The v2 prefix needs ~14 s cold on this box; it is paid at load, not by the first dictation. Medium/high change the level line, so the first commit at those levels after load is cold.
-  * Decoding is greedy with at most 2 × transcript tokens + 32 new tokens (03 §7.5), stopping on EOG or a stop string (`<|im_end|>`, `<|eot_id|>`, `\nTRANSCRIPT:`, …). The deadline and cancel flag are checked between 128-token prefill chunks and before every token.
+  * Decoding is greedy with at most 2 × transcript tokens + 32 new tokens, stopping on EOG or a stop string (`<|im_end|>`, `<|eot_id|>`, `\nTRANSCRIPT:`, …). The deadline and cancel flag are checked between 128-token prefill chunks and before every token.
   * Prompt-lookup drafting (up to n tokens copied from the prompt, checked in one batch) is off by default in the plugin. flow-server turns it on with 4 (D69, `[model] llm_draft`, optional ABI-1 symbol `flow_llm_set_draft`): on the 13 parity clips it cut generation p50 2.9 → 1.5 s. `FLOW_LLM_DRAFT=n` overrides any setting. The phone and PC keep it off (unmeasured there; an earlier probe on 8 short dictations, `tools/probes/llm_ab.sh`, found no gain).
   * llama.cpp logs are silenced unless `FLOW_LLM_LOG` is set.
 * **Measured** (`tests/llm_e2e.rs`, 8 messy dictations; i7-6700, 4 threads, box shared with a concurrent llama-server at load 6-13, so treat the times as upper bounds):
@@ -184,14 +184,14 @@ Not yet verified: loading on bionic (first device run), and whether whisper's li
    2. "press enter" at the end of the dictation (Windows; sets `press_enter`, the shell sends the key);
    3. all-lowercase mode;
    4. dictionary replacements: case-insensitive whole words, longest key first, a contraction guard ("don" leaves "don't"), personal entries over team entries;
-   5. fitting to the cursor: a leading space, a lower-case start mid-sentence (names, "I", acronyms and dictionary words kept), dropping `.!?` before a continuation, the selection's shape when replacing a selection, CJK spacing; skipped at the start of a Notion web page block;
+   5. fitting to the cursor: a leading space, a lower-case start mid-sentence (names, "I", acronyms and dictionary words kept), dropping `.!?` before a continuation, the selection's shape when replacing a selection, CJK spacing; skipped at the start of a Notion block and in this app's own windows;
    6. style punctuation: casual drops the final period up to 10 sentences, very casual always, default and excited in chat apps for 1–2 sentences; never when the cursor's line or the selection already has `.!?`;
    7. the trailing space;
    8. email signature (Windows, off unless `email_signature` is set).
 
    **The trailing space is intended.** It is appended when nothing follows the cursor, or a letter or digit follows it directly (and the text does not end in CJK), so the next dictation does not run into this one; `final_text` normally ends with `" "` and shells insert it as is. It is left out on Android when `context_known == false`, with a selection (the selection's own edge spaces are kept instead), after "press enter" and on the Notion skip. `plain_text` keeps it (only the paste markers are removed); `asr_text` (raw ASR) has none.
 
-   `postprocess::effective_category` maps an app id or URL host to a category from the module's own tables (spec §9) when the shell did not send one.
+   `postprocess::apps::classify` maps an app id or URL host to its type, messaging flag, style bucket and category from the shared app groups (`app_groups`, `data/app-groups.json`, D81; Windows ids without `.exe`). `postprocess::effective_category` uses it when the shell did not send a category.
 
 ### Platform differences (`SessionConfig.platform`)
 The Windows order runs on Android too, with these gates:
@@ -208,7 +208,7 @@ Unit tests next to the code cover the spec's examples. `tools/probes/prototypes/
 ## learn_edit
 `align::align_words` does word-level Levenshtein with backtrace, labelling each step C/S/I/D. `learn::learn_edit` then (spec §11):
 * takes substitution runs of ≤ 4 words;
-* drops stopwords, contractions, punctuation-only changes, existing dictionary words, sentence-initial capitalisation and corrections without a letter;
+* drops over-long runs, stopwords, apostrophes, existing dictionary words, sentence-initial capitalisation and corrections without a letter;
 * merges duplicates and caps the result at 4 candidates, flagging names (`looks_like_name`).
 
 Turning candidates into entries (with or without a model) is left to the shell.
@@ -255,7 +255,7 @@ All additions are backward compatible: new JSON fields have serde defaults (old 
 * Behaviour: no output guard on any cleanup path (on-device LLM, server cleanup, AI cleanup). `fallback_reason` / `cloud_fallback` no longer take `llm_unsupported`, `llm_dropped` or `llm_diverged`; `llm_timeout`, `llm_error: <code>` and `llm_empty` stay. Shells label unknown codes generically, so old history rows still read.
 * Removed: module `guard`, `cleanup::default_divergence`, `align::divergence_ratio`, `FallbackReason::{Unsupported, Dropped, Diverged}`, `Rejection::text`, `CommitResult.rejected_text` / `RouteInfo.rejected_text`, `SessionConfig.divergence_threshold` (an old client's key is ignored). `run_cleanup*` / `run_ai_cleanup*` lose their `max_divergence` argument. `guard_detail` stays (timeout / error / empty answer).
 
-2026-10-26 (branch `fix/fallback-rules`, D27 rules; Wispr A/B `tools/probes/prototypes/wispr_ab_2026_10_25/` ab5/ab7/ab8):
+2026-10-26 (branch `fix/fallback-rules`, D27 rules):
 * Behaviour: spoken cleanup fixes four shapes. Ordinal markers carry "thing"/"item" ("first thing X, second thing Y, third thing Z" → `1. X` lines, no "Thing"). "(and) I quote … unquote" drops the intro and punctuates like a speech verb (`He told me, "…," and …`); literal "I quote that price" is unchanged (no closer). A currency amount glued to a lowercase word by the ASR is split ("about$250" → "about $250"; "US$250" stays). "a hundred/thousand and …" compounds convert whole ("a hundred and fifty eight cm" → `158 cm`, "a thousand and twenty" → `1020`, "two thousand and five" → `2005`; "one thousand and two thousand" is not summed); a bare "a hundred" stays words.
 * `POSTPROCESS_REV` → `2026-10-26.1`. No shell change. Formatting eval (`formatting_eval_2026_10_24`, 4 regression cases added): rules + casual 82/92 = 89 % (was 78/88), negatives 16/16.
 
@@ -273,7 +273,7 @@ All additions are backward compatible: new JSON fields have serde defaults (old 
   * flow-server: the `result` log line also carries `speech_ms`, `peak_dbfs` and `start_to_commit_ms` (`start` → `commit` arrival; against the client's recording length it shows an upload backlog). Log only, no wire change.
 
 2026-10-24 (branch `feat/fmt-llm`, draft D27 layers 4-6; `docs/findings/2026-10-24-formatting-gap.md`):
-* **Behaviour (gate, D27):** the deterministic layer (spoken cleanup, spoken commands, layout, closing period) follows `SessionConfig.spoken_cleanup` alone. `cleanup_level: none` and `raw_mode` now only mean "no LLM". Verbatim = `spoken_cleanup: false` + `cleanup_level: none` (the Wispr client port still runs, as before).
+* **Behaviour (gate, D27):** the deterministic layer (spoken cleanup, spoken commands, layout, closing period) follows `SessionConfig.spoken_cleanup` alone. `cleanup_level: none` and `raw_mode` now only mean "no LLM". Verbatim = `spoken_cleanup: false` + `cleanup_level: none` (the deterministic post-processing still runs, as before).
   * Android: no change needed. With "Clean up with local AI" off it sends `none` + `raw_mode: true` and now gets the full deterministic layer (eval 17 % → 70 %). Optional: send `light` + `raw_mode: true` instead, which is equivalent. Keep the "Auto-format" switch as the only way to get raw text.
   * Windows: the cleanup level "None" now means "no AI" and still formats; if the UI labels it "Verbatim", relabel it "No AI" (or map Verbatim to `spoken_cleanup: false`). The Auto-format pref is the formatting switch.
 * `SessionConfig.llm_skip_clean: bool` (serde default **true**): skip the LLM when `cleanup::llm_can_help` finds nothing for it to do. `fallback_reason` is then `llm_skipped_clean` and `timings.llm_ms` 0. Adopt: treat `llm_skipped_clean` as a normal result (do not show it as a failure in history); optionally a developer toggle that sends `false`.

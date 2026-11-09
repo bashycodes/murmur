@@ -3,7 +3,7 @@
 
 usage: git diff BASE -U0 | overlap.py REFS.json [REFS.json ...]
 
-REFS: wispr_parity reference files (`clips.*.text`) or any JSON / text file
+REFS: parity reference files (`clips.*.text`) or any JSON / text file
 (every string in it is read). Prints each added line that shares a 4-word
 run with a reference, the shared runs, and a total; exit 1 when any. Words
 are lowercase letters, digits and apostrophes, so case and punctuation do

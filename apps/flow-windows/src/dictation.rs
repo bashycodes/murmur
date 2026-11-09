@@ -64,7 +64,7 @@ pub enum Phase {
     },
 }
 
-/// Visual state of the overlay pill (05 §7.3: the five states that matter).
+/// Visual state of the overlay pill (the five states that matter).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum OverlayState {
@@ -197,17 +197,17 @@ pub struct Policy {
     /// Hard stop: the dictation is committed (not discarded) at this length.
     pub max_ms: u64,
     pub warn_ms: u64,
-    /// `DICTATION_DEBOUNCE_DELAY`: PTT released sooner = tap (dismissed
+    /// Debounce window: PTT released sooner = tap (dismissed
     /// unless a second press locks it); second press sooner = double-tap
     /// lock; press sooner after locking = triple-press dismiss.
     pub debounce_ms: u64,
-    /// Processing longer than this is an error (Wispr: 35 s).
+    /// Processing longer than this is an error (35 s).
     pub processing_timeout_ms: u64,
     /// D58: the budget instead when the stop language differs and the
     /// whole recording is transcribed again (as Android's retry budget).
     pub rerun_timeout_ms: u64,
     pub pasted_linger_ms: u64,
-    /// Error pill shows this long, then rests (Wispr: 500 ms).
+    /// Error pill shows this long, then rests (500 ms).
     pub error_linger_ms: u64,
     /// Notice pill ("No speech heard") shows this long.
     pub notice_linger_ms: u64,
@@ -1590,7 +1590,7 @@ mod tests {
     }
 
     #[test]
-    fn policy_matches_wispr_timings() {
+    fn policy_default_timings() {
         let p = Policy::default();
         assert_eq!(p.max_ms, 1_200_000);
         assert_eq!(p.warn_ms, 1_140_000);

@@ -4,7 +4,7 @@
 # Usage: tools/probes/bench/run_all.sh [skip-setup]
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-CACHE="${CACHE:-$HOME/Claude/research/wispr/.cache}"
+CACHE="${CACHE:-$HOME/.cache/flow-clone}"
 TS="$(date +%Y%m%d-%H%M%S)"; L="$CACHE/logs"; mkdir -p "$L"
 PY="$CACHE/venv/bin/python"
 if [[ "${1:-}" != skip-setup ]]; then

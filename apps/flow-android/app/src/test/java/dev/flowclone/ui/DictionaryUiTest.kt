@@ -172,7 +172,7 @@ class DictionaryUiTest {
     // ---- add / edit page ----
 
     @Test fun editPageHasBackTitleAndSaveInTheTopBar() {
-        store.replaceAll(listOf(DictEntry("wisper", "Wispr", false)))
+        store.replaceAll(listOf(DictEntry("tailscail", "Tailscale", false)))
         val a = launch(DictionaryActivity.editIntent(ctx, Kind.WORDS, null))
         assertEquals("Add word", a.title.toString())
         assertTrue("Add word" in texts(a))
@@ -183,9 +183,9 @@ class DictionaryUiTest {
         assertTrue("no Delete on a new entry", walk(a.window.decorView).none { it.contentDescription == "Delete word" })
         assertFalse("no error on a pristine form", texts(a).contains("Enter a word or trigger phrase."))
         val (word, repl) = walk(a.window.decorView).filterIsInstance<EditText>().let { it[0] to it[1] }
-        word.setText("Wisper")
+        word.setText("Tailscail")
         assertFalse(save.isEnabled)
-        assertTrue(texts(a).toString(), "\"Wisper\" is already in the dictionary." in texts(a))
+        assertTrue(texts(a).toString(), "\"Tailscail\" is already in the dictionary." in texts(a))
         word.setText("Kubernetes")
         assertTrue(save.isEnabled)
         repl.setText("")

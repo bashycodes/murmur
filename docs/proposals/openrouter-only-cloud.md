@@ -394,7 +394,7 @@ therefore gets prompt v2, the guard, `llm_skip_clean`, the timeout and the fallb
   * `clean_cancellable(prompt, deadline, cancel)` → `POST /chat/completions` with:
     * `messages = prompt.messages()` (system, the few-shot pairs, user);
     * `temperature: 0`, `seed: 0`;
-    * `max_completion_tokens = max(16, 2 × tokens(transcript) + 32)` (03 §7.5; the
+    * `max_completion_tokens = max(16, 2 × tokens(transcript) + 32)` (the
       16 floor follows the doc note);
     * `reasoning: {effort: "none"}` when the model supports it and reasoning is not
       mandatory, else the lowest supported effort; `include_reasoning: false`;

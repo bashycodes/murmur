@@ -2085,7 +2085,7 @@ fn finish_text(
     let language = r.language.clone();
     let english = english_rules(language.as_deref());
     // A whole-utterance snippet trigger is pasted as its expansion; the
-    // LLM must not see (or reword) it (03 §7.1).
+    // LLM must not see (or reword) it.
     let snippet = matcher.whole_snippet(&r.asr_text).is_some();
     // D30: with a cloud cleaner active, AI cleanup gets the raw
     // transcript first (no rules pre-pass, no skip); the rules and the

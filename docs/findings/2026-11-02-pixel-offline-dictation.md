@@ -134,11 +134,9 @@ and VoxPopuli. The live leaderboard data is gated
 * The free win on the phone is **latency**: the *same* unified model ships as a streaming
   package (6.29 at 1.12 s), which would remove the offline commit decode (p50 973 ms on the phone).
 
-## 4. Why Wispr and Pixel feel better than WER says
+## 4. Why other dictation apps feel better than WER says
 
 1. **Context biasing.**
-   * Wispr sends dictionary terms, screen words, OCR words, the user's names and file names to bias
-     its ASR.
    * Google's ASR has biased toward contacts and app context for years
      ([Pundak et al., "Deep context"](https://arxiv.org/abs/1808.02480)).
    * Our case: "pie test" for "pytest" and "a UID four" for "a UUID4"
@@ -147,7 +145,7 @@ and VoxPopuli. The live leaderboard data is gated
      ([docs](https://k2-fsa.github.io/sherpa/onnx/hotwords/index.html)). Verify that both reach the
      local Parakeet decode on the phone, and tune the hotword score.
 2. **LLM cleanup that fixes terms.**
-   * Wispr's formatter sees the same context and corrects misheard words.
+   * A formatter that sees the same context can correct misheard words.
    * Ours was off on the phone by default (D43 fixes the order), and the 1.5B is too slow (11 of
      about 50 time out at 3 s).
    * **Cheap:** run cloud/server cleanup always when online, and give the prompt the screen and

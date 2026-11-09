@@ -27,7 +27,7 @@ class CoreJsonTest {
     @Test fun sessionConfigMatchesCoreShape() {
         val cfg = SessionConfig(
             languages = listOf("en"),
-            dictionary = listOf(DictEntry("wispr", "Wispr", false), DictEntry("sig", "Best,\nMe", true), DictEntry("Kubernetes")),
+            dictionary = listOf(DictEntry("tailscale", "Tailscale", false), DictEntry("sig", "Best,\nMe", true), DictEntry("Kubernetes")),
             cleanupLevel = CleanupLevel.NONE,
             rawMode = true,
             maxSamples = 300L * 16_000,
@@ -38,7 +38,7 @@ class CoreJsonTest {
         assertTrue(j.getBoolean("raw_mode"))
         assertEquals(4_800_000L, j.getLong("max_samples"))
         val d = j.getJSONArray("dictionary")
-        assertEquals("Wispr", d.getJSONObject(0).getString("replacement"))
+        assertEquals("Tailscale", d.getJSONObject(0).getString("replacement"))
         assertTrue(d.getJSONObject(1).getBoolean("isSnippet"))
         assertFalse("pure vocabulary word omits replacement", d.getJSONObject(2).has("replacement"))
         assertEquals("D27: chat buckets default to casual", "casual", j.getJSONObject("styles").getString("personal"))
@@ -141,8 +141,8 @@ class CoreJsonTest {
     }
 
     @Test fun decodesLearnCandidates() {
-        val c = CoreJson.decodeCandidates("""[{"original":"wisper","corrected":"Wispr"}]""")
-        assertEquals(listOf(LearnCandidate("wisper", "Wispr")), c)
+        val c = CoreJson.decodeCandidates("""[{"original":"tailscail","corrected":"Tailscale"}]""")
+        assertEquals(listOf(LearnCandidate("tailscail", "Tailscale")), c)
     }
 
     @Test fun dictionaryRoundTripsSharedExportFormat() {

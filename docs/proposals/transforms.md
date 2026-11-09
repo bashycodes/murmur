@@ -5,7 +5,7 @@ Source: design artboard `docs/design/app-design/PageTransforms.dc.html`. Built o
 ## Behaviour
 - Master "Opt in" toggle (default off): when off, no transform chords are registered and auto-apply never runs.
 - A transform = {name, description, instruction, shortcut}. Built-ins: **Polish** (improve clarity and conciseness) and
-  **Prompt Engineer** (turns a rough ask into a clear prompt), in our own wording. Users can create/edit/delete;
+  **Prompt Builder** (turns a rough ask into a clear prompt), in our own wording. Users can create/edit/delete;
   "Reset to defaults" restores built-ins and keeps custom ones.
 - Shortcut press (no speech): wait for key release, capture the selection, run the instruction on it through the
   AI cleanup engines (OpenRouter, then this PC), paste the result over the selection. Pill shows processing.

@@ -3,14 +3,14 @@ package dev.flowclone.bubble
 import dev.flowclone.session.DictationState
 import dev.flowclone.session.DictationState.ErrorKind
 
-/** What the bubble shows (07 §5.4). */
+/** What the bubble shows. */
 data class BubbleUi(
     val state: DictationState = DictationState.Idle,
     val showCopy: Boolean = false,
     val level: Float = 0f,
-    /** Shrunk after 5 s in Ready (07 §5.3): a 36dp window, drawn as a 16dp dot or the 36dp circle ([dot]). */
+    /** Shrunk after 5 s in Ready: a 36dp window, drawn as a 16dp dot or the 36dp circle ([dot]). */
     val minimized: Boolean = false,
-    /** Accessibility service off or dead: alert icon, tap opens the repair screen (07 §5.4 Repair). */
+    /** Accessibility service off or dead: alert icon, tap opens the repair screen. */
     val repair: Boolean = false,
     /** Window shown at all (presence policy: snooze, shake reveal, repair). */
     val visible: Boolean = state != DictationState.Idle,
@@ -31,7 +31,7 @@ data class BubbleUi(
 enum class BubbleButton { MAIN, CANCEL, DONE, COPY, PASTE, DISMISS, COMMAND }
 
 /**
- * Bubble sizes and button layout (07 §5.4), pure so sizes and hit-testing are JVM-testable.
+ * Bubble sizes and button layout, pure so sizes and hit-testing are JVM-testable.
  * Every length is the spec's dp value × [BubbleUi.scale]; at scale 1 it is the spec exactly.
  */
 object BubbleGeometry {
@@ -45,7 +45,7 @@ object BubbleGeometry {
     private fun extras(u: BubbleUi): List<BubbleButton> =
         listOfNotNull(BubbleButton.COMMAND.takeIf { u.showCommand }, BubbleButton.COPY.takeIf { u.showCopy })
 
-    /** Widths from 07 §5.4 (56 circle, +64 per resting extra (copy, command), 230 tap row, 160 hold row; 176 paste/copy/dismiss), unscaled. */
+    /** Widths (56 circle, +64 per resting extra (copy, command), 230 tap row, 160 hold row; 176 paste/copy/dismiss), unscaled. */
     fun baseWidthDp(u: BubbleUi): Float = if (u.resting && u.repair) 56f else if (isMinimisedLook(u)) 36f else when (val s = u.state) {
         DictationState.Idle -> 56f
         DictationState.Ready -> 56f + 64f * extras(u).size
@@ -59,7 +59,7 @@ object BubbleGeometry {
     fun widthDp(u: BubbleUi): Float = baseWidthDp(u) * u.scale
     fun heightDp(u: BubbleUi): Float = baseHeightDp(u) * u.scale
 
-    /** Diameter of the plain minimised dot, unscaled ("Shrink to a dot", like Wispr's). */
+    /** Diameter of the plain minimised dot, unscaled ("Shrink to a dot"). */
     const val DOT_DP = 16f
 
     /** [u] is drawn as the plain dot: the minimised look with "Shrink to a dot" on. */

@@ -20,7 +20,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from wer import wer_counts  # noqa: E402
 
-CACHE = pathlib.Path(os.environ.get("CACHE", pathlib.Path.home() / "Claude/research/wispr/.cache"))
+CACHE = pathlib.Path(os.environ.get("CACHE", pathlib.Path.home() / ".cache/flow-clone"))
 WCLI = CACHE / "whisper.cpp/build/bin/whisper-cli"
 SHERPA = CACHE / "sherpa-onnx/bin/sherpa-onnx-offline"
 PK = CACHE / "models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8"

@@ -1,6 +1,6 @@
 {
  "asr": {
-  "mock": "Wispr flow rocks"
+  "mock": "Zephyr flow rocks"
  },
  "audio": "speech:1200",
  "contexts": [],
@@ -9,7 +9,7 @@
   "dictionary": [
    {
     "replacement": null,
-    "word": "Wispr"
+    "word": "Zephyr"
    }
   ],
   "platform": "windows"

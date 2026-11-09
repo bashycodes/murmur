@@ -29,7 +29,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 - **Android: correct a dictation in History, and corrected names are offered for the dictionary** (D68). A dictation's page has a new "Correct the text": your fix is saved as a new version, and a name you corrected ("gina" → "Jenna") is offered straight away (Add word, Add as fix, or Not now, which keeps it in the Dictionary's suggestions); other changed words land in the suggestions as before. If the speech engine isn't loaded yet, the fix is saved and you're told its words weren't learned.
 
-- **Android (hybrid debug builds only): English speech probe folder batch.** "Run folder batch" runs every WAV in `nano-batch/<set>/` through Gemini Nano and/or the platform recognizer and writes one line per clip and engine to a new `nano-batch/results/batch-<UTC>.jsonl` each batch; `tools/probes/wispr_parity/nano_rows.py` turns it into parity scorecard rows. Batch runs feed the platform recognizer as one segmented session, so a pause in the clip no longer ends the transcript at the first endpoint. Dictation is unchanged.
+- **Android (hybrid debug builds only): English speech probe folder batch.** "Run folder batch" runs every WAV in `nano-batch/<set>/` through Gemini Nano and/or the platform recognizer and writes one line per clip and engine to a new `nano-batch/results/batch-<UTC>.jsonl` each batch; `tools/probes/parity/nano_rows.py` turns it into parity scorecard rows. Batch runs feed the platform recognizer as one segmented session, so a pause in the clip no longer ends the transcript at the first endpoint. Dictation is unchanged.
 
 ### Changed
 
@@ -218,7 +218,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   in line takes it); it never falls through to the on-device model. The
   server cleaning its own sessions no longer skips either. Phone AI stays
   off by default (D43).
-- **Asides, degrees and times read like Wispr's.** "my bike in parentheses
+- **Asides, degrees and times read naturally.** "my bike in parentheses
   which is the green one is locked outside" → `My bike (which is the green
   one) is locked outside`: an "in parentheses which/who …" aside spoken
   without pauses now closes right before the sentence goes on ("write the
@@ -643,7 +643,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 - **Windows: Transforms.** Select text anywhere and press a shortcut to have
   AI rewrite it with your own instruction. Two built-ins come ready:
-  *Polish* (Win+Alt+1) and *Prompt Engineer* (Win+Alt+2); edit them or make
+  *Polish* (Win+Alt+1) and *Prompt Builder* (Win+Alt+2); edit them or make
   up to 20 of your own on the new *Transforms* page (sidebar, between Style
   and Scratchpad), and try one on sample text with *Try it out*. Transforms
   are **off until you turn on *Opt in***, so an upgrade never takes your
@@ -1282,16 +1282,16 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   line. `tools/check-version.sh` (CI + `tools/check-build-matrix.sh`),
   `tools/release.sh` (local commit + annotated `vX.Y.Z` tag), tag-triggered CI
   builds with versioned artifacts and a GitHub release.
-- Shared Rust core `flow-core` (D2): the §9 v2 session API (start / push /
+- Shared Rust core `flow-core` (D2): the v2 session API (start / push /
   late context / partials / commit / cancel), whisper.cpp ASR (D3/D4),
   Parakeet-TDT via sherpa-onnx in the same binary (D12), energy+ZCR VAD and the
   silence-hallucination guard (D16), the whisper encoder window fitted to the
-  clip (D20), Wispr's deterministic post-processing (all 108 Windows + 58
-  Android vectors), deterministic spoken cleanup (D15), opt-in local LLM
+  clip (D20), deterministic post-processing (checked against 108 Windows + 58
+  Android test vectors), deterministic spoken cleanup (D15), opt-in local LLM
   cleanup through the `flow-llm` llama.cpp plugin with the support/coverage
   guard and the short few-shot prompt (D5, D10, D11, D13, D14), C ABI and JNI
   bindings (`flow-ffi`), `flow-cli` dev harness.
-- Hybrid local/server dictation (D17): `flow-router` (one §9 API over local,
+- Hybrid local/server dictation (D17): `flow-router` (one session API over local,
   server and cloud routes, buffered replay, circuit breaker), `flow-remote`
   WebSocket client, self-hosted `flow-server` (LAN/Tailscale only, bearer
   token, stores no audio or text, systemd unit, `tools/server/install.sh`),

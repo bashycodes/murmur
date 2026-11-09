@@ -169,7 +169,7 @@ class FlowApp : Application() {
 
     private val healthMonitor = AccessibilityHealth.Monitor()
 
-    /** Ghost-service check (Wispr AccessibilityHealthMonitor), see [AccessibilityHealth]; debounced, shared by all callers. */
+    /** Ghost-service check, see [AccessibilityHealth]; debounced, shared by all callers. */
     fun accessibilityHealth(): AccessibilityHealth.Status {
         val enabled = A11ySetting.isEnabled(
             android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES),
@@ -319,7 +319,7 @@ interface AccessibilityBridge {
 }
 
 /**
- * Keeps the speech engine warm for the FGS lifetime (§9 `load_models` / `unload`).
+ * Keeps the speech engine warm for the FGS lifetime (core `load_models` / `unload`).
  * Selection: mock engine setting → [FakeFlowCore]; else (D17) the local engine when this
  * flavour has one and the client route needs it, wrapped by the native router
  * (`nativeOpenRouter`), which also owns the server route. All sessions go to the router.

@@ -1,10 +1,10 @@
 // Transforms page (PageTransforms.dc.html, docs/proposals/transforms.md):
 // the master "Opt in", the "view changes" keys, the auto-apply choice and
-// the saved transforms (built-ins Polish and Prompt Engineer plus the
+// the saved transforms (built-ins Polish and Prompt Builder plus the
 // user's own), each with its shortcut. Everything is `prefs.transforms`
 // (src/transforms.rs), saved through prefsStore; "Reset to defaults" is
 // `transforms_reset` (the built-ins come back, custom ones stay) and the
-// banner's "Try it out" runs a transform on sample text (`transform_try`).
+// banner's "Try on sample text" runs a transform on sample text (`transform_try`).
 
 import { $, askDialog, el } from "../lib/dom.js";
 import { ICON, iconEl, iconSvg } from "../lib/icons.js";
@@ -29,28 +29,28 @@ const TEMPLATE = `
     <span class="lw-tf-grow"></span>
     <label class="lw-tf-optin" for="tf_enabled">Opt in</label>
     <input type="checkbox" role="switch" class="fl-toggle" id="tf_enabled" aria-label="Opt in to Transforms" />
-    <span class="fl-kbd-group lw-tf-view" id="tf_view" title="Opens Home with the last transform's before and after"><span id="tf_view_keys"></span><span class="fl-kbd-text">to view changes</span></span>
+    <span class="fl-kbd-group lw-tf-view" id="tf_view" title="Opens Home with the last transform's before and after"><span id="tf_view_keys"></span><span class="fl-kbd-text">shows the last before and after</span></span>
   </div>
 
   <div class="fl-banner fl-banner-mist">
-    <h3 class="fl-banner-title">Transform works anywhere you write</h3>
+    <h3 class="fl-banner-title">Rewrite selected text in any app</h3>
     <p class="fl-banner-body">Select text in any app, press a shortcut, and it's rewritten in place. Uses your AI cleanup engine: the cloud, then this PC.</p>
     <div class="fl-banner-actions">
-      <button type="button" class="fl-btn fl-btn-lumen" id="tf_try">Try it out</button>
-      <button type="button" class="fl-btn fl-btn-link-light" data-go="settings-cleanup">How it works</button>
+      <button type="button" class="fl-btn fl-btn-lumen" id="tf_try">Try on sample text</button>
+      <button type="button" class="fl-btn fl-btn-link-light" data-go="settings-cleanup">AI cleanup settings</button>
     </div>
   </div>
 
   <div class="fl-row lw-tf-auto">
-    <div class="fl-row-text"><div class="fl-row-title">Auto Apply After Dictation</div><div class="fl-row-desc" id="tf_auto_desc">Pass each dictation through the chosen transform before it is pasted.</div></div>
+    <div class="fl-row-text"><div class="fl-row-title">Apply after every dictation</div><div class="fl-row-desc" id="tf_auto_desc">Pass each dictation through the chosen transform before it is pasted.</div></div>
     <select class="fl-select lw-tf-auto-pick" id="tf_auto_pick" aria-label="Transform to apply after dictation"></select>
     <input type="checkbox" role="switch" class="fl-toggle" id="tf_auto" aria-label="Auto apply after dictation" />
   </div>
 
   <div class="lw-tf-bar">
-    <h2 class="fl-serif lw-tf-h2">My Transforms</h2>
+    <h2 class="fl-serif lw-tf-h2">Your transforms</h2>
     <button type="button" class="fl-btn fl-btn-ghost fl-btn-sm" id="tf_reset">${iconSvg(REFRESH_ICON, 16)}Reset to defaults</button>
-    <button type="button" class="fl-btn fl-btn-primary fl-btn-sm" id="tf_new">Create New</button>
+    <button type="button" class="fl-btn fl-btn-primary fl-btn-sm" id="tf_new">New transform</button>
   </div>
 
   <div class="lw-tf-grid" id="tf_grid"></div>
@@ -78,7 +78,7 @@ const TEMPLATE = `
 
   <dialog id="tf_reset_dlg" class="fl-dialog">
     <h3>Reset to defaults?</h3>
-    <p>Polish and Prompt Engineer go back to their shipped wording and shortcuts. Transforms you created are kept.</p>
+    <p>Polish and Prompt Builder go back to their shipped wording and shortcuts. Transforms you created are kept.</p>
     <div class="lw-dialog-actions">
       <button type="button" class="fl-btn fl-btn-secondary" id="tf_reset_cancel">Cancel</button>
       <button type="button" class="fl-btn fl-btn-primary" id="tf_reset_ok">Reset</button>
@@ -201,7 +201,7 @@ function render(p: Prefs): void {
   own.id = "tf_own";
   const plus = el("span", "lw-tf-plus");
   plus.append(iconEl(ICON.plus, 14));
-  own.append(plus, el("span", "lw-tf-name", "Create your own"), el("span", "lw-tf-desc", "Write your own instruction"));
+  own.append(plus, el("span", "lw-tf-name", "Add a transform"), el("span", "lw-tf-desc", "Your instruction, your shortcut"));
   own.addEventListener("click", () => edit(null));
   const full = t.items.length >= MAX_TRANSFORMS;
   own.hidden = full;

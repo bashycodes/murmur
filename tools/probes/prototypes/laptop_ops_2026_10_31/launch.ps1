@@ -1,7 +1,7 @@
 # Apply prefs (app closed) and launch the app in the user's interactive session via a
 # one-shot scheduled task. LOGFILE env: when set, stdout+stderr go to that file.
 Get-Process flow-windows -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 1
-if ($env:SETPREFS -ne '0') { & python "$env:USERPROFILE\wispr-bench\set_prefs.py" }
+if ($env:SETPREFS -ne '0') { & python "$env:USERPROFILE\flow-bench\set_prefs.py" }
 $exe = "$env:LOCALAPPDATA\Murmur\flow-windows.exe"
 $log = "$env:LOCALAPPDATA\Murmur\verify-0.12.0.log"
 if ($env:REDIRECT -eq '1') { $a = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c `"`"$exe`" > `"$log`" 2>&1`"" }

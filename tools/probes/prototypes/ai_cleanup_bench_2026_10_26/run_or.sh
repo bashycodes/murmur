@@ -35,7 +35,7 @@ left=$(python3 -c "print(max(0.0, $cap - $spent))")
 echo "== $label $model $(date +%T) spent so far \$$spent, left \$$left" >&2
 python3 -c "import sys; sys.exit(0 if $left > 0.01 else 1)" || { echo "cap reached" >&2; exit 4; }
 cases="${CASES:-$here/results/all_cases.jsonl}"
-cat "$here/../formatting_eval_2026_10_24/cases.jsonl" "$here/wispr_cases.jsonl" > "$here/results/all_cases.jsonl"
+cat "$here/../formatting_eval_2026_10_24/cases.jsonl" > "$here/results/all_cases.jsonl"
 OPENROUTER_KEY="$(cat "$HOME/.config/flow-clone/openrouter.key")"
 export OPENROUTER_KEY
 nice -n 10 "$bin" --mode ai --cases "$cases" --session "$here/sessions/prod.json" \

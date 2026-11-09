@@ -12,7 +12,7 @@
 # 127.0.0.1:7391/7392 with a throwaway token, never the user's service port.
 set -euo pipefail
 : "${BASE:?}" "${NEW:?}" "${PARAKEET_DIR:?}" "${CLIPS_DIR:?}"
-OUT=${OUT:-$HOME/Claude/research/wispr/.cache/streaming-latency-2026-10-23/$(date +%Y%m%d-%H%M%S)}
+OUT=${OUT:-$HOME/.cache/flow-clone/streaming-latency-2026-10-23/$(date +%Y%m%d-%H%M%S)}
 mkdir -p "$OUT"
 export LD_LIBRARY_PATH=${SHERPA_ONNX_LIB_DIR:-}:${LD_LIBRARY_PATH:-}
 CLIPS=${CLIPS:-"long_010s long_025s long_028s long_032s long_040s long_060s"}

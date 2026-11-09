@@ -1,4 +1,4 @@
-//! flow-core: shared Rust core of Murmur, the local Wispr Flow clone (spec §9 v2).
+//! flow-core: shared Rust core of Murmur, a self-hosted dictation app.
 //!
 //! See `docs/core-architecture.md`. Entry point: [`FlowCore`].
 pub mod align;

@@ -17,13 +17,13 @@ length and latency.
 | `gen_cases.py` -> `cases.jsonl`, `refs.json`, `dict-*.json` | 34 made-up cases: P near spellings of a made-up user dictionary (12), B near spellings of public product names that are not in the dictionary (8; a built-in list of them was tried and removed), N ordinary words that resemble an entry and must stay (12), K tidy lines with no entry near (2). `dict-small.json` is that 12-entry dictionary; `dict-20.json` / `dict-200.json` pad it with made-up names for the prompt-size runs |
 | `score_cases.py` | Passes per group, rows the LLM ran on, rows whose prompt named a term, mean prompt characters, LLM p50 / p95 |
 | `overlap.py` | Privacy check: no added line of the branch shares a 4-word run with the private reference files (`git diff BASE -U0 \| overlap.py REFS...`) |
-| `runner/` | `wispr-parity-clean`, the numbers copy of the parity runner plus `--dictionary DICT.json` and the prompt's DICTIONARY line in each output row. Own workspace, uses this checkout's flow-core |
+| `runner/` | `parity-clean`, the numbers copy of the parity runner plus `--dictionary DICT.json` and the prompt's DICTIONARY line in each output row. Own workspace, uses this checkout's flow-core |
 
 ## Run
 
     python3 gen_cases.py
     CARGO_TARGET_DIR=... cargo build --release --offline -j 2 --manifest-path runner/Cargo.toml
-    wispr-parity-clean --mode local|server|cloud --cases cases.jsonl --session SESSION.json \
+    parity-clean --mode local|server|cloud --cases cases.jsonl --session SESSION.json \
         --dictionary dict-small.json --llm MODEL.gguf --llm-lib libflow_llm.so [--timeout-ms MS] > out.jsonl
     python3 score_cases.py out.jsonl --fails
 

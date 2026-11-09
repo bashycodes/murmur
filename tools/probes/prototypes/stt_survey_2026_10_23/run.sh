@@ -5,7 +5,7 @@
 # file per run, never overwritten: a timestamp suffix is added if one exists).
 # Models were fetched into $CACHE/models/survey-2026-10-23/dl-<name>/<name>/.
 set -euo pipefail
-CACHE=${CACHE:-$HOME/Claude/research/wispr/.cache}
+CACHE=${CACHE:-$HOME/.cache/flow-clone}
 HERE=$(cd "$(dirname "$0")" && pwd)
 PROBES=$(cd "$HERE/../.." && pwd)
 BIN=$CACHE/stt-survey-target-2/release/stt_survey_2026_10_23

@@ -90,7 +90,7 @@ fn ctx() -> FieldContext {
 
 fn dict() -> Dictionary {
     Dictionary {
-        entries: vec![DictEntry::replacement("wispr", "Wispr")],
+        entries: vec![DictEntry::replacement("zephyr", "Zephyr")],
     }
 }
 
@@ -371,11 +371,11 @@ fn server_result(text: &str) -> flow_core::CommitResult {
 
 #[test]
 fn refinish_cleans_a_server_transcript_on_the_client() {
-    let r = server_result("um the demo with wispr is on thursday right");
+    let r = server_result("um the demo with zephyr is on thursday right");
     assert_eq!(r.status, CommitStatus::RawTranscript);
     let cl = Arc::new(Hop::new(
         "local",
-        Ok("The demo with wispr is on Thursday, right?"),
+        Ok("The demo with zephyr is on Thursday, right?"),
     ));
     let out = refinish(&session(), &ctx(), Some(cl.clone()), r.clone());
     assert_eq!(out.status, CommitStatus::Formatted, "{out:?}");
@@ -383,7 +383,7 @@ fn refinish_cleans_a_server_transcript_on_the_client() {
     // (lower-cased after "Hi team, " by the cursor-context rule)
     assert_eq!(
         out.final_text.trim(),
-        "the demo with Wispr is on Thursday, right?"
+        "the demo with Zephyr is on Thursday, right?"
     );
     assert_eq!(out.asr_text, r.asr_text);
     assert_eq!(out.llm.unwrap().model.as_deref(), Some("local"));
@@ -394,7 +394,7 @@ fn refinish_cleans_a_server_transcript_on_the_client() {
     // No cleaner: the rules alone.
     let plain = refinish(&session(), &ctx(), None, r.clone());
     assert_eq!(plain.status, CommitStatus::RawTranscript);
-    assert!(plain.final_text.contains("Wispr"));
+    assert!(plain.final_text.contains("Zephyr"));
     // Cleanup off in the user's session: no LLM call at all.
     let mut off = session();
     off.cleanup_level = CleanupLevel::None;

@@ -31,7 +31,7 @@ the fixture bundle (about 25 MB, public clips only).
 | `whisper-base` | `models/ggml-base-q5_1.bin` | en |
 | `zipformer-he` | `hebrew/zipformer-he` | he: 49 FLEURS he_il dev clips, 416 s |
 | `parakeet-he` | `hebrew/parakeet-v3-he` | he |
-| `qwen1.5b` | `llm/qwen2.5-1.5b-instruct-q4_k_m.gguf` | 102 cleanup cases (the 88-suite plus 14 Wispr targets) |
+| `qwen1.5b` | `llm/qwen2.5-1.5b-instruct-q4_k_m.gguf` | 88 cleanup cases (the 88-suite) |
 | `qwen0.5b` | `llm/qwen2.5-0.5b-instruct-q4_k_m.gguf` | skipped when the file is absent |
 
 A missing model, or one that fails to load, is noted in `meta.json` and skipped.
@@ -70,7 +70,7 @@ $S pull r1                    # -> $CACHE/android-bench/results/r1
   * stop after the current item: `$ADB shell am start -n dev.flowclone/.debug.BenchActivity --ez stop true`
 * Keep the activity in front. It holds the screen on, and the work runs on its thread.
 * Expected run time with every model is about 15–25 min: 4 × ~6.5 min of audio at RTF < 0.1,
-  plus 2 × 102 LLM calls per LLM.
+  plus 2 × 88 LLM calls per LLM.
 * Pacing:
   * `pace=fast` (the default) pushes all audio, then commits, so `commit_ms` holds the whole
     decode. This is the worst case, and the number to compare with the PC benches.
@@ -110,3 +110,5 @@ python3 -I tools/probes/android_bench/score.py $CACHE/android-bench/results/r1  
 | `meta.json` | device, app build, args, and per model: load ms, warm-up ms, PSS, thermal status, or why it was skipped |
 | `stt-<model>.jsonl` | per clip: `asr_text`, `final_text`, `status`, `audio_ms`, `push_ms`, `commit_ms`, core `asr_ms` / `total_ms` |
 | `cleanup-<llm>-<mode>.jsonl` | per case: `llm_raw`, `llm_ms`, `error`, `llm_info` (llama.cpp stats); `prod` also has `output` and `fallback_reason` |
+
+The cache default is `~/.cache/flow-clone`; set CACHE=<dir> to reuse an existing cache.

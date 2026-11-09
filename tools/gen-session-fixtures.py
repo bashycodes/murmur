@@ -10,7 +10,7 @@ results byte for byte (minus timings/route):
    session_config: <SessionConfig>, contexts: [{at_ms, ctx: <FieldContext>}],
    learn?: {pasted, edited}}
 
-Sources: the Wispr ground-truth post-processing vectors in
+Sources: the post-processing test vectors in
 crates/flow-core/tests/vectors/ (every case expressible as ASR text + config
 + context) plus hand-written core-p1 cases (spoken cleanup, empty reasons).
 Re-run after the vectors change; the output is deterministic.
@@ -143,9 +143,9 @@ def core_p1():
         {"name": "p1_two_contexts_last_wins", "asr": m("hello world"), "audio": "speech:1000",
          "session_config": {}, "contexts": [{"at_ms": 0, "ctx": {"app_id": "notepad", "before": "Dear "}},
                                              {"at_ms": 1000, "ctx": {"app_id": "slack", "before": ""}}]},
-        {"name": "p1_learn_edit", "asr": m("I use whisper flow daily"), "audio": "speech:1000",
+        {"name": "p1_learn_edit", "asr": m("I use zefir cloud daily"), "audio": "speech:1000",
          "session_config": {"dictionary": [{"word": "Kubernetes"}]}, "contexts": [],
-         "learn": {"pasted": "I use whisper flow daily", "edited": "I use Wispr Flow daily"}},
+         "learn": {"pasted": "I use zefir cloud daily", "edited": "I use Zephyr Cloud daily"}},
     ]
 
 

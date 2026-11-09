@@ -58,14 +58,14 @@ first 2 s, clean / white noise 15 dB and 5 dB SNR:
 | base-q5_1, `en` | 0.014 | 0 / 78 |
 | base.en (f16) | 0.024 | 0 / 52 (clean, 15 dB) |
 
-Raw rows: `~/Claude/research/wispr/.cache/diag-2026-10-23/lang_auto*.jsonl`. So the device
+Raw rows are kept outside the repo. So the device
 behaviour (Bulgarian on 2 s, garbled words) is not reproduced on native read speech; it needs
 the phone's actual audio (accent, spontaneous speech, distance, mic processing), which no build
 records today.
 
 ### 4. `endpoint_wait_ms = 0`: real defect, debug metric only
 
-`SilenceTracker` uses Wispr's fixed "can't hear you" bar (mean s² > 33856, RMS 184 ≈ −45 dBFS).
+`SilenceTracker` uses a fixed "can't hear you" level (mean s² > 33856, RMS 184 ≈ −45 dBFS).
 A phone mic's room-noise floor is above that, so frames after the last word still count as
 signal and the trailing silence never accumulates. Exactly 0 on every line (not small values)
 means the last read before every stop was above −45 dBFS, including hands-free stops that the

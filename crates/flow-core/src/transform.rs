@@ -38,7 +38,7 @@ pub const SELECTION_TIMEOUT: Duration = command::DEFAULT_TIMEOUT;
 
 /// Id of the built-in "Polish" transform.
 pub const POLISH: &str = "polish";
-/// Id of the built-in "Prompt Engineer" transform.
+/// Id of the built-in "Prompt Builder" transform.
 pub const PROMPT_ENGINEER: &str = "prompt_engineer";
 
 /// One saved transform. `id` is stable (prefs, auto-apply choice);
@@ -58,7 +58,7 @@ pub fn builtins() -> Vec<Transform> {
         Transform {
             id: POLISH.into(),
             name: "Polish".into(),
-            description: "Improve clarity and conciseness".into(),
+            description: "Clearer, tighter wording".into(),
             instruction: "Polish this text: make it clearer and more concise. Fix grammar, \
 spelling and awkward phrasing, cut filler and repetition, and keep the meaning, the tone, the \
 language and any formatting the text already has. Don't add new content."
@@ -66,7 +66,7 @@ language and any formatting the text already has. Don't add new content."
         },
         Transform {
             id: PROMPT_ENGINEER.into(),
-            name: "Prompt Engineer".into(),
+            name: "Prompt Builder".into(),
             description: "Turn a rough ask into a clear prompt for an AI assistant".into(),
             instruction: "Rewrite this rough request as a clear, well-structured prompt for an \
 AI assistant. State the goal first, then the relevant context, constraints and the expected \
@@ -283,7 +283,7 @@ mod tests {
             [POLISH, PROMPT_ENGINEER]
         );
         assert_eq!(b[0].name, "Polish");
-        assert_eq!(b[1].name, "Prompt Engineer");
+        assert_eq!(b[1].name, "Prompt Builder");
         for t in &b {
             assert!(is_builtin(&t.id));
             assert!(t.instruction.chars().count() <= MAX_INSTRUCTION_CHARS);

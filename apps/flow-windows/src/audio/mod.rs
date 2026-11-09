@@ -102,8 +102,7 @@ pub fn level_from_rms(rms: f32) -> f32 {
     ((db + 60.0) / 60.0).clamp(0.0, 1.0)
 }
 
-/// Overlay level exactly like Wispr's pipeline (overlay-spec.json
-/// `waveform.level_pipeline`): per 40 ms chunk `dB = 20·log10(rms+1e-10)`;
+/// Overlay level meter: per 40 ms chunk `dB = 20·log10(rms+1e-10)`;
 /// an auto floor that starts at 0 dB and follows the quietest chunk
 /// (never below −60 dB); `scaled = clamp((dB − floor)/20, 0, 1)`; emitted as
 /// the mean of every 4 chunks (~150 ms). One meter per dictation.

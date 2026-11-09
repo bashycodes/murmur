@@ -1,7 +1,7 @@
 //! Shared dictionary / snippet export format: `[{word, replacement, isSnippet}]`.
 //!
-//! Matches Android Room `dictionary_words`
-//! (spec §9). An entry with no replacement is a pure vocabulary word (ASR
+//! Matches the Android Room `dictionary_words` table and the Windows app's
+//! dictionary. An entry with no replacement is a pure vocabulary word (ASR
 //! bias only); with a replacement it is a deterministic rewrite; with
 //! `isSnippet` the replacement is an expansion body.
 
@@ -75,13 +75,13 @@ mod tests {
     #[test]
     fn parses_shared_json_format() {
         let json = r#"[
-            {"word": "wispr", "replacement": "Wispr", "isSnippet": false},
+            {"word": "zephyr", "replacement": "Zephyr", "isSnippet": false},
             {"word": "my address", "replacement": "1 Main St", "isSnippet": true},
             {"word": "Kubernetes"}
         ]"#;
         let d = Dictionary::from_json(json).unwrap();
         assert_eq!(d.entries.len(), 3);
-        assert_eq!(d.entries[0].replacement.as_deref(), Some("Wispr"));
+        assert_eq!(d.entries[0].replacement.as_deref(), Some("Zephyr"));
         assert!(d.entries[1].is_snippet);
         assert!(!d.entries[2].is_snippet);
         assert_eq!(d.entries[2].replacement, None);
@@ -101,10 +101,10 @@ mod tests {
         let d = Dictionary {
             entries: vec![
                 DictEntry::word("Kubernetes"),
-                DictEntry::replacement("wispr", "Wispr"),
+                DictEntry::replacement("zephyr", "Zephyr"),
                 DictEntry::snippet("my address", "1 Main Street, Springfield"),
             ],
         };
-        assert_eq!(d.vocabulary(), vec!["Kubernetes", "Wispr"]);
+        assert_eq!(d.vocabulary(), vec!["Kubernetes", "Zephyr"]);
     }
 }

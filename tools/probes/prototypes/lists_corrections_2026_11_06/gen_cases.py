@@ -2,7 +2,7 @@
 """Synthetic spoken-list and self-correction cases (2026-11-06 probe).
 
 Writes `cases.jsonl` (runner input: id, input, app_category) and
-`refs.json` (the wispr_parity `score.py` reference shape: intended text,
+`refs.json` (the parity `score.py` reference shape: intended text,
 regex checks) next to this script. Every sentence is made up; none comes
 from a real dictation. Inputs are lowercase and unpunctuated (whisper-less
 raw speech) or Parakeet-style (pause commas), as dictation arrives.

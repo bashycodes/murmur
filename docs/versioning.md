@@ -98,8 +98,8 @@ Python rules.
 * **`POSTPROCESS_REV`** (date-based, compared for the Developer warning):
   tracks post-processing behaviour, which changes far less often than the
   product.
-* Model files, the D21 log schema and Wispr's own version numbers are
-  unrelated.
+* Model files and the D21 log schema are
+  versioned separately.
 
 ## 6. Tags and releases
 

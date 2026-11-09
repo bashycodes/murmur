@@ -1,5 +1,4 @@
-//! `prefs.json` in `%APPDATA%\FlowClone\` (replaces Wispr's electron-store
-//! `config.json`). Unknown/missing fields fall back to defaults so old files
+//! `prefs.json` in `%APPDATA%\FlowClone\`. Unknown/missing fields fall back to defaults so old files
 //! keep loading; a corrupt file is moved aside rather than silently lost.
 
 pub use crate::core_api::DictEntry;
@@ -34,8 +33,8 @@ const OLD_LLM_TIMEOUT_MS: u64 = 1500;
 /// D27: Android's budget; prompt v2 + Qwen2.5-1.5B p50 ≈ 1.3 s.
 pub const DEFAULT_LLM_TIMEOUT_MS: u64 = 3000;
 
-/// D27 layer 1: chats casual (no stiff final period; Wispr Android's own
-/// personal default), email and everything else formal.
+/// D27 layer 1: chats casual (no stiff final period), email and
+/// everything else formal.
 pub fn default_styles() -> Styles {
     Styles {
         personal: "casual".into(),
@@ -45,7 +44,7 @@ pub fn default_styles() -> Styles {
     }
 }
 
-/// The pre-D27 default: every bucket formal (03 §1.3, Wispr Windows).
+/// The pre-D27 default: every bucket formal.
 fn all_formal(s: &Styles) -> bool {
     [&s.personal, &s.work, &s.email, &s.other]
         .iter()
@@ -164,7 +163,7 @@ pub struct Prefs {
     /// an unknown layout falls back to `languages` ([`crate::keyboard_language`]).
     pub keyboard_language: bool,
     pub enable_sounds: bool,
-    /// Wispr default on Windows: mute other apps while dictating.
+    /// Mute other apps while dictating (on by default).
     pub mute_audio_while_dictating: bool,
     pub launch_at_login: bool,
     /// Keep the Flow bar up while idle. Off by default: the bar shows only
@@ -245,7 +244,7 @@ pub struct Prefs {
     /// Cleanup budget per dictation before falling back to RAW_TRANSCRIPT.
     pub llm_timeout_ms: u64,
     /// Watch the field after a paste and suggest dictionary words from the
-    /// user's corrections (03 §3). Suggestions are never auto-added.
+    /// user's corrections. Suggestions are never auto-added.
     pub learn_from_edits: bool,
     /// How long to watch after a paste.
     pub learn_window_ms: u64,
@@ -834,7 +833,7 @@ mod tests {
         p.languages = vec!["en".into()];
         p.dictionary = vec![
             DictEntry {
-                word: "Wispr".into(),
+                word: "Korra".into(),
                 replacement: None,
                 is_snippet: false,
             },
@@ -857,7 +856,7 @@ mod tests {
         let c = p.session_config();
         assert_eq!(c.languages, vec!["en"]);
         assert_eq!(c.dictionary.len(), 3, "blank word dropped, order kept");
-        assert_eq!(c.dictionary[0].word, "Wispr");
+        assert_eq!(c.dictionary[0].word, "Korra");
         assert_eq!(c.dictionary[1].replacement.as_deref(), Some("GitHub"));
         assert!(c.dictionary[2].is_snippet);
         assert_eq!(c.partial_interval_ms, Some(1500));

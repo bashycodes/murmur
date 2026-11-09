@@ -755,7 +755,7 @@ impl Controller {
         self.platform.history_changed();
     }
 
-    /// Learn from edits (03 §3): re-read the field for a while after the
+    /// Learn from edits: re-read the field for a while after the
     /// paste; corrections become suggestions, never dictionary entries.
     fn watch_for_edits(&self, ctx: Option<FieldContext>, r: &CommitResult, row: Option<i64>) {
         let prefs = self.prefs.read().unwrap().clone();
@@ -864,7 +864,7 @@ impl Controller {
         });
     }
 
-    /// Put the last transcript on the clipboard (Wispr Shift+Alt+X).
+    /// Put the last transcript on the clipboard (Shift+Alt+X).
     fn copy_last(&self) {
         let Some(text) = self.last_text() else { return };
         let text = crate::paste::plain_text(&text);

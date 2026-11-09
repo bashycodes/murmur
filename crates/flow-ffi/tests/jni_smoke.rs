@@ -83,7 +83,7 @@ fn jvm_round_trip() {
     assert_eq!(commit["final_text"], "hello by the way ");
     assert_eq!(commit["timings"]["audio_ms"], 1000);
     let cands: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
-    assert_eq!(cands[0]["corrected"], "Wispr");
+    assert_eq!(cands[0]["corrected"], "Zephyr");
     assert!(lines.next().unwrap().contains("bad session config"));
     let null_commit: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
     assert_eq!(null_commit["status"], "ERROR");
@@ -115,7 +115,7 @@ fn jvm_round_trip() {
     assert_eq!(status["circuit"]["open"], false);
     let cands: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
     assert_eq!(
-        cands[0]["corrected"], "Wispr",
+        cands[0]["corrected"], "Zephyr",
         "router learn_edit uses the last dictionary"
     );
     // D55: the local start went to the phone, whatever the route order.

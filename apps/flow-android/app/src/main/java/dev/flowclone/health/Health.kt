@@ -14,7 +14,7 @@ object A11ySetting {
 }
 
 /**
- * Ghost-service detection (Wispr `AccessibilityHealthMonitor`, 01 §Survival): the toggle
+ * Ghost-service detection: the toggle
  * says ON but the binding is dead, which OEM task killers cause. Two shapes:
  * - enabled in Settings, but `onServiceConnected` never ran within [CONNECT_GRACE_MS] of
  *   process start;
@@ -25,7 +25,7 @@ object A11ySetting {
  * sleeps) but is compared with `elapsedRealtime`, so right after a wake the beat looks
  * minutes old although the service is bound and idle (seen on a Galaxy S25+: GHOST, then OK
  * 0.2-1 s later when the overdue tick fired). [Monitor] then debounces what is left.
- * The fix offered to the user is Wispr's: turn the service off and on again.
+ * The fix offered to the user: turn the service off and on again.
  */
 object AccessibilityHealth {
     const val CONNECT_GRACE_MS = 15_000L

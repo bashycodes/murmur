@@ -10,11 +10,11 @@ OUT_DIR/run.json, and prints one markdown table row per combination plus a
 
 * expected text per recording: the corpus's expected-text JSON
   ({recording id: text}, owner-editable; default CORPUS/expected.json via
-  run.sh), else the Wispr output of the A/B pair whose script matches the
-  phone's transcript (tools/probes/prototypes/wispr_ab_2026_10_25/pairs.jsonl,
-  closeness >= 0.6).
+  run.sh), else the expected text of the reference pair (--pairs FILE,
+  JSONL of {id, spoken, expected}) whose script matches the phone's
+  transcript (closeness >= 0.6).
 * closeness / exact vs expected: ai_cleanup_bench_2026_10_26/score.py's
-  target-closeness (token edit distance, curly quotes, dashes and the final
+  closeness (token edit distance, curly quotes, dashes and the final
   period normalised) and its period-insensitive exact match.
 * vs phone: the same metrics against the phone's pasted text: how well the
   replay reproduces the phone (1.000 / all exact = identical).
@@ -36,7 +36,6 @@ _spec = importlib.util.spec_from_file_location(
     "bench_score", os.path.join(protos, "ai_cleanup_bench_2026_10_26", "score.py"))
 sc = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(sc)
-PAIRS = os.path.join(protos, "wispr_ab_2026_10_25", "pairs.jsonl")
 
 
 def load_jsonl(p):
@@ -63,7 +62,7 @@ def expected_texts(recs, expected_file, pairs_file):
         raw = ((r.get("phone") or {}).get("raw") or "")
         best = max(pairs, key=lambda p: sc.closeness(raw, p["spoken"]), default=None)
         if raw and best and sc.closeness(raw, best["spoken"]) >= 0.6:
-            out[r["id"]] = (best["wispr"], "wispr:" + best["id"])
+            out[r["id"]] = (best["expected"], "pair:" + best["id"])
     return out
 
 
@@ -144,7 +143,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--rows", required=True, help="run output dir")
     ap.add_argument("--expected", help="expected-text JSON {recording id: text}")
-    ap.add_argument("--pairs", default=PAIRS)
+    ap.add_argument("--pairs", help="reference pairs JSONL {id, spoken, expected}")
     ap.add_argument("--detail", action="store_true")
     a = ap.parse_args(argv)
     rows = load_jsonl(os.path.join(a.rows, "rows.jsonl"))

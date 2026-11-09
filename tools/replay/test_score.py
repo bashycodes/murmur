@@ -12,12 +12,12 @@ _spec = importlib.util.spec_from_file_location("replay_score", os.path.join(here
 score = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(score)
 
-PAIRS = [{"id": "ab6", "spoken": "the meeting is at ten no wait eleven so don't come early",
-          "wispr": "The meeting is at 11 so don't come early."}]
+PAIRS = [{"id": "p1", "spoken": "the bus leaves at six no wait seven so don't be late",
+          "expected": "The bus leaves at 7 so don't be late."}]
 RECS = [
     {"id": "a", "wav": "a.wav", "app_id": "x",
-     "phone": {"raw": "The meeting is at 10, no wait, 11, so don't come early.",
-               "text": "The meeting is at 11, so don't come early", "cleanup_route": "cloud", "llm_cost_usd": 0.0016}},
+     "phone": {"raw": "The bus leaves at 6, no wait, 7, so don't be late.",
+               "text": "The bus leaves at 7, so don't be late", "cleanup_route": "cloud", "llm_cost_usd": 0.0016}},
     {"id": "b", "wav": "b.wav", "app_id": "x",
      "phone": {"raw": "Is that something that exists already?", "text": "Is that something that exists already?",
                "cleanup_route": "cloud", "llm_cost_usd": 0.0016}},
@@ -33,8 +33,8 @@ def row(rec, cleanup, out, **kw):
 
 
 ROWS = [
-    row("a", "none", "The meeting is at 10, no wait, 11, so don't come early"),
-    row("a", "or", "The meeting is at 11, so don't come early.", cleanup_route="cloud", llm_ms=400, cost_usd=0.002),
+    row("a", "none", "The bus leaves at 6, no wait, 7, so don't be late"),
+    row("a", "or", "The bus leaves at 7, so don't be late.", cleanup_route="cloud", llm_ms=400, cost_usd=0.002),
     row("b", "none", "Is that something that exists already?"),
     row("b", "or", "Is that something that exists already?", cleanup_route="local",
         cloud_fallback="llm_unsupported", llm_ms=900, cost_usd=0.001),
@@ -56,9 +56,9 @@ class ScoreTest(unittest.TestCase):
         with open(self.exp, "w") as f:
             json.dump({"_note": "owner-editable", "b": "Is that something that exists already?"}, f)
 
-    def test_expected_from_file_then_wispr_pairs(self):
+    def test_expected_from_file_then_pairs(self):
         exp = score.expected_texts(RECS, self.exp, self.pairs)
-        self.assertEqual(exp["a"], ("The meeting is at 11 so don't come early.", "wispr:ab6"))
+        self.assertEqual(exp["a"], ("The bus leaves at 7 so don't be late.", "pair:p1"))
         self.assertEqual(exp["b"][1], "file")
         self.assertNotIn("c", exp)
 
@@ -68,7 +68,7 @@ class ScoreTest(unittest.TestCase):
         self.assertEqual(list(t), ["phone (debug log)", "fake / none / -", "fake / or / v4c"])
         ph, ai, none = t["phone (debug log)"], t["fake / or / v4c"], t["fake / none / -"]
         self.assertEqual(ph["n"], 2)
-        # Wispr's comma-free line vs the phone's: close, not exact.
+        # The pair's comma-free line vs the phone's: close, not exact.
         self.assertEqual(ph["exact"], (1, 2))
         self.assertEqual(ai["exact"], (1, 2))
         self.assertEqual(ai["exact_phone"], (2, 2))  # final period ignored
