@@ -76,6 +76,10 @@ Update: get the newer source, run the `docker build` again, then
 `docker rm -f murmur-server` and the same `docker run`. Keys stay in
 `murmur_data`; models stay in your folder.
 
+Set up before the rename to Murmur (D83)? The old container (`flow-server`)
+listens on the same port: `docker rm -f flow-server` first. Its keys stay in
+the old `flow_data` volume and are not carried over; add them again.
+
 ## Safety
 
 * `-p 0.0.0.0:7313:7313` opens the port on every IPv4 address of the

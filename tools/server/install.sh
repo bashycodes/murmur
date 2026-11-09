@@ -54,8 +54,8 @@
 #
 # An install from before the Murmur rename (flow-server paths, D83) is
 # picked up once: its config and token are copied (not moved) into the new
-# config dir, the user-mode state dir (keys) is copied, and the old unit is
-# left alone with a warning (it listens on the same port).
+# config dir, and the old unit is left alone with a warning (it listens on
+# the same port). Its keys are not carried over: add them again.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -382,16 +382,7 @@ elif [ "$PICK_UP" = 1 ]; then
     sed -E -e "s|^([[:space:]]*token_file[[:space:]]*=[[:space:]]*)\"$OLD_CONF_DIR/token\"|\1\"$TOKEN\"|" \
         -e "s|^([[:space:]]*llm_lib[[:space:]]*=[[:space:]]*)\"[^\"]*\"|\1\"$PLUGIN\"|" \
         "$READ_CONF" | priv_write "$CONF" 0644
-    if [ "$MODE" = user ]; then
-        OLD_STATE="${XDG_STATE_HOME:-$HOME/.local/state}/flow-server"
-        NEW_STATE="${XDG_STATE_HOME:-$HOME/.local/state}/murmur-server"
-        if [ -d "$OLD_STATE" ] && [ ! -e "$NEW_STATE" ]; then
-            run cp -a "$OLD_STATE" "$NEW_STATE"
-        fi
-    else
-        echo "    keys: the server reads /var/lib/flow-server until /var/lib/murmur-server has keys.json;"
-        echo "    to finish the move: sudo cp -a /var/lib/private/flow-server/. /var/lib/private/murmur-server/"
-    fi
+    echo "    keys of the old install are not carried over: add them again with murmur-server keys add"
 else
     priv_write "$CONF" 0644 <<EOF
 # murmur-server config, written by tools/server/install.sh. Reference:

@@ -87,17 +87,8 @@ impl DebugConfig {
 
 /// The server's state directory: systemd's `$STATE_DIRECTORY` (the unit's
 /// `StateDirectory=murmur-server`, first entry), else
-/// `$XDG_STATE_HOME/murmur-server`, else `$HOME/.local/state/murmur-server`;
-/// the earlier install's `flow-server` dir while only it has the keys (D83).
+/// `$XDG_STATE_HOME/murmur-server`, else `$HOME/.local/state/murmur-server`.
 pub fn state_dir() -> Option<PathBuf> {
-    let (dir, note) = crate::legacy::state_dir(default_state_dir()?);
-    if let Some(n) = note {
-        crate::legacy::notice(&n);
-    }
-    Some(dir)
-}
-
-fn default_state_dir() -> Option<PathBuf> {
     let env = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty());
     if let Some(s) = env("STATE_DIRECTORY") {
         let first = s

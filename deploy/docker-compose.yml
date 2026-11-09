@@ -8,7 +8,9 @@
 # MURMUR_MODELS_PATH: a folder with one folder per model, each tagged by its
 # model.toml (e.g. the colleague bundle's unzipped library/), mounted
 # read-only at /models. The config is derived from it on every start;
-# keys and the admin key live in the murmur_data volume.
+# keys and the admin key live in the murmur_data volume (an install from
+# before the rename, D83: stop it with `docker compose -p flow-server down`;
+# its keys stay in its own volume and are not carried over).
 # Commands: docker exec murmur-server murmur-server keys add phone
 #
 # Settings (environment or a .env file next to this one):
