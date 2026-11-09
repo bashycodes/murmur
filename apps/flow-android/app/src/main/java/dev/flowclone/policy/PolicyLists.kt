@@ -1,5 +1,6 @@
 package dev.flowclone.policy
 
+import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -19,6 +20,10 @@ import org.json.JSONObject
  * that safe (launchers contain "launcher", System UI is a `systemui` part, banks say "bank"); the
  * lists hold the rest. A missing app falls back to the default path (bubble shown, style "other",
  * normal insert checks), except [isRestricted], whose word rule errs toward hiding.
+ *
+ * Fail-safe: if the file is missing or broken, the error is logged and every app counts as
+ * restricted (no bubble, no reads) while every other group is empty, so a bad build hides the
+ * bubble instead of crashing the accessibility service or exposing a bank app.
  */
 object PolicyLists {
     /** One group: app-id rules and web-host rules (see the JSON's matching rules). */
@@ -46,18 +51,54 @@ object PolicyLists {
 
     private const val RESOURCE = "/app-groups.json"
 
-    private class Data(val android: Map<String, Group>, val placeholders: Set<String>)
+    internal class Data(val android: Map<String, Group>, val placeholders: Set<String>, val ok: Boolean)
+
+    /** Groups every caller needs; a file without one of them counts as broken. */
+    internal val REQUIRED = listOf(
+        "restart_prone", "known_null", "system_search", "in_call", "compose_placeholder_apps",
+        "system_ui", "browser", "restricted", "email", "work", "personal",
+    )
+
+    /** What [load] returns for a missing or broken file: restricted matches every app. */
+    private val FAILED = Data(mapOf("restricted" to Group(words = listOf(""))), emptySet(), ok = false)
 
     private val data: Data by lazy {
-        val text = PolicyLists::class.java.getResourceAsStream(RESOURCE)?.use { it.readBytes().decodeToString() }
-            ?: error("$RESOURCE missing from the build")
-        val root = JSONObject(text)
-        val android = root.getJSONObject("android")
-        Data(
-            android.keys().asSequence().associateWith { parse(android.getJSONObject(it)) },
-            strings(root.optJSONArray("compose_placeholders")).toSet(),
-        )
+        val text = try {
+            PolicyLists::class.java.getResourceAsStream(RESOURCE)?.use { it.readBytes().decodeToString() }
+        } catch (e: Exception) {
+            null
+        }
+        load(text)
     }
+
+    /** Parses the JSON text; null or broken text (or a missing group) logs and returns [FAILED]. */
+    internal fun load(text: String?): Data {
+        val problem = try {
+            if (text == null) {
+                "$RESOURCE missing from the build"
+            } else {
+                val root = JSONObject(text)
+                val android = root.getJSONObject("android")
+                val groups = android.keys().asSequence().associateWith { parse(android.getJSONObject(it)) }
+                val missing = REQUIRED.filter { it !in groups }
+                if (missing.isEmpty()) {
+                    return Data(groups, strings(root.optJSONArray("compose_placeholders")).toSet(), ok = true)
+                }
+                "$RESOURCE lacks groups $missing"
+            }
+        } catch (e: Exception) {
+            "$RESOURCE is broken: $e"
+        }
+        try {
+            Log.e("PolicyLists", "$problem; treating every app as restricted (D80)")
+        } catch (_: RuntimeException) {
+            // Plain JVM without Android stubs.
+        }
+        return FAILED
+    }
+
+    /** False when the groups failed to load (see the fail-safe note above). */
+    val loaded: Boolean get() = data.ok
 
     private fun strings(a: JSONArray?): List<String> =
         if (a == null) emptyList() else List(a.length()) { a.getString(it).lowercase() }
@@ -75,8 +116,13 @@ object PolicyLists {
         )
     }
 
-    /** An Android group by its name in the JSON; an unknown name is a bug. */
-    fun group(name: String): Group = data.android[name] ?: error("no android app group $name")
+    /** An Android group by its name in the JSON; empty when the groups failed to load. */
+    fun group(name: String): Group = group(data, name)
+
+    internal fun group(d: Data, name: String): Group =
+        d.android[name] ?: if (d.ok) error("no android app group $name") else EMPTY
+
+    private val EMPTY = Group()
 
     // ---- Insertion (V3Inserter, FlowAccessibilityService keep-alive) ----
 
@@ -112,6 +158,8 @@ object PolicyLists {
      * listed bank and payment families.
      */
     fun isRestricted(pkg: String?) = group("restricted").app(pkg)
+
+    internal fun isRestricted(d: Data, pkg: String?) = group(d, "restricted").app(pkg)
 
     // ---- Style buckets (AppCategorizer) ----
 

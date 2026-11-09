@@ -66,4 +66,19 @@ class AppGroupsVectorsTest {
             assertEquals(false, p(" "))
         }
     }
+
+    @Test fun packagedGroupsLoad() {
+        assertTrue(PolicyLists.loaded)
+    }
+
+    /** A missing or broken file must not crash the service and must hide the bubble everywhere. */
+    @Test fun brokenGroupsTreatEveryAppAsRestricted() {
+        for (text in listOf(null, "", "{", """{"android": {}}""", """{"android": {"restricted": {}}}""")) {
+            val d = PolicyLists.load(text)
+            assertEquals(text, false, d.ok)
+            for (app in listOf("com.example.notes", "com.whatsapp", "com.android.chrome"))
+                assertTrue("$text / $app", PolicyLists.isRestricted(d, app))
+            assertEquals(text, false, PolicyLists.group(d, "browser").app("com.android.chrome"))
+        }
+    }
 }

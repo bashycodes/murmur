@@ -53,17 +53,12 @@ pub fn url_host(url: &str) -> Option<String> {
     }
 }
 
-/// A Windows app group (flow-core `app_groups`, `data/app-groups.json`):
-/// ids are lowercase exe stems, hosts match themselves and subdomains.
-fn group(name: &str) -> &'static flow_core::app_groups::Group {
-    flow_core::app_groups::windows(name)
-}
-
-/// App category. Precedence: work chat > email > messaging > AI > terminal
-/// > document > other.
+/// App category from the Windows app groups (flow-core `app_groups`,
+/// `data/app-groups.json`; exe stems exact, hosts with subdomains).
+/// Precedence: work chat > email > messaging > AI > terminal > document > other.
 pub fn app_kind(exe: &str, host: Option<&str>) -> AppKind {
     if let Some(h) = host {
-        let is = |n: &str| group(n).host(h);
+        let is = |n: &str| flow_core::app_groups::windows(n).host(h);
         return if is("work") {
             AppKind::WorkMessaging
         } else if is("email") {
@@ -80,7 +75,7 @@ pub fn app_kind(exe: &str, host: Option<&str>) -> AppKind {
     }
     let lower = exe.to_ascii_lowercase();
     let stem = lower.strip_suffix(".exe").unwrap_or(&lower);
-    let is = |n: &str| group(n).app(stem);
+    let is = |n: &str| flow_core::app_groups::windows(n).app(stem);
     if is("work") {
         AppKind::WorkMessaging
     } else if is("email") {
@@ -492,6 +487,21 @@ mod tests {
         assert_eq!(app_kind("outlook.exe", None), AppKind::Email);
         assert_eq!(app_kind("notepad.exe", None), AppKind::Document);
         assert_eq!(app_kind("calc.exe", None), AppKind::Other);
+        // Exact exe names (D80): variants are listed, popular apps covered.
+        assert_eq!(app_kind("Code - Insiders.exe", None), AppKind::Ai);
+        assert_eq!(app_kind("ollama app.exe", None), AppKind::Ai);
+        assert_eq!(app_kind("kitty.exe", None), AppKind::Terminal);
+        assert_eq!(app_kind("wezterm-gui.exe", None), AppKind::Terminal);
+        assert_eq!(
+            app_kind("MailClient.exe", None),
+            AppKind::Email,
+            "eM Client"
+        );
+        assert_eq!(app_kind("mailspring.exe", None), AppKind::Email);
+        assert_eq!(
+            app_kind("chrome.exe", Some("aistudio.google.com")),
+            AppKind::Ai
+        );
         assert_eq!(app_kind("chrome.exe", Some("claude.ai")), AppKind::Ai);
         assert_eq!(
             app_kind("chrome.exe", Some("docs.google.com")),
