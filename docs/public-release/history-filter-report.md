@@ -3,8 +3,9 @@
 For owner sign-off before anything is pushed. Nothing has been pushed; the
 rewritten repo exists only in a local scratch mirror with no remote.
 
-- Source: `integration` at `8bb7e62` (A5 rename merged, = `origin/integration`), plus the 18 tags.
-- Run: `~/.cache/murmur-filter/work/20261109T214510Z/` (`orig/` untouched, `repo/` rewritten).
+- Source: this branch's tip, filtered as `integration` (`SOURCE_REF=feat/public-history-filter run.sh`):
+  `origin/integration` `8bb7e62` (A5 rename merged) plus this branch's 3 commits, plus the 18 tags.
+- Run: `~/.cache/murmur-filter/work/20261109T215412Z/` (`orig/` untouched, `repo/` rewritten).
 - Tool: `tools/probes/prototypes/history_filter_2026_11_09/` (`run.sh`, which calls `mirror.sh`,
   `prepare.py`, `git filter-repo`, `verify.py` and `scan.py`).
 
@@ -12,11 +13,11 @@ rewritten repo exists only in a local scratch mirror with no remote.
 
 | | Before | After |
 |---|---|---|
-| Commits (integration + tags) | 1148 | 1108 (40 pruned, listed below) |
-| Integration first-parent commits | 310 | 310 (order kept) |
+| Commits (integration + tags) | 1151 | 1111 (40 pruned, listed below) |
+| Integration first-parent commits | 313 | 313 (order kept) |
 | Tags | 18 | 18 (each on the image of its commit) |
 | Refs | integration + 18 tags | the same; no `refs/pull`, `refs/notes`, `refs/replace`, no remote |
-| Author and committer dates | | identical (raw, with time zone) for all 1108 surviving commits |
+| Author and committer dates | | identical (raw, with time zone) for all 1111 surviving commits |
 | Identities | all noreply | all noreply; mailmap built but empty (no real-name author on integration or tags) |
 | Old-revision blobs stripped | | 122 |
 | Commit subjects changed by message rules | | 10 (old product name) |
@@ -72,7 +73,7 @@ The full list with dates is printed by `verify.sh <run>`.
 
 ## HEAD tree
 
-The integration HEAD tree comes out byte-identical (1771 files, 0 differ). A HEAD commit on
+The integration HEAD tree comes out byte-identical (1788 files, 0 differ; `headdiff.sh` prints nothing). A HEAD commit on
 this branch already applied what the text rules would change: the old product name in
 `CHANGELOG.md` (the 0.8.0 entry now reads "Flow Clone → Murmur", accepted), two copied UI
 strings in the design export (`PageScratchpad.dc.html`, `PageTransforms.dc.html`) and the other
