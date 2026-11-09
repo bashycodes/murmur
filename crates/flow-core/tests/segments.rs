@@ -397,6 +397,137 @@ fn unsegmentable_engine_gets_one_decode_at_commit() {
     assert_eq!(r.timings.segments, 0);
 }
 
+/// Deterministic pseudo-noise, `ms` long, in ±`amp` (PCM16).
+fn noise(ms: usize, amp: i16, seed: u32) -> Vec<i16> {
+    let mut x = seed.wrapping_mul(2_654_435_761).max(1);
+    (0..ms * S / 1000)
+        .map(|_| {
+            x ^= x << 13;
+            x ^= x >> 17;
+            x ^= x << 5;
+            ((x as f32 / u32::MAX as f32 * 2.0 - 1.0) * amp as f32) as i16
+        })
+        .collect()
+}
+
+/// `pcm` mixed over a near-silent room: hiss in ±`amp` (14 ≈ -72 dBFS, as
+/// with a noise-suppressed microphone).
+fn over_quiet_room(pcm: &[i16], amp: i16) -> Vec<i16> {
+    let hiss = noise(pcm.len() * 1000 / S + 1, amp, 21);
+    pcm.iter()
+        .zip(hiss)
+        .map(|(&p, h)| p.saturating_add(h))
+        .collect()
+}
+
+/// 2026-11-07 stray word: the key press that stops a dictation, 1.5 s
+/// after the last word, is a short click ≈ 22 dB above a near-silent
+/// floor. The quiet-recording VAD bar passes it, and the pause cut puts it
+/// alone in the last piece. The piece's own gain decision then raised the
+/// click by up to +40 dB, and the recognizer wrote a word for it. The gain
+/// is the dictation's: a click that is quiet next to the speech stays
+/// quiet, exactly as in a whole-clip decode.
+#[test]
+fn a_click_after_the_last_word_is_not_raised_into_a_word() {
+    let mut pcm = vec![0i16; 300 * S / 1000];
+    pcm.extend(phrase(3, 4500));
+    pcm.extend(vec![0i16; 1500 * S / 1000]);
+    pcm.extend(noise(80, 170, 22)); // ≈ -50 dBFS RMS
+    pcm.extend(vec![0i16; 100 * S / 1000]);
+    let pcm = over_quiet_room(&pcm, 14);
+    let core = core_with(Arc::new(BurstEchoAsr::new()));
+    let whole = dictate(
+        &core,
+        SessionConfig {
+            ring_capacity_samples: S * 130,
+            ..Default::default()
+        },
+        &pcm,
+        640,
+    );
+    assert_eq!(whole.asr_text, "w3", "{whole:?}");
+    let seg = dictate(&core, seg_cfg(), &pcm, 640);
+    assert_eq!(seg.asr_text, "w3", "{seg:?}");
+}
+
+/// Quiet "words" (≈ -45 dBFS): 200 ms of tone, 100 ms apart (one burst to
+/// `BurstEchoAsr`, "w16" once raised; the gaps keep the streaming VAD's
+/// floor low).
+fn quiet_words(ms: usize) -> Vec<i16> {
+    quiet_bursts(ms, 200, 300)
+}
+
+/// A quiet tone, `on_ms` of every `period_ms`.
+fn quiet_bursts(ms: usize, on_ms: usize, period_ms: usize) -> Vec<i16> {
+    (0..ms * S / 1000)
+        .map(|i| {
+            let on = i % (period_ms * S / 1000) < on_ms * S / 1000;
+            (on as i32 as f32 * (i as f32 * 0.05).sin() * 250.0) as i16
+        })
+        .collect()
+}
+
+/// The other side of the same rule: a dictation that is quiet throughout
+/// (soft voice, low-gain microphone) still has every piece raised, by the
+/// gain the whole clip would get, so segmented and whole decodes agree.
+#[test]
+fn a_quiet_dictation_is_still_raised_piece_by_piece() {
+    let mut pcm = vec![0i16; 300 * S / 1000];
+    pcm.extend(quiet_words(4500));
+    pcm.extend(vec![0i16; 1200 * S / 1000]);
+    pcm.extend(quiet_words(3000));
+    pcm.extend(vec![0i16; 300 * S / 1000]);
+    // A fainter floor than the click test's: raised +40 dB, that hiss would
+    // read as sound to `BurstEchoAsr` and merge the whole clip's two words.
+    let pcm = over_quiet_room(&pcm, 3);
+    let core = core_with(Arc::new(BurstEchoAsr::new()));
+    let whole = dictate(
+        &core,
+        SessionConfig {
+            ring_capacity_samples: S * 130,
+            ..Default::default()
+        },
+        &pcm,
+        640,
+    );
+    let seg = dictate(&core, seg_cfg(), &pcm, 640);
+    assert_eq!(whole.asr_text, "w16 w16", "{whole:?}");
+    assert_eq!(seg.asr_text, whole.asr_text, "{seg:?}");
+    assert_eq!(seg.timings.segments, 2, "{:?}", seg.timings);
+}
+
+/// One loud short sound (a cough, a bump on the desk) in a quiet dictation
+/// does not make the dictation "loud": the quiet piece after it is still
+/// raised. The dictation's level is its typical speech, not its peak. The
+/// pieces decoded while recording are reused at commit.
+#[test]
+fn a_cough_in_a_quiet_dictation_does_not_silence_the_pieces_after_it() {
+    let mut pcm = vec![0i16; 300 * S / 1000];
+    pcm.extend(quiet_words(4500));
+    pcm.extend(vec![0i16; 1200 * S / 1000]);
+    pcm.extend(phrase(8, 150)); // the cough, ≈ -15 dBFS
+    pcm.extend(vec![0i16; 600 * S / 1000]);
+    pcm.extend(quiet_words(4000));
+    pcm.extend(vec![0i16; 1200 * S / 1000]);
+    pcm.extend(quiet_words(4500));
+    pcm.extend(vec![0i16; 300 * S / 1000]);
+    let pcm = over_quiet_room(&pcm, 3);
+    let asr = Arc::new(BurstEchoAsr::new());
+    let core = core_with(asr.clone());
+    core.start_session(seg_cfg()).unwrap();
+    push_chunks(&core, &pcm, 640);
+    // Two pieces and their two bridges are decoded while recording.
+    assert!(wait_until(5, || asr.calls() >= 4), "{}", asr.calls());
+    let before = asr.calls();
+    let r = core.commit();
+    // The cough's piece is loud on its own and is not raised (its quiet
+    // words stay under `BurstEchoAsr`'s bar, as in a whole-clip decode).
+    assert_eq!(r.asr_text, "w16 w8 w16", "{r:?}");
+    assert_eq!(r.timings.segments, 3, "{:?}", r.timings);
+    // Commit decoded the tail only.
+    assert_eq!(asr.calls(), before + 1, "{:?}", asr.requests());
+}
+
 /// Words like BurstEchoAsr, written as a sentence-case model writes a
 /// decode heard alone: the first word capitalised, no closing stop. The
 /// burst at amplitude 3 is "w3 x" in a decode that also hears "w6" (the
@@ -441,4 +572,57 @@ fn a_pause_mid_sentence_does_not_capitalise_the_next_piece() {
     let r = dictate(&core, seg_cfg(), &pcm, 640);
     assert_eq!(r.timings.segments, 2, "{r:?}");
     assert_eq!(r.asr_text, "W1 w2 w3-x w4 w5 w6 w7 w8 w9 w10", "{r:?}");
+}
+
+/// A tap-only recording (start and stop pressed with nothing said): two
+/// key clicks of 60 and 120 ms over a near-silent room. No VAD run in the
+/// recording reaches `vad::MIN_LONGEST_RUN_MS`, so it is no speech,
+/// segmented or not; before,
+/// a whole-clip decode raised the clicks +40 dB into a word. A short word
+/// (one 300 ms run, as quiet) still decodes.
+#[test]
+fn a_tap_only_recording_is_no_speech_but_a_short_word_is_not() {
+    let take = |sound: Vec<i16>| {
+        let mut pcm = vec![0i16; 300 * S / 1000];
+        pcm.extend(sound);
+        pcm.extend(vec![0i16; 600 * S / 1000]);
+        over_quiet_room(&pcm, 14)
+    };
+    let mut taps = noise(60, 170, 31);
+    taps.extend(vec![0i16; 250 * S / 1000]);
+    taps.extend(noise(120, 170, 32));
+    let taps = take(taps);
+    let word = take(noise(300, 170, 33));
+    let core = core_with(Arc::new(BurstEchoAsr::new()));
+    let whole = SessionConfig {
+        ring_capacity_samples: S * 130,
+        ..Default::default()
+    };
+    for cfg in [whole.clone(), seg_cfg()] {
+        let r = dictate(&core, cfg.clone(), &taps, 640);
+        assert_eq!(r.asr_text, "", "{cfg:?}: {r:?}");
+        assert_ne!(r.status, CommitStatus::RawTranscript, "{r:?}");
+        let r = dictate(&core, cfg.clone(), &word, 640);
+        assert_eq!(r.asr_text.split(' ').count(), 1, "{cfg:?}: {r:?}");
+        assert!(r.asr_text.starts_with('w'), "{r:?}");
+    }
+}
+
+/// The tap rule judges the whole recording, never a piece: quiet speech
+/// that the VAD breaks into short runs (here 100 ms bursts, as a faint
+/// voice near the bar does in FLEURS Hebrew) is kept in a piece of its own
+/// when the recording has a real word. Judged per piece, the second piece
+/// was dropped as taps.
+#[test]
+fn choppy_quiet_speech_in_a_piece_is_not_taken_for_taps() {
+    let mut pcm = vec![0i16; 300 * S / 1000];
+    pcm.extend(quiet_bursts(4500, 400, 500));
+    pcm.extend(vec![0i16; 1200 * S / 1000]);
+    pcm.extend(quiet_bursts(4000, 100, 200));
+    pcm.extend(vec![0i16; 300 * S / 1000]);
+    let pcm = over_quiet_room(&pcm, 3);
+    let core = core_with(Arc::new(BurstEchoAsr::new()));
+    let r = dictate(&core, seg_cfg(), &pcm, 640);
+    assert_eq!(r.timings.segments, 2, "{r:?}");
+    assert_eq!(r.asr_text.split(' ').count(), 2, "{r:?}");
 }
