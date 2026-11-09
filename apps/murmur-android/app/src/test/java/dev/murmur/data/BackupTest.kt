@@ -111,11 +111,32 @@ class BackupTest {
     }
 
     @Test fun aBackupFromTheAppBeforeTheRenameRestores() {
-        // D83: synthetic export of the old app (old format name, same layout).
-        val old = JSONObject(Backup.encode(meta, full)).put("format", "flow-clone-backup").toString()
-        val back = ok(old)
-        assertEquals(full, back.data)
-        assertEquals("murmur-backup", JSONObject(Backup.encode(back.meta, back.data)).getString("format"))
+        // D83: a frozen file in the old app's exact export format (its encoder at
+        // origin/integration before the rename, indent 1), with invented content.
+        val text = requireNotNull(javaClass.classLoader!!.getResource("old-app-backup-v1.json")).readText()
+        val back = ok(text)
+        assertEquals(Backup.Meta("1.1.1", "android", "hybrid", "2026-11-01T09:30:00+02:00"), back.meta)
+        val d = back.data
+        assertEquals(Backup.Pref.Str("en"), d.settings!!["language"])
+        assertEquals(Backup.Pref.F32(1.25f), d.settings!!["bubble_scale"])
+        assertEquals(Backup.Pref.StrSet(setOf("com.example.bank")), d.settings!!["user_denylist"])
+        assertEquals(Backup.Pref.Int64(7313), d.developer!!["server.port"])
+        assertEquals(listOf(DictEntry("Quixotron"), DictEntry("omw", "on my way", isSnippet = true)), d.dictionary)
+        assertEquals(listOf("Zorbel"), d.suggestions!!.pending.map { it.word })
+        assertEquals(42L, d.insights!!.days.getValue("2026-10-31").words)
+        assertEquals(listOf(Note("scratchpad", "invented scratch line", true, 1761900000000, 1761900100000)), d.notes)
+        val (h, c) = d.history!!
+        assertEquals("See you at the made-up café.", h.finalText)
+        assertEquals("server", h.route)
+        assertNull(h.fallbackReason)
+        assertEquals(HistoryRow.COMMAND, c.status)
+        assertNull(c.appId)
+        assertEquals("An invented longer text to shorten.", c.commandOriginal)
+        assertEquals("timeout", c.fallbackReason)
+        // Exported again by this app: the new format name, same content.
+        val again = ok(Backup.encode(back.meta, d))
+        assertEquals("murmur-backup", JSONObject(Backup.encode(back.meta, d)).getString("format"))
+        assertEquals(d, again.data)
     }
 
     @Test fun newerVersionIsRefusedWithAClearMessage() {
