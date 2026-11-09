@@ -47,8 +47,8 @@ object BubbleVisibilityPolicy {
     private const val IME_ACTION_GO = 2
     private const val IME_ACTION_SEARCH = 3
 
-    /** Banking, payment, password-manager and authenticator apps ([PolicyLists.isRestricted]). */
-    fun isBanking(pkg: String?) = PolicyLists.isRestricted(pkg)
+    /** Banking and payment apps: no bubble, no reads ([PolicyLists.isRestricted]). */
+    fun isRestricted(pkg: String?) = PolicyLists.isRestricted(pkg)
 
     fun isNotificationReplyContext(pkg: String?, imeWindowPresent: Boolean, focusedAppWindowPresent: Boolean) =
         PolicyLists.isSystemUi(pkg) || (imeWindowPresent && !focusedAppWindowPresent)
@@ -65,7 +65,7 @@ object BubbleVisibilityPolicy {
             else -> null
         }
         val allowed = !(EditorInputType.isSensitive(t) || i.nodePassword == true) || override != null
-        val show = i.imeVisible && allowed && !isBanking(i.packageName) &&
+        val show = i.imeVisible && allowed && !isRestricted(i.packageName) &&
             (i.packageName == null || i.packageName !in userDenylist) &&
             !(i.accessibilityDataSensitive && override != Override.NotificationReply)
         val isSearch = show && override != Override.UrlBar &&

@@ -90,7 +90,7 @@ class CommandApplyTest {
     }
 
     @Test fun bankingAndDenylistedAppsAreRefused() {
-        val bank = "com.chase.sig.android"
+        val bank = "com.example.mobilebank"
         assertEquals(CommandTarget.PROTECTED_MESSAGE, refusal(pkg = bank))
         assertEquals(CommandTarget.PROTECTED_MESSAGE, refusal(deny = setOf("com.example.notes")))
     }

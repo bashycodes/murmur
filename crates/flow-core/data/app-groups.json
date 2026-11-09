@@ -1,0 +1,217 @@
+{
+  "about": [
+    "Which apps get special handling: one source for flow-core (Rust, both platforms), the Windows app and, through a parity test, the Android PolicyLists.kt.",
+    "Method: each group is defined by what its caller does with it (see docs/DECISIONS.md D80). Membership comes from public sources only: an app's package name is the id in its public Google Play listing (play.google.com/store/apps/details?id=<package>), a Windows id is the program's own executable name as its vendor ships it, a web host is the vendor's own address. Naming rules cover whole families where the vendor's naming makes that safe; lists hold the rest.",
+    "Matching (all lowercase): exact = equal; families = equal or starts with '<family>.'; parts = one dot-separated part equals; words = substring. Hosts (lowercase, no 'www.'): suffixes = equal or ends with '.<suffix>'; prefixes = starts with."
+  ],
+  "android": {
+    "restart_prone": {
+      "about": "Chat apps whose IME session goes stale: stale-session probe + keep-alive nudge (V3Inserter, FlowAccessibilityService).",
+      "apps": {
+        "exact": [
+          "com.whatsapp", "com.whatsapp.w4b", "org.telegram.messenger", "org.thoughtcrime.securesms",
+          "com.facebook.orca", "com.instagram.android", "com.snapchat.android", "com.discord",
+          "com.google.android.apps.messaging", "com.samsung.android.messaging", "com.slack",
+          "com.microsoft.teams", "com.linkedin.android", "com.twitter.android", "com.reddit.frontpage",
+          "com.anthropic.claude", "com.openai.chatgpt"
+        ]
+      }
+    },
+    "known_null": {
+      "about": "getSurroundingText may be null after a good commit: trust the commit on the first null read, re-acquire the surface. Includes every restart_prone app.",
+      "apps": {
+        "exact": [
+          "com.whatsapp", "com.whatsapp.w4b", "org.telegram.messenger", "org.thoughtcrime.securesms",
+          "com.facebook.orca", "com.instagram.android", "com.snapchat.android", "com.discord",
+          "com.google.android.apps.messaging", "com.samsung.android.messaging", "com.slack",
+          "com.microsoft.teams", "com.linkedin.android", "com.twitter.android", "com.reddit.frontpage",
+          "com.anthropic.claude", "com.openai.chatgpt",
+          "org.telegram.messenger.web", "org.thunderdog.challegram", "com.facebook.mlite",
+          "jp.naver.line.android", "com.tencent.mm", "com.kakao.talk", "com.viber.voip",
+          "com.microsoft.teams.personal", "notion.id", "com.google.android.gm",
+          "com.google.android.googlequicksearchbox", "com.zhiliaoapp.musically", "com.ss.android.ugc.trill",
+          "com.ss.android.ugc.aweme", "com.deepseek.chat",
+          "com.android.chrome", "com.chrome.beta", "com.chrome.dev", "com.chrome.canary", "org.chromium.chrome"
+        ]
+      }
+    },
+    "system_search": {
+      "about": "Launchers and Settings search: re-acquire the input surface.",
+      "apps": {
+        "exact": ["com.miui.home", "com.android.settings", "com.samsung.android.settings", "com.android.systemui"],
+        "words": ["launcher"]
+      }
+    },
+    "in_call": {
+      "about": "Dialer and in-call screens: re-acquire the input surface.",
+      "apps": { "words": ["dialer", "incallui"] }
+    },
+    "system_ui": {
+      "about": "Notification shade / quick reply (any OEM's System UI).",
+      "apps": { "parts": ["systemui"] }
+    },
+    "browser": {
+      "about": "URL-bar override for IME action Go.",
+      "apps": {
+        "exact": [
+          "com.android.chrome", "com.chrome.beta", "com.chrome.dev", "com.chrome.canary", "org.chromium.chrome",
+          "com.microsoft.emmx", "com.duckduckgo.mobile.android", "com.opera.mini.native",
+          "com.sec.android.app.sbrowser", "com.ucmobile.intl"
+        ],
+        "families": ["org.mozilla"],
+        "parts": ["browser"]
+      }
+    },
+    "compose_placeholder_apps": {
+      "about": "Apps whose compose box shows 'Message' as real text (see compose_placeholders).",
+      "apps": { "families": ["com.whatsapp"] }
+    },
+    "restricted": {
+      "about": "Banking and payment apps: bubble hidden, nothing read. Errs toward hiding: bank words and bank-brand words match anywhere in the package name.",
+      "apps": {
+        "exact": [
+          "com.infonow.bofa", "com.konylabs.capitalone", "com.key.android", "com.mfoundry.mb.android.mt.citizens",
+          "anz.android", "com.lcode.cbimobile", "com.myairtelapp", "com.naviapp",
+          "com.google.android.apps.walletnfcrel"
+        ],
+        "families": [
+          "com.chase", "com.citi", "com.pnc", "com.usaa", "com.navyfederal", "com.schwab", "com.huntington",
+          "com.fifththird", "com.bbt", "com.bmoharris", "com.bmo", "com.td", "com.rbc", "com.cibc",
+          "com.onedebit", "com.sofi", "com.axos", "com.discoverfinancial", "com.americanexpress",
+          "com.paypal", "com.venmo", "com.squareup.cash", "com.zellepay",
+          "com.rbs", "com.grppl", "com.monzo", "com.revolut", "de.number26", "com.transferwise", "eu.qonto",
+          "com.bbva", "com.kbc", "com.ing", "com.boursorama", "net.bnpparibas", "com.db.pwcc", "co.tide",
+          "com.airwallex", "au.com.nab",
+          "com.sbi", "com.axis", "com.bob", "in.pnb", "com.indusind", "com.idbi", "com.iob", "com.uco",
+          "net.one97", "com.phonepe", "com.google.android.apps.nbu.paisa",
+          "com.dbs", "com.ocbc", "com.uob", "id.co.bri", "com.hangseng", "jp.co.smbc", "jp.mufg",
+          "com.nu", "br.com.intermedium", "com.mercadopago", "com.nequi", "za.co.fnb", "com.ideomobile"
+        ],
+        "words": ["bank", "banco", "banca", "banque", "hsbc", "santander", "lloyds", "natwest", "hdfc", "wellsfargo"]
+      }
+    },
+    "email": {
+      "about": "Style bucket email.",
+      "apps": {
+        "exact": [
+          "com.google.android.gm", "com.microsoft.office.outlook", "com.microsoft.outlook.lite",
+          "ch.protonmail.android", "de.tutao.tutanota", "net.thunderbird.android", "com.fsck.k9",
+          "com.readdle.spark", "com.fastmail.app", "com.aol.mobile.aolmail"
+        ],
+        "parts": ["mail", "email"]
+      },
+      "hosts": {
+        "suffixes": ["outlook.live.com", "outlook.office.com", "outlook.office365.com", "app.fastmail.com", "app.tuta.com"],
+        "prefixes": ["mail.", "webmail."]
+      }
+    },
+    "work": {
+      "about": "Style bucket work.",
+      "apps": {
+        "exact": [
+          "com.slack", "com.microsoft.teams", "com.google.android.apps.dynamite", "com.google.android.apps.meetings",
+          "us.zoom.videomeetings", "com.cisco.webex.meetings", "com.mattermost.rn", "chat.rocket.android",
+          "com.zulipmobile", "notion.id", "com.asana.app", "com.github.android", "com.microsoft.skydrive",
+          "com.dropbox.android"
+        ],
+        "families": ["com.atlassian", "com.microsoft.office", "com.google.android.apps.docs", "com.zoho", "com.salesforce", "com.linkedin"]
+      },
+      "hosts": {
+        "suffixes": [
+          "slack.com", "teams.microsoft.com", "teams.live.com", "chat.google.com", "meet.google.com",
+          "docs.google.com", "linkedin.com", "github.com", "gitlab.com", "atlassian.net", "notion.so",
+          "linear.app", "figma.com", "zoom.us", "office.com", "sharepoint.com"
+        ]
+      }
+    },
+    "personal": {
+      "about": "Style bucket personal (checked before email and work).",
+      "apps": {
+        "exact": [
+          "org.thoughtcrime.securesms", "com.facebook.orca", "com.facebook.mlite", "com.discord", "com.viber.voip",
+          "jp.naver.line.android", "com.tencent.mm", "com.kakao.talk", "ch.threema.app",
+          "com.google.android.apps.messaging", "com.samsung.android.messaging", "com.android.mms",
+          "com.google.android.apps.tachyon", "com.instagram.android", "com.instagram.lite", "com.instagram.barcelona",
+          "com.snapchat.android", "com.facebook.katana", "com.facebook.lite", "com.twitter.android",
+          "com.reddit.frontpage", "com.zhiliaoapp.musically", "com.pinterest", "com.tumblr",
+          "xyz.blueskyweb.app", "org.joinmastodon.android"
+        ],
+        "families": ["com.whatsapp", "org.telegram"]
+      },
+      "hosts": {
+        "suffixes": [
+          "whatsapp.com", "telegram.org", "t.me", "discord.com", "messenger.com", "instagram.com", "facebook.com",
+          "x.com", "twitter.com", "reddit.com", "threads.net", "bsky.app", "tiktok.com"
+        ]
+      }
+    },
+    "work_chat": {
+      "about": "Work apps that are chats (flow-core: trailing-period drop).",
+      "apps": {
+        "exact": ["com.slack", "com.microsoft.teams", "com.google.android.apps.dynamite", "com.mattermost.rn", "chat.rocket.android", "com.zulipmobile"]
+      },
+      "hosts": { "suffixes": ["slack.com", "teams.microsoft.com", "teams.live.com", "chat.google.com"] }
+    },
+    "ai": {
+      "about": "AI assistants (flow-core: AI prompt formatting).",
+      "apps": { "exact": ["com.openai.chatgpt", "com.anthropic.claude", "com.google.android.apps.bard"] },
+      "hosts": { "suffixes": ["chatgpt.com", "chat.openai.com", "claude.ai", "gemini.google.com", "perplexity.ai"] }
+    },
+    "terminal": {
+      "about": "Terminals (flow-core: no prose cleanup).",
+      "apps": { "words": ["termux"] }
+    }
+  },
+  "windows": {
+    "work": {
+      "about": "Style bucket work (checked after email). Ids are exe names without '.exe'.",
+      "apps": { "exact": ["slack", "ms-teams", "msteams", "teams", "mattermost", "zoom"] },
+      "hosts": { "suffixes": ["slack.com", "teams.microsoft.com", "teams.live.com", "chat.google.com", "linkedin.com"] }
+    },
+    "messaging": {
+      "about": "Chat apps, work or personal (flow-core: trailing-period drop). Not work = style bucket personal.",
+      "apps": {
+        "exact": ["slack", "ms-teams", "msteams", "teams", "mattermost", "whatsapp", "whatsapp.root", "telegram", "discord", "signal", "messenger", "viber", "line", "wechat"]
+      },
+      "hosts": {
+        "suffixes": ["slack.com", "teams.microsoft.com", "teams.live.com", "chat.google.com", "whatsapp.com", "telegram.org", "discord.com", "messenger.com", "instagram.com", "messages.google.com"]
+      }
+    },
+    "email": {
+      "about": "Style bucket email.",
+      "apps": { "exact": ["outlook", "olk", "hxoutlook", "thunderbird", "mailbird", "mailclient"] },
+      "hosts": {
+        "suffixes": ["outlook.live.com", "outlook.office.com", "outlook.office365.com", "app.fastmail.com", "app.tuta.com"],
+        "prefixes": ["mail.", "webmail."]
+      }
+    },
+    "ai": {
+      "about": "AI assistants and AI code editors (AI prompt formatting; wins over terminal).",
+      "apps": { "exact": ["chatgpt", "claude", "code", "cursor", "windsurf", "zed", "warp", "devenv", "idea64", "pycharm64"] },
+      "hosts": {
+        "suffixes": ["chatgpt.com", "chat.openai.com", "claude.ai", "gemini.google.com", "perplexity.ai", "copilot.microsoft.com", "chat.deepseek.com", "grok.com"]
+      }
+    },
+    "terminal": {
+      "about": "Terminals and shells.",
+      "apps": { "exact": ["windowsterminal", "wt", "cmd", "powershell", "pwsh", "conhost", "wezterm-gui", "alacritty", "mintty", "putty"] }
+    },
+    "document": {
+      "about": "Editors and document apps.",
+      "apps": { "exact": ["notepad", "notepad++", "sublime_text", "winword", "excel", "powerpnt", "onenote", "obsidian", "notion", "evernote", "logseq"] },
+      "hosts": { "suffixes": ["docs.google.com", "notion.so", "coda.io"] }
+    },
+    "flow": {
+      "about": "This app itself (no context matching inside it).",
+      "apps": { "exact": ["flow-windows", "murmur"] }
+    },
+    "tagging_ide": {
+      "about": "IDEs with @file tagging (VS Code excluded).",
+      "apps": { "exact": ["cursor", "windsurf"] }
+    }
+  },
+  "compose_placeholders": [
+    "message", "mensaje", "mensagem", "nachricht", "messaggio", "bericht", "wiadomość", "mesaj",
+    "pesan", "сообщение", "رسالة", "הודעה", "संदेश", "メッセージ", "메시지", "消息"
+  ]
+}

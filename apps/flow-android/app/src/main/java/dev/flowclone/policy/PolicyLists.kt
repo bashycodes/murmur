@@ -1,314 +1,135 @@
 package dev.flowclone.policy
 
+import org.json.JSONArray
+import org.json.JSONObject
+
 /**
- * Which apps get special handling, by package name (and, for the style buckets, by the host
- * of the page open in a browser).
+ * Which apps get special handling, by package name (and, for the style buckets, by the host of
+ * the page open in a browser).
  *
- * Method: each group is written from what our code does with it (the doc on each group says
- * which caller), using publicly known package names of popular Android apps. Where a naming
- * rule covers a group (launchers contain "launcher", system UI ends in ".systemui", banking
- * apps say "bank"), the rule is used and the list keeps only the apps the rule misses. Lists
- * stay short on purpose: a missing app falls back to the default path (bubble shown, style
- * "other", normal insert verification), except [isRestricted], which errs toward hiding.
- * A user who needs more uses the per-app settings (denylist, style bucket).
+ * The groups are not kept here: they are read from `crates/flow-core/data/app-groups.json`, which
+ * the Gradle build packs as a Java resource. flow-core (Rust, both platforms) and the Windows
+ * app read the same file, so the apps cannot disagree on a style bucket or a browser, and the
+ * shared vectors (`crates/flow-core/fixtures/app-groups/vectors.json`) are checked on both sides.
+ *
+ * Method (decision D80; the file's `about` lines say the same): each group is defined by what its
+ * caller does with it. Membership comes from public sources only: a package name is the id in the
+ * app's public Google Play listing (`play.google.com/store/apps/details?id=<package>`), a host is
+ * the vendor's own web address. Naming rules cover whole families where the vendor's naming makes
+ * that safe (launchers contain "launcher", System UI is a `systemui` part, banks say "bank"); the
+ * lists hold the rest. A missing app falls back to the default path (bubble shown, style "other",
+ * normal insert checks), except [isRestricted], whose word rule errs toward hiding.
  */
 object PolicyLists {
-    private fun String.inFamily(root: String) = this == root || startsWith("$root.")
-    private fun String.segments() = lowercase().split('.')
+    /** One group: app-id rules and web-host rules (see the JSON's matching rules). */
+    class Group(
+        val exact: Set<String> = emptySet(),
+        val families: List<String> = emptyList(),
+        val parts: Set<String> = emptySet(),
+        val words: List<String> = emptyList(),
+        val hostSuffixes: List<String> = emptyList(),
+        val hostPrefixes: List<String> = emptyList(),
+    ) {
+        /** Exact, a family (`f` or `f.*`), a dot-separated part, or a word anywhere; any case. */
+        fun app(id: String?): Boolean {
+            val p = id?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return false
+            return p in exact || families.any { p == it || p.startsWith("$it.") } ||
+                p.split('.').any { it in parts } || words.any { it in p }
+        }
+
+        /** [host] (any case, `www.` ignored) equals or is a subdomain of a suffix, or starts with a prefix. */
+        fun host(host: String?): Boolean {
+            val h = host?.trim()?.lowercase()?.removePrefix("www.")?.takeIf { it.isNotEmpty() } ?: return false
+            return hostSuffixes.any { h == it || h.endsWith(".$it") } || hostPrefixes.any { h.startsWith(it) }
+        }
+    }
+
+    private const val RESOURCE = "/app-groups.json"
+
+    private class Data(val android: Map<String, Group>, val placeholders: Set<String>)
+
+    private val data: Data by lazy {
+        val text = PolicyLists::class.java.getResourceAsStream(RESOURCE)?.use { it.readBytes().decodeToString() }
+            ?: error("$RESOURCE missing from the build")
+        val root = JSONObject(text)
+        val android = root.getJSONObject("android")
+        Data(
+            android.keys().asSequence().associateWith { parse(android.getJSONObject(it)) },
+            strings(root.optJSONArray("compose_placeholders")).toSet(),
+        )
+    }
+
+    private fun strings(a: JSONArray?): List<String> =
+        if (a == null) emptyList() else List(a.length()) { a.getString(it).lowercase() }
+
+    private fun parse(g: JSONObject): Group {
+        val apps = g.optJSONObject("apps") ?: JSONObject()
+        val hosts = g.optJSONObject("hosts") ?: JSONObject()
+        return Group(
+            exact = strings(apps.optJSONArray("exact")).toSet(),
+            families = strings(apps.optJSONArray("families")),
+            parts = strings(apps.optJSONArray("parts")).toSet(),
+            words = strings(apps.optJSONArray("words")),
+            hostSuffixes = strings(hosts.optJSONArray("suffixes")),
+            hostPrefixes = strings(hosts.optJSONArray("prefixes")),
+        )
+    }
+
+    /** An Android group by its name in the JSON; an unknown name is a bug. */
+    fun group(name: String): Group = data.android[name] ?: error("no android app group $name")
 
     // ---- Insertion (V3Inserter, FlowAccessibilityService keep-alive) ----
 
-    /**
-     * Chat and assistant apps whose compose boxes (custom or web-based editors) drop the IME
-     * session or report no surrounding text while the text did land. They get the stale-session
-     * probe and keep-alive nudge, and a first null read after commit counts as success.
-     */
-    val MESSAGING: Set<String> = setOf(
-        "com.whatsapp",
-        "com.whatsapp.w4b",
-        "org.telegram.messenger",
-        "org.thoughtcrime.securesms",
-        "com.facebook.orca",
-        "com.instagram.android",
-        "com.snapchat.android",
-        "com.discord",
-        "com.viber.voip",
-        "jp.naver.line.android",
-        "com.tencent.mm",
-        "ch.threema.app",
-        "im.vector.app",
-        "com.google.android.apps.messaging",
-        "com.samsung.android.messaging",
-        "com.Slack",
-        "com.microsoft.teams",
-        "com.openai.chatgpt",
-        "com.anthropic.claude",
-        "com.google.android.apps.bard",
-    )
-
-    /** Chrome and its channels: web-content editors, the other source of legitimately null reads. */
-    val CHROME_FAMILY: Set<String> = setOf(
-        "com.android.chrome",
-        "com.chrome.beta",
-        "com.chrome.dev",
-        "com.chrome.canary",
-        "org.chromium.chrome",
-    )
-
-    /** Gmail's compose body is web content too. */
-    private const val GMAIL = "com.google.android.gm"
-
-    /** Stale-session probe + keep-alive nudge. */
-    fun isRestartProne(pkg: String?) = pkg != null && pkg in MESSAGING
+    /** Chat apps whose IME session goes stale: stale-session probe + keep-alive nudge. */
+    fun isRestartProne(pkg: String?) = group("restart_prone").app(pkg)
 
     /** getSurroundingText may be null after a good commit: trust the commit on the first null read. */
-    fun isKnownNullSurroundingText(pkg: String?) =
-        pkg != null && (pkg in MESSAGING || pkg in CHROME_FAMILY || pkg == GMAIL)
+    fun isKnownNullSurroundingText(pkg: String?) = group("known_null").app(pkg)
 
-    /** Launchers, Settings search and the Google search bar: re-acquire the input surface. */
-    fun isSystemSearch(pkg: String?): Boolean {
-        val p = pkg?.lowercase() ?: return false
-        return "launcher" in p || p == "com.miui.home" || p.endsWith(".settings") ||
-            p == "com.google.android.googlequicksearchbox" || isSystemUi(pkg)
-    }
+    /** Launchers and Settings search: re-acquire the input surface. */
+    fun isSystemSearch(pkg: String?) = group("system_search").app(pkg)
 
     /** Dialer and in-call screens: re-acquire the input surface. */
-    fun isInCall(pkg: String?): Boolean {
-        val p = pkg?.lowercase() ?: return false
-        return "dialer" in p || "incallui" in p
-    }
+    fun isInCall(pkg: String?) = group("in_call").app(pkg)
 
     /** WhatsApp's compose box shows "Message" as real text until you type; read it as empty. */
-    fun usesComposePlaceholders(pkg: String?) = pkg != null && pkg.inFamily("com.whatsapp")
+    fun usesComposePlaceholders(pkg: String?) = group("compose_placeholder_apps").app(pkg)
 
     /** The localized "Message" placeholder, normalized (lowercase, no trailing dots). */
-    val COMPOSE_PLACEHOLDERS: Set<String> = setOf(
-        "message",
-        "mensaje",
-        "mensagem",
-        "nachricht",
-        "messaggio",
-        "bericht",
-        "wiadomość",
-        "mesaj",
-        "pesan",
-        "сообщение",
-        "رسالة",
-        "הודעה",
-        "संदेश",
-        "メッセージ",
-        "메시지",
-        "消息",
-    )
+    val COMPOSE_PLACEHOLDERS: Set<String> get() = data.placeholders
 
     // ---- Bubble visibility (BubbleVisibilityPolicy) ----
 
     /** Notification shade / quick reply: any OEM's System UI package. */
-    fun isSystemUi(pkg: String?): Boolean {
-        val p = pkg?.lowercase() ?: return false
-        return p.endsWith(".systemui") || ".systemui." in p
-    }
+    fun isSystemUi(pkg: String?) = group("system_ui").app(pkg)
 
-    /** Browsers the URL-bar override (IME action Go) applies to, beyond the rule in [isBrowser]. */
-    val BROWSERS: Set<String> = CHROME_FAMILY + setOf(
-        "com.microsoft.emmx",
-        "com.duckduckgo.mobile.android",
-        "com.opera.mini.native",
-    )
-
-    /** [BROWSERS], any Mozilla app (Firefox, Focus) and any package with "browser" in a name part. */
-    fun isBrowser(pkg: String?): Boolean {
-        if (pkg == null) return false
-        return pkg in BROWSERS || pkg.inFamily("org.mozilla") || pkg.segments().any { "browser" in it }
-    }
+    /** Browsers the URL-bar override (IME action Go) applies to. */
+    fun isBrowser(pkg: String?) = group("browser").app(pkg)
 
     /**
-     * Banking, payment, password-manager and authenticator apps: the bubble stays hidden and
-     * nothing is read. Errs toward hiding: any package whose name says bank / banco / banca /
-     * banque / wallet / authenticator / password / keepass is restricted, plus [RESTRICTED].
+     * Banking and payment apps: the bubble stays hidden and nothing is read. Errs toward hiding:
+     * any package whose name contains a bank word or a bank-brand word is restricted, plus the
+     * listed bank and payment families.
      */
-    private val RESTRICTED_WORDS = listOf("bank", "banco", "banca", "banque", "wallet", "authenticator", "password", "keepass")
-
-    /** Restricted apps whose package names the word rule misses. */
-    val RESTRICTED: Set<String> = setOf(
-        // Banks
-        "com.chase.sig.android",
-        "com.infonow.bofa",
-        "com.wf.wellsfargomobile",
-        "com.citi.citimobile",
-        "com.konylabs.capitalone",
-        "com.americanexpress.android.acctsvcs.us",
-        "com.discoverfinancial.mobile",
-        "com.usaa.mobile.android.usaa",
-        "com.schwab.mobile",
-        "com.td",
-        "com.rbc.mobile.android",
-        "com.ing.mobile",
-        "com.sbi.lotusintouch",
-        "com.axis.mobile",
-        "com.ideomobile.hapoalim",
-        // Payments, neobanks, brokers, crypto
-        "com.paypal.android.p2pmobile",
-        "com.venmo",
-        "com.squareup.cash",
-        "com.zellepay.zelle",
-        "com.google.android.apps.nbu.paisa.user",
-        "com.samsung.android.spay",
-        "com.phonepe.app",
-        "net.one97.paytm",
-        "com.revolut.revolut",
-        "com.transferwise.android",
-        "com.monzo.android",
-        "de.number26.android",
-        "com.nu.production",
-        "com.robinhood.android",
-        "com.coinbase.android",
-        "com.binance.dev",
-        // Password managers, 2FA
-        "com.x8bit.bitwarden",
-        "com.onepassword.android",
-        "com.lastpass.lpandroid",
-        "com.dashlane",
-        "proton.android.pass",
-        "com.authy.authy",
-    )
-
-    fun isRestricted(pkg: String?): Boolean {
-        if (pkg == null) return false
-        if (pkg in RESTRICTED) return true
-        val p = pkg.lowercase()
-        return RESTRICTED_WORDS.any { it in p }
-    }
+    fun isRestricted(pkg: String?) = group("restricted").app(pkg)
 
     // ---- Style buckets (AppCategorizer) ----
 
-    val EMAIL_PACKAGES: Set<String> = setOf(
-        GMAIL,
-        "com.microsoft.office.outlook",
-        "ch.protonmail.android",
-        "de.tutao.tutanota",
-        "net.thunderbird.android",
-        "com.fsck.k9",
-        "com.readdle.spark",
-        "com.fastmail.app",
-    )
+    /** Email apps: Gmail, Outlook and any package with a `mail` / `email` part. */
+    fun isEmailApp(pkg: String?) = group("email").app(pkg)
 
-    /** [EMAIL_PACKAGES], or a package with a "mail" / "email" name part (Yahoo Mail, Samsung Email, FairEmail). */
-    fun isEmailApp(pkg: String?): Boolean {
-        if (pkg == null) return false
-        return pkg in EMAIL_PACKAGES || pkg.segments().any { it == "mail" || it == "email" }
-    }
+    /** Work apps: work chat, meetings, office suites, project tools. */
+    fun isWorkApp(pkg: String?) = group("work").app(pkg)
 
-    val WORK_PACKAGES: Set<String> = setOf(
-        "com.Slack",
-        "com.microsoft.teams",
-        "com.google.android.apps.dynamite",
-        "com.google.android.apps.meetings",
-        "us.zoom.videomeetings",
-        "com.cisco.webex.meetings",
-        "com.mattermost.rn",
-        "com.zulipmobile",
-        "com.linkedin.android",
-        "notion.id",
-        "com.asana.app",
-        "com.trello",
-        "com.github.android",
-        "com.foxdebug.acode",
-    )
+    /** Personal chat and social apps, WhatsApp and Telegram with all their variants. */
+    fun isPersonalApp(pkg: String?) = group("personal").app(pkg)
 
-    /** Package families that are all work tools: Atlassian, Office, Google Docs/Sheets/Slides/Drive, Zoho, Salesforce. */
-    private val WORK_FAMILIES = listOf(
-        "com.atlassian",
-        "com.microsoft.office",
-        "com.google.android.apps.docs",
-        "com.zoho",
-        "com.salesforce",
-    )
+    /** Web email: a `mail.` / `webmail.` host or a listed webmail host. [host] is lowercase without `www.`. */
+    fun isEmailHost(host: String?) = group("email").host(host)
 
-    fun isWorkApp(pkg: String?): Boolean {
-        if (pkg == null) return false
-        return pkg in WORK_PACKAGES || WORK_FAMILIES.any { pkg.inFamily(it) }
-    }
+    /** Web versions of work tools (Slack, Teams, Google Docs, GitHub, …) and their subdomains. */
+    fun isWorkHost(host: String?) = group("work").host(host)
 
-    val PERSONAL_PACKAGES: Set<String> = setOf(
-        "org.thoughtcrime.securesms",
-        "com.facebook.orca",
-        "com.discord",
-        "com.viber.voip",
-        "jp.naver.line.android",
-        "com.tencent.mm",
-        "com.kakao.talk",
-        "ch.threema.app",
-        "com.google.android.apps.messaging",
-        "com.samsung.android.messaging",
-        "com.android.mms",
-        "com.instagram.android",
-        "com.instagram.barcelona",
-        "com.snapchat.android",
-        "com.facebook.katana",
-        "com.twitter.android",
-        "com.reddit.frontpage",
-        "com.zhiliaoapp.musically",
-        "xyz.blueskyweb.app",
-        "org.joinmastodon.android",
-    )
-
-    /** [PERSONAL_PACKAGES], WhatsApp (incl. Business) and Telegram (incl. its official forks). */
-    fun isPersonalApp(pkg: String?): Boolean {
-        if (pkg == null) return false
-        return pkg in PERSONAL_PACKAGES || pkg.inFamily("com.whatsapp") || pkg.inFamily("org.telegram")
-    }
-
-    /** Host suffixes (a host matches itself and its subdomains). */
-    val PERSONAL_WEB_HOSTS: Set<String> = setOf(
-        "whatsapp.com",
-        "telegram.org",
-        "discord.com",
-        "messenger.com",
-        "instagram.com",
-        "facebook.com",
-        "x.com",
-        "twitter.com",
-        "reddit.com",
-        "threads.net",
-        "bsky.app",
-        "tiktok.com",
-    )
-
-    val WORK_WEB_HOSTS: Set<String> = setOf(
-        "slack.com",
-        "teams.microsoft.com",
-        "teams.live.com",
-        "chat.google.com",
-        "meet.google.com",
-        "docs.google.com",
-        "linkedin.com",
-        "github.com",
-        "gitlab.com",
-        "atlassian.net",
-        "notion.so",
-        "linear.app",
-        "figma.com",
-        "zoom.us",
-        "office.com",
-        "sharepoint.com",
-    )
-
-    /** Webmail that the "mail." / "webmail." host rule in [isEmailHost] misses. */
-    val EMAIL_WEB_HOSTS: Set<String> = setOf(
-        "outlook.live.com",
-        "outlook.office.com",
-        "outlook.office365.com",
-        "app.fastmail.com",
-        "app.tuta.com",
-    )
-
-    private fun matchesAny(host: String?, hosts: Set<String>) =
-        host != null && hosts.any { host == it || host.endsWith(".$it") }
-
-    /** [host] is lowercase with any "www." removed. */
-    fun isPersonalHost(host: String?) = matchesAny(host, PERSONAL_WEB_HOSTS)
-    fun isWorkHost(host: String?) = matchesAny(host, WORK_WEB_HOSTS)
-    fun isEmailHost(host: String?) =
-        host != null && (host.startsWith("mail.") || host.startsWith("webmail.") || matchesAny(host, EMAIL_WEB_HOSTS))
+    /** Web versions of personal chat and social apps and their subdomains. */
+    fun isPersonalHost(host: String?) = group("personal").host(host)
 }
