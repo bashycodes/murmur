@@ -15,6 +15,9 @@ on:
       - "Cargo.lock"
       - "deploy/docker/**"
       - ".dockerignore"
+      - "COPYRIGHT"
+      - "NOTICE"
+      - "THIRD-PARTY-LICENSES"
       - ".github/workflows/server-image.yml"
   pull_request:
     paths:
@@ -23,6 +26,9 @@ on:
       - "Cargo.lock"
       - "deploy/docker/**"
       - ".dockerignore"
+      - "COPYRIGHT"
+      - "NOTICE"
+      - "THIRD-PARTY-LICENSES"
       - ".github/workflows/server-image.yml"
 
 concurrency:
@@ -64,3 +70,13 @@ jobs:
           if docker run --rm flow-server:ci >out.txt 2>&1; then cat out.txt; exit 1; fi
           grep -q "no speech model in /models" out.txt || { cat out.txt; exit 1; }
           docker image ls flow-server:ci
+
+      # D80: the image carries the rights, notices and full licence texts, and
+      # its sherpa-onnx libraries no TTS (espeak-ng) code.
+      - name: Image carries the notices
+        run: |
+          id=$(docker create flow-server:ci)
+          docker cp "$id:/opt/flow-server" img; docker rm "$id"
+          for f in COPYRIGHT NOTICE THIRD-PARTY-LICENSES; do test -s "img/$f" || { echo "FAIL: no /opt/flow-server/$f"; exit 1; }; done
+          grep -q 'All rights reserved' img/COPYRIGHT
+          tools/checks/no-tts-libs.sh img/lib/*.so*

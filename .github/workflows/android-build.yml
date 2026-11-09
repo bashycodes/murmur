@@ -117,17 +117,25 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
           echo "sdk.dir=$ANDROID_HOME" > apps/flow-android/local.properties
 
-      # Parakeet runtime for local/hybrid (the same prebuilts INSTALL.md §1 names).
-      - name: sherpa-onnx Android prebuilt
+      # Parakeet runtime for local/hybrid: sherpa-onnx built from its source
+      # with text to speech off (D80: upstream's Android release links
+      # espeak-ng, GPL-3.0, and it has no no-TTS Android build). Cached on
+      # the script, so it builds only when the script changes.
+      - name: sherpa-onnx Android no-TTS (cache)
+        id: sherpa-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/sherpa-no-tts
+          key: sherpa-android-no-tts-${{ env.SHERPA_VERSION }}-${{ env.NDK_VERSION }}-${{ hashFiles('apps/flow-android/tools/build-sherpa-android.sh') }}
+
+      - name: sherpa-onnx Android no-TTS (build)
+        if: steps.sherpa-cache.outputs.cache-hit != 'true'
+        run: JOBS=4 SHERPA_BUILD_DIR="$RUNNER_TEMP/sherpa-build" apps/flow-android/tools/build-sherpa-android.sh "$RUNNER_TEMP/sherpa-no-tts"
+
+      - name: sherpa-onnx Android no-TTS (use)
         run: |
-          dir="$RUNNER_TEMP/sherpa"
-          mkdir -p "$dir"
-          curl -fsSL -o "$dir/a.tar.bz2" \
-            "https://github.com/k2-fsa/sherpa-onnx/releases/download/v$SHERPA_VERSION/sherpa-onnx-v$SHERPA_VERSION-android.tar.bz2"
-          tar -xjf "$dir/a.tar.bz2" -C "$dir"
-          lib="$(dirname "$(find "$dir" -path '*arm64-v8a/libsherpa-onnx-c-api.so' | head -1)")"
-          ls -la "$lib"
-          echo "SHERPA_ANDROID_LIBS=$lib" >> "$GITHUB_ENV"
+          tools/checks/no-tts-libs.sh "$RUNNER_TEMP/sherpa-no-tts/libsherpa-onnx-c-api.so" "$RUNNER_TEMP/sherpa-no-tts/libonnxruntime.so"
+          echo "SHERPA_ANDROID_LIBS=$RUNNER_TEMP/sherpa-no-tts" >> "$GITHUB_ENV"
 
       - name: Native libs (local, hybrid, remote)
         working-directory: apps/flow-android
@@ -153,6 +161,20 @@ jobs:
           tools/dist.sh --debug-only
           cat dist/sizes.txt
 
+      # D80: every APK carries the rights, notices and full licence texts,
+      # and its native libraries no TTS (espeak-ng) code.
+      - name: APKs carry the notices
+        run: |
+          for apk in apps/flow-android/dist/*.apk; do
+            for f in COPYRIGHT NOTICE THIRD-PARTY-LICENSES; do
+              unzip -l "$apk" | grep -q " assets/licenses/$f.txt$" || { echo "FAIL $apk: no assets/licenses/$f.txt"; exit 1; }
+            done
+            d=$(mktemp -d); unzip -q -o "$apk" 'lib/*' -d "$d" || true
+            libs=$(find "$d" -name '*.so')
+            [ -z "$libs" ] || tools/checks/no-tts-libs.sh $libs
+            echo "ok   $apk"; rm -rf "$d"
+          done
+
       # D56: with the fixed key restored, every debug APK must carry its
       # certificate (pinned public SHA-256), or it would not install over the
       # phone's app without wiping it.
@@ -171,7 +193,7 @@ jobs:
       - name: Build matrix (strict + cloud) incl. the APKs
         run: |
           FLOW_CLOUD_ARTIFACTS="$(ls apps/flow-android/dist/*.apk | tr '\n' ' ')" \
-            tools/check-build-matrix.sh
+          CHECK_BUILD_MATRIX_NOTICES=0 tools/check-build-matrix.sh
 
       - uses: actions/upload-artifact@v4
         with:

@@ -5,7 +5,8 @@
 # and for Linux x86_64 without Docker (server/; built here: CI does not
 # build it), the speech models, the AI cleanup model and an install note
 # (docs/colleague-install.md, version filled in; Docker first), plus
-# COPYRIGHT.txt and NOTICE.txt (D80).
+# COPYRIGHT.txt, NOTICE.txt and THIRD-PARTY-LICENSES.txt (D80); each model
+# zip carries MODEL-LICENSES.txt (tools/bundle/model_notice.py).
 #
 #   tools/colleague-bundle.sh --source integration|notetaker|BRANCH|COMMIT [options]
 #
@@ -28,8 +29,8 @@
 # --server-target DIR  a cargo release dir that already holds flow-server
 #                 (features whisper,parakeet,tls,llm) and libflow_llm.so
 #                 built from the same commit: no build.
-# --sherpa-lib DIR     libsherpa-onnx-c-api.so + libonnxruntime.so (default
-#                 $SHERPA_ONNX_LIB_DIR); needed to build and bundled.
+# --sherpa-lib DIR     libsherpa-onnx-c-api.so + libonnxruntime.so, the no-TTS
+#                 build (default $SHERPA_ONNX_LIB_DIR); needed to build and bundled.
 # --no-server     leave the host build (server/) out.
 # --no-image      leave the Docker image out (no Docker here); the source
 #                 archive is still bundled. Without it, Docker must work.
@@ -71,7 +72,7 @@ while [ $# -gt 0 ]; do
     --no-zip) NO_ZIP=1 ;;
     --no-fetch) NO_FETCH=1 ;;
     --dry-run) DRY=1 ;;
-    -h|--help) sed -n '2,46p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,47p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown option: $1" ;;
   esac
   shift
@@ -183,7 +184,7 @@ CLEANUP_ZIP="$NAME-cleanup-model.zip"
 SOURCE_TGZ="flow-server-source-$VERSION.tar.gz"
 IMAGE_TAR="flow-server-image-$VERSION.tar"
 SRC_DIR="flow-server-source-$VERSION"
-SRC_PATHS=(Cargo.toml Cargo.lock VERSION COPYRIGHT NOTICE .dockerignore crates deploy README.md
+SRC_PATHS=(Cargo.toml Cargo.lock VERSION COPYRIGHT NOTICE THIRD-PARTY-LICENSES .dockerignore crates deploy README.md
   docs/server-setup.md docs/container.md docs/server-advanced.md)
 g cat-file -e "$COMMIT:deploy/docker/Dockerfile" 2>/dev/null || die "$SHA7 has no deploy/docker/Dockerfile"
 have=()
@@ -225,7 +226,7 @@ mkdir -p "$OUT" "$MODELS"
 [ ! -e "$BUNDLE" ] || die "$BUNDLE exists: delete it first"
 mkdir -p "$BUNDLE/windows" "$BUNDLE/android"
 # Rights and third-party licences (D80), from the bundled commit.
-for f in COPYRIGHT NOTICE; do
+for f in COPYRIGHT NOTICE THIRD-PARTY-LICENSES; do
   g show "$COMMIT:$f" > "$BUNDLE/$f.txt" 2>/dev/null || { rm -f "$BUNDLE/$f.txt"; die "$SHA7 has no $f"; }
 done
 
@@ -327,6 +328,8 @@ if [ "$NO_SERVER" = 0 ]; then
   say "flow-server"
   [ -n "$SHERPA_LIB" ] || die "--sherpa-lib DIR (or SHERPA_ONNX_LIB_DIR) with libsherpa-onnx-c-api.so + libonnxruntime.so is needed"
   for l in libsherpa-onnx-c-api.so libonnxruntime.so; do [ -e "$SHERPA_LIB/$l" ] || die "$SHERPA_LIB/$l not found"; done
+  "$ROOT/tools/checks/no-tts-libs.sh" "$SHERPA_LIB/libsherpa-onnx-c-api.so" "$SHERPA_LIB/libonnxruntime.so" ||
+    die "--sherpa-lib: use sherpa-onnx-v1.13.8-linux-x64-shared-no-tts-lib/lib (D80: no espeak-ng)"
   if [ -z "$SERVER_TARGET" ]; then
     src="$OUT/.src/$SHA7"
     [ -d "$src" ] || g worktree add -q --detach "$src" "$COMMIT"
@@ -387,7 +390,7 @@ mkdir -p "$BUNDLE/docker"
 # Tracked files of the commit only: nothing untracked or ignored can get in.
 g archive --format=tar.gz --prefix="$SRC_DIR/" -o "$BUNDLE/docker/$SOURCE_TGZ" "$COMMIT" -- "${SRC_PATHS[@]}"
 tar -tzf "$BUNDLE/docker/$SOURCE_TGZ" > "$WORK/src.list"
-for f in deploy/docker/Dockerfile deploy/docker/entrypoint.sh Cargo.lock crates/flow-server/Cargo.toml COPYRIGHT NOTICE; do
+for f in deploy/docker/Dockerfile deploy/docker/entrypoint.sh Cargo.lock crates/flow-server/Cargo.toml COPYRIGHT NOTICE THIRD-PARTY-LICENSES; do
   grep -qx "$SRC_DIR/$f" "$WORK/src.list" || die "$SOURCE_TGZ has no $f"
 done
 echo "wrote docker/$SOURCE_TGZ ($(mb "$(stat -c %s "$BUNDLE/docker/$SOURCE_TGZ")"), $(wc -l < "$WORK/src.list") entries)"
@@ -434,12 +437,14 @@ grep -q '{{' "$BUNDLE/INSTALL.md" && die "INSTALL.md has an unfilled placeholder
 mv "$WORK/sums.txt" "$BUNDLE/SHA256SUMS.txt"
 
 # Model zips (stored, not compressed), with a SHA256SUMS.txt inside from the
-# pins (each file was checked above).
+# pins (each file was checked above) and MODEL-LICENSES.txt: each model's
+# licence and attribution and the full texts (D80).
 zip_models() { # ZIP llm|speech
   local z="$OUT/$1" list="$WORK/$1.list"
   awk -F'\t' -v want="$2" '($2 == "llm") == (want == "llm")' "$WORK/models.tsv" > "$WORK/$1.tsv"
   [ -s "$WORK/$1.tsv" ] || return 0
-  echo SHA256SUMS.txt > "$list"
+  cut -f1 "$WORK/$1.tsv" | sort -u | xargs python3 -I "$HERE/model_notice.py" > "$MODELS/MODEL-LICENSES.txt"
+  printf '%s\n' SHA256SUMS.txt MODEL-LICENSES.txt > "$list"
   while IFS=$'\t' read -r dir kind _ file _ sha _ _; do
     p=$(mpath "$dir" "$kind" "$file")
     echo "$p" >> "$list"
@@ -448,7 +453,8 @@ zip_models() { # ZIP llm|speech
   done < "$WORK/$1.tsv" > "$MODELS/SHA256SUMS.txt"
   rm -f "$z"
   (cd "$MODELS" && sort -u "$list" | zip -q -0 -@ "$z")
-  rm -f "$MODELS/SHA256SUMS.txt"
+  rm -f "$MODELS/SHA256SUMS.txt" "$MODELS/MODEL-LICENSES.txt"
+  unzip -l "$z" | grep -q ' MODEL-LICENSES.txt$' || die "$1 has no MODEL-LICENSES.txt"
   echo "wrote $z ($(mb "$(stat -c %s "$z")"))"
 }
 if [ "$NO_ZIP" = 0 ]; then
