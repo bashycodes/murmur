@@ -17,6 +17,8 @@
 # FLOW_CLOUD_ARTIFACTS (space-separated .so/.exe/.apk paths), plus the
 # shells' main sources.
 # CHECK_BUILD_MATRIX_NO_BUILD=1 skips (b).
+# D80: NOTICE and THIRD-PARTY-LICENSES are current (tools/notice/crate-licences.py
+# --check); CHECK_BUILD_MATRIX_NOTICES=0 skips it.
 #
 # Usage: tools/check-build-matrix.sh   (from anywhere; exit 1 on a violation)
 set -u
@@ -39,6 +41,19 @@ if vout=$(tools/check-version.sh 2>&1 >/dev/null); then
 else
     echo "FAIL  product version copies disagree (tools/check-version.sh):"
     sed 's/^/      /' <<<"$vout"
+    fail=1
+fi
+
+# D80: NOTICE's crate section and THIRD-PARTY-LICENSES match the lockfiles.
+# Needs both workspaces' crates in the registry cache (cargo fetch). The app
+# workflows set CHECK_BUILD_MATRIX_NOTICES=0: repo-checks runs it on every push.
+if [ "${CHECK_BUILD_MATRIX_NOTICES:-1}" = 0 ]; then
+    echo "off   third-party notices (CHECK_BUILD_MATRIX_NOTICES=0; repo-checks runs it)"
+elif nout=$(python3 -I tools/notice/crate-licences.py --check 2>&1); then
+    echo "ok    $nout"
+else
+    echo "FAIL  third-party notices are stale (tools/notice/crate-licences.py):"
+    sed 's/^/      /' <<<"$nout"
     fail=1
 fi
 

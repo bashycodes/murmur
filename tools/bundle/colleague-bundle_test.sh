@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Checks for tools/colleague-bundle.sh's helpers (repo-checks CI; no network):
 # the model list matches the apps' catalogue, a catalogue-only speaker model
-# is added, a wrong pin fails, and the install note renders both variants.
+# is added, a wrong pin fails, the install note renders both variants, the
+# notices travel with the bundle and each model zip's licence file is right.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 H="$ROOT/tools/bundle"
@@ -64,21 +65,75 @@ fi
 # 5. The bundle's server config is valid TOML (the Rust test parses it as a Config).
 python3 -I -c 'import sys, tomllib; tomllib.load(open(sys.argv[1], "rb"))' "$H/server-config.toml" || fail "server-config.toml"
 
-# 6. COPYRIGHT and NOTICE (D80) travel with every bundle: the bundle root and
-# its server source archive, the Docker build context and image, the Windows
-# installer's resources and the APK's assets.
-for f in COPYRIGHT NOTICE; do [ -s "$ROOT/$f" ] || fail "$f missing at the repo root"; done
+# 6. D80: COPYRIGHT, NOTICE and THIRD-PARTY-LICENSES are at the root and
+# travel with every bundle. The built artefacts are checked where they are
+# built: APK (android-build "APKs carry the notices"), installers
+# (windows-build, tools/ci/check-installer-notices.sh), image (server-image
+# "Image carries the notices"); here the bundle's own outputs.
+for f in COPYRIGHT NOTICE THIRD-PARTY-LICENSES; do [ -s "$ROOT/$f" ] || fail "$f missing at the repo root"; done
 grep -q 'All rights reserved' "$ROOT/COPYRIGHT" || fail "COPYRIGHT does not reserve rights"
 grep -q '^--- BEGIN GENERATED: Rust crates' "$ROOT/NOTICE" || fail "NOTICE has no crate section"
+! grep -qi 'espeak-ng \[FLAG' "$ROOT/NOTICE" || fail "NOTICE still lists espeak-ng as shipped"
 B="$ROOT/tools/colleague-bundle.sh"
-grep -q '^SRC_PATHS=(.* COPYRIGHT NOTICE ' "$B" || fail "source archive leaves COPYRIGHT/NOTICE out"
-grep -q '^for f in COPYRIGHT NOTICE; do' "$B" || fail "bundle root leaves COPYRIGHT/NOTICE out"
-grep -qx '!COPYRIGHT' "$ROOT/.dockerignore" && grep -qx '!NOTICE' "$ROOT/.dockerignore" || fail ".dockerignore drops COPYRIGHT/NOTICE"
-[ "$(grep -c '^COPY COPYRIGHT NOTICE /opt/flow-server/$' "$ROOT/deploy/docker/Dockerfile")" = 2 ] || fail "an image leaves COPYRIGHT/NOTICE out"
+grep -q '^SRC_PATHS=(.* COPYRIGHT NOTICE THIRD-PARTY-LICENSES ' "$B" || fail "source archive leaves a notice out"
+grep -q '^for f in COPYRIGHT NOTICE THIRD-PARTY-LICENSES; do' "$B" || fail "bundle root leaves a notice out"
 python3 -I -c 'import json, sys
 r = json.load(open(sys.argv[1]))["bundle"]["resources"]
-assert r.get("../../COPYRIGHT") == "COPYRIGHT.txt" and r.get("../../NOTICE") == "NOTICE.txt", r' \
-  "$ROOT/apps/flow-windows/tauri.conf.json" || fail "Windows installer resources lack COPYRIGHT/NOTICE"
-grep -q 'sources.from(file("../../../COPYRIGHT"), file("../../../NOTICE"))' "$ROOT/apps/flow-android/app/build.gradle.kts" ||
-  fail "APK assets lack COPYRIGHT/NOTICE"
+for f in ("COPYRIGHT", "NOTICE", "THIRD-PARTY-LICENSES"):
+    assert r.get("../../" + f) == f + ".txt", (f, r)' \
+  "$ROOT/apps/flow-windows/tauri.conf.json" || fail "Windows installer resources lack a notice"
+# The source archive the bundle makes (git archive of SRC_PATHS) holds them:
+# the archive of HEAD's tracked files, as the bundle builds it.
+if git -C "$ROOT" cat-file -e HEAD:THIRD-PARTY-LICENSES 2>/dev/null; then
+  git -C "$ROOT" archive --format=tar HEAD -- COPYRIGHT NOTICE THIRD-PARTY-LICENSES .dockerignore | tar -t > "$T/src.list"
+  for f in COPYRIGHT NOTICE THIRD-PARTY-LICENSES; do grep -qx "$f" "$T/src.list" || fail "source archive has no $f"; done
+fi
+# The Docker build context (.dockerignore applied) holds them: with Docker,
+# build a throwaway stage from the real context and list what it got.
+if command -v docker > /dev/null && docker info > /dev/null 2>&1; then
+  printf 'FROM scratch\nCOPY COPYRIGHT NOTICE THIRD-PARTY-LICENSES /n/\n' |
+    DOCKER_BUILDKIT=1 docker build -q -f - -o "type=local,dest=$T/ctx" "$ROOT" > /dev/null ||
+    fail "the Docker build context lacks a notice"
+  for f in COPYRIGHT NOTICE THIRD-PARTY-LICENSES; do
+    cmp -s "$T/ctx/n/$f" "$ROOT/$f" || fail "docker context: $f differs"
+  done
+  echo "docker context: COPYRIGHT NOTICE THIRD-PARTY-LICENSES ok"
+fi
+[ "$(grep -c '^COPY COPYRIGHT NOTICE THIRD-PARTY-LICENSES /opt/flow-server/$' "$ROOT/deploy/docker/Dockerfile")" = 2 ] ||
+  fail "an image stage leaves a notice out"
+
+# 7. Model zips' MODEL-LICENSES.txt: the catalogue and tools/notice/models.tsv
+# agree; the notice of a speech set and of the cleanup set with Llama carries
+# the texts and notices their licences ask for; an unknown model is
+# "unconfirmed", not given a licence.
+MN="$H/model_notice.py"
+python3 -I "$MN" --check-catalog "$RS" || fail "catalogue licences != tools/notice/models.tsv"
+cut -f1 "$T/m.tsv" | sort -u > "$T/folders"
+while read -r f; do
+  grep -q "^$f"$'\t' "$ROOT/tools/notice/models.tsv" || fail "model folder $f has no licence row"
+  grep -qF "$(grep "^$f"$'\t' "$ROOT/tools/notice/models.tsv" | cut -f3 | cut -d' ' -f1)" "$ROOT/NOTICE" ||
+    fail "NOTICE does not name $f's licence"
+done < "$T/folders"
+awk -F'\t' '$2 != "llm"' "$T/m.tsv" | cut -f1 | sort -u | xargs python3 -I "$MN" > "$T/speech.txt"
+grep -q 'Licensed by NVIDIA Corporation under the NVIDIA Open Model License' "$T/speech.txt" || fail "speech zip: NVIDIA notice"
+grep -q '^NVIDIA Open Model License Agreement' "$T/speech.txt" || fail "speech zip: NVIDIA licence text"
+grep -q 'Attribution 4.0 International' "$T/speech.txt" || fail "speech zip: CC-BY-4.0 text"
+grep -q 'zipformer-he-int8: CC-BY-4.0 · Yakov Kolani / ivrit.ai' "$T/speech.txt" || fail "speech zip: CC-BY credit"
+grep -q 'Permission is hereby granted, free of charge' "$T/speech.txt" || fail "speech zip: MIT text"
+python3 -I "$MN" qwen2.5-1.5b-instruct-q4_k_m llama-3.2-3b-instruct-q4_k_m test-diarizer > "$T/llm.txt"
+grep -q 'Built with Llama' "$T/llm.txt" || fail "cleanup zip: Built with Llama"
+grep -q 'LLAMA 3.2 COMMUNITY LICENSE AGREEMENT' "$T/llm.txt" || fail "cleanup zip: Llama licence text"
+grep -q 'Acceptable Use Policy' "$T/llm.txt" || fail "cleanup zip: Llama AUP"
+grep -q 'Apache License' "$T/llm.txt" || fail "cleanup zip: Apache-2.0 text"
+grep -q 'test-diarizer: licence unconfirmed' "$T/llm.txt" || fail "unknown model given a licence"
+python3 -I "$MN" qwen2.5-1.5b-instruct-q4_k_m > "$T/qwen.txt"
+! grep -q 'Llama' "$T/qwen.txt" || fail "Llama text without Llama"
+# A catalogue licence that drifts from the table fails.
+sed 's/license: Some("Apache-2.0 · Qwen (Qwen\/Qwen2.5-1.5B/license: Some("MIT · Qwen (Qwen\/Qwen2.5-1.5B/' "$RS" > "$T/drift.rs"
+if python3 -I "$MN" --check-catalog "$T/drift.rs" 2> /dev/null; then fail "catalogue drift accepted"; fi
+# The zip itself, as zip_models builds it: MODEL-LICENSES.txt is inside.
+mkdir -p "$T/z" && cp "$T/llm.txt" "$T/z/MODEL-LICENSES.txt" && echo x > "$T/z/SHA256SUMS.txt"
+(cd "$T/z" && printf '%s\n' SHA256SUMS.txt MODEL-LICENSES.txt | zip -q -0 -@ "$T/c.zip")
+unzip -l "$T/c.zip" | grep -q ' MODEL-LICENSES.txt$' || fail "zip lacks MODEL-LICENSES.txt"
+grep -q 'printf .%s\\n. SHA256SUMS.txt MODEL-LICENSES.txt > "$list"' "$B" || fail "zip_models leaves MODEL-LICENSES.txt out"
 echo "colleague-bundle helpers: ok"

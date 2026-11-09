@@ -7,6 +7,7 @@
 !VERSION
 !COPYRIGHT
 !NOTICE
+!THIRD-PARTY-LICENSES
 !crates/
 !deploy/docker/
 crates/**/target/

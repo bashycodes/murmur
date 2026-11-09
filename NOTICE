@@ -6,21 +6,28 @@ licence. "Ships" = inside an installer, APK, server bundle or container image
 we build; "downloads" = fetched by the app or the server tooling at the
 user's request and never bundled into an app (the colleague bundle carries
 copies of the model files). Licences that are copyleft or that restrict use
-or redistribution are marked [FLAG].
+or redistribution are marked [FLAG]. The full licence and notice texts are in
+THIRD-PARTY-LICENSES, which ships next to this file; model zips carry
+MODEL-LICENSES.txt.
 
 1. Native libraries (ship)
 
 - sherpa-onnx 1.13.8 (Parakeet / Zipformer speech, Android, Windows, server)
   Apache-2.0. https://github.com/k2-fsa/sherpa-onnx
-  Its prebuilt release libraries also contain, linked statically:
-  kaldi-native-fbank, kaldi-decoder, kaldifst, OpenFst (Apache-2.0),
-  simple-sentencepiece (Apache-2.0) and, through its text-to-speech module,
-  espeak-ng [FLAG: GPL-3.0-or-later] and piper-phonemize (MIT). espeak-ng is
-  present in the Android arm64 library we ship; builds with
-  SHERPA_ONNX_ENABLE_TTS=OFF leave it out.
-  https://github.com/espeak-ng/espeak-ng
-- ONNX Runtime 1.28 (bundled with sherpa-onnx as libonnxruntime / onnxruntime.dll)
-  MIT. https://github.com/microsoft/onnxruntime
+  Every build we ship has text to speech off, so no espeak-ng (GPL) or
+  piper-phonemize code is in it: upstream's -no-tts libraries on Windows and
+  Linux (server, container image), and a build from source with
+  SHERPA_ONNX_ENABLE_TTS=OFF on Android (tools/build-sherpa-android.sh); the
+  builds check the libraries for espeak-ng (tools/checks/no-tts-libs.sh).
+  Linked statically into it:
+  - kaldi-native-fbank, kaldi-decoder, kaldifst, OpenFst, simple-sentencepiece:
+    Apache-2.0
+  - Eigen (header-only) [FLAG: MPL-2.0, file-level copyleft; used unmodified,
+    source at https://gitlab.com/libeigen/eigen]
+  - KISS FFT: BSD-3-Clause; hclust-cpp: BSD-2-Clause; nlohmann/json: MIT
+- ONNX Runtime 1.28.2 (bundled with sherpa-onnx as libonnxruntime / onnxruntime.dll)
+  MIT, with its own third-party notices (in THIRD-PARTY-LICENSES).
+  https://github.com/microsoft/onnxruntime
 - llama.cpp and ggml (AI cleanup plugin flow-llm, via the llama-cpp-sys-2
   0.1.160 crate, which vendors them)
   MIT. https://github.com/ggml-org/llama.cpp
@@ -29,6 +36,9 @@ or redistribution are marked [FLAG].
   MIT. https://github.com/ggml-org/whisper.cpp
 - SQLite (Windows history, compiled in by libsqlite3-sys "bundled")
   Public domain. https://sqlite.org/copyright.html
+  The vendored C sources of these three crates keep their own licence files
+  (llama.cpp's vendored cpp-httplib, rotate-bits: MIT; xxhash: BSD-2-Clause;
+  sha256: public domain); all are in THIRD-PARTY-LICENSES, Part 1.
 - LLVM libc++ (libc++_shared.so in the Android APK, from the Android NDK)
   Apache-2.0 WITH LLVM-exception. https://github.com/llvm/llvm-project
 - GNU OpenMP runtime libgomp.so.1 (server bundle and container image, needed
@@ -49,7 +59,7 @@ or redistribution are marked [FLAG].
 
 - EB Garamond and Figtree (Windows settings window, Android app)
   OFL-1.1. Licence texts ship beside the fonts (ui/dist/fonts/*-OFL.txt,
-  APK assets/licenses/). https://github.com/octaviopardo/EBGaramond12,
+  APK assets/licenses/) and in THIRD-PARTY-LICENSES. https://github.com/octaviopardo/EBGaramond12,
   https://github.com/erikdkennedy/figtree
 
 3. Android libraries (Gradle; ship in the APK)
@@ -94,17 +104,22 @@ or redistribution are marked [FLAG].
 
 5. Speech and cleanup models (downloaded; licence from each model card)
 
+The apps' model catalogue shows the same licence and attribution for each
+model (tools/notice/models.tsv keeps the two in step).
+
 - Whisper GGML models (tiny/base/small, .en and multilingual; language
   detection), from ggerganov/whisper.cpp
-  MIT (OpenAI Whisper weights: MIT / Apache-2.0).
+  MIT (model card: ggerganov/whisper.cpp; OpenAI's Whisper weights: MIT).
   https://huggingface.co/ggerganov/whisper.cpp
 - Parakeet TDT 0.6B v2 int8 (sherpa-onnx export of nvidia/parakeet-tdt-0.6b-v2)
-  CC-BY-4.0 (attribution: NVIDIA). https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8
+  CC-BY-4.0 (model card of the export; attribution: NVIDIA).
+  https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8
 - Parakeet unified EN 0.6B int8 (sherpa-onnx export of nvidia/parakeet-unified-en-0.6b)
   [FLAG: NVIDIA Open Model License: commercial use and redistribution
-  allowed, with the licence notice kept and terms that end the licence if
-  its safety guardrails are bypassed; the export repo itself declares no
-  licence.] https://huggingface.co/csukuangfj2/sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8-non-streaming,
+  allowed, with a copy of the agreement and the notice "Licensed by NVIDIA
+  Corporation under the NVIDIA Open Model License", and terms that end the
+  licence if its safety guardrails are bypassed. The licence is that of
+  NVIDIA's model card; the export repo itself declares none.] https://huggingface.co/csukuangfj2/sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8-non-streaming,
   https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/
 - Zipformer Hebrew (ivrit-ai/zipformer2-66m-streaming-he)
   CC-BY-4.0 (attribution: Yakov Kolani / ivrit.ai). https://huggingface.co/ivrit-ai/zipformer2-66m-streaming-he
@@ -115,7 +130,7 @@ or redistribution are marked [FLAG].
   from ivrit-ai/whisper-large-v3-turbo)
   Apache-2.0. https://huggingface.co/tagidu/ivrit-whisper-large-v3-turbo-ggml-quantized
 - Qwen2.5 1.5B Instruct and Qwen2.5 0.5B Instruct, GGUF q4_k_m (AI cleanup)
-  Apache-2.0. https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF,
+  Apache-2.0 (model cards). https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF,
   https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF
 - Llama 3.2 3B Instruct, GGUF q4_k_m (AI cleanup, GPU option; bartowski's
   quantisation of meta-llama/Llama-3.2-3B-Instruct)
@@ -133,8 +148,8 @@ and their source is at crates.io]. No GPL, LGPL or AGPL crate is linked.
 
 --- BEGIN GENERATED: Rust crates (tools/notice/crate-licences.py) ---
 
-352 crates from crates.io (https://crates.io/crates/<name>; each crate's
-source there carries its licence text), grouped by licence:
+352 crates from crates.io (https://crates.io/crates/<name>; their licence
+texts are in THIRD-PARTY-LICENSES, Part 1), grouped by licence:
 
 Apache-2.0 OR MIT (207):
   aes, ahash, anyhow, atomic-waker, base64, bit-set, bit-vec, bitflags,

@@ -192,7 +192,8 @@ tasks.withType<Test>().configureEach {
     }
 }
 
-// D80: the repo's COPYRIGHT and NOTICE ship in every APK as assets/licenses/{COPYRIGHT,NOTICE}.txt
+// D80: the repo's COPYRIGHT, NOTICE and THIRD-PARTY-LICENSES ship in every APK as
+// assets/licenses/{COPYRIGHT,NOTICE,THIRD-PARTY-LICENSES}.txt
 // (next to the fonts' OFL texts), copied from the repo root at build time so there is one copy.
 abstract class LegalAssets : DefaultTask() {
     @get:InputFiles abstract val sources: ConfigurableFileCollection
@@ -210,7 +211,7 @@ abstract class LegalAssets : DefaultTask() {
     }
 }
 val legalAssets = tasks.register<LegalAssets>("legalAssets") {
-    sources.from(file("../../../COPYRIGHT"), file("../../../NOTICE"))
+    sources.from(file("../../../COPYRIGHT"), file("../../../NOTICE"), file("../../../THIRD-PARTY-LICENSES"))
     outputDir.set(layout.buildDirectory.dir("generated/legal-assets"))
 }
 

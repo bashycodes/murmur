@@ -48,7 +48,8 @@
     ],
     "resources": {
       "../../COPYRIGHT": "COPYRIGHT.txt",
-      "../../NOTICE": "NOTICE.txt"
+      "../../NOTICE": "NOTICE.txt",
+      "../../THIRD-PARTY-LICENSES": "THIRD-PARTY-LICENSES.txt"
     },
     "icon": [
       "icons/32x32.png",
