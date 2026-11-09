@@ -1,0 +1,49 @@
+/* Insights (ui/src/pages/insights.ts), after PageInsights.dc.html. The
+   usage-bar, split and heatmap rules are the design system's
+   (docs/design/app-design/ds/murmur/components/bundle.css), copied as is;
+   lw-ins-* are this page's layout. Colours are theme.css tokens. */
+
+.lw-ins { display: flex; flex-direction: column; gap: 16px; max-width: 980px; margin: 0 auto; }
+.lw-ins-head { display: flex; align-items: baseline; gap: 12px; }
+.lw-ins-head > .fl-page-title { flex: 1; }
+.lw-ins-sub, .lw-ins-note { font: 400 13px/20px var(--font-sans); color: var(--foreground-tertiary); }
+.lw-ins-note { margin: 0; }
+.lw-ins-head > .fl-btn { align-self: center; }
+.lw-ins-row3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.lw-ins-row2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.lw-ins-card { display: flex; flex-direction: column; gap: 4px; padding: 20px; min-width: 0; }
+.lw-ins-big { gap: 16px; }
+.lw-ins-cardhead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.lw-ins-title { font: 600 24px/32px var(--font-sans); color: var(--foreground); }
+.lw-ins-rule { height: 1px; margin: 12px 0 8px; background: var(--border); }
+.lw-ins-kv { display: flex; justify-content: space-between; font: 400 15px/24px var(--font-sans); color: var(--foreground); font-variant-numeric: tabular-nums; }
+.lw-ins-gauge { display: flex; align-items: flex-end; gap: 12px; margin-top: 12px; font: 400 14px/20px var(--font-sans); color: var(--neutral-600); }
+.lw-ins-gauge svg { flex: none; }
+.lw-ins-appicon { display: inline-flex; color: var(--foreground); }
+.lw-ins-foot { margin: 0 0 24px; }
+
+/* Usage bars (fathom) */
+.fl-usage { display: grid; grid-template-columns: 20px 1fr; gap: 12px; align-items: center; }
+.fl-usage-track { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.fl-usage-bar { display: inline-flex; align-items: center; justify-content: center; flex: none; height: 22px; min-width: 30px; border-radius: 4px; font: 600 12px/20px var(--font-sans); }
+.fl-usage-bar.is-top { background: var(--fathom-900); color: var(--pure-white); }
+.fl-usage-bar.is-mid { background: var(--fathom-500); color: var(--vast-950); }
+.fl-usage-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 12px/20px var(--font-sans); letter-spacing: .075em; text-transform: uppercase; color: var(--foreground); }
+
+/* Split bar: where speech ran (pc / server / cloud) */
+.lw-split { display: flex; gap: 3px; height: 22px; font: 550 12px/18px var(--font-sans); }
+.lw-split > span { display: flex; align-items: center; min-width: 0; overflow: hidden; white-space: nowrap; padding: 0 6px; border-radius: 4px; }
+.lw-split > span:last-child:not(:first-child) { justify-content: flex-end; }
+.lw-split .is-pc { background: var(--fathom-900); color: var(--pure-white); }
+.lw-split .is-server { background: var(--fathom-500); color: var(--vast-950); }
+.lw-split .is-cloud { background: var(--glow-300); color: var(--glow-900); }
+
+/* Heatmap */
+.fl-heat { display: grid; grid-template-columns: 28px repeat(var(--cols, 18), 13px); gap: 6px; align-items: center; font: 400 10px/18px var(--font-sans); color: var(--foreground-tertiary); }
+.fl-heat i, .fl-heat-legend i { display: block; width: 13px; height: 13px; border-radius: 2px; background: var(--background-secondary); }
+.fl-heat i.h0 { background: var(--toggle-border); }
+.fl-heat i.h1, .fl-heat-legend i.h1 { background: var(--fathom-100); }
+.fl-heat i.h2, .fl-heat-legend i.h2 { background: var(--fathom-400); }
+.fl-heat i.h3, .fl-heat-legend i.h3 { background: var(--fathom-500); }
+.fl-heat i.h4, .fl-heat-legend i.h4 { background: var(--fathom-900); }
+.fl-heat-legend { display: flex; align-items: center; gap: 6px; margin-top: 12px; font: 400 12px/20px var(--font-sans); color: var(--foreground-tertiary); }

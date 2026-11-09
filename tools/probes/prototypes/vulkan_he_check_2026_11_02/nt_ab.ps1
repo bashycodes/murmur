@@ -1,7 +1,7 @@
 # A/B: whisper-cli (b5454 + llama.cpp b12005 ggml, Vulkan; the 2026-10-31 bench binary) on the
 # 10.4 s FLEURS clip with and without -nt (no timestamps; the app's decode does not set it).
 # Reports whisper_print_timings total - load, 3 runs each.
-$b = "$env:USERPROFILE\flow-bench"
+$b = "$env:USERPROFILE\murmur-bench"
 $wav = "$b\audio-he\4872784854716589132.wav"
 foreach ($nt in @($true, $false)) {
   foreach ($i in 1..3) {

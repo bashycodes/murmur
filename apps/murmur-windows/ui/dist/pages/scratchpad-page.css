@@ -1,0 +1,52 @@
+/* Scratchpad and Notetaker pages (ui/src/pages/scratchpad.ts), after
+   PageScratchpad.dc.html / PageNotetaker.dc.html. The banner and lumen
+   button rules are the design system's (docs/design/app-design/ds/murmur/
+   components/bundle.css), copied as is (the base banner rules are also in
+   pages/style.css; identical, so either file can go first). lw-sp-* and
+   lw-nt-* are these pages' layout. Colours are theme.css tokens. */
+
+.fl-btn-lumen { background: var(--lumen-400); color: var(--vast-950); }
+.fl-btn-lumen:hover { opacity: .85; }
+.fl-banner { position: relative; overflow: hidden; display: flex; flex-direction: column; justify-content: center; gap: 8px; min-height: 148px; padding: 24px; border-radius: 12px; color: var(--lumen-400); }
+.fl-banner-amber { background: linear-gradient(100deg, var(--glow-800) 0%, var(--glow-600) 45%, var(--glow-900) 100%); }
+.fl-banner-title { margin: 0; font: 400 28px/28px var(--font-serif); letter-spacing: -0.04em; }
+.fl-banner-body { margin: 0; max-width: 460px; font: 550 15px/20px var(--font-sans); }
+.fl-banner-actions { display: flex; gap: 8px; margin-top: 12px; }
+
+/* Scratchpad */
+.lw-sp-head { gap: 12px; }
+.lw-sp-head > .fl-page-title { flex: none; }
+.lw-sp-grow { flex: 1; }
+.lw-sp-bar { display: flex; align-items: center; gap: 2px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.lw-sp-bar-title { flex: 1; font: 600 16px/24px var(--font-sans); color: var(--foreground); }
+.lw-sp-bar .lw-sp-search { width: 220px; height: 32px; margin-right: 6px; }
+.lw-sp-sub { margin: 0 0 8px; }
+.lw-sp-row { gap: 4px; padding: 0 8px 0 0; }
+.lw-sp-open { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 16px; padding: 14px 8px 14px 16px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.lw-sp-open:focus-visible { outline: 2px solid var(--foreground); outline-offset: -2px; border-radius: 12px; }
+.lw-sp-ico { color: var(--foreground-tertiary); }
+.lw-sp-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.lw-sp-title { font-weight: 550; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.lw-sp-preview { color: var(--foreground-tertiary); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.lw-sp-when { text-align: right; }
+.lw-sp-pin { align-self: center; opacity: 0; }
+.lw-sp-row:hover .lw-sp-pin, .lw-sp-pin:focus-visible, .lw-sp-row.is-pinned .lw-sp-pin { opacity: 1; }
+.lw-sp-row.is-pinned .lw-sp-pin { color: var(--dawn-700); }
+.lw-sp-row.is-pinned .lw-sp-pin .fl-icon { fill: currentColor; }
+:root.lw-dark .lw-sp-row.is-pinned .lw-sp-pin { color: var(--dawn-600); }
+.lw-sp-empty { margin: 0; padding: 16px; border-radius: 12px; background: var(--background-tertiary); font: 550 15px/20px var(--font-sans); color: var(--neutral-600); }
+#sp_status.err { color: var(--destructive); }
+
+/* The Meetings page's empty state (pages/meetings.css has the rest) */
+.lw-nt { gap: 24px; }
+.lw-nt-hero { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 48px 32px; border-radius: 16px; background: var(--background-tertiary); text-align: center; color: var(--foreground-tertiary); }
+.lw-nt-title { margin: 0; font-size: 36px; line-height: 40px; color: var(--foreground); }
+.lw-nt-title em { color: var(--dawn-700); }
+:root.lw-dark .lw-nt-title em { color: var(--dawn-600); }
+.lw-nt-body { margin: 0; max-width: 520px; font: 400 16px/24px var(--font-sans); color: var(--neutral-600); }
+.lw-nt-points { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; text-align: left; color: var(--foreground); }
+.lw-nt-points li { display: flex; gap: 10px; font: 400 15px/20px var(--font-sans); }
+.lw-nt-points li::before { content: ""; flex: none; width: 20px; height: 20px; background: var(--fathom-800); -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7'/%3E%3C/svg%3E") center / 20px no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7'/%3E%3C/svg%3E") center / 20px no-repeat; }
+:root.lw-dark .lw-nt-points li::before { background: var(--fathom-400); }
+.lw-nt .lw-page-head { gap: 12px; }
+.lw-nt .lw-page-head > .fl-page-title { flex: none; }

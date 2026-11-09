@@ -28,7 +28,7 @@ e2e probe used (the 7.6 s and 6.5 s rows match `10068749401638533088` and
 
 ## Evidence
 
-All decodes with `crates/flow-asr-sherpa/examples/online_check` (new
+All decodes with `crates/murmur-asr-sherpa/examples/online_check` (new
 `--skip S` / `--lead S` options) unless noted; 2 threads, greedy unless
 noted.
 
@@ -67,12 +67,12 @@ the first 2 s. Two unrelated models agree, so the order is in the audio.
 
 ## Regression test
 
-`crates/flow-core/tests/sherpa_online_e2e.rs`
+`crates/murmur-core/tests/sherpa_online_e2e.rs`
 `zipformer_keeps_every_spoken_word_of_the_kruger_clip`: the clip through
-FlowCore (VAD + sherpa_online, forced `he`) must contain "נמצא", "הלאומי
+MurmurCore (VAD + sherpa_online, forced `he`) must contain "נמצא", "הלאומי
 קרוגר" and "קרוקודייל" in that order, and VAD must start before 1 s. Like
 the other tests in that file it skips (passes with a note) when the model
-or the clip is absent (`FLOW_HE_KRUGER_WAV` overrides the path).
+or the clip is absent (`MURMUR_HE_KRUGER_WAV` overrides the path).
 
 ## Follow-ups
 

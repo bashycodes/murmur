@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <title>Settings: System</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="flow-theme.css">
-<link rel="stylesheet" href="ds/flow/components/bundle.css">
-<script src="ds/flow/components/bundle.js"></script>
+<link rel="stylesheet" href="murmur-theme.css">
+<link rel="stylesheet" href="ds/murmur/components/bundle.css">
+<script src="ds/murmur/components/bundle.js"></script>
 </head>
 <body>
 <x-dc>
@@ -45,15 +45,15 @@ a{color:#1a1a1a}a:hover{color:#30302f}
       <div class="fl-group">
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Launch app at login</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Launch app at login"></x-import></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Toggle" default-checked="{{yes}}" label="Launch app at login"></x-import></div>
         </div>
         <div class="fl-row">
-          <div class="fl-row-text"><div class="fl-row-title">Show Flow bar at all times</div><div class="fl-row-desc">Off by default: it only appears while you dictate.</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Toggle" label="Show Flow bar at all times"></x-import></div>
+          <div class="fl-row-text"><div class="fl-row-title">Show Murmur bar at all times</div><div class="fl-row-desc">Off by default: it only appears while you dictate.</div></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Toggle" label="Show Murmur bar at all times"></x-import></div>
         </div>
         <div class="fl-row">
-          <div class="fl-row-text"><div class="fl-row-title">Show which engine was used</div><div class="fl-row-desc">A small <b>L</b>, <b>S</b> or <b>C</b> on the Flow bar after each dictation: this PC, your server or the cloud.</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Show which engine was used"></x-import></div>
+          <div class="fl-row-text"><div class="fl-row-title">Show which engine was used</div><div class="fl-row-desc">A small <b>L</b>, <b>S</b> or <b>C</b> on the Murmur bar after each dictation: this PC, your server or the cloud.</div></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Toggle" default-checked="{{yes}}" label="Show which engine was used"></x-import></div>
         </div>
       </div>
 
@@ -61,11 +61,11 @@ a{color:#1a1a1a}a:hover{color:#30302f}
       <div class="fl-group">
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Dictation sounds</div><div class="fl-row-desc">A soft click when dictation starts and stops.</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Dictation sounds"></x-import></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Toggle" default-checked="{{yes}}" label="Dictation sounds"></x-import></div>
         </div>
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Mute music while dictating</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Mute music while dictating"></x-import></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Toggle" default-checked="{{yes}}" label="Mute music while dictating"></x-import></div>
         </div>
       </div>
 
@@ -73,15 +73,15 @@ a{color:#1a1a1a}a:hover{color:#30302f}
       <div class="fl-group">
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Paste with</div><div class="fl-row-desc">Change this if an app ignores Ctrl+V.</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Select" options="{{pasteOpts}}" default-value="ctrlv" width="{{w160}}"></x-import></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Select" options="{{pasteOpts}}" default-value="ctrlv" width="{{w160}}"></x-import></div>
         </div>
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Restore clipboard after pasting</div><div class="fl-row-desc">Puts back whatever you had copied before dictating.</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Restore clipboard after pasting"></x-import></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Toggle" default-checked="{{yes}}" label="Restore clipboard after pasting"></x-import></div>
         </div>
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Longest dictation</div><div class="fl-row-desc">Recording stops by itself after this.</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Select" options="{{maxOpts}}" default-value="6" width="{{w160}}"></x-import></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Select" options="{{maxOpts}}" default-value="6" width="{{w160}}"></x-import></div>
         </div>
       </div>
     </div>

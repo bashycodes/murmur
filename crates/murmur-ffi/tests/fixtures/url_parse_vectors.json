@@ -1,0 +1,48 @@
+{
+  "_comment": "Mirror of crates/murmur-router/tests/url_parse.rs (review S2). Checked against the Rust parser by crates/murmur-ffi/tests/url_parse_fixture.rs and against the Kotlin CloudRules by apps/murmur-android UrlParseFixtureTest.",
+  "rejected": [
+    "http://evil.com\\.local/v1",
+    "https://evil.com\\@api.groq.com/v1",
+    "http://evil.com\\x.local",
+    "https://user:pw@api.groq.com/v1",
+    "https://user@api.groq.com/v1",
+    "https://:pw@api.groq.com/v1",
+    "https://api.groq.com@evil.com/v1",
+    "https://api.groq.com /v1",
+    "https://api.\tgroq.com/v1",
+    "https://api.groq.com/v1\n",
+    "https://api.gr\u0000oq.com/v1",
+    " https://api.groq.com/v1",
+    "ftp://api.groq.com",
+    "https://",
+    "file:///etc/passwd",
+    "api.groq.com/v1",
+    ""
+  ],
+  "hosts": [
+    {"url": "HTTPS://API.Groq.com/openai/v1", "https": true, "host": "api.groq.com"},
+    {"url": "https://api.groq.com:443/v1", "https": true, "host": "api.groq.com"},
+    {"url": "https://api.groq.com#@evil.com", "https": true, "host": "api.groq.com"},
+    {"url": "https://api.groq.com?x=@evil.com", "https": true, "host": "api.groq.com"},
+    {"url": "http://192.168.1.5:8000/v1", "https": false, "host": "192.168.1.5"},
+    {"url": "http://[FD00::1]:8080/v1", "https": false, "host": "fd00::1"},
+    {"url": "http://0x7f.1/v1", "https": false, "host": "127.0.0.1"},
+    {"url": "http://2130706433/v1", "https": false, "host": "127.0.0.1"},
+    {"url": "http://desk%2elocal/v1", "https": false, "host": "desk.local"}
+  ],
+  "cleartext_refused": [
+    "http://0x08080808/v1",
+    "http://8.8.8.8/v1",
+    "http://api.example.com/v1"
+  ],
+  "cleartext_ok": [
+    "http://0x7f.1/v1",
+    "http://10.0.0.2:8000/v1",
+    "http://[fd7a:115c:a1e0::1]:8000/v1"
+  ],
+  "consent": [
+    {"base_url": "https://API.groq.com/openai/v1", "consent_host": "api.groq.com", "ok": true},
+    {"base_url": "https://api.groq.com\\@evil.com/v1", "consent_host": "api.groq.com", "ok": false},
+    {"base_url": "https://api.groq.com.evil.com/v1", "consent_host": "api.groq.com", "ok": false}
+  ]
+}

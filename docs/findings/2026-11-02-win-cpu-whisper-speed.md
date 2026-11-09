@@ -6,7 +6,7 @@
 
 ## Symptom
 
-On the laptop (Core Ultra 9 288V), with the 1.0.0 `flow_whisper_vulkan.dll` forced to the CPU:
+On the laptop (Core Ultra 9 288V), with the 1.0.0 `murmur_whisper_vulkan.dll` forced to the CPU:
 
 | model, 10.38 s Hebrew FLEURS clip | whisper-cli b5454 CPU | plugin, CPU |
 |---|---|---|
@@ -14,7 +14,7 @@ On the laptop (Core Ultra 9 288V), with the 1.0.0 `flow_whisper_vulkan.dll` forc
 | ggml-base f16, 4 threads | 1.60 s | 10.6 s (6.7×) |
 | ggml-base f16, 1 thread | 5.28 s | 33.3 s (6.3×) |
 
-`flow-windows.exe` is built the same way, so its built-in CPU whisper is very likely just as slow.
+`murmur-windows.exe` is built the same way, so its built-in CPU whisper is very likely just as slow.
 
 ## Root cause: ggml was compiled at MSVC `/Od` (no optimisation)
 
@@ -43,7 +43,7 @@ were unoptimised.
 
 ### Evidence in the shipped binary
 
-`objdump -d` of the 1.0.0 `flow_whisper_vulkan.dll` against whisper.cpp's own
+`objdump -d` of the 1.0.0 `murmur_whisper_vulkan.dll` against whisper.cpp's own
 `ggml-cpu-haswell.dll` (the whisper-cli build on the laptop, `/O2`):
 
 | | ymm instructions | of them with a stack operand (`[rsp/rbp+…]`) | ymm stores to the stack | `vfmadd*` |
@@ -74,7 +74,7 @@ FMA/F16C.
   uses its own thread pool instead. But single-threaded decoding is just as slow (6.3×), so this
   is not threading. OpenMP stays off: on MSVC it would add a `vcomp140.dll` dependency.
 * **Thread count.** `threads` comes from prefs `asr_threads` or `default_threads()`, reaches
-  `set_n_threads` unchanged (`flow-core/src/whisper.rs`), and was 4 in the bench, the same as
+  `set_n_threads` unchanged (`murmur-core/src/whisper.rs`), and was 4 in the bench, the same as
   whisper-cli `-t 4`.
 
 ## Fix
@@ -100,7 +100,7 @@ CMAKE_CXX_FLAGS_RELEASE: "-MD -O2 -Ob2 -DNDEBUG"
   (`vulkan-1.dll` only in the plugin).
 * **Cache.** The rust-cache key is bumped (`ggml-native-off-o2`), because whisper-rs-sys does not
   track these env vars.
-* **Regression guard.** `apps/flow-windows/tools/ci/check-ggml-opt.sh` runs after the plugin build
+* **Regression guard.** `apps/murmur-windows/tools/ci/check-ggml-opt.sh` runs after the plugin build
   and after the exe build. It prints `CMAKE_*_FLAGS_RELEASE` from each whisper-rs-sys
   `CMakeCache.txt`, and fails unless the Release `<Optimization>` of `ggml-cpu`, `ggml-base` and
   `whisper` is `MaxSpeed`.
@@ -111,10 +111,10 @@ CMAKE_CXX_FLAGS_RELEASE: "-MD -O2 -Ob2 -DNDEBUG"
   build: `CMAKE_C/CXX_FLAGS_RELEASE:STRING=-MD -O2 -Ob2 -DNDEBUG`, and `MaxSpeed` for `ggml-cpu`,
   `ggml-base` and `whisper`.
 * **Method.**
-  * `flow_whisper_vulkan.dll` was taken from the run's hybrid MSI with `msiexec /a` (an
+  * `murmur_whisper_vulkan.dll` was taken from the run's hybrid MSI with `msiexec /a` (an
     administrative extract, nothing installed) into a temp folder on the laptop.
   * It was timed with the 11-02 probe's `plugin_bench.py`: `--dll <temp>`,
-    `FLOW_WHISPER_DEVICE=cpu`, the 10.38 s clip, one warm-up.
+    `MURMUR_WHISPER_DEVICE=cpu`, the 10.38 s clip, one warm-up.
   * The temp folder was removed afterwards. The install and prefs were not touched.
 * **Results.** `tools/probes/prototypes/vulkan_he_check_2026_11_02/results/o2-*.jsonl`.
 
@@ -130,4 +130,4 @@ CMAKE_CXX_FLAGS_RELEASE: "-MD -O2 -Ob2 -DNDEBUG"
 * The GPU path is a little faster too. The host-side ggml code it runs (graph build, ops that
   stay on the CPU) is now optimised as well.
 * whisper-cli's times are its "total − load". The plugin's are the wall time of one
-  `flow_whisper_transcribe`, so the two columns are close but not identical measures.
+  `murmur_whisper_transcribe`, so the two columns are close but not identical measures.

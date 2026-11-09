@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # 7B/8B rows of the 2026-10-26 bench. NOT run in phase 1: each model needs
-# ~5 GB + 2 GB headroom, so the home flow-server must be stopped first (the
+# ~5 GB + 2 GB headroom, so the home murmur-server must be stopped first (the
 # orchestrator's job; this script never touches it). run.sh still refuses to
-# start when MemAvailable < model size + 2000 MB. env: MODELS, FLOW_LLM_LIB.
+# start when MemAvailable < model size + 2000 MB. env: MODELS, MURMUR_LLM_LIB.
 # Same prompts and cases as run_all.sh; existing results are kept.
 set -uo pipefail
 cd "$(dirname "$0")"

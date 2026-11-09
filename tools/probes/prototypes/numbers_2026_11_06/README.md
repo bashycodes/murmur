@@ -2,7 +2,7 @@
 
 > **Status:** dated probe, research only. Findings:
 > `docs/findings/2026-11-06-spoken-numbers.md` (D63). The product change
-> lives in flow-core (`postprocess::spoken::has_spoken_numbers`,
+> lives in murmur-core (`postprocess::spoken::has_spoken_numbers`,
 > `cleanup::llm_can_help`, prompt v2); nothing here is wired into the
 > product.
 
@@ -20,16 +20,16 @@ whether number idioms ("one of those", "a second ago") stay words.
 | `score_cases.py` | Passes per group, share of rows the LLM ran on, LLM p50/p95. `--refs` takes any parity reference file (only clips with checks count) |
 | `overlap.py` | No few-shot of a `--dump-prompt` dump shares a 5-word run with a case file |
 | `session-phone.json` | The phone's session (light, casual styles, 3 s LLM budget, skip on) |
-| `runner/` | `parity-clean`, the lists/corrections copy of the parity runner (`--override`, `--dump-prompt`) plus `--language CODE` (the language the fake ASR reports, default en). Own workspace, uses this checkout's flow-core |
+| `runner/` | `parity-clean`, the lists/corrections copy of the parity runner (`--override`, `--dump-prompt`) plus `--language CODE` (the language the fake ASR reports, default en). Own workspace, uses this checkout's murmur-core |
 
 ## Run
 
     python3 gen_cases.py
     CARGO_TARGET_DIR=... cargo build --release --offline -j 2 --manifest-path runner/Cargo.toml
     parity-clean --mode local --cases cases.jsonl --session session-phone.json \
-        --llm qwen2.5-1.5b-instruct-q4_k_m.gguf --llm-lib libflow_llm.so [--override V.json] > out.jsonl
+        --llm qwen2.5-1.5b-instruct-q4_k_m.gguf --llm-lib libmurmur_llm.so [--override V.json] > out.jsonl
     python3 score_cases.py out.jsonl --fails
 
 "Before" rows come from the same runner built against the base commit's
-flow-core (point `runner/Cargo.toml` at it). Real-speech sets stay outside the
+murmur-core (point `runner/Cargo.toml` at it). Real-speech sets stay outside the
 repo; pass their case and reference files as arguments.

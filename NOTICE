@@ -28,7 +28,7 @@ MODEL-LICENSES.txt.
 - ONNX Runtime 1.28.2 (bundled with sherpa-onnx as libonnxruntime / onnxruntime.dll)
   MIT, with its own third-party notices (in THIRD-PARTY-LICENSES).
   https://github.com/microsoft/onnxruntime
-- llama.cpp and ggml (AI cleanup plugin flow-llm, via the llama-cpp-sys-2
+- llama.cpp and ggml (AI cleanup plugin murmur-llm, via the llama-cpp-sys-2
   0.1.160 crate, which vendors them)
   MIT. https://github.com/ggml-org/llama.cpp
 - whisper.cpp and ggml (Whisper speech and language detection, via the
@@ -47,7 +47,7 @@ MODEL-LICENSES.txt.
   Exception allows shipping it with programs compiled by GCC.
   https://gcc.gnu.org/onlinedocs/libgomp/
 - NVIDIA CUDA runtime and cuBLAS (CUDA container image only; linked
-  statically into libflow_llm_cuda.so)
+  statically into libmurmur_llm_cuda.so)
   [FLAG: NVIDIA CUDA Toolkit EULA, proprietary; redistribution allowed only
   for the listed runtime components, in an application]. The image's base
   layer is nvidia/cuda (same EULA). https://docs.nvidia.com/cuda/eula/
@@ -93,7 +93,7 @@ MODEL-LICENSES.txt.
 
 4. Windows front-end (npm) and installer
 
-- apps/flow-windows/ui has no runtime npm dependencies. Build-only:
+- apps/murmur-windows/ui has no runtime npm dependencies. Build-only:
   TypeScript 5.6.3 (Apache-2.0, https://github.com/microsoft/TypeScript) and,
   in CI, @tauri-apps/cli 2 (Apache-2.0 OR MIT, https://github.com/tauri-apps/tauri).
 - NSIS 3 installer stub and the nsis_tauri_utils plugin (.exe installer)
@@ -151,7 +151,7 @@ its authors publish it (int8 ONNX).
   https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF,
   https://www.llama.com/llama3_2/license/
 
-6. Rust crates (ship, compiled into flow-server, the Android library, the
+6. Rust crates (ship, compiled into murmur-server, the Android library, the
    cleanup plugin and the Windows app)
 
 MPL-2.0 crates below [FLAG: file-level copyleft; we use them unmodified,

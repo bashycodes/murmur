@@ -11,7 +11,7 @@ cpu, sherpa-onnx v2.0.1 win-x64), at below-normal priority.
 |---|---|
 | `asr_win.py` | Runs on the PC. WER + per-clip compute ms for whisper-cli / sherpa-onnx-offline / sherpa-onnx (online). Needs `../../bench/wer.py` next to it |
 | `he_manifest.json` | 49 FLEURS he_il dev clips (every 3rd unique sentence id; CC BY 4.0). Audio not committed: `google/fleurs` `data/he_il/audio/dev.tar.gz`, float32 → PCM16 |
-| `llm_win.py` | Runs on the PC. llama-server.exe per model; prompt v4c rendered exactly as flow-core does for a local backend; writes ai-cleanup-bench `--from` rows |
+| `llm_win.py` | Runs on the PC. llama-server.exe per model; prompt v4c rendered exactly as murmur-core does for a local backend; writes ai-cleanup-bench `--from` rows |
 | `score_pc.sh` | Runs on Linux: `ai-cleanup-bench --mode regard` (product guards + fallback rules) → `../ai_cleanup_bench_2026_10_26/score.py` + `latency_buckets.py` |
 | `results/` | Raw rows (`v4c-*.jsonl`, `asr-*.jsonl`), guard-judged rows (`judged/`), `score.txt` |
 

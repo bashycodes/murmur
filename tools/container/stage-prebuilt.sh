@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Stage host-built flow-server binaries for the container image, so
+# Stage host-built murmur-server binaries for the container image, so
 #   docker build -f deploy/docker/Dockerfile --build-arg SOURCE=prebuilt .
 # needs no network and no compiler (docs/container.md "Air-gapped build").
 #
 #   tools/container/stage-prebuilt.sh [--build] [--sherpa-lib DIR] [--cuda-llm FILE]
 #
-#   --build           first build flow-server (features whisper,parakeet,tls,llm)
-#                     and the flow-llm plugin, release, --offline
+#   --build           first build murmur-server (features whisper,parakeet,tls,llm)
+#                     and the murmur-llm plugin, release, --offline
 #   --sherpa-lib DIR  dir with libsherpa-onnx-c-api.so + libonnxruntime.so, the no-TTS
 #                     build (sherpa-onnx-v1.13.8-linux-x64-shared-no-tts-lib/lib; D80)
 #                     (default $SHERPA_ONNX_LIB_DIR, else target/release)
-#   --cuda-llm FILE   a CUDA build of libflow_llm.so (`cargo build --release
-#                     -p flow-llm --features cuda`), staged as
-#                     libflow_llm_cuda.so for `--target cuda`
+#   --cuda-llm FILE   a CUDA build of libmurmur_llm.so (`cargo build --release
+#                     -p murmur-llm --features cuda`), staged as
+#                     libmurmur_llm_cuda.so for `--target cuda`
 #
 # The image runs Ubuntu 24.04 (glibc 2.39): build on a host with that glibc
 # or older. Writes deploy/docker/prebuilt/{bin,lib} (git-ignored).
@@ -41,15 +41,15 @@ if [ "$BUILD" = 1 ]; then
     [ -n "$SHERPA_LIB" ] || die "--build needs --sherpa-lib DIR or SHERPA_ONNX_LIB_DIR (offline build)"
     GCC_INC="$(gcc -print-file-name=include)"
     (cd "$ROOT" &&
-        SHERPA_ONNX_LIB_DIR="$SHERPA_LIB" cargo build --release --offline -p flow-server \
+        SHERPA_ONNX_LIB_DIR="$SHERPA_LIB" cargo build --release --offline -p murmur-server \
             --no-default-features --features whisper,parakeet,tls,llm &&
         BINDGEN_EXTRA_CLANG_ARGS="${BINDGEN_EXTRA_CLANG_ARGS:--I$GCC_INC}" \
-            cargo build --release --offline -p flow-llm)
+            cargo build --release --offline -p murmur-llm)
 fi
 
 SHERPA_LIB="${SHERPA_LIB:-$TARGET}"
-[ -x "$TARGET/flow-server" ] || die "$TARGET/flow-server not built (pass --build)"
-[ -f "$TARGET/libflow_llm.so" ] || die "$TARGET/libflow_llm.so not built (cargo build --release -p flow-llm)"
+[ -x "$TARGET/murmur-server" ] || die "$TARGET/murmur-server not built (pass --build)"
+[ -f "$TARGET/libmurmur_llm.so" ] || die "$TARGET/libmurmur_llm.so not built (cargo build --release -p murmur-llm)"
 for l in libsherpa-onnx-c-api.so libonnxruntime.so; do
     [ -e "$SHERPA_LIB/$l" ] || die "$SHERPA_LIB/$l not found (--sherpa-lib DIR)"
 done
@@ -59,8 +59,8 @@ GOMP="$(gcc -print-file-name=libgomp.so.1 2>/dev/null || true)"
 
 rm -rf "${OUT:?}/bin" "${OUT:?}/lib"
 mkdir -p "$OUT/bin" "$OUT/lib"
-install -m 0755 "$TARGET/flow-server" "$OUT/bin/flow-server"
-install -m 0644 "$TARGET/libflow_llm.so" "$OUT/lib/libflow_llm.so"
+install -m 0755 "$TARGET/murmur-server" "$OUT/bin/murmur-server"
+install -m 0644 "$TARGET/libmurmur_llm.so" "$OUT/lib/libmurmur_llm.so"
 for l in libsherpa-onnx-c-api.so libonnxruntime.so; do
     install -m 0644 "$(readlink -f "$SHERPA_LIB/$l")" "$OUT/lib/$l"
 done
@@ -70,7 +70,7 @@ install -m 0644 "$(readlink -f "$GOMP")" "$OUT/lib/libgomp.so.1"
     die "--sherpa-lib: use sherpa-onnx-v1.13.8-linux-x64-shared-no-tts-lib (docs/air-gapped.md)"
 if [ -n "$CUDA_LLM" ]; then
     [ -f "$CUDA_LLM" ] || die "--cuda-llm $CUDA_LLM: no such file"
-    install -m 0644 "$CUDA_LLM" "$OUT/lib/libflow_llm_cuda.so"
+    install -m 0644 "$CUDA_LLM" "$OUT/lib/libmurmur_llm_cuda.so"
 fi
 echo "staged in ${OUT#"$ROOT"/}:"
 (cd "$OUT" && find bin lib -type f -printf '  %p  %s bytes\n' | sort)

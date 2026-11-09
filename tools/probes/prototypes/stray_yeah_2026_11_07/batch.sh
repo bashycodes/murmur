@@ -2,7 +2,7 @@
 # Probe (stray "yeah", 2026-11-07): run_cli.sh over several WAVs in an
 # evidence dir, with the PC session settings (pc_session.json).
 #
-# Usage: batch.sh <flow-cli dir> <parakeet model dir> <evidence dir> <wav stem>...
+# Usage: batch.sh <murmur-cli dir> <parakeet model dir> <evidence dir> <wav stem>...
 set -uo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 bin="$1"; model="$2"; dir="$3"; shift 3

@@ -9,7 +9,7 @@ closeness**: end-to-end p50 **0.75 s** / p90 1.34 s from this box, reference clo
 Recommendation: [§ Recommendation](#recommendation-against-the-15-s-budget).
 
 **Prompt v4c update.** With prompt v4c (casual = punctuation only, blank line before
-lists; in flow-core, not wired into production) the same 70B passes **90 %** of the
+lists; in murmur-core, not wired into production) the same 70B passes **90 %** of the
 88-suite at reference closeness **0.910**, $0.0016 per call: [§ Prompt v4c](#prompt-v4c-openrouter-llama-33-70b).
 
 **Question.** The owner decided (2026-10-26) that *AI cleanup* (GLOSSARY) does all
@@ -49,7 +49,7 @@ Prototype: `tools/probes/prototypes/ai_cleanup_bench_2026_10_26/` (README there)
   "in parentheses"). All 14 run as app Notes, category other (formal).
 * **Rows.**
   * *rules*: fallback rules only (`spoken_cleanup` + layout + closing period + post-processing).
-  * *prod*: `FlowCore::commit` as shipped (D27): rules, then prompt v2, product guard,
+  * *prod*: `MurmurCore::commit` as shipped (D27): rules, then prompt v2, product guard,
     `llm_skip_clean`, 3 s LLM budget, chat buckets casual.
   * *AI (v4 / v4b)*: the owner's design. Raw transcript → LLM (no rules before it, no skip,
     8 s budget so latency is measured, not cut) → guard → on a reject the fallback rules →
@@ -64,7 +64,7 @@ Prototype: `tools/probes/prototypes/ai_cleanup_bench_2026_10_26/` (README there)
   few-shots in that form. `score.py --overlap`: no few-shot shares a 5-word run with any
   of the 102 cases.
 * **Loosened guard** (`runner/src/loose_guard.rs`, since promoted to
-  `flow_core::guard::check_loose`, D30): a copy of `flow_core::guard`, each
+  `murmur_core::guard::check_loose`, D30): a copy of `murmur_core::guard`, each
   change marked. Allows: more hedge fillers dropped ("actually", "basically", …), unit
   abbreviations ("lbs" = pound, "cm", "kg", "x" = by). Adds limits: a name the input
   capitalises must survive; at most 20 % of the input's content words may go. Unchanged:
@@ -77,8 +77,8 @@ Prototype: `tools/probes/prototypes/ai_cleanup_bench_2026_10_26/` (README there)
   variant, **final period ignored** on both sides (the targets were written in formal style).
   reference closeness = 1 − token edit distance / max length (words and punctuation marks as
   tokens, same normalisation), mean over the 14.
-* **Box.** LLM threads 4, greedy (flow-llm plugin, release build of this commit). The
-  production flow-server (with its own Qwen 1.5B) stayed up; load average 3–5; every run
+* **Box.** LLM threads 4, greedy (murmur-llm plugin, release build of this commit). The
+  production murmur-server (with its own Qwen 1.5B) stayed up; load average 3–5; every run
   under `flock` + `choom 1000` + `nice 10`, started only with ≥ model + 2000 MB available.
   Warm-up: one untimed clean, like the product's prefill at load (v4 prefix 19–23 s cold
   on the 1.5B, 37–44 s on the 3B).
@@ -159,7 +159,7 @@ AI-cleanup latency by dictation length (median LLM ms; n = 52 / 41 / 5 / 4):
 ## Phase 1d: OpenRouter
 
 * **Setup.** `run_or.sh` → the runner's `--openrouter MODEL` uses the product's
-  `flow_cloud::OpenRouterCleaner` unmodified: streamed chat completion, `temperature 0`,
+  `murmur_cloud::OpenRouterCleaner` unmodified: streamed chat completion, `temperature 0`,
   `provider {zdr: true, data_collection: "deny", sort: "latency", allow_fallbacks: true}`,
   minimal prompt scope (no app id, as D28), prompt v4b, both guards, fallback rules on a
   reject, 8 s budget. The key is read from the key file into the process env only. Latency
@@ -225,7 +225,7 @@ What the cloud models do:
 
 Fixes the two prompt-level misses of v4b on the 70B (§ Phase 1d): the casual STYLE line
 was over-applied, and lists had no blank line after the intro. v4c is our own wording,
-defined in flow-core (`crates/flow-core/src/cleanup/prompt_v4c.rs`, `PromptVersion::V4c`
+defined in murmur-core (`crates/murmur-core/src/cleanup/prompt_v4c.rs`, `PromptVersion::V4c`
 via `build_prompt_versioned`; production still builds v2). The bench dumps it to
 `prompt_v4c.json` (`--dump-prompt`) and runs it with `run_or.sh` + `PROMPT_VERSION=v4c`.
 
@@ -276,7 +276,7 @@ What is left (r2):
 
 ## Local Llama-3.1-8B (v4b)
 
-Run by the orchestrator with flow-server stopped (`run.sh v4b_l8 ai
+Run by the orchestrator with murmur-server stopped (`run.sh v4b_l8 ai
 Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf prompt_v4b.json`, 8 s cap, 4 threads): wall 16 min 34 s,
 **peak RSS 8.4 GB**, model load 135 s, warm-up prefill of the v4b prefix 107 s.
 
@@ -311,7 +311,7 @@ fillers and ITN), but at 7.5 s p50 it is 5× the budget on this CPU.
 1. **On the home server CPU, no local model meets the budget at useful quality.** The 1.5B
    sits at p50 1.5 s on mostly short dictations (3–6 s on the owner's 30–50-word ones) and
    is worse than the fallback rules on the suite; 3B is 2.9 s; the 8B is 7.5 s, needs 8.4 GB
-   RAM (only with flow-server stopped) and timed out on 40 % of the cases. Its answers are
+   RAM (only with murmur-server stopped) and timed out on 40 % of the cases. Its answers are
    good when they arrive (79 % pass on those), but it is 5× over the budget. Local AI
    cleanup on this box is closed for now; a GPU would reopen it.
 2. **If the owner accepts cloud text cleanup (D28 opt-in, consent per call), use OpenRouter
@@ -352,7 +352,7 @@ fillers and ITN), but at 7.5 s p50 it is 5× the budget on this CPU.
 * **Llama-3.1-8B (local, v4b): done**, run by the orchestrator with the server stopped
   (§ Local Llama-3.1-8B). GGUF: bartowski/Meta-Llama-3.1-8B-Instruct-GGUF Q4_K_M,
   4 920 739 232 bytes, sha256 `7b064f58…3033557c` = the repo's LFS hash; the GGUF's own chat
-  template works through flow-llm.
+  template works through murmur-llm.
 * ~~OpenRouter~~: done in phase 1d (above).
 
 ## Uncertain
@@ -362,6 +362,6 @@ fillers and ITN), but at 7.5 s p50 it is 5× the budget on this CPU.
   …", x6). The 88-suite is not a light-edit reference; only the 14 reference cases are.
 * The owner-example inputs are synthesised; real Parakeet output for those dictations
   would be punctuated, which favours the rules-first pipeline.
-* Latency is on a shared box (flow-server with its own LLM resident, other agents); compare
+* Latency is on a shared box (murmur-server with its own LLM resident, other agents); compare
   columns, not absolute numbers with other machines.
 * One greedy run per configuration; no repeat runs.

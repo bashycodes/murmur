@@ -11,7 +11,7 @@ The question: can the server (i7-6700, 4C/8T, AVX2, no AVX-512, 19 GB RAM, no GP
   * It is 2.5× slower: 29 s of audio takes 14–17 s.
   * Its decoder also dropped a whole utterance on a 56 s clip.
 * **The real problems are latency on long dictations and long-audio failures. Model size is not.** Three findings matter more than any model swap:
-  1. **The server's own decoding mode fails silently on long audio.** `flow-asr-sherpa` always uses `modified_beam_search` with beam 4 (for hotwords).
+  1. **The server's own decoding mode fails silently on long audio.** `murmur-asr-sherpa` always uses `modified_beam_search` with beam 4 (for hotwords).
      * With v2 int8 it returns **an empty string** on a 25.1 s clip and on a 42.8 s clip. Both are concatenations of LibriSpeech utterances. The result was deterministic: 6 of 6 runs empty, and beam 8 failed too.
      * Greedy decoding and beam 2 are fine on the same audio.
      * Every single clip (5–20 s) decodes fine with beam 4.
@@ -41,7 +41,7 @@ The question: can the server (i7-6700, 4C/8T, AVX2, no AVX-512, 19 GB RAM, no GP
   * Keep whisper base/small q5_1 as the multilingual or auto-detect option.
   * Moonshine-base v2 is fast (RTF 0.05–0.07 on one core here), but it is **broken in sherpa-onnx 1.13.8 for clips longer than 9.4 s**: every one comes back empty.
 * **"CPU barely used":**
-  * flow-server runs `threads = 4` (`~/.config/flow-server/config.toml`, `[model] threads = 4`) on 8 logical CPUs, with `workers = 1`. A decode can therefore never show more than 50% in a whole-machine CPU meter.
+  * murmur-server runs `threads = 4` (`~/.config/murmur-server/config.toml`, `[model] threads = 4`) on 8 logical CPUs, with `workers = 1`. A decode can therefore never show more than 50% in a whole-machine CPU meter.
   * The server also only works for 1–3 s after each release and idles in between.
   * During a decode it does use its threads: 2.9–4.0 cores out of 4 (process user+sys time over wall time).
   * Beam search adds a serial decoder/joiner loop (RTF 0.27 vs 0.20 greedy in the same run).
@@ -58,7 +58,7 @@ The question: can the server (i7-6700, 4C/8T, AVX2, no AVX-512, 19 GB RAM, no GP
   * Quality numbers are unaffected by load.
 * Engine: sherpa-onnx v1.13.8 (2026-09-10, the latest release), onnxruntime 1.28.2. The shared libs in `.cache/sherpa-onnx/lib` are the same version the `sherpa-onnx = 1.13.8` crate uses.
 * Probe: `tools/probes/prototypes/stt_survey_2026_10_23/`.
-  * The Rust binary keeps one warm recognizer (like flow-server), warms up on jfk.wav, then decodes:
+  * The Rust binary keeps one warm recognizer (like murmur-server), warms up on jfk.wav, then decodes:
     * (a) the 40-clip extended LibriSpeech set (`tools/probes/bench/asr_manifest_extended.json`, 955 words);
     * (b) "long" clips: whole utterances joined with 0.3 s gaps, shortest first, so references stay exact.
   * CPU use = process `getrusage` user+sys over wall time.
@@ -70,11 +70,11 @@ The question: can the server (i7-6700, 4C/8T, AVX2, no AVX-512, 19 GB RAM, no GP
 
 ### Accuracy and speed, 40 clips (5–20 s), full sequential run
 
-| model (sherpa-onnx int8 package) | disk | WER | RTF t4 (load) | t1 | t8 | engine work in flow-clone |
+| model (sherpa-onnx int8 package) | disk | WER | RTF t4 (load) | t1 | t8 | engine work in murmur |
 |---|---|---|---|---|---|---|
 | **Cohere Transcribe 03-2026** (2B, 14 lang) | 2.7 GB | **0.84%** | 0.518 (≈17) | — | — | new adapter (`cohere_transcribe` config) |
 | Parakeet-TDT-0.6B-v2 (current), greedy | 631 MB | 1.15% | 0.204 (15) | 0.207 (16) | 0.144 (5) | — |
-| Parakeet-TDT-0.6B-v2, beam 4 (**what flow-server runs**) | 631 MB | 1.15% | 0.270 (20) | — | — | — |
+| Parakeet-TDT-0.6B-v2, beam 4 (**what murmur-server runs**) | 631 MB | 1.15% | 0.270 (20) | — | — | — |
 | **Parakeet-unified-en-0.6b** (non-streaming) | 633 MB | 1.15% | 0.446 (19–27)\* | 0.302 (27) | 0.241 (17) | **none: model dir only** |
 | Parakeet-TDT-0.6B-v3 (25 EU lang) | 641 MB | 1.57% | 0.209 (27) | — | — | none: model dir only |
 | Qwen3-ASR-0.6B (30 lang) | 954 MB | 1.57% | 0.472 (22) | — | — | new adapter (`qwen3_asr`) |
@@ -105,7 +105,7 @@ From the full run (more loaded): Qwen3-ASR-0.6B took 18.5 s and Cohere 13.9–17
 | model / decoding | 25.1 s | 42.8 s | 56.3 s |
 |---|---|---|---|
 | v2 greedy | ok (72/72 words) | **17.5% WER**: dropped 22 words (one utterance) | 0.7% |
-| **v2 beam 4 (flow-server default)** | **empty** (6/6 runs; beam 8 also empty; beam 2 ok) | **empty** | 2.1% but all lowercase, no punctuation |
+| **v2 beam 4 (murmur-server default)** | **empty** (6/6 runs; beam 8 also empty; beam 2 ok) | **empty** | 2.1% but all lowercase, no punctuation |
 | v3 greedy | — | 1.6% | **23.4%**: dropped 27 words |
 | Parakeet-unified, greedy | — | **0.0%** | **2.1%** |
 | Parakeet-unified, beam 4 | 0.0% | **0.0%** | **2.1%** |
@@ -114,9 +114,9 @@ From the full run (more loaded): Qwen3-ASR-0.6B took 18.5 s and Cohere 13.9–17
 
 Reproduce with `long_deletion.sh` (manifests `long43_manifest.json` and `long60_manifest.json` in the probe dir). The 25.1 s beam case is in `beam-long-recheck.txt` in the results dir.
 
-**Mitigation available today with no code change:** `crates/flow-core/src/parakeet.rs` switches to greedy when the environment variable `FLOW_PARAKEET_HOTWORDS_SCORE=0` is set. That would go in the systemd unit as `Environment=`. It turns off dictionary hotwords, which cut WER from 1.2% to 0.9%.
+**Mitigation available today with no code change:** `crates/murmur-core/src/parakeet.rs` switches to greedy when the environment variable `MURMUR_PARAKEET_HOTWORDS_SCORE=0` is set. That would go in the systemd unit as `Environment=`. It turns off dictionary hotwords, which cut WER from 1.2% to 0.9%.
 
-What this means for flow-server today:
+What this means for murmur-server today:
 * A dictation of about 25 s or more can come back as `blank_asr` with v2 and beam 4. It depends on content: one 28.9 s clip decoded fine.
 * The live test's `blank_asr` on a 7.3 s utterance could be the same failure mode on spontaneous speech. Unverified: no audio is kept.
 * The mitigations are independent of the model swap:
@@ -160,9 +160,9 @@ Published long-form table (new format): parakeet-v3 13.37, v2 13.88, whisper-tur
 
 | rank | model | why | integration cost | risk |
 |---|---|---|---|---|
-| 1 | **Parakeet-unified-en-0.6b int8, non-streaming** | same WER and speed as v2 on our set; slightly better published WER; **no long-audio drops**, greedy or beam 4 | **config only**: `[model] asr_path` → the new dir (same `nemo_transducer`; `flow-asr-sherpa` finds `encoder/decoder/joiner*.int8.onnx` + `tokens.txt`); hotwords vocab derived as today | NVIDIA Open Model License, not CC-BY: check redistribution if bundled; RNNT decodes every frame, so beam 4 is slower than TDT beam (RTF 0.13–0.58 noisy) |
-| 2 | **Nemotron-speech-streaming-en-0.6b int8 (560 ms)**; alt: unified streaming-560ms | constant ~0.2–0.3 s release→text for any length; robust on long audio | **new engine**: sherpa `OnlineRecognizer`, fed from `push_audio`; flow-server streams frames into it (protocol already streams audio) | WER 2.2% vs 1.15%; costs ~40% of 4 threads continuously while the user speaks; one stream per worker |
-| 3 | Parakeet v2 int8 (keep), **greedy** + VAD segmenting | known-good; RTF ~0.1 | small `flow-asr-sherpa` change (greedy without hotwords, empty → greedy retry) | beam-4 empty results; drops on > 40 s |
+| 1 | **Parakeet-unified-en-0.6b int8, non-streaming** | same WER and speed as v2 on our set; slightly better published WER; **no long-audio drops**, greedy or beam 4 | **config only**: `[model] asr_path` → the new dir (same `nemo_transducer`; `murmur-asr-sherpa` finds `encoder/decoder/joiner*.int8.onnx` + `tokens.txt`); hotwords vocab derived as today | NVIDIA Open Model License, not CC-BY: check redistribution if bundled; RNNT decodes every frame, so beam 4 is slower than TDT beam (RTF 0.13–0.58 noisy) |
+| 2 | **Nemotron-speech-streaming-en-0.6b int8 (560 ms)**; alt: unified streaming-560ms | constant ~0.2–0.3 s release→text for any length; robust on long audio | **new engine**: sherpa `OnlineRecognizer`, fed from `push_audio`; murmur-server streams frames into it (protocol already streams audio) | WER 2.2% vs 1.15%; costs ~40% of 4 threads continuously while the user speaks; one stream per worker |
+| 3 | Parakeet v2 int8 (keep), **greedy** + VAD segmenting | known-good; RTF ~0.1 | small `murmur-asr-sherpa` change (greedy without hotwords, empty → greedy retry) | beam-4 empty results; drops on > 40 s |
 | 4 | Cohere Transcribe int8 | best WER (0.84%), Arabic, 13 more languages | new adapter (`cohere_transcribe` config, ~50 lines) | 2.5× slower (29 s → 14–17 s), 2.7 GB, 59 s load, dropped 29 words at 56 s, gated licence acceptance |
 | — | v3, Qwen3-ASR-0.6B, Canary-180M, whisper turbo / distil-v3.5 | no gain over v2 in English on this CPU (v3 −0.4 pt WER, long drops; Qwen3 4.5× slower; Canary superlinear; whisper encoder-bound) | | |
 
@@ -180,7 +180,7 @@ There is no device measurement in this survey. Estimates scale this box's number
 
 | rank | model | size | expected (est.) 28 s dictation | engine work | notes |
 |---|---|---|---|---|---|
-| 1 | **Parakeet-unified-en-0.6b int8** (or v2) via sherpa-onnx CPU | 633 MB | ≈ 1.2–2 s (vs ~3.8 s whisper base today) | Android sherpa/onnxruntime libs are already cross-built (`tools/build-android-parakeet.sh`, `check_parakeet_so.sh`); package into `apps/`, never loaded on a device yet | 1.15% vs whisper base 3.7% WER; English only; ~1.1 GB RSS (flow-server measures 1.13 GB) |
+| 1 | **Parakeet-unified-en-0.6b int8** (or v2) via sherpa-onnx CPU | 633 MB | ≈ 1.2–2 s (vs ~3.8 s whisper base today) | Android sherpa/onnxruntime libs are already cross-built (`tools/build-android-parakeet.sh`, `check_parakeet_so.sh`); package into `apps/`, never loaded on a device yet | 1.15% vs whisper base 3.7% WER; English only; ~1.1 GB RSS (murmur-server measures 1.13 GB) |
 | 2 | **Nemotron-streaming-en-0.6b int8** on device | 633 MB | **≈ 0.2–0.4 s after release** | same online engine as server rank 2 | feed RTF 0.37 at 4 threads here, ≈ 0.2 on phone (est.); thermal/battery cost of decoding while talking |
 | 3 | Moonshine streaming small / medium (Moonshine Voice SDK) | 123–245M params | vendor: 234 / 420 ms end-of-speech → text on a Pixel 10a | new SDK, not sherpa | old-format avg 7.84 / 6.66; MIT; has Arabic models |
 | 4 | QNN NPU builds (sherpa `asr-models-qnn-binary-*` for SM8750: Parakeet v2/v3 fixed 3–30 s buckets ~440 MB, Nemotron streaming, Moonshine) | ~440 MB | unknown (no published numbers) | QNN provider + bucket padding | fastest in theory; fixed shapes, vendor libs, riskiest |
@@ -190,11 +190,11 @@ Moonshine-base v2 through sherpa (135 MB, RTF ~0.05 single-thread here) would be
 
 ## DECISIONS row (applied as D23 in docs/DECISIONS.md)
 
-| D23 | ASR model refresh (2026-10-23, `docs/proposals/stt-model-survey.md`) | Server + Android English default: **Parakeet-unified-en-0.6b int8** (sherpa-onnx non-streaming package; drop-in for the v2 dir, same `nemo_transducer` engine and hotwords). `flow-asr-sherpa`: greedy search when the session has no hotwords; an empty or < 0.5 words/s beam result on VAD-confirmed speech is re-decoded greedy. Parakeet v2 stays the fallback model. Next: a streaming engine (sherpa `OnlineRecognizer`) with Nemotron-speech-streaming-en-0.6b 560 ms for the long-dictation latency (streaming proposal). Multilingual stays whisper (D4); Parakeet v3 is the opt-in European model; Cohere Transcribe only as an opt-in "max accuracy (slow)" server model. `threads = 4` unchanged | On the 40-clip set unified = v2 (1.15% WER, same A/B latency 1.17 s / 2.87 s for 11 / 29 s audio) but it decoded 43 s and 56 s recordings without loss, where v2 greedy dropped an utterance (17.5% WER), v3 and Cohere dropped 23% / 22%, and v2 with the server's beam 4 returned **empty** text on 25 s and 43 s clips. No open model is more accurate *and* interactive on a 4-core AVX2 CPU (Cohere 0.84% WER at RTF 0.52; Qwen3-ASR-0.6B 1.57% at 0.47). Streaming Nemotron gives 0.15–0.33 s release→text at any length for 2.2% WER |
+| D23 | ASR model refresh (2026-10-23, `docs/proposals/stt-model-survey.md`) | Server + Android English default: **Parakeet-unified-en-0.6b int8** (sherpa-onnx non-streaming package; drop-in for the v2 dir, same `nemo_transducer` engine and hotwords). `murmur-asr-sherpa`: greedy search when the session has no hotwords; an empty or < 0.5 words/s beam result on VAD-confirmed speech is re-decoded greedy. Parakeet v2 stays the fallback model. Next: a streaming engine (sherpa `OnlineRecognizer`) with Nemotron-speech-streaming-en-0.6b 560 ms for the long-dictation latency (streaming proposal). Multilingual stays whisper (D4); Parakeet v3 is the opt-in European model; Cohere Transcribe only as an opt-in "max accuracy (slow)" server model. `threads = 4` unchanged | On the 40-clip set unified = v2 (1.15% WER, same A/B latency 1.17 s / 2.87 s for 11 / 29 s audio) but it decoded 43 s and 56 s recordings without loss, where v2 greedy dropped an utterance (17.5% WER), v3 and Cohere dropped 23% / 22%, and v2 with the server's beam 4 returned **empty** text on 25 s and 43 s clips. No open model is more accurate *and* interactive on a 4-core AVX2 CPU (Cohere 0.84% WER at RTF 0.52; Qwen3-ASR-0.6B 1.57% at 0.47). Streaming Nemotron gives 0.15–0.33 s release→text at any length for 2.2% WER |
 
 ## Open items and caveats
 
-* All latencies were measured on a heavily loaded shared box. Re-run `ab_latency.sh 3 4` on a quiet box before quoting absolute numbers. RAM (RSS) per model was not measured, except v2 in flow-server (1.13 GB).
+* All latencies were measured on a heavily loaded shared box. Re-run `ab_latency.sh 3 4` on a quiet box before quoting absolute numbers. RAM (RSS) per model was not measured, except v2 in murmur-server (1.13 GB).
 * Our set is clean read speech. Spontaneous dictation will have higher WER for every model, and the ranking between v2 and unified (equal here) is not resolved by 955 words.
 * Not tested here:
   * the unified *streaming* packages (240/560/1120 ms);
@@ -203,7 +203,7 @@ Moonshine-base v2 through sherpa (135 MB, RTF ~0.05 single-thread here) would be
   * QNN phone builds;
   * Moonshine streaming;
   * NVIDIA's NeMo-Speech.cpp ggml runtime (2026-07; supports Nemotron, Parakeet v3, ctc-1.1b).
-* The beam-4 empty result should get a regression test in `flow-asr-sherpa`: concatenate 3 extended-set clips (as in `long43_manifest.json`), decode with beam 4, and assert non-empty text. It needs the model and is skipped without it.
+* The beam-4 empty result should get a regression test in `murmur-asr-sherpa`: concatenate 3 extended-set clips (as in `long43_manifest.json`), decode with beam 4, and assert non-empty text. It needs the model and is skipped without it.
 
 ## Files
 

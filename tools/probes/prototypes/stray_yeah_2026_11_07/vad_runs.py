@@ -1,10 +1,10 @@
-"""Probe (stray "yeah", 2026-11-07): replicate flow-core `vad::frame_flags`
+"""Probe (stray "yeah", 2026-11-07): replicate murmur-core `vad::frame_flags`
 / `vad::detect` (20 ms frames, p10 floor, quiet-recording bar) in Python on
 a slice of a WAV and print every speech run with its length and level, so
 the click that ends a recording can be compared with real speech.
 
 Usage: python3 -I vad_runs.py <wav> [start_s [end_s]]
-Mirrors crates/flow-core/src/vad.rs constants as of 2026-11-07.
+Mirrors crates/murmur-core/src/vad.rs constants as of 2026-11-07.
 """
 
 import math

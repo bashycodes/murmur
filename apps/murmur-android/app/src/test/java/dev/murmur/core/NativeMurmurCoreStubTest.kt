@@ -1,0 +1,50 @@
+package dev.murmur.core
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
+import org.junit.Test
+
+/**
+ * Runs only with `-Pmurmur.jniStubDir=…` (tools/probes/jni_stub/run.sh), which puts a host
+ * build of the C stub on java.library.path. Verifies the Kotlin side links to exactly the
+ * symbols documented in JNI_CONTRACT.md and round-trips JSON through them.
+ */
+class NativeMurmurCoreStubTest {
+    private fun requireStub() = assumeTrue("jni stub not built", System.getProperty("murmur.jniStub") == "1")
+
+    @Test fun linksAndRoundTripsThroughEverySymbol() {
+        requireStub()
+        val lib = NativeMurmurCore.loadLibrary()
+        assertTrue(lib.toString(), lib is NativeMurmurCore.LibraryState.Loaded)
+        val core = NativeMurmurCore.loadModels(ModelConfig(asrPath = "/m.bin"))
+        core.startSession(SessionConfig(languages = listOf("en")))
+        core.setContext(FieldContext(appId = "com.x"))
+        assertTrue(core.pushAudio(ShortArray(1600) { 3000 }))
+        assertEquals(null, core.partial())
+        assertEquals(SessionRoute("local"), core.poll().route)
+        val r = core.commit()
+        assertEquals(CorePoll(), core.poll())
+        assertEquals(StartInfo(route = SessionRoute("local")), core.startSessionInfo(SessionConfig(endpointSilenceMs = 2000)))
+        core.cancel()
+        assertEquals(r.toString(), CommitStatus.RAW_TRANSCRIPT, r.status)
+        assertEquals("Stub text.", r.finalText)
+        assertEquals(100L, r.timings.audioMs)
+        assertEquals(listOf(LearnCandidate("tailscail", "Tailscale")), core.learnEdit("tailscail", "Tailscale"))
+        assertEquals(CommandOutcome.Text("STUB"), core.command("upper", "stub"))
+        assertEquals(CommandOutcome.Failed("no_llm", "no AI in the stub"), core.command("shorter", null))
+        assertEquals("""{"error":"no LLM loaded on this handle"}""", (core as NativeMurmurCore).benchClean("{}"))
+        core.cancel()
+        assertFalse(core.pushAudio(ShortArray(10)))
+        core.unload()
+        assertEquals(CommitStatus.ERROR, core.commit().status)
+    }
+
+    @Test fun loadFailureSurfacesLastError() {
+        requireStub()
+        val e = runCatching { NativeMurmurCore.loadModels(ModelConfig(asrPath = "/fail")) }.exceptionOrNull()
+        assertTrue(e is CoreException)
+        assertEquals("model load failed: /fail", e!!.message)
+    }
+}

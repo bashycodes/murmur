@@ -1,0 +1,1532 @@
+//! Thin C ABI (+ feature `jni`) over murmur-core. Configs and results cross
+//! as JSON strings; the handle is an opaque pointer (a `jlong` on Android).
+//!
+//! Conventions: functions returning `c_int` give 0 = ok, -1 = error (see
+//! `murmur_last_error`), 1 = ignored (no active session). Returned strings
+//! are owned by the caller and must be freed with `murmur_string_free`.
+//! No function panics across the boundary.
+//!
+//! D17: a handle is either a bare `MurmurCore` (`murmur_load_models`) or a
+//! `murmur_router::Router` (`murmur_open_router`, which may own a MurmurCore as its
+//! local backend). Every session function works on both kinds. The network
+//! client (`murmur-remote`) is linked only with feature `remote`.
+//!
+//! D18: with feature `cloud` the router also gets the third-party cloud STT
+//! route (`murmur_cloud::attach_with`); keys enter only via `murmur_set_cloud_key`.
+//! Without it every cloud function answers "not in this build".
+
+use std::cell::RefCell;
+use std::ffi::{CStr, CString};
+use std::os::raw::{c_char, c_int};
+use std::panic::{catch_unwind, AssertUnwindSafe};
+
+use std::sync::Arc;
+
+use murmur_core::config::{FieldContext, ModelConfig, SessionConfig};
+use murmur_core::{CommitResult, MurmurCore};
+use murmur_router::{
+    Backend, CloudProviderConfig, CloudUsage, OpenRouterConfig, Route, Router, RouterConfig,
+    RouterPoll, SecretString, ServerConfig, StartInfo,
+};
+
+#[cfg(feature = "admin")]
+pub mod admin_api;
+pub mod bench;
+#[cfg(all(feature = "jni", feature = "admin"))]
+pub mod jni_admin;
+#[cfg(feature = "jni")]
+pub mod jni_api;
+/// D41: model downloads from the server's library (feature `library`).
+#[cfg(feature = "library")]
+pub mod library_api;
+pub mod meeting_api;
+
+/// Opaque handle: a bare engine or the router (D17 §6.2).
+pub enum MurmurHandle {
+    Core(MurmurCore),
+    // Boxed: the router is ~1.3 KB, the core a few words.
+    Router(Box<Router>),
+}
+
+impl MurmurHandle {
+    /// Load 3: keep this engine's on-device LLM for the next load
+    /// (`MurmurCore::keep_llm`, `Router::keep_llm`).
+    pub fn keep_llm(&self) -> bool {
+        match self {
+            MurmurHandle::Core(c) => c.keep_llm(),
+            MurmurHandle::Router(r) => r.keep_llm(),
+        }
+    }
+
+    /// A core handle reports no route (`StartInfo::default()`) and is
+    /// on-device already, so `local_only` changes nothing for it; a router
+    /// handle with `local_only` starts on the phone's engine alone (D55,
+    /// `Router::start_session_local`).
+    fn start_session(
+        &self,
+        cfg: SessionConfig,
+        local_only: bool,
+    ) -> Result<StartInfo, (&'static str, String)> {
+        match self {
+            MurmurHandle::Core(c) => c
+                .start_session(cfg)
+                .map(|_| StartInfo::default())
+                .map_err(|e| ("error", e.to_string())),
+            MurmurHandle::Router(r) => if local_only {
+                r.start_session_local(cfg)
+            } else {
+                r.start_session_info(cfg)
+            }
+            .map_err(|e| (e.kind(), e.to_string())),
+        }
+    }
+    /// `Router::poll`; a core handle gives `MurmurCore::poll` with no route.
+    fn poll(&self) -> RouterPoll {
+        match self {
+            MurmurHandle::Core(c) => RouterPoll {
+                session: c.poll(),
+                route: None,
+                loading: false,
+            },
+            MurmurHandle::Router(r) => r.poll(),
+        }
+    }
+    fn push_audio(&self, pcm: &[i16]) -> bool {
+        match self {
+            MurmurHandle::Core(c) => c.push_audio(pcm),
+            MurmurHandle::Router(r) => r.push_audio(pcm),
+        }
+    }
+    fn set_context(&self, ctx: FieldContext) {
+        match self {
+            MurmurHandle::Core(c) => c.set_context(ctx),
+            MurmurHandle::Router(r) => r.set_context(ctx),
+        }
+    }
+    fn partial(&self) -> Option<String> {
+        match self {
+            MurmurHandle::Core(c) => c.partial(),
+            MurmurHandle::Router(r) => r.partial(),
+        }
+    }
+    fn commit(&self) -> CommitResult {
+        match self {
+            MurmurHandle::Core(c) => c.commit(),
+            MurmurHandle::Router(r) => r.commit(),
+        }
+    }
+    fn cancel(&self) {
+        match self {
+            MurmurHandle::Core(c) => c.cancel(),
+            MurmurHandle::Router(r) => r.cancel(),
+        }
+    }
+    fn learn_edit(&self, pasted: &str, edited: &str) -> Vec<murmur_core::learn::Candidate> {
+        match self {
+            MurmurHandle::Core(c) => c.learn_edit(pasted, edited),
+            MurmurHandle::Router(r) => r.learn_edit(pasted, edited),
+        }
+    }
+    pub fn router(&self) -> Option<&Router> {
+        match self {
+            MurmurHandle::Router(r) => Some(r),
+            MurmurHandle::Core(_) => None,
+        }
+    }
+}
+
+/// What this library was built with: local engines (ASR features) and the server route.
+fn build_local_engines() -> Vec<String> {
+    let mut v = Vec::new();
+    if cfg!(feature = "whisper") {
+        v.push("whisper".to_string());
+    }
+    if cfg!(feature = "parakeet") {
+        v.push("parakeet".to_string());
+    }
+    v
+}
+
+fn remote_factory() -> Option<murmur_router::RemoteFactory> {
+    #[cfg(feature = "remote")]
+    {
+        Some(murmur_remote::factory(&format!(
+            "murmur-ffi {}",
+            murmur_build_info::FULL
+        )))
+    }
+    #[cfg(not(feature = "remote"))]
+    {
+        None
+    }
+}
+
+fn new_router(cfg: RouterConfig, local: Option<Arc<MurmurCore>>) -> Router {
+    let engines = build_local_engines();
+    // A passed-in core (even a mock-ASR one) is a local engine; with none, the
+    // build's ASR features decide (allow_client without a model = local_not_ready).
+    let capable = local.is_some() || !engines.is_empty();
+    let backend = local.clone().map(|c| c as Arc<dyn Backend>);
+    let router = Router::new(cfg, backend, remote_factory())
+        .with_local_capability(capable)
+        .with_local_info(engines, cfg!(feature = "llm"));
+    attach_cloud(router, local)
+}
+
+/// D18: the cloud route shares the local core's LLM cleaner (if one is loaded),
+/// so provider text goes through the same local pipeline (C5).
+#[cfg(feature = "cloud")]
+fn attach_cloud(router: Router, local: Option<Arc<MurmurCore>>) -> Router {
+    murmur_cloud::attach_with(router, move || local.as_ref().and_then(|c| c.cleaner()))
+}
+
+#[cfg(not(feature = "cloud"))]
+fn attach_cloud(router: Router, _local: Option<Arc<MurmurCore>>) -> Router {
+    router
+}
+
+thread_local! {
+    static LAST_ERROR: RefCell<CString> = RefCell::new(CString::default());
+    static LAST_ERROR_KIND: RefCell<CString> = RefCell::new(CString::default());
+}
+
+fn set_error(msg: impl Into<String>) {
+    set_error_kind("error", msg);
+}
+
+fn set_error_kind(kind: &str, msg: impl Into<String>) {
+    let s = CString::new(msg.into().replace('\0', " ")).unwrap_or_default();
+    LAST_ERROR.with(|e| *e.borrow_mut() = s);
+    let k = CString::new(kind).unwrap_or_default();
+    LAST_ERROR_KIND.with(|e| *e.borrow_mut() = k);
+}
+
+fn clear_error() {
+    set_error_kind("", "");
+}
+
+fn guard<T>(fallback: T, f: impl FnOnce() -> T) -> T {
+    catch_unwind(AssertUnwindSafe(f)).unwrap_or_else(|_| {
+        set_error("panic inside murmur-core");
+        fallback
+    })
+}
+
+unsafe fn str_arg<'a>(p: *const c_char) -> Option<&'a str> {
+    if p.is_null() {
+        return None;
+    }
+    CStr::from_ptr(p).to_str().ok()
+}
+
+fn out_string(s: String) -> *mut c_char {
+    CString::new(s.replace('\0', " ")).map_or(std::ptr::null_mut(), CString::into_raw)
+}
+
+/// Shared JSON-level API, reused by the JNI layer.
+pub mod json_api {
+    use super::*;
+
+    pub fn load_models(cfg_json: &str) -> Result<MurmurCore, String> {
+        load_models_kind(cfg_json).map_err(|(_, msg)| msg)
+    }
+
+    /// Like [`load_models`], with the error's stable kind
+    /// (`bad_config`, or [`murmur_core::CoreError::kind`]).
+    pub fn load_models_kind(cfg_json: &str) -> Result<MurmurCore, (&'static str, String)> {
+        let v: serde_json::Value = serde_json::from_str(cfg_json)
+            .map_err(|e| ("bad_config", format!("bad model config: {e}")))?;
+        let load = model_load(v).map_err(|e| ("bad_config", format!("bad model config: {e}")))?;
+        load.load().map_err(|e| (e.kind(), e.to_string()))
+    }
+
+    /// A `ModelConfig` plus the shell-only field `load_language` (D33, RAM-tight
+    /// shells): when set, only the model `ModelConfig::language_route` names
+    /// for it is loaded (`MurmurCore::load_models_for`), else every model.
+    pub struct ModelLoad {
+        pub cfg: ModelConfig,
+        pub language: Option<String>,
+    }
+
+    impl ModelLoad {
+        pub fn load(&self) -> Result<MurmurCore, murmur_core::CoreError> {
+            match self.language.as_deref() {
+                Some(l) => MurmurCore::load_models_for(&self.cfg, Some(l)),
+                None => MurmurCore::load_models(&self.cfg),
+            }
+        }
+    }
+
+    fn model_load(mut v: serde_json::Value) -> Result<ModelLoad, String> {
+        let language = match v.as_object_mut().and_then(|o| o.remove("load_language")) {
+            None | Some(serde_json::Value::Null) => None,
+            Some(serde_json::Value::String(s)) if !s.is_empty() => Some(s),
+            Some(other) => {
+                return Err(format!(
+                    "load_language must be a language code, got {other}"
+                ))
+            }
+        };
+        let cfg = serde_json::from_value(v).map_err(|e| e.to_string())?;
+        Ok(ModelLoad { cfg, language })
+    }
+
+    pub fn start_session(h: &MurmurHandle, cfg_json: &str) -> Result<(), (&'static str, String)> {
+        start_session_info(h, cfg_json, false).map(|_| ())
+    }
+
+    /// Like [`start_session`], returning the `StartInfo` JSON
+    /// (`{"queued":bool,"route"?:SessionRoute}`; no `route` for a core handle).
+    /// `local_only`: the on-device engine alone, never the server or the
+    /// cloud (D55).
+    pub fn start_session_info(
+        h: &MurmurHandle,
+        cfg_json: &str,
+        local_only: bool,
+    ) -> Result<String, (&'static str, String)> {
+        let cfg: SessionConfig = serde_json::from_str(cfg_json)
+            .map_err(|e| ("bad_config", format!("bad session config: {e}")))?;
+        let info = h.start_session(cfg, local_only)?;
+        Ok(serde_json::to_string(&info).unwrap_or_else(|_| "{\"queued\":false}".into()))
+    }
+
+    /// `RouterPoll` JSON: partial + hands-free endpoint (D19) + live `route`
+    /// (router handles while a session is live). `None` handle = idle poll.
+    pub fn poll(h: Option<&MurmurHandle>) -> String {
+        let p = h.map(MurmurHandle::poll).unwrap_or_default();
+        serde_json::to_string(&p).unwrap_or_else(|_| idle_poll())
+    }
+
+    pub fn idle_poll() -> String {
+        serde_json::to_string(&RouterPoll::default()).unwrap_or_else(|_| "{}".into())
+    }
+
+    pub fn set_context(core: &MurmurHandle, ctx_json: &str) -> Result<(), String> {
+        let ctx: FieldContext =
+            serde_json::from_str(ctx_json).map_err(|e| format!("bad context: {e}"))?;
+        core.set_context(ctx);
+        Ok(())
+    }
+
+    pub fn commit(core: Option<&MurmurHandle>) -> String {
+        match core {
+            Some(c) => serde_json::to_string(&c.commit())
+                .unwrap_or_else(|e| error_result(&format!("serialize: {e}"))),
+            None => error_result("null handle"),
+        }
+    }
+
+    /// A `CommitResult` JSON with status ERROR, for failures outside the core.
+    pub fn error_result(msg: &str) -> String {
+        serde_json::json!({
+            "status": "ERROR", "asr_text": "", "final_text": "", "language": null,
+            "timings": {"audio_ms": 0, "asr_ms": 0, "llm_ms": 0, "postprocess_ms": 0,
+                        "total_ms": 0, "dropped_samples": 0, "asr_audio_ms": 0},
+            "press_enter": false, "fallback_reason": null, "truncated": false, "error": msg,
+            "segments": [], "plain_text": "", "empty_reason": null,
+        })
+        .to_string()
+    }
+
+    pub fn learn_edit(core: &MurmurHandle, pasted: &str, edited: &str) -> String {
+        serde_json::to_string(&core.learn_edit(pasted, edited)).unwrap()
+    }
+
+    /// `murmur_router::Capabilities` of this build (no handle needed).
+    pub fn capabilities() -> String {
+        serde_json::to_string(&new_router(RouterConfig::default(), None).capabilities())
+            .unwrap_or_else(|_| "{}".into())
+    }
+
+    /// Parse + validate a `RouterConfig` (`bad_config` on failure).
+    pub fn router_config(json: &str) -> Result<RouterConfig, (&'static str, String)> {
+        let cfg: RouterConfig = serde_json::from_str(json)
+            .map_err(|e| ("bad_config", format!("bad_config: bad router config: {e}")))?;
+        cfg.validate().map_err(|e| (e.kind(), e.to_string()))?;
+        Ok(cfg)
+    }
+
+    /// Router over an optional local engine. Both routes off is refused
+    /// here (`no_engine_enabled`) so the shell can say so before a session.
+    pub fn open_router(
+        json: &str,
+        local: Option<MurmurCore>,
+    ) -> Result<MurmurHandle, (&'static str, String)> {
+        let cfg = router_config(json)?;
+        // A cloud-only config (D18) is an engine too, in builds that have it
+        // (judged after the D28 migration the router will apply).
+        let mut m = cfg.clone();
+        m.migrate_d28();
+        let cloud = cfg!(feature = "cloud") && m.allow_cloud && m.order.contains(&Route::Cloud);
+        if !cfg.allow_server && !cfg.allow_client && !cloud {
+            let e = murmur_router::RouterError::NoEngineEnabled;
+            return Err((e.kind(), e.to_string()));
+        }
+        Ok(MurmurHandle::Router(Box::new(new_router(
+            cfg,
+            local.map(Arc::new),
+        ))))
+    }
+
+    pub fn update_router(h: &MurmurHandle, json: &str) -> Result<(), (&'static str, String)> {
+        let r = h
+            .router()
+            .ok_or(("bad_config", "not a router handle".to_string()))?;
+        r.update_config(router_config(json)?);
+        Ok(())
+    }
+
+    /// D24 never-fail fallback: give the router a way to load the local
+    /// engine on demand (`keep_local_warm = false`). `json` = an array of
+    /// `ModelConfig`s tried in order (e.g. Parakeet + LLM, Parakeet, whisper);
+    /// the first that loads is used. `[]` removes the loader.
+    pub fn set_local_loader(h: &MurmurHandle, json: &str) -> Result<(), (&'static str, String)> {
+        let r = h
+            .router()
+            .ok_or(("bad_config", "not a router handle".to_string()))?;
+        let attempts: Vec<ModelLoad> = serde_json::from_str::<Vec<serde_json::Value>>(json)
+            .map_err(|e| e.to_string())
+            .and_then(|vs| vs.into_iter().map(model_load).collect())
+            .map_err(|e| ("bad_config", format!("bad_config: bad model configs: {e}")))?;
+        if attempts.is_empty() {
+            r.set_local_loader(None);
+            return Ok(());
+        }
+        r.set_local_loader(Some(Arc::new(move || {
+            let mut errors = Vec::new();
+            for c in &attempts {
+                match c.load() {
+                    Ok(core) => return Ok(Arc::new(core) as Arc<dyn Backend>),
+                    Err(e) => errors.push(e.to_string()),
+                }
+            }
+            Err(errors.join("; "))
+        })));
+        Ok(())
+    }
+
+    /// D24 pre-warm (blocking up to the connect timeout): `Router::prewarm`.
+    pub fn prewarm(h: &MurmurHandle) -> bool {
+        h.router().is_some_and(Router::prewarm)
+    }
+
+    /// Blocking probe of an unsaved server config (Developer "Test connection").
+    pub fn probe_server(server_json: &str) -> String {
+        let report = match serde_json::from_str::<ServerConfig>(server_json) {
+            Ok(server) => new_router(RouterConfig::default(), None).probe_config(&server),
+            Err(e) => murmur_router::HealthReport::failed(
+                murmur_router::EngineKind::Remote,
+                &murmur_router::BackendError::new(
+                    murmur_router::Failure::Error,
+                    format!("bad server config: {e}"),
+                ),
+            ),
+        };
+        serde_json::to_string(&report).unwrap_or_else(|_| "{\"ok\":false}".into())
+    }
+
+    pub fn probe_router(h: &MurmurHandle) -> String {
+        match h.router() {
+            Some(r) => {
+                serde_json::to_string(&r.probe_server()).unwrap_or_else(|_| "{\"ok\":false}".into())
+            }
+            None => "{\"ok\":false,\"error\":\"error\",\"message\":\"not a router handle\"}".into(),
+        }
+    }
+
+    pub fn route_status(h: &MurmurHandle) -> String {
+        match h.router() {
+            Some(r) => serde_json::to_string(&r.route_status()).unwrap_or_else(|_| "{}".into()),
+            None => "{}".into(),
+        }
+    }
+
+    // ---- D18 cloud STT (docs/cloud-stt.md "What A needs") ----------------
+
+    /// `Router::set_cloud_key`; `None` / empty forgets the key. The key is
+    /// moved into a `SecretString` (wiped on drop) and never logged or echoed.
+    pub fn set_cloud_key(
+        h: &MurmurHandle,
+        provider_id: &str,
+        key: Option<String>,
+    ) -> Result<(), (&'static str, String)> {
+        let r = h
+            .router()
+            .ok_or(("error", "not a router handle".to_string()))?;
+        r.set_cloud_key(provider_id, key.map(SecretString::new));
+        Ok(())
+    }
+
+    /// D28: kept for ABI. The key is for OpenRouter (the only provider):
+    /// `provider_json` may be an `OpenRouterConfig` or a legacy
+    /// `CloudProviderConfig`; a legacy entry of another adapter is ignored
+    /// (its key never enters the router).
+    pub fn set_cloud_key_for(
+        h: &MurmurHandle,
+        provider_json: &str,
+        key: Option<String>,
+    ) -> Result<(), (&'static str, String)> {
+        let r = h
+            .router()
+            .ok_or(("error", "not a router handle".to_string()))?;
+        match openrouter_from_json(provider_json) {
+            Ok(Some(_)) => {
+                r.set_cloud_key(
+                    murmur_router::cloud::OPENROUTER_ID,
+                    key.map(SecretString::new),
+                );
+                Ok(())
+            }
+            Ok(None) => Ok(()),
+            Err(e) => Err((
+                "bad_config",
+                format!("bad_config: bad provider config: {e}"),
+            )),
+        }
+    }
+
+    /// An `OpenRouterConfig` JSON, or a legacy `CloudProviderConfig` JSON
+    /// (converted as the D28 migration would); `Ok(None)` for a legacy
+    /// entry of a removed adapter.
+    fn openrouter_from_json(json: &str) -> Result<Option<OpenRouterConfig>, String> {
+        let v: serde_json::Value = serde_json::from_str(json).map_err(|e| e.to_string())?;
+        if v.get("adapter").is_some() || v.get("base_url").is_some() {
+            let p: CloudProviderConfig = serde_json::from_value(v).map_err(|e| e.to_string())?;
+            if p.adapter != "openrouter" {
+                return Ok(None);
+            }
+            let mut c = RouterConfig::default();
+            c.cloud.schema = 1;
+            c.cloud.active = p.id.clone();
+            c.cloud.providers = vec![p];
+            c.migrate_d28();
+            return Ok(Some(c.cloud.openrouter));
+        }
+        serde_json::from_value(v)
+            .map(Some)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Blocking "Test" `HealthReport` for an unsaved `OpenRouterConfig`
+    /// (or a legacy OpenRouter `CloudProviderConfig`). Without a router
+    /// handle a temporary router is used (then the key must be passed).
+    pub fn probe_cloud(
+        h: Option<&MurmurHandle>,
+        provider_json: &str,
+        key: Option<String>,
+    ) -> String {
+        let fail = |m: String| {
+            murmur_router::HealthReport::failed(
+                murmur_router::EngineKind::Cloud,
+                &murmur_router::BackendError::new(murmur_router::Failure::CloudNotConfigured, m),
+            )
+        };
+        let report = match openrouter_from_json(provider_json) {
+            Ok(Some(o)) => {
+                let key = key.map(SecretString::new);
+                match h.and_then(MurmurHandle::router) {
+                    Some(r) => r.probe_cloud(&o, key),
+                    None => new_router(RouterConfig::default(), None).probe_cloud(&o, key),
+                }
+            }
+            Ok(None) => fail("only OpenRouter is supported (D28)".into()),
+            Err(e) => fail(format!("bad provider config: {e}")),
+        };
+        serde_json::to_string(&report).unwrap_or_else(|_| "{\"ok\":false}".into())
+    }
+
+    // ---- D28 OpenRouter-only cloud (JNI_CONTRACT.md "OpenRouter") --------
+
+    /// Where the OpenRouter model catalogue is cached
+    /// (`<dir>/openrouter-catalog.json`; Android `cacheDir`, Windows
+    /// `%LOCALAPPDATA%\\Murmur\\cache`). Registers the store murmur-cloud's
+    /// STT adapter and cleaner resolve models from. No network. Without
+    /// `cloud`: no-op.
+    pub fn set_cloud_cache_dir(dir: &str) {
+        #[cfg(feature = "cloud")]
+        murmur_cloud::catalog::set_default_store(Some(Arc::new(murmur_cloud::CatalogStore::new(
+            std::path::Path::new(dir).join("openrouter-catalog.json"),
+        ))));
+        #[cfg(not(feature = "cloud"))]
+        let _ = dir;
+    }
+
+    #[cfg(feature = "cloud")]
+    fn catalog_store() -> Arc<murmur_cloud::CatalogStore> {
+        murmur_cloud::catalog::default_store().unwrap_or_else(|| {
+            let s = Arc::new(murmur_cloud::CatalogStore::in_memory());
+            murmur_cloud::catalog::set_default_store(Some(s.clone()));
+            s
+        })
+    }
+
+    /// Picker rows (JSON array) for `use_` (`"stt"` / `"cleanup"`),
+    /// searched by id/name, filtered by `filters_json` (`{zdr_only,
+    /// fast, free, stt_path}`; missing = defaults). From memory / cache /
+    /// the baked snapshot: no network. `[]` without `cloud`.
+    pub fn cloud_catalog(use_: &str, query: &str, filters_json: &str) -> String {
+        #[cfg(feature = "cloud")]
+        return catalog_store().search_json(use_, query, filters_json);
+        #[cfg(not(feature = "cloud"))]
+        {
+            let _ = (use_, query, filters_json);
+            "[]".into()
+        }
+    }
+
+    /// Blocking (≤ 10 s, call off the UI thread): refresh the catalogue
+    /// from openrouter.ai unless the cache is fresh or `force`. With a
+    /// stored key the account's privacy filter (`/models/user`) applies.
+    /// Returns the status `{source, fetched_at_ms, snapshot_date, models,
+    /// stt, cleanup}` plus `"error"` (a `Failure` code) when the refresh
+    /// failed (the previous catalogue stays). Sends no user data.
+    pub fn refresh_cloud_catalog(h: Option<&MurmurHandle>, force: bool) -> String {
+        #[cfg(feature = "cloud")]
+        {
+            let store = catalog_store();
+            let run = |k: Option<&SecretString>| store.refresh(k, force).err();
+            let err = match h.and_then(MurmurHandle::router) {
+                Some(r) => r.with_cloud_key(run),
+                None => run(None),
+            };
+            let mut v: serde_json::Value =
+                serde_json::from_str(&store.status_json()).unwrap_or_default();
+            if let (Some(e), Some(o)) = (err, v.as_object_mut()) {
+                o.insert("error".into(), e.code().into());
+            }
+            v.to_string()
+        }
+        #[cfg(not(feature = "cloud"))]
+        {
+            let _ = (h, force);
+            r#"{"error":"cloud_not_configured"}"#.into()
+        }
+    }
+
+    /// Blocking "Check key": `GET /api/v1/key` with the stored key →
+    /// `KeyInfo` JSON (`label, limit, limit_remaining, usage_monthly,
+    /// is_free_tier, …`; never the key), or `{"error": code}`
+    /// (`cloud_not_configured` without a key / cloud support).
+    pub fn cloud_key_info(h: &MurmurHandle) -> String {
+        #[cfg(feature = "cloud")]
+        if let Some(r) = h.router() {
+            return r.with_cloud_key(|k| match k {
+                None => r#"{"error":"cloud_not_configured"}"#.to_string(),
+                Some(k) => match murmur_cloud::keyinfo::fetch(k) {
+                    Ok(i) => {
+                        let mut v = serde_json::to_value(&i).unwrap_or_default();
+                        if let Some(o) = v.as_object_mut() {
+                            o.insert("warn_no_limit".into(), i.warn_no_limit().into());
+                        }
+                        v.to_string()
+                    }
+                    Err(e) => serde_json::json!({"error": e.code()}).to_string(),
+                },
+            });
+        }
+        let _ = h;
+        r#"{"error":"cloud_not_configured"}"#.into()
+    }
+
+    /// D52, blocking (≤ 8 s, call off the UI thread): `GET {base}/models`
+    /// on the user's custom cleanup server — the settings page's model list
+    /// and "Test connection". `key`: the typed key; else the saved one
+    /// (`set_cloud_key("custom", …)`) only when `base_url`'s host is the
+    /// consented one (`Router::with_custom_cleanup_key`); else none.
+    /// Returns `murmur_cloud::custom::models_json` (`{"models": [ids]}` or
+    /// `{"error": code, "message": text}`, never the key or URL). Sends no
+    /// user data.
+    pub fn custom_cleanup_models(
+        h: Option<&MurmurHandle>,
+        base_url: &str,
+        key: Option<String>,
+    ) -> String {
+        #[cfg(feature = "cloud")]
+        {
+            let typed = key.filter(|k| !k.trim().is_empty()).map(SecretString::new);
+            let run = |k: Option<&SecretString>| {
+                murmur_cloud::custom::list_models(
+                    base_url,
+                    typed.as_ref().or(k),
+                    std::time::Duration::from_secs(8),
+                )
+            };
+            let r = match (h.and_then(MurmurHandle::router), typed.is_some()) {
+                (Some(r), false) => r.with_custom_cleanup_key(base_url, run),
+                _ => run(None),
+            };
+            murmur_cloud::custom::models_json(r).to_string()
+        }
+        #[cfg(not(feature = "cloud"))]
+        {
+            let _ = (h, base_url, key);
+            r#"{"error":"cloud_not_configured","message":"not in this build"}"#.into()
+        }
+    }
+
+    /// D52: the custom server address as the router sees it —
+    /// `{"url": normalised API root, "host": canonical host}` or
+    /// `{"error": "bad_base_url", "message": why}` — plus `"model_ok"`
+    /// for `model` (`valid_custom_model_id`). The settings page uses it
+    /// for display, validation and the consent host, so it never parses
+    /// URLs itself.
+    pub fn custom_cleanup_address(base_url: &str, model: &str) -> String {
+        let model_ok = murmur_router::cloud::valid_custom_model_id(model.trim());
+        match murmur_router::cloud::custom_server_address(base_url) {
+            Ok(a) => serde_json::json!({"url": a.url, "host": a.host, "model_ok": model_ok}),
+            Err(e) => {
+                serde_json::json!({"error": "bad_base_url", "message": e, "model_ok": model_ok})
+            }
+        }
+        .to_string()
+    }
+
+    /// One-time schema-1 → 2 migration of a router config JSON:
+    /// `{"config": RouterConfig, "report": MigrationReport}`. The shell
+    /// persists `config`, moves `report.key_from` → `key_to` and deletes
+    /// `report.delete_keys` in its key store, and shows `report.notice`
+    /// once. Idempotent (a schema-2 config comes back unchanged with
+    /// `migrated:false`). Pure: no handle, no network.
+    pub fn migrate_cloud(json: &str) -> Result<String, (&'static str, String)> {
+        let mut cfg: RouterConfig = serde_json::from_str(json)
+            .map_err(|e| ("bad_config", format!("bad_config: bad router config: {e}")))?;
+        let report = cfg.migrate_d28();
+        Ok(serde_json::json!({"config": cfg, "report": report}).to_string())
+    }
+
+    /// Merge the cleanup part of the config: `{"allow_cloud_cleanup"?,
+    /// "cleanup_order"?, "cleanup_off"? (D36), "cleanup"?}` (missing keys
+    /// keep their value).
+    pub fn set_cleanup(h: &MurmurHandle, json: &str) -> Result<(), (&'static str, String)> {
+        let r = h
+            .router()
+            .ok_or(("error", "not a router handle".to_string()))?;
+        let bad = |e: String| ("bad_config", format!("bad_config: bad cleanup config: {e}"));
+        let v: serde_json::Value = serde_json::from_str(json).map_err(|e| bad(e.to_string()))?;
+        if !v.is_object() {
+            return Err(bad("not an object".into()));
+        }
+        let cur = r.config();
+        let field = |k: &str| v.get(k).cloned().filter(|x| !x.is_null());
+        let allow = match field("allow_cloud_cleanup") {
+            Some(x) => x
+                .as_bool()
+                .ok_or_else(|| bad("allow_cloud_cleanup".into()))?,
+            None => cur.allow_cloud_cleanup,
+        };
+        let order = match field("cleanup_order") {
+            Some(x) => serde_json::from_value(x).map_err(|e| bad(e.to_string()))?,
+            None => cur.cleanup_order.clone(),
+        };
+        let cleanup = match field("cleanup") {
+            Some(x) => serde_json::from_value(x).map_err(|e| bad(e.to_string()))?,
+            None => cur.cloud.openrouter.cleanup.clone(),
+        };
+        let off = match field("cleanup_off") {
+            Some(x) => serde_json::from_value(x).map_err(|e| bad(e.to_string()))?,
+            None => cur.cleanup_off.clone(),
+        };
+        let mut cfg = cur;
+        cfg.allow_cloud_cleanup = allow;
+        cfg.cleanup_order = order;
+        cfg.cleanup_off = off;
+        cfg.cloud.openrouter.cleanup = cleanup;
+        cfg.validate().map_err(|e| (e.kind(), e.to_string()))?;
+        r.update_config(cfg);
+        Ok(())
+    }
+
+    /// Command Mode (`murmur_core::command`): `instruction` applied to
+    /// `selected` (`None` / blank = write at the cursor) on the cleanup
+    /// route ([`Router::command`]; a core handle uses its own on-device
+    /// LLM only). `{"ok":true,"text":…}` or `{"ok":false,"kind":…,"error":…}`
+    /// (`kind` = `CommandError::kind`, `error` = the pill text). Blocking
+    /// (LLM call, at most `command::DEFAULT_TIMEOUT` plus a model load).
+    pub fn command(h: &MurmurHandle, instruction: &str, selected: Option<&str>) -> String {
+        let timeout = murmur_core::command::DEFAULT_TIMEOUT;
+        let r = match h {
+            MurmurHandle::Router(r) => r.command(instruction, selected, timeout),
+            MurmurHandle::Core(c) => {
+                murmur_core::command::run(c.cleaner(), instruction, selected, timeout)
+            }
+        };
+        command_json(r)
+    }
+
+    pub fn command_json(r: Result<String, murmur_core::command::CommandError>) -> String {
+        murmur_core::command::result_json(&r).to_string()
+    }
+
+    /// Benchmark hook ([`crate::bench`]): one AI-cleanup request on a bare
+    /// core handle's on-device LLM. Router handles answer `{"error":…}`.
+    /// Blocking (one LLM call).
+    pub fn bench_clean(h: &MurmurHandle, req_json: &str) -> String {
+        let v = match h {
+            MurmurHandle::Core(c) => crate::bench::clean(c, req_json),
+            MurmurHandle::Router(_) => {
+                serde_json::json!({"error": "bench_clean needs a core handle"})
+            }
+        };
+        v.to_string()
+    }
+
+    /// `CleanupStatus` JSON (`supported:false` for a core handle).
+    pub fn cleanup_status(h: &MurmurHandle) -> String {
+        let s = h.router().map(Router::cleanup_status).unwrap_or_default();
+        serde_json::to_string(&s).unwrap_or_else(|_| "{}".into())
+    }
+
+    /// Pending one-time migration notice, if any.
+    pub fn cloud_notice(h: &MurmurHandle) -> Option<String> {
+        h.router().and_then(Router::cloud_notice)
+    }
+
+    pub fn ack_cloud_notice(h: &MurmurHandle) {
+        if let Some(r) = h.router() {
+            r.ack_cloud_notice();
+        }
+    }
+
+    /// Select the model of one use (`"stt"` / `"cleanup"`). Free-text ids
+    /// are allowed (`^[a-z0-9._~/-]+(:[a-z]+)*$`, ≤ 128). A changed model
+    /// resets that use's circuit. Applies like `update_router`.
+    pub fn set_cloud_model(
+        h: &MurmurHandle,
+        use_: &str,
+        model: &str,
+    ) -> Result<(), (&'static str, String)> {
+        let r = h
+            .router()
+            .ok_or(("error", "not a router handle".to_string()))?;
+        if !murmur_router::cloud::valid_model_id(model) {
+            return Err((
+                "bad_config",
+                format!("bad_config: invalid model id {model:?}"),
+            ));
+        }
+        let mut c = r.config();
+        match use_ {
+            "stt" => c.cloud.openrouter.stt.model = model.into(),
+            "cleanup" => c.cloud.openrouter.cleanup.model = model.into(),
+            u => return Err(("bad_config", format!("bad_config: unknown use {u:?}"))),
+        }
+        c.validate().map_err(|e| (e.kind(), e.to_string()))?;
+        r.update_config(c);
+        Ok(())
+    }
+
+    /// `CloudUsage` JSON (an empty month for a core handle).
+    pub fn cloud_usage(h: &MurmurHandle) -> String {
+        let u = h.router().map(Router::cloud_usage).unwrap_or_default();
+        serde_json::to_string(&u).unwrap_or_else(|_| "{}".into())
+    }
+
+    pub fn set_cloud_usage(h: &MurmurHandle, json: &str) -> Result<(), (&'static str, String)> {
+        let r = h
+            .router()
+            .ok_or(("error", "not a router handle".to_string()))?;
+        let u: CloudUsage = serde_json::from_str(json)
+            .map_err(|e| ("bad_config", format!("bad_config: bad cloud usage: {e}")))?;
+        r.set_cloud_usage(u);
+        Ok(())
+    }
+
+    pub fn reset_cloud_usage(h: &MurmurHandle) {
+        if let Some(r) = h.router() {
+            r.reset_cloud_usage();
+        }
+    }
+
+    /// `CloudCapabilities` of this build (`cloud:false, adapters:[]` without `cloud`).
+    pub fn cloud_capabilities() -> String {
+        serde_json::to_string(&new_router(RouterConfig::default(), None).cloud_capabilities())
+            .unwrap_or_else(|_| "{\"cloud\":false,\"adapters\":[]}".into())
+    }
+
+    /// Provider presets: D28 = the single OpenRouter entry (kept for ABI),
+    /// `[]` without `cloud`.
+    pub fn cloud_presets() -> String {
+        #[cfg(feature = "cloud")]
+        let presets: Vec<CloudProviderConfig> = murmur_cloud::presets()
+            .into_iter()
+            .filter(|p| p.adapter == "openrouter")
+            .map(|mut p| {
+                p.id = murmur_router::cloud::OPENROUTER_ID.into();
+                p.model = murmur_router::cloud::DEFAULT_STT_MODEL.into();
+                p
+            })
+            .collect();
+        #[cfg(not(feature = "cloud"))]
+        let presets: Vec<CloudProviderConfig> = Vec::new();
+        serde_json::to_string(&presets).unwrap_or_else(|_| "[]".into())
+    }
+}
+
+/// Load models; returns NULL on failure (see `murmur_last_error`).
+///
+/// # Safety
+/// `model_config_json` must be NULL or a valid NUL-terminated string.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_load_models(model_config_json: *const c_char) -> *mut MurmurHandle {
+    guard(std::ptr::null_mut(), || {
+        let Some(j) = str_arg(model_config_json) else {
+            set_error_kind("bad_config", "bad model config: null or non-UTF-8");
+            return std::ptr::null_mut();
+        };
+        match json_api::load_models_kind(j) {
+            Ok(c) => {
+                clear_error();
+                Box::into_raw(Box::new(MurmurHandle::Core(c)))
+            }
+            Err((kind, e)) => {
+                set_error_kind(kind, e);
+                std::ptr::null_mut()
+            }
+        }
+    })
+}
+
+/// Free models and the handle. NULL is a no-op.
+///
+/// # Safety
+/// `h` must be NULL or a handle from `murmur_load_models`, not used afterwards.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_unload(h: *mut MurmurHandle) {
+    if !h.is_null() {
+        guard((), || drop(Box::from_raw(h)));
+    }
+}
+
+/// # Safety
+/// `h` valid handle or NULL; `session_config_json` valid string or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_start_session(
+    h: *mut MurmurHandle,
+    session_config_json: *const c_char,
+) -> c_int {
+    guard(-1, || {
+        let (Some(h), Some(j)) = (h.as_ref(), str_arg(session_config_json)) else {
+            set_error("null handle or config");
+            return -1;
+        };
+        json_api::start_session(h, j).map_or_else(
+            |(kind, e)| {
+                set_error_kind(kind, e);
+                -1
+            },
+            |_| 0,
+        )
+    })
+}
+
+/// `murmur_start_session` returning the `StartInfo` JSON
+/// (`{"queued":bool,"route"?:{"engine","provider"?,"model"?,"server"?,"fallback"?}}`),
+/// or NULL with the same last error / kind as `murmur_start_session`.
+///
+/// # Safety
+/// As `murmur_start_session`.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_start_session_info(
+    h: *mut MurmurHandle,
+    session_config_json: *const c_char,
+) -> *mut c_char {
+    guard(std::ptr::null_mut(), || {
+        let (Some(h), Some(j)) = (h.as_ref(), str_arg(session_config_json)) else {
+            set_error("null handle or config");
+            return std::ptr::null_mut();
+        };
+        match json_api::start_session_info(h, j, false) {
+            Ok(s) => {
+                clear_error();
+                out_string(s)
+            }
+            Err((kind, e)) => {
+                set_error_kind(kind, e);
+                std::ptr::null_mut()
+            }
+        }
+    })
+}
+
+/// Non-blocking `RouterPoll` JSON: `{"partial","endpoint_reached","speech_ms",
+/// "trailing_silence_ms","route"?}`. NULL for a NULL handle.
+///
+/// # Safety
+/// `h` valid handle or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_poll(h: *mut MurmurHandle) -> *mut c_char {
+    guard(std::ptr::null_mut(), || match h.as_ref() {
+        Some(h) => out_string(json_api::poll(Some(h))),
+        None => std::ptr::null_mut(),
+    })
+}
+
+/// Non-blocking copy of PCM16 16 kHz mono samples into the ring buffer.
+///
+/// # Safety
+/// `pcm` must point to `len` readable samples (may be NULL when len == 0).
+#[no_mangle]
+pub unsafe extern "C" fn murmur_push_audio(
+    h: *mut MurmurHandle,
+    pcm: *const i16,
+    len: usize,
+) -> c_int {
+    guard(-1, || {
+        let Some(h) = h.as_ref() else { return -1 };
+        let s = if len == 0 || pcm.is_null() {
+            &[][..]
+        } else {
+            std::slice::from_raw_parts(pcm, len)
+        };
+        if h.push_audio(s) {
+            0
+        } else {
+            1
+        }
+    })
+}
+
+/// # Safety
+/// As `murmur_start_session`.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_set_context(
+    h: *mut MurmurHandle,
+    context_json: *const c_char,
+) -> c_int {
+    guard(-1, || {
+        let (Some(h), Some(j)) = (h.as_ref(), str_arg(context_json)) else {
+            return -1;
+        };
+        json_api::set_context(h, j).map_or_else(
+            |e| {
+                set_error(e);
+                -1
+            },
+            |_| 0,
+        )
+    })
+}
+
+/// Latest partial transcript, or NULL.
+///
+/// # Safety
+/// `h` valid handle or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_partial(h: *mut MurmurHandle) -> *mut c_char {
+    guard(std::ptr::null_mut(), || {
+        match h.as_ref().and_then(|h| h.partial()) {
+            Some(p) => out_string(p),
+            None => std::ptr::null_mut(),
+        }
+    })
+}
+
+/// Blocking: finish the session and return the CommitResult JSON.
+///
+/// # Safety
+/// `h` valid handle or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_commit(h: *mut MurmurHandle) -> *mut c_char {
+    guard(std::ptr::null_mut(), || {
+        out_string(json_api::commit(h.as_ref()))
+    })
+}
+
+/// # Safety
+/// `h` valid handle or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_cancel(h: *mut MurmurHandle) {
+    if let Some(h) = h.as_ref() {
+        guard((), || h.cancel());
+    }
+}
+
+/// JSON array of `{original, corrected}` dictionary candidates.
+///
+/// # Safety
+/// `h` valid handle; strings valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_learn_edit(
+    h: *mut MurmurHandle,
+    pasted: *const c_char,
+    edited: *const c_char,
+) -> *mut c_char {
+    guard(std::ptr::null_mut(), || {
+        let (Some(h), Some(p), Some(e)) = (h.as_ref(), str_arg(pasted), str_arg(edited)) else {
+            return std::ptr::null_mut();
+        };
+        out_string(json_api::learn_edit(h, p, e))
+    })
+}
+
+// ---- D17 router (docs/hybrid-architecture.md §6.2) ----------------------
+
+/// `Capabilities` JSON of this build. Free with `murmur_string_free`.
+#[no_mangle]
+pub extern "C" fn murmur_capabilities() -> *mut c_char {
+    guard(
+        std::ptr::null_mut(),
+        || out_string(json_api::capabilities()),
+    )
+}
+
+/// Open a router over `local` (a `murmur_load_models` handle or NULL). Takes
+/// ownership of `local` whatever the outcome (do not unload it afterwards).
+/// NULL + last error kind `no_engine_enabled` / `bad_config` on failure.
+///
+/// # Safety
+/// `json` valid string or NULL; `local` NULL or a core handle not used afterwards.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_open_router(
+    json: *const c_char,
+    local: *mut MurmurHandle,
+) -> *mut MurmurHandle {
+    guard(std::ptr::null_mut(), || {
+        let local = if local.is_null() {
+            None
+        } else {
+            Some(*Box::from_raw(local))
+        };
+        let local = match local {
+            None => None,
+            Some(MurmurHandle::Core(c)) => Some(c),
+            Some(MurmurHandle::Router(_)) => {
+                set_error_kind("bad_config", "bad_config: local handle is a router");
+                return std::ptr::null_mut();
+            }
+        };
+        let Some(j) = str_arg(json) else {
+            set_error_kind("bad_config", "bad_config: null router config");
+            return std::ptr::null_mut();
+        };
+        match json_api::open_router(j, local) {
+            Ok(h) => {
+                clear_error();
+                Box::into_raw(Box::new(h))
+            }
+            Err((kind, e)) => {
+                set_error_kind(kind, e);
+                std::ptr::null_mut()
+            }
+        }
+    })
+}
+
+/// `Router::update_config` (from the next session). 0 ok, -1 error.
+///
+/// # Safety
+/// `h` a router handle or NULL; `json` valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_update_router(h: *mut MurmurHandle, json: *const c_char) -> c_int {
+    guard(-1, || {
+        let (Some(h), Some(j)) = (h.as_ref(), str_arg(json)) else {
+            set_error_kind("bad_config", "null handle or config");
+            return -1;
+        };
+        json_api::update_router(h, j).map_or_else(
+            |(kind, e)| {
+                set_error_kind(kind, e);
+                -1
+            },
+            |_| 0,
+        )
+    })
+}
+
+/// Blocking `HealthReport` JSON for a `ServerConfig` (unsaved form values).
+///
+/// # Safety
+/// `json` valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_probe_server(json: *const c_char) -> *mut c_char {
+    guard(std::ptr::null_mut(), || {
+        out_string(json_api::probe_server(str_arg(json).unwrap_or("")))
+    })
+}
+
+/// Blocking probe of the router's saved server (updates circuit + health).
+///
+/// # Safety
+/// `h` valid handle or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_probe_router(h: *mut MurmurHandle) -> *mut c_char {
+    guard(std::ptr::null_mut(), || match h.as_ref() {
+        Some(h) => out_string(json_api::probe_router(h)),
+        None => std::ptr::null_mut(),
+    })
+}
+
+/// `RouteStatus` JSON (`{}` for a core handle).
+///
+/// # Safety
+/// `h` valid handle or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_route_status(h: *mut MurmurHandle) -> *mut c_char {
+    guard(std::ptr::null_mut(), || match h.as_ref() {
+        Some(h) => out_string(json_api::route_status(h)),
+        None => std::ptr::null_mut(),
+    })
+}
+
+/// Close the circuit breaker. No-op for a core handle.
+///
+/// # Safety
+/// `h` valid handle or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_reset_circuit(h: *mut MurmurHandle) {
+    if let Some(r) = h.as_ref().and_then(MurmurHandle::router) {
+        guard((), || r.reset_circuit());
+    }
+}
+
+// ---- D18 cloud STT (docs/cloud-stt.md "What A needs") -----------------------
+
+/// Set (`key` non-NULL, non-empty) or forget (NULL / "") a provider's API key.
+/// 0 ok, -1 + kind `error` for a core / NULL handle. Never logs the key.
+///
+/// # Safety
+/// `h` a handle or NULL; strings valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_set_cloud_key(
+    h: *mut MurmurHandle,
+    provider_id: *const c_char,
+    key_or_null: *const c_char,
+) -> c_int {
+    guard(-1, || {
+        let (Some(h), Some(id)) = (h.as_ref(), str_arg(provider_id)) else {
+            set_error("null handle or provider id");
+            return -1;
+        };
+        let key = str_arg(key_or_null).map(str::to_owned);
+        json_api::set_cloud_key(h, id, key).map_or_else(
+            |(kind, e)| {
+                set_error_kind(kind, e);
+                -1
+            },
+            |_| 0,
+        )
+    })
+}
+
+/// Like `murmur_set_cloud_key`, bound to exactly this `CloudProviderConfig`
+/// (its base-URL host + adapter): the key is never sent anywhere else, and a
+/// later config that changes either drops it. 0 ok, -1 (`bad_config` for bad
+/// JSON, `error` for a core handle). Non-blocking.
+///
+/// # Safety
+/// `h` a handle or NULL; strings valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_set_cloud_key_for(
+    h: *mut MurmurHandle,
+    provider_json: *const c_char,
+    key_or_null: *const c_char,
+) -> c_int {
+    guard(-1, || {
+        let (Some(h), Some(p)) = (h.as_ref(), str_arg(provider_json)) else {
+            set_error("null handle or provider");
+            return -1;
+        };
+        let key = str_arg(key_or_null).map(str::to_owned);
+        json_api::set_cloud_key_for(h, p, key).map_or_else(
+            |(kind, e)| {
+                set_error_kind(kind, e);
+                -1
+            },
+            |_| 0,
+        )
+    })
+}
+
+/// Blocking "Test provider" `HealthReport` JSON for an unsaved
+/// `CloudProviderConfig`. `key` NULL = the stored key; `h` NULL = a temporary
+/// router (a key is then required).
+///
+/// # Safety
+/// `h` a handle or NULL; strings valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_probe_cloud(
+    h: *mut MurmurHandle,
+    provider_json: *const c_char,
+    key_or_null: *const c_char,
+) -> *mut c_char {
+    guard(std::ptr::null_mut(), || {
+        let key = str_arg(key_or_null).map(str::to_owned);
+        out_string(json_api::probe_cloud(
+            h.as_ref(),
+            str_arg(provider_json).unwrap_or(""),
+            key,
+        ))
+    })
+}
+
+/// This month's `CloudUsage` JSON.
+///
+/// # Safety
+/// `h` a handle or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_cloud_usage(h: *mut MurmurHandle) -> *mut c_char {
+    guard(std::ptr::null_mut(), || match h.as_ref() {
+        Some(h) => out_string(json_api::cloud_usage(h)),
+        None => std::ptr::null_mut(),
+    })
+}
+
+/// Restore persisted `CloudUsage` (other months are dropped). 0 ok, -1 error.
+///
+/// # Safety
+/// `h` a handle or NULL; `usage_json` valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_set_cloud_usage(
+    h: *mut MurmurHandle,
+    usage_json: *const c_char,
+) -> c_int {
+    guard(-1, || {
+        let (Some(h), Some(j)) = (h.as_ref(), str_arg(usage_json)) else {
+            set_error("null handle or usage");
+            return -1;
+        };
+        json_api::set_cloud_usage(h, j).map_or_else(
+            |(kind, e)| {
+                set_error_kind(kind, e);
+                -1
+            },
+            |_| 0,
+        )
+    })
+}
+
+/// Developer "Reset counters". No-op for a core / NULL handle.
+///
+/// # Safety
+/// `h` a handle or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_reset_cloud_usage(h: *mut MurmurHandle) {
+    if let Some(h) = h.as_ref() {
+        guard((), || json_api::reset_cloud_usage(h));
+    }
+}
+
+/// `CloudCapabilities` JSON of this build.
+#[no_mangle]
+pub extern "C" fn murmur_cloud_capabilities() -> *mut c_char {
+    guard(std::ptr::null_mut(), || {
+        out_string(json_api::cloud_capabilities())
+    })
+}
+
+/// Provider presets as a JSON array (`[]` without feature `cloud`).
+#[no_mangle]
+pub extern "C" fn murmur_cloud_presets() -> *mut c_char {
+    guard(std::ptr::null_mut(), || {
+        out_string(json_api::cloud_presets())
+    })
+}
+
+// ---- D28 OpenRouter-only cloud ----------------------------------------------
+
+fn int_result(r: Result<(), (&'static str, String)>) -> c_int {
+    r.map_or_else(
+        |(kind, e)| {
+            set_error_kind(kind, e);
+            -1
+        },
+        |_| 0,
+    )
+}
+
+/// One-time schema-1 → 2 migration of a router config JSON:
+/// `{"config":RouterConfig,"report":MigrationReport}`; NULL + `bad_config`
+/// on bad JSON. Pure (no handle, no network).
+///
+/// # Safety
+/// `json` valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_migrate_cloud(json: *const c_char) -> *mut c_char {
+    guard(std::ptr::null_mut(), || {
+        let Some(j) = str_arg(json) else {
+            set_error_kind("bad_config", "bad_config: null router config");
+            return std::ptr::null_mut();
+        };
+        match json_api::migrate_cloud(j) {
+            Ok(s) => out_string(s),
+            Err((kind, e)) => {
+                set_error_kind(kind, e);
+                std::ptr::null_mut()
+            }
+        }
+    })
+}
+
+/// Merge `{"allow_cloud_cleanup"?,"cleanup_order"?,"cleanup_off"?,"cleanup"?}` into the
+/// router config. 0 ok, -1 (`bad_config`, `error` for a core handle).
+///
+/// # Safety
+/// `h` a handle or NULL; `json` valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_set_cleanup(h: *mut MurmurHandle, json: *const c_char) -> c_int {
+    guard(-1, || {
+        let (Some(h), Some(j)) = (h.as_ref(), str_arg(json)) else {
+            set_error("null handle or cleanup config");
+            return -1;
+        };
+        int_result(json_api::set_cleanup(h, j))
+    })
+}
+
+/// Command Mode: rewrite `selected` (NULL / blank = generate at the cursor)
+/// per the spoken `instruction` on the cleanup route. BLOCKS (LLM call).
+/// `{"ok":true,"text":…}` / `{"ok":false,"kind":…,"error":…}`; NULL only
+/// for a NULL handle or instruction.
+///
+/// # Safety
+/// `h` a handle or NULL; strings valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_command(
+    h: *mut MurmurHandle,
+    instruction: *const c_char,
+    selected: *const c_char,
+) -> *mut c_char {
+    guard(std::ptr::null_mut(), || {
+        let (Some(h), Some(i)) = (h.as_ref(), str_arg(instruction)) else {
+            set_error("null handle or instruction");
+            return std::ptr::null_mut();
+        };
+        out_string(json_api::command(h, i, str_arg(selected)))
+    })
+}
+
+/// `CleanupStatus` JSON.
+///
+/// # Safety
+/// `h` a handle or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_cleanup_status(h: *mut MurmurHandle) -> *mut c_char {
+    guard(std::ptr::null_mut(), || match h.as_ref() {
+        Some(h) => out_string(json_api::cleanup_status(h)),
+        None => std::ptr::null_mut(),
+    })
+}
+
+/// The pending one-time migration notice, or NULL.
+///
+/// # Safety
+/// `h` a handle or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_cloud_notice(h: *mut MurmurHandle) -> *mut c_char {
+    guard(std::ptr::null_mut(), || {
+        match h.as_ref().and_then(json_api::cloud_notice) {
+            Some(n) => out_string(n),
+            None => std::ptr::null_mut(),
+        }
+    })
+}
+
+/// The notice was shown; it is not returned again.
+///
+/// # Safety
+/// `h` a handle or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_ack_cloud_notice(h: *mut MurmurHandle) {
+    if let Some(h) = h.as_ref() {
+        guard((), || json_api::ack_cloud_notice(h));
+    }
+}
+
+/// Select the model of `use_` (`"stt"` / `"cleanup"`). 0 ok, -1 `bad_config`.
+///
+/// # Safety
+/// `h` a handle or NULL; strings valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_set_cloud_model(
+    h: *mut MurmurHandle,
+    use_: *const c_char,
+    model: *const c_char,
+) -> c_int {
+    guard(-1, || {
+        let (Some(h), Some(u), Some(m)) = (h.as_ref(), str_arg(use_), str_arg(model)) else {
+            set_error("null handle, use or model");
+            return -1;
+        };
+        int_result(json_api::set_cloud_model(h, u, m))
+    })
+}
+
+/// Catalogue cache directory (`<dir>/openrouter-catalog.json`). No network.
+///
+/// # Safety
+/// `dir` valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_set_cloud_cache_dir(dir: *const c_char) {
+    if let Some(d) = str_arg(dir) {
+        guard((), || json_api::set_cloud_cache_dir(d));
+    }
+}
+
+/// Picker rows JSON for `use_` ("stt"/"cleanup"); no network.
+///
+/// # Safety
+/// Strings valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_cloud_catalog(
+    use_: *const c_char,
+    query: *const c_char,
+    filters_json: *const c_char,
+) -> *mut c_char {
+    guard(std::ptr::null_mut(), || {
+        out_string(json_api::cloud_catalog(
+            str_arg(use_).unwrap_or(""),
+            str_arg(query).unwrap_or(""),
+            str_arg(filters_json).unwrap_or("{}"),
+        ))
+    })
+}
+
+/// Blocking catalogue refresh; status JSON (+ `error`).
+///
+/// # Safety
+/// `h` a handle or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_refresh_cloud_catalog(
+    h: *mut MurmurHandle,
+    force: c_int,
+) -> *mut c_char {
+    guard(std::ptr::null_mut(), || {
+        out_string(json_api::refresh_cloud_catalog(h.as_ref(), force != 0))
+    })
+}
+
+/// Blocking "Check key": `KeyInfo` JSON or `{"error":code}`.
+///
+/// # Safety
+/// `h` a handle or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_cloud_key_info(h: *mut MurmurHandle) -> *mut c_char {
+    guard(std::ptr::null_mut(), || match h.as_ref() {
+        Some(h) => out_string(json_api::cloud_key_info(h)),
+        None => out_string(r#"{"error":"cloud_not_configured"}"#.into()),
+    })
+}
+
+/// Last error on this thread ("" if none). Valid until the next call on it.
+#[no_mangle]
+pub extern "C" fn murmur_last_error() -> *const c_char {
+    LAST_ERROR.with(|e| e.borrow().as_ptr())
+}
+
+/// Stable kind of the last error on this thread: "" (none / last load
+/// succeeded), "bad_config", "model_not_found", "llm_lib_not_found",
+/// "load", the router kinds ("no_engine_enabled", "local_not_ready",
+/// "server_not_configured", "server_unavailable"), or "error". Valid until the next call on it.
+#[no_mangle]
+pub extern "C" fn murmur_last_error_kind() -> *const c_char {
+    LAST_ERROR_KIND.with(|e| e.borrow().as_ptr())
+}
+
+/// # Safety
+/// `s` must be NULL or a string returned by this library.
+#[no_mangle]
+pub unsafe extern "C" fn murmur_string_free(s: *mut c_char) {
+    if !s.is_null() {
+        drop(CString::from_raw(s));
+    }
+}

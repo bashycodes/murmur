@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <title>Style</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="flow-theme.css">
-<link rel="stylesheet" href="ds/flow/components/bundle.css">
-<script src="ds/flow/components/bundle.js"></script>
+<link rel="stylesheet" href="murmur-theme.css">
+<link rel="stylesheet" href="ds/murmur/components/bundle.css">
+<script src="ds/murmur/components/bundle.js"></script>
 </head>
 <body>
 <x-dc>
@@ -19,10 +19,10 @@ a{color:#1a1a1a}a:hover{color:#30302f}
 </helmet>
 <div class="fl" style="width: 1280px; height: 800px; display: flex; flex-direction: column; background: var(--background-tertiary); font-family: var(--font-sans); color: var(--foreground); overflow: hidden;">
   <header style="height: 44px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 16px;">
-    <x-import component-from-global-scope="Flow.IconButton" icon="panel" label="Collapse sidebar" variant="titlebar"></x-import>
+    <x-import component-from-global-scope="Murmur.IconButton" icon="panel" label="Collapse sidebar" variant="titlebar"></x-import>
     <div style="display: flex; align-items: center; gap: 4px;">
-      <x-import component-from-global-scope="Flow.IconButton" icon="moon" label="Theme" variant="titlebar"></x-import>
-      <x-import component-from-global-scope="Flow.IconButton" icon="bell" label="Notifications" variant="titlebar"></x-import>
+      <x-import component-from-global-scope="Murmur.IconButton" icon="moon" label="Theme" variant="titlebar"></x-import>
+      <x-import component-from-global-scope="Murmur.IconButton" icon="bell" label="Notifications" variant="titlebar"></x-import>
       <span style="width: 132px;"></span>
     </div>
   </header>
@@ -55,7 +55,7 @@ a{color:#1a1a1a}a:hover{color:#30302f}
 
         <div role="radiogroup" aria-label="Writing style" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px;">
           <sc-for list="{{options}}" as="o" hint-placeholder-count="3">
-            <x-import component-from-global-scope="Flow.OptionCard" title="{{o.title}}" subtitle="{{o.sub}}" sample="{{o.sample}}" avatar-tone="{{o.tone}}" selected="{{o.selected}}" on-click="{{o.pick}}" style="display: block;"></x-import>
+            <x-import component-from-global-scope="Murmur.OptionCard" title="{{o.title}}" subtitle="{{o.sub}}" sample="{{o.sample}}" avatar-tone="{{o.tone}}" selected="{{o.selected}}" on-click="{{o.pick}}" style="display: block;"></x-import>
           </sc-for>
         </div>
       </div>

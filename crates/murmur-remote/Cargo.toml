@@ -1,0 +1,47 @@
+[package]
+name = "murmur-remote"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+description = "RemoteBackend: WebSocket client of murmur-server behind murmur_router::Router (the only client-side network code)"
+
+[features]
+default = []
+# wss:// with rustls (Mozilla roots via webpki-roots, or a pinned leaf cert).
+tls = ["dep:tokio-rustls", "dep:rustls", "dep:webpki-roots", "dep:sha2"]
+# Model library client (D40/D41): `GET /v1/models` + resumable, verified
+# downloads over HTTP/1.1 on the same port, TLS pin and key as dictation.
+library = ["dep:hyper", "dep:hyper-util", "dep:http-body-util", "dep:sha2"]
+
+[dependencies]
+murmur-core = { path = "../murmur-core", default-features = false }
+murmur-protocol = { path = "../murmur-protocol" }
+murmur-router = { path = "../murmur-router" }
+serde.workspace = true
+serde_json.workspace = true
+tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "sync", "macros", "io-util"] }
+tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "handshake"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+tokio-rustls = { version = "0.26", optional = true, default-features = false, features = ["ring", "tls12"] }
+rustls = { version = "0.23", optional = true, default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = { version = "1", optional = true }
+sha2 = { version = "0.10", optional = true }
+hyper = { version = "1", optional = true, default-features = false, features = ["client", "http1"] }
+hyper-util = { version = "0.1", optional = true, default-features = false, features = ["tokio"] }
+http-body-util = { version = "0.1", optional = true }
+
+[dev-dependencies]
+# tests/library.rs: a real in-process murmur-server with a temp library.
+murmur-server = { path = "../murmur-server", default-features = false, features = ["tls"] }
+tempfile = "3"
+# examples/airgap_e2e.rs reads the test clip.
+murmur-core = { path = "../murmur-core", default-features = false, features = ["wav"] }
+
+[[test]]
+name = "library"
+required-features = ["library"]
+
+# tools/e2e/airgap/run.sh: the client half of the air-gapped end-to-end check.
+[[example]]
+name = "airgap_e2e"
+required-features = ["library"]

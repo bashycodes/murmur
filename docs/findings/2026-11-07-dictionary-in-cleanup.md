@@ -27,7 +27,7 @@ a tidy line that held a misspelled entry (synthetic set: the model ran on
    under 2 letters or digits ("C++") are never named, and an entry already
    spelled right is not named. A dictation with nothing near gets the
    prompt without a dictionary.
-2. **Prompt rules.** v2 (on-device, flow-server) and v5 (D30 AI cleanup)
+2. **Prompt rules.** v2 (on-device, murmur-server) and v5 (D30 AI cleanup)
    say a word that sounds like an entry and is meant as that name takes the
    entry's spelling, and an ordinary word stays. The DICTIONARY line stays
    in the per-dictation user message, so the cached system prompt and
@@ -42,7 +42,7 @@ a tidy line that held a misspelled entry (synthetic set: the model ran on
    joined or spaced, is near an entry (`terms::names_a_term`): "bop bop"
    for BopBop reaches prompt v2 whole instead of as "bop".
 5. **One prompt builder.** `cleanup::session_prompt` builds every session
-   cleanup prompt; the engine and flow-replay's prompt override both call
+   cleanup prompt; the engine and murmur-replay's prompt override both call
    it, so a replay builds the prompt the product sends.
 
 A first version also added a built-in list of 16 product names, behind a
@@ -60,7 +60,7 @@ it was not built or measured here.
 
 Main set (13 real clips, owner dictionary in the session; terms / WER /
 format). "Before" = base commit with the same dictionary. Rows other than
-AI 3B and flow-server were measured with the built-in list still in; the
+AI 3B and murmur-server were measured with the built-in list still in; the
 owner dictionary already holds the names the main set scores, and the
 AI 3B rerun without the list matched (13/15, 3/4, 14.4 %, 25/31).
 
@@ -68,13 +68,13 @@ AI 3B rerun without the list matched (13/15, 3/4, 14.4 %, 25/31).
 |---|---|---|---|---|---|
 | AI cleanup | Qwen2.5 3B | 8 → 13/15 | 0 → 3/4 | 16.6 → 14.4 % | 24 → 25/31 |
 | AI cleanup | Qwen2.5 1.5B | 8 → 9/15 | 0 → 0/4 | 13.1 → 12.4 % | 18 → 18/31 |
-| flow-server | 1.5B | 8, 8 → 9, 8, 8/15 | 0 → 0/4 | 11.5, 9.8 → 12.0, 10.7, 10.7 % | 19, 19 → 18, 19, 19/31 |
+| murmur-server | 1.5B | 8, 8 → 9, 8, 8/15 | 0 → 0/4 | 11.5, 9.8 → 12.0, 10.7, 10.7 % | 19, 19 → 18, 19, 19/31 |
 | phone (3 s budget) | 1.5B | 8 → 8/15 | 0 → 0/4 | 10.0 → 9.8 % | 18 → 18/31 |
 | PC (3 s budget) | 3B | 10 → 10/15 | 0 → 0/4 | 9.6 → 9.6 % | 21 → 21/31 |
 
 On the phone and PC most main clips are long and hit the 3 s LLM budget,
 so the model's output is not used at all; the change cannot show there.
-flow-server lists every run: base twice, after three times (the last with
+murmur-server lists every run: base twice, after three times (the last with
 the final code). Its first after run's 18/31 and 12.0 % are noise: the
 reruns give 19/31 and 10.7 %, and the base itself moved 11.5 → 9.8 %
 between runs (several clips hit the 8 s budget, which varies with load).
@@ -89,7 +89,7 @@ shows only what a model knows of those names unaided:
 |---|---|---|---|---|---|
 | AI 3B | 28/34 | 24/34 | 10 → 8/12 | 4 → 3/8 (7) | 12 → 11/12 |
 | AI 1.5B | 23/34 | 24/34 | 6 → 6/12 | 3 → 4/8 (6) | 12/12 |
-| flow-server 1.5B | 21/34 | 24/34 | 4 → 7/12 | 3 → 3/8 (5) | 12/12 |
+| murmur-server 1.5B | 21/34 | 24/34 | 4 → 7/12 | 3 → 3/8 (5) | 12/12 |
 | phone 1.5B | 14/34 | 21/34 | 0 → 7/12 | 0 → 0/8 (5) | 12/12 |
 | PC 3B | 14/34 | 20/34 | 0 → 7/12 | 0 → 0/8 (4) | 12 → 11/12 |
 
@@ -137,16 +137,16 @@ per named entry).
   every run. AI 3B after: 30/39 (lists 8/12, corrections 8/9, negatives
   14/16); its base run did not finish within the run limit.
 - Numbers (`numbers_2026_11_06`, 61 cases): 67/67 checks before and after
-  on the phone and flow-server.
+  on the phone and murmur-server.
 - Main set: format checks (lists, quotes, parentheses, new lines) 0 to +1
-  per path, except flow-server 19 → 18/31; WER down on every AI path except
-  flow-server (11.5 → 12.0 %).
+  per path, except murmur-server 19 → 18/31; WER down on every AI path except
+  murmur-server (11.5 → 12.0 %).
 
 ## Gaps
 
 - The 1.5B rarely rewrites a sound-alike that is itself a real word
   ("whisper" for an entry spelled otherwise); the 3B does. That is a model
-  limit on the phone, flow-server's default model and the 1.5B AI path.
+  limit on the phone, murmur-server's default model and the 1.5B AI path.
 - Product names that are not in the user's dictionary are left to what the
   model knows (B group above).
 - A short misspelling such as "Daro" for Darrow is too far to be named.

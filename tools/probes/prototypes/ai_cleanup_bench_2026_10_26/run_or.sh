@@ -3,12 +3,12 @@
 # OpenRouterCleaner (D28: provider zdr:true, data_collection deny, sort
 # latency), prompt v4b, both guards, the same 102 cases.
 # usage: run_or.sh LABEL MODEL_ID
-# The key is read from ~/.config/flow-clone/openrouter.key into this process's
+# The key is read from ~/.config/murmur/openrouter.key into this process's
 # env only (never an argument, never printed). Total spend over all or_*
 # results is capped at $CAP (default 1.50): the runner gets the remainder and
 # stops when it is used up.
 #
-# Prompt v4c rerun (2026-10-26): PROMPT_VERSION=v4c uses flow-core's built-in
+# Prompt v4c rerun (2026-10-26): PROMPT_VERSION=v4c uses murmur-core's built-in
 # prompt v4c instead of prompt_v4b.json; SPENT_GLOB (default or_*) picks the
 # runs the cap counts (v4c reruns: SPENT_GLOB='or_v4c*' CAP=0.50); CASES may
 # point at a subset of results/all_cases.jsonl.
@@ -36,7 +36,7 @@ echo "== $label $model $(date +%T) spent so far \$$spent, left \$$left" >&2
 python3 -c "import sys; sys.exit(0 if $left > 0.01 else 1)" || { echo "cap reached" >&2; exit 4; }
 cases="${CASES:-$here/results/all_cases.jsonl}"
 cat "$here/../formatting_eval_2026_10_24/cases.jsonl" > "$here/results/all_cases.jsonl"
-OPENROUTER_KEY="$(cat "$HOME/.config/flow-clone/openrouter.key")"
+OPENROUTER_KEY="$(cat "$HOME/.config/murmur/openrouter.key")"
 export OPENROUTER_KEY
 nice -n 10 "$bin" --mode ai --cases "$cases" --session "$here/sessions/prod.json" \
   --openrouter "$model" "${prompt_args[@]}" --timeout-ms 8000 --max-spend "$left" \

@@ -5,8 +5,8 @@
 # (--no-whisper, forced back on by lid_path & co.) and an in-place upgrade.
 # No systemd, model or build needed: a stub `systemctl` on PATH answers only
 # when $XDG_RUNTIME_DIR/bus is a socket, a fake /run/user root is passed
-# through FLOW_INSTALL_RUN_USER, and real (non-dry) runs use --no-build with
-# a stub flow-server and plugin in a fake CARGO_TARGET_DIR.
+# through MURMUR_INSTALL_RUN_USER, and real (non-dry) runs use --no-build with
+# a stub murmur-server and plugin in a fake CARGO_TARGET_DIR.
 #
 #   tools/server/test-install.sh
 set -euo pipefail
@@ -30,7 +30,7 @@ mkbus() { python3 -c 'import socket,sys; socket.socket(socket.AF_UNIX).bind(sys.
 inst() {
     local rc=0 out
     out="$(env -u DBUS_SESSION_BUS_ADDRESS PATH="$T/bin:$PATH" HOME="$T/home" XDG_CONFIG_HOME="$T/home/.config" \
-        FLOW_INSTALL_RUN_USER="$T/run" XDG_RUNTIME_DIR="$1" \
+        MURMUR_INSTALL_RUN_USER="$T/run" XDG_RUNTIME_DIR="$1" \
         bash "$HERE/install.sh" --user --model "$T/model" --sherpa-lib "$T/lib" \
         --bind 127.0.0.1:7313 "${@:2}" 2>&1)" || rc=$?
     printf '%s\nrc=%s\n' "$out" "$rc"
@@ -66,18 +66,18 @@ o="$(inst "$T/run/$(id -u)" --dry-run)"
 check "good env: no note" "$o" "note: no user bus" "!"
 check "good env: completes" "$o" "rc=0"
 
-# 4. --llm: llm feature, the flow-llm plugin build and install, bindgen's
+# 4. --llm: llm feature, the murmur-llm plugin build and install, bindgen's
 # include path (from gcc, unless the caller set it).
 R="$T/run/$(id -u)"
-CONF="$T/home/.config/flow-server/config.toml"
+CONF="$T/home/.config/murmur-server/config.toml"
 o="$(inst "$R" --dry-run)"
 check "no llm: whisper on by default" "$o" "--features whisper,parakeet,tls\$"
-check "no llm: no plugin build" "$o" "-p flow-llm" "!"
+check "no llm: no plugin build" "$o" "-p murmur-llm" "!"
 check "no llm: summary says off" "$o" "llm      off"
 o="$(inst "$R" --dry-run --llm)"
 check "--llm: llm feature" "$o" "--features whisper,parakeet,tls,llm"
-check "--llm: plugin build" "$o" "cargo build --release --offline .* -p flow-llm"
-check "--llm: plugin installed" "$o" "install -m 0644 $T/target/release/libflow_llm.so $T/home/.local/lib/flow-server/libflow_llm.so.new"
+check "--llm: plugin build" "$o" "cargo build --release --offline .* -p murmur-llm"
+check "--llm: plugin installed" "$o" "install -m 0644 $T/target/release/libmurmur_llm.so $T/home/.local/lib/murmur-server/libmurmur_llm.so.new"
 check "--llm: new config has commented llm_path" "$o" "| # llm_path = "
 if command -v gcc >/dev/null 2>&1 && [ -f "$(gcc -print-file-name=include)/stdbool.h" ]; then
     check "--llm: bindgen gets gcc include" "$o" "BINDGEN_EXTRA_CLANG_ARGS=-I$(gcc -print-file-name=include) "
@@ -91,52 +91,52 @@ mkdir -p "$(dirname "$CONF")"
 printf '[model]\n# llm_path = "/x.gguf"\n' >"$CONF"
 o="$(inst "$R" --dry-run)"
 check "commented llm_path: stays off" "$o" "--features whisper,parakeet,tls\$"
-printf '[model]\nllm_path = "/m/q.gguf"\nllm_lib = "%s"\n' "$T/home/.local/lib/flow-server/libflow_llm.so" >"$CONF"
+printf '[model]\nllm_path = "/m/q.gguf"\nllm_lib = "%s"\n' "$T/home/.local/lib/murmur-server/libmurmur_llm.so" >"$CONF"
 o="$(inst "$R" --dry-run)"
 check "config llm_path: note" "$o" "sets llm_path; building with LLM cleanup"
 check "config llm_path: llm feature" "$o" "--features whisper,parakeet,tls,llm"
 check "config llm_path: matching llm_lib, no warning" "$o" "warning:" "!"
-printf '[model]\n  llm_path = "/m/q.gguf"\nllm_lib = "/elsewhere/libflow_llm.so"\n' >"$CONF"
+printf '[model]\n  llm_path = "/m/q.gguf"\nllm_lib = "/elsewhere/libmurmur_llm.so"\n' >"$CONF"
 o="$(inst "$R" --dry-run)"
 check "config llm_path (indented): llm feature" "$o" "--features whisper,parakeet,tls,llm"
-check "other llm_lib: warning" "$o" "warning: .*llm_lib = \"/elsewhere/libflow_llm.so\""
+check "other llm_lib: warning" "$o" "warning: .*llm_lib = \"/elsewhere/libmurmur_llm.so\""
 
 # 6. Real runs (--no-build, stub binary + plugin): existing config and token
 # are kept byte for byte, the plugin is installed; a missing plugin stops.
-cat >"$T/target/release/flow-server" <<'EOF'
+cat >"$T/target/release/murmur-server" <<'EOF'
 #!/usr/bin/env bash
 case "$1" in
     gen-token) echo "stub-token" >"$3" ;;
     check-config) echo "config ok" ;;
 esac
 EOF
-chmod +x "$T/target/release/flow-server"
+chmod +x "$T/target/release/murmur-server"
 printf '[model]\nllm_path = "/m/q.gguf"\n# user edit\n' >"$CONF"
-echo "user-token" >"$T/home/.config/flow-server/token"
+echo "user-token" >"$T/home/.config/murmur-server/token"
 cp "$CONF" "$T/conf.before"
 o="$(inst "$R" --no-build)"
 check "real, no plugin built: exits 1" "$o" "rc=1"
-check "real, no plugin built: names it" "$o" "libflow_llm.so not built"
-echo plugin >"$T/target/release/libflow_llm.so"
+check "real, no plugin built: names it" "$o" "libmurmur_llm.so not built"
+echo plugin >"$T/target/release/libmurmur_llm.so"
 o="$(inst "$R" --no-build)"
 check "real: completes" "$o" "rc=0"
 check "real: config kept" "$o" "config.toml exists, kept"
 check "real: token kept" "$o" "token exists, kept"
 check "real: config unchanged" "$(cmp "$T/conf.before" "$CONF" && echo same)" "same"
-check "real: token unchanged" "$(cat "$T/home/.config/flow-server/token")" "^user-token$"
-check "real: plugin installed" "$(cat "$T/home/.local/lib/flow-server/libflow_llm.so" 2>&1)" "^plugin$"
+check "real: token unchanged" "$(cat "$T/home/.config/murmur-server/token")" "^user-token$"
+check "real: plugin installed" "$(cat "$T/home/.local/lib/murmur-server/libmurmur_llm.so" 2>&1)" "^plugin$"
 
 # 7. Fresh install with --llm-model: the GGUF is copied next to the ASR
 # model and the new config points at it and at the plugin.
 rm -rf "${T:?}/home"
 echo gguf >"$T/q.gguf"
 o="$(inst "$R" --no-build --llm-model "$T/q.gguf")"
-M="$T/home/.local/share/flow-server/models"
+M="$T/home/.local/share/murmur-server/models"
 check "--llm-model: completes" "$o" "rc=0"
 check "--llm-model: gguf copied" "$(cat "$M/q.gguf" 2>&1)" "^gguf$"
 check "--llm-model: config llm_path" "$(cat "$CONF")" "^llm_path = \"$M/q.gguf\"$"
-check "--llm-model: config llm_lib" "$(cat "$CONF")" "^llm_lib = \"$T/home/.local/lib/flow-server/libflow_llm.so\"$"
-check "--llm-model: token generated" "$(cat "$T/home/.config/flow-server/token")" "^stub-token$"
+check "--llm-model: config llm_lib" "$(cat "$CONF")" "^llm_lib = \"$T/home/.local/lib/murmur-server/libmurmur_llm.so\"$"
+check "--llm-model: token generated" "$(cat "$T/home/.config/murmur-server/token")" "^stub-token$"
 o="$(inst "$R" --dry-run --llm-model "$T/nope.gguf")"
 check "--llm-model missing file: exits 1" "$o" "rc=1"
 
@@ -150,7 +150,7 @@ chmod +x "$T/bin/ip"
 nobind() {
     local rc=0 out
     out="$(env -u DBUS_SESSION_BUS_ADDRESS PATH="$T/bin:$PATH" HOME="$T/home" XDG_CONFIG_HOME="$T/home/.config" \
-        FLOW_INSTALL_RUN_USER="$T/run" XDG_RUNTIME_DIR="$R" IP_ADDRS="$1" \
+        MURMUR_INSTALL_RUN_USER="$T/run" XDG_RUNTIME_DIR="$R" IP_ADDRS="$1" \
         bash "$HERE/install.sh" --user --model "$T/model" --sherpa-lib "$T/lib" --dry-run 2>&1)" || rc=$?
     printf '%s\nrc=%s\n' "$out" "$rc"
 }
@@ -195,41 +195,41 @@ check "--no-whisper, commented lid_path: stays off" "$o" "--features parakeet,tl
 # asr_path is reused; config, token, keys, models kept; whisper and llm
 # built; the service restarted with --start.
 rm -rf "${T:?}/home"
-M="$T/home/.local/share/flow-server/models"
+M="$T/home/.local/share/murmur-server/models"
 P="$M/parakeet-installed"
-mkdir -p "$P" "$M/zipformer-he" "$(dirname "$CONF")" "$T/home/.local/state/flow-server"
+mkdir -p "$P" "$M/zipformer-he" "$(dirname "$CONF")" "$T/home/.local/state/murmur-server"
 echo tokens >"$P/tokens.txt"
 echo he >"$M/zipformer-he/tokens.txt"
 echo lid >"$M/ggml-tiny-q5_1.bin"
 echo gguf >"$M/q.gguf"
 cat >"$CONF" <<EOC
 bind = ["127.0.0.1:7313"]
-token_file = "$T/home/.config/flow-server/token"
+token_file = "$T/home/.config/murmur-server/token"
 [model]
 asr_engine = "parakeet"
 asr_path = "$P"
 llm_path = "$M/q.gguf"
-llm_lib = "$T/home/.local/lib/flow-server/libflow_llm.so"
+llm_lib = "$T/home/.local/lib/murmur-server/libmurmur_llm.so"
 lid_path = "$M/ggml-tiny-q5_1.bin"
 [model.languages.he]
 asr_backend = "sherpa_online"
 asr_path = "$M/zipformer-he"
 EOC
-echo "user-token" >"$T/home/.config/flow-server/token"
-echo '{"keys":[]}' >"$T/home/.local/state/flow-server/keys.json"
+echo "user-token" >"$T/home/.config/murmur-server/token"
+echo '{"keys":[]}' >"$T/home/.local/state/murmur-server/keys.json"
 cp "$CONF" "$T/conf.before"
 (cd "$M" && find . -type f -exec sha256sum {} + | sort) >"$T/models.before"
 upgrade() {
     local rc=0 out
     out="$(env -u DBUS_SESSION_BUS_ADDRESS PATH="$T/bin:$PATH" HOME="$T/home" XDG_CONFIG_HOME="$T/home/.config" \
-        FLOW_INSTALL_RUN_USER="$T/run" XDG_RUNTIME_DIR="$R" FLOW_PARAKEET_DIR= \
+        MURMUR_INSTALL_RUN_USER="$T/run" XDG_RUNTIME_DIR="$R" MURMUR_PARAKEET_DIR= \
         bash "$HERE/install.sh" --user --sherpa-lib "$T/lib" --bind 127.0.0.1:7313 "$@" 2>&1)" || rc=$?
     printf '%s\nrc=%s\n' "$out" "$rc"
 }
 o="$(upgrade --dry-run)"
 check "upgrade: in-place note" "$o" "note: upgrading in place; model from .*: $P"
 check "upgrade: whisper + llm build" "$o" "--features whisper,parakeet,tls,llm\$"
-check "upgrade: plugin build" "$o" "-p flow-llm"
+check "upgrade: plugin build" "$o" "-p murmur-llm"
 check "upgrade: summary whisper on" "$o" "whisper  on"
 o="$(upgrade --no-build --start)"
 check "upgrade: completes" "$o" "rc=0"
@@ -237,12 +237,12 @@ check "upgrade: model kept in place" "$o" "$P is the source model, kept"
 check "upgrade: config kept" "$o" "config.toml exists, kept"
 check "upgrade: token kept" "$o" "token exists, kept"
 check "upgrade: new config checked" "$o" "check-config --config $CONF"
-check "upgrade: restarted" "$o" "systemctl --user restart flow-server"
+check "upgrade: restarted" "$o" "systemctl --user restart murmur-server"
 check "upgrade: config unchanged" "$(cmp "$T/conf.before" "$CONF" && echo same)" "same"
-check "upgrade: token unchanged" "$(cat "$T/home/.config/flow-server/token")" "^user-token$"
-check "upgrade: keys unchanged" "$(cat "$T/home/.local/state/flow-server/keys.json")" '^{"keys":\[\]}$'
+check "upgrade: token unchanged" "$(cat "$T/home/.config/murmur-server/token")" "^user-token$"
+check "upgrade: keys unchanged" "$(cat "$T/home/.local/state/murmur-server/keys.json")" '^{"keys":\[\]}$'
 check "upgrade: models unchanged" "$( (cd "$M" && find . -type f -exec sha256sum {} + | sort) | cmp - "$T/models.before" && echo same)" "same"
-check "upgrade: binary replaced" "$(cmp "$T/target/release/flow-server" "$T/home/.local/bin/flow-server" && echo same)" "same"
+check "upgrade: binary replaced" "$(cmp "$T/target/release/murmur-server" "$T/home/.local/bin/murmur-server" && echo same)" "same"
 # An asr_path without a model is not reused: the usual error.
 sed -i "s|^asr_path = \"$P\"|asr_path = \"$T/nowhere\"|" "$CONF"
 o="$(upgrade --dry-run)"
@@ -254,19 +254,19 @@ sed -i "s|^asr_path = \"$T/nowhere\"|asr_path = \"$P\"|" "$CONF"
 # are the installed files, kept (install(1) refuses "are the same file");
 # the binary is still replaced. Without --sherpa-lib the installed libs are
 # the default.
-L="$T/home/.local/lib/flow-server"
+L="$T/home/.local/lib/murmur-server"
 echo sherpa-v1 >"$L/libsherpa-onnx-c-api.so"
 echo ort-v1 >"$L/libonnxruntime.so"
-echo '#!/usr/bin/env bash' >"$T/home/.local/bin/flow-server"
+echo '#!/usr/bin/env bash' >"$T/home/.local/bin/murmur-server"
 o="$(upgrade --no-build --sherpa-lib "$L")"
 check "same lib dir: completes" "$o" "rc=0"
 check "same lib dir: no same-file error" "$o" "are the same file" "!"
 check "same lib dir: libs kept" "$o" "$L/libonnxruntime.so is the source, kept"
 check "same lib dir: lib content kept" "$(cat "$L/libsherpa-onnx-c-api.so")" "^sherpa-v1$"
-check "same lib dir: binary replaced" "$(cmp "$T/target/release/flow-server" "$T/home/.local/bin/flow-server" && echo same)" "same"
+check "same lib dir: binary replaced" "$(cmp "$T/target/release/murmur-server" "$T/home/.local/bin/murmur-server" && echo same)" "same"
 check "same lib dir: nothing staged left" "$(ls "$L" "$T/home/.local/bin")" "\.new" "!"
 o="$(env -u DBUS_SESSION_BUS_ADDRESS -u SHERPA_ONNX_LIB_DIR PATH="$T/bin:$PATH" HOME="$T/home" XDG_CONFIG_HOME="$T/home/.config" \
-    FLOW_INSTALL_RUN_USER="$T/run" XDG_RUNTIME_DIR="$R" FLOW_PARAKEET_DIR= \
+    MURMUR_INSTALL_RUN_USER="$T/run" XDG_RUNTIME_DIR="$R" MURMUR_PARAKEET_DIR= \
     bash "$HERE/install.sh" --user --bind 127.0.0.1:7313 --no-build 2>&1; echo "rc=$?")"
 check "no --sherpa-lib: installed libs used" "$o" "note: upgrading in place; sherpa libs from $L"
 check "no --sherpa-lib: completes" "$o" "rc=0"
@@ -278,16 +278,56 @@ if [ "$(id -u)" != 0 ]; then
     echo sherpa-v2 >"$T/badlib/libsherpa-onnx-c-api.so"
     echo ort-v2 >"$T/badlib/libonnxruntime.so"
     chmod 000 "$T/badlib/libonnxruntime.so"
-    cp "$T/home/.local/bin/flow-server" "$T/bin.before"
-    printf '#!/usr/bin/env bash\n# v2\n' >"$T/target/release/flow-server"
+    cp "$T/home/.local/bin/murmur-server" "$T/bin.before"
+    printf '#!/usr/bin/env bash\n# v2\n' >"$T/target/release/murmur-server"
     o="$(upgrade --no-build --sherpa-lib "$T/badlib")"
     check "failed copy: exits 1" "$o" "rc=1"
     check "failed copy: says unchanged" "$o" "installed binary and libraries are unchanged"
-    check "failed copy: old binary kept" "$(cmp "$T/bin.before" "$T/home/.local/bin/flow-server" && echo same)" "same"
+    check "failed copy: old binary kept" "$(cmp "$T/bin.before" "$T/home/.local/bin/murmur-server" && echo same)" "same"
     check "failed copy: old libs kept" "$(cat "$L/libsherpa-onnx-c-api.so")" "^sherpa-v1$"
     check "failed copy: nothing staged left" "$(ls "$L" "$T/home/.local/bin")" "\.new" "!"
     chmod 644 "$T/badlib/libonnxruntime.so"
 fi
+
+# 13. D83: an install from before the rename (flow-server paths) and no new
+# config: its config and token are copied once (keys are not), the old
+# files and the old unit are left alone (with a warning about the shared port).
+printf '#!/usr/bin/env bash\ncase "$1" in gen-token) echo new >"$3";; esac\nexit 0\n' >"$T/target/release/murmur-server"
+chmod +x "$T/target/release/murmur-server"
+H="$T/home2"
+OC="$H/.config/flow-server"
+mkdir -p "$OC" "$H/.local/state/flow-server" "$H/.config/systemd/user"
+cat >"$OC/config.toml" <<EOC
+bind = ["127.0.0.1:7313"]
+token_file = "$OC/token"
+[model]
+asr_engine = "parakeet"
+asr_path = "$P"
+llm_path = "$M/q.gguf"
+llm_lib = "$H/.local/lib/flow-server/libflow_llm.so"
+EOC
+echo "old-synthetic-token" >"$OC/token"
+echo '{"keys":["synthetic"]}' >"$H/.local/state/flow-server/keys.json"
+touch "$H/.config/systemd/user/flow-server.service"
+cp "$OC/config.toml" "$T/oldconf.before"
+o="$(env -u DBUS_SESSION_BUS_ADDRESS -u XDG_STATE_HOME PATH="$T/bin:$PATH" HOME="$H" XDG_CONFIG_HOME="$H/.config" \
+    MURMUR_INSTALL_RUN_USER="$T/run" XDG_RUNTIME_DIR="$R" MURMUR_PARAKEET_DIR= \
+    bash "$HERE/install.sh" --user --sherpa-lib "$T/lib" --bind 127.0.0.1:7313 --no-build 2>&1; echo "rc=$?")"
+NC="$H/.config/murmur-server"
+check "old install: completes" "$o" "rc=0"
+check "old install: note" "$o" "copying the config and token of the install from before the rename"
+check "old install: model from the old config" "$o" "upgrading in place; model from .*flow-server/config.toml: $P"
+check "old install: llm on from the old config" "$o" "llm      on"
+check "old install: token copied" "$(cat "$NC/token")" "^old-synthetic-token$"
+check "old install: token_file rewritten" "$(cat "$NC/config.toml")" "^token_file = \"$NC/token\"$"
+check "old install: llm_lib rewritten" "$(cat "$NC/config.toml")" "^llm_lib = \"$H/.local/lib/murmur-server/libmurmur_llm.so\"$"
+check "old install: keys not carried over" "$(ls "$H/.local/state")" "murmur-server" "!"
+check "old install: keys note" "$o" "keys of the old install are not carried over"
+check "old install: old config unchanged" "$(cmp "$T/oldconf.before" "$OC/config.toml" && echo same)" "same"
+check "old install: old keys kept" "$(cat "$H/.local/state/flow-server/keys.json")" "synthetic"
+check "old install: old unit warning" "$o" "warning: the unit from before the rename"
+check "old install: old unit not touched" "$o" "disable --now flow-server"
+check "old install: old unit still there" "$(ls "$H/.config/systemd/user")" "flow-server.service"
 
 if [ "$fails" != 0 ]; then echo "$fails failed"; exit 1; fi
 echo "all passed"

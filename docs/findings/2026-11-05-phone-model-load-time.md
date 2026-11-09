@@ -14,7 +14,7 @@ model too?
   a load created **four** encoder sessions, one after the other. Parakeet sets
   `model_type = nemo_transducer`, so it never paid this, which is why Parakeet-he (about 9×
   bigger) loaded faster on the phone (4.7 s) than the zipformer (16.6 s).
-* **Fixed** (`flow-asr-sherpa`): the app reads `model_type` from the encoder's metadata
+* **Fixed** (`murmur-asr-sherpa`): the app reads `model_type` from the encoder's metadata
   itself (top-level protobuf fields only; the graph is skipped by its length, so it reads a
   few hundred bytes) and passes it to sherpa; and the beam and greedy recognizers are created
   on two threads at once. On the i7-6700: **6.7 s → 2.2 s**, same text. The phone is not
@@ -30,7 +30,7 @@ model too?
   (D54), a switch to or from Hebrew frees the engine and loads the other speech model; the
   cleanup LLM (Qwen2.5-1.5B, 38.1 s on the phone, of which 34.4 s is the static prompt
   prefill) was loaded again with it. The phone now keeps the loaded LLM and the next load
-  reuses it (`FlowCore::keep_llm`, `nativeKeepLlm(h)`: the LLM of the engine being freed,
+  reuses it (`MurmurCore::keep_llm`, `nativeKeepLlm(h)`: the LLM of the engine being freed,
   not whichever loaded last; a load whose speech model fails puts it back for the retry).
 * **Every load logs its timings** per model and phase (§ What the log line says).
 
@@ -38,7 +38,7 @@ model too?
 
 Model: `zipformer2-66m-streaming-he-int8` (encoder 70.5 MB, decoder 1.0 MB, joiner 0.8 MB),
 4 threads, files in the page cache, three runs each. Tool:
-`cargo run --release -p flow-asr-sherpa --example online_check -- MODEL_DIR [--serial] [--greedy]`.
+`cargo run --release -p murmur-asr-sherpa --example online_check -- MODEL_DIR [--serial] [--greedy]`.
 
 | build | beam + greedy | greedy only |
 |---|---|---|
@@ -62,7 +62,7 @@ Model: `zipformer2-66m-streaming-he-int8` (encoder 70.5 MB, decoder 1.0 MB, join
   onnxruntime pools before, and only one decodes at a time; the parallel load overlaps only
   their setup.
 * Decoding is unchanged: the Hebrew FLEURS clip gave the same text greedy and beam
-  (`cargo test -p flow-asr-sherpa --test online` with `FLOW_ZIPFORMER_HE_DIR` + `FLOW_HE_WAV`).
+  (`cargo test -p murmur-asr-sherpa --test online` with `MURMUR_ZIPFORMER_HE_DIR` + `MURMUR_HE_WAV`).
 
 ## Why the phone was slower than the laptop
 
@@ -79,7 +79,7 @@ measured**. Two phone-only suspects remain, and the new log line checks both:
 
 With the debug log on (Settings → Debug log; nothing is logged or read otherwise), one debug
 log event `engine_load_timings` per native load, which the debug log also writes to logcat
-(tag `FlowDebug`):
+(tag `MurmurDebug`):
 
 ```json
 {"total_ms":5400,"models":[
@@ -103,7 +103,7 @@ loading thread's `Cpus_allowed_list`.
    zipformer-he.
 2. Dictate once with the English keyboard (cold load), then switch the keyboard to Hebrew and
    dictate, then back to English and dictate. Read the three `engine_load_timings` lines
-   (Settings → Debug log, or logcat tag `FlowDebug`).
+   (Settings → Debug log, or logcat tag `MurmurDebug`).
 3. Check:
    * zipformer `ms` ≪ 16.6 s (expected ~5–6 s) and `beam_sessions` ≈ `greedy_sessions` ≈
      `sessions` (they ran at once);

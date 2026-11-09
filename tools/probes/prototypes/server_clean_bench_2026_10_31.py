@@ -32,7 +32,7 @@ STYLE = {"neutral": "default"}
 async def run(a, token):
     rows = [json.loads(l) for f in CASES for l in open(f) if l.strip()]
     rows = [r for r in rows if r["category"] != "regression"]
-    async with websockets.connect(a.url + "/v1/stream", subprotocols=["flow.v1"],
+    async with websockets.connect(a.url + "/v1/stream", subprotocols=["murmur.v1"],
                                   additional_headers={"Authorization": f"Bearer {token}"},
                                   max_size=None) as ws:
         out = open(a.out, "w")

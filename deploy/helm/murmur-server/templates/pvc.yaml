@@ -1,0 +1,23 @@
+{{- range $name, $p := dict "models" .Values.persistence.models "state" .Values.persistence.state }}
+{{- if not $p.existingClaim }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "murmur-server.fullname" $ }}-{{ $name }}
+  labels:
+    {{- include "murmur-server.labels" $ | nindent 4 }}
+  annotations:
+    # Keys and models survive `helm uninstall`; delete the PVC by hand.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    {{- toYaml $p.accessModes | nindent 4 }}
+  {{- with $p.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $p.size }}
+{{- end }}
+{{- end }}

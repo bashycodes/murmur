@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # A/B the LLM cleanup decode settings on the 7 messy-dictation probes.
 # usage: tools/probes/llm_ab.sh model.gguf [draft values...]   (default: 0 4 8)
-# Needs: cargo build --release -p flow-cli -p flow-llm. Prints per-call llm ms
+# Needs: cargo build --release -p murmur-cli -p murmur-llm. Prints per-call llm ms
 # and plugin counters; compare the medians, the box is shared and noisy.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -18,8 +18,8 @@ texts=(
 )
 sess="$(mktemp)"; echo '{"llm_timeout_ms":30000}' > "$sess"
 for d in ${drafts[@]}; do
-  echo "== FLOW_LLM_DRAFT=$d"
-  FLOW_LLM_DRAFT=$d "$root/target/release/flow-cli" clean --llm "$model" --session "$sess" "${texts[@]}" 2>&1 >/dev/null \
+  echo "== MURMUR_LLM_DRAFT=$d"
+  MURMUR_LLM_DRAFT=$d "$root/target/release/murmur-cli" clean --llm "$model" --session "$sess" "${texts[@]}" 2>&1 >/dev/null \
     | grep '^llm' | awk '{print $2}' | sort -n | tr '\n' ' '; echo
 done
 rm -f "$sess"

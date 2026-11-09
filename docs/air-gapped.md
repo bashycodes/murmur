@@ -1,7 +1,7 @@
-# Running Flow Clone with no internet
+# Running Murmur with no internet
 
-Flow Clone works on a network that never reaches the internet. One machine
-runs `flow-server`; it does the dictation for every PC and phone, hands out
+Murmur works on a network that never reaches the internet. One machine
+runs `murmur-server`; it does the dictation for every PC and phone, hands out
 the speech and cleanup models, and decides who may connect (one key per
 person or device). Nothing in this setup calls out: the server only
 listens, and while a server is set the apps take their models from it and
@@ -21,18 +21,18 @@ On the connected machine:
    pushing the tag; the agent that runs this repo can do it for you. Then
    download from GitHub → Releases the files listed in [Also
    bring](#also-bring).
-2. **Download the models** into a `flow-models` folder outside the repo
+2. **Download the models** into a `murmur-models` folder outside the repo
    ([Download the models](#download-the-models)).
 3. **Build the server** and, for Docker, save the image (§1).
 4. **Check the installers** against the release's `SHA256SUMS-*.txt`
    (`sha256sum -c`), then copy to the USB stick: installers, server build
-   or image, `flow-models/`, the repo.
+   or image, `murmur-models/`, the repo.
 
 On the closed network:
 
 5. Install the server (§1).
-6. Copy `flow-models/` into the server's library (§2);
-   `flow-server library list` shows 15 models, none skipped.
+6. Copy `murmur-models/` into the server's library (§2);
+   `murmur-server library list` shows 15 models, none skipped.
 7. Tell the server which models to use for speech, Hebrew, language
    detection and AI cleanup, and start it (§3).
 8. Create your admin key and one key per device (§4).
@@ -46,7 +46,7 @@ On the closed network:
 
 ## Download the models
 
-Every model any part of Flow Clone can use: 15 models, **7.0 GB** in all.
+Every model any part of Murmur can use: 15 models, **7.0 GB** in all.
 Each download link points at one fixed upstream version, and the apps
 check every file against a SHA-256 fingerprint built into them, so a copy
 made today still fits later. Take all of them: one evening of downloading,
@@ -55,13 +55,13 @@ and you never need the internet for models again.
 The list, one line per file with its link, size and fingerprint, is
 `docs/air-gapped-models.txt` (taken from the apps' built-in catalogue).
 Paste the loop below into a `bash` shell (Linux, or WSL / Git Bash on
-Windows) with `curl` and `sha256sum`. It downloads every file into `~/flow-models` (outside the
+Windows) with `curl` and `sha256sum`. It downloads every file into `~/murmur-models` (outside the
 repo), checks it, and writes the small `model.toml` label each library
 folder needs (§2). Set `LIST` to where your copy of the repo is:
 
 ```sh
-LIST=~/flow-clone/docs/air-gapped-models.txt
-mkdir -p ~/flow-models && cd ~/flow-models && test -f "$LIST" &&
+LIST=~/murmur/docs/air-gapped-models.txt
+mkdir -p ~/murmur-models && cd ~/murmur-models && test -f "$LIST" &&
 grep -v '^#' "$LIST" | grep . | {
   bad=0
   while read -r dir kind engine file size sha url title; do
@@ -126,7 +126,7 @@ Not on the list, and not needed:
 * **WebView2 offline installer** (215 MB), only for a Windows 10 PC that
   lacks WebView2 (Windows 11 always has it): without it the installer
   tries to download it. `https://go.microsoft.com/fwlink/?linkid=2124701`
-* **Android APK:** `flow-clone-android-hybrid-<version>-debug.apk` (uses
+* **Android APK:** `murmur-android-hybrid-<version>-debug.apk` (uses
   the server, falls back to the phone's own model). The `local` APK only
   for a phone that must never open a connection (§7). The release APKs are
   signed with the project's fixed debug key, not with your machine's own
@@ -149,51 +149,51 @@ distribution as the server (or an older one: the binary needs the same or
 a newer system C library), with the AI cleanup plugin:
 
 ```sh
-cargo build --release -p flow-server --no-default-features --features whisper,parakeet,tls,llm
-cargo build --release -p flow-llm
+cargo build --release -p murmur-server --no-default-features --features whisper,parakeet,tls,llm
+cargo build --release -p murmur-llm
 ```
 
 Also download the sherpa-onnx 1.13.8 libraries without text to speech
 (9.2 MB, the speech engine's runtime; version fixed in
-`crates/flow-asr-sherpa/Cargo.toml`; SHA-256
+`crates/murmur-asr-sherpa/Cargo.toml`; SHA-256
 `bf2d998c8b07012cd5098f3b92673bc1333fd9b927767d7cb664be8190d8bc0b`) and
 unpack them:
 `https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-linux-x64-shared-no-tts-lib.tar.bz2`.
 (The build without `no-tts` links espeak-ng, GPL-3.0; D80.)
 
-Copy the repo folder (with `target/release/flow-server` and
-`libflow_llm.so`), the unpacked libraries and `flow-models/` to the server,
+Copy the repo folder (with `target/release/murmur-server` and
+`libmurmur_llm.so`), the unpacked libraries and `murmur-models/` to the server,
 then install with the speech and cleanup models:
 
 ```sh
 SHERPA_ONNX_LIB_DIR=<libs>/lib tools/server/install.sh --no-build \
-  --model <flow-models>/parakeet-tdt-0.6b-v2-int8 \
-  --llm-model <flow-models>/qwen2.5-1.5b-instruct-q4_k_m/qwen2.5-1.5b-instruct-q4_k_m.gguf
+  --model <murmur-models>/parakeet-tdt-0.6b-v2-int8 \
+  --llm-model <murmur-models>/qwen2.5-1.5b-instruct-q4_k_m/qwen2.5-1.5b-instruct-q4_k_m.gguf
 ```
 
 Add `--user` for a per-user install without sudo. The installer never
 downloads anything, and it writes `[model] asr_path`, `llm_path` and
 `llm_lib` into a new config. Start it after §2 and §3 (`--start`, or
-`systemctl restart flow-server`).
+`systemctl restart murmur-server`).
 
 **Docker.** On the connected machine (`docs/container.md` §8-9):
 
 ```sh
-docker build -t flow-server -f deploy/docker/Dockerfile .    # in the repo
-docker save flow-server | gzip > flow-server.tar.gz
+docker build -t murmur-server -f deploy/docker/Dockerfile .    # in the repo
+docker save murmur-server | gzip > murmur-server.tar.gz
 ```
 
-On the server: `gunzip -c flow-server.tar.gz | docker load`. The image has
+On the server: `gunzip -c murmur-server.tar.gz | docker load`. The image has
 the cleanup plugin and no models; it never downloads anything. It uses
-`flow-models/` mounted as its models folder (§2).
+`murmur-models/` mounted as its models folder (§2).
 
 **GPU server (optional, NVIDIA).** If the server has an NVIDIA card, also
 build and save the CUDA image (`docs/container.md` "NVIDIA CUDA image"):
-`docker compose --profile gpu build flow-server-gpu`, then
-`docker save flow-server:local-cuda | gzip > flow-server-cuda.tar.gz`. The
+`docker compose --profile gpu build murmur-server-gpu`, then
+`docker save murmur-server:local-cuda | gzip > murmur-server-cuda.tar.gz`. The
 server then needs the NVIDIA driver and the NVIDIA container toolkit
 installed (bring their packages too), and runs
-`docker compose --profile gpu up -d flow-server-gpu` instead of
+`docker compose --profile gpu up -d murmur-server-gpu` instead of
 `docker compose up -d`.
 
 **Address.** With no VPN, bind the server's LAN address too
@@ -206,19 +206,19 @@ already, `-p 0.0.0.0:7313:7313`). Plain
 
 The library is a folder on the server, one subfolder per model, each with a
 `model.toml` label. The download loop made both: copy the folders of
-`flow-models/` in as they are.
+`murmur-models/` in as they are.
 
 | Install | Library folder |
 |---|---|
-| system | `/var/lib/flow-server/library` |
-| `--user` | `~/.local/state/flow-server/library` |
-| Docker | your `flow-models/` folder itself, mounted at `/models` |
+| system | `/var/lib/murmur-server/library` |
+| `--user` | `~/.local/state/murmur-server/library` |
+| Docker | your `murmur-models/` folder itself, mounted at `/models` |
 
 ```sh
-sudo mkdir -p /var/lib/flow-server/library
-sudo cp -r <usb>/flow-models/. /var/lib/flow-server/library/
-# Docker: copy flow-models/ to the server's disk (e.g. /srv/flow-models)
-# and mount it: -v /srv/flow-models:/models:ro (docs/server-setup.md)
+sudo mkdir -p /var/lib/murmur-server/library
+sudo cp -r <usb>/murmur-models/. /var/lib/murmur-server/library/
+# Docker: copy murmur-models/ to the server's disk (e.g. /srv/murmur-models)
+# and mount it: -v /srv/murmur-models:/models:ro (docs/server-setup.md)
 ```
 
 A label looks like this (`catalogue_id` = a copy of a model the apps know,
@@ -234,8 +234,8 @@ catalogue_id = "parakeet-tdt-0.6b-v2-int8"
 
 More examples: `docs/server-advanced.md` §10. The server notices new folders
 within a minute, no restart. Check what it serves, and why a folder was
-skipped: `sudo flow-server library list` (Docker:
-`docker exec flow-server flow-server library list`).
+skipped: `sudo murmur-server library list` (Docker:
+`docker exec murmur-server murmur-server library list`).
 
 ## 3. Tell the server which models to use
 
@@ -258,11 +258,11 @@ asr_path = "<library>/zipformer-he-int8"
 * **Host install:** the installer already wrote `asr_path`, `llm_path`
   and `llm_lib` (pointing at its own copies, which is fine). Add `lid_path`
   under `[model]` and the `[model.languages.he]` block to
-  `/etc/flow-server/config.toml` (`--user`:
-  `~/.config/flow-server/config.toml`), then `flow-server check-config
+  `/etc/murmur-server/config.toml` (`--user`:
+  `~/.config/murmur-server/config.toml`), then `murmur-server check-config
   --config <file>` and restart.
 * **Docker:** nothing to write. Start it as in `docs/server-setup.md`
-  with `-v /srv/flow-models:/models:ro`. On every start it finds the four
+  with `-v /srv/murmur-models:/models:ro`. On every start it finds the four
   models above (Parakeet, `whisper-tiny-lid`, `zipformer-he-int8`, Qwen2.5
   1.5B) in the folder and generates a config with exactly these lines; a
   missing one is left out (`docs/container.md` §3).
@@ -276,11 +276,11 @@ Each person or device gets its own key. The first one, an admin key, comes
 from the server's command line:
 
 ```sh
-sudo flow-server keys add owner --admin
+sudo murmur-server keys add owner --admin
 ```
 
 (Docker made this key on its first start:
-`docker exec flow-server cat /data/admin.token` shows it.)
+`docker exec murmur-server cat /data/admin.token` shows it.)
 
 It prints the secret once. Paste it into your own app (Settings → Your
 server: **Access token** on Windows, **Token** on Android). From then on you can manage keys from the app instead:
@@ -291,7 +291,7 @@ key's last use, dictations and model downloads, and revoke a key. A revoked
 key is refused at its next connection; the others keep working. The server
 won't revoke its last admin key from the app.
 
-The same from the shell: `flow-server keys add phone`, `keys list`,
+The same from the shell: `murmur-server keys add phone`, `keys list`,
 `keys revoke phone`.
 
 Hand secrets over the way you would a password: type them in, or move them
@@ -328,7 +328,7 @@ If a device can't reach the server, copy the model files to it yourself:
   file…** next to a built-in model: pick its folder, a `.zip`, or the file.
   Each file is checked against the built-in fingerprint.
 * **Android:** Speech model → *Import model file…*; Parakeet and Hebrew →
-  *Import model folder…* or *Import .zip…* (`apps/flow-android/INSTALL.md`
+  *Import model folder…* or *Import .zip…* (`apps/murmur-android/INSTALL.md`
   §5).
 
 ## 6a. Bigger AI cleanup from a LiteLLM server

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Dated probe (2026-11-07) for docs/findings/2026-11-07-phone-beam-hotwords.md:
 # Parakeet greedy vs modified beam search (widths 4..1) with dictionary
-# hotwords, one warm engine per run (`flow-asr-sherpa` example spot_check).
+# hotwords, one warm engine per run (`murmur-asr-sherpa` example spot_check).
 # Not a permanent tool; the consumer is the findings doc's tables.
 #
 #   SPOT=<release spot_check binary> MODEL=<parakeet model dir> MANIFEST=<spot_check manifest>

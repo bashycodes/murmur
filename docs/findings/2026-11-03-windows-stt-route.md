@@ -2,7 +2,7 @@
 
 > **Status:** read-only investigation (code + server journal + the PC's settings and debug
 > log). No settings changed, no app launched. Question: the server journal shows the PC's
-> `flow-windows 1.0.0+…` client connecting several times since 1 Nov with the owner key, but
+> `murmur-windows 1.0.0+…` client connecting several times since 1 Nov with the owner key, but
 > no dictation finishes there. Which route does the PC use, and is that intended?
 
 ## Answer
@@ -37,10 +37,10 @@
   request. It never does. The server has logged 0 `clean`/`cleaned` lines from the PC, ever,
   against 113 from other clients. Every PC dictation since 31 Oct has an empty `llm`,
   `llm_engine` and `cleanup_route`. Cause, from the code: the Windows `LocalBackend`
-  (`apps/flow-windows/src/router_adapter.rs`) does not implement `Backend::install_cleanup`
+  (`apps/murmur-windows/src/router_adapter.rs`) does not implement `Backend::install_cleanup`
   or `llm_cleaner`. The trait default ignores the plan. So the router's D36 cleanup chain
   (server and cloud hops) never reaches the Windows on-device engine, which only ever uses its
-  own LLM. The shared `flow_router::local` backend, used by Android, implements both. The
+  own LLM. The shared `murmur_router::local` backend, used by Android, implements both. The
   `cleanup_order` tests on Windows cover settings and migration only, not a dictation being
   cleaned. The same gap should also block OpenRouter cleanup for on-device dictations when
   this PC's model is off. That is inferred from the code and not seen at runtime (cloud
@@ -48,17 +48,17 @@
 
 ## Evidence (redacted)
 
-### Server journal, 1–3 Nov (`flow_server::ws`, the PC's peer only)
+### Server journal, 1–3 Nov (`murmur_server::ws`, the PC's peer only)
 
 | time (UTC) | event | client |
 |---|---|---|
-| 11-02 06:30:53, 06:36:02, 06:37:01, 06:38:54, 06:40:48 | `connected` key=owner | `flow-windows 1.0.0+3c8df49.dirty` |
-| 11-02 13:30:21 | `connected` key=owner | `flow-windows 1.0.0+a24090a.dirty` |
-| 11-02 13:49:52 | `connected` key=owner | `flow-windows 1.0.0+a24090a.dirty` |
+| 11-02 06:30:53, 06:36:02, 06:37:01, 06:38:54, 06:40:48 | `connected` key=owner | `murmur-windows 1.0.0+3c8df49.dirty` |
+| 11-02 13:30:21 | `connected` key=owner | `murmur-windows 1.0.0+a24090a.dirty` |
+| 11-02 13:49:52 | `connected` key=owner | `murmur-windows 1.0.0+a24090a.dirty` |
 
 * There are no `result`, `cancelled`, `session ended by disconnect`, `clean refused` or
   `cleaned` lines for the PC. `connected` is logged right after `hello_ok`
-  (`crates/flow-server/src/ws.rs`), before any session, so a probe logs exactly one line.
+  (`crates/murmur-server/src/ws.rs`), before any session, so a probe logs exactly one line.
 * Since 20 Oct the PC has 40 `connected`, 3 `result` and 4 `cancelled`, all on 27–30 Oct.
 * The PC made no connection at all during its 15 dictations (2 Nov, 21:14Z–21:31Z) or the
   meeting (21:23Z–21:24Z). An on-device dictation whose cleanup went to the server would have
@@ -66,8 +66,8 @@
 
 ### The PC
 
-* Installed: Murmur 1.0.0 hybrid. The running `flow-windows.exe` started 2 Nov 13:49:51Z.
-* `%APPDATA%\FlowClone\prefs.json` → `developer`:
+* Installed: Murmur 1.0.0 hybrid. The running `murmur-windows.exe` started 2 Nov 13:49:51Z.
+* `%APPDATA%\Murmur\prefs.json` → `developer`:
   * `allow_server: true`, `allow_client: true`, `route_order: ["client","server","cloud"]`
   * `allow_cloud: false`
   * `cleanup_engines: local on, server on, cloud off`
@@ -98,9 +98,9 @@
 * Cleanup: `Router::refresh_cleanup` builds `cleanup_plan`. It calls
   `b.install_cleanup(plan)` on every non-remote backend, and `LazyLocal::ensure` does the
   same after an on-demand load. `Backend::install_cleanup` defaults to a no-op
-  (`crates/flow-router/src/lib.rs`). `flow_router::local`'s `FlowCore` backend overrides it
+  (`crates/murmur-router/src/lib.rs`). `murmur_router::local`'s `MurmurCore` backend overrides it
   (`self.set_cleaner(plan(self.cleaner()))`). Windows `LocalBackend` does not override it.
-  `FlowCoreAdapter` builds its cleaner only from `LlmSpec`, which is `Some` only when
+  `MurmurCoreAdapter` builds its cleaner only from `LlmSpec`, which is `Some` only when
   `llm_enabled` is true.
 
 ## Proposed fix (ticket body)
@@ -108,10 +108,10 @@
 **Title:** Windows: AI cleanup order (D36) skips the server and OpenRouter for dictations
 transcribed on this PC
 
-**What:** In `apps/flow-windows/src/router_adapter.rs`, implement
+**What:** In `apps/murmur-windows/src/router_adapter.rs`, implement
 `Backend::install_cleanup` and `Backend::llm_cleaner` on `LocalBackend`, matching
-`flow_router::local`. Store the plan in `FlowCoreAdapter`. Apply
-`plan(own LLM cleaner)` with `FlowCore::set_cleaner` to the loaded core, and again to every
+`murmur_router::local`. Store the plan in `MurmurCoreAdapter`. Apply
+`plan(own LLM cleaner)` with `MurmurCore::set_cleaner` to the loaded core, and again to every
 core the adapter loads or reloads later (model change, on-demand load, LLM toggled). A
 reload must not drop the server/cloud hops. `llm_cleaner` returns the on-device LLM only
 (Command Mode, `server_cleans`).

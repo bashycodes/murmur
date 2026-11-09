@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <title>Settings: Your server</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="flow-theme.css">
-<link rel="stylesheet" href="ds/flow/components/bundle.css">
-<script src="ds/flow/components/bundle.js"></script>
+<link rel="stylesheet" href="murmur-theme.css">
+<link rel="stylesheet" href="ds/murmur/components/bundle.css">
+<script src="ds/murmur/components/bundle.js"></script>
 </head>
 <body>
 <x-dc>
@@ -40,7 +40,7 @@ a{color:#1a1a1a}a:hover{color:#30302f}
 
     <div class="fl-modal-body" style="overflow: hidden;">
       <h2 class="fl-modal-title" style="margin-bottom: 8px;">Your server</h2>
-      <p style="margin: 0 0 32px; font: 400 15px/20px var(--font-sans); color: var(--neutral-600); max-width: 580px;">Run flow-server on a faster computer you own, at home or on Tailscale, and this PC sends it the audio. It keeps nothing. <a class="lw-link" href="https://github.com/bashycodes/murmur">Set up a server →</a></p>
+      <p style="margin: 0 0 32px; font: 400 15px/20px var(--font-sans); color: var(--neutral-600); max-width: 580px;">Run murmur-server on a faster computer you own, at home or on Tailscale, and this PC sends it the audio. It keeps nothing. <a class="lw-link" href="https://github.com/bashycodes/murmur">Set up a server →</a></p>
 
       <div class="fl-group-title">Connection</div>
       <div class="fl-group">
@@ -49,12 +49,12 @@ a{color:#1a1a1a}a:hover{color:#30302f}
           <div class="fl-row-control" style="gap: 8px;"><input id="srv-host" class="fl-input" type="text" value="box.tailnet.ts.net" style="width: 220px;"><input aria-label="Port" class="fl-input" type="text" value="7313" style="width: 72px;"></div>
         </div>
         <div class="fl-row">
-          <div class="fl-row-text"><label class="fl-row-title" for="srv-token">Access token</label><div class="fl-row-desc">From <span class="lw-mono">flow-server gen-token</span>. Stored encrypted for your Windows account.</div></div>
-          <div class="fl-row-control" style="gap: 8px;"><input id="srv-token" class="fl-input" type="password" value="saved-token" style="width: 220px;"><x-import component-from-global-scope="Flow.Button" variant="secondary">Paste</x-import></div>
+          <div class="fl-row-text"><label class="fl-row-title" for="srv-token">Access token</label><div class="fl-row-desc">From <span class="lw-mono">murmur-server gen-token</span>. Stored encrypted for your Windows account.</div></div>
+          <div class="fl-row-control" style="gap: 8px;"><input id="srv-token" class="fl-input" type="password" value="saved-token" style="width: 220px;"><x-import component-from-global-scope="Murmur.Button" variant="secondary">Paste</x-import></div>
         </div>
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Encrypt the connection (TLS)</div><div class="fl-row-desc">Always on for public addresses.</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Encrypt the connection"></x-import></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Toggle" default-checked="{{yes}}" label="Encrypt the connection"></x-import></div>
         </div>
         <div class="fl-row">
           <div class="fl-row-text"><label class="fl-row-title" for="srv-pin">Certificate fingerprint</label><div class="fl-row-desc">Optional. Pins this exact server.</div></div>
@@ -63,27 +63,27 @@ a{color:#1a1a1a}a:hover{color:#30302f}
       </div>
 
       <div style="display: flex; align-items: center; gap: 12px; margin-top: 16px;">
-        <x-import component-from-global-scope="Flow.Button" variant="primary">Test connection</x-import>
-        <x-import component-from-global-scope="Flow.Button" variant="outline">Test a dictation</x-import>
+        <x-import component-from-global-scope="Murmur.Button" variant="primary">Test connection</x-import>
+        <x-import component-from-global-scope="Murmur.Button" variant="outline">Test a dictation</x-import>
       </div>
       <div style="display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 12px 16px; border-radius: 12px; background: var(--recording-background); border: 1px solid var(--green-100);">
         <span class="lw-dot" style="background: var(--success-500);"></span>
-        <span style="flex: 1; font: 400 15px/20px var(--font-sans); color: var(--green-800);"><b style="font-weight: 600;">Connected.</b> 38 ms · flow-server 0.6.0 · Parakeet · same pipeline version as this app</span>
+        <span style="flex: 1; font: 400 15px/20px var(--font-sans); color: var(--green-800);"><b style="font-weight: 600;">Connected.</b> 38 ms · murmur-server 0.6.0 · Parakeet · same pipeline version as this app</span>
       </div>
 
       <div class="fl-group-title" style="margin-top: 32px;">Advanced</div>
       <div class="fl-group">
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Give up connecting after</div><div class="fl-row-desc">Then the next engine takes over.</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Select" options="{{connOpts}}" default-value="1500" width="{{w160}}"></x-import></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Select" options="{{connOpts}}" default-value="1500" width="{{w160}}"></x-import></div>
         </div>
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Wait for an answer up to</div><div class="fl-row-desc">Grows with the length of the dictation.</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Select" options="{{commitOpts}}" default-value="4000" width="{{w160}}"></x-import></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Select" options="{{commitOpts}}" default-value="4000" width="{{w160}}"></x-import></div>
         </div>
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Check the server every</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Select" options="{{healthOpts}}" default-value="30" width="{{w160}}"></x-import></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Select" options="{{healthOpts}}" default-value="30" width="{{w160}}"></x-import></div>
         </div>
       </div>
     </div>

@@ -14,19 +14,19 @@ becomes a second library model.
 
 ## What it does
 
-1. Builds `flow-server` (release, default features `whisper,tls`) and the
-   client `crates/flow-remote/examples/airgap_e2e.rs` (`--no-build` skips
+1. Builds `murmur-server` (release, default features `whisper,tls`) and the
+   client `crates/murmur-remote/examples/airgap_e2e.rs` (`--no-build` skips
    this; `CARGO_TARGET_DIR` and `BUILD_PREFIX` apply).
 2. Makes a temp dir with a state dir, a config (bind `127.0.0.1:17399`,
    real whisper tiny.en engine read from `--models`), and a library with
    copies of the model files tagged by `model.toml` (one `stt`, one `lid`)
    plus an untagged folder that must not be served. Prints
-   `flow-server library list`.
+   `murmur-server library list`.
 3. Runs the rest in a loopback-only network namespace (`unshare -rn`) when
    the system allows unprivileged user namespaces; otherwise on loopback
    only. Either way the server and the client run under
    `strace -e trace=connect,sendto,sendmsg`.
-4. `flow-server keys add e2e-admin --admin` (CLI) → start the server →
+4. `murmur-server keys add e2e-admin --admin` (CLI) → start the server →
    the client:
    * admin `whoami` is admin;
    * admin API creates the user key `e2e-phone`;
@@ -39,7 +39,7 @@ becomes a second library model.
      download bytes and client;
    * revoke → the user key is refused by the admin API, the library and
      the dictation stream; the admin key still works.
-5. Stops the server, then `flow-server keys list` must show `e2e-phone`
+5. Stops the server, then `murmur-server keys list` must show `e2e-phone`
    revoked with its usage kept on disk.
 6. Network audit: every inet address in the strace logs must be loopback.
 

@@ -26,7 +26,7 @@ the prompt and the model)?
   not Monday") as if it were a correction. On the main set no clip became a
   list.
 
-## What changed (prompt v5, `crates/flow-core/src/cleanup/prompt_v5.rs`)
+## What changed (prompt v5, `crates/murmur-core/src/cleanup/prompt_v5.rs`)
 
 v4c with:
 
@@ -51,8 +51,8 @@ None of the examples shares a 5-word run with a test case; the probe checks
 this.
 
 The D30 AI-cleanup path (cloud and custom server, raw transcript) now sends
-v5. v4c stays selectable in flow-replay and the bench. The on-device and
-flow-server paths keep prompt v2 on the rules-processed text, so the phone's
+v5. v4c stays selectable in murmur-replay and the bench. The on-device and
+murmur-server paths keep prompt v2 on the rules-processed text, so the phone's
 1.5B is unchanged.
 
 Also fixed on the way (`unwrap_output_for`): a dictated lead-in such as
@@ -61,7 +61,7 @@ strip is now skipped when the transcript itself starts with those words.
 
 ## Measurements
 
-All runs use the real `FlowCore` commit path (parity runner) with Qwen2.5
+All runs use the real `MurmurCore` commit path (parity runner) with Qwen2.5
 Q4_K_M on this shared box. v4c-r is v4c re-run with the same binary, so the
 two sides differ only in the prompt.
 
@@ -148,6 +148,6 @@ different list-rule shape or a bigger model, not more text.
 
 * A correction inside a list (X cases) fails everywhere.
 * "two, not three" (case N02) is ambiguous and fails everywhere.
-* The phone bench (debug `BenchPlan.kt` / `crates/flow-ffi/src/bench.rs`) still runs only `prod` and `v4c`. It has no v5 mode, so v5 has not been timed on the phone.
+* The phone bench (debug `BenchPlan.kt` / `crates/murmur-ffi/src/bench.rs`) still runs only `prod` and `v4c`. It has no v5 mode, so v5 has not been timed on the phone.
 * 1.5B self-corrections would need a bigger model or fine-tuning, not more
   prompt text.

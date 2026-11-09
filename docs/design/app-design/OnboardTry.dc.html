@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <title>Setup: Try it</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="flow-theme.css">
-<link rel="stylesheet" href="ds/flow/components/bundle.css">
-<script src="ds/flow/components/bundle.js"></script>
+<link rel="stylesheet" href="murmur-theme.css">
+<link rel="stylesheet" href="ds/murmur/components/bundle.css">
+<script src="ds/murmur/components/bundle.js"></script>
 </head>
 <body>
 <x-dc>
@@ -27,7 +27,7 @@ a{color:#1a1a1a}a:hover{color:#30302f}
     <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px;">
       <div style="text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px;">
         <h1 class="fl-serif" style="margin: 0; font-size: 36px; line-height: 40px; font-weight: 400;">Now try it</h1>
-        <x-import component-from-global-scope="Flow.Kbd" keys="{{keys}}">Hold, say anything, then let go</x-import>
+        <x-import component-from-global-scope="Murmur.Kbd" keys="{{keys}}">Hold, say anything, then let go</x-import>
       </div>
 
       <div style="width: 640px; display: flex; flex-direction: column; gap: 12px;">
@@ -50,11 +50,11 @@ a{color:#1a1a1a}a:hover{color:#30302f}
             <span style="width: 6px; height: 14px; border-radius: 2px; background: var(--background-secondary);"></span>
             <span style="width: 6px; height: 14px; border-radius: 2px; background: var(--background-secondary);"></span>
           </div>
-          <x-import component-from-global-scope="Flow.Button" variant="secondary" size="sm">Change</x-import>
+          <x-import component-from-global-scope="Murmur.Button" variant="secondary" size="sm">Change</x-import>
         </div>
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Shortcut</div><div class="fl-row-desc">Hold Ctrl + Win. Double-tap for hands-free.</div></div>
-          <x-import component-from-global-scope="Flow.Button" variant="secondary" size="sm">Change</x-import>
+          <x-import component-from-global-scope="Murmur.Button" variant="secondary" size="sm">Change</x-import>
         </div>
       </div>
     </div>

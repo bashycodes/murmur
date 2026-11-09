@@ -5,9 +5,9 @@ Dated probe, 2026-10-30; runs ON the PC.
 For each --run BACKEND:MODEL[:THREADS]: start the official llama.cpp release llama-server.exe
 (bin/llama-<backend>/, -c 4096, -np 1, -ngl 99 unless backend is cpu) at below-normal priority,
 prefill the static v4c prefix once (the app does this at model load), then send each case of
-cases.jsonl exactly as flow-core renders it (build_prompt_versioned(..., PromptScope::FULL, V4c):
+cases.jsonl exactly as murmur-core renders it (build_prompt_versioned(..., PromptScope::FULL, V4c):
 system + 24 few-shot turns + "APP: <app_id> | CATEGORY: <name>\n[STYLE: <casual>\n]TRANSCRIPT: «…»"),
-greedy, max_tokens = 2 x transcript tokens + 32 (flow-llm's rule), cache_prompt on.
+greedy, max_tokens = 2 x transcript tokens + 32 (murmur-llm's rule), cache_prompt on.
 Writes one row per case in the ai-cleanup-bench `--from` shape ({id, llm_raw, error, llm_ms} + llama
 timings) so `ai-cleanup-bench --mode regard` applies the product guards + fallback rules on Linux and
 score.py scores it. llm_ms = request wall time on the PC (no network).

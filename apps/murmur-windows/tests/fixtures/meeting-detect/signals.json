@@ -1,0 +1,131 @@
+{
+  "_about": "Synthetic snapshots of what the Windows probe sees (src/meetings/detect.rs Snapshot). Not captures: shapes follow docs/findings/2026-11-02-meeting-detection-signals.md. Exe names lowercase; only windows and audio sessions of known clients are listed, as the probe reports them.",
+
+  "nothing": {
+    "processes": ["explorer.exe", "outlook.exe", "murmur-windows.exe"],
+    "audio": [{ "exe": "murmur-windows.exe", "flow": "capture", "active": true }]
+  },
+
+  "zoom_open": {
+    "processes": ["explorer.exe", "zoom.exe"],
+    "windows": [{ "exe": "zoom.exe", "class": "ZPPTMainFrmWndClassEx", "title": "Zoom Workplace" }]
+  },
+  "zoom_open_chat_ping": {
+    "processes": ["explorer.exe", "zoom.exe"],
+    "windows": [{ "exe": "zoom.exe", "class": "ZPPTMainFrmWndClassEx", "title": "Zoom Workplace" }],
+    "audio": [{ "exe": "zoom.exe", "flow": "render", "active": true }]
+  },
+  "zoom_open_idle_sessions": {
+    "processes": ["explorer.exe", "zoom.exe"],
+    "windows": [{ "exe": "zoom.exe", "class": "ZPPTMainFrmWndClassEx", "title": "Zoom Workplace" }],
+    "audio": [
+      { "exe": "zoom.exe", "flow": "render", "active": false },
+      { "exe": "zoom.exe", "flow": "capture", "active": false }
+    ]
+  },
+  "zoom_mic_test": {
+    "processes": ["explorer.exe", "zoom.exe"],
+    "windows": [{ "exe": "zoom.exe", "class": "ZPPTMainFrmWndClassEx", "title": "Zoom Workplace" }, { "exe": "zoom.exe", "class": "ZPSettingWndClass", "title": "Settings" }],
+    "audio": [
+      { "exe": "zoom.exe", "flow": "capture", "active": true },
+      { "exe": "zoom.exe", "flow": "render", "active": true }
+    ]
+  },
+  "zoom_meeting": {
+    "processes": ["explorer.exe", "zoom.exe"],
+    "windows": [
+      { "exe": "zoom.exe", "class": "ZPPTMainFrmWndClassEx", "title": "Zoom Workplace" },
+      { "exe": "zoom.exe", "class": "ZPContentViewWndClass", "title": "Zoom Meeting" }
+    ],
+    "audio": [
+      { "exe": "zoom.exe", "flow": "capture", "active": true },
+      { "exe": "zoom.exe", "flow": "render", "active": true }
+    ]
+  },
+  "zoom_meeting_muted_quiet": {
+    "processes": ["explorer.exe", "zoom.exe"],
+    "windows": [{ "exe": "zoom.exe", "class": "ZPContentViewWndClass", "title": "Zoom Meeting" }],
+    "audio": [
+      { "exe": "zoom.exe", "flow": "capture", "active": false },
+      { "exe": "zoom.exe", "flow": "render", "active": false }
+    ]
+  },
+  "zoom_meeting_sharing": {
+    "processes": ["explorer.exe", "zoom.exe", "cpthost.exe"],
+    "windows": [{ "exe": "zoom.exe", "class": "ZPFloatToolbarClass", "title": "" }],
+    "audio": [
+      { "exe": "zoom.exe", "flow": "capture", "active": true },
+      { "exe": "zoom.exe", "flow": "render", "active": true }
+    ]
+  },
+  "zoom_meeting_unknown_window": {
+    "_about": "A Zoom version whose meeting window class we don't know: only the microphone shows the call.",
+    "processes": ["explorer.exe", "zoom.exe"],
+    "windows": [{ "exe": "zoom.exe", "class": "SomeFutureMeetingClass", "title": "Zoom Meeting" }],
+    "audio": [
+      { "exe": "zoom.exe", "flow": "capture", "active": true },
+      { "exe": "zoom.exe", "flow": "render", "active": true }
+    ]
+  },
+  "zoom_window_of_other_app": {
+    "_about": "A window with Zoom's meeting class but owned by another exe does not count.",
+    "processes": ["explorer.exe", "zoom.exe", "spoofer.exe"],
+    "windows": [{ "exe": "spoofer.exe", "class": "ZPContentViewWndClass", "title": "Zoom Meeting" }]
+  },
+
+  "webex_open": {
+    "processes": ["explorer.exe", "ciscocollabhost.exe", "ciscocollabhost.exe", "ciscocollabhost.exe"],
+    "audio": [{ "exe": "ciscocollabhost.exe", "flow": "render", "active": false }]
+  },
+  "webex_open_chat_ping": {
+    "processes": ["explorer.exe", "ciscocollabhost.exe", "ciscocollabhost.exe"],
+    "audio": [{ "exe": "ciscocollabhost.exe", "flow": "render", "active": true }]
+  },
+  "webex_meeting": {
+    "processes": ["explorer.exe", "ciscocollabhost.exe", "ciscocollabhost.exe", "webexhost.exe"],
+    "audio": [
+      { "exe": "webexhost.exe", "flow": "capture", "active": true },
+      { "exe": "webexhost.exe", "flow": "render", "active": true }
+    ]
+  },
+  "webex_meeting_muted": {
+    "processes": ["explorer.exe", "ciscocollabhost.exe", "ciscocollabhost.exe", "webexhost.exe"],
+    "audio": [
+      { "exe": "webexhost.exe", "flow": "capture", "active": false },
+      { "exe": "webexhost.exe", "flow": "render", "active": true }
+    ]
+  },
+  "webex_after_meeting_lingering": {
+    "_about": "webexhost.exe can linger after the meeting (third-party tools exist to kill it): its streams are stopped.",
+    "processes": ["explorer.exe", "ciscocollabhost.exe", "webexhost.exe"],
+    "audio": [
+      { "exe": "webexhost.exe", "flow": "capture", "active": false },
+      { "exe": "webexhost.exe", "flow": "render", "active": false }
+    ]
+  },
+  "webex_classic_meeting": {
+    "processes": ["explorer.exe", "atmgr.exe", "webexmta.exe"],
+    "audio": [
+      { "exe": "atmgr.exe", "flow": "capture", "active": true },
+      { "exe": "atmgr.exe", "flow": "render", "active": true }
+    ]
+  },
+
+  "jabber_open": {
+    "processes": ["explorer.exe", "ciscojabber.exe"],
+    "windows": [{ "exe": "ciscojabber.exe", "class": "HwndWrapper[CiscoJabber.exe;;0]", "title": "Cisco Jabber" }]
+  },
+  "jabber_call": {
+    "processes": ["explorer.exe", "ciscojabber.exe"],
+    "windows": [{ "exe": "ciscojabber.exe", "class": "HwndWrapper[CiscoJabber.exe;;0]", "title": "Cisco Jabber" }],
+    "audio": [
+      { "exe": "ciscojabber.exe", "flow": "capture", "active": true },
+      { "exe": "ciscojabber.exe", "flow": "render", "active": true }
+    ]
+  },
+  "jabber_ringing": {
+    "_about": "An incoming call rings (render only) before it is answered.",
+    "processes": ["explorer.exe", "ciscojabber.exe"],
+    "audio": [{ "exe": "ciscojabber.exe", "flow": "render", "active": true }]
+  }
+}

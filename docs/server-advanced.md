@@ -1,4 +1,4 @@
-# flow-server: Advanced (without Docker, and the details)
+# murmur-server: Advanced (without Docker, and the details)
 
 The quick start is Docker: [`docs/server-setup.md`](server-setup.md), with
 the container settings in [`docs/container.md`](container.md). This page
@@ -6,7 +6,7 @@ is the rest: installing the binary with systemd (no Docker, e.g. an
 air-gapped host), keys, TLS, firewall, the app settings, Hebrew and AI
 cleanup, the model library and the debug capture. Sections 3-10 apply to
 the container too (its config is `/data/config.toml` in the volume; run
-the commands as `docker exec flow-server flow-server …`). Design and rules:
+the commands as `docker exec murmur-server murmur-server …`). Design and rules:
 `docs/hybrid-architecture.md` §2.6 (transport security) and §3 (server),
 `docs/protocol.md` §1.
 
@@ -31,23 +31,23 @@ network): the short owner guide is `docs/air-gapped.md`.
     speed as v2 on our set, no utterance drops on 43-56 s one-shot
     decodes; NVIDIA Open Model License). Point `[model] asr_path` (or
     `--model DIR`) at the folder; nothing else changes. Load-tested by
-    `flow-asr-sherpa/tests/model.rs` with `FLOW_PARAKEET_UNIFIED_DIR`.
+    `murmur-asr-sherpa/tests/model.rs` with `MURMUR_PARAKEET_UNIFIED_DIR`.
 * Decoding (2026-10-23): greedy search when the session has no
   dictionary hotwords, beam search with them; an empty or implausibly short
   beam result is re-decoded greedy, and clips over 20 s are decoded in
   ≤ 20 s pieces cut at pauses (fixes the v2 beam-4 empty results and the
   long-decode sentence drops). This loads two recognizers (≈ +0.6 GB RSS);
   `ModelConfig.parakeet_decoding = "greedy"` keeps one. The earlier
-  workaround, `Environment=FLOW_PARAKEET_HOTWORDS_SCORE=0` in a systemd
-  drop-in (e.g. `~/.config/systemd/user/flow-server.service.d/greedy.conf`),
+  workaround, `Environment=MURMUR_PARAKEET_HOTWORDS_SCORE=0` in a systemd
+  drop-in (e.g. `~/.config/systemd/user/murmur-server.service.d/greedy.conf`),
   can be removed once a server with this fix is installed: it still forces
   greedy-only and turns hotwords off.
 * The sherpa-onnx shared libraries (`libsherpa-onnx-c-api.so`,
   `libonnxruntime.so`), passed with `SHERPA_ONNX_LIB_DIR=<dir>` or
   `--sherpa-lib <dir>`.
-* A Rust toolchain. The build is `cargo build --release --offline -p flow-server
+* A Rust toolchain. The build is `cargo build --release --offline -p murmur-server
   --no-default-features --features whisper,parakeet,tls` (plus `llm` and
-  `-p flow-llm` with `--llm`, see "LLM cleanup" below). `whisper`
+  `-p murmur-llm` with `--llm`, see "LLM cleanup" below). `whisper`
   (whisper.cpp, needs cmake) carries language ID (`lid_path`), the Silero
   VAD and the whisper engine; `--no-whisper` leaves it out unless the
   existing config uses one of them.
@@ -68,12 +68,12 @@ tools/server/install.sh --start            # ... and enable + (re)start the serv
 
 | | `--system` (default) | `--user` |
 |---|---|---|
-| Binary | `/opt/flow-server/bin/flow-server` | `~/.local/bin/flow-server` |
-| Libraries | `/opt/flow-server/lib` | `~/.local/lib/flow-server` |
-| Model | `/opt/flow-server/models/<name>` | `~/.local/share/flow-server/models/<name>` |
-| Config, token | `/etc/flow-server/{config.toml,token}` | `~/.config/flow-server/{config.toml,token}` |
-| Unit | `/etc/systemd/system/flow-server.service`: the packaged hardened unit (`DynamicUser`, `ProtectSystem=strict`, kernel IP allowlist) with these paths | `~/.config/systemd/user/flow-server.service`: lighter hardening; the server's own bind policy and peer filter are the boundary |
-| Logs | `sudo journalctl -u flow-server -f` | `journalctl --user -u flow-server -f` |
+| Binary | `/opt/murmur-server/bin/murmur-server` | `~/.local/bin/murmur-server` |
+| Libraries | `/opt/murmur-server/lib` | `~/.local/lib/murmur-server` |
+| Model | `/opt/murmur-server/models/<name>` | `~/.local/share/murmur-server/models/<name>` |
+| Config, token | `/etc/murmur-server/{config.toml,token}` | `~/.config/murmur-server/{config.toml,token}` |
+| Unit | `/etc/systemd/system/murmur-server.service`: the packaged hardened unit (`DynamicUser`, `ProtectSystem=strict`, kernel IP allowlist) with these paths | `~/.config/systemd/user/murmur-server.service`: lighter hardening; the server's own bind policy and peer filter are the boundary |
+| Logs | `sudo journalctl -u murmur-server -f` | `journalctl --user -u murmur-server -f` |
 
 The script never overwrites an existing config or token. Every root command is
 printed as `[sudo] …` and confirmed once before anything runs (`--yes` skips
@@ -89,8 +89,8 @@ tools/server/install.sh --user --llm-model models/qwen2.5-1.5b-instruct-q4_k_m.g
 tools/server/install.sh --user --llm       # build + install the plugin only
 ```
 
-`--llm` builds flow-server with the `llm` feature (it only adds the plugin
-loader) and the llama.cpp plugin `libflow_llm.so` (`-p flow-llm`, a separate
+`--llm` builds murmur-server with the `llm` feature (it only adds the plugin
+loader) and the llama.cpp plugin `libmurmur_llm.so` (`-p murmur-llm`, a separate
 library because llama.cpp's ggml clashes with whisper.cpp's), and installs
 the plugin into the libraries dir. `--llm-model FILE` implies `--llm`,
 copies the GGUF next to the ASR model and writes `llm_path` and `llm_lib`
@@ -99,11 +99,11 @@ into a **new** config; an existing config is never edited, so add them to
 
 ```toml
 llm_path = "<models dir>/qwen2.5-1.5b-instruct-q4_k_m.gguf"
-llm_lib = "<libraries dir>/libflow_llm.so"
+llm_lib = "<libraries dir>/libmurmur_llm.so"
 ```
 
 If the existing config already sets `llm_path`, the installer turns `--llm`
-on by itself: a flow-server built without the feature refuses to start with
+on by itself: a murmur-server built without the feature refuses to start with
 `llm_path` set, so a plain re-install would otherwise take the server down.
 It warns when the config's `llm_lib` is not the path it installs to.
 
@@ -135,7 +135,7 @@ installer falls back to `/run/user/$UID`; for later `systemctl --user` /
 `tools/server/test-install.sh`.
 
 A healthy start logs `ready workers=1 asr=parakeet languages= load_ms=… listening=…`.
-Check a config without starting: `flow-server check-config --config <path>`.
+Check a config without starting: `murmur-server check-config --config <path>`.
 
 ### Hebrew (optional, D33)
 
@@ -144,16 +144,16 @@ whose language is forced to Hebrew (the app's language set to Hebrew: `he`,
 `he-IL` and `iw` all match). Auto-detect stays on the default model.
 
 ```sh
-FLOW_MODELS_DIR=<models dir> tools/fetch-models.sh --hebrew   # zipformer-he int8, 69 MiB
+MURMUR_MODELS_DIR=<models dir> tools/fetch-models.sh --hebrew   # zipformer-he int8, 69 MiB
 # optional alternative, 642 MiB: --hebrew-parakeet (parakeet-tdt-0.6b-v3-he-int8)
 ```
 
 The script downloads pinned revisions and checks each file's SHA-256
 (`docs/findings/2026-10-30-hebrew-model-pins.md`); files already present with
 the right hash are skipped, so re-running it is cheap. Without
-`FLOW_MODELS_DIR` it uses `models/`. Then add to the config's `[model]`
+`MURMUR_MODELS_DIR` it uses `models/`. Then add to the config's `[model]`
 (the installer never edits an existing config; the block is in
-`crates/flow-server/dist/config.example.toml`):
+`crates/murmur-server/dist/config.example.toml`):
 
 ```toml
 [model.languages.he]
@@ -195,11 +195,11 @@ the app's Token field. Keys are managed with the CLI, on the server, and a
 running server picks changes up at the next connection (no restart).
 
 ```sh
-sudo flow-server keys add phone            # prints the secret once (stdout)
-sudo flow-server keys add laptop --admin   # admin keys can manage keys from the Windows app
-sudo flow-server keys list                 # name, id, admin, created, last used, last connected, client, dictations, audio minutes, downloads
-sudo flow-server keys revoke phone         # by name or id
-sudo flow-server keys revoke owner --force # --force: even the last admin key
+sudo murmur-server keys add phone            # prints the secret once (stdout)
+sudo murmur-server keys add laptop --admin   # admin keys can manage keys from the Windows app
+sudo murmur-server keys list                 # name, id, admin, created, last used, last connected, client, dictations, audio minutes, downloads
+sudo murmur-server keys revoke phone         # by name or id
+sudo murmur-server keys revoke owner --force # --force: even the last admin key
 ```
 
 With an admin key saved in the Windows app, Settings → **Users & keys** does
@@ -208,17 +208,17 @@ secret is shown once, in a copy box) and **Revoke**. The server refuses to
 revoke its last admin key (the app and the CLI both; only `--force` on the
 CLI overrides), so you cannot lock yourself out from the app.
 
-The binary is the installed one (`/opt/flow-server/bin/flow-server` or
-`~/.local/bin/flow-server`); a Parakeet build needs
+The binary is the installed one (`/opt/murmur-server/bin/murmur-server` or
+`~/.local/bin/murmur-server`); a Parakeet build needs
 `LD_LIBRARY_PATH=<libraries dir>` (§2) like any other run, e.g.
-`sudo env LD_LIBRARY_PATH=/opt/flow-server/lib /opt/flow-server/bin/flow-server keys list`.
-For a user install drop `sudo` and pass `--config ~/.config/flow-server/config.toml`.
+`sudo env LD_LIBRARY_PATH=/opt/murmur-server/lib /opt/murmur-server/bin/murmur-server keys list`.
+For a user install drop `sudo` and pass `--config ~/.config/murmur-server/config.toml`.
 
 * The secret is 32 random bytes, base64url (43 characters), shown only by
   `keys add`. The server keeps only its SHA-256, so a lost secret cannot be
   read back: revoke the key and add a new one.
-* Files, in the state dir (§9: `/var/lib/flow-server` for the system unit,
-  `~/.local/state/flow-server` for a user install; `state_dir` in the config
+* Files, in the state dir (§9: `/var/lib/murmur-server` for the system unit,
+  `~/.local/state/murmur-server` for a user install; `state_dir` in the config
   or `--state-dir` overrides it): `keys.json` (names, ids, hashes, admin
   flag, created / revoked times) and `key-usage.json` (per key: last used =
   last dictation or model download, last connected = last request of any
@@ -227,7 +227,7 @@ For a user install drop `sudo` and pass `--config ~/.config/flow-server/config.t
   the server every 30 s and at shutdown). Both mode 0600, replaced
   atomically. No text or audio, ever. `keys.json.lock` (empty) serialises
   the CLI and the server (admin API) when both change keys at once.
-* With the config under `/etc`, `keys` defaults to `/var/lib/flow-server`
+* With the config under `/etc`, `keys` defaults to `/var/lib/murmur-server`
   even though root has no `$STATE_DIRECTORY`; it hands the files to the
   service user so the service can read them.
 * Revoke: the next connection or health check with that key gets 401. A
@@ -245,8 +245,8 @@ use it for the first key); regenerating the file and restarting moves the
 revoked it is never re-imported. A server with a `keys.json` needs no
 `token_file` at all.
 
-* Read the owner token to paste into the apps: `sudo cat /etc/flow-server/token`
-  (system install) or `cat ~/.config/flow-server/token` (user install).
+* Read the owner token to paste into the apps: `sudo cat /etc/murmur-server/token`
+  (system install) or `cat ~/.config/murmur-server/token` (user install).
 * The system unit hands the token file to the service through
   `LoadCredential`, so the dynamic service user never reads `/etc` directly.
 * Keys travel only in the `Authorization: Bearer` header of the upgrade
@@ -261,21 +261,21 @@ certificate DER.
 ```sh
 # on the server: a self-signed P-256 cert for the address the apps will use
 openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 825 \
-  -subj "/CN=flow-server" -addext "subjectAltName=IP:192.168.1.20" \
+  -subj "/CN=murmur-server" -addext "subjectAltName=IP:192.168.1.20" \
   -keyout key.pem -out cert.pem
 # the pin to paste into the apps (64 hex)
 openssl x509 -in cert.pem -outform DER | sha256sum | cut -d' ' -f1
 ```
 
-* User install: put both files in `~/.config/flow-server/` (key mode 0600) and
+* User install: put both files in `~/.config/murmur-server/` (key mode 0600) and
   uncomment `[tls] cert/key` in the config.
 * System install: the dynamic service user can't read a root-only key.
-  1. Put both files in `/etc/flow-server/` (key mode 0600).
-  2. Add `LoadCredential=tls-cert:/etc/flow-server/cert.pem` and
-     `LoadCredential=tls-key:/etc/flow-server/key.pem` with
-     `sudo systemctl edit flow-server`.
-  3. Set `cert = "/run/credentials/flow-server.service/tls-cert"` and
-     `key = "/run/credentials/flow-server.service/tls-key"` under `[tls]`.
+  1. Put both files in `/etc/murmur-server/` (key mode 0600).
+  2. Add `LoadCredential=tls-cert:/etc/murmur-server/cert.pem` and
+     `LoadCredential=tls-key:/etc/murmur-server/key.pem` with
+     `sudo systemctl edit murmur-server`.
+  3. Set `cert = "/run/credentials/murmur-server.service/tls-cert"` and
+     `key = "/run/credentials/murmur-server.service/tls-key"` under `[tls]`.
 
   `check-config` run by hand then reports the credential paths as missing;
   the service itself sees them.
@@ -299,7 +299,7 @@ reachable from the internet.
 has no systemd `IPAddressDeny`. With the quick start's `-p 0.0.0.0:7313:7313`
 the server's peer filter (loopback/LAN/VPN only) is the only guard. To
 limit who reaches the port, publish it on one address
-(`-p 192.168.1.20:7313:7313`, Compose `FLOW_PUBLISH_ADDR`) or add rules to
+(`-p 192.168.1.20:7313:7313`, Compose `MURMUR_PUBLISH_ADDR`) or add rules to
 the `DOCKER-USER` iptables chain.
 
 ## 7. App settings (Developer page, same keys on Windows and Android)
@@ -336,29 +336,29 @@ Keystore. Neither puts it in exported settings.
   `--model` the config's `asr_path` is reused in place. A config with
   `llm_path` keeps its LLM build, one with `lid_path` / `vad_model_path` /
   a whisper engine its whisper build. Without `--start`, `sudo systemctl
-  restart flow-server` (`systemctl --user restart flow-server` for `--user`). The installer replaces the binary while the old
+  restart murmur-server` (`systemctl --user restart murmur-server` for `--user`). The installer replaces the binary while the old
   one keeps running, so the downtime is only the restart and model load.
-* Remove (system): `sudo systemctl disable --now flow-server`, then
-  `sudo rm -r /opt/flow-server /etc/flow-server /etc/systemd/system/flow-server.service`,
+* Remove (system): `sudo systemctl disable --now murmur-server`, then
+  `sudo rm -r /opt/murmur-server /etc/murmur-server /etc/systemd/system/murmur-server.service`,
   then `sudo systemctl daemon-reload`.
 
 ## 9. Debug capture (optional, beta)
 
 Off by default. When a dictation that went through the server comes out
 wrong, the server can keep what it received so the session can be replayed
-on the PC (flow-cli), like the Android app's "Keep last dictation audio".
+on the PC (murmur-cli), like the Android app's "Keep last dictation audio".
 
 ```toml
 [debug]
 capture = true
 max_files = 30   # newest WAVs kept (default 30)
 max_age_h = 72   # older ones deleted (default 72)
-# dir = "/var/lib/flow-server/debug"   # default: <state dir>/debug
+# dir = "/var/lib/murmur-server/debug"   # default: <state dir>/debug
 ```
 
 * State dir: `$STATE_DIRECTORY` (the system unit's `StateDirectory=`, i.e.
-  `/var/lib/flow-server`), else `$XDG_STATE_HOME/flow-server`, else
-  `~/.local/state/flow-server` (user install).
+  `/var/lib/murmur-server`), else `$XDG_STATE_HOME/murmur-server`, else
+  `~/.local/state/murmur-server` (user install).
 * Layout, same as the phone's `files/debug/`:
   `debug/audio/<ts>.wav` (16 kHz mono PCM16, every sample the client sent,
   named by the session start in UTC with colons as dashes, e.g.
@@ -388,8 +388,8 @@ each one; the server lists the tagged ones and serves their files on the
 same port and TLS as dictation, to any valid key.
 
 * Folder: `[library] dir` in the config, default `<state dir>/library`
-  (`/var/lib/flow-server/library` for the system unit,
-  `~/.local/state/flow-server/library` for a user install). It must be
+  (`/var/lib/murmur-server/library` for the system unit,
+  `~/.local/state/murmur-server/library` for a user install). It must be
   readable by the service; the system unit can read its state dir, but not
   `/home` (`ProtectHome=yes`).
 * One folder per model. The folder name is the model's id (only
@@ -398,7 +398,7 @@ same port and TLS as dictation, to any valid key.
   (`.name`) are ignored.
 * Each folder needs a `model.toml` tag. Folders without one, or with an
   invalid one, are skipped; the log says why when the set changes, and so
-  does `flow-server library list`.
+  does `murmur-server library list`.
 * Changes are picked up without a restart: the server rescans every
   `rescan_s` seconds (default 60; one `stat` per file, and every
   `model.toml` is read again, so a tag edit shows on the next scan; tap
@@ -412,10 +412,10 @@ same port and TLS as dictation, to any valid key.
   DOWNLOADS: requests that sent bytes, and the bytes).
 
 ```sh
-sudo mkdir -p /var/lib/flow-server/library/whisper-base
-sudo cp ggml-base.bin /var/lib/flow-server/library/whisper-base/
-sudoedit /var/lib/flow-server/library/whisper-base/model.toml
-sudo flow-server library list   # what is served, and why folders were skipped
+sudo mkdir -p /var/lib/murmur-server/library/whisper-base
+sudo cp ggml-base.bin /var/lib/murmur-server/library/whisper-base/
+sudoedit /var/lib/murmur-server/library/whisper-base/model.toml
+sudo murmur-server library list   # what is served, and why folders were skipped
 ```
 
 ### The tag: `model.toml`
@@ -428,7 +428,7 @@ sudo flow-server library list   # what is served, and why folders were skipped
 | `catalogue_id` | no | The app catalogue id this folder is a copy of (list below). The apps then check the files against the hashes built into them, and `engine` may be left out (the server fills it in from the catalogue) |
 | `engine` | no, with a known `catalogue_id` | How the app loads it: `whisper` (whisper.cpp ggml `.bin`), `parakeet` (sherpa-onnx NeMo transducer), `sherpa_online` (sherpa-onnx streaming transducer), `gguf` (llama.cpp), or another short name |
 
-Catalogue ids (`flow_protocol::library::CATALOGUE`; the folder must hold the
+Catalogue ids (`murmur_protocol::library::CATALOGUE`; the folder must hold the
 catalogue's files under their upstream names):
 
 | `catalogue_id` | Files | Engine |

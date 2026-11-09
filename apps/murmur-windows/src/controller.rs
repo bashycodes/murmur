@@ -1,0 +1,4205 @@
+//! Orchestrator: runs the dictation machine and executes its effects
+//! against a [`Platform`] (OS side) and a [`CoreApi`] (murmur-core side).
+//!
+//! Platform-independent so the whole hotkey → capture → commit → paste
+//! loop is integration-tested on Linux with fakes. Slow work (commit, paste,
+//! UIA snapshot) runs on short-lived worker threads and reports back through
+//! the same input channel, so the loop itself never blocks.
+
+use crate::audio::LevelMeter;
+use crate::context::{build_field_context, RawSnapshot};
+use crate::core_api::{to_outcome, CommitResult, CommitStatus, CoreApi, FieldContext, PasteKey};
+use crate::debug_log::{outcome, DebugLog, Entry, Insert, SilenceTracker};
+use crate::dictation::{Dictation, Effect, Input, OverlayState, Phase, SessionId, Sound};
+use crate::history::{self, History};
+use crate::hotkeys::HotkeyAction;
+use crate::insights::InsightsStore;
+use crate::learn::{self, Anchors, EditWatch, FieldReader, Read};
+use crate::prefs::Prefs;
+use crate::recent_apps::RecentAppStore;
+use crate::suggestions::SuggestionStore;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
+use std::sync::{Arc, Mutex, RwLock};
+use std::time::Duration;
+
+pub type AudioSink = Box<dyn FnMut(&[i16]) + Send + 'static>;
+/// Reports a capture stream that failed mid-dictation.
+pub type CaptureError = Box<dyn Fn(String) + Send + Sync>;
+
+/// Everything OS-specific the controller needs.
+pub trait Platform: Send + Sync + 'static {
+    fn play(&self, s: Sound);
+    fn duck(&self);
+    fn unduck(&self);
+    /// Blocking but bounded (UIA with timeout). Called on a worker thread.
+    fn snapshot_context(&self) -> Option<RawSnapshot>;
+    fn start_capture(&self, device: Option<String>, sink: AudioSink) -> Result<(), String>;
+    /// `start_capture` that reports a stream failure mid-capture (mic
+    /// unplugged) through `on_error`. Default: errors are not reported.
+    fn start_capture_reporting(
+        &self,
+        device: Option<String>,
+        sink: AudioSink,
+        on_error: CaptureError,
+    ) -> Result<(), String> {
+        let _ = on_error;
+        self.start_capture(device, sink)
+    }
+    fn stop_capture(&self);
+    /// Blocking (clipboard restore delay). Called on a worker thread.
+    fn paste(&self, text: &str, prefs: &Prefs) -> Result<(), String>;
+    fn overlay(&self, st: &OverlayState);
+    fn level(&self, level: f32);
+    fn max_duration_warning(&self, remaining_ms: u64);
+    /// Live partial transcript above the pill (`""` = hide).
+    fn preview(&self, _text: &str) {}
+    /// "Transcribing via …" while recording/processing (`None` = hide).
+    fn live_route(&self, _label: Option<&crate::core_api::LiveRouteLabel>) {}
+    /// Press Tab or Enter (paste plan keys; Enter = spoken "press
+    /// enter"). Worker thread.
+    fn send_key(&self, _key: PasteKey) -> Result<(), String> {
+        Ok(())
+    }
+    /// Plain clipboard copy ("copy last transcript"). Worker thread.
+    fn copy_text(&self, _text: &str) -> Result<(), String> {
+        Err("clipboard not available".into())
+    }
+    /// A reader bound to the control focused right now (learn-from-edits),
+    /// `None` when it can't be read (no text pattern, password field).
+    /// Called and used on the watch thread.
+    fn field_reader(&self) -> Option<Box<dyn FieldReader>> {
+        None
+    }
+    /// The foreground window now (S13 paste target). Cheap; any thread.
+    fn focus_target(&self) -> Option<crate::paste::FocusTarget> {
+        None
+    }
+    /// Is the focused control a password field? (`None` = unknown.)
+    /// Bounded (UIA with a timeout); worker thread.
+    fn focused_is_password(&self) -> Option<bool> {
+        None
+    }
+    /// Wait (bounded) until the shortcut's modifiers are physically up
+    /// before a shortcut-triggered paste (paste-last, C13).
+    fn wait_shortcut_released(&self) {}
+    /// A history row was added or changed (the History tab refreshes).
+    fn history_changed(&self) {}
+    /// The Insights counts changed (the Insights tab refreshes).
+    fn insights_changed(&self) {}
+    /// New dictionary suggestions are waiting (`pending` in total).
+    fn suggestions_changed(&self, _pending: usize) {}
+    /// The Scratchpad shortcut: show (or create) the Scratchpad window.
+    fn open_scratchpad(&self) {}
+    /// The Meeting shortcut: start or stop recording a meeting (D45). Must
+    /// not block (the shell does the work on its own thread); dictation is
+    /// untouched either way.
+    fn toggle_meeting(&self) {}
+    /// The New-note shortcut: create a note and show it in the Scratchpad
+    /// window. `true` once that window is in front (so a dictation started
+    /// now pastes into it; S13 only pastes into the start window).
+    fn open_new_note(&self) -> bool {
+        false
+    }
+    /// Command Mode: the text selected in the focused control right now.
+    /// `Ok(None)` = nothing selected (speak-to-generate), `Err` = it could
+    /// not be read (the command then fails and touches nothing). Windows:
+    /// UI Automation, else a Ctrl+C with the clipboard saved and
+    /// restored. Blocking (bounded); worker thread, after the chord is up.
+    fn capture_selection(&self) -> Result<Option<String>, String> {
+        Ok(None)
+    }
+    /// Transforms' "view changes" shortcut: open Home with history row
+    /// `row` (the last transform) expanded as before / after (`None` =
+    /// just Home).
+    fn view_changes(&self, _row: Option<i64>) {}
+    /// A history retry ended: `Ok` = row `row` holds a new version, `Err`
+    /// = why not (shown on Home). Any thread.
+    fn retry_finished(&self, _row: i64, _result: &Result<(), String>) {}
+    /// D37: the language of the foreground window's keyboard layout
+    /// (`he`, `en`, …), `None` when unknown. Cheap; any thread.
+    fn keyboard_language(&self) -> Option<String> {
+        None
+    }
+}
+
+/// Longest wait for the selection capture (UIA timeout + Ctrl+C wait).
+const SELECTION_WAIT: Duration = Duration::from_secs(3);
+
+/// Command Mode facts of a session (history row: instruction, original,
+/// result).
+#[derive(Default)]
+struct CommandInfo {
+    /// The selection read after the chord was released (one value).
+    selection: Option<Receiver<Result<Option<String>, String>>>,
+    instruction: String,
+    original: Option<String>,
+    result: Option<String>,
+    /// A transform shortcut session: the transform's name.
+    transform: Option<String>,
+}
+
+/// A dictation passed through the auto-apply transform.
+struct AppliedTransform {
+    name: String,
+    /// The dictation's text before it (plain).
+    original: String,
+    /// What the transform made of it (pasted instead).
+    result: String,
+}
+
+/// Longest wait for a session start (model load + server connect are
+/// bounded well below this by their own timeouts).
+const START_WAIT: Duration = Duration::from_secs(30);
+/// How long the history row waits for a field snapshot still running when
+/// the paste finished (normally long done by then).
+const CONTEXT_WAIT: Duration = Duration::from_secs(2);
+
+/// Outcome of a session's background start, awaited by commit and
+/// set_context.
+#[derive(Default)]
+struct StartGate {
+    result: Mutex<Option<Result<(), String>>>,
+    cv: std::sync::Condvar,
+}
+
+impl StartGate {
+    fn open(&self, r: Result<(), String>) {
+        *self.result.lock().unwrap() = Some(r);
+        self.cv.notify_all();
+    }
+
+    fn wait(&self, timeout: Duration) -> Result<(), String> {
+        let g = self.result.lock().unwrap();
+        let (g, _) = self
+            .cv
+            .wait_timeout_while(g, timeout, |r| r.is_none())
+            .unwrap();
+        g.clone()
+            .unwrap_or_else(|| Err("dictation start timed out".into()))
+    }
+}
+
+/// Per-session facts collected for the history row.
+#[derive(Default)]
+struct SessionInfo {
+    context: Option<FieldContext>,
+    samples: Arc<AtomicU64>,
+    result: Option<CommitResult>,
+    gate: Arc<StartGate>,
+    /// Esc / processing timeout: a paste not yet started is dropped.
+    cancelled: Arc<AtomicBool>,
+    /// A paste worker is running: keep the session until `PasteFinished`
+    /// (so a paste that did happen still reaches history).
+    pasting: bool,
+    /// Foreground window at dictation start: the only paste target (S13).
+    target: Option<crate::paste::FocusTarget>,
+    /// The focused control was a password field at start (UIA snapshot).
+    password_at_start: Option<bool>,
+    /// Debug log only (all unset while it is off): `hold` / `tap` /
+    /// `handsfree`, the stop time, speech/silence tracker fed by the mic
+    /// and its last-speech → stop value, the live route last shown, the
+    /// paste plan steps, and the line was already written.
+    mode: &'static str,
+    released: Option<std::time::Instant>,
+    silence: Option<Arc<SilenceTracker>>,
+    endpoint_wait_ms: Option<u64>,
+    route_seen: Option<crate::core_api::SessionRoute>,
+    steps: Vec<String>,
+    logged: bool,
+    /// D27: the session's styles (debug log `style`, with `context`).
+    styles: crate::core_api::Styles,
+    /// Command Mode session (`None` = a dictation).
+    command: Option<CommandInfo>,
+    /// The auto-apply transform rewrote this dictation.
+    applied: Option<AppliedTransform>,
+    /// The recording, kept for History "Retry" (`None` = not kept:
+    /// `retry_audio_keep` 0 or history off).
+    audio: Option<Arc<Mutex<Vec<i16>>>>,
+    /// The app's built-in style bucket at the start (before "Style per
+    /// app"), kept with the recording for a retry.
+    base_bucket: Option<crate::core_api::StyleBucket>,
+    /// D37: the session's forced language (`None` = auto) and its source.
+    /// D58: the language the transcription used (the stop one).
+    language: Option<String>,
+    language_source: Option<crate::keyboard_language::Source>,
+    /// D58: the language read at the start and at the stop (debug log
+    /// `start_language` / `stop_language`; `stop_language` stays `None`
+    /// when the keyboard is not followed).
+    start_language: Option<String>,
+    stop_language: Option<String>,
+    /// D58: the start session's config, to transcribe again in the stop
+    /// language, and the whole recording for it (`None` = "Keyboard
+    /// language" off).
+    start_cfg: Option<crate::core_api::SessionConfig>,
+    rerun_audio: Option<Arc<Mutex<Vec<i16>>>>,
+    /// Opened by the field snapshot thread once `context` is filled in (or
+    /// there is none); `None` = no snapshot was taken.
+    context_done: Option<Arc<StartGate>>,
+}
+
+#[derive(Default)]
+struct Shared {
+    sessions: Mutex<HashMap<SessionId, SessionInfo>>,
+    /// The session whose start may still complete (0 = cancelled).
+    live: AtomicU64,
+    /// Serialises background starts.
+    start_lock: Mutex<()>,
+    /// Last transcript (pasted or not): "paste last transcript" source when
+    /// history is off/unavailable.
+    last_text: Mutex<Option<String>>,
+    /// A history retry is running (one at a time).
+    retrying: AtomicBool,
+}
+
+pub struct Controller {
+    machine: Dictation,
+    platform: Arc<dyn Platform>,
+    core: Arc<dyn CoreApi>,
+    prefs: Arc<RwLock<Prefs>>,
+    tx: Sender<Input>,
+    dictating: Arc<AtomicBool>,
+    clock: Box<dyn Fn() -> u64 + Send>,
+    shared: Arc<Shared>,
+    history: Option<Arc<Mutex<History>>>,
+    insights: Option<Arc<Mutex<InsightsStore>>>,
+    suggestions: Option<Arc<Mutex<SuggestionStore>>>,
+    /// Exe names dictated into ("Style per app" picker).
+    recent_apps: Option<Arc<Mutex<RecentAppStore>>>,
+    /// Bumped per dictation: a running edit watch stops when it changes.
+    watch_gen: Arc<AtomicU64>,
+    /// Our own exe name (lowercase, like `FieldContext::app_id`): its
+    /// windows (Scratchpad) are pasted into like any app, as style Other,
+    /// but never watched for edits nor listed as a recent app.
+    own_exe: Option<String>,
+    preview_shown: String,
+    /// Hands-free session whose endpoint (D19) already sent `Finish`.
+    endpoint_finished: Option<SessionId>,
+    /// Route the pill names right now (relabelled on failover).
+    route_shown: Option<crate::core_api::SessionRoute>,
+    /// Opt-in debug log; written off this thread, never awaited.
+    debug: Option<Arc<DebugLog>>,
+    /// Debug `insert.outcome` of a `CancelSession` (Esc vs timeout).
+    cancel_outcome: &'static str,
+}
+
+impl Controller {
+    pub fn new(
+        platform: Arc<dyn Platform>,
+        core: Arc<dyn CoreApi>,
+        prefs: Arc<RwLock<Prefs>>,
+        tx: Sender<Input>,
+        clock: Box<dyn Fn() -> u64 + Send>,
+    ) -> Self {
+        let policy = prefs.read().unwrap().policy();
+        Controller {
+            machine: Dictation::new(policy),
+            platform,
+            core,
+            prefs,
+            tx,
+            dictating: Arc::new(AtomicBool::new(false)),
+            clock,
+            shared: Arc::default(),
+            history: None,
+            insights: None,
+            suggestions: None,
+            recent_apps: None,
+            watch_gen: Arc::default(),
+            own_exe: None,
+            preview_shown: String::new(),
+            endpoint_finished: None,
+            route_shown: None,
+            debug: None,
+            cancel_outcome: outcome::CANCELLED,
+        }
+    }
+
+    /// One debug line per dictation while `log` is enabled (Developer
+    /// toggle). Logging never changes what the dictation does.
+    pub fn with_debug_log(mut self, log: Arc<DebugLog>) -> Self {
+        self.debug = Some(log);
+        self
+    }
+
+    fn debug_on(&self) -> bool {
+        self.debug.as_ref().is_some_and(|l| l.is_enabled())
+    }
+
+    /// Write the session's line (once). `insert` = what happened to the
+    /// text, `error` = why it failed (else the commit's error).
+    fn debug_emit(&self, session: SessionId, insert: &str, error: Option<String>) {
+        let Some(log) = self.debug.as_ref().filter(|l| l.is_enabled()) else {
+            return;
+        };
+        let entry = {
+            let mut g = self.shared.sessions.lock().unwrap();
+            let Some(i) = g.get_mut(&session) else { return };
+            if i.logged {
+                return;
+            }
+            i.logged = true;
+            debug_entry(i, insert, error)
+        };
+        log.log(entry);
+    }
+
+    /// Collect learn-from-edits suggestions into `store` (needs
+    /// `learn_from_edits` in prefs and a readable field).
+    pub fn with_suggestions(mut self, store: Arc<Mutex<SuggestionStore>>) -> Self {
+        self.suggestions = Some(store);
+        self
+    }
+
+    /// Remember the exe of each app dictated into (the "Style per app"
+    /// picker offers them); needs `use_ax_context`, like the bucketing.
+    pub fn with_recent_apps(mut self, store: Arc<Mutex<RecentAppStore>>) -> Self {
+        self.recent_apps = Some(store);
+        self
+    }
+
+    /// Record transcripts to the local SQLite history (retention from prefs).
+    pub fn with_history(mut self, h: Arc<Mutex<History>>) -> Self {
+        if let Ok(g) = h.lock() {
+            let _ = g.prune(self.prefs.read().unwrap().retention, history::now_ms());
+        }
+        self.history = Some(h);
+        self
+    }
+
+    /// Count committed dictations for the Insights page (survives History
+    /// deletion and retention).
+    pub fn with_insights(mut self, s: Arc<Mutex<InsightsStore>>) -> Self {
+        self.insights = Some(s);
+        self
+    }
+
+    /// Our exe name (see `own_exe`); `"murmur.exe"` form.
+    pub fn with_own_exe(mut self, exe: &str) -> Self {
+        self.own_exe = Some(crate::context::exe_name(exe)).filter(|e| !e.is_empty());
+        self
+    }
+
+    /// Shared with the keyboard hook (swallow Esc only while dictating).
+    pub fn dictating_flag(&self) -> Arc<AtomicBool> {
+        self.dictating.clone()
+    }
+
+    pub fn machine(&self) -> &Dictation {
+        &self.machine
+    }
+
+    pub fn handle(&mut self, mut input: Input) {
+        if input == Input::Hotkey(HotkeyAction::NewNote) {
+            // New note, then hands-free into it, unless already dictating
+            // (that dictation keeps its own target window).
+            let idle = !self.machine.is_active();
+            if !self.platform.open_new_note() || !idle {
+                return;
+            }
+            input = Input::Hotkey(HotkeyAction::HandsFreeToggle);
+        }
+        let now = (self.clock)();
+        match &input {
+            Input::Hotkey(HotkeyAction::PasteLast) => {
+                self.paste_last();
+                return;
+            }
+            Input::Hotkey(HotkeyAction::CopyLast) => {
+                self.copy_last();
+                return;
+            }
+            Input::Hotkey(HotkeyAction::Scratchpad) => {
+                self.platform.open_scratchpad();
+                return;
+            }
+            Input::Hotkey(HotkeyAction::Meeting) => {
+                // Hidden Notetaker (D51): the chord is not installed, and a
+                // stray one still never reaches the recorder.
+                if crate::meetings::NOTETAKER_ENABLED {
+                    self.platform.toggle_meeting();
+                }
+                return;
+            }
+            Input::Hotkey(HotkeyAction::ViewChanges) => {
+                self.view_changes();
+                return;
+            }
+            Input::Retry { row } => {
+                self.retry(*row);
+                return;
+            }
+            Input::PasteFinished { session, result } => {
+                if self.debug_on() {
+                    let (insert, err) = paste_insert(result);
+                    self.debug_emit(*session, insert, err);
+                }
+                self.record(*session, result)
+            }
+            Input::Committed { session, outcome }
+                if self.debug_on() && self.current_session() == Some(*session) =>
+            {
+                use crate::dictation::CommitOutcome;
+                match outcome {
+                    CommitOutcome::Text(_) => {}
+                    CommitOutcome::Empty | CommitOutcome::Notice(_) => {
+                        self.debug_emit(*session, outcome::EMPTY, None)
+                    }
+                    CommitOutcome::Failed(_) => self.debug_emit(*session, outcome::ERROR, None),
+                }
+            }
+            Input::StartFailed { session, message }
+                if self.debug_on()
+                    && matches!(self.machine.phase(), Phase::Listening(l) if l.session == *session) =>
+            {
+                self.debug_emit(*session, outcome::START_FAILED, Some(message.clone()));
+            }
+            Input::Started { session, route } => {
+                if self.current_session() == Some(*session) {
+                    self.show_route(route.clone());
+                }
+                return;
+            }
+            Input::CommandFinished {
+                session,
+                result: Err(message),
+            } if self.debug_on() && self.current_session() == Some(*session) => {
+                self.debug_emit(*session, outcome::ERROR, Some(message.clone()));
+            }
+            _ => {}
+        }
+        let tick = input == Input::Tick;
+        let ptt_down = input == Input::Hotkey(HotkeyAction::PttDown);
+        let was_processing = matches!(self.machine.phase(), Phase::Processing { .. });
+        let auto = self
+            .prefs
+            .read()
+            .unwrap()
+            .transforms
+            .auto_apply_item()
+            .is_some();
+        self.machine.set_auto_transform(auto);
+        let effects = self.machine.handle(input, now);
+        // A Tick that ends processing with an error = the processing timeout.
+        self.cancel_outcome =
+            if tick && was_processing && matches!(self.machine.phase(), Phase::Error { .. }) {
+                outcome::TIMEOUT
+            } else {
+                outcome::CANCELLED
+            };
+        self.dictating
+            .store(self.machine.is_active(), Ordering::Relaxed);
+        for e in effects {
+            self.execute(e);
+        }
+        if self.debug_on() {
+            self.note_mode(ptt_down);
+        }
+        if tick {
+            self.poll_session();
+        }
+        if !matches!(self.machine.phase(), Phase::Listening(_)) && !self.preview_shown.is_empty() {
+            self.preview_shown.clear();
+            self.platform.preview("");
+        }
+        if !self.machine.is_active() && self.route_shown.is_some() {
+            self.route_shown = None;
+            self.platform.live_route(None);
+        }
+        self.drop_finished_sessions();
+    }
+
+    /// Debug log `mode`: push-to-talk = `hold`, locked by a double tap of
+    /// the push-to-talk chord = `tap`, the hands-free key = `handsfree`.
+    fn note_mode(&self, ptt_down: bool) {
+        let Phase::Listening(l) = self.machine.phase() else {
+            return;
+        };
+        if let Some(i) = self.shared.sessions.lock().unwrap().get_mut(&l.session) {
+            i.mode = match l.mode {
+                crate::dictation::Mode::Ptt => "hold",
+                crate::dictation::Mode::Locked
+                    if i.mode == "tap" || (ptt_down && i.mode == "hold") =>
+                {
+                    "tap"
+                }
+                crate::dictation::Mode::Locked => "handsfree",
+                crate::dictation::Mode::Command => "command",
+            };
+        }
+    }
+
+    fn current_session(&self) -> Option<SessionId> {
+        match self.machine.phase() {
+            Phase::Listening(l) => Some(l.session),
+            Phase::Processing { session, .. } => Some(*session),
+            _ => None,
+        }
+    }
+
+    /// Sessions that are neither listening nor processing are done.
+    fn drop_finished_sessions(&self) {
+        let live = self.current_session();
+        self.shared
+            .sessions
+            .lock()
+            .unwrap()
+            .retain(|id, i| Some(*id) == live || i.pasting);
+    }
+
+    /// The partial timer (every 100 ms tick while listening): one
+    /// `poll()` gives the live preview and the hands-free endpoint (D19).
+    fn poll_session(&mut self) {
+        let Phase::Listening(l) = self.machine.phase() else {
+            return;
+        };
+        let (session, mode) = (l.session, l.mode);
+        let p = self.core.poll();
+        // `None` mid-recording = the session died: keep the last label
+        // (the commit reports the error).
+        if let Some(r) = p.route.clone() {
+            self.show_route(r);
+        }
+        if self.prefs.read().unwrap().live_preview {
+            let text = p.partial.as_deref().unwrap_or("").trim();
+            if text != self.preview_shown {
+                self.preview_shown = text.to_string();
+                self.platform.preview(text);
+            }
+        }
+        // Silence after speech ends a hands-free dictation exactly like
+        // pressing the hands-free key again: stop sound, commit, paste.
+        if p.endpoint_reached
+            && mode == crate::dictation::Mode::Locked
+            && self.endpoint_finished != Some(session)
+        {
+            self.endpoint_finished = Some(session);
+            let _ = self.tx.send(Input::Finish);
+        }
+    }
+
+    fn show_route(&mut self, r: crate::core_api::SessionRoute) {
+        if self.route_shown.as_ref() != Some(&r) {
+            if self.debug_on() {
+                if let Some(s) = self.current_session() {
+                    if let Some(i) = self.shared.sessions.lock().unwrap().get_mut(&s) {
+                        i.route_seen = Some(r.clone());
+                    }
+                }
+            }
+            let label = self.core.describe_route(&r);
+            self.route_shown = Some(r);
+            self.platform.live_route(Some(&label));
+        }
+    }
+
+    /// Store the history row once the paste outcome is known, then watch
+    /// the field for corrections.
+    fn record(&self, session: SessionId, paste: &Result<(), String>) {
+        // The row needs the app: a field snapshot still running under load
+        // would otherwise leave it without one (and a retry with no app).
+        let snapshot = self
+            .shared
+            .sessions
+            .lock()
+            .unwrap()
+            .get(&session)
+            .and_then(|i| i.context_done.clone());
+        if let Some(done) = snapshot {
+            let _ = done.wait(CONTEXT_WAIT);
+        }
+        let info = self.shared.sessions.lock().unwrap().remove(&session);
+        let Some(info) = info else { return };
+        // Cancelled before anything was inserted: the user dropped it.
+        if paste.as_ref().err().map(String::as_str) == Some(PASTE_CANCELLED) {
+            return;
+        }
+        if let Some(cmd) = info.command {
+            // A transform shortcut has no transcript, a command has one.
+            if info.result.is_some() || cmd.transform.is_some() {
+                self.record_command(
+                    cmd,
+                    info.context,
+                    &info.samples,
+                    info.result.as_ref(),
+                    paste,
+                );
+            }
+            return;
+        }
+        let Some(r) = info.result else { return };
+        let plain = r.plain();
+        // Auto-apply: what was pasted is the transform's text.
+        let inserted = info
+            .applied
+            .as_ref()
+            .map_or_else(|| plain.clone(), |a| crate::paste::plain_text(&a.result));
+        *self.shared.last_text.lock().unwrap() = Some(inserted.clone());
+        let duration_ms = (info.samples.load(Ordering::Relaxed) / 16) as i64;
+        let words = history::word_count(&plain);
+        if let (Some(store), true) = (&self.insights, words > 0) {
+            // Independent of History retention: counts only, kept local.
+            let app = info.context.as_ref().map_or("", |c| c.app_id.as_str());
+            let now = history::now_ms();
+            let fixes = crate::insights::Fixes {
+                // The AI cleanup's text was used and differs from the
+                // transcript.
+                ai: u64::from(
+                    r.status == CommitStatus::Formatted && plain.trim() != r.asr_text.trim(),
+                ),
+                dictionary: crate::insights::dictionary_fixes(
+                    &r.asr_text,
+                    &plain,
+                    &self.prefs.read().unwrap().dictionary,
+                ),
+            };
+            let day = crate::insights::local_date(now);
+            let mut s = store.lock().unwrap();
+            s.record(day, words, duration_ms, app);
+            s.record_extras(day, result_route(&r).as_deref(), fixes);
+            if let Err(e) = s.save() {
+                eprintln!("[insights] {e}");
+            }
+            drop(s);
+            self.platform.insights_changed();
+        }
+        let mut row = None;
+        if let Some(h) = &self.history {
+            let ctx = info.context.clone().unwrap_or_default();
+            let entry = history::Entry {
+                id: 0,
+                ts: history::now_ms(),
+                app: ctx.app_id,
+                url: ctx.url_host,
+                raw: r.asr_text.clone(),
+                formatted: (r.status == CommitStatus::Formatted).then(|| plain.clone()),
+                pasted: paste.is_ok().then(|| inserted.clone()),
+                edited: None,
+                duration_ms,
+                words,
+                lang: r.language.clone(),
+                command: false,
+                original: info.applied.as_ref().map(|a| a.original.clone()),
+                route: result_route(&r),
+                transform: info.applied.as_ref().map(|a| a.name.clone()),
+            };
+            let (retention, keep) = {
+                let p = self.prefs.read().unwrap();
+                (p.retention, p.retry_audio_keep)
+            };
+            let g = h.lock().unwrap();
+            match g.record(&entry, retention, entry.ts) {
+                Ok(id) => row = id,
+                Err(e) => eprintln!("[history] {e}"),
+            }
+            // Retry: the recording, never a password field's (at the start,
+            // or one the paste guard refused).
+            let guarded = paste.as_ref().err().map(String::as_str)
+                == Some(crate::paste::GuardFailure::Guarded.message());
+            let secret = info.password_at_start == Some(true) || guarded;
+            if let (Some(id), Some(audio), false) = (row, &info.audio, secret) {
+                let pcm = std::mem::take(&mut *audio.lock().unwrap());
+                let bucket = info.base_bucket.map(bucket_name);
+                if let Err(e) = g.record_audio(id, &pcm, bucket, keep) {
+                    eprintln!("[history] audio: {e}");
+                }
+            }
+            drop(g);
+            self.platform.history_changed();
+        }
+        // A transformed paste is the AI's wording: nothing to learn from.
+        if paste.is_ok() && info.applied.is_none() {
+            self.watch_for_edits(info.context, &r, row);
+        }
+    }
+
+    /// History row of a Command Mode session: `raw` = the instruction,
+    /// `original` = the selection it rewrote (none = generated text),
+    /// `formatted` / `pasted` = the AI result. No learn-from-edits: the
+    /// result is the LLM's wording, not a transcript to correct.
+    fn record_command(
+        &self,
+        cmd: CommandInfo,
+        ctx: Option<FieldContext>,
+        samples: &AtomicU64,
+        r: Option<&CommitResult>,
+        paste: &Result<(), String>,
+    ) {
+        let Some(result) = cmd.result else { return };
+        let plain = crate::paste::plain_text(&result);
+        *self.shared.last_text.lock().unwrap() = Some(plain.clone());
+        let Some(h) = &self.history else { return };
+        let ctx = ctx.unwrap_or_default();
+        let entry = history::Entry {
+            id: 0,
+            ts: history::now_ms(),
+            app: ctx.app_id,
+            url: ctx.url_host,
+            raw: cmd.instruction,
+            formatted: Some(plain.clone()),
+            pasted: paste.is_ok().then(|| plain.clone()),
+            edited: None,
+            duration_ms: (samples.load(Ordering::Relaxed) / 16) as i64,
+            words: history::word_count(&plain),
+            lang: r.and_then(|r| r.language.clone()),
+            command: true,
+            original: cmd.original,
+            route: r.and_then(result_route),
+            transform: cmd.transform,
+        };
+        let retention = self.prefs.read().unwrap().retention;
+        if let Err(e) = h.lock().unwrap().record(&entry, retention, entry.ts) {
+            eprintln!("[history] {e}");
+        }
+        self.platform.history_changed();
+    }
+
+    /// Learn from edits: re-read the field for a while after the
+    /// paste; corrections become suggestions, never dictionary entries.
+    fn watch_for_edits(&self, ctx: Option<FieldContext>, r: &CommitResult, row: Option<i64>) {
+        let prefs = self.prefs.read().unwrap().clone();
+        // A sent message (press enter) clears the field: nothing to learn.
+        let sent = r.paste_segments().iter().any(|s| {
+            matches!(
+                s,
+                crate::core_api::PasteSegment::Key {
+                    key: PasteKey::Enter
+                }
+            )
+        });
+        if !prefs.learn_from_edits || !prefs.use_ax_context || sent {
+            return;
+        }
+        // No snapshot = no anchors to find the dictated region by.
+        let Some(ctx) = ctx else { return };
+        // Our own window (Scratchpad): its edits are the user's notes, not
+        // corrections of the recogniser.
+        if self.own_exe.as_deref() == Some(ctx.app_id.as_str()) {
+            return;
+        }
+        let pasted = r.plain();
+        if pasted.trim().is_empty() {
+            return;
+        }
+        let gen = self.watch_gen.load(Ordering::SeqCst);
+        let watch_gen = self.watch_gen.clone();
+        let platform = self.platform.clone();
+        let core = self.core.clone();
+        let history = self.history.clone();
+        let suggestions = self.suggestions.clone();
+        let live_prefs = self.prefs.clone();
+        let spawned = std::thread::Builder::new()
+            .name("murmur-learn".into())
+            .spawn(move || {
+                let Some(mut inner) = platform.field_reader() else {
+                    return;
+                };
+                let mut reader = StopOnNewDictation {
+                    inner: &mut *inner,
+                    gen,
+                    watch_gen: &watch_gen,
+                };
+                let t0 = std::time::Instant::now();
+                let mut watch =
+                    EditWatch::new(&pasted, Anchors::from_context(&ctx), 0, prefs.watch_opts());
+                let outcome = learn::run_watch(
+                    &mut reader,
+                    &mut watch,
+                    &|| t0.elapsed().as_millis() as u64,
+                    &|ms| std::thread::sleep(Duration::from_millis(ms)),
+                );
+                drop(inner);
+                let Some(edited) = outcome.edited else { return };
+                if let (Some(h), Some(id)) = (&history, row) {
+                    let _ = h.lock().unwrap().set_edited(id, &edited);
+                    platform.history_changed();
+                }
+                let bounded = learn::bound_edit(&pasted, &edited);
+                let cands = core.learn_edit(&pasted, &bounded);
+                let Some(store) = suggestions else { return };
+                let dict = live_prefs.read().unwrap().dictionary.clone();
+                let mut s = store.lock().unwrap();
+                if s.data.add(&cands, &ctx.app_id, history::now_ms(), &dict) > 0 {
+                    if let Err(e) = s.save() {
+                        eprintln!("[suggestions] {e}");
+                    }
+                    platform.suggestions_changed(s.data.pending.len());
+                }
+            });
+        if let Err(e) = spawned {
+            eprintln!("[learn] {e}");
+        }
+    }
+
+    /// Last transcript: history first (survives restarts), else memory.
+    fn last_text(&self) -> Option<String> {
+        let retention = self.prefs.read().unwrap().retention;
+        let mut text = self.shared.last_text.lock().unwrap().clone();
+        if let Some(h) = &self.history {
+            if let Ok(Some(e)) = h.lock().unwrap().latest(retention, history::now_ms()) {
+                text = Some(e.best_text().to_string());
+            }
+        }
+        text.filter(|t| !t.is_empty())
+    }
+
+    /// Re-insert the last transcript; ignored while a dictation is running.
+    fn paste_last(&self) {
+        if self.machine.is_active() {
+            return;
+        }
+        let Some(text) = self.last_text() else { return };
+        let prefs = self.prefs.read().unwrap().clone();
+        let platform = self.platform.clone();
+        let debug = self.debug.clone();
+        std::thread::spawn(move || {
+            platform.wait_shortcut_released();
+            if let Err(e) = platform.paste(&text, &prefs) {
+                if let Some(d) = &debug {
+                    d.event("paste", &format!("paste last: {e}"));
+                }
+                platform.overlay(&OverlayState::Error { message: e });
+            }
+        });
+    }
+
+    /// Put the last transcript on the clipboard (Shift+Alt+X).
+    fn copy_last(&self) {
+        let Some(text) = self.last_text() else { return };
+        let text = crate::paste::plain_text(&text);
+        let platform = self.platform.clone();
+        let debug = self.debug.clone();
+        std::thread::spawn(move || {
+            if let Err(e) = platform.copy_text(&text) {
+                eprintln!("[copy-last] {e}");
+                if let Some(d) = &debug {
+                    d.event("paste", &format!("copy last: {e}"));
+                }
+            }
+        });
+    }
+
+    /// Event loop: ticks every 100 ms when idle of input.
+    pub fn run(mut self, rx: Receiver<Input>) {
+        loop {
+            match rx.recv_timeout(Duration::from_millis(100)) {
+                Ok(i) => self.handle(i),
+                Err(RecvTimeoutError::Timeout) => self.handle(Input::Tick),
+                Err(RecvTimeoutError::Disconnected) => break,
+            }
+        }
+    }
+
+    fn execute(&mut self, e: Effect) {
+        let prefs = self.prefs.read().unwrap().clone();
+        match e {
+            Effect::Sound(s) => {
+                if prefs.enable_sounds {
+                    self.platform.play(s);
+                }
+            }
+            Effect::Duck => {
+                if prefs.mute_audio_while_dictating {
+                    self.platform.duck();
+                }
+            }
+            Effect::Unduck => {
+                if prefs.mute_audio_while_dictating {
+                    self.platform.unduck();
+                }
+            }
+            Effect::BeginSession(session) => {
+                self.watch_gen.fetch_add(1, Ordering::SeqCst);
+                let mode = match self.machine.phase() {
+                    Phase::Listening(l) => l.mode,
+                    _ => crate::dictation::Mode::Ptt,
+                };
+                // The start can block (model-load wait, server connect up to
+                // its timeout), so it runs on its own thread while the mic
+                // is already open; audio is buffered until it returns, so
+                // no first word is lost (review P3, changelog C2).
+                let samples = Arc::new(AtomicU64::new(0));
+                let command = mode == crate::dictation::Mode::Command;
+                let silence = self.debug_on().then(|| Arc::new(SilenceTracker::default()));
+                let gate = Arc::new(StartGate::default());
+                let pending: Arc<Mutex<Option<Vec<i16>>>> = Arc::new(Mutex::new(Some(Vec::new())));
+                // Retry: a copy of the recording, for the history row.
+                // D37: the layout of the window being dictated into, read now.
+                let mut cfg = prefs.session_config_for(mode);
+                let language_source = apply_keyboard_language(&mut cfg, &prefs, &*self.platform);
+                let keep_audio = (!command
+                    && self.history.is_some()
+                    && prefs.retry_audio_keep > 0
+                    && prefs.retention != crate::prefs::Retention::Never)
+                    .then(|| Arc::new(Mutex::new(Vec::new())));
+                // D58: following the keyboard, the recording is kept for a
+                // re-run in the stop language (the Retry copy when there is one).
+                let rerun_audio = keep_audio.clone().or_else(|| {
+                    prefs
+                        .keyboard_language
+                        .then(|| Arc::new(Mutex::new(Vec::new())))
+                });
+                self.shared.sessions.lock().unwrap().insert(
+                    session,
+                    SessionInfo {
+                        samples: samples.clone(),
+                        gate: gate.clone(),
+                        target: self.platform.focus_target(),
+                        silence: silence.clone(),
+                        styles: prefs.styles.clone(),
+                        command: command.then(CommandInfo::default),
+                        audio: keep_audio.clone(),
+                        language: cfg.languages.first().cloned(),
+                        language_source: Some(language_source),
+                        start_language: Some(language_wire(&cfg.languages)),
+                        start_cfg: prefs.keyboard_language.then(|| cfg.clone()),
+                        rerun_audio: rerun_audio.clone(),
+                        ..SessionInfo::default()
+                    },
+                );
+                self.shared.live.store(session, Ordering::SeqCst);
+                {
+                    let core = self.core.clone();
+                    let shared = self.shared.clone();
+                    let tx = self.tx.clone();
+                    let pending = pending.clone();
+                    let start_gate = gate.clone();
+                    let spawned = std::thread::Builder::new()
+                        .name("murmur-start".into())
+                        .spawn(move || {
+                            // One start at a time: a late start of a
+                            // cancelled session never overlaps the next.
+                            let _serial = shared.start_lock.lock().unwrap();
+                            let res = core.start_session_info(cfg);
+                            let live = shared.live.load(Ordering::SeqCst) == session;
+                            match res {
+                                Ok(_) if !live => {
+                                    core.cancel();
+                                    start_gate.open(Err("cancelled".into()));
+                                }
+                                Ok(route) => {
+                                    // Flush what the mic captured meanwhile,
+                                    // in order, before live pushes resume.
+                                    let mut g = pending.lock().unwrap();
+                                    if let Some(buf) = g.take() {
+                                        for chunk in buf.chunks(1600) {
+                                            core.push_audio(chunk);
+                                        }
+                                    }
+                                    drop(g);
+                                    start_gate.open(Ok(()));
+                                    if let Some(route) = route {
+                                        let _ = tx.send(Input::Started { session, route });
+                                    }
+                                }
+                                Err(message) => {
+                                    pending.lock().unwrap().take();
+                                    start_gate.open(Err(message.clone()));
+                                    let _ = tx.send(Input::StartFailed { session, message });
+                                }
+                            }
+                        });
+                    if let Err(e) = spawned {
+                        gate.open(Err(e.to_string()));
+                        let _ = self.tx.send(Input::StartFailed {
+                            session,
+                            message: e.to_string(),
+                        });
+                        return;
+                    }
+                }
+                if prefs.use_ax_context {
+                    // set_context may legitimately arrive after audio started.
+                    let done = Arc::new(StartGate::default());
+                    if let Some(i) = self.shared.sessions.lock().unwrap().get_mut(&session) {
+                        i.context_done = Some(done.clone());
+                    }
+                    let platform = self.platform.clone();
+                    let core = self.core.clone();
+                    let shared = self.shared.clone();
+                    let gate = gate.clone();
+                    let buckets = prefs.app_buckets.clone();
+                    let recent = self.recent_apps.clone();
+                    let persist_recent = prefs.retention != crate::prefs::Retention::Never;
+                    let own_exe = self.own_exe.clone();
+                    std::thread::spawn(move || {
+                        if let Some(raw) = platform.snapshot_context() {
+                            let mut ctx = build_field_context(&raw);
+                            let base_bucket = ctx.app_category;
+                            if own_exe.as_deref() == Some(ctx.app_id.as_str()) {
+                                // Scratchpad: always style Other, not a
+                                // "Style per app" choice.
+                                ctx.app_kind = crate::core_api::AppKind::Other;
+                                ctx.app_category = crate::core_api::StyleBucket::Other;
+                            } else {
+                                if let Some(r) = &recent {
+                                    r.lock().unwrap().record(&ctx.app_id, persist_recent);
+                                }
+                                // "Style per app" (D27) over the built-in lists.
+                                crate::context::apply_bucket_override(&mut ctx, &buckets);
+                            }
+                            if let Some(i) = shared.sessions.lock().unwrap().get_mut(&session) {
+                                i.context = Some(ctx.clone());
+                                i.password_at_start = Some(raw.is_password);
+                                i.base_bucket = Some(base_bucket);
+                            }
+                            if gate.wait(START_WAIT).is_ok()
+                                && shared.live.load(Ordering::SeqCst) == session
+                            {
+                                core.set_context(ctx);
+                            }
+                        }
+                        // After set_context too: nothing of this session
+                        // reaches the core once its row is written.
+                        done.open(Ok(()));
+                    });
+                }
+                let core = self.core.clone();
+                let platform = self.platform.clone();
+                let mut meter = LevelMeter::default();
+                let cap = prefs.policy().max_samples() as usize;
+                let sink: AudioSink = Box::new(move |pcm: &[i16]| {
+                    samples.fetch_add(pcm.len() as u64, Ordering::Relaxed);
+                    if let Some(k) = &rerun_audio {
+                        let mut k = k.lock().unwrap();
+                        let room = cap.saturating_sub(k.len());
+                        k.extend_from_slice(&pcm[..pcm.len().min(room)]);
+                    }
+                    if let Some(t) = &silence {
+                        t.update(pcm);
+                    }
+                    let buffered = {
+                        let mut g = pending.lock().unwrap();
+                        match g.as_mut() {
+                            Some(buf) => {
+                                let room = cap.saturating_sub(buf.len());
+                                buf.extend_from_slice(&pcm[..pcm.len().min(room)]);
+                                true
+                            }
+                            None => false,
+                        }
+                    };
+                    if !buffered {
+                        core.push_audio(pcm);
+                    }
+                    for l in meter.push(pcm) {
+                        platform.level(l);
+                    }
+                });
+                // A stream that dies mid-dictation ends it with an error
+                // pill instead of listening to nothing.
+                let tx = Mutex::new(self.tx.clone());
+                let on_error = Box::new(move |message: String| {
+                    if let Ok(tx) = tx.lock() {
+                        let _ = tx.send(Input::StartFailed { session, message });
+                    }
+                });
+                if let Err(message) =
+                    self.platform
+                        .start_capture_reporting(prefs.microphone.clone(), sink, on_error)
+                {
+                    let _ = self.tx.send(Input::StartFailed { session, message });
+                }
+            }
+            Effect::EndCapture => {
+                self.platform.stop_capture();
+                self.platform.level(0.0);
+            }
+            Effect::Commit(session) => {
+                if self.debug_on() {
+                    if let Some(i) = self.shared.sessions.lock().unwrap().get_mut(&session) {
+                        i.released = Some(std::time::Instant::now());
+                        i.endpoint_wait_ms =
+                            i.silence.as_ref().and_then(|t| t.trailing_silence_ms());
+                    }
+                }
+                if matches!(
+                    self.machine.phase(),
+                    Phase::Processing { command: true, .. }
+                ) {
+                    self.begin_selection_capture(session);
+                }
+                // D58: the keyboard at the stop decides the language.
+                let rerun = self.apply_stop_language(session, &prefs);
+                if rerun.is_some() {
+                    self.machine.rerun(session);
+                }
+                let core = self.core.clone();
+                let tx = self.tx.clone();
+                let shared = self.shared.clone();
+                let gate = shared
+                    .sessions
+                    .lock()
+                    .unwrap()
+                    .get(&session)
+                    .map(|i| i.gate.clone());
+                std::thread::spawn(move || {
+                    // A start still connecting is waited for (its buffered
+                    // audio is flushed first); a failed start is the error.
+                    let started = gate.map_or(Ok(()), |g| g.wait(START_WAIT));
+                    let r = match (started, rerun) {
+                        (Ok(()), None) => core.commit(),
+                        (Ok(()), Some(rerun)) => {
+                            rerun_in_stop_language(&*core, &shared, session, rerun)
+                        }
+                        (Err(m), _) => CommitResult::failed(m),
+                    };
+                    let outcome = to_outcome(&r);
+                    if let Some(i) = shared.sessions.lock().unwrap().get_mut(&session) {
+                        i.result = Some(r);
+                    }
+                    let _ = tx.send(Input::Committed { session, outcome });
+                });
+            }
+            Effect::CancelSession(session) => {
+                let pasting = match self.shared.sessions.lock().unwrap().get(&session) {
+                    Some(i) => {
+                        i.cancelled.store(true, Ordering::SeqCst);
+                        i.pasting
+                    }
+                    None => true,
+                };
+                // A paste in flight reports its own outcome.
+                if !pasting {
+                    self.debug_emit(session, self.cancel_outcome, None);
+                }
+                // A start still in flight sees this and cancels itself.
+                let _ = self.shared.live.compare_exchange(
+                    session,
+                    0,
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                );
+                self.core.cancel();
+            }
+            Effect::Command {
+                session,
+                instruction,
+            } => self.run_command(session, instruction),
+            Effect::Transform { session, index } => self.run_transform(session, index),
+            Effect::AutoTransform { session, text } => self.run_auto_transform(session, text),
+            Effect::Paste { session, text } => {
+                // The core's paste plan (core-p1): text runs, Tab/Break and
+                // a trailing Enter. `text` is only the fallback for a result
+                // without one, and all there is for a command (its result
+                // is the AI answer, not the transcript).
+                let segs = self
+                    .shared
+                    .sessions
+                    .lock()
+                    .unwrap()
+                    .get(&session)
+                    .filter(|i| i.command.is_none())
+                    .and_then(|i| {
+                        let r = i.result.as_ref()?;
+                        // Auto-apply: the transform's text, with the
+                        // dictation's spoken "press enter".
+                        Some(match &i.applied {
+                            Some(_) => murmur_core::paste::segments(&text, r.press_enter),
+                            None => r.paste_segments(),
+                        })
+                    })
+                    .unwrap_or_else(|| murmur_core::paste::segments(&text, false));
+                let steps = crate::paste::plan(&segs);
+                if self.debug_on() {
+                    let names = step_names(&steps, prefs.paste_method);
+                    if let Some(i) = self.shared.sessions.lock().unwrap().get_mut(&session) {
+                        i.steps = names;
+                    }
+                }
+                let platform = self.platform.clone();
+                let tx = self.tx.clone();
+                let (cancelled, target, password_at_start) = {
+                    let mut g = self.shared.sessions.lock().unwrap();
+                    match g.get_mut(&session) {
+                        Some(i) => {
+                            i.pasting = true;
+                            (i.cancelled.clone(), i.target.clone(), i.password_at_start)
+                        }
+                        None => (Arc::default(), None, None),
+                    }
+                };
+                let plain = crate::paste::plain_text(&text);
+                std::thread::spawn(move || {
+                    // S13: only into the window the dictation started in,
+                    // and never into a password field that appeared since.
+                    let guard = |password_now: Option<bool>| {
+                        crate::paste::paste_guard(
+                            target.as_ref(),
+                            platform.focus_target().as_ref(),
+                            password_at_start,
+                            password_now,
+                        )
+                    };
+                    let first = if cancelled.load(Ordering::SeqCst) {
+                        Err(PASTE_CANCELLED.to_string())
+                    } else {
+                        let pw = if target.is_some() {
+                            platform.focused_is_password()
+                        } else {
+                            None
+                        };
+                        guard(pw).map_err(|g| {
+                            if g == crate::paste::GuardFailure::Moved {
+                                let _ = platform.copy_text(&plain);
+                            }
+                            g.message().to_string()
+                        })
+                    };
+                    let result = first.and_then(|()| {
+                        let stop = || {
+                            if cancelled.load(Ordering::SeqCst) {
+                                return Some(PASTE_CANCELLED.to_string());
+                            }
+                            guard(None).err().map(|g| g.message().to_string())
+                        };
+                        run_paste_plan_until(&*platform, &steps, &prefs, &stop)
+                    });
+                    let _ = tx.send(Input::PasteFinished { session, result });
+                });
+            }
+            Effect::MaxDurationWarning { remaining_ms } => {
+                self.platform.max_duration_warning(remaining_ms)
+            }
+            Effect::Overlay(st) => self.platform.overlay(&st),
+        }
+    }
+}
+
+impl Controller {
+    /// Command Mode: read the selection once the chord is up (so a Ctrl+C
+    /// fallback is not read as Ctrl+Win+Alt+C), in parallel with the ASR
+    /// commit. The result waits in the session for [`Self::run_command`].
+    fn begin_selection_capture(&self, session: SessionId) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        // A push-to-talk turned into a command (Ctrl+Win, then Alt) began
+        // as a dictation: it becomes a command session here.
+        if let Some(i) = self.shared.sessions.lock().unwrap().get_mut(&session) {
+            i.command.get_or_insert_with(CommandInfo::default).selection = Some(rx);
+        }
+        let platform = self.platform.clone();
+        let spawned = std::thread::Builder::new()
+            .name("murmur-selection".into())
+            .spawn(move || {
+                platform.wait_shortcut_released();
+                let _ = tx.send(platform.capture_selection());
+            });
+        if let Err(e) = spawned {
+            eprintln!("[command] {e}");
+        }
+    }
+
+    /// Run the spoken instruction on the captured selection (off-thread);
+    /// the answer comes back as `CommandFinished`. Cancelled (Esc, the
+    /// processing timeout) = nothing is sent back and nothing is pasted.
+    fn run_command(&self, session: SessionId, instruction: String) {
+        let (selection, cancelled) = {
+            let mut g = self.shared.sessions.lock().unwrap();
+            let Some(i) = g.get_mut(&session) else { return };
+            let cancelled = i.cancelled.clone();
+            let Some(cmd) = i.command.as_mut() else {
+                return;
+            };
+            cmd.instruction = instruction.clone();
+            (cmd.selection.take(), cancelled)
+        };
+        let core = self.core.clone();
+        let shared = self.shared.clone();
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let selected = match selection {
+                Some(rx) => rx
+                    .recv_timeout(SELECTION_WAIT)
+                    .unwrap_or_else(|_| Err(SELECTION_FAILED.to_string())),
+                None => Ok(None),
+            };
+            let result = selected.and_then(|sel| {
+                if cancelled.load(Ordering::SeqCst) {
+                    return Err(PASTE_CANCELLED.to_string());
+                }
+                if let Some(cmd) = shared
+                    .sessions
+                    .lock()
+                    .unwrap()
+                    .get_mut(&session)
+                    .and_then(|i| i.command.as_mut())
+                {
+                    cmd.original = sel.clone();
+                }
+                let r = core.command(
+                    &instruction,
+                    sel.as_deref(),
+                    murmur_core::command::DEFAULT_TIMEOUT,
+                );
+                if let (Ok(text), Some(cmd)) = (
+                    &r,
+                    shared
+                        .sessions
+                        .lock()
+                        .unwrap()
+                        .get_mut(&session)
+                        .and_then(|i| i.command.as_mut()),
+                ) {
+                    cmd.result = Some(text.clone());
+                }
+                r
+            });
+            let _ = tx.send(Input::CommandFinished { session, result });
+        });
+    }
+}
+
+impl Controller {
+    /// A transform shortcut: wait for its keys to be up, read the
+    /// selection, run the transform on it (off-thread); the answer comes
+    /// back as `CommandFinished` and is pasted over the selection. Nothing
+    /// selected = the "Select text to transform" notice, nothing pasted.
+    fn run_transform(&self, session: SessionId, index: u8) {
+        let item = {
+            let p = self.prefs.read().unwrap();
+            p.transforms
+                .enabled
+                .then(|| p.transforms.items.get(usize::from(index)).cloned())
+                .flatten()
+        };
+        let Some(item) = item else {
+            let _ = self.tx.send(Input::CommandFinished {
+                session,
+                result: Err("That transform no longer exists".into()),
+            });
+            return;
+        };
+        let target = self.platform.focus_target();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        self.shared.sessions.lock().unwrap().insert(
+            session,
+            SessionInfo {
+                context: target.as_ref().map(|t| FieldContext {
+                    app_id: t.exe.clone(),
+                    ..FieldContext::default()
+                }),
+                target,
+                cancelled: cancelled.clone(),
+                mode: "transform",
+                command: Some(CommandInfo {
+                    instruction: item.transform.instruction.clone(),
+                    transform: Some(item.transform.name.clone()),
+                    ..CommandInfo::default()
+                }),
+                ..SessionInfo::default()
+            },
+        );
+        let platform = self.platform.clone();
+        let core = self.core.clone();
+        let shared = self.shared.clone();
+        let tx = self.tx.clone();
+        let debug = self.debug.clone();
+        let instruction = item.transform.instruction;
+        let spawned = std::thread::Builder::new()
+            .name("murmur-transform".into())
+            .spawn(move || {
+                // A Ctrl+C fallback must not be read as Win+Alt+C.
+                platform.wait_shortcut_released();
+                let result = platform.capture_selection().and_then(|sel| {
+                    let sel = sel
+                        .filter(|s| !s.trim().is_empty())
+                        .ok_or_else(|| crate::dictation::TRANSFORM_NO_SELECTION.to_string())?;
+                    if cancelled.load(Ordering::SeqCst) {
+                        return Err(PASTE_CANCELLED.to_string());
+                    }
+                    let set = |f: &dyn Fn(&mut CommandInfo)| {
+                        if let Some(c) = shared
+                            .sessions
+                            .lock()
+                            .unwrap()
+                            .get_mut(&session)
+                            .and_then(|i| i.command.as_mut())
+                        {
+                            f(c);
+                        }
+                    };
+                    set(&|c| c.original = Some(sel.clone()));
+                    let r = core.transform(
+                        &instruction,
+                        &sel,
+                        murmur_core::transform::Source::Selection,
+                        murmur_core::transform::SELECTION_TIMEOUT,
+                    );
+                    if let Ok(text) = &r {
+                        set(&|c| c.result = Some(text.clone()));
+                    }
+                    r
+                });
+                if let (Err(e), Some(d)) = (&result, &debug) {
+                    d.event("transform", e);
+                }
+                let _ = tx.send(Input::CommandFinished { session, result });
+            });
+        if let Err(e) = spawned {
+            let _ = self.tx.send(Input::CommandFinished {
+                session,
+                result: Err(e.to_string()),
+            });
+        }
+    }
+
+    /// Auto-apply: run the chosen transform on a dictation's text before
+    /// the paste, within [`murmur_core::transform::AUTO_APPLY_TIMEOUT`]. Any
+    /// failure sends the untransformed `text` back to be pasted.
+    fn run_auto_transform(&self, session: SessionId, text: String) {
+        let item = self
+            .prefs
+            .read()
+            .unwrap()
+            .transforms
+            .auto_apply_item()
+            .cloned();
+        let plain = self
+            .shared
+            .sessions
+            .lock()
+            .unwrap()
+            .get(&session)
+            .and_then(|i| i.result.as_ref().map(|r| r.plain()))
+            .unwrap_or_else(|| crate::paste::plain_text(&text));
+        let Some(item) = item else {
+            let _ = self.tx.send(Input::AutoTransformFinished {
+                session,
+                original: text,
+                result: Err("auto-apply is off".into()),
+            });
+            return;
+        };
+        let core = self.core.clone();
+        let shared = self.shared.clone();
+        let tx = self.tx.clone();
+        let debug = self.debug.clone();
+        let fallback = text.clone();
+        let spawned = std::thread::Builder::new()
+            .name("murmur-auto-transform".into())
+            .spawn(move || {
+                let r = core.transform(
+                    &item.transform.instruction,
+                    &plain,
+                    murmur_core::transform::Source::Dictation,
+                    murmur_core::transform::AUTO_APPLY_TIMEOUT,
+                );
+                match &r {
+                    Ok(t) => {
+                        if let Some(i) = shared.sessions.lock().unwrap().get_mut(&session) {
+                            i.applied = Some(AppliedTransform {
+                                name: item.transform.name.clone(),
+                                original: plain,
+                                result: t.clone(),
+                            });
+                        }
+                    }
+                    Err(e) => {
+                        if let Some(d) = &debug {
+                            d.event("transform", &format!("auto-apply skipped: {e}"));
+                        }
+                    }
+                }
+                let _ = tx.send(Input::AutoTransformFinished {
+                    session,
+                    original: text,
+                    result: r,
+                });
+            });
+        if let Err(e) = spawned {
+            let _ = self.tx.send(Input::AutoTransformFinished {
+                session,
+                original: fallback,
+                result: Err(e.to_string()),
+            });
+        }
+    }
+
+    /// "View changes": Home with the last transform's row expanded.
+    fn view_changes(&self) {
+        let row = self.history.as_ref().and_then(|h| {
+            let retention = self.prefs.read().unwrap().retention;
+            h.lock()
+                .unwrap()
+                .latest_transform(retention, history::now_ms())
+                .ok()
+                .flatten()
+                .map(|e| e.id)
+        });
+        self.platform.view_changes(row);
+    }
+}
+
+/// The recording of a history row is no longer kept.
+pub const RETRY_GONE: &str = "The recording of this dictation is no longer kept";
+/// Retry refused while a dictation runs (the engine serves one at a time).
+pub const RETRY_BUSY: &str = "Finish the dictation first, then retry";
+/// A second retry while one runs.
+pub const RETRY_RUNNING: &str = "A retry is already running";
+/// The retry heard nothing this time.
+pub const RETRY_EMPTY: &str = "No speech found in the recording with these settings";
+
+/// `history_audio.bucket` of a style bucket.
+fn bucket_name(b: crate::core_api::StyleBucket) -> &'static str {
+    use crate::core_api::StyleBucket;
+    match b {
+        StyleBucket::Personal => "personal",
+        StyleBucket::Work => "work",
+        StyleBucket::Email => "email",
+        StyleBucket::Other => "other",
+    }
+}
+
+/// The field context a retry of `e` runs with: the original app (and its
+/// built-in style bucket, `bucket`), with today's "Style per app" on top.
+/// No field text: it is never kept.
+fn retry_context(
+    e: &history::Entry,
+    bucket: Option<&str>,
+    prefs: &Prefs,
+    own_exe: Option<&str>,
+) -> FieldContext {
+    use crate::core_api::{AppKind, StyleBucket};
+    let url = e.url.as_deref();
+    let mut ctx = FieldContext {
+        app_id: e.app.clone(),
+        url_host: e.url.clone(),
+        app_kind: crate::context::app_kind(&e.app, url),
+        app_category: match bucket {
+            Some("personal") => StyleBucket::Personal,
+            Some("work") => StyleBucket::Work,
+            Some("email") => StyleBucket::Email,
+            Some(_) => StyleBucket::Other,
+            None => crate::context::classify(&e.app, url, ""),
+        },
+        ..FieldContext::default()
+    };
+    if own_exe == Some(e.app.as_str()) {
+        ctx.app_kind = AppKind::Other;
+        ctx.app_category = StyleBucket::Other;
+    } else {
+        crate::context::apply_bucket_override(&mut ctx, &prefs.app_buckets);
+    }
+    ctx
+}
+
+impl Controller {
+    /// History "Retry": re-run row `row`'s kept recording through the
+    /// whole pipeline with the settings active now (route, engine, model,
+    /// language, dictionary, style, AI cleanup, auto-apply transform) and
+    /// the row's original app for the style. The result becomes the row's
+    /// newest version; nothing is pasted. One at a time, never during a
+    /// dictation: a dictation started meanwhile waits for it (start_lock).
+    fn retry(&self, row: i64) {
+        let done = |r: Result<(), String>| self.platform.retry_finished(row, &r);
+        let Some(h) = self.history.clone() else {
+            return done(Err("history is unavailable".into()));
+        };
+        if self.machine.is_active() {
+            return done(Err(RETRY_BUSY.into()));
+        }
+        if self.shared.retrying.swap(true, Ordering::SeqCst) {
+            return done(Err(RETRY_RUNNING.into()));
+        }
+        let core = self.core.clone();
+        let shared = self.shared.clone();
+        let platform = self.platform.clone();
+        let prefs = self.prefs.clone();
+        let insights = self.insights.clone();
+        let own_exe = self.own_exe.clone();
+        let debug = self.debug.clone();
+        let spawned = std::thread::Builder::new()
+            .name("murmur-retry".into())
+            .spawn(move || {
+                let r = {
+                    let _serial = shared.start_lock.lock().unwrap();
+                    run_retry(&*core, &h, &prefs, row, own_exe.as_deref(), &*platform)
+                };
+                shared.retrying.store(false, Ordering::SeqCst);
+                match &r {
+                    Ok(change) => {
+                        if let Some(s) = &insights {
+                            let mut s = s.lock().unwrap();
+                            let c = change;
+                            let routes = (c.routes.0.as_deref(), c.routes.1.as_deref());
+                            s.retried(c.day, c.old, c.new, &c.app, routes);
+                            if let Err(e) = s.save() {
+                                eprintln!("[insights] {e}");
+                            }
+                            drop(s);
+                            platform.insights_changed();
+                        }
+                        platform.history_changed();
+                    }
+                    Err(e) => {
+                        if let Some(d) = &debug {
+                            d.event("retry", e);
+                        }
+                    }
+                }
+                platform.retry_finished(row, &r.map(|_| ()));
+            });
+        if let Err(e) = spawned {
+            self.shared.retrying.store(false, Ordering::SeqCst);
+            done(Err(e.to_string()));
+        }
+    }
+}
+
+/// Insights change of a retry: the row's day, old and new words and routes.
+struct RetryWords {
+    day: murmur_core::insights::LocalDate,
+    old: i64,
+    new: i64,
+    app: String,
+    routes: (Option<String>, Option<String>),
+}
+
+/// The retry itself (worker thread, under `start_lock`).
+fn run_retry(
+    core: &dyn CoreApi,
+    h: &Mutex<History>,
+    prefs: &RwLock<Prefs>,
+    row: i64,
+    own_exe: Option<&str>,
+    platform: &dyn Platform,
+) -> Result<RetryWords, String> {
+    let (entry, rec) = {
+        let g = h.lock().unwrap();
+        let e = g.get(row).map_err(|e| e.to_string())?;
+        let a = g.audio(row).map_err(|e| e.to_string())?;
+        match (e, a) {
+            (Some(e), Some(a)) if !e.command => (e, a),
+            _ => return Err(RETRY_GONE.into()),
+        }
+    };
+    let prefs = prefs.read().unwrap().clone();
+    // D37: today's keyboard language too ("the settings active now").
+    let mut cfg = prefs.session_config_for(crate::dictation::Mode::Ptt);
+    apply_keyboard_language(&mut cfg, &prefs, platform);
+    let ctx = prefs
+        .use_ax_context
+        .then(|| retry_context(&entry, rec.bucket.as_deref(), &prefs, own_exe));
+    let (_, r) = replay_recording(core, cfg, ctx, &rec.pcm, &|| false)?;
+    match r.status {
+        CommitStatus::Error => {
+            return Err(r.error.unwrap_or_else(|| "Retry failed".into()));
+        }
+        CommitStatus::Empty => return Err(RETRY_EMPTY.into()),
+        CommitStatus::Formatted | CommitStatus::RawTranscript => {}
+    }
+    let plain = r.plain();
+    // Auto-apply, as a dictation would run it now (a failure = skipped).
+    let transform = prefs.transforms.auto_apply_item().and_then(|item| {
+        core.transform(
+            &item.transform.instruction,
+            &plain,
+            murmur_core::transform::Source::Dictation,
+            murmur_core::transform::AUTO_APPLY_TIMEOUT,
+        )
+        .ok()
+        .map(|t| (item.transform.name.clone(), crate::paste::plain_text(&t)))
+    });
+    let retried = history::Retried {
+        raw: r.asr_text.clone(),
+        formatted: (r.status == CommitStatus::Formatted).then(|| plain.clone()),
+        transform,
+        lang: r.language.clone(),
+        route: result_route(&r),
+    };
+    let applied = h
+        .lock()
+        .unwrap()
+        .apply_retry(row, &retried, history::now_ms())
+        .map_err(|e| e.to_string())?;
+    let Some((_, old)) = applied else {
+        return Err(RETRY_GONE.into());
+    };
+    Ok(RetryWords {
+        day: crate::insights::local_date(old.ts),
+        old: old.words,
+        new: history::word_count(&plain),
+        app: old.app,
+        routes: (old.route, retried.route),
+    })
+}
+
+/// Command Mode: the selection could not be read in time.
+pub const SELECTION_FAILED: &str = "Couldn't read the selected text";
+
+/// `PasteFinished` error of a paste dropped by Esc / the timeout before
+/// anything was inserted.
+pub const PASTE_CANCELLED: &str = "cancelled";
+
+/// Debug-log `insert.outcome` (and error) of a paste outcome.
+fn paste_insert(r: &Result<(), String>) -> (&'static str, Option<String>) {
+    use crate::paste::GuardFailure;
+    match r {
+        Ok(()) => (outcome::INSERTED, None),
+        Err(m) if m == PASTE_CANCELLED => (outcome::CANCELLED, None),
+        Err(m) if m == GuardFailure::Moved.message() => (outcome::TARGET_CHANGED, Some(m.clone())),
+        Err(m) if m == GuardFailure::Guarded.message() => {
+            (outcome::TARGET_PROTECTED, Some(m.clone()))
+        }
+        Err(m) => (outcome::PASTE_FAILED, Some(m.clone())),
+    }
+}
+
+/// Debug-log `insert.steps`: the paste plan (`ctrl_v`, `type`, `key Enter`).
+fn step_names(steps: &[crate::paste::Step], method: crate::prefs::PasteMethod) -> Vec<String> {
+    use crate::paste::Step;
+    use crate::prefs::PasteMethod;
+    steps
+        .iter()
+        .filter_map(|s| match s {
+            Step::Insert { typed: true, .. } => Some("type".to_string()),
+            Step::Insert { .. } => Some(
+                match method {
+                    PasteMethod::CtrlV => "ctrl_v",
+                    PasteMethod::ShiftInsert => "shift_insert",
+                    PasteMethod::Type => "type",
+                }
+                .to_string(),
+            ),
+            Step::Key(k) => Some(format!("key {k:?}")),
+            Step::Pause(_) => None,
+        })
+        .collect()
+}
+
+/// History `route` of a result (`pc` / `server` / `cloud`; `None` = unknown).
+fn result_route(r: &CommitResult) -> Option<String> {
+    r.route
+        .as_ref()
+        .and_then(|x| history::route_label(&x.engine))
+        .map(String::from)
+}
+
+/// The debug line of a session (schema: [`crate::debug_log::Entry`]).
+fn debug_entry(i: &SessionInfo, insert: &str, error: Option<String>) -> Entry {
+    use crate::debug_log::{failure_code, REDACTED};
+    let r = i.result.as_ref();
+    let route = r.and_then(|r| r.route.as_ref());
+    let seen = i.route_seen.as_ref();
+    let error = error.or_else(|| r.and_then(|r| r.error.clone()));
+    let password = i.password_at_start == Some(true) || insert == outcome::TARGET_PROTECTED;
+    let redact = |s: String| if password { REDACTED.to_string() } else { s };
+    let nonempty = |s: &String| (!s.is_empty()).then(|| redact(s.clone()));
+    let target = i
+        .target
+        .as_ref()
+        .map(|t| t.exe.clone())
+        .or_else(|| i.context.as_ref().map(|c| c.app_id.clone()))
+        .filter(|t| !t.is_empty());
+    Entry {
+        ts: String::new(),
+        app_version: String::new(),
+        build: String::new(),
+        mode: (!i.mode.is_empty()).then(|| i.mode.to_string()),
+        route: route
+            .map(|x| x.engine.clone())
+            .or_else(|| seen.map(|x| x.engine.as_str().to_string())),
+        fallback: route
+            .and_then(|x| x.fallback.clone())
+            .or_else(|| seen.and_then(|x| x.fallback.clone()))
+            .or_else(|| error.as_deref().and_then(failure_code)),
+        rtt_ms: route.and_then(|x| x.rtt_ms),
+        audio_ms: Some(
+            r.map(|r| r.timings.audio_ms)
+                .filter(|ms| *ms > 0)
+                .unwrap_or(i.samples.load(Ordering::Relaxed) / 16),
+        ),
+        endpoint_wait_ms: i.endpoint_wait_ms,
+        asr_ms: r.map(|r| r.timings.asr_ms),
+        wait_ms: r.map(|r| r.timings.wait_ms),
+        segments: r.map(|r| r.timings.segments),
+        pre_asr_ms: r.map(|r| r.timings.pre_asr_ms),
+        client_ms: route.and_then(|x| x.client_ms),
+        post_ms: r.map(|r| r.timings.total_ms.saturating_sub(r.timings.asr_ms)),
+        total_ms: r.map(|r| r.timings.total_ms),
+        perceived_ms: i.released.map(|t| t.elapsed().as_millis() as u64),
+        target: target.map(redact),
+        insert: Insert {
+            outcome: insert.to_string(),
+            steps: if password {
+                Vec::new()
+            } else {
+                i.steps.clone()
+            },
+        },
+        raw: r.and_then(|r| nonempty(&r.asr_text)),
+        text: r.and_then(|r| nonempty(&r.plain_text)),
+        error,
+        stack: None,
+        style: r
+            .is_some()
+            .then(|| crate::context::style_for(&i.styles, i.context.as_ref()).to_string()),
+        llm: crate::core_api::llm_outcome(r),
+        llm_engine: route
+            .and_then(|x| x.llm_engine.clone())
+            .or_else(|| r.and_then(|r| r.llm.as_ref()?.engine.clone())),
+        llm_model: route
+            .and_then(|x| x.llm_model.clone())
+            .or_else(|| r.and_then(|r| r.llm.as_ref()?.model.clone())),
+        llm_cost_usd: route
+            .and_then(|x| x.llm_cost_usd)
+            .or_else(|| r.and_then(|r| r.llm.as_ref()?.cost_usd)),
+        llm_ttft_ms: r.and_then(|r| r.llm.as_ref()?.ttft_ms),
+        llm_generation_id: r.and_then(|r| r.llm.as_ref()?.generation_id.clone()),
+        cleanup_route: route.and_then(|x| x.cleanup_route.clone()),
+        cloud_fallback: route.and_then(|x| x.cloud_fallback.clone()),
+        // Redacted with `text`.
+        fallback_detail: route.and_then(|x| x.fallback_detail.clone()).map(redact),
+        stt_model: route
+            .filter(|x| x.engine == "cloud")
+            .and_then(|x| x.model.clone()),
+        stt_cost_usd: route
+            .filter(|x| x.engine == "cloud")
+            .and_then(|x| x.cost_usd),
+        language: i.language.clone(),
+        language_source: i.language_source.map(|s| s.as_str().to_string()),
+        start_language: i.start_language.clone(),
+        stop_language: i.stop_language.clone(),
+    }
+}
+
+/// D58: what a session whose stop language differs from its start one
+/// is transcribed with: the stop config, the recording, and the gate the
+/// field snapshot opens.
+struct Rerun {
+    cfg: crate::core_api::SessionConfig,
+    audio: Arc<Mutex<Vec<i16>>>,
+    context_done: Option<Arc<StartGate>>,
+}
+
+/// D58: how long a re-run waits for a field snapshot still running (the
+/// start gate is already open then, so it is normally done).
+const RERUN_CONTEXT_WAIT: Duration = Duration::from_secs(2);
+
+/// Debug log language: `None` (nothing forced) is `"auto"`.
+fn language_wire(languages: &[String]) -> String {
+    languages.first().cloned().unwrap_or_else(|| "auto".into())
+}
+
+impl Controller {
+    /// D58: reads the keyboard at the stop (the same rule as at the
+    /// start, [`apply_keyboard_language`]) and writes it into the
+    /// session: `stop_language` always; `language` and `language_source`
+    /// when it changed. `Some` when it changed since the start: the
+    /// session is then transcribed again in the stop language. Otherwise
+    /// the kept re-run audio is dropped (unless Retry keeps it).
+    fn apply_stop_language(&self, session: SessionId, prefs: &Prefs) -> Option<Rerun> {
+        let start = {
+            let g = self.shared.sessions.lock().unwrap();
+            g.get(&session)?.start_cfg.clone()?
+        };
+        let mut stop = start.clone();
+        stop.languages = prefs.session_config().languages;
+        // The replay ends itself: no hands-free endpoint, no preview.
+        stop.endpoint_silence_ms = None;
+        stop.partial_interval_ms = None;
+        let source = apply_keyboard_language(&mut stop, prefs, &*self.platform);
+        let mut g = self.shared.sessions.lock().unwrap();
+        let i = g.get_mut(&session)?;
+        i.stop_language = Some(language_wire(&stop.languages));
+        if stop.languages == start.languages {
+            // Not needed: let the copy go unless Retry keeps it.
+            if i.audio.is_none() {
+                if let Some(a) = i.rerun_audio.take() {
+                    std::mem::take(&mut *a.lock().unwrap());
+                }
+            }
+            return None;
+        }
+        let audio = i.rerun_audio.clone()?;
+        i.language = stop.languages.first().cloned();
+        i.language_source = Some(source);
+        Some(Rerun {
+            cfg: stop,
+            audio,
+            context_done: i.context_done.clone(),
+        })
+    }
+}
+
+/// Starts a session with `cfg`, sets `ctx`, pushes `pcm` in 100 ms
+/// chunks and commits: History's Retry and D58's re-run. `cancelled` is
+/// checked before the start, before every chunk and before the commit; a
+/// cancelled replay cancels its session and returns `"cancelled"`. The
+/// caller holds `start_lock`, so no dictation starts in between.
+fn replay_recording(
+    core: &dyn CoreApi,
+    cfg: crate::core_api::SessionConfig,
+    ctx: Option<FieldContext>,
+    pcm: &[i16],
+    cancelled: &dyn Fn() -> bool,
+) -> Result<(Option<crate::core_api::SessionRoute>, CommitResult), String> {
+    if cancelled() {
+        return Err("cancelled".into());
+    }
+    let route = core.start_session_info(cfg)?;
+    if let Some(ctx) = ctx {
+        core.set_context(ctx);
+    }
+    for chunk in pcm.chunks(1600) {
+        if cancelled() {
+            core.cancel();
+            return Err("cancelled".into());
+        }
+        core.push_audio(chunk);
+    }
+    if cancelled() {
+        core.cancel();
+        return Err("cancelled".into());
+    }
+    Ok((route, core.commit()))
+}
+
+/// D58: the keyboard changed while recording. The start-language session
+/// (and its live partials) is dropped, and the whole recording is
+/// transcribed again in the stop language, with the same field context,
+/// all under `start_lock`; Esc (`cancelled`) stops it at any point.
+fn rerun_in_stop_language(
+    core: &dyn CoreApi,
+    shared: &Shared,
+    session: SessionId,
+    rerun: Rerun,
+) -> CommitResult {
+    // The field snapshot thread is done with the old session first.
+    if let Some(d) = &rerun.context_done {
+        let _ = d.wait(RERUN_CONTEXT_WAIT);
+    }
+    let (cancelled, ctx) = match shared.sessions.lock().unwrap().get(&session) {
+        Some(i) => (i.cancelled.clone(), i.context.clone()),
+        None => return CommitResult::failed("cancelled"),
+    };
+    let _serial = shared.start_lock.lock().unwrap();
+    core.cancel();
+    let pcm = rerun.audio.lock().unwrap().clone();
+    let stop = || cancelled.load(Ordering::SeqCst);
+    match replay_recording(core, rerun.cfg, ctx, &pcm, &stop) {
+        Ok((route, r)) => {
+            if let Some(route) = route {
+                if let Some(i) = shared.sessions.lock().unwrap().get_mut(&session) {
+                    i.route_seen = Some(route);
+                }
+            }
+            r
+        }
+        Err(m) => CommitResult::failed(m),
+    }
+}
+
+/// D37: with "Keyboard language" on, the foreground window's layout
+/// language replaces `cfg.languages`; an unknown layout leaves them as
+/// the prefs say (empty = auto-detect).
+fn apply_keyboard_language(
+    cfg: &mut crate::core_api::SessionConfig,
+    prefs: &Prefs,
+    platform: &dyn Platform,
+) -> crate::keyboard_language::Source {
+    let keyboard = if prefs.keyboard_language {
+        platform.keyboard_language()
+    } else {
+        None
+    };
+    let (languages, source) = crate::keyboard_language::resolve(
+        &cfg.languages,
+        prefs.keyboard_language,
+        keyboard.as_deref(),
+    );
+    cfg.languages = languages;
+    source
+}
+
+/// Execute paste steps in order; the first failure stops the plan.
+pub fn run_paste_plan(
+    platform: &dyn Platform,
+    steps: &[crate::paste::Step],
+    prefs: &Prefs,
+) -> Result<(), String> {
+    run_paste_plan_until(platform, steps, prefs, &|| None)
+}
+
+/// Same, checking `stop` before every step (cancel flag, focus guard);
+/// `Some(reason)` ends the plan with that error.
+pub fn run_paste_plan_until(
+    platform: &dyn Platform,
+    steps: &[crate::paste::Step],
+    prefs: &Prefs,
+    stop: &dyn Fn() -> Option<String>,
+) -> Result<(), String> {
+    use crate::paste::Step;
+    let typed_prefs = Prefs {
+        paste_method: crate::prefs::PasteMethod::Type,
+        ..prefs.clone()
+    };
+    for step in steps {
+        if let Some(why) = stop() {
+            return Err(why);
+        }
+        match step {
+            Step::Insert { text, typed: false } => platform.paste(text, prefs)?,
+            Step::Insert { text, typed: true } => platform.paste(text, &typed_prefs)?,
+            Step::Key(k) => platform.send_key(*k)?,
+            Step::Pause(ms) => std::thread::sleep(Duration::from_millis(*ms)),
+        }
+    }
+    Ok(())
+}
+
+/// Ends a watch as soon as the next dictation starts: its paste would
+/// otherwise look like the user typing into the watched region.
+struct StopOnNewDictation<'a> {
+    inner: &'a mut dyn FieldReader,
+    gen: u64,
+    watch_gen: &'a AtomicU64,
+}
+
+impl FieldReader for StopOnNewDictation<'_> {
+    fn read(&mut self) -> Read {
+        if self.watch_gen.load(Ordering::SeqCst) != self.gen {
+            return Read::FocusChanged;
+        }
+        self.inner.read()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core_api::StubCore;
+    use crate::dictation::Phase;
+    use crate::hotkeys::HotkeyAction;
+    use std::sync::atomic::AtomicU64;
+    use std::sync::mpsc;
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct Fake {
+        log: Mutex<Vec<String>>,
+        sink: Mutex<Option<AudioSink>>,
+        levels: Mutex<Vec<f32>>,
+        fail_capture: bool,
+        /// `paste` blocks until this receives (tests of late cancels).
+        paste_gate: Mutex<Option<mpsc::Receiver<()>>>,
+        /// `snapshot_context` blocks until this receives (a slow UIA).
+        snapshot_gate: Mutex<Option<mpsc::Receiver<()>>>,
+        /// Foreground window (`focus_target`) and password-field answer.
+        focus: Mutex<Option<crate::paste::FocusTarget>>,
+        password: Mutex<Option<bool>>,
+        on_error: Mutex<Option<CaptureError>>,
+        /// Exe of the snapshotted app (default slack.exe).
+        exe: Option<&'static str>,
+        /// `open_new_note` brings the note window to the front.
+        note_opens: bool,
+        /// Command Mode: what `capture_selection` answers (`None` = no
+        /// selection).
+        selection: Mutex<Option<Result<Option<String>, String>>>,
+        /// D37: the foreground window's keyboard language.
+        keyboard: Mutex<Option<String>>,
+    }
+
+    impl Fake {
+        fn push(&self, s: impl Into<String>) {
+            self.log.lock().unwrap().push(s.into());
+        }
+        fn log(&self) -> Vec<String> {
+            self.log.lock().unwrap().clone()
+        }
+        fn feed_audio(&self, pcm: &[i16]) {
+            if let Some(s) = self.sink.lock().unwrap().as_mut() {
+                s(pcm);
+            }
+        }
+    }
+
+    impl Platform for Fake {
+        fn play(&self, s: Sound) {
+            self.push(format!("play {s:?}"));
+        }
+        fn keyboard_language(&self) -> Option<String> {
+            self.keyboard.lock().unwrap().clone()
+        }
+        fn duck(&self) {
+            self.push("duck");
+        }
+        fn unduck(&self) {
+            self.push("unduck");
+        }
+        fn snapshot_context(&self) -> Option<RawSnapshot> {
+            let gate = self.snapshot_gate.lock().unwrap().take();
+            if let Some(g) = gate {
+                let _ = g.recv();
+            }
+            Some(RawSnapshot {
+                exe_path: format!(r"C:\x\{}", self.exe.unwrap_or("slack.exe")),
+                ..Default::default()
+            })
+        }
+        fn start_capture(&self, _d: Option<String>, sink: AudioSink) -> Result<(), String> {
+            if self.fail_capture {
+                return Err("no mic".into());
+            }
+            *self.sink.lock().unwrap() = Some(sink);
+            self.push("capture start");
+            Ok(())
+        }
+        fn stop_capture(&self) {
+            *self.sink.lock().unwrap() = None;
+            self.push("capture stop");
+        }
+        fn paste(&self, text: &str, _p: &Prefs) -> Result<(), String> {
+            if let Some(rx) = self.paste_gate.lock().unwrap().as_ref() {
+                let _ = rx.recv_timeout(Duration::from_secs(2));
+            }
+            self.push(format!("paste {text}"));
+            Ok(())
+        }
+        fn overlay(&self, st: &OverlayState) {
+            self.push(format!("overlay {st:?}"));
+        }
+        fn level(&self, l: f32) {
+            self.levels.lock().unwrap().push(l);
+        }
+        fn max_duration_warning(&self, _r: u64) {
+            self.push("warn");
+        }
+        fn focus_target(&self) -> Option<crate::paste::FocusTarget> {
+            self.focus.lock().unwrap().clone()
+        }
+        fn start_capture_reporting(
+            &self,
+            d: Option<String>,
+            sink: AudioSink,
+            on_error: CaptureError,
+        ) -> Result<(), String> {
+            *self.on_error.lock().unwrap() = Some(on_error);
+            self.start_capture(d, sink)
+        }
+        fn focused_is_password(&self) -> Option<bool> {
+            *self.password.lock().unwrap()
+        }
+        fn copy_text(&self, text: &str) -> Result<(), String> {
+            self.push(format!("copy {text}"));
+            Ok(())
+        }
+        fn field_reader(&self) -> Option<Box<dyn FieldReader>> {
+            self.push("field_reader");
+            None
+        }
+        fn open_scratchpad(&self) {
+            self.push("open scratchpad");
+        }
+        fn toggle_meeting(&self) {
+            self.push("toggle meeting");
+        }
+        fn open_new_note(&self) -> bool {
+            self.push("open new note");
+            self.note_opens
+        }
+        fn live_route(&self, l: Option<&crate::core_api::LiveRouteLabel>) {
+            self.push(format!(
+                "route {}",
+                l.map(|l| l.text.as_str()).unwrap_or("-")
+            ));
+        }
+        fn capture_selection(&self) -> Result<Option<String>, String> {
+            self.push("capture selection");
+            self.selection.lock().unwrap().clone().unwrap_or(Ok(None))
+        }
+        fn view_changes(&self, row: Option<i64>) {
+            self.push(format!("view changes {row:?}"));
+        }
+        fn retry_finished(&self, row: i64, result: &Result<(), String>) {
+            self.push(format!("retry {row} {result:?}"));
+        }
+    }
+
+    struct Rig {
+        c: Controller,
+        rx: mpsc::Receiver<Input>,
+        fake: Arc<Fake>,
+        core: Arc<StubCore>,
+        t: Arc<AtomicU64>,
+    }
+
+    fn rig(fake: Fake, prefs: Prefs) -> Rig {
+        rig_slow(fake, prefs, Duration::ZERO)
+    }
+
+    /// A core whose `start_session*` blocks (model load / server connect).
+    struct SlowStart {
+        inner: Arc<StubCore>,
+        delay: Duration,
+    }
+
+    impl CoreApi for SlowStart {
+        fn start_session(&self, cfg: crate::core_api::SessionConfig) -> Result<(), String> {
+            std::thread::sleep(self.delay);
+            self.inner.start_session(cfg)
+        }
+        fn start_session_info(
+            &self,
+            cfg: crate::core_api::SessionConfig,
+        ) -> Result<Option<crate::core_api::SessionRoute>, String> {
+            std::thread::sleep(self.delay);
+            self.inner.start_session_info(cfg)
+        }
+        fn push_audio(&self, pcm: &[i16]) {
+            self.inner.push_audio(pcm)
+        }
+        fn set_context(&self, ctx: FieldContext) {
+            self.inner.set_context(ctx)
+        }
+        fn partial(&self) -> Option<String> {
+            None
+        }
+        fn poll(&self) -> crate::core_api::Poll {
+            self.inner.poll()
+        }
+        fn commit(&self) -> CommitResult {
+            self.inner.commit()
+        }
+        fn cancel(&self) {
+            self.inner.cancel()
+        }
+        fn learn_edit(&self, p: &str, e: &str) -> Vec<crate::core_api::LearnCandidate> {
+            self.inner.learn_edit(p, e)
+        }
+    }
+
+    fn rig_slow(fake: Fake, prefs: Prefs, delay: Duration) -> Rig {
+        rig_with(fake, prefs, |core| {
+            if delay.is_zero() {
+                core
+            } else {
+                Arc::new(SlowStart { inner: core, delay })
+            }
+        })
+    }
+
+    /// `api` wraps the stub core (scripted commits, slow starts).
+    fn rig_with(
+        fake: Fake,
+        prefs: Prefs,
+        api: impl FnOnce(Arc<StubCore>) -> Arc<dyn CoreApi>,
+    ) -> Rig {
+        let fake = Arc::new(fake);
+        let core = Arc::new(StubCore::new());
+        let api = api(core.clone());
+        let (tx, rx) = mpsc::channel();
+        let t = Arc::new(AtomicU64::new(0));
+        let tc = t.clone();
+        let c = Controller::new(
+            fake.clone(),
+            api,
+            Arc::new(RwLock::new(prefs)),
+            tx,
+            Box::new(move || tc.load(Ordering::SeqCst)),
+        );
+        Rig {
+            c,
+            rx,
+            fake,
+            core,
+            t,
+        }
+    }
+
+    impl Rig {
+        fn at(&mut self, ms: u64, i: Input) {
+            self.t.store(ms, Ordering::SeqCst);
+            self.c.handle(i);
+        }
+        /// The config of the `n`-th background start.
+        fn wait_config(&self, n: usize) -> crate::core_api::SessionConfig {
+            for _ in 0..400 {
+                if self.core.starts() >= n {
+                    return self.core.last_config().unwrap();
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            panic!("start {n} never happened");
+        }
+        /// Feed back the next async completion.
+        fn pump(&mut self) {
+            let i = self
+                .rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("completion");
+            self.c.handle(i);
+        }
+    }
+
+    #[test]
+    fn full_ptt_dictation_pastes_core_text() {
+        let mut r = rig(Fake::default(), Prefs::default());
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        assert!(r.c.dictating_flag().load(Ordering::SeqCst));
+        r.fake.feed_audio(&[1000; 16_000]);
+        r.at(1000, Input::Hotkey(HotkeyAction::PttUp));
+        r.pump(); // Committed
+        r.pump(); // PasteFinished
+        assert!(matches!(r.c.machine().phase(), Phase::Pasted { .. }));
+        assert!(!r.c.dictating_flag().load(Ordering::SeqCst));
+        // The learn watch starts on its own thread after the paste and
+        // may or may not have logged yet (learn_watch_started covers it).
+        let log: Vec<String> = r
+            .fake
+            .log()
+            .into_iter()
+            .filter(|l| l != "field_reader")
+            .collect();
+        assert_eq!(
+            log,
+            vec![
+                "play Start",
+                "duck",
+                "capture start",
+                "overlay ActivePtt",
+                "capture stop",
+                "unduck",
+                "play Stop",
+                "overlay Processing",
+                "paste [stub: 1.0 s of audio]",
+                "play Paste",
+                "overlay Resting",
+            ]
+        );
+        assert_eq!(
+            r.fake.levels.lock().unwrap().len(),
+            6 + 1,
+            "1 s = 6 x 160 ms + reset"
+        );
+    }
+
+    /// Command Mode with `selection` selected: chord, 1 s of speech,
+    /// release; returns the rig after the commit (instruction known).
+    fn command_rig(selection: Result<Option<String>, String>) -> Rig {
+        let fake = Fake::default();
+        *fake.selection.lock().unwrap() = Some(selection);
+        let mut r = rig(fake, Prefs::default());
+        r.c =
+            r.c.with_history(Arc::new(Mutex::new(History::open_in_memory().unwrap())));
+        r.at(0, Input::Hotkey(HotkeyAction::CommandDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        r.at(1000, Input::Hotkey(HotkeyAction::CommandUp));
+        r.pump(); // Committed -> Effect::Command
+        r
+    }
+
+    fn history_latest(r: &Rig) -> Option<history::Entry> {
+        r.c.history
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .latest(crate::prefs::Retention::Keep, history::now_ms())
+            .unwrap()
+    }
+
+    #[test]
+    fn command_mode_rewrites_the_selection_and_records_it() {
+        let mut r = command_rig(Ok(Some("cant come tmrw".into())));
+        r.core
+            .set_command_reply(Ok("I won't be able to come tomorrow.".into()));
+        // (the reply is read when the command runs, after the commit)
+        r.pump(); // CommandFinished -> Paste
+        r.pump(); // PasteFinished
+        let log = r.fake.log();
+        assert!(
+            log.contains(&"overlay ActiveCommand".to_string()),
+            "{log:?}"
+        );
+        assert!(
+            log.contains(&"overlay CommandProcessing".to_string()),
+            "{log:?}"
+        );
+        assert!(log.contains(&"capture selection".to_string()));
+        let pastes: Vec<_> = log.iter().filter(|l| l.starts_with("paste")).collect();
+        assert_eq!(pastes, ["paste I won't be able to come tomorrow."]);
+        assert_eq!(
+            r.core.commands(),
+            [(
+                "[stub: 1.0 s of audio]".to_string(),
+                Some("cant come tmrw".to_string())
+            )]
+        );
+        let e = history_latest(&r).expect("history row");
+        assert!(e.command);
+        assert_eq!(e.raw, "[stub: 1.0 s of audio]", "the instruction");
+        assert_eq!(e.original.as_deref(), Some("cant come tmrw"));
+        assert_eq!(e.best_text(), "I won't be able to come tomorrow.");
+        assert_eq!(
+            r.c.shared.last_text.lock().unwrap().as_deref(),
+            Some("I won't be able to come tomorrow."),
+            "Paste last repeats the result"
+        );
+    }
+
+    fn transforms_on() -> Prefs {
+        let mut p = Prefs::default();
+        p.transforms.enabled = true;
+        p
+    }
+
+    fn transform_rig(selection: Result<Option<String>, String>, prefs: Prefs) -> Rig {
+        let fake = Fake::default();
+        *fake.selection.lock().unwrap() = Some(selection);
+        let mut r = rig(fake, prefs);
+        r.c =
+            r.c.with_history(Arc::new(Mutex::new(History::open_in_memory().unwrap())));
+        r
+    }
+
+    #[test]
+    fn transform_shortcut_rewrites_the_selection_records_it_and_views_it() {
+        let mut r = transform_rig(Ok(Some("teh draft".into())), transforms_on());
+        r.core.set_transform_reply(Ok("The draft.".into()));
+        r.at(0, Input::Hotkey(HotkeyAction::Transform(0)));
+        assert!(r.c.dictating_flag().load(Ordering::SeqCst));
+        r.pump(); // CommandFinished -> Paste
+        r.pump(); // PasteFinished
+        let log = r.fake.log();
+        assert_eq!(
+            log,
+            [
+                "overlay CommandProcessing",
+                "capture selection",
+                "paste The draft.",
+                "play Paste",
+                "overlay Resting",
+            ],
+            "no mic, no ducking"
+        );
+        let polish = &Prefs::default().transforms.items[0].transform;
+        assert_eq!(
+            r.core.transforms(),
+            [(
+                polish.instruction.clone(),
+                "teh draft".to_string(),
+                murmur_core::transform::Source::Selection
+            )]
+        );
+        assert!(r.core.starts() == 0, "no speech session");
+        let e = history_latest(&r).expect("history row");
+        assert!(e.command);
+        assert_eq!(e.transform.as_deref(), Some("Polish"));
+        assert_eq!(e.original.as_deref(), Some("teh draft"));
+        assert_eq!(e.best_text(), "The draft.");
+        r.at(2000, Input::Hotkey(HotkeyAction::ViewChanges));
+        assert_eq!(
+            r.fake.log().last().unwrap(),
+            &format!("view changes Some({})", e.id)
+        );
+    }
+
+    #[test]
+    fn transform_with_nothing_selected_says_so_and_pastes_nothing() {
+        let mut r = transform_rig(Ok(Some("  ".into())), transforms_on());
+        r.at(0, Input::Hotkey(HotkeyAction::Transform(1)));
+        r.pump(); // CommandFinished(Err)
+        let log = r.fake.log();
+        assert!(!log.iter().any(|l| l.starts_with("paste")), "{log:?}");
+        assert!(
+            log.iter()
+                .any(|l| l.contains("Notice") && l.contains("Select text")),
+            "{log:?}"
+        );
+        assert!(
+            !log.contains(&"play Error".to_string()),
+            "a notice, not an error"
+        );
+        assert!(r.core.transforms().is_empty(), "no AI call");
+        assert_eq!(history_latest(&r), None);
+        r.at(5000, Input::Hotkey(HotkeyAction::ViewChanges));
+        assert_eq!(r.fake.log().last().unwrap(), "view changes None");
+    }
+
+    fn auto_prefs() -> Prefs {
+        let mut p = transforms_on();
+        p.transforms.auto_apply = Some(murmur_core::transform::POLISH.into());
+        p
+    }
+
+    fn dictate_auto(r: &mut Rig) {
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        r.at(1000, Input::Hotkey(HotkeyAction::PttUp));
+        r.pump(); // Committed -> AutoTransform
+        r.pump(); // AutoTransformFinished -> Paste
+        r.pump(); // PasteFinished
+    }
+
+    #[test]
+    fn auto_apply_pastes_the_transformed_dictation_and_records_both() {
+        let mut r = transform_rig(Ok(None), auto_prefs());
+        r.core.set_transform_reply(Ok("Polished words.".into()));
+        dictate_auto(&mut r);
+        let log = r.fake.log();
+        let pastes: Vec<_> = log.iter().filter(|l| l.starts_with("paste")).collect();
+        assert_eq!(pastes, ["paste Polished words."]);
+        assert_eq!(
+            r.core.transforms()[0].1,
+            "[stub: 1.0 s of audio]",
+            "the dictation's text"
+        );
+        assert_eq!(
+            r.core.transforms()[0].2,
+            murmur_core::transform::Source::Dictation
+        );
+        let e = history_latest(&r).unwrap();
+        assert!(!e.command);
+        assert_eq!(e.transform.as_deref(), Some("Polish"));
+        assert_eq!(e.original.as_deref(), Some("[stub: 1.0 s of audio]"));
+        assert_eq!(e.pasted.as_deref(), Some("Polished words."));
+        assert_eq!(
+            r.c.shared.last_text.lock().unwrap().as_deref(),
+            Some("Polished words.")
+        );
+    }
+
+    #[test]
+    fn a_failed_auto_apply_pastes_the_dictation_with_a_notice() {
+        let mut r = transform_rig(Ok(None), auto_prefs());
+        r.core
+            .set_transform_reply(Err("AI didn't answer within 8 s".into()));
+        dictate_auto(&mut r);
+        let log = r.fake.log();
+        let pastes: Vec<_> = log.iter().filter(|l| l.starts_with("paste")).collect();
+        assert_eq!(pastes, ["paste [stub: 1.0 s of audio]"]);
+        // The notice follows the paste (the learn watch may log after it).
+        let notice = log.iter().position(|l| l.contains("Transform skipped"));
+        let paste = log.iter().position(|l| l.starts_with("paste"));
+        assert!(notice > paste, "{log:?}");
+        let e = history_latest(&r).unwrap();
+        assert_eq!(e.transform, None);
+        assert_eq!(e.pasted.as_deref(), Some("[stub: 1.0 s of audio]"));
+    }
+
+    #[test]
+    fn auto_apply_needs_the_opt_in() {
+        let mut p = auto_prefs();
+        p.transforms.enabled = false;
+        let mut r = transform_rig(Ok(None), p);
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        r.at(1000, Input::Hotkey(HotkeyAction::PttUp));
+        r.pump(); // Committed -> Paste
+        r.pump(); // PasteFinished
+        assert!(r.core.transforms().is_empty());
+        assert!(r
+            .fake
+            .log()
+            .contains(&"paste [stub: 1.0 s of audio]".to_string()));
+    }
+
+    #[test]
+    fn command_mode_without_a_selection_generates_at_the_cursor() {
+        let mut r = command_rig(Ok(None));
+        r.core.set_command_reply(Ok("Dear team,".into()));
+        r.pump();
+        r.pump();
+        assert_eq!(r.core.commands()[0].1, None);
+        assert!(r.fake.log().contains(&"paste Dear team,".to_string()));
+        assert_eq!(history_latest(&r).unwrap().original, None);
+    }
+
+    #[test]
+    fn command_mode_without_an_llm_pastes_nothing_and_errors() {
+        let mut r = command_rig(Ok(Some("keep me".into())));
+        r.pump(); // CommandFinished(Err)
+        assert!(matches!(r.c.machine().phase(), Phase::Error { .. }));
+        let log = r.fake.log();
+        assert!(!log.iter().any(|l| l.starts_with("paste")), "{log:?}");
+        assert!(log.contains(&"play Error".to_string()));
+        assert!(
+            log.iter().any(|l| l.contains("Command Mode needs AI")),
+            "{log:?}"
+        );
+        assert!(history_latest(&r).is_none(), "nothing happened");
+    }
+
+    #[test]
+    fn command_mode_selection_failure_touches_nothing() {
+        let mut r = command_rig(Err("no access".into()));
+        r.core.set_command_reply(Ok("never".into()));
+        r.pump();
+        assert!(matches!(r.c.machine().phase(), Phase::Error { .. }));
+        assert!(!r.fake.log().iter().any(|l| l.starts_with("paste")));
+        assert!(
+            r.core.commands().is_empty(),
+            "no LLM call without a selection read"
+        );
+    }
+
+    #[test]
+    fn esc_while_a_command_runs_pastes_nothing() {
+        let fake = Fake::default();
+        *fake.selection.lock().unwrap() = Some(Ok(Some("x".into())));
+        let mut r = rig(fake, Prefs::default());
+        r.core.set_command_reply(Ok("rewritten".into()));
+        r.at(0, Input::Hotkey(HotkeyAction::CommandDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        r.at(1000, Input::Hotkey(HotkeyAction::CommandUp));
+        r.pump(); // Committed -> the command starts
+        r.at(1100, Input::Hotkey(HotkeyAction::Cancel));
+        while let Ok(i) = r.rx.recv_timeout(Duration::from_millis(300)) {
+            r.c.handle(i);
+        }
+        assert_eq!(r.c.machine().phase(), &Phase::Idle);
+        assert!(!r.fake.log().iter().any(|l| l.starts_with("paste")));
+    }
+
+    #[test]
+    fn context_snapshot_reaches_core() {
+        let mut r = rig(Fake::default(), Prefs::default());
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        for _ in 0..100 {
+            if r.core.last_context().is_some() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let ctx = r.core.last_context().expect("set_context called");
+        assert_eq!(ctx.app_id, "slack.exe");
+    }
+
+    #[test]
+    fn dictating_records_the_target_exe_in_recent_apps() {
+        let store = Arc::new(Mutex::new(RecentAppStore::in_memory()));
+        let mut r = rig(Fake::default(), Prefs::default());
+        r.c = r.c.with_recent_apps(store.clone());
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        for _ in 0..200 {
+            if !store.lock().unwrap().data.apps.is_empty() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(store.lock().unwrap().data.apps, ["slack.exe"]);
+    }
+
+    #[test]
+    fn scratchpad_hotkey_opens_the_window_without_touching_dictation() {
+        let mut r = rig(Fake::default(), Prefs::default());
+        r.at(0, Input::Hotkey(HotkeyAction::Scratchpad));
+        assert_eq!(r.fake.log(), ["open scratchpad"]);
+        assert!(matches!(r.c.machine().phase(), Phase::Idle));
+    }
+
+    #[test]
+    fn meeting_hotkey_toggles_the_recording_and_leaves_a_dictation_alone() {
+        let mut r = rig(Fake::default(), Prefs::default());
+        r.at(0, Input::Hotkey(HotkeyAction::Meeting));
+        let toggled: &[&str] = if crate::meetings::NOTETAKER_ENABLED {
+            &["toggle meeting"]
+        } else {
+            &[] // D51: hidden, nothing starts
+        };
+        assert_eq!(r.fake.log(), toggled);
+        assert!(matches!(r.c.machine().phase(), Phase::Idle));
+        r.at(10, Input::Hotkey(HotkeyAction::PttDown));
+        let before = r.c.machine().phase().clone();
+        r.at(100, Input::Hotkey(HotkeyAction::Meeting));
+        assert_eq!(r.c.machine().phase(), &before, "still dictating");
+    }
+
+    #[test]
+    fn new_note_hotkey_opens_a_note_then_dictates_hands_free_into_it() {
+        let fake = Fake {
+            note_opens: true,
+            ..Fake::default()
+        };
+        let mut r = rig(fake, Prefs::default());
+        r.at(0, Input::Hotkey(HotkeyAction::NewNote));
+        assert_eq!(
+            r.fake.log().first().map(String::as_str),
+            Some("open new note")
+        );
+        assert!(
+            matches!(r.c.machine().phase(), Phase::Listening(l) if l.mode == crate::dictation::Mode::Locked),
+            "{:?}",
+            r.c.machine().phase()
+        );
+    }
+
+    #[test]
+    fn new_note_does_not_dictate_when_its_window_is_not_in_front() {
+        // Pasting needs the start window (S13): no window, no dictation.
+        let mut r = rig(Fake::default(), Prefs::default());
+        r.at(0, Input::Hotkey(HotkeyAction::NewNote));
+        assert_eq!(r.fake.log(), ["open new note"]);
+        assert!(matches!(r.c.machine().phase(), Phase::Idle));
+    }
+
+    #[test]
+    fn new_note_while_dictating_leaves_that_dictation_alone() {
+        let fake = Fake {
+            note_opens: true,
+            ..Fake::default()
+        };
+        let mut r = rig(fake, Prefs::default());
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        let before = r.c.machine().phase().clone();
+        r.at(100, Input::Hotkey(HotkeyAction::NewNote));
+        assert_eq!(
+            r.c.machine().phase(),
+            &before,
+            "same session, still push-to-talk"
+        );
+        assert!(r.fake.log().iter().any(|l| l == "open new note"));
+    }
+
+    /// Wait for the learn thread (it runs after PasteFinished).
+    fn learn_watch_started(r: &Rig) -> bool {
+        for _ in 0..60 {
+            if r.fake.log().iter().any(|l| l == "field_reader") {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        false
+    }
+
+    #[test]
+    fn dictating_into_another_app_watches_for_edits() {
+        let mut r = rig(Fake::default(), Prefs::default());
+        r.c = r.c.with_own_exe("murmur.exe");
+        dictate_then(&mut r, |_| {});
+        assert!(learn_watch_started(&r));
+    }
+
+    #[test]
+    fn dictating_into_our_own_window_pastes_as_other_without_learning() {
+        // The Scratchpad: a normal paste target, but not an app to learn
+        // corrections from or to offer in "Style per app".
+        let fake = Fake {
+            exe: Some("Murmur.exe"),
+            ..Fake::default()
+        };
+        let store = Arc::new(Mutex::new(RecentAppStore::in_memory()));
+        let prefs = Prefs {
+            app_buckets: [("murmur".to_string(), crate::core_api::StyleBucket::Email)]
+                .into_iter()
+                .collect(),
+            ..Prefs::default()
+        };
+        let mut r = rig(fake, prefs);
+        r.c =
+            r.c.with_recent_apps(store.clone())
+                .with_own_exe("murmur.exe");
+        dictate_then(&mut r, |_| {});
+        assert!(r
+            .fake
+            .log()
+            .contains(&"paste [stub: 1.0 s of audio]".to_string()));
+        for _ in 0..200 {
+            if r.core.last_context().is_some() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let ctx = r.core.last_context().expect("context still sent");
+        assert_eq!(ctx.app_id, "murmur.exe");
+        assert_eq!(ctx.app_category, crate::core_api::StyleBucket::Other);
+        assert!(store.lock().unwrap().data.apps.is_empty());
+        assert!(!learn_watch_started(&r), "no edit watch on our own window");
+    }
+
+    #[test]
+    fn prefs_disable_sounds_and_ducking_and_context() {
+        let prefs = Prefs {
+            enable_sounds: false,
+            mute_audio_while_dictating: false,
+            use_ax_context: false,
+            ..Prefs::default()
+        };
+        let mut r = rig(Fake::default(), prefs);
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        std::thread::sleep(Duration::from_millis(30));
+        let log = r.fake.log();
+        assert_eq!(log, vec!["capture start", "overlay ActivePtt"]);
+        assert!(r.core.last_context().is_none());
+    }
+
+    #[test]
+    fn capture_failure_surfaces_as_error() {
+        let mut r = rig(
+            Fake {
+                fail_capture: true,
+                ..Fake::default()
+            },
+            Prefs::default(),
+        );
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        r.pump(); // StartFailed
+        assert!(matches!(r.c.machine().phase(), Phase::Error { .. }));
+        assert!(r
+            .fake
+            .log()
+            .iter()
+            .any(|l| l.contains("Error") && l.contains("no mic")));
+    }
+
+    #[test]
+    fn silent_dictation_is_empty_and_pastes_nothing() {
+        let mut r = rig(Fake::default(), Prefs::default());
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        r.at(1000, Input::Hotkey(HotkeyAction::PttUp));
+        r.pump();
+        assert_eq!(r.c.machine().phase(), &Phase::Idle);
+        assert!(!r.fake.log().iter().any(|l| l.starts_with("paste")));
+    }
+
+    #[test]
+    fn hands_free_sessions_get_the_endpoint_ptt_does_not() {
+        let mut r = rig(Fake::default(), Prefs::default());
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        assert_eq!(r.wait_config(1).endpoint_silence_ms, None);
+        r.at(10, Input::Hotkey(HotkeyAction::Cancel));
+        r.at(2000, Input::Hotkey(HotkeyAction::HandsFreeToggle));
+        assert_eq!(r.wait_config(2).endpoint_silence_ms, Some(1500));
+    }
+
+    #[test]
+    fn endpoint_reached_finishes_a_hands_free_dictation() {
+        let mut r = rig(Fake::default(), Prefs::default());
+        r.at(0, Input::Hotkey(HotkeyAction::HandsFreeToggle));
+        // The start runs on a background thread and the stub reports its
+        // poll only once a session is active: on a slow runner the ticks
+        // below could otherwise all land before the start.
+        r.wait_config(1);
+        r.fake.feed_audio(&[1000; 16_000]);
+        r.at(1000, Input::Tick);
+        assert!(r.rx.try_recv().is_err(), "no endpoint yet");
+        r.core.set_poll(crate::core_api::Poll {
+            endpoint_reached: true,
+            ..Default::default()
+        });
+        r.at(3000, Input::Tick);
+        r.at(3100, Input::Tick); // latched: only one Finish
+        r.pump(); // Finish -> stop + commit
+        assert!(matches!(r.c.machine().phase(), Phase::Processing { .. }));
+        r.pump(); // Committed
+        r.pump(); // PasteFinished
+        assert!(matches!(r.c.machine().phase(), Phase::Pasted { .. }));
+        let log = r.fake.log();
+        assert!(log.contains(&"play Stop".to_string()), "{log:?}");
+        assert!(log.iter().any(|l| l.starts_with("paste [stub: 1.0 s")));
+        assert!(r.rx.try_recv().is_err(), "a single Finish");
+    }
+
+    #[test]
+    fn endpoint_never_ends_push_to_talk() {
+        let mut r = rig(Fake::default(), Prefs::default());
+        r.core.set_poll(crate::core_api::Poll {
+            endpoint_reached: true,
+            ..Default::default()
+        });
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        r.at(3000, Input::Tick);
+        assert!(r.rx.try_recv().is_err());
+        assert!(matches!(r.c.machine().phase(), Phase::Listening(_)));
+    }
+
+    #[test]
+    fn pill_names_the_live_route_and_follows_a_failover() {
+        use crate::core_api::{Poll, SessionRoute};
+        use murmur_router::EngineKind;
+        let mut r = rig(Fake::default(), Prefs::default());
+        let server = SessionRoute {
+            engine: EngineKind::Remote,
+            server: Some("box:7313".into()),
+            ..Default::default()
+        };
+        r.core.set_start_route(Some(server.clone()));
+        r.core.set_poll(Poll {
+            route: Some(server),
+            ..Default::default()
+        });
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        r.pump(); // Started (route of the background start)
+        r.at(100, Input::Tick); // same route: no relabel
+        r.core.set_poll(Poll {
+            route: Some(SessionRoute {
+                fallback: Some("disconnected".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+        r.at(200, Input::Tick);
+        r.core.set_poll(Poll::default()); // dead session: keep the label
+        r.at(300, Input::Tick);
+        r.fake.feed_audio(&[1000; 16_000]);
+        r.at(1000, Input::Hotkey(HotkeyAction::PttUp));
+        r.pump();
+        r.pump();
+        let routes: Vec<String> = r
+            .fake
+            .log()
+            .into_iter()
+            .filter(|l| l.starts_with("route"))
+            .collect();
+        assert_eq!(
+            routes,
+            vec![
+                "route Transcribing via server…",
+                "route Transcribing via this PC… (server unreachable)",
+                "route -",
+            ]
+        );
+    }
+
+    #[test]
+    fn slow_start_opens_the_mic_at_once_and_loses_no_audio() {
+        let mut r = rig_slow(
+            Fake::default(),
+            Prefs::default(),
+            Duration::from_millis(300),
+        );
+        let t0 = std::time::Instant::now();
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        assert!(
+            t0.elapsed() < Duration::from_millis(200),
+            "the controller thread must not wait for the start"
+        );
+        assert!(r.fake.log().contains(&"capture start".to_string()));
+        r.fake.feed_audio(&[1000; 8_000]); // spoken while still connecting
+        std::thread::sleep(Duration::from_millis(400));
+        r.fake.feed_audio(&[1000; 8_000]);
+        r.at(1000, Input::Hotkey(HotkeyAction::PttUp));
+        r.pump(); // Committed
+        r.pump(); // PasteFinished
+        assert!(
+            r.fake
+                .log()
+                .contains(&"paste [stub: 1.0 s of audio]".to_string()),
+            "{:?}",
+            r.fake.log()
+        );
+    }
+
+    #[test]
+    fn release_before_a_slow_start_finishes_still_commits_everything() {
+        let mut r = rig_slow(
+            Fake::default(),
+            Prefs::default(),
+            Duration::from_millis(300),
+        );
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        r.at(600, Input::Hotkey(HotkeyAction::PttUp)); // start still pending
+        r.pump(); // Committed (after the start)
+        r.pump(); // PasteFinished
+        assert!(r
+            .fake
+            .log()
+            .contains(&"paste [stub: 1.0 s of audio]".to_string()));
+    }
+
+    #[test]
+    fn cancel_during_a_slow_start_cancels_the_late_session() {
+        let mut r = rig_slow(
+            Fake::default(),
+            Prefs::default(),
+            Duration::from_millis(200),
+        );
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        r.at(600, Input::Hotkey(HotkeyAction::Cancel));
+        let cancels_before = r.core.cancels();
+        for _ in 0..100 {
+            if r.core.starts() == 1 && r.core.cancels() > cancels_before {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(r.core.starts(), 1);
+        assert!(
+            r.core.cancels() > cancels_before,
+            "the session that started after Esc is cancelled"
+        );
+        assert_eq!(r.c.machine().phase(), &Phase::Idle);
+    }
+
+    #[test]
+    fn a_cancelled_paste_plan_inserts_nothing() {
+        let fake = Fake::default();
+        let steps = crate::paste::plan(&murmur_core::paste::segments("hi", true));
+        let r = run_paste_plan_until(&fake, &steps, &Prefs::default(), &|| {
+            Some(PASTE_CANCELLED.into())
+        });
+        assert_eq!(r, Err(PASTE_CANCELLED.to_string()));
+        assert!(fake.log().is_empty());
+    }
+
+    #[test]
+    fn esc_after_the_paste_started_keeps_it_in_history() {
+        let (gate_tx, gate_rx) = mpsc::channel();
+        let fake = Fake {
+            paste_gate: Mutex::new(Some(gate_rx)),
+            ..Fake::default()
+        };
+        let mut r = rig(fake, Prefs::default());
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        r.at(1000, Input::Hotkey(HotkeyAction::PttUp));
+        r.pump(); // Committed -> Paste dispatched, worker blocked in paste()
+        std::thread::sleep(Duration::from_millis(50));
+        r.at(1100, Input::Hotkey(HotkeyAction::Cancel));
+        assert_eq!(r.c.machine().phase(), &Phase::Idle);
+        gate_tx.send(()).unwrap();
+        r.pump(); // PasteFinished (the paste did happen)
+        assert_eq!(
+            r.c.shared.last_text.lock().unwrap().as_deref(),
+            Some("[stub: 1.0 s of audio]"),
+            "a paste that happened is still the last transcript"
+        );
+    }
+
+    #[test]
+    fn processing_timeout_cancels_the_commit() {
+        let mut r = rig(Fake::default(), Prefs::default());
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        r.wait_config(1);
+        let before = r.core.cancels();
+        // Hold the machine in processing without a Committed reply.
+        r.at(1000, Input::Hotkey(HotkeyAction::PttUp));
+        let _ = r.rx.recv_timeout(Duration::from_secs(2)); // drop Committed
+        r.at(40_000, Input::Tick);
+        assert!(r.core.cancels() > before, "timeout calls cancel()");
+        assert!(matches!(r.c.machine().phase(), Phase::Error { .. }));
+    }
+
+    fn window(hwnd: usize) -> Option<crate::paste::FocusTarget> {
+        Some(crate::paste::FocusTarget {
+            hwnd,
+            pid: hwnd as u32,
+            exe: "chat.exe".into(),
+        })
+    }
+
+    /// Dictate 1 s, switching focus/password state before the paste.
+    fn dictate_then(r: &mut Rig, before_paste: impl FnOnce(&Fake)) {
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        r.at(1000, Input::Hotkey(HotkeyAction::PttUp));
+        before_paste(&r.fake);
+        r.pump(); // Committed
+        r.pump(); // PasteFinished
+    }
+
+    #[test]
+    fn paste_lands_in_the_window_the_dictation_started_in() {
+        let fake = Fake {
+            focus: Mutex::new(window(1)),
+            ..Fake::default()
+        };
+        let mut r = rig(fake, Prefs::default());
+        dictate_then(&mut r, |_| {});
+        assert!(r
+            .fake
+            .log()
+            .contains(&"paste [stub: 1.0 s of audio]".to_string()));
+    }
+
+    #[test]
+    fn alt_tab_while_processing_copies_instead_of_pasting() {
+        let fake = Fake {
+            focus: Mutex::new(window(1)),
+            ..Fake::default()
+        };
+        let mut r = rig(fake, Prefs::default());
+        dictate_then(&mut r, |f| *f.focus.lock().unwrap() = window(2));
+        let log = r.fake.log();
+        assert!(!log.iter().any(|l| l.starts_with("paste")), "{log:?}");
+        assert!(log.contains(&"copy [stub: 1.0 s of audio]".to_string()));
+        assert!(
+            log.iter()
+                .any(|l| l.contains("Error") && l.contains("focus moved")),
+            "{log:?}"
+        );
+        assert_eq!(
+            r.c.shared.last_text.lock().unwrap().as_deref(),
+            Some("[stub: 1.0 s of audio]"),
+            "still the last transcript (paste-last / history)"
+        );
+    }
+
+    fn with_history(mut r: Rig) -> Rig {
+        r.c =
+            r.c.with_history(Arc::new(Mutex::new(History::open_in_memory().unwrap())));
+        r
+    }
+
+    fn kept_audio(r: &Rig, id: i64) -> Option<history::Recording> {
+        r.c.history
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .audio(id)
+            .unwrap()
+    }
+
+    /// Ask for a retry of `row` and wait for its `retry_finished`.
+    fn retry_and_wait(r: &mut Rig, row: i64) -> String {
+        r.c.handle(Input::Retry { row });
+        for _ in 0..400 {
+            if let Some(l) = r.fake.log().into_iter().find(|l| l.starts_with("retry ")) {
+                return l;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        panic!("retry never finished");
+    }
+
+    #[test]
+    fn a_dictation_keeps_its_recording_for_retry() {
+        let mut r = with_history(rig(Fake::default(), Prefs::default()));
+        dictate_then(&mut r, |_| {});
+        let e = history_latest(&r).unwrap();
+        assert_eq!(kept_audio(&r, e.id).unwrap().pcm, vec![1000; 16_000]);
+        // Keep none: nothing is stored.
+        let p = Prefs {
+            retry_audio_keep: 0,
+            ..Prefs::default()
+        };
+        let mut r = with_history(rig(Fake::default(), p));
+        dictate_then(&mut r, |_| {});
+        assert_eq!(kept_audio(&r, history_latest(&r).unwrap().id), None);
+    }
+
+    #[test]
+    fn a_password_field_keeps_no_recording() {
+        let fake = Fake {
+            focus: Mutex::new(window(1)),
+            ..Fake::default()
+        };
+        let mut r = with_history(rig(fake, Prefs::default()));
+        dictate_then(&mut r, |f| *f.password.lock().unwrap() = Some(true));
+        let e = history_latest(&r).expect("the row is kept, not pasted");
+        assert_eq!(kept_audio(&r, e.id), None);
+    }
+
+    #[test]
+    fn a_slow_field_snapshot_still_names_the_app_in_history() {
+        let (tx, rx) = mpsc::channel();
+        let fake = Fake {
+            snapshot_gate: Mutex::new(Some(rx)),
+            ..Fake::default()
+        };
+        let mut r = with_history(rig(fake, Prefs::default()));
+        // The snapshot is let go only once the dictation is committed; the
+        // row is written right after the paste and must wait for it.
+        dictate_then(&mut r, move |_| tx.send(()).unwrap());
+        assert_eq!(history_latest(&r).unwrap().app, "slack.exe");
+    }
+
+    #[test]
+    fn retry_reruns_the_recording_with_the_settings_active_now() {
+        let mut r = with_history(rig(Fake::default(), Prefs::default()));
+        dictate_then(&mut r, |_| {});
+        let row = history_latest(&r).unwrap().id;
+        let pastes = |r: &Rig| {
+            r.fake
+                .log()
+                .iter()
+                .filter(|l| l.starts_with("paste"))
+                .count()
+        };
+        assert_eq!(pastes(&r), 1);
+        // The user changes settings after the dictation.
+        {
+            let mut p = r.c.prefs.write().unwrap();
+            p.languages = vec!["de".into()];
+            p.app_buckets
+                .insert("slack".into(), crate::core_api::StyleBucket::Personal);
+        }
+        assert_eq!(retry_and_wait(&mut r, row), format!("retry {row} Ok(())"));
+        let cfg = r.core.last_config().unwrap();
+        assert_eq!(cfg.languages, ["de"], "today's language");
+        let ctx = r.core.last_context().unwrap();
+        assert_eq!(ctx.app_id, "slack.exe", "the original app");
+        assert_eq!(
+            ctx.app_category,
+            crate::core_api::StyleBucket::Personal,
+            "today's style per app"
+        );
+        assert!(ctx.before.is_empty(), "no field text is kept");
+        assert_eq!(pastes(&r), 1, "a retry never pastes");
+        let h = r.c.history.as_ref().unwrap().lock().unwrap();
+        let v = h.versions(row).unwrap();
+        assert_eq!(v.len(), 2, "original + retry");
+        assert_eq!(
+            v[1].text, "[stub: 1.0 s of audio]",
+            "the whole recording again"
+        );
+        assert!(h.has_audio(row).unwrap(), "can be retried again");
+    }
+
+    #[test]
+    fn retry_waits_its_turn_and_needs_the_recording() {
+        let mut r = with_history(rig(Fake::default(), Prefs::default()));
+        assert_eq!(
+            retry_and_wait(&mut r, 42),
+            format!("retry 42 Err({RETRY_GONE:?})")
+        );
+        r.fake.log.lock().unwrap().clear();
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        assert_eq!(
+            retry_and_wait(&mut r, 1),
+            format!("retry 1 Err({RETRY_BUSY:?})")
+        );
+    }
+
+    #[test]
+    fn a_password_field_focused_since_the_start_gets_nothing() {
+        let fake = Fake {
+            focus: Mutex::new(window(1)),
+            ..Fake::default()
+        };
+        let mut r = rig(fake, Prefs::default());
+        dictate_then(&mut r, |f| *f.password.lock().unwrap() = Some(true));
+        let log = r.fake.log();
+        assert!(!log
+            .iter()
+            .any(|l| l.starts_with("paste") || l.starts_with("copy")));
+        assert!(log.iter().any(|l| l.contains("password field")), "{log:?}");
+    }
+
+    #[test]
+    fn a_mic_that_dies_mid_dictation_ends_it_with_an_error() {
+        let mut r = rig(Fake::default(), Prefs::default());
+        r.at(0, Input::Hotkey(HotkeyAction::HandsFreeToggle));
+        (r.fake.on_error.lock().unwrap().as_ref().unwrap())("Microphone stopped working".into());
+        r.pump();
+        assert!(matches!(r.c.machine().phase(), Phase::Error { .. }));
+        assert!(r
+            .fake
+            .log()
+            .iter()
+            .any(|l| l.contains("Microphone stopped working")));
+    }
+
+    // ------------------------------------------------------- debug log
+
+    use crate::debug_log::tests::{BrokenSink, MemSink};
+    use crate::debug_log::{DebugLog, FileSink, Sink};
+
+    fn logged(prefs: Prefs, fake: Fake, sink: Box<dyn Sink>, on: bool) -> (Rig, Arc<DebugLog>) {
+        logged_with(prefs, fake, sink, on, |c| c)
+    }
+
+    fn logged_with(
+        prefs: Prefs,
+        fake: Fake,
+        sink: Box<dyn Sink>,
+        on: bool,
+        api: impl FnOnce(Arc<StubCore>) -> Arc<dyn CoreApi>,
+    ) -> (Rig, Arc<DebugLog>) {
+        let log = Arc::new(DebugLog::new(sink, on, false));
+        let mut r = rig_with(fake, prefs, api);
+        r.c = r.c.with_debug_log(log.clone());
+        (r, log)
+    }
+
+    fn lines(mem: &MemSink, log: &DebugLog) -> Vec<serde_json::Value> {
+        assert!(log.flush(Duration::from_secs(5)));
+        mem.0
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect()
+    }
+
+    /// Commits with a fixed result (router outcomes without a router).
+    struct Scripted {
+        inner: Arc<StubCore>,
+        result: CommitResult,
+    }
+
+    impl CoreApi for Scripted {
+        fn start_session(&self, cfg: crate::core_api::SessionConfig) -> Result<(), String> {
+            self.inner.start_session(cfg)
+        }
+        fn push_audio(&self, pcm: &[i16]) {
+            self.inner.push_audio(pcm)
+        }
+        fn set_context(&self, ctx: FieldContext) {
+            self.inner.set_context(ctx)
+        }
+        fn partial(&self) -> Option<String> {
+            None
+        }
+        fn poll(&self) -> crate::core_api::Poll {
+            self.inner.poll()
+        }
+        fn commit(&self) -> CommitResult {
+            let _ = self.inner.commit();
+            self.result.clone()
+        }
+        fn cancel(&self) {
+            self.inner.cancel()
+        }
+        fn learn_edit(&self, p: &str, e: &str) -> Vec<crate::core_api::LearnCandidate> {
+            self.inner.learn_edit(p, e)
+        }
+    }
+
+    #[test]
+    fn debug_log_off_writes_no_file_and_no_line() {
+        let dir = std::env::temp_dir().join(format!(
+            "murmur-ctl-debug-off-{}-{}",
+            std::process::id(),
+            crate::debug_log::now_unix_ms()
+        ));
+        let path = dir.join("dictations.jsonl");
+        let mem = MemSink::default();
+        for sink in [
+            Box::new(FileSink::new(path.clone())) as Box<dyn Sink>,
+            Box::new(mem.clone()),
+        ] {
+            let (mut r, log) = logged(Prefs::default(), Fake::default(), sink, false);
+            dictate_then(&mut r, |_| {});
+            assert!(matches!(r.c.machine().phase(), Phase::Pasted { .. }));
+            assert!(log.flush(Duration::from_secs(2)));
+            assert_eq!(log.stats(), crate::debug_log::Stats::default());
+        }
+        assert!(!path.exists() && !dir.exists(), "no file when off");
+        assert!(mem.0.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn debug_log_on_writes_one_line_per_dictation() {
+        let fake = Fake {
+            focus: Mutex::new(window(1)),
+            ..Fake::default()
+        };
+        let mem = MemSink::default();
+        let (mut r, log) = logged(Prefs::default(), fake, Box::new(mem.clone()), true);
+        dictate_then(&mut r, |_| {});
+        let l = lines(&mem, &log);
+        assert_eq!(l.len(), 1, "{l:?}");
+        let e = &l[0];
+        assert_eq!(e["kind"], "dictation");
+        assert_eq!(e["mode"], "hold");
+        assert_eq!(e["insert"]["outcome"], "inserted");
+        assert_eq!(e["insert"]["steps"], serde_json::json!(["ctrl_v"]));
+        assert_eq!(e["stack"], serde_json::Value::Null);
+        assert_eq!(e["target"], "chat.exe");
+        assert_eq!(e["raw"], "[stub: 1.0 s of audio]");
+        assert_eq!(e["text"], "[stub: 1.0 s of audio]");
+        assert_eq!(e["error"], serde_json::Value::Null);
+        // D27: slack.exe = work bucket = casual by default; the stub has no LLM.
+        assert_eq!(e["style"], "casual");
+        assert_eq!(e["llm"], serde_json::Value::Null);
+        // 1 s of loud audio up to the release: no trailing silence.
+        assert_eq!(e["endpoint_wait_ms"], 0);
+        assert!(e["perceived_ms"].is_u64(), "{e}");
+        assert!(e["total_ms"].is_u64(), "{e}");
+        assert!(e["ts"].as_str().unwrap().ends_with('Z'));
+    }
+
+    #[test]
+    fn style_per_app_override_reaches_the_core_and_the_log() {
+        let mut prefs = Prefs::default();
+        prefs
+            .app_buckets
+            .insert("slack".into(), crate::core_api::StyleBucket::Email);
+        let mem = MemSink::default();
+        let (mut r, log) = logged(prefs, Fake::default(), Box::new(mem.clone()), true);
+        dictate_then(&mut r, |_| {});
+        let l = lines(&mem, &log);
+        assert_eq!(l[0]["style"], "formal", "email bucket");
+        let ctx = r.core.last_context().expect("set_context called");
+        assert_eq!(ctx.app_category, crate::core_api::StyleBucket::Email);
+        assert_eq!(ctx.app_kind, crate::core_api::AppKind::Email);
+    }
+
+    #[test]
+    fn a_debug_sink_failing_every_write_never_affects_the_paste() {
+        for panic in [false, true] {
+            let (mut r, log) = logged(
+                Prefs::default(),
+                Fake::default(),
+                Box::new(BrokenSink { panic }),
+                true,
+            );
+            dictate_then(&mut r, |_| {});
+            assert!(matches!(r.c.machine().phase(), Phase::Pasted { .. }));
+            assert!(r
+                .fake
+                .log()
+                .contains(&"paste [stub: 1.0 s of audio]".to_string()));
+            assert!(log.flush(Duration::from_secs(2)));
+            assert_eq!(log.stats().write_errors, 1, "counted, not raised");
+            // And the next dictation still works.
+            r.at(5000, Input::Tick);
+            r.at(6000, Input::Hotkey(HotkeyAction::PttDown));
+            r.fake.feed_audio(&[1000; 8_000]);
+            r.at(7000, Input::Hotkey(HotkeyAction::PttUp));
+            r.pump();
+            r.pump();
+            assert!(r
+                .fake
+                .log()
+                .contains(&"paste [stub: 0.5 s of audio]".to_string()));
+        }
+    }
+
+    #[test]
+    fn debug_log_names_hands_free_and_tap_modes() {
+        let mem = MemSink::default();
+        let (mut r, log) = logged(
+            Prefs::default(),
+            Fake::default(),
+            Box::new(mem.clone()),
+            true,
+        );
+        // Hands-free key, ended by the endpoint.
+        r.at(0, Input::Hotkey(HotkeyAction::HandsFreeToggle));
+        r.wait_config(1);
+        r.fake.feed_audio(&[1000; 16_000]);
+        r.fake.feed_audio(&[0; 32_000]); // 2 s of silence after the speech
+        r.core.set_poll(crate::core_api::Poll {
+            endpoint_reached: true,
+            ..Default::default()
+        });
+        r.at(3000, Input::Tick);
+        r.pump(); // Finish
+        r.pump(); // Committed
+        r.pump(); // PasteFinished
+        r.core.set_poll(crate::core_api::Poll::default());
+        r.at(10_000, Input::Tick);
+        // Double tap Ctrl+Win: tap, release quickly, tap again = locked.
+        r.at(20_000, Input::Hotkey(HotkeyAction::PttDown));
+        r.at(20_100, Input::Hotkey(HotkeyAction::PttUp));
+        r.at(20_200, Input::Hotkey(HotkeyAction::PttDown));
+        r.wait_config(2);
+        r.fake.feed_audio(&[0; 16_000]); // silence only: no speech heard
+        r.at(22_000, Input::Hotkey(HotkeyAction::PttDown)); // stop
+        r.pump();
+        r.pump();
+        let l = lines(&mem, &log);
+        assert_eq!(l.len(), 2, "{l:?}");
+        assert_eq!(l[0]["mode"], "handsfree");
+        assert_eq!(l[0]["endpoint_wait_ms"], 2000);
+        assert_eq!(l[1]["mode"], "tap");
+        assert_eq!(l[1]["endpoint_wait_ms"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn debug_log_records_server_unreachable_failures() {
+        // Server-only: the commit fails, no route ran.
+        let mem = MemSink::default();
+        let (mut r, log) = logged_with(
+            Prefs::default(),
+            Fake::default(),
+            Box::new(mem.clone()),
+            true,
+            |core| {
+                Arc::new(Scripted {
+                    inner: core,
+                    result: CommitResult::failed("Server unreachable (circuit_open)"),
+                })
+            },
+        );
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        r.at(1000, Input::Hotkey(HotkeyAction::PttUp));
+        // Committed (failed: no paste).
+        r.pump();
+        // Fallback to this PC after a dropped connection.
+        let mut ok = CommitResult::text(CommitStatus::RawTranscript, "hi there", false);
+        ok.route = Some(crate::core_api::RouteInfo {
+            engine: "local".into(),
+            fallback: Some("disconnected".into()),
+            rtt_ms: Some(12),
+            client_ms: Some(1350),
+            ..Default::default()
+        });
+        ok.timings.asr_ms = 300;
+        ok.timings.total_ms = 340;
+        ok.timings.audio_ms = 1000;
+        ok.timings.wait_ms = 120;
+        ok.timings.segments = 3;
+        ok.timings.pre_asr_ms = 900;
+        let mem2 = MemSink::default();
+        let (mut r2, log2) = logged_with(
+            Prefs::default(),
+            Fake::default(),
+            Box::new(mem2.clone()),
+            true,
+            |core| {
+                Arc::new(Scripted {
+                    inner: core,
+                    result: ok,
+                })
+            },
+        );
+        dictate_then(&mut r2, |_| {});
+
+        let a = lines(&mem, &log);
+        assert_eq!(a.len(), 1, "{a:?}");
+        assert_eq!(a[0]["insert"]["outcome"], "error");
+        assert_eq!(a[0]["fallback"], "circuit_open");
+        assert_eq!(a[0]["error"], "Server unreachable (circuit_open)");
+        let b = lines(&mem2, &log2);
+        assert_eq!(b[0]["route"], "local");
+        assert_eq!(b[0]["fallback"], "disconnected");
+        assert_eq!(b[0]["rtt_ms"], 12);
+        assert_eq!(b[0]["asr_ms"], 300);
+        assert_eq!(b[0]["post_ms"], 40);
+        assert_eq!(b[0]["audio_ms"], 1000);
+        assert_eq!(b[0]["text"], "hi there");
+        // D22 (names shared with Android).
+        assert_eq!(b[0]["wait_ms"], 120);
+        assert_eq!(b[0]["segments"], 3);
+        assert_eq!(b[0]["pre_asr_ms"], 900);
+        assert_eq!(b[0]["client_ms"], 1350);
+        // A result that did not come through the router: client_ms null,
+        // the timings 0 (segmentation off).
+        assert_eq!(a[0]["client_ms"], serde_json::Value::Null);
+        assert_eq!(a[0]["segments"], 0);
+        assert_eq!(a[0]["wait_ms"], 0);
+    }
+
+    #[test]
+    fn history_rows_record_where_the_speech_ran() {
+        let mut ok = CommitResult::text(CommitStatus::RawTranscript, "hi there", false);
+        ok.route = Some(crate::core_api::RouteInfo {
+            engine: "remote".into(),
+            ..Default::default()
+        });
+        let mut r = rig_with(Fake::default(), Prefs::default(), |core| {
+            Arc::new(Scripted {
+                inner: core,
+                result: ok,
+            })
+        });
+        r.c =
+            r.c.with_history(Arc::new(Mutex::new(History::open_in_memory().unwrap())));
+        dictate_then(&mut r, |_| {});
+        assert_eq!(history_latest(&r).unwrap().route.as_deref(), Some("server"));
+        // A bare core reports no route: unknown.
+        let mut r = rig(Fake::default(), Prefs::default());
+        r.c =
+            r.c.with_history(Arc::new(Mutex::new(History::open_in_memory().unwrap())));
+        dictate_then(&mut r, |_| {});
+        assert_eq!(history_latest(&r).unwrap().route, None);
+    }
+
+    #[test]
+    fn insights_count_route_and_fixes() {
+        let mut ok = CommitResult::text(CommitStatus::Formatted, "Push to GitHub.", false);
+        ok.asr_text = "um push to gh".into();
+        ok.route = Some(crate::core_api::RouteInfo {
+            engine: "cloud".into(),
+            ..Default::default()
+        });
+        let mut prefs = Prefs::default();
+        prefs.dictionary.push(crate::core_api::DictEntry {
+            word: "gh".into(),
+            replacement: Some("GitHub".into()),
+            is_snippet: false,
+        });
+        let mut r = rig_with(Fake::default(), prefs, |core| {
+            Arc::new(Scripted {
+                inner: core,
+                result: ok,
+            })
+        });
+        let store = Arc::new(Mutex::new(InsightsStore::in_memory()));
+        r.c = r.c.with_insights(store.clone());
+        dictate_then(&mut r, |_| {});
+        let today = crate::insights::local_date(history::now_ms());
+        let v = store.lock().unwrap().view(today);
+        assert_eq!(v.routes_7d.cloud, 1);
+        assert_eq!(v.routes_7d.unknown, 0);
+        assert_eq!((v.fixes.ai, v.fixes.dictionary), (1, 1));
+    }
+
+    #[test]
+    fn debug_log_records_the_openrouter_fields() {
+        // D28: cloud STT + cloud cleanup; and a skipped-clean result is a
+        // normal line (llm = llm_skipped_clean, no llm_engine).
+        let mut ok = CommitResult::text(CommitStatus::Formatted, "Meet on Wednesday.", false);
+        ok.route = Some(crate::core_api::RouteInfo {
+            engine: "cloud".into(),
+            provider: Some("openrouter".into()),
+            model: Some("openai/whisper-large-v3-turbo".into()),
+            cost_usd: Some(murmur_core::Usd(0.0001)),
+            llm_engine: Some("cloud".into()),
+            llm_model: Some("meta-llama/llama-3.3-70b-instruct".into()),
+            llm_cost_usd: Some(murmur_core::Usd(0.0007)),
+            ..Default::default()
+        });
+        ok.llm = Some(murmur_core::cleanup::CleanUsage {
+            engine: Some("cloud".into()),
+            model: Some("meta-llama/llama-3.3-70b-instruct".into()),
+            cost_usd: Some(murmur_core::Usd(0.0007)),
+            generation_id: Some("gen-1".into()),
+            ttft_ms: Some(310),
+            ..Default::default()
+        });
+        let mut skipped = CommitResult::text(CommitStatus::RawTranscript, "Hi there.", false);
+        skipped.fallback_reason = Some("llm_skipped_clean".into());
+        skipped.route = Some(crate::core_api::RouteInfo {
+            engine: "local".into(),
+            ..Default::default()
+        });
+        let mut out = Vec::new();
+        for result in [ok, skipped] {
+            let mem = MemSink::default();
+            let (mut r, log) = logged_with(
+                Prefs::default(),
+                Fake::default(),
+                Box::new(mem.clone()),
+                true,
+                |core| {
+                    Arc::new(Scripted {
+                        inner: core,
+                        result,
+                    })
+                },
+            );
+            dictate_then(&mut r, |_| {});
+            out.push(lines(&mem, &log).remove(0));
+        }
+        let (c, s) = (&out[0], &out[1]);
+        assert_eq!(c["route"], "cloud");
+        assert_eq!(c["stt_model"], "openai/whisper-large-v3-turbo");
+        assert_eq!(c["stt_cost_usd"], 0.0001);
+        assert_eq!(c["llm"], "formatted");
+        assert_eq!(c["llm_engine"], "cloud");
+        assert_eq!(c["llm_model"], "meta-llama/llama-3.3-70b-instruct");
+        assert_eq!(c["llm_cost_usd"], 0.0007);
+        assert_eq!(c["llm_ttft_ms"], 310);
+        assert_eq!(c["llm_generation_id"], "gen-1");
+        assert_eq!(s["llm"], "llm_skipped_clean");
+        assert_eq!(s["insert"]["outcome"], "inserted", "a normal result");
+        for k in ["llm_engine", "llm_cost_usd", "stt_model", "stt_cost_usd"] {
+            assert_eq!(s[k], serde_json::Value::Null, "{k}");
+        }
+    }
+
+    fn keyboard(lang: Option<&str>) -> Fake {
+        Fake {
+            keyboard: Mutex::new(lang.map(String::from)),
+            ..Fake::default()
+        }
+    }
+
+    #[test]
+    fn keyboard_language_forces_the_session_language() {
+        // D37: a Hebrew layout in the target window → `he` (the Hebrew route).
+        let mut r = rig(keyboard(Some("he")), Prefs::default());
+        dictate_then(&mut r, |_| {});
+        assert_eq!(r.core.last_config().unwrap().languages, ["he"]);
+        // The layout is read at each start.
+        *r.fake.keyboard.lock().unwrap() = Some("en".into());
+        dictate_then(&mut r, |_| {});
+        assert_eq!(r.core.last_config().unwrap().languages, ["en"]);
+    }
+
+    #[test]
+    fn keyboard_switched_mid_recording_uses_the_stop_language() {
+        // D58: the layout at the stop decides; the whole recording is
+        // transcribed again in that language and pasted.
+        let mem = MemSink::default();
+        let (mut r, log) = logged(
+            Prefs::default(),
+            keyboard(Some("en")),
+            Box::new(mem.clone()),
+            true,
+        );
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        *r.fake.keyboard.lock().unwrap() = Some("he".into());
+        r.at(1000, Input::Hotkey(HotkeyAction::PttUp));
+        r.pump(); // Committed
+        r.pump(); // PasteFinished
+        assert_eq!(r.core.last_config().unwrap().languages, ["he"]);
+        assert_eq!(
+            r.core.starts(),
+            2,
+            "the start session, then the stop-language one"
+        );
+        assert!(r
+            .fake
+            .log()
+            .contains(&"paste [stub: 1.0 s of audio]".to_string()));
+        let line = lines(&mem, &log).remove(0);
+        assert_eq!(line["start_language"], "en");
+        assert_eq!(line["stop_language"], "he");
+        assert_eq!(
+            (&line["language"], &line["language_source"]),
+            (&"he".into(), &"keyboard".into())
+        );
+    }
+
+    #[test]
+    fn same_keyboard_at_the_stop_transcribes_once() {
+        // D58: no change since the start: one session, no re-run.
+        let mem = MemSink::default();
+        let (mut r, log) = logged(
+            Prefs::default(),
+            keyboard(Some("he")),
+            Box::new(mem.clone()),
+            true,
+        );
+        dictate_then(&mut r, |_| {});
+        assert_eq!(r.core.starts(), 1);
+        assert_eq!(r.core.last_config().unwrap().languages, ["he"]);
+        let line = lines(&mem, &log).remove(0);
+        assert_eq!(
+            (&line["start_language"], &line["stop_language"]),
+            (&"he".into(), &"he".into())
+        );
+    }
+
+    #[test]
+    fn a_hands_free_endpoint_stop_uses_the_stop_language() {
+        let mut r = rig(keyboard(Some("en")), Prefs::default());
+        r.at(0, Input::Hotkey(HotkeyAction::HandsFreeToggle));
+        r.wait_config(1);
+        r.fake.feed_audio(&[1000; 16_000]);
+        *r.fake.keyboard.lock().unwrap() = Some("he".into());
+        r.core.set_poll(crate::core_api::Poll {
+            endpoint_reached: true,
+            ..Default::default()
+        });
+        r.at(3000, Input::Tick);
+        r.pump(); // Finish -> stop + commit
+        r.pump(); // Committed
+        r.pump(); // PasteFinished
+        assert_eq!(r.core.starts(), 2);
+        let cfg = r.core.last_config().unwrap();
+        assert_eq!(cfg.languages, ["he"]);
+        assert_eq!(cfg.endpoint_silence_ms, None, "the replay ends itself");
+        assert!(r
+            .fake
+            .log()
+            .iter()
+            .any(|l| l.starts_with("paste [stub: 1.0 s")));
+    }
+
+    /// D58: holds the `block_at`-th start until `open`; counts the
+    /// samples pushed into that session and later ones.
+    struct GatedStart {
+        inner: Arc<StubCore>,
+        block_at: usize,
+        entered: Arc<AtomicBool>,
+        open: Arc<AtomicBool>,
+        pushed_after: Arc<AtomicU64>,
+    }
+
+    impl CoreApi for GatedStart {
+        fn start_session(&self, cfg: crate::core_api::SessionConfig) -> Result<(), String> {
+            if self.inner.starts() + 1 == self.block_at {
+                self.entered.store(true, Ordering::SeqCst);
+                while !self.open.load(Ordering::SeqCst) {
+                    std::thread::sleep(Duration::from_millis(2));
+                }
+            }
+            self.inner.start_session(cfg)
+        }
+        fn push_audio(&self, pcm: &[i16]) {
+            if self.inner.starts() >= self.block_at {
+                self.pushed_after
+                    .fetch_add(pcm.len() as u64, Ordering::SeqCst);
+            }
+            self.inner.push_audio(pcm)
+        }
+        fn set_context(&self, ctx: FieldContext) {
+            self.inner.set_context(ctx)
+        }
+        fn partial(&self) -> Option<String> {
+            None
+        }
+        fn poll(&self) -> crate::core_api::Poll {
+            self.inner.poll()
+        }
+        fn commit(&self) -> CommitResult {
+            self.inner.commit()
+        }
+        fn cancel(&self) {
+            self.inner.cancel()
+        }
+        fn learn_edit(&self, p: &str, e: &str) -> Vec<crate::core_api::LearnCandidate> {
+            self.inner.learn_edit(p, e)
+        }
+    }
+
+    #[test]
+    fn esc_during_the_rerun_stops_it_and_nothing_reaches_the_next_dictation() {
+        let entered = Arc::new(AtomicBool::new(false));
+        let open = Arc::new(AtomicBool::new(false));
+        let pushed_after = Arc::new(AtomicU64::new(0));
+        let (e, o, p) = (entered.clone(), open.clone(), pushed_after.clone());
+        let mut r = rig_with(keyboard(Some("en")), Prefs::default(), move |inner| {
+            Arc::new(GatedStart {
+                inner,
+                block_at: 2,
+                entered: e,
+                open: o,
+                pushed_after: p,
+            })
+        });
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        *r.fake.keyboard.lock().unwrap() = Some("he".into());
+        r.at(1000, Input::Hotkey(HotkeyAction::PttUp));
+        for _ in 0..1000 {
+            if entered.load(Ordering::SeqCst) {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(entered.load(Ordering::SeqCst), "the re-run started");
+        r.at(1100, Input::Hotkey(HotkeyAction::Cancel));
+        open.store(true, Ordering::SeqCst);
+        r.pump(); // the re-run's Committed (cancelled; ignored)
+        assert_eq!(pushed_after.load(Ordering::SeqCst), 0, "no replayed audio");
+        assert!(!r.fake.log().iter().any(|l| l.starts_with("paste")));
+        // The next dictation gets only its own second of audio.
+        r.at(5000, Input::Hotkey(HotkeyAction::PttDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        r.at(6000, Input::Hotkey(HotkeyAction::PttUp));
+        r.pump(); // Committed
+        r.pump(); // PasteFinished
+        assert_eq!(pushed_after.load(Ordering::SeqCst), 16_000);
+        assert!(r
+            .fake
+            .log()
+            .contains(&"paste [stub: 1.0 s of audio]".to_string()));
+    }
+
+    /// `cancelled` turns true at its `n`-th check (1 = before the start).
+    fn cancelled_at(n: usize) -> impl Fn() -> bool {
+        let calls = std::cell::Cell::new(0);
+        move || {
+            calls.set(calls.get() + 1);
+            calls.get() >= n
+        }
+    }
+
+    #[test]
+    fn a_replay_cancelled_after_its_last_chunk_does_not_commit() {
+        // D58 review 2: the check before the commit (Android does the same).
+        let core = StubCore::new();
+        let r = replay_recording(
+            &core,
+            Default::default(),
+            None,
+            &[1000; 1600],
+            &cancelled_at(3),
+        );
+        assert_eq!(r.unwrap_err(), "cancelled");
+        assert_eq!(core.cancels(), 1);
+    }
+
+    #[test]
+    fn an_empty_replay_checks_cancel_before_committing() {
+        let core = StubCore::new();
+        let r = replay_recording(&core, Default::default(), None, &[], &cancelled_at(2));
+        assert_eq!(r.unwrap_err(), "cancelled");
+        assert_eq!((core.starts(), core.cancels()), (1, 1));
+    }
+
+    #[test]
+    fn a_rerun_whose_budget_ran_out_before_it_started_fails_as_a_timeout() {
+        // D58 review 2: the dictation's start holds the re-run back past
+        // its budget: the usual timeout, and no re-run session.
+        let entered = Arc::new(AtomicBool::new(false));
+        let open = Arc::new(AtomicBool::new(false));
+        let pushed_after = Arc::new(AtomicU64::new(0));
+        let (e, o, p) = (entered.clone(), open.clone(), pushed_after.clone());
+        let mut r = rig_with(keyboard(Some("en")), Prefs::default(), move |inner| {
+            Arc::new(GatedStart {
+                inner,
+                block_at: 1,
+                entered: e,
+                open: o,
+                pushed_after: p,
+            })
+        });
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        *r.fake.keyboard.lock().unwrap() = Some("he".into());
+        r.at(1000, Input::Hotkey(HotkeyAction::PttUp));
+        let budget = r.c.machine().policy().rerun_timeout_ms;
+        r.at(1000 + budget, Input::Tick);
+        assert!(r
+            .fake
+            .log()
+            .contains(&r#"overlay Error { message: "Transcription timed out" }"#.to_string()));
+        open.store(true, Ordering::SeqCst);
+        r.pump(); // the late Committed (ignored)
+        assert_eq!(r.core.starts(), 1, "no re-run session");
+        assert_eq!(pushed_after.load(Ordering::SeqCst), 0);
+        assert!(!r.fake.log().iter().any(|l| l.starts_with("paste")));
+    }
+
+    #[test]
+    fn keyboard_language_off_never_rereads_at_the_stop() {
+        let prefs = Prefs {
+            keyboard_language: false,
+            languages: vec!["en".into()],
+            ..Prefs::default()
+        };
+        let mut r = rig(keyboard(Some("en")), prefs);
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        *r.fake.keyboard.lock().unwrap() = Some("he".into());
+        r.at(1000, Input::Hotkey(HotkeyAction::PttUp));
+        r.pump();
+        r.pump();
+        assert_eq!(r.core.starts(), 1);
+        assert_eq!(r.core.last_config().unwrap().languages, ["en"]);
+    }
+
+    #[test]
+    fn unknown_layout_or_option_off_keeps_todays_languages() {
+        let mut r = rig(keyboard(None), Prefs::default());
+        dictate_then(&mut r, |_| {});
+        assert!(
+            r.core.last_config().unwrap().languages.is_empty(),
+            "auto-detect"
+        );
+        let prefs = Prefs {
+            keyboard_language: false,
+            languages: vec!["de".into()],
+            ..Prefs::default()
+        };
+        let mut r = rig(keyboard(Some("he")), prefs);
+        dictate_then(&mut r, |_| {});
+        assert_eq!(r.core.last_config().unwrap().languages, ["de"]);
+    }
+
+    #[test]
+    fn debug_line_names_the_language_and_its_source() {
+        let mut out = Vec::new();
+        for (kb, on) in [(Some("he"), true), (None, true), (Some("he"), false)] {
+            let mem = MemSink::default();
+            let prefs = Prefs {
+                keyboard_language: on,
+                languages: if on { vec![] } else { vec!["en".into()] },
+                ..Prefs::default()
+            };
+            let (mut r, log) = logged(prefs, keyboard(kb), Box::new(mem.clone()), true);
+            dictate_then(&mut r, |_| {});
+            out.push(lines(&mem, &log).remove(0));
+        }
+        assert_eq!(
+            (&out[0]["language"], &out[0]["language_source"]),
+            (&"he".into(), &"keyboard".into())
+        );
+        assert_eq!(
+            (&out[1]["language"], &out[1]["language_source"]),
+            (&serde_json::Value::Null, &"auto".into())
+        );
+        assert_eq!(
+            (&out[2]["language"], &out[2]["language_source"]),
+            (&"en".into(), &"fixed".into())
+        );
+    }
+
+    /// One dictation whose commit returns `result`, `password` set before
+    /// the paste; the debug line.
+    fn logged_line(result: CommitResult, password: bool) -> serde_json::Value {
+        let mem = MemSink::default();
+        let (mut r, log) = logged_with(
+            Prefs::default(),
+            Fake {
+                focus: Mutex::new(window(1)),
+                ..Fake::default()
+            },
+            Box::new(mem.clone()),
+            true,
+            |core| {
+                Arc::new(Scripted {
+                    inner: core,
+                    result,
+                })
+            },
+        );
+        dictate_then(&mut r, |f| {
+            if password {
+                *f.password.lock().unwrap() = Some(true)
+            }
+        });
+        lines(&mem, &log).remove(0)
+    }
+
+    fn fallen_back_cloud_cleanup() -> CommitResult {
+        let mut r = CommitResult::text(
+            CommitStatus::Formatted,
+            "The demo is on Thursday at 3.",
+            false,
+        );
+        r.route = Some(crate::core_api::RouteInfo {
+            engine: "local".into(),
+            cleanup_route: Some("local".into()),
+            cloud_fallback: Some("llm_timeout".into()),
+            fallback_detail: Some("no answer within 5000 ms".into()),
+            ..Default::default()
+        });
+        r
+    }
+
+    #[test]
+    fn debug_log_records_why_ai_cleanup_fell_back() {
+        // 2026-10-27: the fallback's detail. D59: no rejected answer field.
+        let l = logged_line(fallen_back_cloud_cleanup(), false);
+        assert_eq!(l["cloud_fallback"], "llm_timeout");
+        assert_eq!(l["guard_detail"], "no answer within 5000 ms");
+        assert!(l.get("rejected_text").is_none(), "{l}");
+        // Accepted / no cloud cleanup: null.
+        let ok = CommitResult::text(CommitStatus::Formatted, "Hi there.", false);
+        let l = logged_line(ok, false);
+        assert_eq!(l["guard_detail"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn debug_log_redacts_the_fallback_detail_for_password_fields() {
+        let l = logged_line(fallen_back_cloud_cleanup(), true);
+        assert_eq!(l["insert"]["outcome"], "target_protected");
+        assert_eq!(l["guard_detail"], crate::debug_log::REDACTED);
+        assert!(!l.to_string().contains("5000"), "{l}");
+    }
+
+    #[test]
+    fn debug_log_falls_back_to_the_live_route_when_the_commit_has_none() {
+        use crate::core_api::SessionRoute;
+        use murmur_router::EngineKind;
+        let mem = MemSink::default();
+        let (mut r, log) = logged_with(
+            Prefs::default(),
+            Fake::default(),
+            Box::new(mem.clone()),
+            true,
+            |core| {
+                Arc::new(Scripted {
+                    inner: core,
+                    result: CommitResult::failed("all routes failed"),
+                })
+            },
+        );
+        r.core.set_poll(crate::core_api::Poll {
+            route: Some(SessionRoute {
+                engine: EngineKind::Local,
+                fallback: Some("connect_failed".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        r.wait_config(1);
+        r.at(100, Input::Tick);
+        r.fake.feed_audio(&[1000; 16_000]);
+        r.at(1000, Input::Hotkey(HotkeyAction::PttUp));
+        r.pump();
+        let l = lines(&mem, &log);
+        assert_eq!(l[0]["route"], "local");
+        assert_eq!(l[0]["fallback"], "connect_failed");
+    }
+
+    #[test]
+    fn debug_log_redacts_password_fields() {
+        let fake = Fake {
+            focus: Mutex::new(window(1)),
+            ..Fake::default()
+        };
+        let mem = MemSink::default();
+        let (mut r, log) = logged(Prefs::default(), fake, Box::new(mem.clone()), true);
+        dictate_then(&mut r, |f| *f.password.lock().unwrap() = Some(true));
+        let l = lines(&mem, &log);
+        assert_eq!(l.len(), 1);
+        assert_eq!(l[0]["target"], crate::debug_log::REDACTED);
+        assert_eq!(l[0]["raw"], crate::debug_log::REDACTED);
+        assert_eq!(l[0]["text"], crate::debug_log::REDACTED);
+        assert_eq!(l[0]["insert"]["outcome"], "target_protected");
+        assert_eq!(l[0]["insert"]["steps"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn debug_log_records_cancels_and_start_failures_once() {
+        let mem = MemSink::default();
+        let (mut r, log) = logged(
+            Prefs::default(),
+            Fake::default(),
+            Box::new(mem.clone()),
+            true,
+        );
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        r.at(1000, Input::Hotkey(HotkeyAction::Cancel));
+        let fake = Fake {
+            fail_capture: true,
+            ..Fake::default()
+        };
+        let mem2 = MemSink::default();
+        let (mut r2, log2) = logged(Prefs::default(), fake, Box::new(mem2.clone()), true);
+        r2.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        r2.pump(); // StartFailed
+        let a = lines(&mem, &log);
+        assert_eq!(a.len(), 1, "{a:?}");
+        assert_eq!(a[0]["insert"]["outcome"], "cancelled");
+        let b = lines(&mem2, &log2);
+        assert_eq!(b.len(), 1, "{b:?}");
+        assert_eq!(b[0]["insert"]["outcome"], "start_failed");
+        assert_eq!(b[0]["error"], "no mic");
+        // No result: the D22 timing fields are null, not 0.
+        for k in ["wait_ms", "segments", "pre_asr_ms", "client_ms"] {
+            assert_eq!(b[0][k], serde_json::Value::Null, "{k}");
+        }
+    }
+
+    #[test]
+    fn debug_log_records_a_processing_timeout() {
+        struct Hang(Arc<StubCore>);
+        impl CoreApi for Hang {
+            fn start_session(&self, c: crate::core_api::SessionConfig) -> Result<(), String> {
+                self.0.start_session(c)
+            }
+            fn push_audio(&self, p: &[i16]) {
+                self.0.push_audio(p)
+            }
+            fn set_context(&self, c: FieldContext) {
+                self.0.set_context(c)
+            }
+            fn partial(&self) -> Option<String> {
+                None
+            }
+            fn commit(&self) -> CommitResult {
+                std::thread::sleep(Duration::from_millis(300));
+                CommitResult::failed(crate::core_api::CANCELLED)
+            }
+            fn cancel(&self) {}
+            fn learn_edit(&self, _: &str, _: &str) -> Vec<crate::core_api::LearnCandidate> {
+                Vec::new()
+            }
+        }
+        let mem = MemSink::default();
+        let (mut r, log) = logged_with(
+            Prefs::default(),
+            Fake::default(),
+            Box::new(mem.clone()),
+            true,
+            |c| Arc::new(Hang(c)),
+        );
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        r.at(1000, Input::Hotkey(HotkeyAction::PttUp));
+        r.at(100_000, Input::Tick); // past the processing timeout
+        r.pump(); // the late Committed: ignored
+        let l = lines(&mem, &log);
+        assert_eq!(l.len(), 1, "{l:?}");
+        assert_eq!(l[0]["insert"]["outcome"], "timeout");
+    }
+}

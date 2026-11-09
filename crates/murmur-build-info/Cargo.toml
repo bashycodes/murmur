@@ -1,0 +1,10 @@
+[package]
+name = "murmur-build-info"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+description = "Product version + git commit of this build (D26, docs/versioning.md) and the runtime env-var names (D83); no dependencies"
+build = "build.rs"
+
+[dev-dependencies]
+serde_json.workspace = true

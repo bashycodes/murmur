@@ -221,7 +221,7 @@ Source: <https://openrouter.ai/docs/guides/overview/models> and the models OpenA
 
 | Today (D18) | D28 |
 |---|---|
-| 5 adapters: `openai_compat`, `openrouter`, `elevenlabs`, `deepgram`, `assemblyai` | **One adapter: `openrouter`.** The other four files are deleted from `crates/flow-cloud/src/adapters/` with their fixtures and contract tests. Git history keeps them. `flow_router::cloud::ADAPTERS = ["openrouter"]` |
+| 5 adapters: `openai_compat`, `openrouter`, `elevenlabs`, `deepgram`, `assemblyai` | **One adapter: `openrouter`.** The other four files are deleted from `crates/murmur-cloud/src/adapters/` with their fixtures and contract tests. Git history keeps them. `murmur_router::cloud::ADAPTERS = ["openrouter"]` |
 | 7 presets incl. `custom` (user base URL, keyless LAN) | **No presets list.** One fixed provider config. `base_url` is a constant `https://openrouter.ai/api/v1`, not user-editable, and `validate()` rejects any other value |
 | Up to 8 providers, `active` id | Exactly one OpenRouter account entry (`id = "openrouter"`) with two **uses**: `stt` and `cleanup`, each with its own model and opt-in |
 | Static `price_per_hour` table | Prices from the OpenRouter catalogue (§2.2) + `usage.cost` |
@@ -235,7 +235,7 @@ A new build-matrix check backs this up. `tools/check-build-matrix.sh` greps the 
 builds' `.so`/`.exe` strings for `api.elevenlabs.io|api.deepgram.com|api.assemblyai.com|api.groq.com|api.openai.com`
 and fails on any hit. A unit test asserts `ADAPTERS.len() == 1` and that `validate()`
 refuses every host except `openrouter.ai`. Self-hosted STT servers (speaches/LocalAI via
-`custom`) go too. The user's own `flow-server` remains the self-hosted path, so this is
+`custom`) go too. The user's own `murmur-server` remains the self-hosted path, so this is
 no loss in practice.
 
 **Migration (one-time, on first load of a D28 build; Rust `CloudConfig::migrate_d28`,
@@ -244,8 +244,8 @@ mirrored in both shells' key stores):**
 1. Take the first provider with `adapter == "openrouter"`. Keep its key, `model`,
    `language`, `send_dictionary` and consent. Consent stays valid because the host is
    unchanged (`openrouter.ai`). Rename its id to `openrouter`, and move its key
-   (Credential Manager `flow-clone/cloud/<old-id>` → `flow-clone/cloud/openrouter`;
-   Android `SecretVault("flow_cloud_<old-id>")` → `flow_cloud_openrouter`).
+   (Credential Manager `murmur/cloud/<old-id>` → `murmur/cloud/openrouter`;
+   Android `SecretVault("murmur_cloud_<old-id>")` → `murmur_cloud_openrouter`).
 2. Delete every other provider entry **and its stored key** (Credential Manager entry /
    Keystore ciphertext). Delete their usage counters. Keep the month's cost total, so the
    monthly budget stays honest.
@@ -261,7 +261,7 @@ mirrored in both shells' key stores):**
 
 ### 2.2 Model catalogue
 
-New module `crates/flow-cloud/src/catalog.rs`. Rust owns it so both shells show identical
+New module `crates/murmur-cloud/src/catalog.rs`. Rust owns it so both shells show identical
 lists.
 
 ```rust
@@ -299,11 +299,11 @@ pub fn refresh(http: &Client, key: Option<&SecretString>) -> Result<Catalog, Clo
   off. Fetching the catalogue sends no user data, but it does reveal the IP to
   openrouter.ai, which is the same host the user consented to.
 * **Cache:** a trimmed catalogue (≈ 100-150 KB) goes in the app cache dir as
-  `openrouter-catalog.json` (Windows `%LOCALAPPDATA%\FlowClone\cache\`, Android
+  `openrouter-catalog.json` (Windows `%LOCALAPPDATA%\Murmur\cache\`, Android
   `cacheDir`). TTL is 24 h. A stale cache is used at once while a refresh runs. Manual
   "Refresh models". `If-None-Match`/ETag support is unconfirmed, so v1 sends no
   conditional request.
-* **Offline fallback:** `crates/flow-cloud/data/catalog-baked.json` is generated from the
+* **Offline fallback:** `crates/murmur-cloud/data/catalog-baked.json` is generated from the
   dated snapshot by `tools/gen-openrouter-catalog.py`, the probe promoted with that
   commit. It holds the recommended defaults plus about 12 STT and 12 cleanup models. It
   is used when there is no cache and no network, and is tagged `source: Baked` with its
@@ -346,7 +346,7 @@ whisper-turbo loses to Parakeet-local on the cliptest, Scribe becomes the defaul
 
 ### 2.4 Cloud STT: one adapter, two paths
 
-`crates/flow-cloud/src/adapters/openrouter.rs` keeps `CloudAdapter` and picks the path per
+`crates/murmur-cloud/src/adapters/openrouter.rs` keeps `CloudAdapter` and picks the path per
 model from the catalogue (`ModelInfo.stt_path`). A config override is allowed
 (`stt_path: "auto" | "transcriptions" | "chat_audio"`).
 
@@ -382,15 +382,15 @@ not part of D28.
 
 ### 2.5 Cloud text cleanup
 
-**Where it plugs in.** flow-core's LLM step is already backend-agnostic: the `Cleaner`
-trait (`crates/flow-core/src/cleanup.rs`) and `run_cleanup` (hard timeout on its own
+**Where it plugs in.** murmur-core's LLM step is already backend-agnostic: the `Cleaner`
+trait (`crates/murmur-core/src/cleanup.rs`) and `run_cleanup` (hard timeout on its own
 thread, `unwrap_output`, `lists_to_plain`, divergence threshold, `guard::check`).
 `engine.rs` decides when it runs: `should_run`, `llm_skip_clean` / `llm_can_help`, prompt
 v2 via `build_prompt`, and `llm_timeout_ms`. A cloud backend that implements `Cleaner`
 therefore gets prompt v2, the guard, `llm_skip_clean`, the timeout and the fallback text
 **unchanged by construction**.
 
-* `crates/flow-cloud/src/cleaner.rs`: `OpenRouterCleaner: flow_core::Cleaner`.
+* `crates/murmur-cloud/src/cleaner.rs`: `OpenRouterCleaner: murmur_core::Cleaner`.
   * `clean_cancellable(prompt, deadline, cancel)` → `POST /chat/completions` with:
     * `messages = prompt.messages()` (system, the few-shot pairs, user);
     * `temperature: 0`, `seed: 0`;
@@ -420,7 +420,7 @@ therefore gets prompt v2, the guard, `llm_skip_clean`, the timeout and the fallb
 **Context minimisation (new, required).** `build_prompt` puts in more than the
 transcript: up to 300 chars of field text before the cursor, the selection, 150 chars
 after, `app_id` and screen words. That is fine on-device. Sent to a third party, it is
-the on-screen-text leak that D18 avoided (`send_screen_words` default off). flow-core
+the on-screen-text leak that D18 avoided (`send_screen_words` default off). murmur-core
 change, additive:
 
 ```rust
@@ -441,7 +441,7 @@ name"). Password fields never reach the core today, and that is unchanged.
 loaded). The enable flow sets `[cloud, local]`; the user can choose `[local, cloud]`
 ("cloud only when no local model is loaded").
 
-A generic `flow_core::cleanup::RoutedCleaner { primary, fallback, min_fallback_ms: 800 }`
+A generic `murmur_core::cleanup::RoutedCleaner { primary, fallback, min_fallback_ms: 800 }`
 does the composition. It has no network code and is unit-testable:
 * It tries `primary`.
 * If `primary` fails **fast** (connect/DNS error, open circuit, 401/402/403, budget,
@@ -457,16 +457,16 @@ Where the core runs:
 
 | Dictation route | Who cleans | Cloud cleanup applies? |
 |---|---|---|
-| Client (on-device ASR) | client `FlowCore` | **yes** |
-| Cloud STT | `CloudBackend`'s client `FlowCore` (uses `local_core.cleaner()`) | **yes** |
-| Server (`flow-server`) | server's own pipeline and LLM | **no** in v1: the server stays no-egress (D17 I6, `IPAddressDeny=any`) and never sees keys (C4). UI says: "Cloud cleanup is used for on-device and cloud dictations. Your server uses its own AI." |
+| Client (on-device ASR) | client `MurmurCore` | **yes** |
+| Cloud STT | `CloudBackend`'s client `MurmurCore` (uses `local_core.cleaner()`) | **yes** |
+| Server (`murmur-server`) | server's own pipeline and LLM | **no** in v1: the server stays no-egress (D17 I6, `IPAddressDeny=any`) and never sees keys (C4). UI says: "Cloud cleanup is used for on-device and cloud dictations. Your server uses its own AI." |
 
 The v2 path for the server route is an additive protocol flag `defer_llm`: the server
 returns the post-deterministic, pre-LLM text plus the cleanup inputs, and the client runs
 cleaner + post-processing. It is a separate decision, because it moves part of the
 pipeline to the client for that route.
 
-**Attaching it.** flow-core gets the additive `FlowCore::set_cleaner(Option<Arc<dyn
+**Attaching it.** murmur-core gets the additive `MurmurCore::set_cleaner(Option<Arc<dyn
 Cleaner>>)`, a worker control message that takes effect at the next session. Today the
 cleaner is fixed at `load`/`from_engines`. The router gains `with_cleanup_factory(f)` +
 `set_cleanup(cfg)`. It builds `RoutedCleaner(OpenRouterCleaner, local LLM)` and installs
@@ -511,8 +511,8 @@ independent records. Turning on one never turns on the other. C1 for cleanup rea
 ### 2.6 Key, settings schema, budget
 
 **One key, both uses.** Stored as today (Windows Credential Manager
-`flow-clone/cloud/openrouter`, bound to host + adapter; Android Keystore AES-GCM
-`SecretVault("flow_cloud_openrouter")`). After Save, "Check key" calls `GET
+`murmur/cloud/openrouter`, bound to host + adapter; Android Keystore AES-GCM
+`SecretVault("murmur_cloud_openrouter")`). After Save, "Check key" calls `GET
 /api/v1/key`. It shows `label`, credit limit / remaining, `usage_monthly` and
 `is_free_tier`, and warns if `limit == null`: "This key has no credit limit; OpenRouter
 recommends setting one." OAuth PKCE "Connect with OpenRouter" (§1.5) would avoid
@@ -601,21 +601,21 @@ $x · Cleanup $y · this month".
 Mostly the existing D18 controls, now with a single host:
 
 * **Key storage:** Windows Credential Manager generic credential (user-scoped), bound to
-  host `openrouter.ai` + adapter `openrouter` (`apps/flow-windows/src/credentials.rs`
+  host `openrouter.ai` + adapter `openrouter` (`apps/murmur-windows/src/credentials.rs`
   binding). Android Keystore AES-GCM `SecretVault`, ciphertext in the backup-excluded dev
-  prefs (`apps/flow-android/.../data/DevStore.kt`). Rust holds it only as `SecretString`
+  prefs (`apps/murmur-android/.../data/DevStore.kt`). Rust holds it only as `SecretString`
   (zeroize on drop, `Debug`/`Display` `***`, not `Serialize`).
 * **Host pinning:** with `base_url` a constant, the key-to-host binding cannot be
   redirected by config edits. `validate()` rejects any `base_url` ≠
   `https://openrouter.ai/api/v1` (a future regional-host option would be a closed enum
   `{openrouter.ai, eu.openrouter.ai, us.openrouter.ai}`). The catalogue's `links.next`
   pagination is followed only if same-origin.
-* **No redirects:** `reqwest::redirect::Policy::none()` stays (`crates/flow-cloud/src/http.rs`,
+* **No redirects:** `reqwest::redirect::Policy::none()` stays (`crates/murmur-cloud/src/http.rs`,
   review S3), now also for the catalogue, `/key` and `/generation` clients.
 * **TLS:** rustls + webpki-roots, `https` only; unchanged. There is no `http://` exception
   any more, because the keyless-LAN `custom` path is gone.
 * **Never logged:** no key, `Authorization` or body in logs, `route_status`, crash text,
-  exports or flow-server frames (`flow-contract-tests/tests/no_key_leak.rs` extended to
+  exports or murmur-server frames (`murmur-contract-tests/tests/no_key_leak.rs` extended to
   the cleaner + catalogue). Provider error codes still pass through `scrub()`.
   `info_json()` carries no key or prompt.
 * **Accessibility:** the key field is `SecretField` on Android (`ui/SecretField.kt`:
@@ -625,7 +625,7 @@ Mostly the existing D18 controls, now with a single host:
 * **Data minimisation:** cleanup sends only the transcript + category/style +
   dictionary by default (§2.5). STT sends audio + dictionary terms, and the dictionary
   only to Groq-served whisper. No `user`, no `session_id`, no attribution headers.
-* **Build matrix (C2 unchanged + new):** client-only builds still link no flow-cloud. The
+* **Build matrix (C2 unchanged + new):** client-only builds still link no murmur-cloud. The
   cloud builds must contain no non-OpenRouter provider host strings (§2.1).
 
 ---
@@ -638,13 +638,13 @@ build against.
 
 | # | Owner / branch | Files | Work |
 |---|---|---|---|
-| W0 | core (`or-core`) | `crates/flow-core/src/cleanup.rs`, `engine.rs`, `lib.rs` | `PromptScope`, `Cleaner::prompt_scope()` (default FULL), `build_prompt_scoped`, `RoutedCleaner` (primary/fallback, fast-failure rule, scope intersection), `FlowCore::set_cleaner`. Tests: scope strips before/selected/after/screen words/app id; RoutedCleaner fallback matrix with fake cleaners (fast fail → fallback; timeout/guard reject → deterministic); `llm_skip_clean` still skips with a RoutedCleaner; FULL scope gives byte-identical prompts (no regression on the D27 88-case eval) |
-| W1 | cloud (`or-cloud`) | `crates/flow-cloud/**` | Delete `openai_compat`, `elevenlabs`, `deepgram`, `assemblyai` + fixtures/tests. `catalog.rs` (fetch/parse/cache/baked, search, `stt_path`, ZDR join, unit sanity). `adapters/openrouter.rs` path B (chat audio + sanity check) + `provider.options.groq.prompt` + WAV retry-on-400. `cleaner.rs` `OpenRouterCleaner` (SSE, cancel, usage). `keyinfo.rs` (`/key`), `generation.rs` (deferred cost). Budget estimate helpers replace the `presets.rs` price table. `data/catalog-baked.json` + `tools/gen-openrouter-catalog.py` |
-| W2 | router (`or-router`) | `crates/flow-router/src/{cloud,lib,router}.rs` | Schema 2 + `migrate_d28`. `ADAPTERS = ["openrouter"]`, constant base URL. `allow_cloud_cleanup`, `cleanup_order`, cleanup consent/circuit/budget. `with_cleanup_factory`, `set_cleanup`, `cleanup_status()`. Failures `no_private_route`, cleanup `Failure`s. Usage split stt/cleanup. Policy tests: C1 for cleanup (each condition false → no request); STT consent ≠ cleanup consent; server route never uses cloud cleanup; migration fixtures for every old preset |
-| W3 | ffi (`or-ffi`) | `crates/flow-ffi/src/{lib,jni_api}.rs`, C header | Additive natives: `nativeCloudCatalog(handle, use, query, filtersJson): String`, `nativeRefreshCloudCatalog(handle, force): String` (blocking; called off Main), `nativeCloudKeyInfo(handle): String`, `nativeSetCleanup(handle, cleanupJson): Boolean`, `nativeCleanupStatus(handle): String`, `nativeMigrateCloud(devJson): String`. `nativeCloudPresets` returns the single OpenRouter entry (kept for ABI) |
-| W4 | android (`or-android`) | `apps/flow-android/app/src/main/java/dev/flowclone/{ui/DeveloperActivity.kt, ui/CloudProviderActivity.kt → ui/OpenRouterActivity.kt, ui/ModelPickerActivity.kt (new), data/CloudSettings.kt, data/DevSettings.kt, data/DevStore.kt, FlowApp.kt, ui/SettingsActivity.kt}` | Remove `CloudPresets.ALL`/add-provider picker. One "OpenRouter" page: key (SecretField) + Check key (credits), privacy toggle, **Speech-to-text** card (opt-in + consent, model picker, language, send dictionary, test), **Text cleanup** card (opt-in + its own consent, model picker, sort, timeout, three context toggles, test with a sample sentence), usage split + budget. Settings → AI cleanup row shows "On-device / OpenRouter (<model>) / Off" and the cleanup order. Migration notice. Robolectric tests (consent independence, SecretField, picker search/filter from a fixture catalogue, migration notice) |
-| W5 | windows (`or-windows`) | `apps/flow-windows/src/{app,dev_settings,cloud,credentials,prefs}.rs`, `ui/src/settings.ts` (+ committed `ui/dist`) | Same page and semantics as W4. Tauri commands `dev_or_catalog`, `dev_or_refresh_catalog`, `dev_or_key_info`, `dev_or_test_stt`, `dev_or_test_cleanup`, `dev_or_set_cleanup`. Remove `dev_cloud_presets`/`dev_cloud_new_id`, keep `dev_cloud_set_key/clear_key/usage/reset_usage`. Credential migration. AI cleanup panel gains the engine choice. Tests: `cloud_settings`, credential migration, `cloud_integration` vs mock |
-| W6 | contract (`or-contract`) | `crates/flow-contract-tests/**`, `tools/check-build-matrix.sh` | Equivalence: cloud cleanup through mock OpenRouter gives the same `CommitResult` as a fake local cleaner with the same output. `no_key_leak` for cleaner/catalogue/key-info. Build-matrix host-string check (§2.1). Toggle matrix: cleanup provider down → deterministic text within timeout + 50 ms |
+| W0 | core (`or-core`) | `crates/murmur-core/src/cleanup.rs`, `engine.rs`, `lib.rs` | `PromptScope`, `Cleaner::prompt_scope()` (default FULL), `build_prompt_scoped`, `RoutedCleaner` (primary/fallback, fast-failure rule, scope intersection), `MurmurCore::set_cleaner`. Tests: scope strips before/selected/after/screen words/app id; RoutedCleaner fallback matrix with fake cleaners (fast fail → fallback; timeout/guard reject → deterministic); `llm_skip_clean` still skips with a RoutedCleaner; FULL scope gives byte-identical prompts (no regression on the D27 88-case eval) |
+| W1 | cloud (`or-cloud`) | `crates/murmur-cloud/**` | Delete `openai_compat`, `elevenlabs`, `deepgram`, `assemblyai` + fixtures/tests. `catalog.rs` (fetch/parse/cache/baked, search, `stt_path`, ZDR join, unit sanity). `adapters/openrouter.rs` path B (chat audio + sanity check) + `provider.options.groq.prompt` + WAV retry-on-400. `cleaner.rs` `OpenRouterCleaner` (SSE, cancel, usage). `keyinfo.rs` (`/key`), `generation.rs` (deferred cost). Budget estimate helpers replace the `presets.rs` price table. `data/catalog-baked.json` + `tools/gen-openrouter-catalog.py` |
+| W2 | router (`or-router`) | `crates/murmur-router/src/{cloud,lib,router}.rs` | Schema 2 + `migrate_d28`. `ADAPTERS = ["openrouter"]`, constant base URL. `allow_cloud_cleanup`, `cleanup_order`, cleanup consent/circuit/budget. `with_cleanup_factory`, `set_cleanup`, `cleanup_status()`. Failures `no_private_route`, cleanup `Failure`s. Usage split stt/cleanup. Policy tests: C1 for cleanup (each condition false → no request); STT consent ≠ cleanup consent; server route never uses cloud cleanup; migration fixtures for every old preset |
+| W3 | ffi (`or-ffi`) | `crates/murmur-ffi/src/{lib,jni_api}.rs`, C header | Additive natives: `nativeCloudCatalog(handle, use, query, filtersJson): String`, `nativeRefreshCloudCatalog(handle, force): String` (blocking; called off Main), `nativeCloudKeyInfo(handle): String`, `nativeSetCleanup(handle, cleanupJson): Boolean`, `nativeCleanupStatus(handle): String`, `nativeMigrateCloud(devJson): String`. `nativeCloudPresets` returns the single OpenRouter entry (kept for ABI) |
+| W4 | android (`or-android`) | `apps/murmur-android/app/src/main/java/dev/murmur/{ui/DeveloperActivity.kt, ui/CloudProviderActivity.kt → ui/OpenRouterActivity.kt, ui/ModelPickerActivity.kt (new), data/CloudSettings.kt, data/DevSettings.kt, data/DevStore.kt, MurmurApp.kt, ui/SettingsActivity.kt}` | Remove `CloudPresets.ALL`/add-provider picker. One "OpenRouter" page: key (SecretField) + Check key (credits), privacy toggle, **Speech-to-text** card (opt-in + consent, model picker, language, send dictionary, test), **Text cleanup** card (opt-in + its own consent, model picker, sort, timeout, three context toggles, test with a sample sentence), usage split + budget. Settings → AI cleanup row shows "On-device / OpenRouter (<model>) / Off" and the cleanup order. Migration notice. Robolectric tests (consent independence, SecretField, picker search/filter from a fixture catalogue, migration notice) |
+| W5 | windows (`or-windows`) | `apps/murmur-windows/src/{app,dev_settings,cloud,credentials,prefs}.rs`, `ui/src/settings.ts` (+ committed `ui/dist`) | Same page and semantics as W4. Tauri commands `dev_or_catalog`, `dev_or_refresh_catalog`, `dev_or_key_info`, `dev_or_test_stt`, `dev_or_test_cleanup`, `dev_or_set_cleanup`. Remove `dev_cloud_presets`/`dev_cloud_new_id`, keep `dev_cloud_set_key/clear_key/usage/reset_usage`. Credential migration. AI cleanup panel gains the engine choice. Tests: `cloud_settings`, credential migration, `cloud_integration` vs mock |
+| W6 | contract (`or-contract`) | `crates/murmur-contract-tests/**`, `tools/check-build-matrix.sh` | Equivalence: cloud cleanup through mock OpenRouter gives the same `CommitResult` as a fake local cleaner with the same output. `no_key_leak` for cleaner/catalogue/key-info. Build-matrix host-string check (§2.1). Toggle matrix: cleanup provider down → deterministic text within timeout + 50 ms |
 
 **Changelog for shells (to append to `docs/cloud-stt.md`):**
 * Presets are gone: there is one OpenRouter config (`cloud.openrouter`, schema 2), and
@@ -660,23 +660,23 @@ build against.
 
 ### 4.1 API (frozen, agreed between W1 `feat/or-cloud` and W0/W2/W3 `feat/or-route`, 2026-10-24)
 
-flow-cloud (W1) public surface. Router/core types are named as or-route
-defines them; flow-cloud keeps its own settings types and converts.
+murmur-cloud (W1) public surface. Router/core types are named as or-route
+defines them; murmur-cloud keeps its own settings types and converts.
 
 ```rust
-// crates/flow-cloud/src/api.rs — the only host
+// crates/murmur-cloud/src/api.rs — the only host
 pub const BASE_URL: &str = "https://openrouter.ai/api/v1";   // never configurable
 pub const HOST: &str = "openrouter.ai";
 pub struct Api;  impl Api { fn new(); fn with_connect_timeout(Duration); fn url(&self, path) -> String; fn client(&self) -> &Client }
 // test seam, feature `mock-server` only (shells never enable it; build matrix checks):
-flow_cloud::testing::override_base_url(base) -> BaseOverride   // process-global, serialised; BaseOverride::set(base)
+murmur_cloud::testing::override_base_url(base) -> BaseOverride   // process-global, serialised; BaseOverride::set(base)
 
 // settings.rs — field names = §2.6 JSON
 pub struct Privacy { zdr: bool, data_collection: String /* "deny" | "allow" */ }   // Default = most private
 pub enum SttPath { Transcriptions, ChatAudio }        pub enum SttPathChoice { Auto, Transcriptions, ChatAudio }
 pub struct SttSettings { model, stt_path: SttPathChoice, language, send_dictionary, format_override, timeout_base_ms, privacy }
 pub struct CleanupSettings { model, sort, timeout_ms, connect_timeout_ms, send_surrounding_text, send_screen_words, send_app_name, allow_fallbacks, privacy }
-pub struct CleanupScope { surrounding_text, screen_words, app_id }   // mirrors flow_core::cleanup::PromptScope
+pub struct CleanupScope { surrounding_text, screen_words, app_id }   // mirrors murmur_core::cleanup::PromptScope
 pub const DEFAULT_STT_MODEL = "openai/whisper-large-v3-turbo"; DEFAULT_CLEANUP_MODEL = "meta-llama/llama-3.3-70b-instruct";
 pub fn valid_model_id(&str) -> bool;
 
@@ -697,14 +697,14 @@ pub fn set_default_store(Option<Arc<CatalogStore>>);  pub fn resolve(id) -> Opti
 
 // STT
 pub struct CloudAsr;     CloudAsr::new(SttSettings, SecretString) .with_model_info(..) .with_cost_sink(CostSink) .with_cost_lookup_delay(..)
-pub struct CloudBackend; CloudBackend::new(SttSettings, SecretString, Option<Arc<dyn Cleaner>>) | ::refusing();  impl flow_router::Backend
+pub struct CloudBackend; CloudBackend::new(SttSettings, SecretString, Option<Arc<dyn Cleaner>>) | ::refusing();  impl murmur_router::Backend
 pub const ADAPTERS: [&str; 1] = ["openrouter"];  pub const PROVIDER_ID = "openrouter";  pub const TRANSCRIBE_PROMPT
-pub fn attach / attach_with / factory / factory_with   // flow_router::CloudFactory
+pub fn attach / attach_with / factory / factory_with   // murmur_router::CloudFactory
 pub fn presets() -> Vec<CloudProviderConfig>          // exactly one OpenRouter entry (ABI of nativeCloudPresets)
 
 // cleanup
 pub struct OpenRouterCleaner;  ::new(CleanupSettings, SecretString) .with_model_info .with_cost_sink .with_cost_lookup_delay
-impl flow_core::cleanup::Cleaner for OpenRouterCleaner   // + or-route's additive methods once W0 lands (below)
+impl murmur_core::cleanup::Cleaner for OpenRouterCleaner   // + or-route's additive methods once W0 lands (below)
 impl OpenRouterCleaner { fn scope() -> CleanupScope; fn last_call() -> Option<CleanupCall>; fn estimate_cost_usd(&CleanPrompt) -> Option<f64>;
     fn key_info() -> Option<KeyInfo>; fn request_body(&CleanPrompt) -> Value }
 pub struct CleanupCall { model, cost_usd, cost_estimated, generation_id, ttft_ms, latency_ms, finish_reason, error: Option<&'static str> }
@@ -722,27 +722,27 @@ pub enum CloudError { Connect, Auth, Quota, RateLimited{..}, TooLarge, NoPrivate
 impl CloudError { fn failure() -> Failure; fn code() -> &'static str /* "no_private_route" etc. */; fn detail(); fn is_fast_unavailable() }
 ```
 
-Agreed with or-route (it owns these; flow-cloud adopts them when they land):
+Agreed with or-route (it owns these; murmur-cloud adopts them when they land):
 
-* flow-router: `Failure::NoPrivateRoute` (`"no_private_route"`); `cloud::ADAPTERS` length 1; schema-2 types
+* murmur-router: `Failure::NoPrivateRoute` (`"no_private_route"`); `cloud::ADAPTERS` length 1; schema-2 types
   `OpenRouterConfig { privacy: Privacy, stt: SttConfig, cleanup: CleanupConfig }` with the field names above
   (+ `consent_host`/`consent_at_ms`); `CloudFactory = Box<dyn Fn(&OpenRouterConfig, SecretString) -> Arc<dyn Backend>>`;
   `CleanupFactory = Box<dyn Fn(&OpenRouterConfig, SecretString) -> Arc<dyn Cleaner>>` + `Router::with_cleanup_factory`;
   `Backend::install_cleanup(&self, Option<CleanupPlan>)` with `CleanupPlan = Arc<dyn Fn(Option<Arc<dyn Cleaner>>) -> Option<Arc<dyn Cleaner>>>`
   (default no-op; `CloudBackend` does `core.set_cleaner(plan.and_then(|p| p(core.cleaner())))`).
-* flow-core `Cleaner` additions (all defaulted): `prompt_scope()`, `engine() -> &'static str` ("cloud"), `model()`,
+* murmur-core `Cleaner` additions (all defaulted): `prompt_scope()`, `engine() -> &'static str` ("cloud"), `model()`,
   `timeout_ms()`, `estimate_cost_usd(&CleanPrompt)`, `clean_metered(..) -> (Result<String, CleanError>, CleanUsage)`;
   `CleanUsage { engine, model, cost_usd: Option<Usd>, cost_estimated, generation_id, ttft_ms, latency_ms }`;
   `CleanError::Unavailable(code)` for fast failures (`CloudError::is_fast_unavailable`: connect / auth / quota /
   no_private_route / busy), else `Backend(code)`. `Failure::NoPrivateRoute`, `Failure::CloudCleanupNotConfigured`.
-* flow-cloud glue: `impl From<&OpenRouterConfig> for SttSettings / CleanupSettings`, `factory_with`,
+* murmur-cloud glue: `impl From<&OpenRouterConfig> for SttSettings / CleanupSettings`, `factory_with`,
   `cleanup_factory()`, `attach_with` installs both. `Router::with_cloud_key(|Option<&SecretString>| ..)` lends the key to
   the FFI for `CatalogStore::refresh` / `keyinfo::fetch`; the FFI calls `catalog::set_default_store`.
 
-* flow-router (or-route) also: `Router::{set_cleanup, cleanup_status, cloud_notice, ack_cloud_notice, set_cloud_key_for (legacy)}`,
+* murmur-router (or-route) also: `Router::{set_cleanup, cleanup_status, cloud_notice, ack_cloud_notice, set_cloud_key_for (legacy)}`,
   `RouterConfig::migrate_d28() -> MigrationReport`, `CloudUsage::migrate_d28`, `RouteStatus.cleanup_circuit`,
   `RouteInfo.{llm_engine, llm_model, llm_cost_usd}`, `CommitResult.llm` (`None` when every cleaner refused up front).
-  FFI natives: `apps/flow-android/JNI_CONTRACT.md` "OpenRouter (D28)".
+  FFI natives: `apps/murmur-android/JNI_CONTRACT.md` "OpenRouter (D28)".
 
 Status: merged on `feat/or-cloud` with `feat/or-route` @ d01c684. Both branches merged into each other (`feat/or-route` @ the merge of 8ebe3f4).
 
@@ -752,7 +752,7 @@ Status: merged on `feat/or-cloud` with `feat/or-route` @ d01c684. Both branches 
 
 ### 5.1 Mock OpenRouter server fixtures
 
-`crates/flow-cloud/fixtures/openrouter/`, sanitised and dated:
+`crates/murmur-cloud/fixtures/openrouter/`, sanitised and dated:
 
 | Fixture | Contents |
 |---|---|
@@ -766,7 +766,7 @@ Status: merged on `feat/or-cloud` with `feat/or-route` @ d01c684. Both branches 
 | `generation_ok.json` | deferred cost lookup |
 | `err_401.json`, `err_402_inflight.json` (+ `Retry-After`), `err_402_credits.json`, `err_403_key_limit.json`, `err_403_moderation.json`, `err_408.json`, `err_429.json`, `err_502.json`, `err_503_routing.json` | errors |
 
-The existing `flow-cloud` `mock-server` feature serves them.
+The existing `murmur-cloud` `mock-server` feature serves them.
 
 Contract tests assert:
 * method/path, `Bearer`, and that no `HTTP-Referer` / `X-OpenRouter-Title` / `user` /
@@ -791,12 +791,12 @@ Contract tests assert:
 
 ### 5.3 Live smoke (optional, costs money, never in CI)
 
-`FLOW_CLOUD_LIVE_OPENROUTER_KEY=… cargo test -p flow-cloud --test live_smoke -- --nocapture`.
-Optional `FLOW_CLOUD_LIVE_OPENROUTER_STT_MODEL` / `…_CLEANUP_MODEL`.
+`MURMUR_CLOUD_LIVE_OPENROUTER_KEY=… cargo test -p murmur-cloud --test live_smoke -- --nocapture`.
+Optional `MURMUR_CLOUD_LIVE_OPENROUTER_STT_MODEL` / `…_CLEANUP_MODEL`.
 
 * STT: `jfk.wav` through `CloudBackend` for each recommended STT model (path A) and one
   path-B model. It asserts WER ≤ 10 %, and prints latency and `usage.cost`.
-* Cleanup: 8 messy dictations through `FlowCore` with the cloud cleaner. It asserts the
+* Cleanup: 8 messy dictations through `MurmurCore` with the cloud cleaner. It asserts the
   guard passes on ≥ 6/8 and p90 < `timeout_ms`, and prints TTFT, total and cost.
 * Key info: `/key` parses.
 * It skips with a line when no key is present. No key exists on this box; none was
@@ -835,4 +835,4 @@ Optional `FLOW_CLOUD_LIVE_OPENROUTER_STT_MODEL` / `…_CLEANUP_MODEL`.
 
 ## 7. Draft D28 row (for `docs/DECISIONS.md`)
 
-| D28 | OpenRouter-only cloud: STT + opt-in text cleanup (user decision 2026-10-24; refines D18, fills D27 item 7; spec `docs/proposals/openrouter-only-cloud.md`) | OpenRouter (`https://openrouter.ai/api/v1`, constant, host-bound key) is the only third party for both cloud uses. The `openai_compat`/`elevenlabs`/`deepgram`/`assemblyai` adapters, presets and `custom` base URLs are **deleted** (build matrix fails on other provider hosts). A one-time `migrate_d28` keeps an OpenRouter entry's key + consent and deletes other providers and their keys, with a notice. Models come from the live catalogue (`/api/v1/models?output_modalities=all` + `/api/v1/endpoints/zdr` (+ `/models/user` with a key), 24 h cache, baked offline fallback, free-text id): STT = 28 transcription models via `/audio/transcriptions` (FLAC, 55 s chunks) or, opt-in per model, 33 audio-input chat models via `input_audio` with a verbatim prompt + sanity check; cleanup = any text model via streamed `/chat/completions`. Default privacy `provider: {zdr: true, data_collection: "deny"}`, no `user`/`session_id`/attribution headers. Defaults: STT `openai/whisper-large-v3-turbo`, cleanup `meta-llama/llama-3.3-70b-instruct` + `sort: latency`. Cloud cleanup = `OpenRouterCleaner: flow_core::Cleaner` behind `RoutedCleaner` (`cleanup_order` `[cloud, local]`), so prompt v2, guard, `llm_skip_clean` and the deterministic fallback are unchanged. It has its own opt-in + consent (text leaves the device; voice only with cloud STT), timeout 2500 ms with stream cancel, its own circuit, a minimal prompt scope by default (no surrounding/screen text or app id), and is not applied on the server route (server stays no-egress). Budget: catalogue estimate pre-flight + `max_price` ceiling + exact `usage.cost` (deferred `/generation` lookup when missing). This resolves the "unpriced custom provider" P3 | user: "the only provider being used is OpenRouter … support as many models as possible from within OpenRouter". One host makes "only OpenRouter" a property of the binary. One catalogue reaches 28 + 33 STT and ~390 cleanup models. ZDR is enforceable per request (269 text / 21 STT models have ZDR endpoints). The existing default `openai/gpt-transcribe` has no ZDR endpoint and likely failed under the default `zdr: true` |
+| D28 | OpenRouter-only cloud: STT + opt-in text cleanup (user decision 2026-10-24; refines D18, fills D27 item 7; spec `docs/proposals/openrouter-only-cloud.md`) | OpenRouter (`https://openrouter.ai/api/v1`, constant, host-bound key) is the only third party for both cloud uses. The `openai_compat`/`elevenlabs`/`deepgram`/`assemblyai` adapters, presets and `custom` base URLs are **deleted** (build matrix fails on other provider hosts). A one-time `migrate_d28` keeps an OpenRouter entry's key + consent and deletes other providers and their keys, with a notice. Models come from the live catalogue (`/api/v1/models?output_modalities=all` + `/api/v1/endpoints/zdr` (+ `/models/user` with a key), 24 h cache, baked offline fallback, free-text id): STT = 28 transcription models via `/audio/transcriptions` (FLAC, 55 s chunks) or, opt-in per model, 33 audio-input chat models via `input_audio` with a verbatim prompt + sanity check; cleanup = any text model via streamed `/chat/completions`. Default privacy `provider: {zdr: true, data_collection: "deny"}`, no `user`/`session_id`/attribution headers. Defaults: STT `openai/whisper-large-v3-turbo`, cleanup `meta-llama/llama-3.3-70b-instruct` + `sort: latency`. Cloud cleanup = `OpenRouterCleaner: murmur_core::Cleaner` behind `RoutedCleaner` (`cleanup_order` `[cloud, local]`), so prompt v2, guard, `llm_skip_clean` and the deterministic fallback are unchanged. It has its own opt-in + consent (text leaves the device; voice only with cloud STT), timeout 2500 ms with stream cancel, its own circuit, a minimal prompt scope by default (no surrounding/screen text or app id), and is not applied on the server route (server stays no-egress). Budget: catalogue estimate pre-flight + `max_price` ceiling + exact `usage.cost` (deferred `/generation` lookup when missing). This resolves the "unpriced custom provider" P3 | user: "the only provider being used is OpenRouter … support as many models as possible from within OpenRouter". One host makes "only OpenRouter" a property of the binary. One catalogue reaches 28 + 33 STT and ~390 cleanup models. ZDR is enforceable per request (269 text / 21 STT models have ZDR endpoints). The existing default `openai/gpt-transcribe` has no ZDR endpoint and likely failed under the default `zdr: true` |

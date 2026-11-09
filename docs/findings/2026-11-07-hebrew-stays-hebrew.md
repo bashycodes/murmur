@@ -38,7 +38,7 @@ the phone).
    language removes it, so a Yiddish dictation in Hebrew letters gets no
    `LANGUAGE: Hebrew` example); only without a hint (missing or `auto`) do
    the transcript's letters decide (mostly Hebrew, `script_lock::dominant`).
-   flow-server never sees an English hint (D33 sends only non-English), so
+   murmur-server never sees an English hint (D33 sends only non-English), so
    there the letters decide for English too. Because it goes last, the cached prefix
    (system prompt and the 21 English turns, D63) is the same bytes for every
    language. An English prompt is unchanged byte for byte (unit test), and a
@@ -69,7 +69,7 @@ No rule rewrites text before the model.
 
 ## Measurements
 
-The real `FlowCore` commit path (the probe runner, local mode = phone
+The real `MurmurCore` commit path (the probe runner, local mode = phone
 pipeline, phone session: light, casual styles), Qwen2.5-1.5B Q4_K_M, on
 this shared box. "Before" = the runner built against integration `12fa4ad`.
 `20 s` rows give the model 20 s, so they show its language and not the
@@ -137,7 +137,7 @@ change.
 
 What was measured: prompt v2 on Qwen2.5-1.5B (the phone's on-device model),
 on this box, with a 20 s budget. What was not: the phone's 3 s session
-budget, flow-server's model, and prompt v5 (cloud AI cleanup).
+budget, murmur-server's model, and prompt v5 (cloud AI cleanup).
 
 * **Open question (needs a phone measurement after merge):** on the phone,
   does a long Hebrew line finish within the 3 s budget, or does it always
@@ -150,7 +150,7 @@ budget, flow-server's model, and prompt v5 (cloud AI cleanup).
   produce (+0.5 s p50) and adds one Hebrew turn to prefill when a Hebrew
   dictation follows an English one. Not measured on the phone: there a
   timed-out Hebrew line keeps the (Hebrew) rules text.
-* Flow-server's cleanup builds the same v2 prompt from the client's
+* Murmur-server's cleanup builds the same v2 prompt from the client's
   request, so a Hebrew dictation cleaned there gets the few-shot too, and
   the client's core applies the script check to the server's answer. Not
   measured with the server's model.

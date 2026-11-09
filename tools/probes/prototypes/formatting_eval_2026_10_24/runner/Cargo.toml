@@ -1,5 +1,5 @@
 # Probe binary for the 2026-10-24 formatting-gap eval. Its own workspace so
-# it does not touch the product workspace; uses flow-core unmodified.
+# it does not touch the product workspace; uses murmur-core unmodified.
 [package]
 name = "formatting-eval"
 version = "0.0.0"
@@ -9,7 +9,7 @@ publish = false
 [workspace]
 
 [dependencies]
-flow-core = { path = "../../../../../crates/flow-core", features = ["llm"] }
+murmur-core = { path = "../../../../../crates/murmur-core", features = ["llm"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 regex = "1"

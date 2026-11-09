@@ -1,0 +1,24 @@
+# Replay harness (beta debug tool): saved dictation recordings re-run through
+# speech models x cleanup models x prompt versions with the real MurmurCore
+# pipeline (D30 routing, post-processing). Driven by tools/replay/run.sh;
+# never shipped in an app.
+[package]
+name = "murmur-replay"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+publish = false
+description = "Replay saved recordings through speech models, cleanup models and prompt versions (debug tool)"
+
+[features]
+default = []
+parakeet = ["murmur-core/parakeet"]
+whisper = ["murmur-core/whisper"]
+llm = ["murmur-core/llm"]
+
+[dependencies]
+murmur-core = { path = "../murmur-core", features = ["wav"] }
+murmur-cloud = { path = "../murmur-cloud" }
+murmur-router = { path = "../murmur-router" }
+serde.workspace = true
+serde_json.workspace = true

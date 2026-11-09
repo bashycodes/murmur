@@ -4,12 +4,12 @@ Reference: `docs/design/app-design/` (export of the "Murmur App Design" canvas).
 Goal: desktop (Tauri) and Android UIs match the design. Elements that need backend
 features we don't have are left out until a backend chunk adds them; no dead switches.
 
-## Desktop (apps/flow-windows/ui)
+## Desktop (apps/murmur-windows/ui)
 
 | # | Chunk | Depends on | Status |
 |---|---|---|---|
 | W1 | Split `settings.ts` into `lib/` + `pages/`; theme tokens (light/dark), components.css, sidebar shell, window 1280x800, vendored Figtree/EB Garamond | — | done |
-| W2 | Flow bar restyle (overlay.*) | — | done |
+| W2 | Murmur bar restyle (overlay.*) | — | done |
 | W3a | Home + history | W1 | done |
 | W3b | Dictionary + Snippets | W1 | done |
 | W3c | Style | W1 | done |
@@ -22,7 +22,7 @@ features we don't have are left out until a backend chunk adds them; no dead swi
 | W6 | First-run onboarding (file/folder model pick; downloader is a separate D9-gated chunk) | W5 | done (downloader: D31) |
 | W7 | Transforms (`docs/proposals/transforms.md`, D32): page, editor, opt-in, auto apply, view changes | W1, W5 | done |
 
-## Android (apps/flow-android)
+## Android (apps/murmur-android)
 
 | # | Chunk | Depends on | Status |
 |---|---|---|---|
@@ -45,6 +45,6 @@ neither, so both stay out of the Android UI.
 Still unbacked: Retry transcription (no stored audio); dictionary learned
 flag (shared format); user display name in the greeting; "Up to date" check (no runtime
 network, D9); Home's monthly trend pill, usage by category and "Add a word to Dictionary" on a
-row (desktop); Scratchpad "Add to Flow bar" (desktop). Android only: bubble opacity; "Use
+row (desktop); Scratchpad "Add to Murmur bar" (desktop). Android only: bubble opacity; "Use
 what's on screen"; "Use dictionary words" switch (Parakeet decoding stays in Developer → Engine
 options); the Style tab's "English only" footer (the core has no such limit).

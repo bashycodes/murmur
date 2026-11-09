@@ -1,0 +1,232 @@
+/* Dictionary and Snippets pages (ui/src/pages/dictionary.ts), after
+   docs/design/app-design/PageDictionary.dc.html and PageSnippets.dc.html.
+   Everything is scoped under .lw-dict so it can't reach other pages. */
+
+/* ---- header ---- */
+.lw-dict .lw-head-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lw-dict .lw-head-sub {
+  font: 400 15px/20px var(--font-sans);
+  color: var(--foreground-tertiary);
+}
+.lw-dict .lw-file input[type="file"] {
+  display: none;
+}
+.lw-dict .lw-dict-search {
+  width: 200px;
+  height: 32px;
+  padding: 6px 10px;
+  font-size: 15px;
+}
+
+/* ---- learn-from-corrections card + suggestions ---- */
+.lw-dict .lw-learn-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.lw-dict .lw-sugg {
+  margin: 12px 0 0;
+}
+.lw-dict .lw-sugg-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+.lw-dict .lw-sugg-row:first-child {
+  margin-top: 4px;
+}
+.lw-dict .lw-sugg-row > .lw-dict-text {
+  flex: 1;
+}
+
+/* ---- tabs (Murmur design system .fl-tabs, not yet in components.css) ---- */
+.lw-dict .fl-tabs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.lw-dict .fl-tabs-list {
+  display: flex;
+  align-items: center;
+  margin: 0 -12px;
+}
+.lw-dict .fl-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px;
+  border: none;
+  background: none;
+  color: var(--neutral-500);
+  font: 600 15px/20px var(--font-sans);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.lw-dict .fl-tab:hover:not(.is-active) {
+  color: var(--neutral-600);
+}
+.lw-dict .fl-tab.is-active {
+  color: var(--foreground);
+}
+.lw-dict .fl-tab.is-active::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: -1px;
+  height: 2px;
+  background: var(--neutral-800);
+}
+.lw-dict .fl-tab:focus-visible {
+  outline: 2px solid var(--foreground);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+.lw-dict .fl-tabs-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.lw-dict .fl-iconbtn.is-toolbar.is-active {
+  background: var(--background-tertiary);
+  color: var(--foreground);
+}
+
+/* ---- rows: "heard → word" / "say → paste" ---- */
+.lw-dict .lw-dict-row {
+  gap: 12px;
+  padding: 14px 16px;
+  cursor: pointer;
+}
+.lw-dict .lw-dict-row:focus-visible {
+  outline: 2px solid var(--foreground);
+  outline-offset: -2px;
+}
+.lw-dict .lw-dict-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.lw-dict .lw-heard,
+.lw-dict .lw-arrow {
+  flex: none;
+  color: var(--foreground-tertiary);
+}
+.lw-dict .lw-word {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.lw-dict .lw-snip-say {
+  flex: none;
+  width: 200px;
+  font-weight: 550;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.lw-dict .lw-snip-paste {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--neutral-600);
+}
+.lw-dict .lw-row-actions {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  margin: -6px -6px -6px 0;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.lw-dict .lw-dict-row:hover .lw-row-actions,
+.lw-dict .lw-dict-row:focus-within .lw-row-actions {
+  opacity: 1;
+}
+.lw-dict .lw-dict-editrow,
+.lw-dict .lw-dict-editrow:hover {
+  display: block;
+  padding: 8px;
+  background: var(--background-tertiary);
+}
+
+/* ---- add / edit card ---- */
+.lw-dict .lw-dict-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 12px;
+  border: 2px solid var(--neutral-500);
+  background: var(--shade-white);
+}
+.lw-dict .lw-dict-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.lw-dict .lw-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.lw-dict .lw-field .fl-input {
+  width: 100%;
+}
+.lw-dict .lw-textarea {
+  height: auto;
+  min-height: 36px;
+  padding: 6px 12px;
+  resize: none;
+  font: 400 16px/24px var(--font-sans);
+}
+.lw-dict .lw-dict-form-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ---- empty state, status, footnote ---- */
+.lw-dict .fl-empty {
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 32px 24px 20px;
+}
+.lw-dict .lw-dict-status {
+  margin-top: 8px;
+}
+.lw-dict .lw-dict-status:has(.lw-status:empty),
+.lw-dict [id$="_form_slot"]:empty {
+  display: none;
+}
+.lw-dict .lw-undo {
+  padding: 0 4px;
+  font: 600 13px/20px var(--font-sans);
+  text-decoration: underline;
+}
+.lw-dict .lw-dict-note {
+  margin: -12px 0 0;
+  font: 400 13px/20px var(--font-sans);
+  color: var(--foreground-tertiary);
+}
+.lw-dict > .lw-section {
+  margin-top: 12px;
+  padding-bottom: 40px;
+}

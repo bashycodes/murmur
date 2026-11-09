@@ -22,7 +22,7 @@ _Avoid_: OpenRouter (as the umbrella term), online service
 
 **LiteLLM proxy**:
 The Cloud provider that is the user's own OpenAI-compatible server (typically LiteLLM; vLLM or Ollama work too). In code and settings it is still `custom` (`cloud.cleanup_provider = "custom"`, `cloud.custom_cleanup`, key id `custom`; D52, D78).
-_Avoid_: custom server (in UI copy), local server (that is flow-server), your server (that is flow-server)
+_Avoid_: custom server (in UI copy), local server (that is murmur-server), your server (that is murmur-server)
 
 **Fallback rules**:
 The fixed text rules used only when AI cleanup cannot run or its answer is rejected.

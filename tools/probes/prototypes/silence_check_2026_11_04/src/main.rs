@@ -1,6 +1,6 @@
 //! Dated probe (2026-11-04): how much silence still reaches the ASR engine.
 //!
-//! Runs flow-core's real code on 16 kHz mono WAVs (dictation clips,
+//! Runs murmur-core's real code on 16 kHz mono WAVs (dictation clips,
 //! meeting tracks) and reports, per clip, what the engine would receive:
 //!
 //! * `whole`: segmentation off: one `vad::detect` trim of the clip
@@ -10,7 +10,7 @@
 //!   `vad::detect` (engine.rs `decode_piece`).
 //! * `--meeting`: the D44 chunker (`meeting::MeetingTranscriber`, default
 //!   params) with a recording mock engine; each chunk is then trimmed by
-//!   `vad::detect` as `FlowCore::commit` does.
+//!   `vad::detect` as `MurmurCore::commit` does.
 //!
 //! Inner silence = gaps between speech runs (frames flagged by
 //! `vad::frame_flags`, runs of >= MIN_RUN) inside what reaches the engine.
@@ -26,11 +26,11 @@
 
 use std::sync::{Arc, Mutex};
 
-use flow_core::config::{SessionConfig, SAMPLE_RATE};
-use flow_core::meeting::{ChunkTranscriber, MeetingParams, MeetingTranscriber};
-use flow_core::segment::{SegmentParams, Segmenter, DEFAULT_MIN_MS, DEFAULT_SOFT_MAX_MS, RECOMMENDED_PAUSE_MS};
-use flow_core::vad::{self, FRAME};
-use flow_core::CommitResult;
+use murmur_core::config::{SessionConfig, SAMPLE_RATE};
+use murmur_core::meeting::{ChunkTranscriber, MeetingParams, MeetingTranscriber};
+use murmur_core::segment::{SegmentParams, Segmenter, DEFAULT_MIN_MS, DEFAULT_SOFT_MAX_MS, RECOMMENDED_PAUSE_MS};
+use murmur_core::vad::{self, FRAME};
+use murmur_core::CommitResult;
 
 /// Mirrors `vad::MIN_RUN` (pub(crate)): 60 ms of consecutive speech frames.
 const MIN_RUN: usize = 3;

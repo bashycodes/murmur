@@ -352,7 +352,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "flow-asr-sherpa"
+name = "murmur-asr-sherpa"
 version = "0.1.0"
 dependencies = [
  "sherpa-onnx",
@@ -360,11 +360,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "flow-core"
+name = "murmur-core"
 version = "0.1.0"
 dependencies = [
  "fancy-regex",
- "flow-asr-sherpa",
+ "murmur-asr-sherpa",
  "hound",
  "regex",
  "rtrb",
@@ -910,7 +910,7 @@ checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 name = "seg-join-probe"
 version = "0.1.0"
 dependencies = [
- "flow-core",
+ "murmur-core",
  "serde_json",
 ]
 

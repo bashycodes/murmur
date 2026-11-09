@@ -1,0 +1,55 @@
+[package]
+name = "murmur-ffi"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+description = "C ABI + JNI bindings for murmur-core"
+
+[lib]
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[features]
+default = []
+whisper = ["murmur-core/whisper"]
+# Runtime-loads the murmur-llm plugin (ship libmurmur_llm next to the executable).
+llm = ["murmur-core/llm"]
+jni = ["dep:jni"]
+# Parakeet-TDT engine; ship libsherpa-onnx-c-api.so + libonnxruntime.so with the library.
+parakeet = ["murmur-core/parakeet"]
+# D17: the server route (WebSocket client, wss with rustls). Client-only builds
+# leave it off: murmur-router is always linked, murmur-remote (the only network
+# code) is not (I3; tools/check-build-matrix.sh).
+remote = ["dep:murmur-remote"]
+# D18: third-party cloud STT (murmur-cloud: reqwest + rustls). Only the Android
+# `hybrid` / `remote` flavours enable it; the `local` flavour's library must
+# not link it (C2; tools/check-build-matrix.sh, verifyLocal*NoNetworkCode).
+cloud = ["dep:murmur-cloud"]
+# D39: the admin API client (murmur_remote::admin) for the Android "Users & keys"
+# page. Only the `hybrid` / `remote` flavours enable it (it needs `remote`).
+admin = ["remote", "dep:murmur-protocol"]
+# D41: model downloads from the set server's library (murmur_remote::library:
+# HTTP/1.1 on the session port, same TLS pin and key). Only the Android
+# `hybrid` / `remote` flavours enable it; `local` stays import-only with no
+# network code (D9; tools/check-build-matrix.sh, verifyLocal*NoNetworkCode).
+library = ["remote", "murmur-remote/library", "dep:murmur-protocol"]
+
+[dependencies]
+murmur-build-info = { path = "../murmur-build-info" }
+murmur-core = { path = "../murmur-core" }
+murmur-router = { path = "../murmur-router" }
+murmur-remote = { path = "../murmur-remote", optional = true, features = ["tls"] }
+murmur-cloud = { path = "../murmur-cloud", optional = true }
+murmur-protocol = { path = "../murmur-protocol", optional = true }
+serde.workspace = true
+serde_json.workspace = true
+jni = { version = "0.21", optional = true }
+
+[dev-dependencies]
+# jni_smoke routes a JVM session to an in-process murmur-server (mock ASR) with `--features jni,remote`.
+murmur-server = { path = "../murmur-server", default-features = false, features = ["tls"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net"] }
+# jni_cloud routes a JVM session to murmur-cloud's in-process mock provider with `--features jni,cloud`.
+murmur-cloud = { path = "../murmur-cloud", features = ["mock-server"] }
+# tests/library.rs, jni_library: an in-process murmur-server with a temp model library.
+tempfile = "3"
+sha2 = "0.10"

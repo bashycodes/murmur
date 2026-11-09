@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <title>Setup: Speech model</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="flow-theme.css">
-<link rel="stylesheet" href="ds/flow/components/bundle.css">
-<script src="ds/flow/components/bundle.js"></script>
+<link rel="stylesheet" href="murmur-theme.css">
+<link rel="stylesheet" href="ds/murmur/components/bundle.css">
+<script src="ds/murmur/components/bundle.js"></script>
 </head>
 <body>
 <x-dc>
@@ -54,12 +54,12 @@ a{color:#1a1a1a}a:hover{color:#30302f}
             <div class="fl-row-text"><div class="fl-row-title" style="display: flex; align-items: center; gap: 8px;">Parakeet TDT 0.6B <span class="fl-badge fl-badge-dark">Recommended</span></div><div class="fl-row-desc">{{pkDesc}}</div></div>
             <sc-if value="{{isIdle}}" hint-placeholder-val="{{true}}">
               <span style="display: flex; gap: 8px;">
-                <x-import component-from-global-scope="Flow.Button" variant="ghost" size="sm">Choose folder</x-import>
+                <x-import component-from-global-scope="Murmur.Button" variant="ghost" size="sm">Choose folder</x-import>
                 <a href="OnboardDownloadConfirm.dc.html" class="fl-btn fl-btn-primary fl-btn-sm" style="text-decoration: none;">Download</a>
               </span>
             </sc-if>
             <sc-if value="{{isBusy}}" hint-placeholder-val="{{false}}">
-              <x-import component-from-global-scope="Flow.Button" variant="secondary" size="sm">Cancel</x-import>
+              <x-import component-from-global-scope="Murmur.Button" variant="secondary" size="sm">Cancel</x-import>
             </sc-if>
             <sc-if value="{{isReady}}" hint-placeholder-val="{{false}}">
               <span class="fl-badge fl-badge-success">Ready</span>
@@ -75,8 +75,8 @@ a{color:#1a1a1a}a:hover{color:#30302f}
             <span class="lw-tile" style="color: var(--foreground-tertiary);"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6zM14 3v4h4"></path></svg></span>
             <div class="fl-row-text"><div class="fl-row-title">Whisper base</div><div class="fl-row-desc">{{whDesc}}</div></div>
             <span style="display: flex; gap: 8px;">
-              <x-import component-from-global-scope="Flow.Button" variant="ghost" size="sm">Choose file</x-import>
-              <sc-if value="{{whAvail}}" hint-placeholder-val="{{false}}"><x-import component-from-global-scope="Flow.Button" variant="secondary" size="sm">Download</x-import></sc-if>
+              <x-import component-from-global-scope="Murmur.Button" variant="ghost" size="sm">Choose file</x-import>
+              <sc-if value="{{whAvail}}" hint-placeholder-val="{{false}}"><x-import component-from-global-scope="Murmur.Button" variant="secondary" size="sm">Download</x-import></sc-if>
               <sc-if value="{{whMissing}}" hint-placeholder-val="{{true}}"><span class="fl-badge fl-badge-light">Not on your server</span></sc-if>
             </span>
           </div>

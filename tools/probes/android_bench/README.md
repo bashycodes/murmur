@@ -4,18 +4,18 @@ Measures STT accuracy and latency, and AI cleanup quality and latency, **on the 
 the models already in the app's private storage. Nothing is re-downloaded or re-pushed except
 the fixture bundle (about 25 MB, public clips only).
 
-* The harness is `BenchActivity`, debug builds only (`apps/flow-android/app/src/debug/`).
+* The harness is `BenchActivity`, debug builds only (`apps/murmur-android/app/src/debug/`).
   * It runs inside the app's process, so it can read `files/`.
   * It is exported but guarded by `android.permission.DUMP`, so only the shell can start it.
   * Release builds have no such activity; `verify<Variant>NoDebugWavReceiver` and
     `NoDebugWavReceiverTest` check that.
 * It uses the app's real code paths:
-  * STT is a normal `FlowCore` dictation: start_session, set_context, push_audio in 100 ms
+  * STT is a normal `MurmurCore` dictation: start_session, set_context, push_audio in 100 ms
     frames, commit. Model and session configs are built like `EngineLogic.plan` /
     `toSessionConfig` (Parakeet greedy, Hebrew loaded alone, 4 threads).
-  * Cleanup runs through `nativeBenchClean` (`crates/flow-ffi/src/bench.rs`) on the loaded
+  * Cleanup runs through `nativeBenchClean` (`crates/murmur-ffi/src/bench.rs`) on the loaded
     on-device LLM, in two modes:
-    * `prod` calls `flow_core::refinish`, the product's own text path: fallback rules, prompt
+    * `prod` calls `murmur_core::refinish`, the product's own text path: fallback rules, prompt
       v2, guard, post-processing, and the app's 3 s budget.
     * `v4c` sends the raw transcript with prompt v4c and returns the answer unjudged, as in the
       2026-10-30 laptop bench.
@@ -57,17 +57,17 @@ wipes `files/`, models included.
 ```sh
 export ADB="<device bridge> -s <serial>"
 S=tools/probes/android_bench/run_on_device.sh
-$S push                       # bundle -> /data/local/tmp/flow-bench -> (run-as) files/bench/in
+$S push                       # bundle -> /data/local/tmp/murmur-bench -> (run-as) files/bench/in
 $S start r1                   # everything; or e.g. --es suite stt / --es llm qwen1.5b --es modes v4c
 $S wait r1                    # polls out/r1/status.json every 30 s
 $S pull r1                    # -> $CACHE/android-bench/results/r1
 ```
 
 * The raw commands behind the script:
-  * start: `$ADB shell am start -W -n dev.flowclone/.debug.BenchActivity --es run r1 [--es suite all|stt|cleanup] [--es stt k1,k2] [--es llm k] [--es modes prod,v4c] [--es threads 4] [--es limit N] [--es pace fast|realtime] [--es segment 800]`
-  * status: `$ADB shell cat /sdcard/Android/data/dev.flowclone/files/bench/out/r1/status.json`
-  * pull: `$ADB pull /sdcard/Android/data/dev.flowclone/files/bench/out/r1/. <dest>/`
-  * stop after the current item: `$ADB shell am start -n dev.flowclone/.debug.BenchActivity --ez stop true`
+  * start: `$ADB shell am start -W -n dev.murmur/.debug.BenchActivity --es run r1 [--es suite all|stt|cleanup] [--es stt k1,k2] [--es llm k] [--es modes prod,v4c] [--es threads 4] [--es limit N] [--es pace fast|realtime] [--es segment 800]`
+  * status: `$ADB shell cat /sdcard/Android/data/dev.murmur/files/bench/out/r1/status.json`
+  * pull: `$ADB pull /sdcard/Android/data/dev.murmur/files/bench/out/r1/. <dest>/`
+  * stop after the current item: `$ADB shell am start -n dev.murmur/.debug.BenchActivity --ez stop true`
 * Keep the activity in front. It holds the screen on, and the work runs on its thread.
 * Expected run time with every model is about 15–25 min: 4 × ~6.5 min of audio at RTF < 0.1,
   plus 2 × 88 LLM calls per LLM.
@@ -77,16 +77,16 @@ $S pull r1                    # -> $CACHE/android-bench/results/r1
   * `pace=realtime` with `segment=800` feeds the audio at speaking speed with "decode while
     speaking" on, so `commit_ms` is the release → text latency a user feels.
 * Why `push` goes through run-as: files the shell pushes into
-  `/sdcard/Android/data/dev.flowclone/` are owned by the shell uid (FUSE) and the app cannot
+  `/sdcard/Android/data/dev.murmur/` are owned by the shell uid (FUSE) and the app cannot
   read them ("no bundle: manifest.json missing"). So the bundle is staged in
-  `/data/local/tmp/flow-bench`, copied into the app's private `files/bench/in`, and the
+  `/data/local/tmp/murmur-bench`, copied into the app's private `files/bench/in`, and the
   staging copy is deleted (`KEEP_TMP=1` keeps it so the next push only sends changes).
   Results still go to `<ext>/bench/out/<run>`, which the app creates itself, so `pull` works
   without run-as. `push` also removes a shell-created `<ext>/bench/in` left by older runs.
   By hand:
-  `$ADB push <bundle>/. /data/local/tmp/flow-bench/ && $ADB shell chmod -R a+rX /data/local/tmp/flow-bench && $ADB shell run-as dev.flowclone sh -c "'rm -rf files/bench/in && mkdir -p files/bench && cp -r /data/local/tmp/flow-bench files/bench/in'"`.
+  `$ADB push <bundle>/. /data/local/tmp/murmur-bench/ && $ADB shell chmod -R a+rX /data/local/tmp/murmur-bench && $ADB shell run-as dev.murmur sh -c "'rm -rf files/bench/in && mkdir -p files/bench && cp -r /data/local/tmp/murmur-bench files/bench/in'"`.
 * If that copy fails, a fallback that worked on the phone: push to `<ext>/bench/in`, run
-  `run-as dev.flowclone cp -r <ext>/bench/in files/bench/`, then `rm -rf <ext>/bench` so the
+  `run-as dev.murmur cp -r <ext>/bench/in files/bench/`, then `rm -rf <ext>/bench` so the
   app recreates `bench/out` itself.
 
 ## 3. Score (Linux)
@@ -111,4 +111,4 @@ python3 -I tools/probes/android_bench/score.py $CACHE/android-bench/results/r1  
 | `stt-<model>.jsonl` | per clip: `asr_text`, `final_text`, `status`, `audio_ms`, `push_ms`, `commit_ms`, core `asr_ms` / `total_ms` |
 | `cleanup-<llm>-<mode>.jsonl` | per case: `llm_raw`, `llm_ms`, `error`, `llm_info` (llama.cpp stats); `prod` also has `output` and `fallback_reason` |
 
-The cache default is `~/.cache/flow-clone`; set CACHE=<dir> to reuse an existing cache.
+The cache default is `~/.cache/murmur`; set CACHE=<dir> to reuse an existing cache.

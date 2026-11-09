@@ -7,10 +7,10 @@ All text in this doc and in the tests is synthetic.
 
 ## Path
 
-Every shell ends in `flow_core::command::run`:
+Every shell ends in `murmur_core::command::run`:
 
 - Android: `DictationController.runCommand` → JNI `nativeCommand` →
-  `flow_ffi` → `Router::command` → `command::run`.
+  `murmur_ffi` → `Router::command` → `command::run`.
 - Windows: `router_adapter.rs` / `core_api.rs` → `command::run`.
 - Transforms (Windows) use `transform::run_transform` → `command::ask`.
 
@@ -69,7 +69,7 @@ bigger model (see the decision below).
 
 ## Fix
 
-- `crates/flow-core/src/script_lock.rs` (new) works out the dominant script
+- `crates/murmur-core/src/script_lock.rs` (new) works out the dominant script
   of a text by Unicode block (Hebrew, Arabic, Cyrillic, Greek, Latin; at
   least 3 letters, a 60 % share). The lock applies when the selection is in
   a non-Latin script **and** the instruction doesn't ask for another

@@ -21,7 +21,7 @@ import argparse, array, json, os, pathlib, shutil, struct, sys, tarfile, urllib.
 
 HERE = pathlib.Path(__file__).resolve().parent
 PROBES = HERE.parent
-CACHE = pathlib.Path(os.environ.get("CACHE", pathlib.Path.home() / ".cache/flow-clone"))
+CACHE = pathlib.Path(os.environ.get("CACHE", pathlib.Path.home() / ".cache/murmur"))
 EN_MANIFEST = PROBES / "bench/asr_manifest_extended.json"
 HE_MANIFEST = PROBES / "prototypes/laptop_bench_2026_10_30/he_manifest.json"
 CASES = PROBES / "prototypes/ai_cleanup_bench_2026_10_26/results/v4c_cases.jsonl"
@@ -127,7 +127,7 @@ def main():
                 o.write(json.dumps({k: c.get(k) or "" for k in ("id", "app_id", "app_category", "input")}, ensure_ascii=False) + "\n")
                 n += 1
 
-    json.dump({"version": 1, "about": "Flow Clone on-device bench bundle (public fixtures; see prepare_bundle.py)",
+    json.dump({"version": 1, "about": "Murmur on-device bench bundle (public fixtures; see prepare_bundle.py)",
                "stt": stt, "cleanup": "cases.jsonl"}, open(out / "manifest.json", "w"), indent=1)
     size = sum(p.stat().st_size for p in out.rglob("*") if p.is_file())
     secs = {s: round(sum(c["dur_s"] for c in stt if c["set"] == s), 1) for s in ("en", "he")}

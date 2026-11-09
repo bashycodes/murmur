@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Murmur Bar</title>
+    <link rel="stylesheet" href="overlay.css" />
+  </head>
+  <body>
+    <!-- Bubbles stacked above the pill: transcript / error / notice,
+         the live route chip and the max-duration countdown. -->
+    <div class="above">
+      <div id="preview" class="bubble preview" aria-live="polite"><span id="preview-text" class="preview-text"></span><a id="preview-fix" class="fix" role="button" hidden></a></div>
+      <div id="route-label" class="chip route-label" role="status" hidden></div>
+      <div id="max-warn" class="chip max-warn" role="status" hidden></div>
+      <div id="meeting-rec" class="chip meeting-rec" role="status" title="Stop it from the tray menu, the Meetings page or your shortcut" hidden></div>
+    </div>
+    <div class="stage">
+      <div id="pill" class="pill" data-state="resting" data-mic="inactive">
+        <span id="btn-cancel" class="btn cancel" role="button" aria-label="Cancel dictation">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </span>
+        <div id="wave" class="wave" aria-hidden="true"></div>
+        <div id="dots" class="dots" aria-hidden="true"><i></i><i></i><i></i></div>
+        <span id="btn-finish" class="btn stop" role="button" aria-label="Stop and paste"><i></i></span>
+        <svg id="done-check" class="done-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7" /></svg>
+        <span id="engine-badge" class="engine-badge" hidden></span>
+        <div id="msg" class="msg" role="status"></div>
+      </div>
+    </div>
+    <script src="overlay.js"></script>
+  </body>
+</html>

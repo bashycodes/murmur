@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Probe (stray "yeah", 2026-11-07, D72 parity check): run the parity sets
-# through one flow-cli build (before or after the fix) with the PC and phone
+# through one murmur-cli build (before or after the fix) with the PC and phone
 # engine configs, via parity_ab.py. All data paths come from the
 # environment; rows land in $OUT/<label>/<set>-<config>.jsonl.
 #
-#   CLI=<flow-cli, feature parakeet> PARITY=<parity eval dir: cfg/, clips/>
+#   CLI=<murmur-cli, feature parakeet> PARITY=<parity eval dir: cfg/, clips/>
 #   EN=<en-set WAV dir> PC=<PC recordings WAV dir> HE=<FLEURS he WAV dir>
 #   UNI=<parakeet unified-en model> HEM=<parakeet he model> OUT=<private dir>
 #   parity_sets.sh <label>

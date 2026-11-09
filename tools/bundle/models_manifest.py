@@ -5,8 +5,8 @@
 
 LIST is docs/air-gapped-models.txt (server library layout: one line per
 file, `folder kind engine file bytes sha256 url title`). CATALOG_RS is
-apps/flow-windows/src/model_download.rs, the apps' catalogue with the pins
-(Android pins the same; flow_protocol's test keeps them in step), and
+apps/murmur-windows/src/model_download.rs, the apps' catalogue with the pins
+(Android pins the same; murmur_protocol's test keeps them in step), and
 CORE_ADAPTER_RS the file its `crate::core_adapter::X` folder names live in.
 All three are read from the bundle's source commit, so a branch that adds
 models (the notetaker's speaker models, D61) brings them without a change

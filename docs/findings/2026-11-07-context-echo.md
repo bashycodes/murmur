@@ -44,7 +44,7 @@ compares the answer with the transcript, so the copy went through.
 - N (8): negatives, where the dictation itself repeats words of the context
   (`Gate code: ` + "gate code colon four seven one nine").
 
-The rows ran through the real `FlowCore` commit path with the PC's model
+The rows ran through the real `MurmurCore` commit path with the PC's model
 (Llama-3.2-3B Q4_K_M) and a PC session (level high, casual style). A row
 passes when:
 - E: the final text does not start with the end of the context (or end with
@@ -95,8 +95,8 @@ has a regression test.
 
 ## Fix (D71)
 
-`flow_core::cleanup::context_echo::strip`, run on every cleanup answer in
-`run_metered` (on-device, flow-server and cloud / custom-server answers all
+`murmur_core::cleanup::context_echo::strip`, run on every cleanup answer in
+`run_metered` (on-device, murmur-server and cloud / custom-server answers all
 pass through it on the client) after the existing scrubbing, before the
 empty check:
 

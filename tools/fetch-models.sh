@@ -10,10 +10,10 @@
 #       Pinned revisions + SHA-256 from docs/findings/2026-10-30-hebrew-model-pins.md;
 #       files already present with the right hash are skipped, a mismatch is
 #       downloaded again, a download that does not verify is an error.
-# Destination: FLOW_MODELS_DIR, else <repo>/models (the server's models dir:
-#   FLOW_MODELS_DIR=/var/lib/flow-server/models tools/fetch-models.sh --hebrew).
+# Destination: MURMUR_MODELS_DIR, else <repo>/models (the server's models dir:
+#   MURMUR_MODELS_DIR=/var/lib/murmur-server/models tools/fetch-models.sh --hebrew).
 set -euo pipefail
-dir="${FLOW_MODELS_DIR:-$(cd "$(dirname "$0")/.." && pwd)/models}"
+dir="${MURMUR_MODELS_DIR:-$(cd "$(dirname "$0")/.." && pwd)/models}"
 mkdir -p "$dir"
 
 # fetch_pinned REPO REVISION DEST_SUBDIR "REMOTE_PATH SIZE SHA256" ...

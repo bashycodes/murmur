@@ -14,10 +14,10 @@ This bundle: version {{VERSION}}, build `{{COMMIT}}`, variant `{{VARIANT}}`.
 | `windows/{{WIN_EXE}}` | Windows 10/11 installer (64-bit). Works on its own and with a server. |
 | `android/{{APK}}` | Android app (Android 13 or newer). Works on its own and with a server. |
 <!-- image -->
-| `docker/{{IMAGE_TAR}}` | The `flow-server` Docker image, ready for `docker load` (see [The server](#the-server-optional-for-a-team)). |
+| `docker/{{IMAGE_TAR}}` | The `murmur-server` Docker image, ready for `docker load` (see [The server](#the-server-optional-for-a-team)). |
 <!-- /image -->
 | `docker/{{SOURCE_TGZ}}` | The server's source code, to build the Docker image yourself. |
-| `server/` | `flow-server` for Linux x86_64 without Docker: the program, its libraries, a config and a systemd service. With Docker you do not need it. |
+| `server/` | `murmur-server` for Linux x86_64 without Docker: the program, its libraries, a config and a systemd service. With Docker you do not need it. |
 | `{{MODELS_ZIP}}` | The speech models (English, many languages, Hebrew, language detection{{DIARIZER_LIST}}). |
 | `{{CLEANUP_ZIP}}` | The AI cleanup model (fixes punctuation, fillers, "scratch that"). Optional. |
 | `SHA256SUMS.txt` | Fingerprints of the files in this folder; each models zip has its own inside. Check with `sha256sum -c SHA256SUMS.txt`. |
@@ -107,7 +107,7 @@ on your network; it never connects anywhere.
 
 ### With Docker (recommended)
 
-First get the `flow-server` image, from this folder:
+First get the `murmur-server` image, from this folder:
 
 <!-- image -->
 ```sh
@@ -125,33 +125,33 @@ This bundle has no prebuilt image: build it from the source in `docker/`
 <!-- /noimage -->
 ```sh
 tar -xzf docker/{{SOURCE_TGZ}}
-docker build -t flow-server -f flow-server-source-{{VERSION}}/deploy/docker/Dockerfile flow-server-source-{{VERSION}}
+docker build -t murmur-server -f murmur-server-source-{{VERSION}}/deploy/docker/Dockerfile murmur-server-source-{{VERSION}}
 ```
 
 Then unzip the models and start it:
 
 ```sh
-unzip -q /path/to/{{MODELS_ZIP}} 'library/*' -d ~/flow-models
-unzip -q /path/to/{{CLEANUP_ZIP}} 'library/*' -d ~/flow-models   # optional: AI cleanup
-docker volume create flow_data
-docker run -d --name flow-server --restart unless-stopped -p 0.0.0.0:7313:7313 \
-  -v ~/flow-models/library:/models:ro -v flow_data:/data flow-server
-docker exec flow-server cat /data/admin.token
+unzip -q /path/to/{{MODELS_ZIP}} 'library/*' -d ~/murmur-models
+unzip -q /path/to/{{CLEANUP_ZIP}} 'library/*' -d ~/murmur-models   # optional: AI cleanup
+docker volume create murmur_data
+docker run -d --name murmur-server --restart unless-stopped -p 0.0.0.0:7313:7313 \
+  -v ~/murmur-models/library:/models:ro -v murmur_data:/data murmur-server
+docker exec murmur-server cat /data/admin.token
 ```
 
 The server uses the bundle's `library/` folder as it is: it picks
 Parakeet, Hebrew, language detection and (with the cleanup zip) AI cleanup
 from it, and offers every model in it to the apps. The last command shows
 the admin key (treat it like a password); about a minute later
-`docker logs flow-server` says `ready`. In each app, Settings → Your
+`docker logs murmur-server` says `ready`. In each app, Settings → Your
 server: this machine's address (`hostname -I` shows it), port 7313, the
 key. Keys, one per person or device (shown once):
 
 ```sh
-docker exec flow-server flow-server keys add alice-laptop --admin   # admin keys can manage keys from the Windows app
-docker exec flow-server flow-server keys add alice-phone
-docker exec flow-server flow-server keys list
-docker exec flow-server flow-server keys revoke alice-phone
+docker exec murmur-server murmur-server keys add alice-laptop --admin   # admin keys can manage keys from the Windows app
+docker exec murmur-server murmur-server keys add alice-phone
+docker exec murmur-server murmur-server keys list
+docker exec murmur-server murmur-server keys revoke alice-phone
 ```
 
 Ports published by Docker bypass `ufw`: the server itself refuses
@@ -168,21 +168,21 @@ For a server without Docker ({{GLIBC}} or newer, e.g. Ubuntu 24.04):
 Install (as root, from the bundle's `server/` folder):
 
 ```sh
-sudo mkdir -p /opt/flow-server /etc/flow-server /var/lib/flow-server/library
-sudo cp -r bin lib /opt/flow-server/
-sudo install -m 0755 flow-server.sh /usr/local/bin/flow-server
-sudo install -m 0644 config.toml /etc/flow-server/config.toml
-sudo install -m 0644 flow-server.service /etc/systemd/system/flow-server.service
-sudo unzip -q <path>/{{MODELS_ZIP}} 'library/*' -d /var/lib/flow-server/
-sudo unzip -q <path>/{{CLEANUP_ZIP}} 'library/*' -d /var/lib/flow-server/   # optional: AI cleanup
-sudo flow-server gen-token --out /etc/flow-server/token
+sudo mkdir -p /opt/murmur-server /etc/murmur-server /var/lib/murmur-server/library
+sudo cp -r bin lib /opt/murmur-server/
+sudo install -m 0755 murmur-server.sh /usr/local/bin/murmur-server
+sudo install -m 0644 config.toml /etc/murmur-server/config.toml
+sudo install -m 0644 murmur-server.service /etc/systemd/system/murmur-server.service
+sudo unzip -q <path>/{{MODELS_ZIP}} 'library/*' -d /var/lib/murmur-server/
+sudo unzip -q <path>/{{CLEANUP_ZIP}} 'library/*' -d /var/lib/murmur-server/   # optional: AI cleanup
+sudo murmur-server gen-token --out /etc/murmur-server/token
 ```
 
-The token in `/etc/flow-server/token` is the server's first admin key,
-named `owner` in `flow-server keys list`. Keep it for yourself; give
+The token in `/etc/murmur-server/token` is the server's first admin key,
+named `owner` in `murmur-server keys list`. Keep it for yourself; give
 everyone else their own key.
 
-Then edit `/etc/flow-server/config.toml`:
+Then edit `/etc/murmur-server/config.toml`:
 
 * `bind`: add the server's LAN or VPN address, e.g.
   `bind = ["127.0.0.1:7313", "10.1.2.3:7313"]`. Only private (LAN/VPN)
@@ -192,13 +192,13 @@ Then edit `/etc/flow-server/config.toml`:
 Check and start it:
 
 ```sh
-sudo flow-server check-config --config /etc/flow-server/config.toml
-sudo systemctl daemon-reload && sudo systemctl enable --now flow-server
-sudo journalctl -u flow-server -f      # wait for the "ready" line
-sudo flow-server library list          # the models the apps can download
+sudo murmur-server check-config --config /etc/murmur-server/config.toml
+sudo systemctl daemon-reload && sudo systemctl enable --now murmur-server
+sudo journalctl -u murmur-server -f      # wait for the "ready" line
+sudo murmur-server library list          # the models the apps can download
 ```
 
-Keys: the same `keys` commands as above, as `sudo flow-server keys …`.
+Keys: the same `keys` commands as above, as `sudo murmur-server keys …`.
 Allow TCP port 7313 from your LAN/VPN in the server's firewall.
 
 ## Connect the apps to the server
