@@ -135,7 +135,7 @@ fn press_enter_is_a_trailing_enter_segment() {
     );
     assert!(r.press_enter);
     // The open dictation gets its period ("…press enter."), which the
-    // press-enter rule moves onto the text, as for Wispr's server output.
+    // press-enter rule moves onto the text.
     assert_eq!(r.segments, vec![text("Send it."), key(PasteKey::Enter)]);
 }
 
