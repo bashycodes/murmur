@@ -2,6 +2,7 @@
 # Public B: rewrite the history for the public repo in a scratch mirror.
 #
 #   run.sh [SOURCE_GITDIR]     default: this checkout's common git dir
+#   SOURCE_REF=feat/x run.sh   filter that branch as if it were integration
 #
 # Makes RUN=~/.cache/murmur-filter/work/<UTC timestamp>/ (never reused, so a
 # run never overwrites another) with:
@@ -27,7 +28,7 @@ mkdir -m 700 "$RUN"   # fails if it exists: runs never overwrite each other
 mkdir -m 700 "$RUN/inputs"
 echo "run: $RUN"
 nice -n 10 "$HERE/mirror.sh" "$SRC" "$RUN/orig"
-nice -n 10 "$HERE/mirror.sh" "$RUN/orig" "$RUN/repo"
+nice -n 10 env -u SOURCE_REF "$HERE/mirror.sh" "$RUN/orig" "$RUN/repo"
 
 python3 "$HERE/prepare.py" --repo "$RUN/repo" --out "$RUN/inputs" --private "$PRIVATE"
 
