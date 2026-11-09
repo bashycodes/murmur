@@ -24,7 +24,7 @@ class BubbleGeometryTest {
     private val failedPaste = BubbleUi(DictationState.Error(ErrorKind.FailedToPaste("hi")))
     private val otherError = BubbleUi(DictationState.Error(ErrorKind.MicUnavailable))
 
-    /** Width × height in dp at 100 % (07 §5.4, the values the bubble had before "Bubble size"). */
+    /** Width × height in dp at 100 % (the values the bubble had before "Bubble size"). */
     private val today = listOf(
         idle to (56f to 56f), ready to (56f to 56f), readyCopy to (120f to 56f), minimised to (36f to 36f),
         repair to (56f to 56f), recTap to (230f to 56f), recHold to (160f to 56f), procTap to (230f to 56f),

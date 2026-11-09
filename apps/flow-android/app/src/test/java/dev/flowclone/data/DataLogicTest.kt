@@ -27,10 +27,10 @@ class RetentionTest {
 
 class DictionaryMergeTest {
     @Test fun importReplacesSameWordCaseInsensitivelyAndKeepsOthers() {
-        val existing = listOf(DictEntry("Whisperly"), DictEntry("sig", "old", true))
-        val incoming = listOf(DictEntry("whisperly", "Whisperly Flow"), DictEntry("new"))
+        val existing = listOf(DictEntry("Tailscale"), DictEntry("sig", "old", true))
+        val incoming = listOf(DictEntry("tailscale", "Tailscale VPN"), DictEntry("new"))
         val merged = DictionaryMerge.merge(existing, incoming)
-        assertEquals(listOf(DictEntry("sig", "old", true), DictEntry("whisperly", "Whisperly Flow"), DictEntry("new")), merged)
+        assertEquals(listOf(DictEntry("sig", "old", true), DictEntry("tailscale", "Tailscale VPN"), DictEntry("new")), merged)
     }
 
     @Test fun duplicateWordsInImportKeepLast() {

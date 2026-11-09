@@ -3,7 +3,7 @@
 //!
 //! The all-in-one prompt of the 2026-10-26 benchmark (GLOSSARY "AI
 //! cleanup"): one pass on the **raw** transcript does punctuation, spoken
-//! commands, numbers, corrections, lists, emails.
+//! commands, numbers, corrections, lists, emails and light edits.
 //! v4c = the bench's v4b with two fixes for big models (Llama-3.3-70B):
 //! the casual style relaxes punctuation only (v4b's "sentence case, drop
 //! optional commas" made it lowercase sentence starts and drop "Okay,"), and

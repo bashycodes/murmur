@@ -13,7 +13,7 @@
 //! * **Warm-up.** `load` prefills a caller-supplied prompt (flow-core sends
 //!   its default light/default-style one), so the first dictation is warm.
 //! * **Bounded decode.** Greedy sampling, at most 2 × transcript tokens + 32
-//!   new tokens (03 §7.5), stop on EOG or a stop string, and a deadline and
+//!   new tokens, stop on EOG or a stop string, and a deadline and
 //!   cancel flag checked between prefill chunks and before every token.
 
 use std::num::NonZeroU32;
@@ -765,7 +765,7 @@ pub fn chatml(messages: &[(String, String)]) -> String {
     s
 }
 
-/// 03 §7.5: max_tokens = 2 × input tokens + 32.
+/// max_tokens = 2 × input tokens + 32.
 pub fn max_new_tokens(input_tokens: usize) -> usize {
     2 * input_tokens + 32
 }

@@ -23,8 +23,8 @@ pub fn est_tokens(text: &str) -> u32 {
     (text.chars().count() as u32).div_ceil(4)
 }
 
-/// Cleanup output budget: `max(16, 2 × tokens(transcript) + 32)` (03 §7.5;
-/// some providers enforce a minimum of 16).
+/// Cleanup output budget: `max(16, 2 × tokens(transcript) + 32)`
+/// (some providers enforce a minimum of 16).
 pub fn cleanup_max_tokens(transcript: &str) -> u32 {
     (2 * est_tokens(transcript) + 32).max(16)
 }

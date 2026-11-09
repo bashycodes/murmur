@@ -50,13 +50,13 @@ data class Settings(
     val capMinutes: Int = 5,
     val mockEngine: Boolean = false,
     val userDenylist: Set<String> = emptySet(),
-    /** Local LLM cleanup (flow-llm plugin + an imported GGUF). Off by default (10 §5). */
+    /** Local LLM cleanup (flow-llm plugin + an imported GGUF). Off by default. */
     val llmEnabled: Boolean = false,
     /** Live preview of partial transcripts next to the bubble. */
     val livePreview: Boolean = true,
-    /** Shake to bring a snoozed bubble back / reveal it for 10 s (07 §5.5). */
+    /** Shake to bring a snoozed bubble back / reveal it for 10 s. */
     val shakeToReveal: Boolean = true,
-    /** Shrink the Ready bubble to 36dp after 5 s (07 §5.3 `shrinkBubbleEnabled`). */
+    /** Shrink the Ready bubble to 36dp after 5 s. */
     val shrinkBubble: Boolean = true,
     /** "Shrink to a dot": the shrunk bubble is drawn as a plain 16dp dot (touch target stays 36dp); only used while [shrinkBubble]. */
     val shrinkToDot: Boolean = true,
@@ -310,7 +310,7 @@ object KeyboardLanguage {
 }
 
 /**
- * captureFieldSnapshot → core `FieldContext` (06 §1): ±500 chars around the selection
+ * captureFieldSnapshot → core `FieldContext`: ±500 chars around the selection
  * from `getSurroundingText(500, 500, 0)`; blank for context-extraction-excluded fields
  * (sensitive / URI inputType) and banking apps.
  */

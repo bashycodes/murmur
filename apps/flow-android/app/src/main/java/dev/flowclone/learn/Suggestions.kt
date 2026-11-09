@@ -8,7 +8,7 @@ import org.json.JSONObject
 
 /**
  * Dictionary suggestions from learn-from-edits, waiting for the user (Windows
- * `apps/flow-windows/src/suggestions.rs`). The clone never adds learned words by itself:
+ * `apps/flow-windows/src/suggestions.rs`). Learned words are never added automatically:
  * a candidate lands in [pending], the Dictionary screen lists it, and only an explicit Add turns
  * it into a dictionary entry. Dismissed words are remembered so they are not suggested again.
  * Stored as words only (no transcripts).

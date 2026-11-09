@@ -14,7 +14,7 @@ import dev.flowclone.core.FieldContext
  * substitutions become **suggestions** ([Suggestions]): nothing reaches the dictionary
  * without the user's Add.
  *
- * End reasons mirror Windows; only [EndReason.counts]
+ * End reasons mirror the Windows shell's; only [EndReason.counts]
  * ones are learned from. Android addition: [EndReason.STABLE] ends the watch early once an
  * edit has stopped changing for [WatchOpts.stableMs], so the field isn't read longer than needed.
  */

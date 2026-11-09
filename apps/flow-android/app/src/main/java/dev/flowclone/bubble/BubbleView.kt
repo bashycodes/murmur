@@ -32,7 +32,7 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
     }
 
     private val d = resources.displayMetrics.density
-    /** Spec dp → px at the current "Bubble size" (07 §5.4 values × [BubbleUi.scale]). */
+    /** Design dp → px at the current "Bubble size" (base values × [BubbleUi.scale]). */
     private fun dp(v: Float) = v * d * ui.scale
 
     var ui = BubbleUi(); private set

@@ -20,12 +20,12 @@ import android.widget.TextView
 import dev.flowclone.session.DictationState
 
 /**
- * The `TYPE_APPLICATION_OVERLAY` bubble window (07 §5.1). Never focusable (taking focus
+ * The `TYPE_APPLICATION_OVERLAY` bubble window. Never focusable (taking focus
  * would end the target field's IME session). Idle = attached but invisible and
  * click-through, so showing it again is instant.
  *
  * Also owns two click-through satellite windows: the live-preview line and the bottom
- * snooze target shown while the Ready bubble is dragged (07 §5.5).
+ * snooze target shown while the Ready bubble is dragged.
  */
 class BubbleOverlay(
     private val context: Context,
@@ -187,7 +187,7 @@ class BubbleOverlay(
         val onTarget = dragFromReady && wasShown && snoozeGeometry().isNear(centerX(), centerY())
         dragFromReady = false
         if (onTarget && onSnoozeDrop()) {
-            // Snoozed: go back to the saved anchor so it reappears where it was (07 §5.3).
+            // Snoozed: go back to the saved anchor so it reappears where it was.
             val p = positioner().position(bubbleW(), bubbleH())
             params.x = p.x; params.y = p.y
             update()
@@ -221,7 +221,7 @@ class BubbleOverlay(
         preview.moveTo(p)
     }
 
-    /** 07 §5.1 watchdog: every 15 s; after 3 ticks "should be visible but isn't attached", re-add. */
+    /** Watchdog: every 15 s; after 3 ticks "should be visible but isn't attached", re-add. */
     private var missing = 0
     private fun startWatchdog() {
         main.postDelayed(object : Runnable {
