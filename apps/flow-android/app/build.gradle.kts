@@ -88,6 +88,8 @@ android {
     }
     buildFeatures { buildConfig = true }
     sourceSets {
+        // PolicyLists reads app-groups.json, the app groups flow-core and the Windows app use (D80).
+        getByName("main").resources.directories.add("../../../crates/flow-core/data")
         // RouterJsonTest parses the router's own fixtures (no copies).
         getByName("test").resources.directories.add("../../../crates/flow-router/fixtures")
         // AppVersionTest: the version-rule vectors tools/versioning/test_versioning.py also checks.

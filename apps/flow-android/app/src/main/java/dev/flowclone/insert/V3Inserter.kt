@@ -54,7 +54,7 @@ class V3Inserter(private val env: InsertionEnvironment, private val now: () -> L
 
         fun livenessReadExcluded(): Boolean {
             val t = env.editorInputType() ?: return true
-            return EditorInputType.isContentExtractionExcluded(t) || BubbleVisibilityPolicy.isBanking(anchorPkg())
+            return EditorInputType.isContentExtractionExcluded(t) || BubbleVisibilityPolicy.isRestricted(anchorPkg())
         }
 
         fun reacquireEnabledForSurface(): Boolean {
@@ -133,7 +133,7 @@ class V3Inserter(private val env: InsertionEnvironment, private val now: () -> L
             if (now() >= deadline) return fail(FailureReason.DEADLINE_EXHAUSTED, Status.INCONCLUSIVE_FAILURE)
             if (isExcludedInputType()) return fail(FailureReason.EXCLUDED_FIELD).also { step("excluded_input_type") }
             // S12: a banking app took focus since the start: never type into it.
-            if (BubbleVisibilityPolicy.isBanking(env.currentPackage()) || BubbleVisibilityPolicy.isBanking(env.focusedInputPackage()))
+            if (BubbleVisibilityPolicy.isRestricted(env.currentPackage()) || BubbleVisibilityPolicy.isRestricted(env.focusedInputPackage()))
                 return fail(FailureReason.EXCLUDED_FIELD).also { step("excluded_banking") }
             if (env.isInNotificationReplyContext()) {
                 step("reply_node_path")

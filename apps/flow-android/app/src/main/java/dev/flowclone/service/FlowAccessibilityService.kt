@@ -260,7 +260,7 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
      */
     override fun editReader(): dev.flowclone.learn.FieldReader? {
         val snap = startSnapshot ?: return null
-        if (startFieldProtected || BubbleVisibilityPolicy.isBanking(snap.pkg)) return null
+        if (startFieldProtected || BubbleVisibilityPolicy.isRestricted(snap.pkg)) return null
         return dev.flowclone.learn.FieldReader { readEditedField(snap) }
     }
 
@@ -433,7 +433,7 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
         private fun anchorPkg() = startSnapshot?.pkg ?: currentPackageName
         private fun livenessExcluded(): Boolean {
             val t = env.editorInputType() ?: return true
-            return EditorInputType.isContentExtractionExcluded(t) || BubbleVisibilityPolicy.isBanking(anchorPkg())
+            return EditorInputType.isContentExtractionExcluded(t) || BubbleVisibilityPolicy.isRestricted(anchorPkg())
         }
         private fun staleProbeSurface(p: String?) = PolicyLists.isRestartProne(p)
         override fun shouldSkip(): Boolean {

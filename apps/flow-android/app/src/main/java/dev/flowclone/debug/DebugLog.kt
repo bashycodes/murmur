@@ -201,7 +201,7 @@ object DebugRedact {
 
     /** Restricted banking apps and the user's denylist (the apps the bubble stays hidden in). */
     fun isProtectedApp(pkg: String?, userDenylist: Set<String>) =
-        dev.flowclone.policy.BubbleVisibilityPolicy.isBanking(pkg) || (pkg != null && pkg in userDenylist)
+        dev.flowclone.policy.BubbleVisibilityPolicy.isRestricted(pkg) || (pkg != null && pkg in userDenylist)
 
     /** Defence in depth: no secret (server token, cloud key) survives into a line, whatever path it took. */
     fun scrub(line: String, secrets: Collection<String>): String {
