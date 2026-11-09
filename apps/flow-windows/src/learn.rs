@@ -1,4 +1,4 @@
-//! Learn from edits (windows-research 03 §3, §6 P1 item 6), platform-free.
+//! Learn from edits, platform-free.
 //!
 //! After a paste the shell keeps re-reading the focused control (UIA on
 //! Windows, `context/uia.rs`) for up to [`WatchOpts::window_ms`]. The

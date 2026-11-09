@@ -2,9 +2,7 @@
 //!
 //! Wispr Flow has no speech endpointing (hands-free ends on a key press or
 //! the check button; its only silence detector is a broken-mic warning on
-//! all-zero chunks; research/windows/findings/by-topic/01 §"Silence
-//! detection", research/android/findings/by-topic/02). This is a clone
-//! addition (D19), opt-in per session with
+//! all-zero chunks). This is a clone addition (D19), opt-in per session with
 //! `SessionConfig.endpoint_silence_ms`.
 //!
 //! It is the commit-time VAD (`vad`, D16) run as a stream: the same 20 ms
