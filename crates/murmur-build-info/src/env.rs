@@ -37,16 +37,22 @@ pub fn var(name: &str) -> Result<String, std::env::VarError> {
 }
 
 /// The value of `name`, else of its old spelling (also returned, for the
-/// notice). Pure apart from `get`, so the precedence is testable.
+/// notice). An empty value counts as unset, as in the container entrypoint
+/// (`${MURMUR_X:-}`): an empty new name falls back to a non-empty old one.
+/// Pure apart from `get`, so the precedence is testable.
 pub fn resolve(
     name: &str,
     get: impl Fn(&str) -> Option<OsString>,
 ) -> Option<(OsString, Option<String>)> {
-    if let Some(v) = get(name) {
-        return Some((v, None));
+    let new = get(name);
+    if new.as_ref().is_some_and(|v| !v.is_empty()) {
+        return new.map(|v| (v, None));
     }
-    let old = old_name(name)?;
-    get(&old).map(|v| (v, Some(old)))
+    let old = old_name(name).and_then(|o| get(&o).filter(|v| !v.is_empty()).map(|v| (v, o)));
+    match old {
+        Some((v, o)) => Some((v, Some(o))),
+        None => new.map(|v| (v, None)),
+    }
 }
 
 /// `MURMUR_X` → `FLOW_X`; `None` for a name without the prefix.
@@ -96,6 +102,18 @@ mod tests {
             got,
             Some((OsString::from("old"), Some("FLOW_LLM_LIB".to_string())))
         );
+    }
+
+    #[test]
+    fn an_empty_new_name_counts_as_unset_like_the_entrypoint() {
+        let got = resolve(
+            "MURMUR_STT",
+            env(&[("MURMUR_STT", ""), ("FLOW_STT", "old")]),
+        );
+        assert_eq!(got, Some((OsString::from("old"), Some("FLOW_STT".into()))));
+        // Both empty: the (empty) new value, as std would give it.
+        let got = resolve("MURMUR_STT", env(&[("MURMUR_STT", ""), ("FLOW_STT", "")]));
+        assert_eq!(got, Some((OsString::new(), None)));
     }
 
     #[test]
