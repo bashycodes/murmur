@@ -47,10 +47,11 @@ object BubbleVisibilityPolicy {
     private const val IME_ACTION_GO = 2
     private const val IME_ACTION_SEARCH = 3
 
-    fun isBanking(pkg: String?) = pkg != null && pkg in PolicyLists.RESTRICTED_BANKING
+    /** Banking, payment, password-manager and authenticator apps ([PolicyLists.isRestricted]). */
+    fun isBanking(pkg: String?) = PolicyLists.isRestricted(pkg)
 
     fun isNotificationReplyContext(pkg: String?, imeWindowPresent: Boolean, focusedAppWindowPresent: Boolean) =
-        (pkg != null && pkg in PolicyLists.SYSTEM_UI) || (imeWindowPresent && !focusedAppWindowPresent)
+        PolicyLists.isSystemUi(pkg) || (imeWindowPresent && !focusedAppWindowPresent)
 
     fun evaluate(i: Input, userDenylist: Set<String> = emptySet()): Decision {
         val t = i.inputType
@@ -60,7 +61,7 @@ object BubbleVisibilityPolicy {
             i.notificationReplyContext -> Override.NotificationReply
             // Deviation 1: the URL-bar override never applies to a password field.
             !password && (EditorInputType.isUri(t) || EditorInputType.isWebEditText(t) ||
-                (i.packageName in PolicyLists.BROWSERS && action == IME_ACTION_GO)) -> Override.UrlBar
+                (PolicyLists.isBrowser(i.packageName) && action == IME_ACTION_GO)) -> Override.UrlBar
             else -> null
         }
         val allowed = !(EditorInputType.isSensitive(t) || i.nodePassword == true) || override != null
@@ -73,22 +74,19 @@ object BubbleVisibilityPolicy {
     }
 }
 
-/** Package / browser-host → style bucket (Wispr `AppCategorizer`, app_categories.json). */
+/** Package / browser-host → style bucket (groups and rules in [PolicyLists]). */
 object AppCategorizer {
     enum class Category(val coreName: String) {
         EMAIL("email"), WORK("work_chat"), PERSONAL("personal_chat"), OTHER("other")
     }
 
-    private fun matchesAny(host: String?, hosts: Set<String>) =
-        host != null && hosts.any { host == it || host.endsWith(".$it") }
-
     fun categorize(packageName: String?, browserHost: String?): Category {
         val pkg = packageName?.takeIf { it.isNotBlank() }
         val host = browserHost?.lowercase()?.removePrefix("www.")?.takeIf { it.isNotBlank() }
         return when {
-            pkg in PolicyLists.PERSONAL_PACKAGES || matchesAny(host, PolicyLists.PERSONAL_WEB_HOSTS) -> Category.PERSONAL
-            pkg in PolicyLists.EMAIL_PACKAGES || matchesAny(host, PolicyLists.EMAIL_WEB_HOSTS) -> Category.EMAIL
-            pkg in PolicyLists.WORK_PACKAGES || matchesAny(host, PolicyLists.WORK_WEB_HOSTS) -> Category.WORK
+            PolicyLists.isPersonalApp(pkg) || PolicyLists.isPersonalHost(host) -> Category.PERSONAL
+            PolicyLists.isEmailApp(pkg) || PolicyLists.isEmailHost(host) -> Category.EMAIL
+            PolicyLists.isWorkApp(pkg) || PolicyLists.isWorkHost(host) -> Category.WORK
             else -> Category.OTHER
         }
     }

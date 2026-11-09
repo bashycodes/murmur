@@ -435,12 +435,12 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
             val t = env.editorInputType() ?: return true
             return EditorInputType.isContentExtractionExcluded(t) || BubbleVisibilityPolicy.isBanking(anchorPkg())
         }
-        private fun staleProbeSurface(p: String?) = p in PolicyLists.RESTART_PRONE_READABLE
+        private fun staleProbeSurface(p: String?) = PolicyLists.isRestartProne(p)
         override fun shouldSkip(): Boolean {
             val p = anchorPkg()
             return coordinator.pendingInsertions > 0 || coordinator.isLocked || !env.isInputSessionActive() ||
                 replyContext || livenessExcluded() ||
-                (p in PolicyLists.KNOWN_NULL_SURROUNDING_TEXT && !staleProbeSurface(p)) ||
+                (PolicyLists.isKnownNullSurroundingText(p) && !staleProbeSurface(p)) ||
                 env.imeBoundPackage() != p
         }
         override fun connection() = env.currentInputConnection()

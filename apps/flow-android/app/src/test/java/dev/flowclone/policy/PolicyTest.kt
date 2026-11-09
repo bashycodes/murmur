@@ -116,13 +116,90 @@ class AppCategorizerTest {
     @Test fun whatsappIsPersonal() = assertEquals(AppCategorizer.Category.PERSONAL, AppCategorizer.categorize("com.whatsapp", null))
     @Test fun unknownIsOther() = assertEquals(AppCategorizer.Category.OTHER, AppCategorizer.categorize("com.example", null))
     @Test fun browserHostStripsWwwAndMatchesSubdomains() {
-        val host = PolicyLists.EMAIL_WEB_HOSTS.first()
-        assertEquals(AppCategorizer.Category.EMAIL, AppCategorizer.categorize("com.android.chrome", "www.$host"))
+        assertEquals(AppCategorizer.Category.EMAIL, AppCategorizer.categorize("com.android.chrome", "www.outlook.office.com"))
+        assertEquals(AppCategorizer.Category.WORK, AppCategorizer.categorize("com.android.chrome", "myteam.slack.com"))
+        assertEquals(AppCategorizer.Category.PERSONAL, AppCategorizer.categorize("com.android.chrome", "old.reddit.com"))
+    }
+    @Test fun mailHostRuleIsEmail() {
+        assertEquals(AppCategorizer.Category.EMAIL, AppCategorizer.categorize("org.mozilla.firefox", "mail.example.org"))
+        assertEquals(AppCategorizer.Category.EMAIL, AppCategorizer.categorize("org.mozilla.firefox", "webmail.example.org"))
+        assertEquals(AppCategorizer.Category.OTHER, AppCategorizer.categorize("org.mozilla.firefox", "mailchimp.example.org"))
+    }
+    @Test fun mailNamePartIsEmail() {
+        assertEquals(AppCategorizer.Category.EMAIL, AppCategorizer.categorize("com.example.android.mail", null))
+        assertEquals(AppCategorizer.Category.EMAIL, AppCategorizer.categorize("com.example.email.provider", null))
+        assertEquals(AppCategorizer.Category.OTHER, AppCategorizer.categorize("com.example.dailymail", null))
+    }
+    @Test fun familiesCoverVariants() {
+        assertEquals(AppCategorizer.Category.PERSONAL, AppCategorizer.categorize("com.whatsapp.w4b", null))
+        assertEquals(AppCategorizer.Category.PERSONAL, AppCategorizer.categorize("org.telegram.messenger.web", null))
+        assertEquals(AppCategorizer.Category.WORK, AppCategorizer.categorize("com.google.android.apps.docs.editors.sheets", null))
+        assertEquals(AppCategorizer.Category.WORK, AppCategorizer.categorize("com.atlassian.android.jira.core", null))
+        // Outlook sits in the Office family but email wins.
+        assertEquals(AppCategorizer.Category.EMAIL, AppCategorizer.categorize("com.microsoft.office.outlook", null))
     }
     @Test fun coreCategoryNames() {
         assertEquals("email", AppCategorizer.Category.EMAIL.coreName)
         assertEquals("work_chat", AppCategorizer.Category.WORK.coreName)
         assertEquals("personal_chat", AppCategorizer.Category.PERSONAL.coreName)
         assertEquals("other", AppCategorizer.Category.OTHER.coreName)
+    }
+}
+
+class PolicyListsTest {
+    @Test fun restrictedByNameWord() {
+        for (p in listOf("com.example.mobilebanking", "es.example.banco", "com.example.wallet", "com.example.authenticator", "org.example.keepass.free"))
+            assertTrue(p, PolicyLists.isRestricted(p))
+    }
+
+    @Test fun restrictedByListWhereTheRuleMisses() {
+        assertTrue(PolicyLists.isRestricted("com.paypal.android.p2pmobile"))
+        assertTrue(PolicyLists.isRestricted("com.x8bit.bitwarden"))
+    }
+
+    @Test fun ordinaryAppsAreNotRestricted() {
+        for (p in listOf("com.whatsapp", "com.google.android.gm", "com.example.notes", "com.android.chrome", null))
+            assertFalse("$p", PolicyLists.isRestricted(p))
+    }
+
+    @Test fun systemUiRuleCoversOems() {
+        assertTrue(PolicyLists.isSystemUi("com.android.systemui"))
+        assertTrue(PolicyLists.isSystemUi("com.example.systemui"))
+        assertTrue(PolicyLists.isSystemUi("com.android.systemui.headless"))
+        assertFalse(PolicyLists.isSystemUi("com.example.systemuitheme"))
+    }
+
+    @Test fun systemSearchAndInCallRules() {
+        assertTrue(PolicyLists.isSystemSearch("com.example.launcher3"))
+        assertTrue(PolicyLists.isSystemSearch("com.android.settings"))
+        assertTrue(PolicyLists.isSystemSearch("com.miui.home"))
+        assertFalse(PolicyLists.isSystemSearch("com.example.notes"))
+        assertTrue(PolicyLists.isInCall("com.google.android.dialer"))
+        assertTrue(PolicyLists.isInCall("com.android.incallui"))
+        assertFalse(PolicyLists.isInCall("com.whatsapp"))
+    }
+
+    @Test fun browserRule() {
+        assertTrue(PolicyLists.isBrowser("com.chrome.beta"))
+        assertTrue(PolicyLists.isBrowser("org.mozilla.fenix"))
+        assertTrue(PolicyLists.isBrowser("com.sec.android.app.sbrowser"))
+        assertTrue(PolicyLists.isBrowser("com.brave.browser"))
+        assertFalse(PolicyLists.isBrowser("com.whatsapp"))
+    }
+
+    @Test fun insertionGroups() {
+        assertTrue(PolicyLists.isRestartProne("com.whatsapp"))
+        assertFalse(PolicyLists.isRestartProne("com.android.chrome"))
+        // Chrome reads null legitimately but is not restart-prone: keep-alive skips it.
+        assertTrue(PolicyLists.isKnownNullSurroundingText("com.android.chrome"))
+        assertTrue(PolicyLists.isKnownNullSurroundingText("com.google.android.gm"))
+        assertFalse(PolicyLists.isKnownNullSurroundingText("com.example.notes"))
+        assertTrue(PolicyLists.usesComposePlaceholders("com.whatsapp.w4b"))
+        assertFalse(PolicyLists.usesComposePlaceholders("com.whatsappx"))
+    }
+
+    @Test fun placeholdersAreNormalized() {
+        for (s in PolicyLists.COMPOSE_PLACEHOLDERS)
+            assertEquals(s, dev.flowclone.insert.TextMatching.normalizePlaceholder(s))
     }
 }

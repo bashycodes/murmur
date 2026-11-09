@@ -711,7 +711,7 @@ class SettingsActivity : Activity() {
     private fun renderApps() = with(ui) {
         val i = draft!!.draft
         page {
-            note("The bubble stays hidden in these apps, in addition to the built-in banking and payment list.")
+            note("The bubble stays hidden in these apps, in addition to the built-in list of banking, payment and password apps.")
             card {
                 fieldRows[Field.DENYLIST] = fieldRow(
                     "Package names, one per line", i.denylist,
