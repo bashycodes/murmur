@@ -1,14 +1,14 @@
 # Installing Murmur on an Android phone
 
 Murmur comes in three **flavours** (D17, `docs/hybrid-architecture.md`). They share one
-application id (`dev.flowclone`), so installing another flavour over the current one is an
+application id (`dev.murmur`), so installing another flavour over the current one is an
 in-place update that keeps settings, dictionary and history.
 
 | Flavour | APK | Dictates with | Network |
 |---|---|---|---|
 | `local` | `app-local-debug.apk` | the speech model on the phone | **none**: no INTERNET permission, no network code in the native library |
-| `hybrid` | `app-hybrid-debug.apk` | your own `flow-server` (your LAN or a VPN), falling back to the phone's model | INTERNET only, used only for the server you enter |
-| `remote` | `app-remote-debug.apk` | your own `flow-server` only; no models, no ASR libraries (~10x smaller) | INTERNET only |
+| `hybrid` | `app-hybrid-debug.apk` | your own `murmur-server` (your LAN or a VPN), falling back to the phone's model | INTERNET only, used only for the server you enter |
+| `remote` | `app-remote-debug.apk` | your own `murmur-server` only; no models, no ASR libraries (~10x smaller) | INTERNET only |
 
 The `local` flavour can't download anything, including the speech model: you fetch the model
 on a PC and copy it to the phone yourself. The `hybrid`/`remote` flavours only talk to the
@@ -26,10 +26,10 @@ and roughly as much free RAM. Android 15 phones with 16 KB pages are supported: 
 
 ## Live test on phone (VPN, ~10 minutes)
 
-The fastest end-to-end test of the whole system: phone → your `flow-server` over a VPN, with
+The fastest end-to-end test of the whole system: phone → your `murmur-server` over a VPN, with
 the phone's own model as the fallback.
 
-**Which APK.** Install **`hybrid`** (`dist/flow-clone-hybrid-debug.apk`): it talks to your server
+**Which APK.** Install **`hybrid`** (`dist/murmur-hybrid-debug.apk`): it talks to your server
 and falls back to the on-device engine (the mock engine works without any model), and it is the
 only flavour that can exercise both routes and the live "via …" label. Use `remote` only to test
 the server path alone (no models, smaller), `local` to prove the no-network build.
@@ -39,18 +39,18 @@ APKs built on this PC (`tools/dist.sh`, after `tools/build-native.sh --flavor lo
 
 | APK | Size | SHA-256 |
 |---|---|---|
-| `flow-clone-hybrid-debug.apk` | 47.6 MB (47591933 bytes) | `9becffa7e5d2fcbc702c43551e902904eb4c40f9d9df7a03743775aedf5cc794` |
-| `flow-clone-hybrid-release-unsigned.apk` | 46.6 MB (46569077 bytes) | `cdcf4e7dfaba8832ad318f55eb549d9b76ae6ba0b7858be20d6b8f36f0595962` |
-| `flow-clone-local-debug.apk` | 43.2 MB (43151837 bytes) | `b4caaf0ac0c45de57869358884d3546688204f2f2c9483a42ac531dee2afa0b1` |
-| `flow-clone-local-release-unsigned.apk` | 42.1 MB (42128985 bytes) | `a94b827b8f4587e063189409804b41116a8f0dfe83f6c1c6250c28ed9b1ebf9e` |
-| `flow-clone-remote-debug.apk` | 13.9 MB (13886807 bytes) | `acf571ce97f8337fbadc6290ab00ef7c54b491cc39eb0a746e0805a71ae4f990` |
-| `flow-clone-remote-release-unsigned.apk` | 12.9 MB (12863951 bytes) | `53f236a1f3c13a946649e85f8d289629eb277eaf46f0cd6ceba53fb848a40c17` |
+| `murmur-hybrid-debug.apk` | 47.6 MB (47591933 bytes) | `9becffa7e5d2fcbc702c43551e902904eb4c40f9d9df7a03743775aedf5cc794` |
+| `murmur-hybrid-release-unsigned.apk` | 46.6 MB (46569077 bytes) | `cdcf4e7dfaba8832ad318f55eb549d9b76ae6ba0b7858be20d6b8f36f0595962` |
+| `murmur-local-debug.apk` | 43.2 MB (43151837 bytes) | `b4caaf0ac0c45de57869358884d3546688204f2f2c9483a42ac531dee2afa0b1` |
+| `murmur-local-release-unsigned.apk` | 42.1 MB (42128985 bytes) | `a94b827b8f4587e063189409804b41116a8f0dfe83f6c1c6250c28ed9b1ebf9e` |
+| `murmur-remote-debug.apk` | 13.9 MB (13886807 bytes) | `acf571ce97f8337fbadc6290ab00ef7c54b491cc39eb0a746e0805a71ae4f990` |
+| `murmur-remote-release-unsigned.apk` | 12.9 MB (12863951 bytes) | `53f236a1f3c13a946649e85f8d289629eb277eaf46f0cd6ceba53fb848a40c17` |
 
-All six built 2026-10-24 from tag `v0.5.0` (914fb5e; D28 OpenRouter-only cloud: one OpenRouter page, opt-in cloud text cleanup, one-time migration of old provider settings; versionName 0.5.0, versionCode 500, native engine `flow-ffi 0.5.0+914fb5e`; natives rebuilt from the same tree for all three flavours; native gate: 41/41 JNI symbols, 8 `flow_llm_*`; D28 host scan clean for all six; same debug key as before (cert SHA-256 `63f0719b…`), so the debug APKs install over the previous build). The `*-release-unsigned.apk` files are not installable until signed, see "Release build" below.
+All six built 2026-10-24 from tag `v0.5.0` (914fb5e; D28 OpenRouter-only cloud: one OpenRouter page, opt-in cloud text cleanup, one-time migration of old provider settings; versionName 0.5.0, versionCode 500, native engine `murmur-ffi 0.5.0+914fb5e`; natives rebuilt from the same tree for all three flavours; native gate: 41/41 JNI symbols, 8 `murmur_llm_*`; D28 host scan clean for all six; same debug key as before (cert SHA-256 `63f0719b…`), so the debug APKs install over the previous build). The `*-release-unsigned.apk` files are not installable until signed, see "Release build" below.
 
-Check a copy with `sha256sum flow-clone-hybrid-debug.apk` before installing it. The CI artifact
+Check a copy with `sha256sum murmur-hybrid-debug.apk` before installing it. The CI artifact
 and the release APKs (`.github/workflows/android-build.yml`) are signed with the same fixed debug
-key as this PC's builds (D56; cert SHA-256 in `apps/flow-android/debug-cert.sha256`, checked by
+key as this PC's builds (D56; cert SHA-256 in `apps/murmur-android/debug-cert.sha256`, checked by
 CI), so either installs over the other with `install -r` and keeps the app's data. An APK built
 on a machine with its own debug key (or by CI on a fork, without the key) is refused as an
 update: uninstall the old app first (this deletes its settings, dictionary and history).
@@ -59,9 +59,9 @@ update: uninstall the old app first (this deletes its settings, dictionary and h
 VPN that hands out 100.64.0.0/10 addresses works), or put both on one LAN. Then on the PC:
 
 ```sh
-flow-server gen-token --out ~/.config/flow-server/token        # writes a new token (mode 0600), never overwrites
+murmur-server gen-token --out ~/.config/murmur-server/token        # writes a new token (mode 0600), never overwrites
 # config.toml: bind = ["127.0.0.1:7313", "<the PC's VPN IP, e.g. 100.x.y.z>:7313"], token_file = that path
-flow-server --config config.toml                                # crates/flow-server/dist/config.example.toml
+murmur-server --config config.toml                                # crates/murmur-server/dist/config.example.toml
 ```
 
 Your VPN client (or `ip -4 addr`) shows the 100.x address; the token is the content of that file. Copy it to the phone over a channel you trust
@@ -73,7 +73,7 @@ and grant, in this order: *Microphone* → *Display over other apps* → *Access
 (Settings → Accessibility → Murmur → on; if the switch is greyed out: Settings → Apps →
 Murmur → ⋮ → *Allow restricted settings*, then retry) → *Notifications* → *Battery: allow
 background* (each is a row on the *Permissions* page, menu ☰ → Permissions: tap it). The Permissions page's *Status* card must show
-*Native engine* `flow-ffi <version>+<commit>` (e.g. `flow-ffi 0.2.0+1a2b3c4`; D26).
+*Native engine* `murmur-ffi <version>+<commit>` (e.g. `murmur-ffi 0.2.0+1a2b3c4`; D26).
 
 **3. Point it at the server.** Menu ☰ → *Settings* → *Your server* (or Menu ☰ → *Developer settings* → *Server*): host = the PC's
 `100.x.y.z` (or its VPN DNS name), port `7313`, *Paste* the token, *Use TLS* off, *Save* (top
@@ -95,7 +95,7 @@ or the host is a public address. For on-device fallback, either import a model (
 - [ ] **Hold** the bubble, speak, release: inserted; holding never stops by itself.
 - [ ] The *Developer settings* status card says *Last dictation* `Server · client N ms`
       (*Status & server info* → *Active engine* has the full `Server 100.x…:7313 · …` line).
-- [ ] Start a long tap dictation, stop `flow-server` (Ctrl+C) mid-sentence: the preview relabels to
+- [ ] Start a long tap dictation, stop `murmur-server` (Ctrl+C) mid-sentence: the preview relabels to
       `via phone · server unreachable` while you are still talking, and the inserted text is
       complete (buffered audio replayed on the phone).
 - [ ] Start the server again; the next dictation goes `via server` (after the 5 s circuit backoff,
@@ -111,7 +111,7 @@ or the host is a public address. For on-device fallback, either import a model (
 - [ ] Airplane mode on (VPN down): dictation still inserts from the phone engine, label
       `via phone · server unreachable`.
 - [ ] **Never-fail fallback (D24)**: *Settings → Speech to text → Keep loaded while the server is used* **off**
-      (applies at once), stop `flow-server` (or airplane mode). Tap the bubble and talk right away: the preview
+      (applies at once), stop `murmur-server` (or airplane mode). Tap the bubble and talk right away: the preview
       shows `Loading phone model… · server unreachable` for a few seconds (Parakeet ≈ 1 GB), then
       `via phone · …`; nothing you said is lost and the text is inserted. The debug line has
       `connect_ms` (≈ the connect timeout), `local_cold: true` and `local_load_ms`. The next
@@ -119,7 +119,7 @@ or the host is a public address. For on-device fallback, either import a model (
       it is still loading: nothing is inserted.
 - [ ] Same with no model imported: the error says "Server unreachable (…) — phone fallback
       unavailable: No speech model imported…".
-- [ ] logcat (`FlowService`, `FlowEngine`, `FlowA11y`): no `blocking native call on the main
+- [ ] logcat (`MurmurService`, `MurmurEngine`, `MurmurA11y`): no `blocking native call on the main
       thread`, no crash; the token never appears.
 
 Record the results (and the stop → text latency for server vs phone) in `PROJECT_CONTEXT.md`.
@@ -128,12 +128,12 @@ Record the results (and the stop → text latency for server vs phone) in `PROJE
 
 *Developer settings → Debug log & audio → Debug log* (includes transcripts) (off by default; in the
 `local` flavour unlock Developer settings first, see below). While it is on, every dictation
-writes **one JSON line** to logcat tag **`FlowDebug`** and to the app-private file
+writes **one JSON line** to logcat tag **`MurmurDebug`** and to the app-private file
 `files/debug/dictations.jsonl` (newest 500 entries). Engine load failures, model import
 failures, failed server / cloud probes and accessibility health changes are logged there too.
 Nothing is uploaded: the file leaves the phone only when you tap *Share / Export*.
 
-Read it on the PC (USB or wireless debugging, platform tools): `logcat -s FlowDebug:I` (run it
+Read it on the PC (USB or wireless debugging, platform tools): `logcat -s MurmurDebug:I` (run it
 through the platform tools' shell). On the phone: *View* lists the entries newest first;
 *Share / Export* sends the `.jsonl` to an app you choose; *Clear* empties it. Turning the
 toggle off asks whether to clear the file.
@@ -180,13 +180,13 @@ private storage, `files/debug/audio/<ts with - for :>.wav` (e.g. `2026-10-23T10-
 for `"ts":"2026-10-23T10:15:02.123Z"`), linked from the line's `audio` field. Never for password
 fields, banking or excluded apps, nor for cancelled dictations; files older than 72 hours are
 deleted; *Clear audio* deletes them all. Nothing is uploaded. To replay one on the PC: copy it
-out with the platform tools' `exec-out run-as dev.flowclone cat files/debug/audio/<name>.wav >
-<name>.wav` (debug builds), then run it through `flow-cli` with the same model and language.
+out with the platform tools' `exec-out run-as dev.murmur cat files/debug/audio/<name>.wav >
+<name>.wav` (debug builds), then run it through `murmur-cli` with the same model and language.
 
 **Pull everything in one command** (debug builds): `tools/phone/pull-debug.sh [--since TS] [--out DIR]`
-copies `dictations.jsonl`, the kept WAVs and both settings files (`flow_settings.xml`, `dev.xml`)
+copies `dictations.jsonl`, the kept WAVs and both settings files (`murmur_settings.xml`, `dev.xml`)
 to `DIR` (default: a new temp dir; a directory inside the repo is refused) and prints one line,
-e.g. `pulled 42 lines, 3 wavs (1 new, 2 already here), 2 prefs → /tmp/flow-debug.Ab12Cd (61234
+e.g. `pulled 42 lines, 3 wavs (1 new, 2 already here), 2 prefs → /tmp/murmur-debug.Ab12Cd (61234
 bytes from phone)`. Read-only on the phone: the recordings stay there and the host copies are
 yours to delete. Pull into the same `--out DIR` again and only WAVs not already there (by sha256)
 cross the link; every pulled WAV is checked against the phone's sha256 (a mismatch is dropped and
@@ -196,8 +196,8 @@ secret, passw, auth, sealed, cred, bearer or cookie (the sealed server token
 `server.token_sealed`, the cloud keys `cloud.key_sealed.<id>`) keeps its name but loses its value
 (`<redacted>`, numbers 0, sets emptied), JSON inside a value (`cloud`) is redacted by key the same
 way, and anything shaped like an API key (`sk-…`) or bearer token is replaced in the log too.
-Pick the phone with `FLOW_PHONE`: a serial (`FLOW_PHONE=100.64.0.5:5555`) or transport options
-(`FLOW_PHONE="-t 60"`); `FLOW_PKG` changes the package. Test: `tools/phone/test-pull-debug.sh`
+Pick the phone with `MURMUR_PHONE`: a serial (`MURMUR_PHONE=100.64.0.5:5555`) or transport options
+(`MURMUR_PHONE="-t 60"`); `MURMUR_PKG` changes the package. Test: `tools/phone/test-pull-debug.sh`
 (fake platform tool, no phone).
 
 **Feed a WAV file as the microphone** (debug builds only): run one real dictation from a
@@ -212,7 +212,7 @@ tools/phone/play-wav.sh --on-phone files/debug/audio/2026-10-27T10-15-02.123Z.wa
 The WAV must be 16 kHz mono 16-bit PCM (`ffmpeg -i in.m4a -ar 16000 -ac 1 -c:a pcm_s16le
 hello.wav`); anything else is refused before it is sent. The script pushes it into the app's
 private `files/debug/wav-in/` (run-as, sha256-checked), sends the broadcast
-`dev.flowclone.debug.PLAY_WAV` to `.debug.WavMicReceiver` with `--es path files/debug/wav-in/hello.wav`
+`dev.murmur.debug.PLAY_WAV` to `.debug.WavMicReceiver` with `--es path files/debug/wav-in/hello.wav`
 (`--ez fast true`, `--ez tap true`) and prints the app's answer (`ok: hello.wav queued`, or the
 reason it refused; exit 1). The app then runs the normal pipeline on that audio instead of the
 mic: same 100 ms frames, route order, AI cleanup, insert guard, insertion into the focused field,
@@ -222,11 +222,11 @@ session holds at most 30 s). Refused while a dictation is running and in protect
 (password fields, banking and excluded apps): nothing is inserted there. The receiver only
 exists in debug builds and only the platform tools' shell can trigger it (it requires
 `android.permission.DUMP`, which no app can hold); release builds have no receiver (checked by
-`verify<Variant>NoDebugWavReceiver` and the release unit tests). Same `FLOW_PHONE` / `FLOW_PKG`
+`verify<Variant>NoDebugWavReceiver` and the release unit tests). Same `MURMUR_PHONE` / `MURMUR_PKG`
 as above. Test: `tools/phone/test-play-wav.sh` (fake platform tool, no phone).
 
 The server token and cloud keys are scrubbed from every line, and the clipboard is never read.
-With the toggle off nothing is written; `FlowService commit …` (timings only, never text) is
+With the toggle off nothing is written; `MurmurService commit …` (timings only, never text) is
 always logged and since D22 also carries `wait=…ms segments=… pre_asr=…ms client=…ms`
 (`client=-` when the result did not come through the router).
 
@@ -239,12 +239,12 @@ before you stop, so it is off there. Live preview and ✕ behave as before.
 ### Release build
 
 `tools/dist.sh` also builds `assemble<Flavour>Release`. Signing comes only from outside git:
-Gradle properties `flow.release.storeFile`, `flow.release.storePassword`, `flow.release.keyAlias`,
-`flow.release.keyPassword` (e.g. in `~/.gradle/gradle.properties`) or the environment variables
-`FLOW_RELEASE_STORE_FILE`, `FLOW_RELEASE_STORE_PASSWORD`, `FLOW_RELEASE_KEY_ALIAS`,
-`FLOW_RELEASE_KEY_PASSWORD`. Without them the release APKs come out as
+Gradle properties `murmur.release.storeFile`, `murmur.release.storePassword`, `murmur.release.keyAlias`,
+`murmur.release.keyPassword` (e.g. in `~/.gradle/gradle.properties`) or the environment variables
+`MURMUR_RELEASE_STORE_FILE`, `MURMUR_RELEASE_STORE_PASSWORD`, `MURMUR_RELEASE_KEY_ALIAS`,
+`MURMUR_RELEASE_KEY_PASSWORD`. Without them the release APKs come out as
 `*-release-unsigned.apk`, which Android will not install. To sign: create a key once with
-`keytool -genkeypair -v -keystore <outside the repo>/flow-release.jks -alias flow -keyalg RSA
+`keytool -genkeypair -v -keystore <outside the repo>/murmur-release.jks -alias murmur -keyalg RSA
 -keysize 4096 -validity 10000`, set the four properties and rerun `tools/dist.sh` (or sign an
 unsigned APK with the SDK's `apksigner sign --ks …`). A release-signed APK and a debug one cannot
 update each other: switching between them means uninstalling (and losing app data). The CI
@@ -253,13 +253,13 @@ workflow never signs release builds (no secrets in the repo or in Actions).
 ## 1. Build the APK (on the PC)
 
 ```sh
-cd apps/flow-android
+cd apps/murmur-android
 tools/build-sherpa-android.sh ~/.cache/sherpa-android-no-tts               # once: Parakeet runtime, no TTS (D80)
 export SHERPA_ANDROID_LIBS=~/.cache/sherpa-android-no-tts                    # Parakeet runtime (local/hybrid)
 export BINDGEN_EXTRA_CLANG_ARGS="-I/usr/lib/gcc/x86_64-linux-gnu/13/include"  # this box's libclang
 tools/build-native.sh --flavor local     # -> app/src/local/jniLibs/arm64-v8a/
 tools/build-native.sh --flavor hybrid    # -> app/src/hybrid/jniLibs/arm64-v8a/ (+ OpenRouter client)
-tools/build-native.sh --flavor remote    # -> app/src/remote/jniLibs/arm64-v8a/ (libflow_ffi.so only, + OpenRouter client)
+tools/build-native.sh --flavor remote    # -> app/src/remote/jniLibs/arm64-v8a/ (libmurmur_ffi.so only, + OpenRouter client)
 ./gradlew testDebugUnitTest assembleDebug          # all three flavours + their gates
 tools/probes/check_native_so.sh --flavor local app/build/outputs/apk/local/debug/app-local-debug.apk
 ```
@@ -269,22 +269,22 @@ tools/probes/check_native_so.sh --flavor local app/build/outputs/apk/local/debug
 fails if a flavour breaks its promise: `verifyLocalDebugNoNetworkPermissions` (+
 `…NoNetworkCode`), `verifyHybridDebugOnlyInternetPermission`,
 `verifyRemoteDebugOnlyInternetPermission` and `verifyRemoteDebugNoAsrLibs` (no
-whisper/sherpa/onnxruntime/flow_llm/libc++ in the APK, no `whisper_`/`llama_` exports).
-`…NoNetworkCode` also rejects the cloud STT client (`reqwest` / `webpki` / `flow-cloud`) in the
+whisper/sherpa/onnxruntime/murmur_llm/libc++ in the APK, no `whisper_`/`llama_` exports).
+`…NoNetworkCode` also rejects the cloud STT client (`reqwest` / `webpki` / `murmur-cloud`) in the
 local library (D18 C2); `check_native_so.sh --flavor hybrid|remote` requires it there.
 
 If you skip `build-native.sh`, the APK still installs, but the Permissions page's *Native engine* row
 says "Unavailable". Only the mock engine works in that build. Without the LLM plugin
 (`--no-llm`) dictation works, and turning on AI cleanup makes the Permissions page's *AI cleanup* row
 say "Failed to load … plugin missing". If the Permissions page says **"Native library flavour
-mismatch"**, the APK was packaged with another flavour's `libflow_ffi.so`: rebuild with the
+mismatch"**, the APK was packaged with another flavour's `libmurmur_ffi.so`: rebuild with the
 matching `--flavor`.
 
 The whisper code is compiled for `armv8.2-a+dotprod+fp16`, which covers any big core from
 2018 on (Cortex-A75 and later, all recent Snapdragon, Tensor, Exynos and Dimensity chips).
 If the app crashes with `SIGILL` the first time it transcribes, your phone has only older
 cores, such as a Cortex-A53-only budget SoC. Rebuild for it:
-`FLOW_ARM_ARCH=armv8-a tools/build-native.sh --flavor local`.
+`MURMUR_ARM_ARCH=armv8-a tools/build-native.sh --flavor local`.
 
 ## 2. Get a speech model (on the PC)
 
@@ -327,6 +327,21 @@ read as off (e.g. *Allow server* in `local`).
 Updating keeps your data. Uninstalling deletes the imported model, the dictionary and the
 history.
 
+### Moving from the app before the rename (D83)
+
+Murmur is a new app (`dev.murmur`), so it installs next to the old one and starts empty. To
+bring your data over:
+
+1. In the **old** app: Settings → Back up & restore → *Export all data*. Save the file to
+   Downloads or Drive.
+2. Install Murmur (above) and grant its permissions (§4).
+3. In Murmur: Settings → Back up & restore → *Restore from a backup* → pick that file. Backups
+   from the old app are accepted.
+4. Enter the server token (Developer settings) and any API key again: they are never in a
+   backup. Import the speech model again (§5) if you used one; models aren't in a backup either.
+5. Turn Accessibility on for Murmur and off for the old app, then uninstall the old app once
+   Murmur works.
+
 ## 4. Grant permissions (in order)
 
 Open **Murmur**. The **Permissions** page (menu ☰ → Permissions) lists each permission with its state on
@@ -362,8 +377,8 @@ whisper files with size / speed / quality; tapping one copies its download link 
 
 The app copies the file into its private storage (`files/models/`) and loads it. The
 original in `Download/` can be deleted afterwards. The import page's *Status* card shows it as
-*Active model*; the Permissions page's *Status* card shows *Native engine* `flow-ffi <version>+<commit>`
-(e.g. `flow-ffi 0.2.0+1a2b3c4`; D26) and *Speech engine* `Loaded: ggml-base.en-q5_1.bin`. To switch
+*Active model*; the Permissions page's *Status* card shows *Native engine* `murmur-ffi <version>+<commit>`
+(e.g. `murmur-ffi 0.2.0+1a2b3c4`; D26) and *Speech engine* `Loaded: ggml-base.en-q5_1.bin`. To switch
 models, tap *Use* under another imported file. *Delete* (asks first) frees the space.
 
 ### Parakeet (optional, local / hybrid)
@@ -404,12 +419,12 @@ debug log says "Hebrew model failed: …". Auto-detect stays English-first.
 
 ## 5b. Server mode (hybrid / remote)
 
-1. On the server box: run `flow-server` (see `docs/protocol.md` / `crates/flow-server`), bound
-   to its VPN `100.x` address or the LAN; `flow-server gen-token` prints the token.
+1. On the server box: run `murmur-server` (see `docs/protocol.md` / `crates/murmur-server`), bound
+   to its VPN `100.x` address or the LAN; `murmur-server gen-token` prints the token.
 2. Phone: join the same VPN (or be on the same LAN). No extra permission is needed.
 3. Menu ☰ → **Settings** → **Your server** (the same page as Menu ☰ → *Developer settings* → *Server*):
    host = the server's `100.x.y.z` or its VPN DNS name, port `7313`, *Paste* the token,
-   *Save* (top bar), then *Test connection* → "OK · median N ms (…) · flow-server … · parakeet".
+   *Save* (top bar), then *Test connection* → "OK · median N ms (…) · murmur-server … · parakeet".
 4. Dictate: the hub's status card shows *Last dictation* `Server · client N ms`; *Status &
    server info → Active engine* shows `Server 100.x.y.z:7313 · …`.
 5. **Server → Timeouts → Connect timeout** (default **2500 ms** since D24; a stored 800, the old default, becomes 2500
@@ -611,7 +626,7 @@ Every screen uses the app design (top bar, cards, light and dark):
 - [ ] `hybrid`, server up (VPN): *Test connection* shows median RTT + server version;
       dictation → last engine `Server …`, optional badge `[S]` on the preview line; Server info
       shows "pipeline ✓".
-- [ ] `hybrid`, airplane mode (or `systemctl stop flow-server`): dictation still inserts, last
+- [ ] `hybrid`, airplane mode (or `systemctl stop murmur-server`): dictation still inserts, last
       engine `Client (on-device) · fallback: connect_failed`, no words lost; a second dictation
       within 5 s shows `circuit_open`; Circuit row "open until hh:mm:ss"; *Reset circuit* closes it.
 - [ ] `hybrid`, wrong token: Test connection "auth_failed: token rejected"; dictation falls back
@@ -627,7 +642,7 @@ Every screen uses the app design (top bar, cards, light and dark):
       (red "Enter 1–20 minutes") and Back after an edit asks *Discard changes?*; TalkBack reads
       each switch row as one switch and each choice as a radio button; dark mode follows the phone.
 - [ ] Settings changes apply to the next dictation without reloading the model (Permissions page
-      keeps `Loaded:`; logcat `FlowEngine` shows no reload) unless *Keep loaded while the server is used* changed.
+      keeps `Loaded:`; logcat `MurmurEngine` shows no reload) unless *Keep loaded while the server is used* changed.
 - [ ] Token survives an app restart (Keystore); *Clear* + *Save* removes it. With TalkBack (or a
       UI dump) the token field reads "set (hidden)", also after *Show*.
 - [ ] Parakeet (local/hybrid, 6-8 GB phone): folder import, `Loaded: client: Parakeet …`, jfk-style
@@ -642,7 +657,7 @@ Every screen uses the app design (top bar, cards, light and dark):
 None of this can be checked on the build machine. Record the results in
 `PROJECT_CONTEXT.md`.
 
-Logcat tags: `FlowA11y` (insertion step trail), `FlowService`, `FlowMic`, `FlowEngine`.
+Logcat tags: `MurmurA11y` (insertion step trail), `MurmurService`, `MurmurMic`, `MurmurEngine`.
 
 **OpenRouter (D28)** — `hybrid` (and `remote`) APK and a real OpenRouter key; record model,
 latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CONTEXT.md`
@@ -672,12 +687,12 @@ latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CO
       status "no zero-retention provider serves this model".
 - [ ] Monthly budget lower than this month's cost → "monthly budget reached"; *Reset counters* resumes.
 - [ ] *Reset to defaults* (Developer) deletes the key (`no key`) and turns both uses off; usage survives.
-- [ ] logcat (`FlowEngine`, `FlowService`, `FlowDebug`) never shows the key (search for its last 8 characters).
+- [ ] logcat (`MurmurEngine`, `MurmurService`, `MurmurDebug`) never shows the key (search for its last 8 characters).
 
 **Native engine / packaging**
-- [ ] The Permissions page's *Native engine* row shows `flow-ffi <version>+<commit>` (e.g. `flow-ffi 0.2.0+1a2b3c4`; D26), not "Unavailable". This is
+- [ ] The Permissions page's *Native engine* row shows `murmur-ffi <version>+<commit>` (e.g. `murmur-ffi 0.2.0+1a2b3c4`; D26), not "Unavailable". This is
       the first time `System.loadLibrary` runs on bionic: `libc++_shared.so` is resolved,
-      and there is no `dlopen` error under `FlowEngine`.
+      and there is no `dlopen` error under `MurmurEngine`.
 - [ ] Android 15 / 16 KB-page device (e.g. Pixel 8+ with the 16 KB developer option): the
       app installs and no "page size compatibility" dialog appears.
 - [ ] Model import: progress under *Import model file…*, then *Active model* in the page's *Status* card. Note the model load time ("Loading
@@ -693,13 +708,13 @@ latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CO
 
 **AI cleanup** (`tools/build-native.sh --whisper --llm`; host-proven with Qwen2.5 0.5B/1.5B)
 - [ ] The Permissions page's *AI cleanup* row shows `qwen2.5-0.5b-instruct-q4_k_m.gguf`, not "Failed to
-      load". This is the first `System.loadLibrary("flow_llm")` plus the core's
-      `dlopen("libflow_llm.so")` on bionic. Note the load time (switch on → line appears).
+      load". This is the first `System.loadLibrary("murmur_llm")` plus the core's
+      `dlopen("libmurmur_llm.so")` on bionic. Note the load time (switch on → line appears).
 - [ ] Dictate "um so I think we should meet tomorrow at noon". History shows *AI cleaned*
       and its detail page `llm … ms`. Note `asr`/`llm` ms, phone and SoC. Over 3 s → `llm_timeout` and the raw
       text (expected on slow phones; then try 0.5B or turn it off).
 - [ ] Whisper and the LLM loaded together: no crash, no low-memory kill of the service
-      while switching apps (both ggml copies coexist: `libflow_ffi.so` keeps whisper's, the
+      while switching apps (both ggml copies coexist: `libmurmur_ffi.so` keeps whisper's, the
       plugin its own).
 - [ ] No `SIGILL` in the LLM (same dotprod/fp16 arch flags as whisper).
 - [ ] AI cleanup off → History shows *Transcript* and no `llm` time.
@@ -745,14 +760,13 @@ latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CO
 - [ ] *Dictionary* tab → **+**: "jason" → "JSON" (*Save* enables only once valid;
       a duplicate word shows its error under the field), dictate "jason file" → "JSON file". Edit it, delete it.
 - [ ] *Snippets* tab → **+**: "my address" → multi-line text; say only "my address" → the text.
-- [ ] Learn from my edits (real engine; the mock engine suggests nothing): dictate "local whisper" into
-      Notes, change it to "Murmur" within 45 s and leave it → toast "Dictionary suggestion: Flow
-      Clone"; the *Dictionary* tab's *Suggestions* card lists it. *Add* puts it in the dictionary; a second suggestion
+- [ ] Learn from my edits (real engine; the mock engine suggests nothing): dictate "mer mur" into
+      Notes, change it to "Murmur" within 45 s and leave it → toast "Dictionary suggestion: Murmur"; the *Dictionary* tab's *Suggestions* card lists it. *Add* puts it in the dictionary; a second suggestion
       *Dismiss*ed and the same edit repeated is not suggested again. Switch the field or app mid-watch:
       nothing more is read (debug log `learn_edit end=focus_changed`). *Settings → Learn from my edits*
       off → no `learn_edit` event after a dictation. Never in a password field (no bubble there anyway).
 - [ ] Quick note (*Menu ☰ → Quick note*, and long-press the app icon → *Quick note*; the Scratchpad before Notes): the keyboard
-      opens and the bubble shows; dictate twice → each text appears **once** (`FlowA11y` log `insert
+      opens and the bubble shows; dictate twice → each text appears **once** (`MurmurA11y` log `insert
       SUCCESS_TEXT_FOUND`, no `node_tier` step); swipe the app away from Recents and reopen → the text is
       still there. *Copy all* pastes elsewhere; *Share* opens the share sheet; *Clear* asks, then empties
       it (still empty after reopening). In *Settings* fields the bubble stays hidden. With *Learn from my
@@ -773,7 +787,7 @@ latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CO
       counts it. *Reset stats* asks first; *Reset* → all zero (and History is not re-added after an
       app restart). Next day without dictating: *Current streak* keeps yesterday's run.
 - [ ] Back up & restore (*Settings → Back up & restore*): *Export all data* opens the system file
-      picker with `flow-clone-backup-<date>.json`; save it to Downloads or Drive. Open the file: no
+      picker with `murmur-backup-<date>.json`; save it to Downloads or Drive. Open the file: no
       `token`, `key_sealed` or `sk-or-` text in it. Uninstall the app (or *Clear storage*), reinstall,
       *Restore from a backup* → pick the file → the dialog lists notes, dictations, dictionary words,
       snippets, Insights days and settings; *Replace* → toast, Settings reopens with the old values.
@@ -785,7 +799,7 @@ latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CO
       Friday afternoon. Thanks!", select the middle sentence: **✎** appears right of the mic (gone again
       when the selection is cleared). Tap ✎, say "make it shorter": the line above the bubble reads
       *Command: make it shorter*, then *Command: rewriting…*; only the selected sentence changes, "Hi
-      team." and "Thanks!" stay, the cursor sits after the new text (`FlowA11y` log `command replace
+      team." and "Thanks!" stay, the cursor sits after the new text (`MurmurA11y` log `command replace
       ok=true`). History: a *Command* row; its page shows *Instruction*, *Original selection*, *Result*;
       Insights unchanged. Gmail / WhatsApp / Chrome text box: same (a field without `ACTION_SET_TEXT`
       goes through the keyboard connection). Select text in a password field, a PIN field, a banking app:
@@ -810,7 +824,7 @@ latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CO
       reply.
 - [ ] In a password field the bubble is hidden and nothing is inserted.
 - [ ] The bubble is hidden in a banking app.
-- [ ] Insertion fallbacks: commitText vs ACTION_SET_TEXT vs clipboard. `FlowA11y` prints
+- [ ] Insertion fallbacks: commitText vs ACTION_SET_TEXT vs clipboard. `MurmurA11y` prints
       which step was taken.
 - [ ] The FGS microphone promotion works on Android 14+, and dictation keeps going with the
       screen locked or the app in the background.

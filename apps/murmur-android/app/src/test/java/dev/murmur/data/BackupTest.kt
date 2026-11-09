@@ -1,9 +1,9 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.core.DictEntry
-import dev.flowclone.learn.Suggestion
-import dev.flowclone.learn.Suggestions
-import dev.flowclone.notes.Note
+import dev.murmur.core.DictEntry
+import dev.murmur.learn.Suggestion
+import dev.murmur.learn.Suggestions
+import dev.murmur.notes.Note
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -54,7 +54,7 @@ class BackupTest {
 
     @Test fun headerIsTheDocumentedShape() {
         val o = JSONObject(Backup.encode(meta, full))
-        assertEquals("flow-clone-backup", o.getString("format"))
+        assertEquals("murmur-backup", o.getString("format"))
         assertEquals(1, o.getInt("version"))
         assertEquals("0.7.1", o.getString("app_version"))
         assertEquals(meta.created, o.getString("created"))
@@ -95,7 +95,7 @@ class BackupTest {
     }
 
     @Test fun aHandMadeFileCannotPlantASecret() {
-        val text = """{"format":"flow-clone-backup","version":1,"data":{"developer":{
+        val text = """{"format":"murmur-backup","version":1,"data":{"developer":{
             "server.token_sealed":{"type":"string","value":"x:y"},
             "cloud.key_sealed.openrouter":{"type":"string","value":"x:y"},
             "server.host":{"type":"string","value":"h"}},
@@ -110,8 +110,16 @@ class BackupTest {
         for (k in listOf("server.host", "cloud", "allow_cloud", "language", "keep_local_warm", "cloud_usage")) assertFalse(k, Backup.isSecret(k))
     }
 
+    @Test fun aBackupFromTheAppBeforeTheRenameRestores() {
+        // D83: synthetic export of the old app (old format name, same layout).
+        val old = JSONObject(Backup.encode(meta, full)).put("format", "flow-clone-backup").toString()
+        val back = ok(old)
+        assertEquals(full, back.data)
+        assertEquals("murmur-backup", JSONObject(Backup.encode(back.meta, back.data)).getString("format"))
+    }
+
     @Test fun newerVersionIsRefusedWithAClearMessage() {
-        val r = rejected("""{"format":"flow-clone-backup","version":2,"data":{}}""")
+        val r = rejected("""{"format":"murmur-backup","version":2,"data":{}}""")
         assertTrue(r, "newer version" in r && "Update the app" in r)
     }
 
@@ -119,24 +127,24 @@ class BackupTest {
         assertTrue(rejected("this is not json").contains("not a Murmur backup"))
         assertTrue(rejected("""[{"word":"x"}]""").contains("not a Murmur backup")) // a dictionary export
         assertTrue(rejected("""{"format":"something-else","version":1,"data":{}}""").contains("not a Murmur backup"))
-        assertTrue(rejected("""{"format":"flow-clone-backup","data":{}}""").contains("damaged"))
-        assertTrue(rejected("""{"format":"flow-clone-backup","version":0,"data":{}}""").contains("damaged"))
-        assertTrue(rejected("""{"format":"flow-clone-backup","version":"1","data":{}}""").contains("damaged"))
+        assertTrue(rejected("""{"format":"murmur-backup","data":{}}""").contains("damaged"))
+        assertTrue(rejected("""{"format":"murmur-backup","version":0,"data":{}}""").contains("damaged"))
+        assertTrue(rejected("""{"format":"murmur-backup","version":"1","data":{}}""").contains("damaged"))
     }
 
     @Test fun malformedSectionsAreRefusedWholeNotHalfRead() {
         val bad = listOf(
-            """{"format":"flow-clone-backup","version":1}""",
-            """{"format":"flow-clone-backup","version":1,"data":{"notes":{"id":"x"}}}""",
-            """{"format":"flow-clone-backup","version":1,"data":{"notes":[{"id":"../../etc","text":"x"}]}}""",
-            """{"format":"flow-clone-backup","version":1,"data":{"notes":[{"id":"a","text":"x"},{"id":"a","text":"y"}]}}""",
-            """{"format":"flow-clone-backup","version":1,"data":{"notes":[{"id":"a"}]}}""",
-            """{"format":"flow-clone-backup","version":1,"data":{"history":[{"status":"FORMATTED"}]}}""",
-            """{"format":"flow-clone-backup","version":1,"data":{"history":["x"]}}""",
-            """{"format":"flow-clone-backup","version":1,"data":{"settings":{"language":{"type":"blob","value":1}}}}""",
-            """{"format":"flow-clone-backup","version":1,"data":{"settings":{"cap_minutes":{"type":"int","value":"many"}}}}""",
-            """{"format":"flow-clone-backup","version":1,"data":{"dictionary":{"word":"x"}}}""",
-            """{"format":"flow-clone-backup","version":1,"data":{"insights":{"days":{"2026-10-28":"lots"}}}}""",
+            """{"format":"murmur-backup","version":1}""",
+            """{"format":"murmur-backup","version":1,"data":{"notes":{"id":"x"}}}""",
+            """{"format":"murmur-backup","version":1,"data":{"notes":[{"id":"../../etc","text":"x"}]}}""",
+            """{"format":"murmur-backup","version":1,"data":{"notes":[{"id":"a","text":"x"},{"id":"a","text":"y"}]}}""",
+            """{"format":"murmur-backup","version":1,"data":{"notes":[{"id":"a"}]}}""",
+            """{"format":"murmur-backup","version":1,"data":{"history":[{"status":"FORMATTED"}]}}""",
+            """{"format":"murmur-backup","version":1,"data":{"history":["x"]}}""",
+            """{"format":"murmur-backup","version":1,"data":{"settings":{"language":{"type":"blob","value":1}}}}""",
+            """{"format":"murmur-backup","version":1,"data":{"settings":{"cap_minutes":{"type":"int","value":"many"}}}}""",
+            """{"format":"murmur-backup","version":1,"data":{"dictionary":{"word":"x"}}}""",
+            """{"format":"murmur-backup","version":1,"data":{"insights":{"days":{"2026-10-28":"lots"}}}}""",
         )
         for (t in bad) assertTrue(t, rejected(t).contains("damaged"))
         // Truncated mid-write.
@@ -152,6 +160,6 @@ class BackupTest {
     }
 
     @Test fun fileNameCarriesTheDate() {
-        assertEquals("flow-clone-backup-2026-10-29.json", Backup.fileName(java.time.LocalDate.of(2026, 10, 29)))
+        assertEquals("murmur-backup-2026-10-29.json", Backup.fileName(java.time.LocalDate.of(2026, 10, 29)))
     }
 }
