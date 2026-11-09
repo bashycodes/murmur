@@ -46,7 +46,7 @@ pub use engine::{
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Revision of the deterministic pipeline (VAD, hallucination guard,
-/// spoken cleanup, client post-processing, paste segments). Bump it whenever
+/// spoken cleanup, post-processing, paste segments). Bump it whenever
 /// any of them changes output for the same input, so a hybrid client and
 /// its server can detect pipeline skew (D17).
-pub const POSTPROCESS_REV: &str = "2026-10-26.1";
+pub const POSTPROCESS_REV: &str = "2026-11-09.1";

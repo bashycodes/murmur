@@ -11,8 +11,8 @@ use crate::dictionary::Dictionary;
 
 pub const SAMPLE_RATE: usize = 16_000;
 
-/// Platform whose behaviour the post-processor follows where Windows and
-/// Android differ.
+/// Platform whose host conventions the post-processor follows where
+/// Windows and Android differ.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Platform {
@@ -36,7 +36,7 @@ pub enum CleanupLevel {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Style {
-    /// Default style: period drop only in messaging apps (<= 2 sentences).
+    /// Default: period drop only in messaging apps (<= 2 sentences).
     #[default]
     Default,
     Formal,
@@ -264,7 +264,8 @@ pub struct FieldContext {
     pub after: String,
     /// Words visible on screen (proper-noun hints, ASR bias).
     pub screen_words: Vec<String>,
-    /// Open file names in an IDE (Cursor/Windsurf @file tagging).
+    /// Open file names in an IDE. Not read since D82 (IDE tagging
+    /// removed); kept for the wire format.
     pub file_names: Vec<String>,
     /// False when the shell could not read the field at all.
     pub context_known: bool,
