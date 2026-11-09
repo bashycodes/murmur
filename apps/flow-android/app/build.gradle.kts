@@ -328,7 +328,7 @@ abstract class VerifyApkNativeLibs : DefaultTask() {
 }
 
 /**
- * Copies flow-core's `data/app-groups.json` (D80) into a generated Java-resource dir, so that
+ * Copies flow-core's `data/app-groups.json` (D81) into a generated Java-resource dir, so that
  * file alone ships (PolicyLists reads it); later files under crates/flow-core/data do not.
  */
 abstract class CopyAppGroups : DefaultTask() {
@@ -355,7 +355,7 @@ abstract class VerifyApkAppGroups : DefaultTask() {
         val missing = apks.filter { apk -> ZipFile(apk).use { it.getEntry("app-groups.json") == null } }.map { it.name }
         report.get().asFile.apply { parentFile.mkdirs() }
             .writeText(apks.joinToString("\n") { "${it.name}: app-groups.json ${if (it.name in missing) "MISSING" else "ok"}" } + "\n")
-        if (missing.isNotEmpty()) throw GradleException("app-groups.json missing from $missing (D80)")
+        if (missing.isNotEmpty()) throw GradleException("app-groups.json missing from $missing (D81)")
     }
 }
 
@@ -384,7 +384,7 @@ androidComponents {
             "local" -> tasks.register<VerifyApkNativeLibs>("verifyLocal${bt}NoNetworkCode") { mode.set("noNetCode") }
             else -> null
         }
-        // D80: PolicyLists reads app-groups.json, the app groups flow-core and the Windows app use.
+        // D81: PolicyLists reads app-groups.json, the app groups flow-core and the Windows app use.
         val appGroups = tasks.register<CopyAppGroups>("copy${cap}AppGroups") {
             source.set(rootProject.layout.projectDirectory.file("../../crates/flow-core/data/app-groups.json"))
         }

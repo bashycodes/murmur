@@ -13,7 +13,7 @@ import org.json.JSONObject
  * app read the same file, so the apps cannot disagree on a style bucket or a browser, and the
  * shared vectors (`crates/flow-core/fixtures/app-groups/vectors.json`) are checked on both sides.
  *
- * Method (decision D80; the file's `about` lines say the same): each group is defined by what its
+ * Method (decision D81; the file's `about` lines say the same): each group is defined by what its
  * caller does with it. Membership comes from public sources only: a package name is the id in the
  * app's public Google Play listing (`play.google.com/store/apps/details?id=<package>`), a host is
  * the vendor's own web address. Naming rules cover whole families where the vendor's naming makes
@@ -90,7 +90,7 @@ object PolicyLists {
             "$RESOURCE is broken: $e"
         }
         try {
-            Log.e("PolicyLists", "$problem; treating every app as restricted (D80)")
+            Log.e("PolicyLists", "$problem; treating every app as restricted (D81)")
         } catch (_: RuntimeException) {
             // Plain JVM without Android stubs.
         }

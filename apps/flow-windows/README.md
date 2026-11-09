@@ -359,7 +359,7 @@ Settings → AI cleanup:
   groups* list shows the default mapping read-only (overridden rows struck
   through, *Change* copies one into your table). Saved as `app_buckets`
   (exe stem or host → group), over the built-in lists
-  (flow-core `data/app-groups.json`, D80: WhatsApp, Telegram, Signal, Messenger, Discord,
+  (flow-core `data/app-groups.json`, D81: WhatsApp, Telegram, Signal, Messenger, Discord,
   Viber, LINE, WeChat, Instagram, Google Messages → personal; Slack, Teams, Mattermost, Zoom → work; Outlook,
   Gmail → email).
 

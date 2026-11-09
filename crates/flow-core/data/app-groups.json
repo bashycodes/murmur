@@ -1,7 +1,7 @@
 {
   "about": [
     "Which apps get special handling: one source for flow-core (Rust, both platforms), the Windows app (through flow-core) and the Android PolicyLists.kt (packed as a Java resource).",
-    "Method: each group is defined by what its caller does with it (see docs/DECISIONS.md D80). Membership comes from public sources only: an app's package name is the id in its public Google Play listing (play.google.com/store/apps/details?id=<package>), a Windows id is the program's own executable name as its vendor ships it, a web host is the vendor's own address. Naming rules cover whole families where the vendor's naming makes that safe; lists hold the rest.",
+    "Method: each group is defined by what its caller does with it (see docs/DECISIONS.md D81). Membership comes from public sources only: an app's package name is the id in its public Google Play listing (play.google.com/store/apps/details?id=<package>), a Windows id is the program's own executable name as its vendor ships it, a web host is the vendor's own address. Naming rules cover whole families where the vendor's naming makes that safe; lists hold the rest.",
     "Matching (any case; ids and hosts are lowercased on load and on lookup): exact = equal; families = equal or starts with '<family>.'; parts = one dot-separated part equals; words = substring. Windows ids are exe names without '.exe', matched exactly (the old lists matched by prefix). Hosts (no 'www.'): suffixes = equal or ends with '.<suffix>'; prefixes = starts with."
   ],
   "android": {

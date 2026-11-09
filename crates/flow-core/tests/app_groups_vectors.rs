@@ -1,4 +1,4 @@
-//! Shared app-group vectors (`fixtures/app-groups/vectors.json`, D80).
+//! Shared app-group vectors (`fixtures/app-groups/vectors.json`, D81).
 //! The Android `AppGroupsVectorsTest` checks the same file against
 //! `PolicyLists`, so both sides read `data/app-groups.json` the same way.
 
