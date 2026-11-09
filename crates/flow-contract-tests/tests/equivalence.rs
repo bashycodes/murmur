@@ -61,7 +61,10 @@ fn equivalence_empty_reasons() {
         ("p1_no_speech_silence", "no_speech"),
         ("p1_no_speech_room_noise", "no_speech"),
         ("p1_blank_asr", "blank_asr"),
+        // A stock phrase on 300 ms of speech: under the guard's 400 ms.
         ("p1_hallucination_thank_you", "hallucination"),
+        // Only a 60 ms burst, a key tap: no speech (`vad::MIN_LONGEST_RUN_MS`).
+        ("p1_no_speech_tap_only", "no_speech"),
         ("p1_only_filler", "only_filler"),
     ] {
         let (l, r) = both(&case(name));
