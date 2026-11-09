@@ -24,9 +24,9 @@ const TEMPLATE = `
 
   <div class="fl-banner fl-banner-amber">
     <h3 class="fl-banner-title">Notes you dictate and keep</h3>
-    <p class="fl-banner-body">A to-do list, a message to polish before you send it, a brain dump. Notes are saved on this PC only.</p>
+    <p class="fl-banner-body">Speak a list, draft a reply before it goes out, or get an idea down while it's fresh. Notes are saved on this PC only.</p>
     <div class="fl-banner-actions">
-      <button type="button" class="fl-btn fl-btn-lumen" id="sp_new">${iconSvg(ICON.plus)}Start new note</button>
+      <button type="button" class="fl-btn fl-btn-lumen" id="sp_new">${iconSvg(ICON.plus)}New note</button>
     </div>
   </div>
 

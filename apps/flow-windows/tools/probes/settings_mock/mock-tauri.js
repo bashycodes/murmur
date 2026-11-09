@@ -23,8 +23,8 @@
     transforms: {
       enabled: false, auto_apply: null, view_changes: "Win+Alt+O",
       items: [
-        { transform: { id: "polish", name: "Polish", description: "Improve clarity and conciseness", instruction: "Rewrite the text so it reads clearly and concisely. Keep the meaning, the language and the voice." }, shortcut: "Win+Alt+1" },
-        { transform: { id: "prompt_engineer", name: "Prompt Engineer", description: "Turns a rough ask into a clear prompt", instruction: "Turn the text into a clear, specific prompt for an AI assistant." }, shortcut: "Win+Alt+2" },
+        { transform: { id: "polish", name: "Polish", description: "Clearer, tighter wording", instruction: "Rewrite the text so it reads clearly and concisely. Keep the meaning, the language and the voice." }, shortcut: "Win+Alt+1" },
+        { transform: { id: "prompt_engineer", name: "Prompt Builder", description: "Turns a rough ask into a clear prompt", instruction: "Turn the text into a clear, specific prompt for an AI assistant." }, shortcut: "Win+Alt+2" },
       ],
     },
   };
@@ -182,9 +182,9 @@
       formatted: "I think we should meet tomorrow at 3.", pasted: "I think we should meet tomorrow at 3.", edited: null,
       duration_ms: 4100, words: 8, lang: "en", route: "server", final_text: "I think we should meet tomorrow at 3.", ai_edited: true,
       has_audio: true, versions: [] },
-    { id: 2, ts: now - 3600e3, app: "slack.exe", url: null, raw: "i use whisper flow daily",
-      formatted: null, pasted: "I use whisper flow daily", edited: "I use Wispr Flow daily",
-      duration_ms: 2000, words: 5, lang: "en", route: "pc", final_text: "I use whisper flow daily", ai_edited: false },
+    { id: 2, ts: now - 3600e3, app: "slack.exe", url: null, raw: "i use cora note daily",
+      formatted: null, pasted: "I use cora note daily", edited: "I use Korra Note daily",
+      duration_ms: 2000, words: 5, lang: "en", route: "pc", final_text: "I use cora note daily", ai_edited: false },
     { id: 1, ts: now - 86400e3 * 2, app: "notepad.exe", url: null, raw: "hello world", formatted: null, pasted: null,
       edited: null, duration_ms: 900, words: 2, lang: "en", route: null, final_text: "hello world", ai_edited: false },
   ];
@@ -195,7 +195,7 @@
     { key: "telegram", exe: "telegram.exe", name: "Telegram", default_bucket: "personal" },
     { key: "whatsapp", exe: "whatsapp.exe", name: "WhatsApp", default_bucket: "personal" },
   ];
-  let suggestions = [{ word: "Wispr Flow", heard: "whisper flow", app: "slack.exe", ts: now, count: 2 }];
+  let suggestions = [{ word: "Korra Note", heard: "cora note", app: "slack.exe", ts: now, count: 2 }];
   const listeners = {};
   const debugLog = { enabled: false, count: 12 };
   // ?onboard=1: a fresh install (onboarded false, no server, no model yet):
