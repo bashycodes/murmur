@@ -14,7 +14,7 @@ owner's history, recordings, transcripts and every output stay in
   on (`segment_pause_ms` 800), local Llama 3B cleanup that mostly did not
   run (3 s timeout), 2 rows on flow-server. 15 rows still have audio.
 * Phone history: not available while this ran; not used.
-* Parity main set (13 clips, cased Wispr references) and the parity
+* Parity main set (13 clips, cased references) and the parity
   English set (30 clips), Parakeet unified greedy, PC session, rerun with
   flow-cli from this branch: bridge joins (product), plain joins, whole
   clip.

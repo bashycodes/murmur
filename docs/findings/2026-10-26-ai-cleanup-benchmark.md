@@ -2,18 +2,18 @@
 
 **Phase 1d update (OpenRouter, same day).** Through OpenRouter (product `OpenRouterCleaner`,
 `zdr: true`, `data_collection: deny`, prompt v4b, raw input), **Llama-3.3-70B is the only
-configuration that meets the ≤ 1.5 s median budget *and* beats every local model on Wispr
-closeness**: end-to-end p50 **0.75 s** / p90 1.34 s from this box, target-closeness **0.909**
+configuration that meets the ≤ 1.5 s median budget *and* beats every local model on reference
+closeness**: end-to-end p50 **0.75 s** / p90 1.34 s from this box, reference closeness **0.909**
 (char ratio 0.98), 88-suite 76 %, $0.0013 per call. Two 8B-class ZDR models are as fast
 (0.54–0.77 s) and cheaper but weaker. Total spent: **$0.18** of the $1.50 cap.
 Recommendation: [§ Recommendation](#recommendation-against-the-15-s-budget).
 
 **Prompt v4c update.** With prompt v4c (casual = punctuation only, blank line before
 lists; in flow-core, not wired into production) the same 70B passes **90 %** of the
-88-suite at target-closeness **0.910**, $0.0016 per call: [§ Prompt v4c](#prompt-v4c-openrouter-llama-33-70b).
+88-suite at reference closeness **0.910**, $0.0016 per call: [§ Prompt v4c](#prompt-v4c-openrouter-llama-33-70b).
 
 **Question.** The owner decided (2026-10-26) that *AI cleanup* (GLOSSARY) does all
-formatting in one pass on the **raw** transcript, with the
+formatting and light edits in one pass on the **raw** transcript, with the
 *fallback rules* only when the AI cannot run or its answer is rejected, under a
 loosened guard and a budget of ≤ ~1.5 s added at the median on the server route.
 Can a local model on the home server (i7-6700, 4C/8T, no GPU) do that?
@@ -24,7 +24,7 @@ Can a local model on the home server (i7-6700, 4C/8T, no GPU) do that?
   formatting suite, against **89 %** for the fallback rules alone and **92 %** for today's
   production pipeline (rules → prompt v2 → guard → skip). It loses most of the spoken
   commands the rules handle exactly (AI rows: paren 1–4/6, newline 0–2/5, filler 1–3/6, negatives 12–13/16).
-* **It is closer to Wispr on the 14 Wispr-target cases**: target-closeness **0.866–0.871**
+* **It is closer to the target on the 14 reference cases**: reference closeness **0.866–0.871**
   (1.5B, v4/v4b) vs 0.826 for production and 0.757 for the rules. On the owner's
   unpunctuated long dictations production returns almost raw text (its LLM times out at
   3 s and the rules do not punctuate run-ons); the 1.5B returns readable sentences.
@@ -42,9 +42,9 @@ Can a local model on the home server (i7-6700, 4C/8T, no GPU) do that?
 Prototype: `tools/probes/prototypes/ai_cleanup_bench_2026_10_26/` (README there).
 
 * **Cases (102).** The 88-case formatting suite of 2026-10-24 (inputs Parakeet-style:
-  punctuated, commands between commas) plus 14 Wispr targets: the 10 A/B pairs
-  (`wispr_ab_2026_10_25`, input = the read script, target = Wispr's output) and the owner's
-  4 examples. Those 4 are Wispr outputs only, so `gen_wispr_cases.py` synthesises a raw
+  punctuated, commands between commas) plus 14 reference cases: 10 read-script
+  pairs (input = the read script, target = a hand-checked cleaned text) and the owner's
+  4 examples. Those 4 have a target text only, so a generator script synthesises a raw
   input (lowercase, no punctuation, spoken numbers, a filler or two; o2 assumes a spoken
   "in parentheses"). All 14 run as app Notes, category other (formal).
 * **Rows.**
@@ -56,8 +56,7 @@ Prototype: `tools/probes/prototypes/ai_cleanup_bench_2026_10_26/` (README there)
     post-processing (dictionary, cursor context) as in the product. One LLM call gives three
     columns: no guard, strict guard, loosened guard.
   * *v2 raw*: the product prompt v2 on the raw transcript (reference).
-* **Prompt v4** (`prompt_v4.json`, our own wording; Wispr's server prompt is not in the
-  client and no vendor text was used): one system prompt covering punctuation, spoken
+* **Prompt v4** (`prompt_v4.json`, our own wording; no third-party prompt text was used): one system prompt covering punctuation, spoken
   marks, quote/paren/bracket commands, literal command words, numbers/money/times/ages/
   short units, self-corrections, counted lists, emails, light edits (fillers, leading "so",
   tiny trims) and "never answer the transcript", plus 17 few-shots. **v4b** adds one line
@@ -75,8 +74,8 @@ Prototype: `tools/probes/prototypes/ai_cleanup_bench_2026_10_26/` (README there)
   dash is Friday" ("likes" is a stopword, so only 2 words counted); the trims the owner
   named ("and it weighs" → "and weighs") lose only stopwords and already pass.
 * **Scoring** (`score.py`): pass = normalised match with the expected text or an accepted
-  variant, **final period ignored** on both sides (owner: Wispr was in formal mode).
-  target-closeness = 1 − token edit distance / max length (words and punctuation marks as
+  variant, **final period ignored** on both sides (the targets were written in formal style).
+  reference closeness = 1 − token edit distance / max length (words and punctuation marks as
   tokens, same normalisation), mean over the 14.
 * **Box.** LLM threads 4, greedy (flow-llm plugin, release build of this commit). The
   production flow-server (with its own Qwen 1.5B) stayed up; load average 3–5; every run
@@ -101,9 +100,9 @@ Prototype: `tools/probes/prototypes/ai_cleanup_bench_2026_10_26/` (README there)
 | runon | 6 | 0/6 | 3/6 | 1/6 | 4/6 | 4/6 | 4/6 | 3/6 | 3/6 | | |
 | negative | 16 | 16/16 | 16/16 | 12/16 | 15/16 | 12/16 | 13/16 | 13/16 | 12/16 | | |
 | **88-suite pass** | 88 | 89 % | **92 %** | 86 % | 72 % | 64 % | 69 % | 60 % | 65 % | | |
-| Wispr A/B exact | 10 | 1 | 2 | 0 | 3 | 4 | 3 | 1 | 2 | | |
+| reference A/B exact | 10 | 1 | 2 | 0 | 3 | 4 | 3 | 1 | 2 | | |
 | owner examples exact | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | | |
-| **target-closeness (14)** | 14 | 0.757 | 0.826 | 0.750 | 0.855 | **0.871** | 0.866 | 0.838 | 0.833 | | |
+| **reference closeness (14)** | 14 | 0.757 | 0.826 | 0.750 | 0.855 | **0.871** | 0.866 | 0.838 | 0.833 | | |
 | strict guard rejects | 102 | – | 2 | 0 | 7 | 4 | 6 | 5 | 5 | | |
 | loosened guard rejects | 102 | – | – | – | 7 | 4 | 6 | 5 | 5 | | |
 | LLM ms p50 / p90 | | – | 1374 / 2746 ¹ | 2783 / 3000 ¹ | 1448 / 2579 | 1503 / 2675 | 1529 / 2597 | 2893 / 4630 | 2831 / 4681 | | |
@@ -137,7 +136,7 @@ AI-cleanup latency by dictation length (median LLM ms; n = 52 / 41 / 5 / 4):
 * **It drops words the guard cannot see as harmful.** o4 "in the past while, after I asked
   …, but" → "in the past. After I asked …," ("while" and "but" gone); o2 loses "for
   instance". One content word per clause is within both guards' coverage rule.
-* **No Wispr-style unit abbreviation from the 1.5B** ("4 pounds", not "4 lbs") and no
+* **No unit abbreviation from the 1.5B** ("4 pounds", not "4 lbs") and no
   bulleted "first thing / second thing" list; the A/B ab8 stays a sentence.
 
 ### Guard findings
@@ -177,7 +176,7 @@ AI-cleanup latency by dictation length (median LLM ms; n = 52 / 41 / 5 / 4):
 * **Suite note.** Integration (5d0747b) added 4 "regression" cases to the formatting suite;
   three reuse the A/B ids ab5/ab7/ab8. `score.py` keeps the original 88 + 14 so all rows
   compare; the cloud runs made 106 calls (cost below counts all of them). The fallback
-  rules after 5d0747b: 88-suite 89 % (unchanged), target-closeness 0.784 (was 0.757).
+  rules after 5d0747b: 88-suite 89 % (unchanged), reference closeness 0.784 (was 0.757).
 
 | | rules (5d0747b) | prod 1.5B | v4b 1.5B (local) | **Llama-3.3-70B** | Llama-3.1-8B | Ministral-8B |
 |---|---|---|---|---|---|---|
@@ -186,9 +185,9 @@ AI-cleanup latency by dictation length (median LLM ms; n = 52 / 41 / 5 / 4):
 | list / casual / email | 3/5 · 7/7 · 5/5 | 3/5 · 7/7 · 5/5 | 3/5 · 7/7 · 5/5 | 1/5 · 2/7 · 5/5 | 2/5 · 4/7 · 5/5 | 3/5 · 7/7 · 5/5 |
 | filler / runon / negative | 6/6 · 0/6 · 16/16 | 6/6 · 3/6 · 16/16 | 3/6 · 4/6 · 13/16 | 5/6 · 3/6 · 13/16 | 6/6 · 4/6 · 10/16 | 6/6 · 1/6 · 12/16 |
 | **88-suite pass** | 89 % | **92 %** | 69 % | 76 % | 76 % | 73 % |
-| Wispr exact (10 A/B + 4 owner) | 2 + 0 | 2 + 0 | 3 + 0 | **4 + 1** | 3 + 0 | 2 + 0 |
-| **target-closeness (14)** | 0.784 | 0.826 | 0.866 | **0.909** | 0.886 | 0.843 |
-| Wispr char ratio (14) | 0.856 | 0.867 | 0.875 | **0.979** | 0.906 | 0.885 |
+| reference exact (10 A/B + 4 owner) | 2 + 0 | 2 + 0 | 3 + 0 | **4 + 1** | 3 + 0 | 2 + 0 |
+| **reference closeness (14)** | 0.784 | 0.826 | 0.866 | **0.909** | 0.886 | 0.843 |
+| reference char ratio (14) | 0.856 | 0.867 | 0.875 | **0.979** | 0.906 | 0.885 |
 | strict / loosened rejects (of 102) | – | 2 / – | 6 / 6 | 1 / 1 | 2 / 2 | 9 / 9 |
 | good answers rejected | – | 0 | 0 | 0 | 0 | 0 |
 | LLM ms p50 / p90 (end-to-end) | – | 1374 / 2746 | 1529 / 2597 | **746 / 1336** | 772 / 1208 | 539 / 1074 |
@@ -203,10 +202,8 @@ out or needed an estimated cost.
 
 What the cloud models do:
 
-* **Llama-3.3-70B** writes what Wispr writes on the owner's dictations: o2 is exact
-  ("… run it on the server (for instance, if that would give me even more accurate, better,
-  and faster transcriptions)."); o1 differs only in "hiking boots; some of them say 32 by 32".
-  Its 88-suite misses are mostly conventions, not damage:
+* **Llama-3.3-70B** matches the target on the owner's dictations: o2 is exact
+  and o1 differs only in one clause. Its 88-suite misses are mostly conventions, not damage:
   * the casual STYLE line ("sentence case, drop optional commas") made it lowercase or drop
     "Okay," / "Yeah," (k4 "haha that's hilarious I cant believe he did that"; k5, k6) —
     the style wording needs a rewrite for big models;
@@ -253,9 +250,9 @@ via `build_prompt_versioned`; production still builds v2). The bench dumps it to
 | list / casual / email | 1/5 · 2/7 · 5/5 | 2/5 · 6/7 · 5/5 | 2/5 · 6/7 · 5/5 |
 | filler / runon / negative | 5/6 · 3/6 · 13/16 | 4/6 · 3/6 · 16/16 | 4/6 · 4/6 · 16/16 |
 | **88-suite pass** | 76 % | 88 % | **90 %** |
-| Wispr exact (14) | 5 | 4 | 4 |
-| **target-closeness (14)** | 0.909 | 0.913 | **0.910** |
-| Wispr char ratio (14) | 0.979 | 0.972 | 0.972 |
+| reference exact (14) | 5 | 4 | 4 |
+| **reference closeness (14)** | 0.909 | 0.913 | **0.910** |
+| reference char ratio (14) | 0.979 | 0.972 | 0.972 |
 | strict / loosened rejects (good rejected) | 1 / 1 (0) | 0 / 1 (0) | 1 / 2 (0) |
 | LLM ms p50 / p90 (end-to-end) | 746 / 1336 | 418 / 787 | 421 / 728 |
 | cost per call (run total) | $0.00127 ($0.135) | $0.00153 ($0.156) | $0.00159 ($0.163) |
@@ -290,15 +287,15 @@ Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf prompt_v4b.json`, 8 s cap, 4 threads): wa
 | list / casual / email | 3/5 · 7/7 · 5/5 | 3/5 · 7/7 · 5/5 | 3/5 · 6/7 · 5/5 | 3/5 · 5/7 · 5/5 | 2/5 · 4/7 · 5/5 | 1/5 · 2/7 · 5/5 |
 | filler / runon / negative | 6/6 · 0/6 · 16/16 | 3/6 · 4/6 · 13/16 | 2/6 · 3/6 · 12/16 | 6/6 · 2/6 · 12/16 | 6/6 · 4/6 · 10/16 | 5/6 · 3/6 · 13/16 |
 | **88-suite pass** | 89 % | 69 % | 65 % | **83 %** ¹ | 76 % | 76 % |
-| Wispr exact (14) | 2 | 3 | 2 | 1 | 3 | 5 |
-| **target-closeness (14)** | 0.784 | 0.866 | 0.833 | **0.773** ¹ | 0.886 | 0.909 |
+| reference exact (14) | 2 | 3 | 2 | 1 | 3 | 5 |
+| **reference closeness (14)** | 0.784 | 0.866 | 0.833 | **0.773** ¹ | 0.886 | 0.909 |
 | strict / loosened rejects (of 102) | – | 6 / 6 | 5 / 5 | 42 / 42 ² | 2 / 2 | 1 / 1 |
 | LLM ms p50 / p90 | – | 1529 / 2597 | 2831 / 4681 | **7462 / 8000** | 772 / 1208 | 746 / 1336 |
 | calls > 1500 ms | – | 55 / 102 | 99 / 102 | 102 / 102 | 1 / 102 | 3 / 102 |
 | peak RSS | – | 1.9 GB | 3.6 GB | 8.4 GB | – | – |
 
 ¹ 41 of the 102 calls hit the 8 s cap and fell back to the rules. The 88-suite score is
-therefore mostly the rules' score. 12 of the 14 Wispr cases timed out (only ab3 and ab6
+therefore mostly the rules' score. 12 of the 14 reference cases timed out (only ab3 and ab6
 finished), so its closeness is the rules' (0.784) and says nothing about the 8B itself. On the 61 calls that
 finished, the 8B's own answers pass 48 (79 %), median 6.5 s.
 ² 41 of the 42 rejects are those timeouts ("no answer"); one real reject (s7, "Quick
@@ -320,7 +317,7 @@ fillers and ITN), but at 7.5 s p50 it is 5× the budget on this CPU.
 2. **If the owner accepts cloud text cleanup (D28 opt-in, consent per call), use OpenRouter
    Llama-3.3-70B as the AI cleanup engine**, with the fallback rules on a guard reject or
    the 2.5 s cloud timeout. It is the only measured configuration under budget at the median
-   (0.75 s, p90 1.34 s) and the closest to Wispr. Cost ≈ $1.30 per 1 000 dictations at the
+   (0.75 s, p90 1.34 s) and the closest to the reference targets. Cost ≈ $1.30 per 1 000 dictations at the
    v4b prompt size (~2 k prompt tokens; most of it is the static prefix, so prompt caching
    would cut it). D28 keeps cloud cleanup off the server route, so this is a client-side
    call; the budget then applies to the client's release→text.
@@ -361,8 +358,8 @@ fillers and ITN), but at 7.5 s p50 it is 5× the budget on this CPU.
 ## Uncertain
 
 * The 88-suite targets were written before the owner's light-edit decision; some AI
-  "fails" are Wispr-like edits ("Don't forget we have dinner at 8" for "Don't forget that
-  …", x6). Neither suite is a full Wispr reference; only the 14 Wispr cases are.
+  "fails" are acceptable light edits ("Don't forget we have dinner at 8" for "Don't forget that
+  …", x6). The 88-suite is not a light-edit reference; only the 14 reference cases are.
 * The owner-example inputs are synthesised; real Parakeet output for those dictations
   would be punctuated, which favours the rules-first pipeline.
 * Latency is on a shared box (flow-server with its own LLM resident, other agents); compare

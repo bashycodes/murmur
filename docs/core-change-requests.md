@@ -21,7 +21,7 @@ instead file requests here. Each entry says what the shell does in the meantime.
 
 **Workaround.** `paste::segments` splits the markers, and marker-carrying text is typed segment by segment. History stores `final_text` as returned.
 
-**Status: DONE (branch `core-p1`), additively.** `CommitResult.segments: [{text} | {key: "Enter"|"Tab"|"Break"}]` (Enter = spoken "press enter", last) and `plain_text` (marker-free). `final_text` keeps the markers so current shells keep working; the `@` → `{{BREAK}}` rule itself is unchanged (it is Wispr's).
+**Status: DONE (branch `core-p1`), additively.** `CommitResult.segments: [{text} | {key: "Enter"|"Tab"|"Break"}]` (Enter = spoken "press enter", last) and `plain_text` (marker-free). `final_text` keeps the markers so current shells keep working; the `@` → `{{BREAK}}` rule itself is unchanged.
 
 ## CR-3: whisper-rs-sys cannot be cross-checked for MSVC from Linux (info)
 
@@ -49,7 +49,7 @@ instead file requests here. Each entry says what the shell does in the meantime.
 
 ## CR-6: richer learn_edit result (Windows shell)
 
-**Problem.** `learn_edit` returns `{original, corrected}` only. The shell bounds the edited region itself (`learn::bound_edit`, semi-global alignment) because a run that includes text typed after the dictation is otherwise dropped (> 4 words) or mislearned. Candidates that are only a case change of a screen word, or whose `corrected` appears in the field context, can't be told apart from real corrections (Wispr's `APP_CONTEXT` source).
+**Problem.** `learn_edit` returns `{original, corrected}` only. The shell bounds the edited region itself (`learn::bound_edit`, semi-global alignment) because a run that includes text typed after the dictation is otherwise dropped (> 4 words) or mislearned. Candidates that are only a case change of a screen word, or whose `corrected` appears in the field context, can't be told apart from real corrections (they come from the app context, not from the user).
 
 **Ask.** Optionally accept the field context and return a `source` (`user_edits` / `app_context`) plus an `edited_bounded` string, so Android and Windows share the bounding rule.
 

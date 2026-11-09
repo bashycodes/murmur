@@ -1,7 +1,7 @@
 # 2026-11-07: dictionary words reach the AI cleanup (D64)
 
-**Question.** On the Wispr parity main set, every AI path got 8/15 of the
-named terms right and "Wispr Flow" 0/4, although the owner's dictionary was
+**Question.** On the parity main set, every AI path got 8/15 of the
+named terms right and the two-word product name 0/4, although the owner's dictionary was
 already in the session. Can the cleanup prompt fix near-miss spellings of
 the user's dictionary entries without pre-AI replacement
 rules (owner principle: text quality belongs in the prompt and the model),
@@ -64,7 +64,7 @@ AI 3B and flow-server were measured with the built-in list still in; the
 owner dictionary already holds the names the main set scores, and the
 AI 3B rerun without the list matched (13/15, 3/4, 14.4 %, 25/31).
 
-| Path | Model | Terms | Wispr Flow | WER | Format |
+| Path | Model | Terms | Product name | WER | Format |
 |---|---|---|---|---|---|
 | AI cleanup | Qwen2.5 3B | 8 → 13/15 | 0 → 3/4 | 16.6 → 14.4 % | 24 → 25/31 |
 | AI cleanup | Qwen2.5 1.5B | 8 → 9/15 | 0 → 0/4 | 13.1 → 12.4 % | 18 → 18/31 |

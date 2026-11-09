@@ -8,7 +8,7 @@ AI-cleanup model than today's defaults, within the ≤ 1.5 s cleanup budget?
 * **AI cleanup: yes, with the iGPU.** Through Vulkan on the Arc 140V,
   **Llama-3.2-3B-Instruct Q4_K_M** runs prompt v4c (raw transcript, AI cleanup)
   at **p50 0.62 s / p90 1.18 s** and scores **80 %** on the 88-suite with
-  target-closeness **0.876**. That closeness equals the OpenRouter Llama-3.3-70B
+  reference closeness **0.876**. That closeness equals the OpenRouter Llama-3.3-70B
   (0.879, same guard binary). **Qwen2.5-1.5B** on Vulkan is the fast option:
   p50 0.39 s, 75 %, 0.855.
 * **On the CPU alone** (today's `flow_llm.dll`), Qwen2.5-1.5B takes p50 1.0 s / p90 1.7 s
@@ -17,7 +17,7 @@ AI-cleanup model than today's defaults, within the ≤ 1.5 s cleanup budget?
   AI cleanup.
 * **No local model beats the rules on the 88-suite.** The scores are 80–86 % against
   89 % for the rules alone and 92 % for production (2026-10-26). The local AI is
-  better only on target-closeness. This is the same conclusion as the 2026-10-26
+  better only on reference closeness. This is the same conclusion as the 2026-10-26
   benchmark, but now with a 3B model inside the budget.
 * **STT, English: keep Parakeet.** It has 1.2 % WER and takes 0.6–0.75 s per
   ~9 s clip on 4 threads. Nothing tested beats it. Large-v3-turbo has 1.7 % WER and
@@ -48,7 +48,7 @@ AI-cleanup model than today's defaults, within the ≤ 1.5 s cleanup budget?
 * **Downloads.** About 5.1 GB from the internet: the two 4B GGUFs and about 100 MB of
   binaries. The other models were copied over the LAN from the home cache. App models
   were read in place from `%APPDATA%\FlowClone\models`. Everything was deleted
-  afterwards except the binaries and results in `wispr-bench\` (252 MB).
+  afterwards except the binaries and results in the bench folder (252 MB).
 * **Probe:** `tools/probes/prototypes/laptop_bench_2026_10_30/` (see its README).
 * **STT.** One process per clip; latency is the engine's own compute time with model
   load excluded (whisper: total − load; sherpa: "Elapsed seconds"). Greedy decoding,
@@ -61,7 +61,7 @@ AI-cleanup model than today's defaults, within the ≤ 1.5 s cleanup budget?
     (sha256 `c8090411…`), quantized by us to q5_0 with `whisper-quantize`
     (574 041 195 bytes, sha256 `6c1da92e…a572`).
 * **AI cleanup.** The 102 cases of the 2026-10-26 benchmark (`v4c_cases.jsonl`: the
-  88-suite plus 14 Wispr targets) run through prompt **v4c**.
+  88-suite plus 14 reference cases) run through prompt **v4c**.
   * Rendering: `llm_win.py` builds the messages as flow-core's
     `build_prompt_versioned(…, PromptScope::FULL, V4c)` does, with the session
     `sessions/prod.json` (casual for chats).
@@ -78,7 +78,7 @@ AI-cleanup model than today's defaults, within the ≤ 1.5 s cleanup budget?
 
 ## AI cleanup results (prompt v4c, raw input, strict guard)
 
-| model (Q4_K_M) | backend | 88-suite | target-closeness (14) | Wispr exact | guard rejects | LLM ms p50 / p90 | calls > 1.5 s | gen tok/s |
+| model (Q4_K_M) | backend | 88-suite | reference closeness (14) | reference exact | guard rejects | LLM ms p50 / p90 | calls > 1.5 s | gen tok/s |
 |---|---|---|---|---|---|---|---|---|
 | Qwen2.5-0.5B (app default) | CPU t4 | 43 % | 0.804 | 2/14 | 6 | 564 / 934 | 3/102 | 59 |
 | Qwen2.5-0.5B | Vulkan | 42 % | 0.823 | 2/14 | 5 | 200 / 312 | 1/102 | 122 |
@@ -165,7 +165,7 @@ zipformer finished 48 ms after the last audio.
 |---|---|---|
 | English STT | **Parakeet-TDT-0.6B-v2 int8** (or the current unified-en: same WER, 25 % slower), 4 threads | 1.2 % WER, about 0.6 s per 9 s clip on the CPU; nothing better found |
 | Hebrew STT | **zipformer2-66m-streaming-he** now; **ivrit turbo q5_0 on GPU** once whisper is built with Vulkan | ivrit is 7 points better on WER, but 4.3 s on the CPU is not interactive |
-| AI cleanup with a GPU build | **Llama-3.2-3B-Instruct Q4_K_M, Vulkan** | best local quality inside the budget (p50 0.62 s); target-closeness equal to the cloud 70B |
+| AI cleanup with a GPU build | **Llama-3.2-3B-Instruct Q4_K_M, Vulkan** | best local quality inside the budget (p50 0.62 s); reference closeness equal to the cloud 70B |
 | AI cleanup, CPU-only build (today) | **Qwen2.5-1.5B-Instruct Q4_K_M** (replaces the 0.5B default) | 74 % vs 43 %; p50 1.0 s, p90 1.7 s |
 | AI cleanup, fast GPU option | Qwen2.5-1.5B-Instruct Q4_K_M, Vulkan | p50 0.39 s; 5 points below Llama-3B |
 

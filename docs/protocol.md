@@ -1,8 +1,8 @@
 # flow-server wire protocol v1 (normative)
 
 Our own protocol between a hybrid client (`flow-remote`, reached through
-`flow_router::Router`) and `flow-server` (D17). It is not Wispr's protocol
-and is not derived from it. Types: `crates/flow-protocol/src/lib.rs`. Golden
+`flow_router::Router`) and `flow-server` (D17). It is the project's own
+protocol. Types: `crates/flow-protocol/src/lib.rs`. Golden
 fixtures: `crates/flow-protocol/fixtures/*.json` (one message per file,
 `client_*` / `server_*`; `cargo test -p flow-protocol` round-trips each).
 Design rationale: `docs/hybrid-architecture.md` §2.

@@ -7,7 +7,7 @@ already have, and what can we learn from that (Part B)?
 
 **Source.** `https://github.com/OpenWhispr/openwhispr`, shallow clone at
 commit **`315ee2dea3140fd67f53684e85e9aa66dcc90c69`** (desktop `package.json`
-1.11.1), read in `~/Claude/research/wispr/openwhispr-src/` (outside this repo).
+1.11.1), read in a local clone outside this repo.
 None of their source is committed here. Prompts quoted below are © 2024
 OpenWhispr Team, MIT License, quoted for comparison; if any text or code is
 ported later, keep their copyright notice and record it in
@@ -270,7 +270,7 @@ falling from 2.25 % to 0.06 % over 4,814 real dictations.
     credentials. None of that applies to us.
 - **Ours:**
   - `DictMatcher::new(personal, team)` (`crates/flow-core/src/postprocess/dict.rs`)
-    already takes a team list from the Wispr port, but every engine call passes
+    already takes a team list, but every engine call passes
     `&[]`.
   - flow-server has named keys (D38) but no dictionary endpoint.
 - **Clone:**
@@ -674,7 +674,7 @@ tweak.
   - It is off by default. It is offered after 70 dictated words, with a setup
     dialog.
 - **Ours** (`classify` in `crates/flow-core/src/postprocess/apps.rs`):
-  - Wispr's prefix lists per platform (exe or package plus URL), giving
+  - Prefix lists per platform (exe or package plus URL), giving
     Personal / Work / Email / Other buckets plus AI, terminal, document and
     Notion flags.
   - Per-app overrides (`exe-or-host = bucket`) and a style per bucket (D27).

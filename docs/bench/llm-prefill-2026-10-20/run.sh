@@ -1,5 +1,5 @@
 #!/bin/bash
-W=~/Claude/research/wispr/flow-clone/.claude/worktrees/core-p1
+W="${FLOW_CLONE_DIR:-$(git -C "$(dirname "$0")" rev-parse --show-toplevel)}"
 cd $W
 for rep in 1 2; do
 for s in np_false np_true pa_false pa_true np_false_long np_true_long pa_false_long pa_true_long; do

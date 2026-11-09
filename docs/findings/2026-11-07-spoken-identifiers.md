@@ -1,6 +1,6 @@
 # 2026-11-07: spoken identifiers; digit-aware dictionary naming (D67)
 
-**Question.** On the Wispr parity English set, every AI path missed both
+**Question.** On the parity English set, every AI path missed both
 identifier lines. One holds an environment-variable name that the speaker
 says as plain words, with no spoken form cue ("in caps", "underscore"):
 the speaker only says that it is a variable. The other holds an

@@ -1,13 +1,13 @@
-# Formatting gap vs Wispr: what we handle, what Wispr does, what to fix (2026-10-24)
+# Formatting gap: what we handle, what the user expects, what to fix (2026-10-24)
 
-**Question.** The user, after running Wispr side by side today: Wispr "gets it exactly to how
-I was planning everything written". It turns "quote unquote" into quotation marks, turns "in
-parentheses X" into "(X)", is more casual overall, and places periods and commas correctly. Ours
+**Question.** The user, after a side-by-side comparison today, wants text that comes out "exactly how
+I was planning everything written": "quote unquote" into quotation marks, "in
+parentheses X" into "(X)", more casual overall, and periods and commas placed correctly. Ours
 doesn't. Where is the gap, and which fix buys the most per millisecond?
 
 **Answer (short).**
 1. **Two of the biggest gaps cost 0 ms and are configuration or rules, not models.**
-   * *Style.* Both shells send `formal` for every style bucket. With `formal`, the cursor-context step never
+   * *Style.* Both shells send `formal` for every style bucket. With `formal`, the cursor-context pass never
      drops the final period, so chat apps look stiff. Sending casual for chat buckets moves the casual category from 1/7 to 7/7, and
      the deterministic pipeline overall from 44 % to 59 %.
    * *Spoken commands.* Nothing in the pipeline handles quote / unquote, open / close paren,
@@ -40,7 +40,7 @@ Order inside `Engine::finish` (`crates/flow-core/src/engine.rs:1358-1427`):
 2. `layout` (`spoken.rs:1314`).
 3. `close_sentence` (`postprocess/terminal.rs`, D25).
 4. The optional LLM.
-5. The client post-processing `postprocess::apply` (`postprocess/mod.rs:239`).
+5. Client post-processing `postprocess::apply` (`postprocess/mod.rs:239`).
 
 | Area | Handled | Where |
 |---|---|---|
@@ -53,7 +53,7 @@ Order inside `Engine::finish` (`crates/flow-core/src/engine.rs:1358-1427`):
 | Lists | ordinal markers (first/second/third…, "number one…") → `1.` lines with an intro colon. **Not handled:** bare cardinal markers ("one, hiring, two, …"), unmarked enumerations | `spoken.rs:977-1220` |
 | Email layout | greeting line, body, sign-off + name (category email). **Bugs:** "Dear Mr. Patel," is split at "Mr." (`GREETING` ends the name at any `.`); a bare "Thanks." sign-off without a name is not split off | `spoken.rs:1226-1312` |
 | Closing period | adds "." to open dictations of ≥ 4 words | `terminal.rs` (D25) |
-| Period drop / casing / spacing | Cursor context: drops the trailing "." by **style** (formal never; casual ≤ 10 sentences; very casual always; default/excited only in messaging apps ≤ 2 sentences); cursor-context casing and spacing; trailing space | `postprocess/context.rs:150-170` |
+| Period drop / casing / spacing | Cursor-context pass: drops the trailing "." by **style** (formal never; casual ≤ 10 sentences; very casual always; default/excited only in messaging apps ≤ 2 sentences); cursor-context casing and spacing; trailing space | `postprocess/context.rs:150-170` |
 
 ### 1.2 LLM prompt (`crates/flow-core/src/cleanup.rs`)
 
@@ -83,7 +83,7 @@ Order inside `Engine::finish` (`crates/flow-core/src/engine.rs:1358-1427`):
 
   A casual style exists in the core. **No shell ever sends it:**
   * Android `Styles()` defaults every bucket to `FORMAL` (`apps/flow-android/.../core/FlowCore.kt:172-176`), and `toSessionConfig` never sets styles (`data/DataLogic.kt:123-133`). There is no style UI.
-  * Windows defaults all four buckets to `"formal"` (`apps/flow-windows/src/prefs.rs:143-149`, comment "03 §1.3: every Wispr bucket defaults to formal + light").
+  * Windows defaults all four buckets to `"formal"` (`apps/flow-windows/src/prefs.rs:143-149`).
 * **Examples**: 7 few-shot turns (`cleanup.rs:168-185`). None shows quotes, parentheses or
   casual chat.
 * **Guard** (`guard.rs`, the default output check; the edit-distance cap only applies when a
@@ -111,11 +111,11 @@ The user turned LLM cleanup on for both devices on 2026-10-24
 (`docs/findings/2026-10-23-server-llm-cleanup-cost.md`, update box). So the live phone path is
 Light + all formal + 3 s: column "llm (shipped)" below.
 
-## 2. What Wispr does (observed only)
+## 2. What the user expects (observed only)
 
-Only the user's side-by-side observation is recorded here: Wispr turns spoken "quote / unquote"
-and "in parentheses" into marks, reads as more casual in chat apps, and places periods and commas
-well. How it does this is not documented in this repository.
+Only the user's side-by-side expectation is recorded here: spoken "quote / unquote"
+and "in parentheses" become marks, chat apps read more casual, and periods and commas
+land well. No other implementation is documented in this repository.
 
 ## 3. Eval set
 

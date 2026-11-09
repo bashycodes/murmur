@@ -15,7 +15,7 @@ and the per-flavour build gates (§1.4).
 
 | # | Invariant | Enforced by |
 |---|---|---|
-| I1 | Shells talk to exactly one API: the §9 session API, served by `flow_router::Router` in every build | §1, §6 ownership |
+| I1 | Shells talk to exactly one API: the session API, served by `flow_router::Router` in every build | §1, §6 ownership |
 | I2 | Remote results are identical to local results for the same ASR model and inputs (the server runs the full flow-core pipeline; the shell's `SessionConfig`/`FieldContext` pass through verbatim) | `equivalence.rs` |
 | I3 | Client-only builds contain no network code and (Android) no network permission | `cargo tree` gate, `verifyLocal*NoNetworkPermissions` |
 | I4 | Server-only builds contain no ASR/LLM native libs and need no models | `verifyRemote*NoAsrLibs`, `tools/check-build-matrix.sh` |
@@ -83,7 +83,7 @@ impl Router {
     pub fn update_config(&self, cfg: RouterConfig);             // takes effect at next start_session
     pub fn set_local(&self, local: Option<Arc<dyn Backend>>);   // shell (re)loaded models
     pub fn capabilities(&self) -> Capabilities;
-    // §9 mirror, same semantics as FlowCore:
+    // mirror of FlowCore, same semantics:
     pub fn start_session(&self, cfg: SessionConfig) -> Result<(), RouterError>;
     pub fn push_audio(&self, pcm: &[i16]) -> bool;
     pub fn set_context(&self, ctx: FieldContext);
@@ -216,7 +216,7 @@ three so switching is an in-place update that keeps prefs, dictionary and histor
 
 ---
 
-## 2. Wire protocol v1 (ours; Wispr's proto is not used, D8)
+## 2. Wire protocol v1 (our own, D8)
 
 Spec file: `docs/protocol.md` (normative; this section is its outline). Types:
 `crates/flow-protocol/src/lib.rs`. Golden fixtures: `crates/flow-protocol/fixtures/*.json`.
@@ -281,7 +281,7 @@ user-entered server only; no discovery, no relay, no fallback hosts.
 ### 2.7 Where post-processing runs
 
 Remote mode: **everything on the server** (VAD → ASR → hallucination guard → spoken
-cleanup → optional LLM → guard → Wispr post-processing → segments), via an unmodified
+cleanup → optional LLM → guard → post-processing → segments), via an unmodified
 `FlowCore` session fed the client's `SessionConfig`/`FieldContext`. The client does no
 text shaping, so remote and local differ only if the ASR/LLM models differ.
 

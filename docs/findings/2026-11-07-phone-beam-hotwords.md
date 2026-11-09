@@ -9,7 +9,7 @@ History correction.
 
 **Setup.** Probes `tools/probes/prototypes/phone_beam_2026_11_07/`
 (scripts only; clips, dictionary and transcripts stay private).
-Parity English set (29 clips, 37 terms, refs from the 2026-11-05 Wispr
+Parity English set (29 clips, 37 terms, refs from the 2026-11-05 reference
 capture), the phone's model (`sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8`),
 the parity dictionary and the phone's session config. `flow-cli transcribe`
 runs the full dictation pipeline (VAD, guard, rules, no LLM) on the
