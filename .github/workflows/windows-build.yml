@@ -119,15 +119,18 @@ jobs:
       # sherpa-onnx-sys would download this itself into target/, but the
       # rust-cache restore keeps its build-script output and drops that
       # folder (link error "cannot open sherpa-onnx-c-api.lib"), so fetch it
-      # to a stable place and point SHERPA_ONNX_LIB_DIR at it.
-      - name: sherpa-onnx prebuilt (Parakeet)
+      # to a stable place and point SHERPA_ONNX_LIB_DIR at it. The no-TTS
+      # build (D80): the default one links espeak-ng (GPL-3.0) for
+      # text-to-speech, which we never use.
+      - name: sherpa-onnx prebuilt (Parakeet, no TTS)
         run: |
           v=1.13.8
-          name=sherpa-onnx-v$v-win-x64-shared-MT-Release-lib
+          name=sherpa-onnx-v$v-win-x64-shared-MT-Release-no-tts-lib
           dir="$(cygpath -u "$RUNNER_TEMP")/sherpa"
           mkdir -p "$dir"
           curl -fsSL -o "$dir/a.tar.bz2" \
             "https://github.com/k2-fsa/sherpa-onnx/releases/download/v$v/$name.tar.bz2"
+          echo "a1253e665c4f236119c443c8932a8acfca32a546c78c05962d483c9a0eae21b7  $dir/a.tar.bz2" | sha256sum -c -
           (cd "$dir" && tar -xjf a.tar.bz2)  # a "D:" path would read as a remote host
           lib="$dir/$name/lib"
           # Keep every DLL next to the import libraries.
@@ -237,6 +240,8 @@ jobs:
           # cache drops top-level files. Copy them from the prebuilt dir.
           cp -n "$(cygpath -u "$SHERPA_ONNX_LIB_DIR")"/*.dll target/release/
           ls target/release/*.dll
+          # D80: the DLLs the installers bundle carry no espeak-ng/piper (TTS) code.
+          ../../tools/checks/no-tts-libs.sh target/release/sherpa-onnx*.dll target/release/onnxruntime*.dll
           tools/ci/parakeet-conf.sh target/release
 
       # I3/I4 + C2 + D28 gate, strict and cloud-strict (the defaults): the
@@ -248,7 +253,7 @@ jobs:
           CHECK_BUILD_MATRIX_NO_BUILD: "1"
         run: |
           FLOW_CLOUD_ARTIFACTS=apps/flow-windows/target/release/flow-windows.exe \
-            tools/check-build-matrix.sh
+          CHECK_BUILD_MATRIX_NOTICES=0 tools/check-build-matrix.sh
 
       # Tauri's bundler downloads WiX 3.14, NSIS 3.13 and nsis_tauri_utils
       # into its tools dir (dirs::cache_dir()\tauri = %LOCALAPPDATA%\tauri)
@@ -323,6 +328,11 @@ jobs:
             --features local,app,parakeet --config tauri.parakeet.conf.json \
             -- --no-default-features
           tools/ci/collect-bundle.sh client
+
+      # D80: what the installers (MSI and NSIS) unpack holds COPYRIGHT,
+      # NOTICE and the full licence texts, and no TTS code (7-Zip reads both).
+      - name: Installers carry the notices
+        run: tools/ci/check-installer-notices.sh dist-ci/*/*.exe dist-ci/*/*.msi
 
       # The installers run `tauri build`, which may rewrite Cargo.toml (it
       # added `features = []` to tauri-build, so 1.0.0's CI exes said

@@ -2,7 +2,7 @@
 name = "flow-remote"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license-file.workspace = true
 description = "RemoteBackend: WebSocket client of flow-server behind flow_router::Router (the only client-side network code)"
 
 [features]

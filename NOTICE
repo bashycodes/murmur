@@ -1,0 +1,285 @@
+Murmur: third-party notices
+
+Murmur itself is all rights reserved (see COPYRIGHT). It is built from, ships
+with or downloads the third-party components below, each under its own
+licence. "Ships" = inside an installer, APK, server bundle or container image
+we build; "downloads" = fetched by the app or the server tooling at the
+user's request and never bundled into an app (the colleague bundle carries
+copies of the model files). Licences that are copyleft or that restrict use
+or redistribution are marked [FLAG]. The full licence and notice texts are in
+THIRD-PARTY-LICENSES, which ships next to this file; model zips carry
+MODEL-LICENSES.txt.
+
+1. Native libraries (ship)
+
+- sherpa-onnx 1.13.8 (Parakeet / Zipformer speech, Android, Windows, server)
+  Apache-2.0. https://github.com/k2-fsa/sherpa-onnx
+  Every build we ship has text to speech off, so no espeak-ng (GPL) or
+  piper-phonemize code is in it: upstream's -no-tts libraries on Windows and
+  Linux (server, container image), and a build from source with
+  SHERPA_ONNX_ENABLE_TTS=OFF on Android (tools/build-sherpa-android.sh); the
+  builds check the libraries for espeak-ng (tools/checks/no-tts-libs.sh).
+  Linked statically into it:
+  - kaldi-native-fbank, kaldi-decoder, kaldifst, OpenFst, simple-sentencepiece:
+    Apache-2.0
+  - Eigen (header-only) [FLAG: MPL-2.0, file-level copyleft; used unmodified,
+    source at https://gitlab.com/libeigen/eigen]
+  - KISS FFT: BSD-3-Clause; hclust-cpp: BSD-2-Clause; nlohmann/json: MIT
+- ONNX Runtime 1.28.2 (bundled with sherpa-onnx as libonnxruntime / onnxruntime.dll)
+  MIT, with its own third-party notices (in THIRD-PARTY-LICENSES).
+  https://github.com/microsoft/onnxruntime
+- llama.cpp and ggml (AI cleanup plugin flow-llm, via the llama-cpp-sys-2
+  0.1.160 crate, which vendors them)
+  MIT. https://github.com/ggml-org/llama.cpp
+- whisper.cpp and ggml (Whisper speech and language detection, via the
+  whisper-rs-sys 0.15.0 crate, which vendors it)
+  MIT. https://github.com/ggml-org/whisper.cpp
+- SQLite (Windows history, compiled in by libsqlite3-sys "bundled")
+  Public domain. https://sqlite.org/copyright.html
+  The vendored C sources of these three crates keep their own licence files
+  (llama.cpp's vendored cpp-httplib, rotate-bits: MIT; xxhash: BSD-2-Clause;
+  sha256: public domain); all are in THIRD-PARTY-LICENSES, Part 1.
+- LLVM libc++ (libc++_shared.so in the Android APK, from the Android NDK)
+  Apache-2.0 WITH LLVM-exception. https://github.com/llvm/llvm-project
+- GNU OpenMP runtime libgomp.so.1 (server bundle and container image, needed
+  by the cleanup plugin)
+  [FLAG: GPL-3.0-or-later WITH GCC-exception-3.1]; the GCC Runtime Library
+  Exception allows shipping it with programs compiled by GCC.
+  https://gcc.gnu.org/onlinedocs/libgomp/
+- NVIDIA CUDA runtime and cuBLAS (CUDA container image only; linked
+  statically into libflow_llm_cuda.so)
+  [FLAG: NVIDIA CUDA Toolkit EULA, proprietary; redistribution allowed only
+  for the listed runtime components, in an application]. The image's base
+  layer is nvidia/cuda (same EULA). https://docs.nvidia.com/cuda/eula/
+- Container base images: ubuntu:24.04 (CPU) and nvidia/cuda:12.8.1 (CUDA).
+  The Ubuntu packages keep their own licences, several GPL/LGPL [FLAG], as
+  in any Ubuntu image; their sources are at https://packages.ubuntu.com/.
+
+2. Fonts (ship)
+
+- EB Garamond and Figtree (Windows settings window, Android app)
+  OFL-1.1. Licence texts ship beside the fonts (ui/dist/fonts/*-OFL.txt,
+  APK assets/licenses/) and in THIRD-PARTY-LICENSES. https://github.com/octaviopardo/EBGaramond12,
+  https://github.com/erikdkennedy/figtree
+
+3. Android libraries (Gradle; ship in the APK)
+
+- kotlinx-coroutines-android 1.10.2 (with -core and, in hybrid debug,
+  -guava and -reactive) and the Kotlin standard library 2.2
+  Apache-2.0. https://github.com/Kotlin/kotlinx.coroutines,
+  https://github.com/JetBrains/kotlin
+- ML Kit GenAI Speech Recognition 1.0.0-alpha1 (com.google.mlkit:
+  genai-speech-recognition, with mlkit:common and mlkit:genai-common),
+  hybrid debug APK only
+  [FLAG: proprietary, ML Kit Terms of Service; not open source. The hybrid
+  debug APK is the one the colleague bundle carries.]
+  https://developers.google.com/ml-kit/terms
+  It pulls in (hybrid debug only; the dependency list of the
+  hybridDebugRuntimeClasspath configuration):
+  - Google Play services base/basement/tasks, Firebase components/encoders,
+    Android datatransport: Android Software Development Kit License /
+    Google APIs Terms (play-services) and Apache-2.0 (Firebase,
+    datatransport). https://developers.google.com/android/guides/overview
+  - AndroidX (activity, annotation, appcompat, arch-core, collection,
+    concurrent-futures, core, emoji2, fragment, lifecycle, savedstate,
+    startup, tracing, vectordrawable and their helpers): Apache-2.0.
+    https://android.googlesource.com/platform/frameworks/support
+  - Guava 31.0.1, failureaccess, listenablefuture, j2objc-annotations,
+    error_prone_annotations, javax.inject, reactive-streams (MIT-0),
+    jsr305 (BSD-3-Clause), checker-qual (MIT), JetBrains annotations:
+    Apache-2.0 unless noted. https://github.com/google/guava
+- Test-only, not shipped: JUnit 4.13.2 (EPL-1.0), kotlinx-coroutines-test
+  (Apache-2.0), org.json 20240303 (Public domain), Robolectric 4.14.1 (MIT).
+
+4. Windows front-end (npm) and installer
+
+- apps/flow-windows/ui has no runtime npm dependencies. Build-only:
+  TypeScript 5.6.3 (Apache-2.0, https://github.com/microsoft/TypeScript) and,
+  in CI, @tauri-apps/cli 2 (Apache-2.0 OR MIT, https://github.com/tauri-apps/tauri).
+- NSIS 3 installer stub and the nsis_tauri_utils plugin (.exe installer)
+  zlib/libpng licence (NSIS), Apache-2.0 OR MIT (plugin).
+  https://nsis.sourceforge.io/License, https://github.com/tauri-apps/nsis-tauri-utils
+- WiX Toolset 3.14.1 (.msi installer): its UI extension embeds its
+  custom-action DLL (install-folder check) and dialog resources in the MSI
+  [FLAG: MS-RL, Microsoft Reciprocal License, file-level copyleft; used
+  unmodified, source at https://github.com/wixtoolset/wix3]
+- Microsoft Edge WebView2 Runtime: not shipped; the installer fetches
+  Microsoft's bootstrapper when the PC lacks it (Microsoft software licence).
+
+5. Speech and cleanup models (downloaded; licence from each model card)
+
+The apps' model catalogue shows the same licence and attribution for each
+model (tools/notice/models.tsv keeps the two in step). None is the original:
+each is converted and/or quantised from the model it names ("from"), as
+models.tsv and each model zip's MODEL-LICENSES.txt state per model:
+Whisper converted to ggml (q5_1/q5_0 quantised) by whisper.cpp or Tagidu;
+Parakeet converted to int8 ONNX by the sherpa-onnx authors or krut42; Qwen
+and Llama quantised to GGUF q4_k_m by Qwen and by bartowski; Zipformer as
+its authors publish it (int8 ONNX).
+
+- Whisper GGML models (tiny/base/small, .en and multilingual; language
+  detection), from ggerganov/whisper.cpp
+  MIT (model card: ggerganov/whisper.cpp; OpenAI's Whisper weights: MIT).
+  https://huggingface.co/ggerganov/whisper.cpp
+- Parakeet TDT 0.6B v2 int8 (sherpa-onnx export of nvidia/parakeet-tdt-0.6b-v2)
+  CC-BY-4.0 (model card of the export; attribution: NVIDIA).
+  https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8
+- Parakeet unified EN 0.6B int8 (sherpa-onnx export of nvidia/parakeet-unified-en-0.6b)
+  [FLAG: NVIDIA Open Model License: commercial use and redistribution
+  allowed, with a copy of the agreement and the notice "Licensed by NVIDIA
+  Corporation under the NVIDIA Open Model License", and terms that end the
+  licence if its safety guardrails are bypassed. The licence is that of
+  NVIDIA's model card; the export repo itself declares none.] https://huggingface.co/csukuangfj2/sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8-non-streaming,
+  https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/
+- Zipformer Hebrew (ivrit-ai/zipformer2-66m-streaming-he)
+  CC-BY-4.0 (attribution: Yakov Kolani / ivrit.ai). https://huggingface.co/ivrit-ai/zipformer2-66m-streaming-he
+- Parakeet TDT 0.6B v3 Hebrew int8 (krut42/voice-parakeet-he-int8, from
+  thewh1teagle/parakeet-tdt-0.6b-v3-he, from nvidia/parakeet-tdt-0.6b-v3)
+  CC-BY-4.0 (attribution: NVIDIA (nvidia/parakeet-tdt-0.6b-v3), fine-tuned by
+  thewh1teagle, int8 by krut42). https://huggingface.co/krut42/voice-parakeet-he-int8
+- ivrit.ai Whisper large-v3-turbo GGML q5_0 (tagidu/ivrit-whisper-large-v3-turbo-ggml-quantized,
+  from ivrit-ai/whisper-large-v3-turbo)
+  Apache-2.0. https://huggingface.co/tagidu/ivrit-whisper-large-v3-turbo-ggml-quantized
+- Qwen2.5 1.5B Instruct and Qwen2.5 0.5B Instruct, GGUF q4_k_m (AI cleanup)
+  Apache-2.0 (model cards). https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF,
+  https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF
+- Llama 3.2 3B Instruct, GGUF q4_k_m (AI cleanup, GPU option; bartowski's
+  quantisation of meta-llama/Llama-3.2-3B-Instruct)
+  [FLAG: Llama 3.2 Community License: redistribution must include the
+  licence and "Built with Llama"; Meta's Acceptable Use Policy applies;
+  products with over 700 million monthly users need a licence from Meta.]
+  https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF,
+  https://www.llama.com/llama3_2/license/
+
+6. Rust crates (ship, compiled into flow-server, the Android library, the
+   cleanup plugin and the Windows app)
+
+MPL-2.0 crates below [FLAG: file-level copyleft; we use them unmodified,
+and their source is at crates.io]. No GPL, LGPL or AGPL crate is linked.
+
+--- BEGIN GENERATED: Rust crates (tools/notice/crate-licences.py) ---
+
+352 crates from crates.io (https://crates.io/crates/<name>; their licence
+texts are in THIRD-PARTY-LICENSES, Part 1), grouped by licence:
+
+Apache-2.0 OR MIT (207):
+  aes, ahash, anyhow, atomic-waker, base64, bit-set, bit-vec, bitflags,
+  block-buffer, bs58, bumpalo, bzip2, bzip2-sys, camino, cargo-platform,
+  cesu8, cfg-if, chacha20, chrono, cipher, const-oid, cookie, cpufeatures,
+  crc, crc-catalog, crc32fast, crossbeam-channel, crossbeam-utils,
+  crypto-common, ctor, dasp_sample, defmt, defmt-macros, defmt-parser,
+  deranged, digest, dirs, dirs-sys, displaydoc, dtoa, dyn-clone, enumflags2,
+  enumflags2_derive, equivalent, erased-serde, errno, fallible-iterator,
+  fallible-streaming-iterator, fastrand, fdeflate, flate2, fnv,
+  form_urlencoded, futures-channel, futures-core, futures-io, futures-macro,
+  futures-sink, futures-task, futures-util, getrandom, glob, hash32,
+  hashbrown, hashlink, heapless, heck, hex, hmac, html5ever, http, httparse,
+  httpdate, hybrid-array, ident_case, idna, idna_adapter, image, indexmap,
+  inout, ipnet, itoa, jni, jni-sys, jni-sys-macros, json-patch, jsonptr,
+  keyboard-types, lazy_static, libc, llama-cpp-2, llama-cpp-sys-2, lock_api,
+  log, lzma-sys, markup5ever, md-5, mime, muda, num-conv, num-traits,
+  once_cell, parking_lot, parking_lot_core, pbkdf2, percent-encoding,
+  pin-project-lite, png, powerfmt, ppv-lite86, proc-macro2, quinn,
+  quinn-proto, quinn-udp, quote, rand, rand_chacha, rand_core, rand_pcg,
+  ref-cast, ref-cast-impl, regex, regex-automata, regex-syntax, reqwest,
+  rtrb, rustc-hash, rustls-pki-types, rustversion, scopeguard, semver,
+  seq-macro, serde, serde-untagged, serde_core, serde_derive,
+  serde_derive_internals, serde_json, serde_repr, serde_spanned,
+  serde_urlencoded, serde_with, serde_with_macros, serialize-to-javascript,
+  serialize-to-javascript-impl, servo_arc, sha1, sha2, signal-hook-registry,
+  siphasher, smallvec, socket2, softbuffer, stable_deref_trait,
+  string_cache, syn, tauri, tauri-codegen, tauri-macros, tauri-runtime,
+  tauri-runtime-wry, tauri-utils, tendril, thiserror, thiserror-impl,
+  thread_local, time, time-core, time-macros, tokio-rustls, toml,
+  toml_datetime, toml_edit, toml_parser, toml_write, toml_writer, tray-icon,
+  tungstenite, typeid, typenum, unicase, unicode-segmentation, url,
+  utf8_iter, uuid, web-time, web_atoms, window-vibrancy, windows,
+  windows-collections, windows-core, windows-future, windows-implement,
+  windows-interface, windows-link, windows-numerics, windows-result,
+  windows-strings, windows-sys, windows-targets, windows-threading,
+  windows-version, windows_x86_64_msvc, wry, xz2, zeroize, zeroize_derive
+
+MIT (68):
+  axum, axum-core, bytes, cargo_metadata, cfb, combine, darling,
+  darling_core, darling_macro, data-encoding, deflate64, derive_more,
+  derive_more-impl, dom_query, fancy-regex, generic-array, h2, http-body,
+  http-body-util, hyper, hyper-util, ico, infer, libsqlite3-sys, lzma-rs,
+  matchers, mime_guess, mio, new_debug_unreachable, nu-ansi-term, phf,
+  phf_generator, phf_macros, phf_shared, plist, precomputed-hash, quick-xml,
+  rusqlite, schemars, schemars_derive, sharded-slab, simd-adler32, slab,
+  strsim, synstructure, tokio, tokio-macros, tokio-tungstenite, tokio-util,
+  tower, tower-http, tower-layer, tower-service, tracing,
+  tracing-attributes, tracing-core, tracing-log, tracing-subscriber,
+  try-lock, urlpattern, want, webview2-com, webview2-com-macros,
+  webview2-com-sys, winnow, zip, zmij, zstd
+
+Unicode-3.0 (18):
+  icu_collections, icu_locale_core, icu_normalizer, icu_normalizer_data,
+  icu_properties, icu_properties_data, icu_provider, litemap, potential_utf,
+  tinystr, writeable, yoke, yoke-derive, zerofrom, zerofrom-derive,
+  zerotrie, zerovec, zerovec-derive
+
+MIT OR Unlicense (11):
+  aho-corasick, byteorder, byteorder-lite, jiff, jiff-core, jiff-tzdb,
+  jiff-tzdb-platform, memchr, same-file, walkdir, winapi-util
+
+Apache-2.0 (8):
+  cpal, flacenc, hound, sherpa-onnx, sherpa-onnx-sys, sync_wrapper, tao,
+  zopfli
+
+Apache-2.0 OR MIT OR Zlib (5):
+  bytemuck, lru-slab, miniz_oxide, raw-window-handle, tinyvec
+
+BSD-3-Clause (5):
+  alloc-no-stdlib, alloc-stdlib, subtle, zstd-safe, zstd-sys
+
+MPL-2.0 (5):
+  cssparser, cssparser-macros, dtoa-short, option-ext, selectors
+
+Apache-2.0 OR ISC OR MIT (3):
+  hyper-rustls, rustls, rustls-pemfile
+
+ISC (3):
+  libloading, rustls-webpki, untrusted
+
+(MIT OR Apache-2.0) AND Unicode-3.0 (2):
+  unicode-ident, unicode-normalization
+
+Apache-2.0 OR BSD-3-Clause (2):
+  moxcms, pxfm
+
+Apache-2.0 OR CC0-1.0 OR MIT-0 (2):
+  constant_time_eq, dunce
+
+BSD-3-Clause AND MIT (2):
+  brotli, matchit
+
+Unlicense (2):
+  whisper-rs, whisper-rs-sys
+
+Zlib (2):
+  foldhash, zlib-rs
+
+0BSD OR Apache-2.0 OR MIT (1):
+  adler2
+
+Apache-2.0 AND ISC (1):
+  ring
+
+Apache-2.0 AND MIT (1):
+  dpi
+
+Apache-2.0 OR BSD-2-Clause OR MIT (1):
+  zerocopy
+
+Apache-2.0 OR BSL-1.0 (1):
+  ryu
+
+BSD-3-Clause OR MIT (1):
+  brotli-decompressor
+
+CDLA-Permissive-2.0 (1):
+  webpki-roots
+
+--- END GENERATED: Rust crates ---
+
