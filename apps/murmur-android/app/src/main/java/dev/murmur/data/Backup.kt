@@ -1,10 +1,10 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.core.CoreJson
-import dev.flowclone.core.DictEntry
-import dev.flowclone.learn.Suggestions
-import dev.flowclone.notes.DocumentStore
-import dev.flowclone.notes.Note
+import dev.murmur.core.CoreJson
+import dev.murmur.core.DictEntry
+import dev.murmur.learn.Suggestions
+import dev.murmur.notes.DocumentStore
+import dev.murmur.notes.Note
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
@@ -20,7 +20,10 @@ import org.json.JSONObject
  * device-local, [DEVICE_LOCAL]), the debug log and debug audio.
  */
 object Backup {
-    const val FORMAT = "flow-clone-backup"
+    const val FORMAT = "murmur-backup"
+
+    /** D83: the format name before the Murmur rename. Same layout, so a backup exported from the old app restores here. */
+    const val OLD_FORMAT = "flow-clone-backup"
     const val VERSION = 1
 
     /** Larger than any real backup (text only); a bigger file is refused before parsing. */
@@ -31,7 +34,7 @@ object Backup {
         "API keys and the server token are never in a backup: enter them again after restoring. Downloaded models are not included either."
 
     /** SharedPreferences file names, as the stores open them. */
-    const val SETTINGS_PREFS = "flow_settings"
+    const val SETTINGS_PREFS = "murmur_settings"
     const val DEV_PREFS = DevStore.FILE
 
     /**
@@ -42,15 +45,15 @@ object Backup {
 
     fun isSecret(key: String): Boolean = SECRET.containsMatchIn(key) || key.startsWith(CloudKeyStore.PREFIX)
 
-    /** `flow_settings` keys that only mean something on this install: imported model files, the service's stop flag. */
+    /** `murmur_settings` keys that only mean something on this install: imported model files, the service's stop flag. */
     val DEVICE_LOCAL = setOf("model_path", "parakeet_path", "llm_model_path", "service_stopped_by_user")
 
     /** Whether [key] of prefs file [prefs] goes into (or comes out of) a backup. */
     fun exportable(prefs: String, key: String): Boolean =
         !isSecret(key) && !(prefs == SETTINGS_PREFS && key in DEVICE_LOCAL)
 
-    /** `flow-clone-backup-2026-10-29.json` */
-    fun fileName(date: java.time.LocalDate): String = "flow-clone-backup-$date.json"
+    /** `murmur-backup-2026-10-29.json` */
+    fun fileName(date: java.time.LocalDate): String = "murmur-backup-$date.json"
 
     /** One SharedPreferences value with its type, so a restore writes it back exactly. */
     sealed class Pref {
@@ -155,7 +158,7 @@ object Backup {
         } catch (_: JSONException) {
             return Parsed.Rejected("This file is not a Murmur backup (not JSON).")
         }
-        if (root.optString("format") != FORMAT) return Parsed.Rejected("This file is not a Murmur backup.")
+        if (root.optString("format") !in setOf(FORMAT, OLD_FORMAT)) return Parsed.Rejected("This file is not a Murmur backup.")
         val v = root.opt("version")
         if (v !is Int || v < 1) return Parsed.Rejected("This backup is damaged (no valid format version).")
         if (v > VERSION) {
