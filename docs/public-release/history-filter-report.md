@@ -72,14 +72,11 @@ The full list with dates is printed by `verify.sh <run>`.
 
 ## HEAD tree
 
-The integration HEAD tree keeps the same 1771 files. The text rules change 4 of them:
-
-- `CHANGELOG.md`: 8 lines that kept the old product name as history ("renamed to …", the old
-  service name) now say Murmur.
-- `docs/design/app-design/PageScratchpad.dc.html`, `PageTransforms.dc.html`: two UI strings
-  copied from the other app that A4 left in the design export now get HEAD's own wording.
-- `docs/public-release/history-drop.md`: two mentions of the other app's function and field
-  names become neutral words.
+The integration HEAD tree comes out byte-identical (1771 files, 0 differ). A HEAD commit on
+this branch already applied what the text rules would change: the old product name in
+`CHANGELOG.md` (the 0.8.0 entry now reads "Flow Clone → Murmur", accepted), two copied UI
+strings in the design export (`PageScratchpad.dc.html`, `PageTransforms.dc.html`) and the other
+app's function and field names in `docs/public-release/history-drop.md`.
 
 ## Scans of the result (all blobs of all commits, all messages, all identities)
 
@@ -95,21 +92,15 @@ Counted but not failed (info):
 - the device model (82 hits) and the TickTick project id (8 hits);
 - 4 audio files: the public-domain JFK sample and 3 byte-sized stubs.
 
-## Residuals for the owner
+## Residuals
 
-1. **CHANGELOG.md in HEAD changes.** The rule rewrites the old name everywhere, as the ticket
-   asks. The 0.8.0 entry now reads as a rename "Flow Clone → Murmur". To keep the old name in
-   that entry, remove the `Local Wis[p]r` rule; the old name then stays in about 600 places
-   across the history.
-2. **Two design-export strings in HEAD** (the two `.dc.html` files above) still carry the
-   copied UI copy that A4 missed. The filter fixes them in the public history. A one-line HEAD
-   commit with the same wording would make the HEAD tree byte-identical.
-3. **One instruction sentence in HEAD's `cleanup_system_prompt.txt`** (the "never invent a
-   greeting …" rule) also appears in the old prompt catalogue. A4 kept it in HEAD, so the filter
-   leaves it alone. This needs an owner decision if it should go.
-4. Section refs into the deleted research (for example "03 §7.2") stay in old commits. They
+Decided: the CHANGELOG wording is accepted; the design-export strings and the bench prompt's
+signature sentence (now in our own words in `tools/probes/bench/cleanup_system_prompt.txt`)
+are fixed in HEAD. Left as is:
+
+1. Section refs into the deleted research (for example "03 §7.2") stay in old commits. They
    point to text that is not in the public repo.
-5. Old commits from before D82/A3/A4 no longer build, because their ported modules and copied
+2. Old commits from before D82/A3/A4 no longer build, because their ported modules and copied
    lists are gone. HEAD builds as before.
 
 ## Step C (after sign-off; not run)
