@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build and install the self-hosted flow-server (Parakeet ASR) with its
+# Build and install the self-hosted murmur-server (Parakeet ASR) with its
 # systemd unit, or upgrade an existing install in place (binary and libs
 # replaced; config, token, keys and models kept). Setup guide:
 # docs/server-advanced.md.
@@ -7,17 +7,17 @@
 #   tools/server/install.sh [--system | --user] [options]
 #
 # Modes:
-#   --system (default)  /opt/flow-server/{bin,lib,models}, config + token in
-#                       /etc/flow-server, the hardened system unit from
-#                       crates/flow-server/dist/flow-server.service
+#   --system (default)  /opt/murmur-server/{bin,lib,models}, config + token in
+#                       /etc/murmur-server, the hardened system unit from
+#                       crates/murmur-server/dist/murmur-server.service
 #                       (DynamicUser, IP allowlist). Needs sudo; every root
 #                       command is printed and confirmed first.
-#   --user              ~/.local/{bin,lib/flow-server,share/flow-server/models},
-#                       ~/.config/flow-server, a systemd *user* unit. No sudo.
+#   --user              ~/.local/{bin,lib/murmur-server,share/murmur-server/models},
+#                       ~/.config/murmur-server, a systemd *user* unit. No sudo.
 #
 # Options:
-#   --prefix DIR        install root (default /opt/flow-server or ~/.local)
-#   --model DIR         Parakeet model dir (default $FLOW_PARAKEET_DIR, else
+#   --prefix DIR        install root (default /opt/murmur-server or ~/.local)
+#   --model DIR         Parakeet model dir (default $MURMUR_PARAKEET_DIR, else
 #                       the existing config's asr_path when it holds a
 #                       model (upgrade in place), else
 #                       models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8)
@@ -29,8 +29,8 @@
 #                       same port, if any)
 #   --port N            port for the default bind addresses (default 7313)
 #   --threads N         ASR threads (default 4)
-#   --llm               also build LLM cleanup: flow-server with the `llm`
-#                       feature plus the llama.cpp plugin libflow_llm.so,
+#   --llm               also build LLM cleanup: murmur-server with the `llm`
+#                       feature plus the llama.cpp plugin libmurmur_llm.so,
 #                       installed next to the sherpa libs. Turned on by
 #                       itself when the existing config sets llm_path (a
 #                       build without the feature refuses to start then)
@@ -41,7 +41,7 @@
 #                       whisper engine, lid_path language ID, vad_model_path).
 #                       Ignored when the existing config uses any of them (a
 #                       build without it refuses to start then)
-#   --no-build          install the already built target/release/flow-server
+#   --no-build          install the already built target/release/murmur-server
 #   --start             enable and (re)start the service at the end, so an
 #                       upgrade runs the new binary (otherwise the commands
 #                       are printed)
@@ -51,12 +51,17 @@
 # Never downloads anything: fetch the model first (tools/fetch-models.sh
 # --parakeet) and build sherpa-onnx (or point --sherpa-lib at its libs).
 # Existing config and token files are never overwritten.
+#
+# An install from before the Murmur rename (flow-server paths, D83) is
+# picked up once: its config and token are copied (not moved) into the new
+# config dir, the user-mode state dir (keys) is copied, and the old unit is
+# left alone with a warning (it listens on the same port).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 MODE=system
 PREFIX=""
-MODEL="${FLOW_PARAKEET_DIR:-}"
+MODEL="${MURMUR_PARAKEET_DIR:-}"
 SHERPA_LIB="${SHERPA_ONNX_LIB_DIR:-}"
 BINDS=()
 PORT=7313
@@ -96,28 +101,39 @@ while [ $# -gt 0 ]; do
 done
 
 if [ "$MODE" = system ]; then
-    PREFIX="${PREFIX:-/opt/flow-server}"
+    PREFIX="${PREFIX:-/opt/murmur-server}"
     BIN_DIR="$PREFIX/bin"
     LIB_DIR="$PREFIX/lib"
     MODEL_ROOT="$PREFIX/models"
-    CONF_DIR=/etc/flow-server
-    UNIT_PATH=/etc/systemd/system/flow-server.service
+    CONF_DIR=/etc/murmur-server
+    UNIT_PATH=/etc/systemd/system/murmur-server.service
     SYSTEMCTL=(systemctl)
-    JOURNAL="journalctl -u flow-server -f"
+    JOURNAL="journalctl -u murmur-server -f"
 else
     PREFIX="${PREFIX:-$HOME/.local}"
     BIN_DIR="$PREFIX/bin"
-    LIB_DIR="$PREFIX/lib/flow-server"
-    MODEL_ROOT="$PREFIX/share/flow-server/models"
-    CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/flow-server"
-    UNIT_PATH="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/flow-server.service"
+    LIB_DIR="$PREFIX/lib/murmur-server"
+    MODEL_ROOT="$PREFIX/share/murmur-server/models"
+    CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/murmur-server"
+    UNIT_PATH="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/murmur-server.service"
     SYSTEMCTL=(systemctl --user)
-    JOURNAL="journalctl --user -u flow-server -f"
+    JOURNAL="journalctl --user -u murmur-server -f"
 fi
 CONF="$CONF_DIR/config.toml"
 TOKEN="$CONF_DIR/token"
-BIN="$BIN_DIR/flow-server"
-PLUGIN="$LIB_DIR/libflow_llm.so"
+BIN="$BIN_DIR/murmur-server"
+PLUGIN="$LIB_DIR/libmurmur_llm.so"
+
+# D83: the same install under the old name, read once and never changed.
+OLD_CONF_DIR="$(dirname "$CONF_DIR")/flow-server"
+OLD_UNIT="$(dirname "$UNIT_PATH")/flow-server.service"
+PICK_UP=0
+if [ ! -e "$CONF" ] && [ -r "$OLD_CONF_DIR/config.toml" ]; then
+    PICK_UP=1
+    echo "note: no $CONF yet; copying the config and token of the install from before the rename ($OLD_CONF_DIR, kept as is)" >&2
+fi
+READ_CONF="$CONF"
+[ "$PICK_UP" = 1 ] && READ_CONF="$OLD_CONF_DIR/config.toml"
 
 # ---- preflight (read-only) ---------------------------------------------------
 # An existing config (re-install / upgrade) decides what the build needs;
@@ -126,8 +142,8 @@ CONF_LLM_PATH=""
 CONF_LLM_LIB=""
 CONF_ASR_PATH=""
 CONF_WHISPER=""
-if [ -r "$CONF" ]; then
-    toml_str() { sed -n -E "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*\"([^\"]*)\".*/\1/p" "$CONF" | head -n 1; }
+if [ -r "$READ_CONF" ]; then
+    toml_str() { sed -n -E "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*\"([^\"]*)\".*/\1/p" "$READ_CONF" | head -n 1; }
     CONF_LLM_PATH="$(toml_str llm_path)"
     CONF_LLM_LIB="$(toml_str llm_lib)"
     CONF_ASR_PATH="$(toml_str asr_path)"
@@ -135,12 +151,13 @@ if [ -r "$CONF" ]; then
     for k in lid_path vad_model_path; do
         [ -n "$(toml_str "$k")" ] && CONF_WHISPER="$CONF_WHISPER $k"
     done
-    grep -q -E '^[[:space:]]*asr_(engine|backend)[[:space:]]*=[[:space:]]*"whisper"' "$CONF" \
+    grep -q -E '^[[:space:]]*asr_(engine|backend)[[:space:]]*=[[:space:]]*"whisper"' "$READ_CONF" \
         && CONF_WHISPER="$CONF_WHISPER asr_engine=whisper"
+    [ "$PICK_UP" = 1 ] && CONF_LLM_LIB="" # rewritten to $PLUGIN in the copy
 fi
 # Upgrade in place: without --model, keep serving the installed model.
 if [ -z "$MODEL" ] && [ -n "$CONF_ASR_PATH" ] && [ -f "$CONF_ASR_PATH/tokens.txt" ]; then
-    echo "note: upgrading in place; model from $CONF: $CONF_ASR_PATH" >&2
+    echo "note: upgrading in place; model from $READ_CONF: $CONF_ASR_PATH" >&2
     MODEL="$CONF_ASR_PATH"
 fi
 MODEL="${MODEL:-$ROOT/models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8}"
@@ -156,15 +173,15 @@ fi
 for l in libsherpa-onnx-c-api.so libonnxruntime.so; do
     [ -e "$SHERPA_LIB/$l" ] || die "$SHERPA_LIB/$l not found"
 done
-# A config that needs a feature the build leaves out stops flow-server at
+# A config that needs a feature the build leaves out stops murmur-server at
 # startup ("lid_path set but built without the `whisper` feature", same for
 # llm_path), so a plain re-install would take the server down.
 if [ -n "$CONF_WHISPER" ] && [ "$WHISPER" = 0 ]; then
-    echo "note: $CONF uses${CONF_WHISPER}; building with whisper despite --no-whisper" >&2
+    echo "note: $READ_CONF uses${CONF_WHISPER}; building with whisper despite --no-whisper" >&2
     WHISPER=1
 fi
 if [ -n "$CONF_LLM_PATH" ] && [ "$LLM" = 0 ]; then
-    echo "note: $CONF sets llm_path; building with LLM cleanup (as --llm)" >&2
+    echo "note: $READ_CONF sets llm_path; building with LLM cleanup (as --llm)" >&2
     LLM=1
 fi
 if [ -n "$LLM_MODEL" ]; then
@@ -172,7 +189,7 @@ if [ -n "$LLM_MODEL" ]; then
     LLM_MODEL_DST="$MODEL_ROOT/$(basename "$LLM_MODEL")"
 fi
 if [ -n "$CONF_LLM_LIB" ] && [ "$CONF_LLM_LIB" != "$PLUGIN" ]; then
-    echo "warning: $CONF has llm_lib = \"$CONF_LLM_LIB\"; this install puts the plugin at $PLUGIN, which that config does not load" >&2
+    echo "warning: $READ_CONF has llm_lib = \"$CONF_LLM_LIB\"; this install puts the plugin at $PLUGIN, which that config does not load" >&2
 fi
 # bindgen (llama-cpp-sys-2) runs libclang, which does not find the compiler's
 # own headers (stdbool.h) on some distros (Ubuntu with gcc 13). Point it at
@@ -187,9 +204,9 @@ fi
 # pam_systemd, cron, agents) or with XDG_RUNTIME_DIR redirected elsewhere
 # (e.g. rootless docker) get "Failed to connect to bus" only at daemon-reload,
 # after everything is built and copied. Check here, fall back to the standard
-# runtime dir, else stop with the fix. FLOW_INSTALL_RUN_USER: tests only.
+# runtime dir, else stop with the fix. MURMUR_INSTALL_RUN_USER: tests only.
 if [ "$MODE" = user ] && ! systemctl --user show-environment >/dev/null 2>&1; then
-    RUN_DIR="${FLOW_INSTALL_RUN_USER:-/run/user}/$(id -u)"
+    RUN_DIR="${MURMUR_INSTALL_RUN_USER:-/run/user}/$(id -u)"
     if [ -S "$RUN_DIR/bus" ] && XDG_RUNTIME_DIR="$RUN_DIR" DBUS_SESSION_BUS_ADDRESS="unix:path=$RUN_DIR/bus" \
         systemctl --user show-environment >/dev/null 2>&1; then
         echo "note: no user bus at XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-<unset>}; using $RUN_DIR" >&2
@@ -254,7 +271,7 @@ exists() {
 }
 
 cat <<EOF
-flow-server install ($MODE mode)$( [ "$DRY" = 1 ] && echo ", DRY RUN: nothing is changed" )
+murmur-server install ($MODE mode)$( [ "$DRY" = 1 ] && echo ", DRY RUN: nothing is changed" )
   binary   $BIN
   libs     $LIB_DIR (libsherpa-onnx-c-api.so, libonnxruntime.so)
   model    $MODEL_DST
@@ -281,21 +298,21 @@ fi
 FEATURES=parakeet,tls
 [ "$WHISPER" = 1 ] && FEATURES=whisper,$FEATURES
 [ "$LLM" = 1 ] && FEATURES=$FEATURES,llm
-step "1. build flow-server (release, features $FEATURES)"
+step "1. build murmur-server (release, features $FEATURES)"
 if [ "$BUILD" = 1 ]; then
     # Never downloads: SHERPA_ONNX_LIB_DIR points sherpa-onnx-sys at the local libs.
     run env SHERPA_ONNX_LIB_DIR="$SHERPA_LIB" cargo build --release --offline \
-        --manifest-path "$ROOT/Cargo.toml" -p flow-server --no-default-features --features "$FEATURES"
+        --manifest-path "$ROOT/Cargo.toml" -p murmur-server --no-default-features --features "$FEATURES"
     # The `llm` feature only adds the loader; llama.cpp is the separate
-    # flow-llm cdylib (its ggml clashes with whisper.cpp's in one binary).
+    # murmur-llm cdylib (its ggml clashes with whisper.cpp's in one binary).
     if [ "$LLM" = 1 ]; then
         run env BINDGEN_EXTRA_CLANG_ARGS="$BINDGEN_ARGS" cargo build --release --offline \
-            --manifest-path "$ROOT/Cargo.toml" -p flow-llm
+            --manifest-path "$ROOT/Cargo.toml" -p murmur-llm
     fi
 fi
 TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/target}"
-BUILT="$TARGET_DIR/release/flow-server"
-BUILT_PLUGIN="$TARGET_DIR/release/libflow_llm.so"
+BUILT="$TARGET_DIR/release/murmur-server"
+BUILT_PLUGIN="$TARGET_DIR/release/libmurmur_llm.so"
 [ "$DRY" = 1 ] || [ -x "$BUILT" ] || die "$BUILT not built"
 [ "$DRY" = 1 ] || [ "$LLM" = 0 ] || [ -f "$BUILT_PLUGIN" ] || die "$BUILT_PLUGIN not built"
 
@@ -350,6 +367,8 @@ fi
 step "3. token"
 if [ "$DRY" = 0 ] && exists "$TOKEN"; then
     echo "    $TOKEN exists, kept"
+elif [ "$PICK_UP" = 1 ] && exists "$OLD_CONF_DIR/token"; then
+    priv cp -p "$OLD_CONF_DIR/token" "$TOKEN"
 else
     priv env LD_LIBRARY_PATH="$LIB_DIR" "$BIN" gen-token --out "$TOKEN"
 fi
@@ -357,11 +376,26 @@ fi
 # ---- 4. config -----------------------------------------------------------------
 step "4. config"
 if [ "$DRY" = 0 ] && exists "$CONF"; then
-    echo "    $CONF exists, kept (compare with crates/flow-server/dist/config.example.toml)"
+    echo "    $CONF exists, kept (compare with crates/murmur-server/dist/config.example.toml)"
+elif [ "$PICK_UP" = 1 ]; then
+    # The old config with the token and plugin paths of this install.
+    sed -E -e "s|^([[:space:]]*token_file[[:space:]]*=[[:space:]]*)\"$OLD_CONF_DIR/token\"|\1\"$TOKEN\"|" \
+        -e "s|^([[:space:]]*llm_lib[[:space:]]*=[[:space:]]*)\"[^\"]*\"|\1\"$PLUGIN\"|" \
+        "$READ_CONF" | priv_write "$CONF" 0644
+    if [ "$MODE" = user ]; then
+        OLD_STATE="${XDG_STATE_HOME:-$HOME/.local/state}/flow-server"
+        NEW_STATE="${XDG_STATE_HOME:-$HOME/.local/state}/murmur-server"
+        if [ -d "$OLD_STATE" ] && [ ! -e "$NEW_STATE" ]; then
+            run cp -a "$OLD_STATE" "$NEW_STATE"
+        fi
+    else
+        echo "    keys: the server reads /var/lib/flow-server until /var/lib/murmur-server has keys.json;"
+        echo "    to finish the move: sudo cp -a /var/lib/private/flow-server/. /var/lib/private/murmur-server/"
+    fi
 else
     priv_write "$CONF" 0644 <<EOF
-# flow-server config, written by tools/server/install.sh. Reference:
-# crates/flow-server/dist/config.example.toml, docs/server-advanced.md.
+# murmur-server config, written by tools/server/install.sh. Reference:
+# crates/murmur-server/dist/config.example.toml, docs/server-advanced.md.
 # Loopback / LAN / VPN addresses only: 0.0.0.0 or a public address is
 # refused unless [tls] is set.
 bind = $BIND_TOML
@@ -392,24 +426,24 @@ priv env LD_LIBRARY_PATH="$LIB_DIR" "$BIN" check-config --config "$CONF"
 
 # ---- 5. systemd unit -----------------------------------------------------------
 step "5. systemd unit"
-SRC_UNIT="$ROOT/crates/flow-server/dist/flow-server.service"
+SRC_UNIT="$ROOT/crates/murmur-server/dist/murmur-server.service"
 if [ "$MODE" = system ]; then
     # The packaged hardened unit, with this install's paths.
-    sed -e '/^# Install (manually/,/enable --now flow-server`\.$/c\# Installed by tools/server/install.sh (see docs/server-advanced.md).' \
-        -e "s|/usr/local/bin/flow-server|$BIN|" \
+    sed -e '/^# Install (manually/,/enable --now murmur-server`\.$/c\# Installed by tools/server/install.sh (see docs/server-advanced.md).' \
+        -e "s|/usr/local/bin/murmur-server|$BIN|" \
         -e "s|^LoadCredential=token:.*|LoadCredential=token:$TOKEN|" \
         -e "s|^# Environment=LD_LIBRARY_PATH=.*|Environment=LD_LIBRARY_PATH=$LIB_DIR|" \
-        -e "s|--config /etc/flow-server/config.toml|--config $CONF|" \
+        -e "s|--config /etc/murmur-server/config.toml|--config $CONF|" \
         "$SRC_UNIT" | priv_write "$UNIT_PATH" 0644
 else
     priv mkdir -p "$(dirname "$UNIT_PATH")"
     priv_write "$UNIT_PATH" 0644 <<EOF
-# flow-server as a systemd user unit (tools/server/install.sh --user).
-# The system unit (crates/flow-server/dist/flow-server.service) adds
+# murmur-server as a systemd user unit (tools/server/install.sh --user).
+# The system unit (crates/murmur-server/dist/murmur-server.service) adds
 # DynamicUser and a kernel IP allowlist; here the server's own bind policy
 # and peer filter (loopback / LAN / VPN only) are the boundary.
 [Unit]
-Description=flow-server (self-hosted dictation ASR; LAN/VPN only)
+Description=murmur-server (self-hosted dictation ASR; LAN/VPN only)
 After=network-online.target
 
 [Service]
@@ -432,15 +466,19 @@ priv "${SYSTEMCTL[@]}" daemon-reload
 
 # ---- 6. start ------------------------------------------------------------------
 step "6. start"
+if [ -e "$OLD_UNIT" ]; then
+    echo "    warning: the unit from before the rename ($OLD_UNIT) is still installed and uses the same port;"
+    echo "    it is left alone. Stop it first: ${SYSTEMCTL[*]} disable --now flow-server$( [ "$MODE" = system ] && echo " (sudo)" )"
+fi
 SUDO=""
 [ "$MODE" = system ] && SUDO="sudo "
 if [ "$START" = 1 ]; then
     # restart, not `enable --now`: an upgrade must replace the running binary.
-    priv "${SYSTEMCTL[@]}" enable flow-server
-    priv "${SYSTEMCTL[@]}" restart flow-server
+    priv "${SYSTEMCTL[@]}" enable murmur-server
+    priv "${SYSTEMCTL[@]}" restart murmur-server
 else
     echo "    not started (pass --start). To (re)start now and enable at boot:"
-    echo "      ${SUDO}${SYSTEMCTL[*]} enable flow-server && ${SUDO}${SYSTEMCTL[*]} restart flow-server"
+    echo "      ${SUDO}${SYSTEMCTL[*]} enable murmur-server && ${SUDO}${SYSTEMCTL[*]} restart murmur-server"
     [ "$MODE" = user ] && echo "      sudo loginctl enable-linger $USER   # keep it running while logged out"
 fi
 
