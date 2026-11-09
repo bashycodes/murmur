@@ -14,7 +14,7 @@
 //!   (no fallback rules before it, no skip); its answer is checked by the
 //!   product guard (`strict`) and by the loosened guard
 //!   (`flow_core::guard::check_loose`, D30); on a reject the fallback rules produce the text.
-//!   Post-processing (dictionary, cursor context) runs after, as in the
+//!   Post-processing (dictionary, terminal punctuation, cursor context) runs after, as in the
 //!   product. One LLM call per case gives all three columns: `out_none`
 //!   (no guard), `out_strict`, `out_loose`.
 //!
