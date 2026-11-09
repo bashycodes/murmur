@@ -1,0 +1,60 @@
+regex:Local Wis[p]r==>Murmur
+regex:Local-Wis[p]r==>Murmur
+regex:LocalWis[p]r==>Murmur
+regex:Local wis[p]r==>Murmur
+regex:local-wis[p]r==>murmur
+regex:localwis[p]r==>murmur
+regex:local wis[p]r==>murmur
+regex: \(status renderer S:[0-9]+-[0-9]+\)==>
+regex: ?\(`?[MS]:[0-9]{3,}(?:-[0-9]+)?`?(?:, `?[MS]:[0-9]{3,}(?:-[0-9]+)?`?)*\)==>
+regex:`?(?<![A-Za-z0-9_])[MS]:[0-9]{3,}(?:-[0-9]+)?`?==>[ref]
+regex:// The Wis[p]r LLM prompt's FORMATTIN[G] rules[^\n]*\n(?://[^\n]*\n)*?//[^\n]*signature\." The\n// list is written==>// The\n// list is written
+regex:the deterministic half of the Wis[p]r LLM prompt's FORMATTIN[G] rules(?: \([^)]*\))?==>the deterministic list and email layout rules
+regex:\(clone extension; not in Wis[p]r's\n//! client, whose server did this with an LLM\)==>(clone extension)
+regex:Not part of the Wis[p]r port: Wis[p]r's client `Ot\(\)`/`Re\(\)` never adds\n//! punctuation \(its ground-truth vectors[^)]*\); Wis[p]r's server-side formatting does\.==>Not part of the client post-processing, which never adds\n//! punctuation.
+regex:This is a port of the Wis[p]r Windows client fallback path `Ot\(\)`/`Re\(\)`\.==>This is the client fallback path.
+regex:End reasons mirror Wis[p]r's `contentObservationEndReaso[n]`:==>End reasons:
+regex:End reasons mirror Windows / Wis[p]r's `contentObservationEndReaso[n]`;==>End reasons mirror Windows;
+regex:Not part of the Wis[p]r port: Wis[p]r's client `Ot\(\)`/`Re\(\)` never adds==>Not part of the client post-processing, which never adds
+regex:The Wis[p]r client port `postprocess::apply` → `Ot\(\)`/`Re\(\)`==>The client post-processing `postprocess::apply`
+regex:Wis[p]r's `Re\(\)` rule==>the cursor-context rule
+regex:Wis[p]r's `Re\(\)`==>the cursor-context step
+regex:Wis[p]r `Re\(\)`:==>Cursor context:
+regex:\(dictionary, `Ot\(\)`/`Re\(\)`(, paste plan)?\)==>(dictionary, cursor context\1)
+regex:cursor context `Re\(\)`==>cursor context
+regex:`Ot\(\)`/`Re\(\)`==>the client post-processing
+regex:`Ot\(\)`, `Re\(\)`==>the client post-processing
+regex:`Ot\(\)`==>the client post-processing
+regex:`Re\(\)`==>the cursor-context step
+regex:\bOt\(\)/Re\(\)==>the client post-processing
+regex:`?contentObservationEndReaso[n]`?==>end reason
+regex: and Wis[p]r Windows `Dictionary`==>
+regex:Wis[p]r's own app lists==>The app lists
+regex:Windows process names Wis[p]r's lists miss==>Windows process names the lists miss
+regex:app_kinds_from_wis[p]r_lists==>app_kinds_from_lists
+regex:Order of attempts mirrors Wis[p]r's helper \([^)]*\)==>Order of attempts
+regex:Wis[p]r auto-adds learned words; the clone never does==>The clone never adds learned words by itself
+regex: \(03: "about 30 s"; Wis[p]r watches longer\)==> (about 30 s)
+regex:\(Wis[p]r drops==>(it drops
+regex: \(Wis[p]r's `editedText` vs `editedTextUnbounde[d]`\)==>
+regex:Wis[p]r Flow\.exe==>Dictate Pro.exe
+regex:\(Wis[p]r\n/// A/B ab5, ab7, ab8 and a height\)==>(a quote, money and a height)
+regex: and light Wis[p]r-style edits==>
+regex:far from Wis[p]r's wording==>with stiffer, rule-bound wording
+regex:Wis[p]r-closeness==>target-closeness
+regex:Wis[p]r-exact==>target-exact
+regex:No Caps \+ Less p[u]nctuation==>Lowercase, lighter punctuation
+regex:Caps \+ Less p[u]nctuation==>Capitals, lighter punctuation
+regex:Caps \+ less p[u]nctuation==>capitals, lighter punctuation
+regex:Caps \+ P[u]nctuation==>Capitals, full punctuation
+regex:Caps \+ p[u]nctuation==>capitals, full punctuation
+regex:This style applies in personal messenger[s]==>Used when you dictate into chat apps for friends and family
+regex:This style applies in work cha[t]==>Used when you dictate into team chat apps
+regex:This style applies in emai[l]==>Used when you dictate into email
+regex:This style applies everywhere els[e]==>Used in every other app
+regex:Run a transform on everything you dictate, automaticall[y]\.==>Pass each dictation through the chosen transform before it is pasted.
+regex:For quick thoughts you want to come back t[o]==>Notes you dictate and keep
+regex:\bJoe[y]\b==>Dana
+regex:\bjoe[y]\b==>dana
+regex:on for coffe[e]==>on for lunch
+regex:beat traffi[c]==>beat the rush
