@@ -7,8 +7,8 @@ export const settingsSystemPage = {
     area: "settings",
     template: `
 ${heading("System")}
-${group("App settings", row("Launch app at login", "", toggle("launch_at_login", "Launch app at login", `data-save="prefs"`)) +
-        row("Show Flow bar at all times", "Otherwise it only appears while you dictate.", toggle("show_flow_bar_always", "Show Flow bar at all times", `data-save="prefs"`)) +
+${group("App settings", row("Start when you sign in to Windows", "", toggle("launch_at_login", "Start when you sign in to Windows", `data-save="prefs"`)) +
+        row("Keep the Flow bar on screen", "Otherwise it only appears while you dictate.", toggle("show_flow_bar_always", "Keep the Flow bar on screen", `data-save="prefs"`)) +
         row("Show which engine was used", "A small <b>L</b>, <b>S</b> or <b>C</b> on the Flow bar after each dictation: this PC, your server or the cloud.", toggle("dev_show_engine_badge", "Show which engine was used", `data-save="dev"`), `data-needs="dev"`))}
 ${group("Sound", row("Dictation sounds", "A soft click when dictation starts and stops.", toggle("enable_sounds", "Dictation sounds", `data-save="prefs"`)) +
         row("Mute other audio while dictating", "", toggle("mute_audio_while_dictating", "Mute other audio while dictating", `data-save="prefs"`)))}

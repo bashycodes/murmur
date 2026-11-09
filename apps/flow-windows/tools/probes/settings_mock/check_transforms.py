@@ -6,7 +6,7 @@ Probe (Playwright + its bundled Chromium):
 Opens Transforms from the sidebar (between Style and Scratchpad), turns
 the opt-in and auto apply on, creates, edits (a clashing shortcut is
 refused in the dialog), deletes a transform, resets the built-ins, runs
-"Try it out", and fires the "view changes" event (Home opens with the
+"Try on sample text", and fires the "view changes" event (Home opens with the
 transform row's before / after). Asserts what reached set_prefs. Then
 writes shots/transforms-*.png (gitignored) in light and dark.
 """
@@ -44,12 +44,12 @@ with sync_playwright() as p:
     check("sidebar: Style, Transforms, Scratchpad", "transforms" in nav and nav.index("transforms") == nav.index("style") + 1 and nav.index("scratchpad") == nav.index("transforms") + 1, nav)
     pg.click("[data-page=transforms]")
     pg.wait_for_timeout(200)
-    check("cards: built-ins + create your own", texts("#tf_grid .lw-tf-card") == [
-        "Win Alt 1 Polish Improve clarity and conciseness",
-        "Win Alt 2 Prompt Engineer Turns a rough ask into a clear prompt",
-        "Create your own Write your own instruction",
+    check("cards: built-ins + add a transform", texts("#tf_grid .lw-tf-card") == [
+        "Win Alt 1 Polish Clearer, tighter wording",
+        "Win Alt 2 Prompt Builder Turns a rough ask into a clear prompt",
+        "Add a transform Your instruction, your shortcut",
     ], texts("#tf_grid .lw-tf-card"))
-    check("view keys Win Alt O", texts("#tf_view kbd") == ["Win", "Alt", "O"] and "to view changes" in pg.inner_text("#tf_view"), texts("#tf_view kbd"))
+    check("view keys Win Alt O", texts("#tf_view kbd") == ["Win", "Alt", "O"] and "shows the last before and after" in pg.inner_text("#tf_view"), texts("#tf_view kbd"))
     check("opt in off by default", not pg.is_checked("#tf_enabled"))
     check("auto apply needs the opt in", pg.is_disabled("#tf_auto") and pg.is_disabled("#tf_auto_pick"))
 
@@ -121,13 +121,13 @@ with sync_playwright() as p:
     pg.click("#tf_reset_ok")
     pg.wait_for_timeout(150)
     items = saved()["items"]
-    check("reset: built-in wording back, custom kept", items[0]["transform"]["description"] == "Improve clarity and conciseness" and items[2]["transform"]["name"] == "Shorter", items)
+    check("reset: built-in wording back, custom kept", items[0]["transform"]["description"] == "Clearer, tighter wording" and items[2]["transform"]["name"] == "Shorter", items)
     check("reset: built-in loses a shortcut a custom took", items[0]["shortcut"] is None and items[1]["shortcut"] == "Win+Alt+2")
     check("reset shown", "Win Alt 1 Shorter" in texts("#tf_grid .lw-tf-card")[2])
 
-    # Try it out.
+    # Try on sample text.
     pg.click("#tf_try")
-    check("try dialog lists transforms", texts("#tf_try_pick option") == ["Polish", "Prompt Engineer", "Shorter"])
+    check("try dialog lists transforms", texts("#tf_try_pick option") == ["Polish", "Prompt Builder", "Shorter"])
     pg.click("#tf_try_run")
     pg.wait_for_timeout(150)
     check("try result shown", pg.inner_text("#tf_try_out").startswith("Polish: Hey so"), pg.inner_text("#tf_try_out"))

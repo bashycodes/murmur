@@ -115,7 +115,7 @@ class EditWatchTest {
     }
 
     @Test fun boundEditDropsTextTypedAroundTheDictation() {
-        assertEquals("I use Whisperly.", EditText.boundEdit("I use whisperly", "I use Whisperly. How are you today"))
+        assertEquals("I use Tailscale.", EditText.boundEdit("I use tailscale", "I use Tailscale. How are you today"))
         assertEquals("leading insertions trimmed, inner ones kept", "meet at 12 noon", EditText.boundEdit("meet at noon", "Ok so meet at 12 noon"))
         assertEquals("", EditText.boundEdit("x", ""))
     }

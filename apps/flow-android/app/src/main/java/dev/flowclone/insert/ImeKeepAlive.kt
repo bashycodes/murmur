@@ -7,9 +7,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
- * `ImeConnectionKeepAlive` (07 §3.5): while recording, probe the bound InputConnection
+ * IME connection keep-alive: while recording, probe the bound InputConnection
  * so it doesn't go stale; on a null read nudge (CLEAR_FOCUS+FOCUS) at most once per
- * IME session epoch. Clone: always armed while recording.
+ * IME session epoch. Always armed while recording.
  */
 class ImeKeepAlive(private val deps: Deps, private val now: () -> Long) {
     interface Deps {

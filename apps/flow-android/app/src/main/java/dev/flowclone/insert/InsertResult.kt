@@ -1,12 +1,12 @@
 package dev.flowclone.insert
 
-/** Outcome of one V3 insertion (the reference app `InsertTextFailureReason` / `VerifySource` enums, 05 §Enums). */
+/** Outcome of one V3 insertion: failure reason and how success was verified. */
 data class InsertResult(
     val succeeded: Boolean,
     val status: Status,
     val reason: FailureReason? = null,
     val source: VerifySource = VerifySource.NONE,
-    /** Step names in order (the reference app's trace labels) — diagnostics + tests. */
+    /** Step names in order — diagnostics + tests. */
     val steps: List<String> = emptyList(),
 ) {
     enum class Status {

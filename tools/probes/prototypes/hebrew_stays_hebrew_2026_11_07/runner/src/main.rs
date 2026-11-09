@@ -1,8 +1,8 @@
-//! reference-parity-clean (Hebrew copy of the numbers runner,
+//! parity-clean (Hebrew copy of the numbers runner,
 //! tools/probes/prototypes/numbers_2026_11_06): replay raw transcripts
 //! through the real `FlowCore` commit path with one cleaner.
 //!
-//!   reference-parity-clean --cases CASES.jsonl --session SESSION.json
+//!   parity-clean --cases CASES.jsonl --session SESSION.json
 //!       --mode rules|local|server|cloud [--llm MODEL.gguf --llm-lib SO]
 //!       [--threads N] [--timeout-ms MS] [--override PROMPT.json]
 //!       [--dump-prompt OUT.json] [--language CODE] [--user-suffix TEXT]

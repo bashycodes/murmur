@@ -10,7 +10,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.sqrt
 
 /**
- * 07 §5.5 shake: an impulse fires when |a|/g − 1 > 1.0 (100 ms cooldown); two impulses,
+ * Shake: an impulse fires when |a|/g − 1 > 1.0 (100 ms cooldown); two impulses,
  * each within 1200 ms of the previous, are a shake. Pure: feed it accelerometer samples.
  */
 class ShakeDetector {
@@ -38,7 +38,7 @@ class ShakeDetector {
 }
 
 /**
- * Bubble presence on top of the dictation state (07 §5.3 minimise, §5.5 snooze/shake):
+ * Bubble presence on top of the dictation state (minimise, snooze, shake):
  * - Ready for 5 s → minimised (36dp) when enabled; a touch restores it first.
  * - Snooze (drop on the bottom target, Ready only, refused in Repair) hides it for 10 min.
  * - Shake: snoozed → un-snooze; Idle → reveal for 10 s. Ignored on the lock screen.
@@ -134,7 +134,7 @@ class BubblePresence(
 }
 
 /**
- * Bottom snooze target (07 §5.5): window = screen width × (73dp + 7% of screen height),
+ * Bottom snooze target: window = screen width × (73dp + 7% of screen height),
  * gravity BOTTOM; dropping the bubble centre within 100dp of the target centre snoozes.
  */
 class SnoozeTarget(val screenW: Int, val screenH: Int, val density: Float) {

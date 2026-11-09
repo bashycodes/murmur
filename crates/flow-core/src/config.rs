@@ -11,8 +11,8 @@ use crate::dictionary::Dictionary;
 
 pub const SAMPLE_RATE: usize = 16_000;
 
-/// Platform whose the reference app behaviour the post-processor mirrors where
-/// Windows and Android differ.
+/// Platform whose behaviour the post-processor follows where Windows and
+/// Android differ.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Platform {
@@ -36,7 +36,7 @@ pub enum CleanupLevel {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Style {
-    /// The reference app "default": period drop only in messaging apps (<= 2 sentences).
+    /// Default style: period drop only in messaging apps (<= 2 sentences).
     #[default]
     Default,
     Formal,
@@ -64,7 +64,7 @@ impl AppCategory {
     }
 }
 
-/// Per-bucket style preference (the reference app: work / email / personal / other).
+/// Per-bucket style preference (work / email / personal / other).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Styles {
@@ -98,7 +98,7 @@ pub struct SessionConfig {
     pub dictionary: Dictionary,
     pub styles: Styles,
     pub cleanup_level: CleanupLevel,
-    /// Skip the LLM entirely (the reference app "No AI formatting"). The deterministic
+    /// Skip the LLM entirely (no AI formatting). The deterministic
     /// layer still runs unless `spoken_cleanup` is off (D27).
     pub raw_mode: bool,
     /// Hard safety bound; the shell owns the real session cap policy.
@@ -120,7 +120,7 @@ pub struct SessionConfig {
     pub llm_timeout_max_ms: Option<u64>,
     /// Ring-buffer capacity between `push_audio` and the worker.
     pub ring_capacity_samples: usize,
-    /// The reference app "All lowercase" format mode.
+    /// "All lowercase" format mode.
     pub all_lowercase: bool,
     /// User's first/last name: proper nouns that keep their capital.
     pub user_names: Vec<String>,
@@ -149,7 +149,7 @@ pub struct SessionConfig {
     /// layout and the closing period. Independent of `cleanup_level` and
     /// `raw_mode`, which only gate the LLM (D27; before 2026-10-24 level
     /// `none` switched this off too). Off + level `none` = verbatim (the
-    /// The reference app port still runs). Default on.
+    /// client post-processing still runs). Default on.
     pub spoken_cleanup: bool,
     /// Hands-free endpointing (D19): after at least 300 ms of speech, this
     /// much trailing silence sets `SessionPoll.endpoint_reached` (see
@@ -678,7 +678,7 @@ mod tests {
     #[test]
     fn session_config_parses_shell_json() {
         let c: SessionConfig = serde_json::from_str(
-            r#"{"languages":["en"],"dictionary":[{"word":"whisperly","replacement":"Whisperly","isSnippet":false}],
+            r#"{"languages":["en"],"dictionary":[{"word":"zephyr","replacement":"Zephyr","isSnippet":false}],
                 "cleanup_level":"medium","raw_mode":true,"platform":"android","max_samples":4800000,
                 "styles":{"work":"casual"}}"#,
         )

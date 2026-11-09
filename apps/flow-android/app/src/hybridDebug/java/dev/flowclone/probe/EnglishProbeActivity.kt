@@ -165,7 +165,7 @@ class EnglishProbeActivity : Activity() {
         button("Platform: cancel run") { PlatformProbe.cancel() }
 
         // ---------------- folder batch ----------------
-        header("FOLDER BATCH (parity scorecard)")
+        header("FOLDER BATCH (quality scorecard)")
         text("Every WAV in <external files>/${ProbeBatchPlan.DIR}/<set>/ (any PCM16 WAV; 16 kHz mono needs no resampling) " +
             "through the ticked engines, one at a time, at the pacing above. GenAI uses the mode above; platform runs " +
             "a segmented session, no biasing, no formatting. One JSON line per file and engine in " +

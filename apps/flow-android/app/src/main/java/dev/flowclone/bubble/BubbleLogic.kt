@@ -3,7 +3,7 @@ package dev.flowclone.bubble
 import kotlin.math.roundToInt
 
 /**
- * Bubble gesture state machine (07 §5.2), independent of MotionEvent so it is JVM-testable.
+ * Bubble gesture state machine, independent of MotionEvent so it is JVM-testable.
  * The view calls [down]/[move]/[up] and schedules [longPressTimeout] after
  * `ViewConfiguration.getLongPressTimeout()`.
  *
@@ -90,9 +90,9 @@ object ErrorTap {
 }
 
 /**
- * Bubble anchors (07 §5.3): X snaps to Left (20dp) or Right (screenW − w − 20dp); Y snaps
- * to one of 100 evenly spaced anchors between 56dp margins, default index 35. Clone
- * deviation 5.6: the snapped anchor is persisted via [Store]. The margins scale with the
+ * Bubble anchors: X snaps to Left (20dp) or Right (screenW − w − 20dp); Y snaps
+ * to one of 100 evenly spaced anchors between 56dp margins, default index 35.
+ * The snapped anchor is persisted via [Store]. The margins scale with the
  * "Bubble size" [scale] like the bubble itself; the saved anchor (side + index) is
  * size-independent, so it stays valid when the size changes.
  */
@@ -147,7 +147,7 @@ class BubblePositioner(
         Pos(x.coerceIn(0, maxOf(0, screenW - bubbleW)), y.coerceIn(0, maxOf(0, screenH - bubbleH)))
 }
 
-/** Bubble waveform maths (07 §5.4). Heights in dp. */
+/** Bubble waveform maths. Heights in dp. */
 object Waveform {
     val SCALE = floatArrayOf(.25f, .47f, .69f, .875f, 1f, 1f, .875f, .69f, .47f, .25f)
     const val BAR_WIDTH_DP = 3f
