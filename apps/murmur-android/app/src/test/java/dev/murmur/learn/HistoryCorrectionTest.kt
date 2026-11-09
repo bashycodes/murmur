@@ -1,8 +1,8 @@
-package dev.flowclone.learn
+package dev.murmur.learn
 
-import dev.flowclone.core.CoreJson
-import dev.flowclone.core.DictEntry
-import dev.flowclone.core.LearnCandidate
+import dev.murmur.core.CoreJson
+import dev.murmur.core.DictEntry
+import dev.murmur.core.LearnCandidate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame

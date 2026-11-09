@@ -1,14 +1,14 @@
-# flow-windows — Windows shell of Murmur (a local Wispr Flow clone)
+# murmur-windows — Windows shell of Murmur (self-hosted dictation)
 
 Tauri 2 tray app: hold **Right Alt** to dictate, **Ctrl+Win+Space** (or double-tap
 Right Alt) for hands-free, **Ctrl+Win+Alt** for [Command Mode](#command-mode)
 (rewrite the selected text by voice), **Esc** to cancel, **Shift+Alt+Z** to
 paste the last transcript again, **Shift+Alt+X** to copy it. Text is pasted
 into the focused app.
-Speech-to-text runs either on this PC (the real `crates/flow-core`: whisper.cpp
-or Parakeet) or on **your own** `flow-server` over your LAN or a VPN (hybrid mode,
+Speech-to-text runs either on this PC (the real `crates/murmur-core`: whisper.cpp
+or Parakeet) or on **your own** `murmur-server` over your LAN or a VPN (hybrid mode,
 `docs/hybrid-architecture.md`, D17). Every dictation goes through
-`flow_router::Router` (`src/router_adapter.rs`). Nothing reaches a third party
+`murmur_router::Router` (`src/router_adapter.rs`). Nothing reaches a third party
 unless you opt in to **OpenRouter** (the only cloud provider, D28) on the
 OpenRouter tab: speech-to-text and text cleanup are two separate opt-ins
 (`docs/cloud-stt.md`; both off by default). A client-only build contains no
@@ -73,13 +73,13 @@ case-insensitive. Optional *New note + dictate* shortcut
 window it started in — then starts hands-free; pressed while dictating it
 only opens the note.
 
-Storage (`src/notes.rs`): `%APPDATA%\FlowClone\notes\<id>.txt` per note
+Storage (`src/notes.rs`): `%APPDATA%\Murmur\notes\<id>.txt` per note
 plus `notes\index.json` (`{"notes": {id: {pinned, created_ms,
 updated_ms}}}`). The `.txt` files are the truth: a file without an index
 entry is listed (times from the file), an entry without a file is dropped on
 the next write, a corrupt index only loses pins. Ids are `[a-z0-9_-]{1,64}`
 (no path traversal); new ones are `note-<epoch ms>`. A pre-Notes
-`FlowClone\scratchpad.txt` is moved into `notes\` once at startup, never over
+`Murmur\scratchpad.txt` is moved into `notes\` once at startup, never over
 an existing one.
 
 ## Meetings (Notetaker, D45)
@@ -87,7 +87,7 @@ an existing one.
 **Hidden since 1.1.1 (D51).** `meetings::NOTETAKER_ENABLED` (`src/meetings/mod.rs`)
 is `false`: no tray line, shortcut, detection or background job, and the
 app window shows the static "Coming later" Notetaker page. Meetings already
-in `%APPDATA%\FlowClone\meetings\` are kept. To bring it back set it and
+in `%APPDATA%\Murmur\meetings\` are kept. To bring it back set it and
 `NOTETAKER_ENABLED` in `ui/src/pages/notetaker.ts` to `true` (a test keeps
 the two equal) and rebuild `ui/dist`. The rest of this section describes
 the feature as it works when switched on.
@@ -96,7 +96,7 @@ Tray *Start meeting recording* (or the Meetings page button, or the
 optional `shortcuts.meeting`, unset by default) records the microphone
 (**Me**) and what the default playback device plays (WASAPI loopback,
 **Others**) into two 16 kHz files on one timeline. A blinking "Recording
-meeting · m:ss" chip sits on the Flow bar until it stops. No playback device
+meeting · m:ss" chip sits on the Murmur bar until it stops. No playback device
 → mic only, with a warning on the Meetings page.
 
 After *Stop*, the meeting is transcribed (no AI cleanup, the dictation
@@ -107,7 +107,7 @@ runs). The two tracks merge into Me / Others turns by time. Unfinished
 meetings resume at the next start; a failed one can be transcribed again
 while its audio is kept.
 
-Storage (`src/meetings/`): `%APPDATA%\FlowClone\meetings\<id>.json` plus
+Storage (`src/meetings/`): `%APPDATA%\Murmur\meetings\<id>.json` plus
 `<id>.mic.wav` / `<id>.system.wav`. Audio is kept for the newest 3 meetings
 only; transcripts stay until deleted on the Meetings page.
 
@@ -125,7 +125,7 @@ stopped. The debug log lists the signals it sees (`meeting-detect`).
 |---|---|---|
 | Hybrid (default) | `cargo build --features app` | this PC + your server, fallback between them, plus opt-in OpenRouter STT / text cleanup (feature `cloud`) and the click-only speech-model downloader (feature `download`, D31) |
 | Client only | `cargo build --no-default-features --features local,app` | this PC only; no network code linked |
-| Server only | `cargo build --no-default-features --features remote,app` | your server only; no whisper / `flow_llm.dll` / models needed |
+| Server only | `cargo build --no-default-features --features remote,app` | your server only; no whisper / `murmur_llm.dll` / models needed |
 
 `parakeet` adds the Parakeet-TDT engine to `local` (needs `SHERPA_ONNX_LIB_DIR`
 at build time; ship `sherpa-onnx-c-api.dll` + `onnxruntime.dll` next to the exe).
@@ -146,9 +146,9 @@ hides it again):
 * Server **host/IP** (IPv4, IPv6, or a name such as `mybox.local`;
   no `ws://`, path or port) and **port** (default 7313), TLS + optional
   certificate pin (required and forced for a public address), **token**
-  (from `flow-server gen-token`; stored DPAPI-encrypted for your Windows
+  (from `murmur-server gen-token`; stored DPAPI-encrypted for your Windows
   account, never logged), connect / commit timeouts, health cache, keep the
-  local model warm, S/L badge on the Flow bar.
+  local model warm, S/L badge on the Murmur bar.
 * **Test connection** probes the unsaved form (hello + 3 pings: median RTT,
   server version, ASR engine). **Test session** sends 1 s of silence through
   the saved settings and should answer `EMPTY (no_speech)` and say which
@@ -180,7 +180,7 @@ the only third party the app can reach (D28). Settings → **OpenRouter** tab
 (shown only in cloud builds), applied at once:
 
 * **Account**: one API key (password field, Paste, Save key, Clear) in
-  Windows Credential Manager as `flow-clone/cloud/openrouter` (bound to
+  Windows Credential Manager as `murmur/cloud/openrouter` (bound to
   openrouter.ai + the openrouter adapter), handed to the router with
   `set_cloud_key("openrouter", …)`. Never in `prefs.json`, never logged,
   never sent back to the page (it shows `••••` + last 4). **Check key**
@@ -203,21 +203,21 @@ the only third party the app can reach (D28). Settings → **OpenRouter** tab
   sentence; status (blocked reason, circuit, last call). Your own server
   keeps using its own AI (no cloud cleanup on the server route).
 * **Model picker**: every OpenRouter model that can do the job (live
-  catalogue, `flow_cloud::CatalogStore`): search, filter chips
+  catalogue, `murmur_cloud::CatalogStore`): search, filter chips
   (Transcription / Chat audio for STT, Text for cleanup; ZDR only (default),
   Fast providers, Free), price, context length, badges (`ZDR`, `fast`,
   `chat model, may paraphrase`, `reasoning`, …), recommended first, and a
   custom model id field. Fetched only when the tab opens, a use is switched
   on, or a use is on at startup (24 h cache in
-  `%APPDATA%\FlowClone\cache\openrouter-catalog.json`, baked offline list
+  `%APPDATA%\Murmur\cache\openrouter-catalog.json`, baked offline list
   otherwise; the header says Live / Cached / Offline list).
 * **Usage this month**: `Speech $x · Cleanup $y · total`, from
-  `%APPDATA%\FlowClone\cloud_usage.json` (exact `usage.cost`, `≈` when
+  `%APPDATA%\Murmur\cloud_usage.json` (exact `usage.cost`, `≈` when
   estimated; restored at startup, never sent anywhere); optional monthly
   budget for both uses; **Reset counters**.
 * Active engine row: `cloud · OpenRouter · <model> · $0.0012`, and for the
   LLM step `AI cleaned · OpenRouter · <model> · $0.0007` (`AI not needed
-  (already clean)` for `llm_skipped_clean`, a normal result). The Flow bar
+  (already clean)` for `llm_skipped_clean`, a normal result). The Murmur bar
   shows **C** after every cloud STT dictation. A cloud failure that fell
   back shows "Cloud STT failed (key rejected); used this PC" above the pill
   (`no_private_route`: "no zero-retention provider serves this model").
@@ -225,7 +225,7 @@ the only third party the app can reach (D28). Settings → **OpenRouter** tab
   in `prefs.json` becomes the single OpenRouter config
   (`RouterConfig::migrate_d28`). An OpenRouter entry keeps its model,
   language, dictionary setting and audio consent, and its key moves from
-  `flow-clone/cloud/<old id>` to `flow-clone/cloud/openrouter` (only if it
+  `murmur/cloud/<old id>` to `murmur/cloud/openrouter` (only if it
   was saved for openrouter.ai). Every other provider and its stored key is
   deleted; their cost this month stays in a `removed` counter so the budget
   is unchanged. If another provider was active, cloud STT is switched off
@@ -239,7 +239,7 @@ the only third party the app can reach (D28). Settings → **OpenRouter** tab
 Settings → Developer → **Debug log (includes transcripts)**, off by default
 (`prefs.json` → `developer.debug_log`; saved as soon as it is toggled). When
 on, each dictation appends one JSON line to
-`%APPDATA%\FlowClone\debug\dictations.jsonl` (the last 500 are kept) and
+`%APPDATA%\Murmur\debug\dictations.jsonl` (the last 500 are kept) and
 prints it to stdout as `[debug] {json}`. Non-dictation events (engine/LLM
 load, server probe, hotkey hook, audio stream, paste-last, settings) get a
 `"kind":"event"` line with `ts, event, error, stack`. The tab shows the line
@@ -284,7 +284,7 @@ Code: `src/debug_log.rs`, lines built in `src/controller.rs`.
 ## Custom sounds
 
 To replace a cue with your own, drop a WAV file into
-`%APPDATA%\FlowClone\sounds\` named `start.wav`, `stop.wav`, `lock.wav`
+`%APPDATA%\Murmur\sounds\` named `start.wav`, `stop.wav`, `lock.wav`
 (hands-free locked), `paste.wav` or `error.wav`, then restart the app (the
 sounds are loaded once, at the first cue). Plain PCM WAV is recommended; the
 file must be a RIFF/WAVE file of at most 2 MB, otherwise the built-in tone
@@ -293,7 +293,7 @@ its built-in tone, and turning sounds off in Settings silences custom ones too.
 
 ## Speech model (never downloaded automatically)
 
-Put a whisper.cpp ggml model at `%APPDATA%\FlowClone\models\ggml-base.bin`
+Put a whisper.cpp ggml model at `%APPDATA%\Murmur\models\ggml-base.bin`
 (the default: multilingual, CPU tier per `docs/DECISIONS.md` D4), or choose
 any ggml file in Settings → Speech model (`model_path` in `prefs.json`;
 `ggml-small-q5_1.bin` is the accuracy step up). The repo's
@@ -312,19 +312,19 @@ turns on llama.cpp cleanup on top (run-on sentences, leftover fillers,
 corrections, tone per app; DECISIONS D5/D10/D11). It needs two files, and
 neither is downloaded automatically:
 
-* the GGUF model, default `%APPDATA%\FlowClone\models\qwen2.5-1.5b-instruct-q4_k_m.gguf`
+* the GGUF model, default `%APPDATA%\Murmur\models\qwen2.5-1.5b-instruct-q4_k_m.gguf`
   (the default used to be `qwen2.5-0.5b-instruct-q4_k_m.gguf`: faster,
   much less accurate; a PC that has only that file keeps loading it);
   `tools/fetch-models.sh --llm` fetches both on explicit request. Settings
   → AI cleanup → On this PC downloads these and Llama 3.2 3B, and
   recommends Llama 3.2 3B when cleanup runs on a GPU, Qwen2.5 1.5B
   otherwise (benchmark: `docs/findings/2026-10-30-laptop-model-benchmark.md`);
-* the engine plugin **next to `flow-windows.exe`** (or the path in "Engine
-  library"): `flow_llm_vulkan.dll` (GPU through Vulkan) is tried first,
-  then `flow_llm.dll` (CPU). The Vulkan one does not load on a PC without
+* the engine plugin **next to `murmur-windows.exe`** (or the path in "Engine
+  library"): `murmur_llm_vulkan.dll` (GPU through Vulkan) is tried first,
+  then `murmur_llm.dll` (CPU). The Vulkan one does not load on a PC without
   `vulkan-1.dll` (it comes with the GPU driver); with Vulkan but no usable
   GPU, or a GPU that fails to load the model, it runs on the CPU.
-  `FLOW_LLM_DEVICE=cpu` forces the CPU. llama.cpp cannot be linked into
+  `MURMUR_LLM_DEVICE=cpu` forces the CPU. llama.cpp cannot be linked into
   the exe: whisper.cpp and llama.cpp each bundle a different ggml (D10).
 
 Speech recognition is ready long before the LLM (10-50 s load on CPU,
@@ -359,7 +359,7 @@ Settings → AI cleanup:
   groups* list shows the default mapping read-only (overridden rows struck
   through, *Change* copies one into your table). Saved as `app_buckets`
   (exe stem or host → group), over the built-in lists
-  (flow-core `data/app-groups.json`, D81: WhatsApp, Telegram, Signal, Messenger, Discord,
+  (murmur-core `data/app-groups.json`, D81: WhatsApp, Telegram, Signal, Messenger, Discord,
   Viber, LINE, WeChat, Instagram, Google Messages → personal; Slack, Teams, Mattermost, Zoom → work; Outlook,
   Gmail → email).
 
@@ -383,7 +383,7 @@ before the paste.
   or OpenRouter text cleanup (same order, consent and budget as cleanup).
   The selected text goes to OpenRouter only with *Send text around the
   cursor* on; otherwise the command uses the local model, or says it
-  can't. Prompt and answer cleaning (`crates/flow-core/src/command.rs`)
+  can't. Prompt and answer cleaning (`crates/murmur-core/src/command.rs`)
   strip preambles ("Sure, here is…"), wrapping quotes, code fences and
   trailing notes, so only the result is pasted.
 * No AI, model still loading, a selection over 4000 characters, a password
@@ -404,47 +404,47 @@ before the paste.
 | `src/controller.rs` | Runs the machine's effects against a `Platform` trait plus `CoreApi`; integration-tested with fakes. Command Mode: selection capture after the chord is up, `CoreApi::command`, history row |
 | `src/audio/` | Resampler to 16 kHz mono i16 and an adaptive-floor level meter (pure); `capture.rs` = cpal/WASAPI |
 | `src/paste/` | Pure strategy, restore guard and per-app restore delay; `win.rs` = clipboard snapshot → CF_UNICODETEXT plus history/monitor opt-outs → masked Alt/Win release → `[Ctrl↓,V↓]` 50 ms `[V↑,Ctrl↑]` → restore if the sequence number is unchanged. Falls back to KEYEVENTF_UNICODE |
-| `src/context/` | Truncation, password suppression, app kind and style bucket from flow-core `app_groups` (`crates/flow-core/data/app-groups.json`, pure); `uia.rs` = UI Automation snapshot with a 300 ms timeout, and `UiaFieldReader` (re-reads the pasted-into control, `CompareElements` for focus) |
+| `src/context/` | Truncation, password suppression, app kind and style bucket from murmur-core `app_groups` (`crates/murmur-core/data/app-groups.json`, pure); `uia.rs` = UI Automation snapshot with a 300 ms timeout, and `UiaFieldReader` (re-reads the pasted-into control, `CompareElements` for focus) |
 | `src/ducking/` | Mute plan and restore rule (pure); `win.rs` = WASAPI sessions on an MTA thread |
-| `src/sounds.rs` | Synthesised cue WAVs (pure), optional user overrides from `%APPDATA%\FlowClone\sounds`, played with `PlaySoundW(SND_MEMORY)` |
-| `src/prefs.rs` | `%APPDATA%\FlowClone\prefs.json`: tolerant load, atomic save, validation, `prefs_rev` migration (rev 1, D22: a stored hands-free auto-stop of exactly 2000 ms, the old default, becomes 1500 once; rev 3, D27: LLM budget 1500 → 3000, all-formal styles → chats casual, None → Verbatim, raw mode → No AI; later saves keep any value) |
+| `src/sounds.rs` | Synthesised cue WAVs (pure), optional user overrides from `%APPDATA%\Murmur\sounds`, played with `PlaySoundW(SND_MEMORY)` |
+| `src/prefs.rs` | `%APPDATA%\Murmur\prefs.json`: tolerant load, atomic save, validation, `prefs_rev` migration (rev 1, D22: a stored hands-free auto-stop of exactly 2000 ms, the old default, becomes 1500 once; rev 3, D27: LLM budget 1500 → 3000, all-formal styles → chats casual, None → Verbatim, raw mode → No AI; later saves keep any value) |
 | `src/core_api.rs` | Core API seam (shell types) plus `StubCore` for tests |
-| `src/core_adapter.rs` | `CoreApi` on `flow_core::FlowCore`: two-phase background load (whisper engine, then the optional `flow_llm` cleaner, composed with `FlowCore::from_engines`), `ModelStatus` / `LlmStatus`, shell→core type mapping |
+| `src/core_adapter.rs` | `CoreApi` on `murmur_core::MurmurCore`: two-phase background load (whisper engine, then the optional `murmur_llm` cleaner, composed with `MurmurCore::from_engines`), `ModelStatus` / `LlmStatus`, shell→core type mapping |
 | `src/history.rs` | Local SQLite history (`history.sqlite`, no audio), keep / 24 h / never retention; list/search/get/delete/clear/set_edited for the History tab |
-| `src/insights.rs` | Insights tab store (`insights.json`: per-local-day words / audio ms / dictations / words per app, no text), separate from History so deleting it keeps the stats; one-time backfill from History; the math is `flow_core::insights` |
+| `src/insights.rs` | Insights tab store (`insights.json`: per-local-day words / audio ms / dictations / words per app, no text), separate from History so deleting it keeps the stats; one-time backfill from History; the math is `murmur_core::insights` |
 | `src/learn.rs` | Learn-from-edits, pure: anchor-bounded region, end reasons, watch state machine in injected time, semi-global trim of text typed after the dictation |
 | `src/recent_apps.rs` | Exe names recently dictated into (`recent_apps.json`, names only) and the picker's built-in exe → group rows |
 | `src/suggestions.rs` | Learned words waiting for an explicit accept (`suggestions.json`); dismissed words are never re-suggested |
 | `src/meetings/` | Notetaker (D45): `record.rs` two-stream WAV recorder on one clock, `transcript.rs` D44 per track + Me/Others merge, `store.rs` meetings dir + keep-3 audio, `mod.rs` the service (start/stop, job queue, yield to dictation, recover); `detect.rs` meeting detection (D48: Zoom/Webex/Jabber signals → ask or auto-record, stop at call end; `detect/win.rs` the Win32/WASAPI probe, fixtures in `tests/fixtures/meeting-detect/`) |
-| `src/notes.rs` | Notes: one `<id>.txt` per note in `%APPDATA%\FlowClone\notes\` + `index.json` (pinned, created/updated), tolerant of missing/stale entries; list/search/pin/delete/export; Scratchpad migration; atomic save, debounced `AutoSave` with injected time, flush on close/quit |
+| `src/notes.rs` | Notes: one `<id>.txt` per note in `%APPDATA%\Murmur\notes\` + `index.json` (pinned, created/updated), tolerant of missing/stale entries; list/search/pin/delete/export; Scratchpad migration; atomic save, debounced `AutoSave` with injected time, flush on close/quit |
 | `src/dictionary.rs` | Import/export of the shared `[{word, replacement, isSnippet}]` JSON: tolerant parse, validation, case-insensitive merge |
 | `src/overlay.rs` | Pill hit-testing so the hands-free ✕/✓ are clickable while the canvas stays click-through |
 | `src/hotkeys/watchdog.rs` | Hook-liveness watchdog (probe + re-install after a `LowLevelHooksTimeout` removal) |
-| `src/router_adapter.rs` | D17: `CoreApi` on `flow_router::Router` (every build), `LocalBackend` over the `FlowCoreAdapter` slot, remote = `flow_remote::factory` (feature `remote`), router errors → pill text, last-route record (Developer page, S/L badge) |
-| `src/dev_settings.rs` | Developer settings: `prefs.json` `"developer"` section, form validation (host/port/pin/token/timeouts, public host ⇒ TLS), mapping to the router's `RouterConfig` JSON (pinned by `crates/flow-router/fixtures`) |
-| `src/credentials.rs` | `CredentialStore`: Credential Manager (`flow-clone/cloud/openrouter`, `CredWriteW`/`CredReadW`/`CredDeleteW`) on Windows, `MemoryStore` stand-in elsewhere; masking, key validation, host binding, D28 key migration |
+| `src/router_adapter.rs` | D17: `CoreApi` on `murmur_router::Router` (every build), `LocalBackend` over the `MurmurCoreAdapter` slot, remote = `murmur_remote::factory` (feature `remote`), router errors → pill text, last-route record (Developer page, S/L badge) |
+| `src/dev_settings.rs` | Developer settings: `prefs.json` `"developer"` section, form validation (host/port/pin/token/timeouts, public host ⇒ TLS), mapping to the router's `RouterConfig` JSON (pinned by `crates/murmur-router/fixtures`) |
+| `src/credentials.rs` | `CredentialStore`: Credential Manager (`murmur/cloud/openrouter`, `CredWriteW`/`CredReadW`/`CredDeleteW`) on Windows, `MemoryStore` stand-in elsewhere; masking, key validation, host binding, D28 key migration |
 | `src/debug_log.rs` | Opt-in debug log: bounded queue + writer thread, JSONL file sink (last 500), schema, secret scrubbing |
 | `src/cloud.rs` | Pure OpenRouter helpers: failure texts, engine / LLM rows, `cloud_usage.json` load/save, usage split view, catalogue cache path, the startup D28 migration (settings + keys + usage) |
 | `src/openrouter.rs` | The OpenRouter page: `OrView`, validated edits (STT / cleanup with separate consents, privacy, budget, model) |
 | `tests/cloud_settings.rs` | Page edits + Developer form → prefs (no key) → router JSON == `router_config_cloud.json`; separate consents; the D28 migration of every old preset fixture (settings, Credential Manager, usage) |
 | `tests/cleanup_order.rs` | D36 cleanup order: prefs hold this PC / your server / OpenRouter with a switch each (default this PC → server → OpenRouter off); pre-D36 `allow_cloud_cleanup` + `cleanup_order` migrate on load (cloud-vs-local order kept, server right after this PC, cloud on only if it was allowed); the router always gets all three (`cleanup_order` + `cleanup_off`). UI: `tools/probes/settings_mock/check_cleanup_order.py` |
-| `tests/cloud_integration.rs` | Controller → router → flow-cloud → flow-cloud's mock OpenRouter (via `flow_cloud::testing::override_base_url`, never a config URL): cloud paste with exact cost, ZDR body, usage restore, 500/401/503-routing → local fallback with all audio, no key/consent → no request, cloud-only error pills, Test; key never shown |
+| `tests/cloud_integration.rs` | Controller → router → murmur-cloud → murmur-cloud's mock OpenRouter (via `murmur_cloud::testing::override_base_url`, never a config URL): cloud paste with exact cost, ZDR body, usage restore, 500/401/503-routing → local fallback with all audio, no key/consent → no request, cloud-only error pills, Test; key never shown |
 | `src/shell.rs` | `pick_path` (Win32 `IFileOpenDialog` on its own STA thread, owned by the settings window; validated title / `*.ext` filters) and `open_external` (`ShellExecuteW`, only https/http links to `github.com/bashycodes/murmur…`, `huggingface.co`, `openrouter.ai`) |
 | `src/model_download.rs` | D31 speech-model downloader: fixed catalogue (Parakeet v2 int8, Whisper base, Whisper small q5_1) pinned to Hugging Face commits with size + SHA-256 per file; `.part` → verify → rename; one at a time, cancellable; `model:download` progress events. HTTP only with feature `download` |
 | `src/secrets.rs` | DPAPI (`CryptProtectData`) blobs for secrets in prefs (server token; reusable for later API keys) |
-| `tests/router_integration.rs` | Controller → router → flow-remote → in-process flow-server (MockAsr) vs local MockAsr: all four toggle combos, server down / killed mid-dictation (no lost audio), error pills, Test connection / Test session |
-| `tests/core_integration.rs` | Controller + real flow-core (MockAsr, and whisper tiny.en on `jfk.wav` when present): audio → commit → paste plan → history |
+| `tests/router_integration.rs` | Controller → router → murmur-remote → in-process murmur-server (MockAsr) vs local MockAsr: all four toggle combos, server down / killed mid-dictation (no lost audio), error pills, Test connection / Test session |
+| `tests/core_integration.rs` | Controller + real murmur-core (MockAsr, and whisper tiny.en on `jfk.wav` when present): audio → commit → paste plan → history |
 | `src/app.rs` | Tauri: tray, overlay window (512x614, click-through, `WS_EX_NOACTIVATE`), settings window, Scratchpad/Notes window (created on demand), commands, autostart |
 | `build.rs`, `capabilities/` | Every command is declared in the app manifest; the settings window gets all of them except the note commands, the overlay only `overlay_action` + `overlay_theme` (not `get_prefs`), the Scratchpad/Notes window only `note_*` + `clipboard_copy`, the "Record this meeting?" prompt (`meeting-prompt`, D48) only `meeting_prompt_answer` (`tests/capabilities.rs`) |
 | `tools/ci/` | CI helpers: Parakeet DLL bundle overlay, installer collection (`.github/workflows/windows-build.yml`) |
 | `ui/` | Plain TypeScript → `ui/dist/*.js` (committed). No bundler, no CDN, no web fonts; the CSP is `'self'` only. Settings tabs: General, AI cleanup, History, Insights, Dictionary, Developer; `scratchpad.html` (`?note=<id>`, default `scratchpad`; `?view=notes` = Notes list) |
-| `tauri.llm.conf.json` | Config overlay that bundles `flow_llm.dll` next to the exe (`cargo tauri build --config tauri.llm.conf.json`) |
+| `tauri.llm.conf.json` | Config overlay that bundles `murmur_llm.dll` next to the exe (`cargo tauri build --config tauri.llm.conf.json`) |
 | `tools/probes/settings_mock/` | Serves `ui/dist` with a fake `__TAURI__` for checking the settings page (and `scratchpad.html`: `check_scratchpad.py`, `check_notes.py`) in a plain/headless browser |
 
 ## Develop on Linux (what CI/agents can run)
 
 ```sh
-cargo test                       # pure logic + flow-core integration (builds whisper.cpp)
+cargo test                       # pure logic + murmur-core integration (builds whisper.cpp)
 cargo clippy --all-targets -- -D warnings
 rustup target add x86_64-pc-windows-msvc
 # Win32 + Tauri code. Check-only shims (never use them for real builds):
@@ -466,11 +466,11 @@ python3 tools/gen_icons.py                          # after editing the icon
 ```
 
 The real-model test looks for `ggml-tiny.en.bin` + `jfk.wav` in `../../models/`
-(or the main checkout's `models/`, or `FLOW_MODEL` / `FLOW_WAV`) and skips
+(or the main checkout's `models/`, or `MURMUR_MODEL` / `MURMUR_WAV`) and skips
 with a note when they are missing. The real-LLM tests additionally need the
-plugin (`cargo build --release -p flow-llm` in the repo root →
-`../../target/release/libflow_llm.so`, or `FLOW_LLM_LIB`) and
-`qwen2.5-0.5b-instruct-q4_k_m.gguf` (or `FLOW_LLM_MODEL`); building
+plugin (`cargo build --release -p murmur-llm` in the repo root →
+`../../target/release/libmurmur_llm.so`, or `MURMUR_LLM_LIB`) and
+`qwen2.5-0.5b-instruct-q4_k_m.gguf` (or `MURMUR_LLM_MODEL`); building
 llama.cpp needs `BINDGEN_EXTRA_CLANG_ARGS` on this box (see
 `docs/core-architecture.md`).
 
@@ -480,37 +480,37 @@ Linking a Windows binary on Linux is not supported (no MSVC linker or SDK).
 
 The `windows-build` workflow (`.github/workflows/windows-build.yml`) builds the
 real MSVC app on `windows-latest` (on every push to `integration` that touches
-`apps/flow-windows/**` or `crates/**`, or by hand: `gh workflow run
+`apps/murmur-windows/**` or `crates/**`, or by hand: `gh workflow run
 windows-build.yml --ref <branch>`), runs `cargo test` for both feature sets
 and clippy, and uploads two artifacts, each with an MSI and an NSIS setup:
 
 | Artifact | Flavour | Engines |
 |---|---|---|
-| `flow-clone-windows-hybrid` | default (`app,parakeet`) | this PC (whisper.cpp + Parakeet) + your flow-server + opt-in cloud STT |
-| `flow-clone-windows-client` | `--no-default-features --features local,app,parakeet` | this PC only; no network code |
+| `murmur-windows-hybrid` | default (`app,parakeet`) | this PC (whisper.cpp + Parakeet) + your murmur-server + opt-in cloud STT |
+| `murmur-windows-client` | `--no-default-features --features local,app,parakeet` | this PC only; no network code |
 
 Both ship `sherpa-onnx-c-api.dll` + `onnxruntime.dll` next to the exe
-(Parakeet) and the AI cleanup engine, `flow_llm_vulkan.dll` (GPU) +
-`flow_llm.dll` (CPU). They ship no model files.
+(Parakeet) and the AI cleanup engine, `murmur_llm_vulkan.dll` (GPU) +
+`murmur_llm.dll` (CPU). They ship no model files.
 The installers are unsigned: SmartScreen says "Windows protected your PC" →
 More info → Run anyway.
 
-1. **Download**: `gh run download <run-id> -n flow-clone-windows-hybrid`
+1. **Download**: `gh run download <run-id> -n murmur-windows-hybrid`
    (or the run page → Artifacts), unzip, run `Murmur_<version>_x64-setup_hybrid.exe` (e.g. `Murmur_0.8.0_x64-setup_hybrid.exe`)
    (per-user, no admin) or the `.msi`. Install only one flavour at a time
    (same app id). The tray icon appears; Settings opens on first start.
 2. **Model** (only for "this PC"): copy `ggml-base.bin` (or `ggml-tiny.en.bin`
    + set the path in Settings → Speech model) to
-   `%APPDATA%\FlowClone\models\`, or the Parakeet folder
+   `%APPDATA%\Murmur\models\`, or the Parakeet folder
    `sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8` there and pick Engine =
    Parakeet. The tray's first line turns into "Speech model: …".
-3. **Server** (hybrid build): on the server, `flow-server gen-token --out
+3. **Server** (hybrid build): on the server, `murmur-server gen-token --out
    <file>` and start it bound to its VPN/LAN address (see
-   `crates/flow-server/dist/config.example.toml`). On Windows: Settings →
+   `crates/murmur-server/dist/config.example.toml`). On Windows: Settings →
    Developer → Host = the server's VPN/LAN IP or name (no `ws://`, no
    port), Port = 7313, Token = the file's contents (Paste), TLS only if the
    server has `[tls]` (then paste the certificate pin), Save. **Test
-   connection** must say `OK · median N ms · flow-server … · parakeet`;
+   connection** must say `OK · median N ms · murmur-server … · parakeet`;
    **Test session** must say `EMPTY (no_speech) via server`.
 
 ### 10-minute smoke checklist
@@ -526,7 +526,7 @@ More info → Run anyway.
 - [ ] (1 min) OpenRouter (optional, costs cents): OpenRouter tab → paste key → Save key → Check key (credit shown) → Speech-to-text Test `OK · "And so, my fellow Americans"…`; tick "Transcribe with OpenRouter" → accept the audio consent; dictate → the line says "Transcribing via OpenRouter (openai/whisper-large-v3-turbo)…", the pill shows **C**. Tick "Clean up text with OpenRouter" → a *second* consent (text) appears.
 - [ ] (1 min) Client-only build: Developer tab hidden; dictation works with the model; `netstat -ano | findstr <pid>` shows no outbound connection.
 
-Report failures with `%APPDATA%\FlowClone\prefs.json` (no secrets in it) and the
+Report failures with `%APPDATA%\Murmur\prefs.json` (no secrets in it) and the
 console output (`"C:\Program Files\Murmur\Murmur.exe"` started from a
 terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 
@@ -540,22 +540,22 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
    - WebView2 Runtime (preinstalled on Windows 11).
 2. Build the front-end:
    ```powershell
-   cd apps\flow-windows
+   cd apps\murmur-windows
    npm --prefix ui ci
    npm --prefix ui run build
    ```
 3. Build the AI cleanup plugin (optional; skip it and AI cleanup reports "engine missing"):
    ```powershell
    cd ..\..                                  # repo root
-   cargo build --release -p flow-llm          # -> target\release\flow_llm.dll
-   cd apps\flow-windows
+   cargo build --release -p murmur-llm          # -> target\release\murmur_llm.dll
+   cd apps\murmur-windows
    ```
    llama-cpp-sys-2 needs CMake, clang (`LIBCLANG_PATH`) and MSVC, like whisper. It is built with OpenMP, so `vcomp140.dll` (Visual C++ Redistributable) must be present on the target PC.
-   For the GPU build, install the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home#windows) (sets `VULKAN_SDK`; CI uses the version in `.github/workflows/windows-build.yml`), then `cargo build --release -p flow-llm --features vulkan` and copy `target\release\flow_llm.dll` as `flow_llm_vulkan.dll` next to the exe.
+   For the GPU build, install the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home#windows) (sets `VULKAN_SDK`; CI uses the version in `.github/workflows/windows-build.yml`), then `cargo build --release -p murmur-llm --features vulkan` and copy `target\release\murmur_llm.dll` as `murmur_llm_vulkan.dll` next to the exe.
 4. Run it:
    ```powershell
    cargo run --features app
-   copy ..\..\target\release\flow_llm.dll target\debug\   # plugin next to the exe
+   copy ..\..\target\release\murmur_llm.dll target\debug\   # plugin next to the exe
    ```
    (Or set Settings → AI cleanup → Engine library to the DLL's path.) Optionally install the CLI first (`cargo install tauri-cli --version "^2"`); then `cargo tauri dev`, or for an NSIS installer in `target\release\bundle\nsis\` that ships the plugin next to the exe:
    ```powershell
@@ -564,7 +564,7 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
    (Plain `cargo tauri build` builds an installer without AI cleanup.)
 5. First launch opens Settings, because there is no `prefs.json` yet.
    - The tray icon lives in the notification area.
-   - Copy a model to `%APPDATA%\FlowClone\models\ggml-base.bin` (see above). The tray menu's first line says "Speech model: ggml-base.bin" once it is loaded.
+   - Copy a model to `%APPDATA%\Murmur\models\ggml-base.bin` (see above). The tray menu's first line says "Speech model: ggml-base.bin" once it is loaded.
    - Hold Right Alt in Notepad and speak. When you release, the transcript is pasted.
 
 ### Manual verification checklist (needs real Windows; not covered by tests)
@@ -576,7 +576,7 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - [ ] The live transcript appears above the pill while speaking (Settings → "Show live transcript").
 - [ ] Shift+Alt+Z pastes the last transcript again (also after a restart, unless history retention is "Never").
 - [ ] Without a model file: tray line "⚠ Speech model missing", Settings opens, and Right Alt ends in an error pill naming the path.
-- [ ] `%APPDATA%\FlowClone\history.sqlite` gains a row per dictation; retention "Never" empties it.
+- [ ] `%APPDATA%\Murmur\history.sqlite` gains a row per dictation; retention "Never" empties it.
 - [ ] The same chord stops a locked dictation.
 - [ ] Esc cancels, and Esc is not delivered to the app while dictating.
 - [ ] Releasing Win after a chord does **not** open the Start menu.
@@ -591,16 +591,16 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - [ ] The pill never takes focus, never shows in Alt+Tab, and is click-through.
 - [ ] The UIA context reaches the core: check `StubCore::last_context` in a debugger, or log it in `core_adapter`.
 - [ ] Unplugging the mic during capture leaves an error pill, not a stuck "listening" pill.
-- [ ] "Launch at login" writes `HKCU\…\Run\FlowClone`.
+- [ ] "Launch at login" writes `HKCU\…\Run\Murmur`.
 - [ ] Shift+Alt+X puts the last transcript on the clipboard (no paste); Ctrl+V in Notepad shows it.
 - [ ] Command Mode with AI cleanup ready: select "hey cant make it tmrw" in Notepad, Word and a Chrome text box, hold Ctrl+Win+Alt, say "make this more formal", release → the orange pill spins, then the selection is replaced by a formal sentence (no "Sure, here…", no quotes); Ctrl+V afterwards gives your old clipboard; History shows the instruction and result.
 - [ ] Command Mode with nothing selected: "write a two-line thank-you note" is typed at the cursor.
 - [ ] Command Mode with AI cleanup off and no OpenRouter cleanup: error sound, pill "Command Mode needs AI…", the selection is untouched. Esc while the pill spins: nothing is pasted.
 - [ ] Command Mode in an app without UI Automation text (e.g. a terminal or an Electron editor): the Ctrl+C fallback reads the selection and the clipboard is restored.
 - [ ] AI cleanup off (default): tray "AI cleanup: off", results unchanged.
-- [ ] AI cleanup on without `flow_llm.dll`: tray "⚠ AI cleanup engine (flow_llm.dll) missing", dictation still pastes.
+- [ ] AI cleanup on without `murmur_llm.dll`: tray "⚠ AI cleanup engine (murmur_llm.dll) missing", dictation still pastes.
 - [ ] AI cleanup on with the DLL + Qwen 0.5B GGUF: tray goes "loading…" → "AI cleanup: qwen2.5-0.5b…"; dictation works during the load; afterwards "um so i think we should uh meet tomorrow" pastes cleaned up, and History shows "AI edited".
-- [ ] The NSIS installer built with `--config tauri.llm.conf.json` puts `flow_llm.dll` beside `Murmur.exe`, and AI cleanup loads on a PC without Rust/VS (only the VC++ redistributable).
+- [ ] The NSIS installer built with `--config tauri.llm.conf.json` puts `murmur_llm.dll` beside `Murmur.exe`, and AI cleanup loads on a PC without Rust/VS (only the VC++ redistributable).
 - [ ] Per-app styles: defaults → a WhatsApp / Slack dictation ends without a final period, Outlook keeps it; with Personal = Very casual and AI cleanup on, WhatsApp gives lowercase without a final period; Email stays formal.
 - [ ] Style per app: dictate into Notepad, open AI cleanup → *Add* lists Notepad; add it as Personal → Save → a Notepad dictation ends without a final period. An old prefs.json with `app_buckets` opens as rows and saves back with the same keys; adding the same app twice says "Already in the list".
 - [ ] Cleanup level: an old prefs.json with `"cleanup_level":"none"` opens as *Verbatim* with Auto-format unticked; choosing *No AI* ticks Auto-format again; "comma" then becomes ",".
@@ -609,38 +609,38 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - [ ] History tab: search filters, Copy, Re-paste (Settings hides, text lands in the previously focused app), Delete, Delete all (second click), retention change prunes.
 - [ ] Undo AI edit: the diff shows removed/added words; "Re-paste original" inserts the raw ASR text.
 - [ ] Learn from edits: dictate "I use cora note daily" into Notepad, fix it to "Korra Note" within ~45 s, click elsewhere → tray "1 dictionary suggestion…"; Dictionary tab lists it; nothing was added until "Add word". Same in Chrome (textarea), Word and Slack.
-- [ ] Scratchpad: tray → Scratchpad… (and a set *Open Scratchpad* shortcut) opens it focused; Right Alt dictation lands at the caret; editing it adds no dictionary suggestion and Settings → AI cleanup → *Add* doesn't list Murmur; Quit, start again, reopen → text is there (`%APPDATA%\FlowClone\notes\scratchpad.txt`; an old `FlowClone\scratchpad.txt` from before Notes was moved there); Copy all → Ctrl+V in Notepad gives the full text; Clear → Undo clear restores it.
-- [ ] Notes: tray → Notes… lists the Quick note; New note ×3 with text, Quit, start again → all 4 there with content (`%APPDATA%\FlowClone\notes\*.txt`); search finds a word from a body line; Pin moves a note to the top and survives a restart; Export… .md lands in Downloads (a second export is `(2)`); Delete twice removes the `.txt`; a set *New note + dictate* shortcut from Notepad opens a new note in front and the hands-free dictation lands in it (not in Notepad); a `.txt` copied into `notes\` by hand is listed.
+- [ ] Scratchpad: tray → Scratchpad… (and a set *Open Scratchpad* shortcut) opens it focused; Right Alt dictation lands at the caret; editing it adds no dictionary suggestion and Settings → AI cleanup → *Add* doesn't list Murmur; Quit, start again, reopen → text is there (`%APPDATA%\Murmur\notes\scratchpad.txt`; an old `Murmur\scratchpad.txt` from before Notes was moved there); Copy all → Ctrl+V in Notepad gives the full text; Clear → Undo clear restores it.
+- [ ] Notes: tray → Notes… lists the Quick note; New note ×3 with text, Quit, start again → all 4 there with content (`%APPDATA%\Murmur\notes\*.txt`); search finds a word from a body line; Pin moves a note to the top and survives a restart; Export… .md lands in Downloads (a second export is `(2)`); Delete twice removes the `.txt`; a set *New note + dictate* shortcut from Notepad opens a new note in front and the hands-free dictation lands in it (not in Notepad); a `.txt` copied into `notes\` by hand is listed.
 - [ ] Learn from edits ignores password fields, and a chat message sent with "press enter".
-- [ ] Dictionary editor: add/edit/delete rows, snippet with a multi-line body, Save; export writes `Downloads\flow-dictionary.json`; importing that file (merge) changes nothing; importing the Android app's export works.
+- [ ] Dictionary editor: add/edit/delete rows, snippet with a multi-line body, Save; export writes `Downloads\murmur-dictionary.json`; importing that file (merge) changes nothing; importing the Android app's export works.
 - [ ] Dictating into silence shows "No speech heard" above the pill for ~1.5 s, with no error sound.
 - [ ] (2 min) Decode while speaking (D22): with the Developer toggle on, dictate ~30 s with pauses → text appears ≈ 0.5-1 s after release; the debug line shows `segments` ≥ 2 and `pre_asr_ms` > 0. Toggle off → `segments` 0 and release → text grows with length again.
 - [ ] Settings → General: "Auto-format punctuation, fillers and corrections" off → "comma" stays a word; Engine = Parakeet with the model folder in `models\` (parakeet build) → tray shows the folder name and jfk-style speech pastes.
 
 - [ ] Debug log: Developer → tick "Debug log (includes transcripts)", dictate into Notepad → the count says 1 entry, Open log folder shows `dictations.jsonl` with `"mode":"hold"`, `"insert":{"outcome":"inserted",…}`, `"target":"notepad.exe"`; stop the server and dictate (server-first) → `"fallback":"connect_failed"`; untick → the delete prompt appears, Delete → the file is gone; dictate again → no file.
 
-#### Developer settings / hybrid mode (needs a `flow-server` on the LAN or a VPN)
+#### Developer settings / hybrid mode (needs a `murmur-server` on the LAN or a VPN)
 
 - [ ] Hybrid build: Developer tab is visible; Build row says "client + server"; header line no longer says "nothing is sent over the network".
 - [ ] Host field: `ws://1.2.3.4`, `1.2.3.4:7313`, `256.1.1.1`, `my box` each show an inline error and disable Save / Test connection; `100.64.0.10`, `[fd7a:115c:a1e0::1]`, `mybox.local` are accepted (brackets dropped on save). Port 0 / 70000 rejected.
 - [ ] Host `example.com` ticks and locks "Use TLS"; a 100.x / 192.168.x host shows "Unencrypted: OK only on your LAN or over an encrypted VPN.".
 - [ ] Token: Show / Paste / Clear work; a 10-char token is rejected; after Save, `prefs.json` contains `token_dpapi` and **not** the token text; copying `prefs.json` to another Windows account leaves the token empty there.
-- [ ] Test connection with the server up: "OK · median N ms (a-b) · flow-server 0.2.0+1a2b3c4 · parakeet" (version + commit, D26); with a wrong token: "auth_failed … token rejected"; with the server stopped: "connect_failed … is flow-server running / LAN or VPN up?".
+- [ ] Test connection with the server up: "OK · median N ms (a-b) · murmur-server 0.2.0+1a2b3c4 · parakeet" (version + commit, D26); with a wrong token: "auth_failed … token rejected"; with the server stopped: "connect_failed … is murmur-server running / LAN or VPN up?".
 - [ ] Test session: "EMPTY (no_speech) via server"; with the server stopped: "via client (fallback: connect_failed)".
 - [ ] Both toggles on, server up: dictate in Notepad → Active engine row = server, rtt shown; with the S/L badge on, the pill shows **S**.
-- [ ] `systemctl stop flow-server` (or disconnect the VPN), dictate again → text still pastes (local), row = client, fallback `connect_failed`, badge **L** with a red dot; the next dictation within 5 s shows `circuit_open` and does not wait for the connect timeout; "Reset circuit" clears it.
+- [ ] `systemctl stop murmur-server` (or disconnect the VPN), dictate again → text still pastes (local), row = client, fallback `connect_failed`, badge **L** with a red dot; the next dictation within 5 s shows `circuit_open` and does not wait for the connect timeout; "Reset circuit" clears it.
 - [ ] Kill the server mid-dictation (hold Right Alt, stop it, keep speaking, release): the whole utterance pastes, nothing from before the kill is lost.
 - [ ] Allow client off + server down → error pill "Server unreachable (…)"; Allow server off → dictation never opens a connection (check with `netstat -n` / Resource Monitor); both off → "Dictation disabled — enable server or client in Developer settings".
 - [ ] Changing toggles / host and pressing Save takes effect on the next dictation without restarting; the local model is not reloaded (tray line unchanged).
 - [ ] Route order "Move up" (client first) with both on → dictation runs on this PC even with the server up.
-- [ ] Client-only build (`--no-default-features --features local,app`): Developer tab hidden; 7 taps on the version line unlock it ("not in this build" next to Allow server); Lock hides it; `flow-windows.exe` has no ws/tls code (`cargo tree -e normal --no-default-features --features local,app | findstr tungstenite` prints nothing).
-- [ ] Server-only build (`--no-default-features --features remote,app`): starts without any model file or `flow_llm.dll`, tray says "Speech: your flow-server"; dictation works through the server; Allow client is disabled ("not in this build").
+- [ ] Client-only build (`--no-default-features --features local,app`): Developer tab hidden; 7 taps on the version line unlock it ("not in this build" next to Allow server); Lock hides it; `murmur-windows.exe` has no ws/tls code (`cargo tree -e normal --no-default-features --features local,app | findstr tungstenite` prints nothing).
+- [ ] Server-only build (`--no-default-features --features remote,app`): starts without any model file or `murmur_llm.dll`, tray says "Speech: your murmur-server"; dictation works through the server; Allow client is disabled ("not in this build").
 
 #### OpenRouter (needs internet and a real OpenRouter key)
 
 - [ ] Default build: the OpenRouter tab is shown; the client-only build has none, and its exe has no reqwest/rustls (`cargo tree … --features local,app | findstr reqwest` prints nothing).
-- [ ] Upgrade from a D18 build with a Groq provider active: the OpenRouter tab has a badge and the notice "Cloud speech-to-text now uses OpenRouter only. Groq was removed and its key deleted. …"; Credential Manager no longer lists `flow-clone/cloud/groq-1`; cloud STT is off. OK hides the notice for good.
-- [ ] Paste a key, Save key: Credential Manager lists `flow-clone/cloud/openrouter`; `prefs.json` contains no key text; reopening Settings shows `Key set: ••••abcd` only. Check key shows the credit limit (or the "no credit limit" warning).
+- [ ] Upgrade from a D18 build with a Groq provider active: the OpenRouter tab has a badge and the notice "Cloud speech-to-text now uses OpenRouter only. Groq was removed and its key deleted. …"; Credential Manager no longer lists `murmur/cloud/groq-1`; cloud STT is off. OK hides the notice for good.
+- [ ] Paste a key, Save key: Credential Manager lists `murmur/cloud/openrouter`; `prefs.json` contains no key text; reopening Settings shows `Key set: ••••abcd` only. Check key shows the credit limit (or the "no credit limit" warning).
 - [ ] Opening the tab fetches the model list once (header "Updated …"); with the network off it says "Cached …" or "Offline list from 2026-10-24". Search "whisper", toggle ZDR only / Fast / Chat audio; pick a chat-audio model → the paraphrase warning; type a custom id `elevenlabs/scribe-v2` → Use.
 - [ ] Speech-to-text Test: `OK · "And so, my fellow Americans" · N ms · $…`; with a wrong key `auth_failed — key rejected`; with the network off `connect_failed — can't reach openrouter.ai`.
 - [ ] Tick "Transcribe with OpenRouter" → consent dialog "Send audio to OpenRouter?"; Cancel unticks it; accept, dictate in Notepad → text pastes, pill shows **C** (tooltip "Sent to OpenRouter"), Active engine row `cloud · OpenRouter · openai/whisper-large-v3-turbo · $0.000…`, Usage "Speech $…".
@@ -650,15 +650,15 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - [ ] Monthly budget below this month's cost → "Cloud STT failed (monthly budget reached); used this PC"; cleanup falls back to this PC / the formatted text.
 - [ ] Quit and restart: usage counters and the key are unchanged.
 - [ ] Notetaker hidden (D51): the tray has no meeting line, the sidebar's Notetaker shows the "Coming later" page, General has no meeting shortcut row, Speech to text has no Meetings group. The two Meetings checks below need it switched on.
-- [ ] Meetings: in a call, tray "Start meeting recording" → the Flow bar shows "Recording meeting · 0:0x"; speak, let the other side speak; tray "■ Stop meeting recording" → the Meetings page shows "Transcribing… n%", then Me / Others turns in order. Dictate (Right Alt) during the transcription: it pastes as fast as usual.
-- [ ] Meetings with nothing playing: the Others track stays silent, the transcript is Me only with the "No sound from the PC" note. After a 4th meeting only the newest 3 have `.wav` files in `%APPDATA%\FlowClone\meetings\`.
+- [ ] Meetings: in a call, tray "Start meeting recording" → the Murmur bar shows "Recording meeting · 0:0x"; speak, let the other side speak; tray "■ Stop meeting recording" → the Meetings page shows "Transcribing… n%", then Me / Others turns in order. Dictate (Right Alt) during the transcription: it pastes as fast as usual.
+- [ ] Meetings with nothing playing: the Others track stays silent, the transcript is Me only with the "No sound from the PC" note. After a 4th meeting only the newest 3 have `.wav` files in `%APPDATA%\Murmur\meetings\`.
 
 ## Known gaps / v1 limitations
 
 - OpenRouter (D28): the **C** badge appears after the commit (like S/L); while recording the line above the pill names OpenRouter and the model. Cloud cleanup never runs on dictations served by your own server (it keeps its own AI). No "Connect with OpenRouter" (OAuth) yet: the key is pasted. HTTPS uses webpki roots, so a corporate TLS-inspection CA in the Windows store is not trusted.
 - Hands-free auto-stop (D19) applies to dictations *started* hands-free (Ctrl+Win+Space). A push-to-talk dictation locked later (double tap, or Space added to the chord) has no endpoint, because the router fixes `endpoint_silence_ms` at session start; stop it with the key or ✓.
 - Paste target (S13): the guard compares the foreground window (HWND + process) with the one at dictation start; switching tabs *inside* the same window (browser tabs) is not detected. The password-field re-check needs UI Automation to answer within 300 ms; otherwise only the window check applies.
-- Command Mode: in controls without UI Automation TextPattern the selection is read with Ctrl+C, and editors that copy the whole line when nothing is selected (VS Code) make an empty selection look like that line: the result is then pasted at the cursor, not over the line. Commands never run on your own `flow-server` (the server route has no LLM endpoint for them); answers are capped by the cleanup output budget (about 230 tokens for a short selection, 430 when generating). No saved transform presets yet.
+- Command Mode: in controls without UI Automation TextPattern the selection is read with Ctrl+C, and editors that copy the whole line when nothing is selected (VS Code) make an empty selection look like that line: the result is then pasted at the cursor, not over the line. Commands never run on your own `murmur-server` (the server route has no LLM endpoint for them); answers are capped by the cleanup output budget (about 230 tokens for a short selection, 430 when generating). No saved transform presets yet.
 - Clipboard privacy formats (S14) are honoured by Windows' own history/cloud sync; third-party clipboard managers that ignore `ExcludeClipboardContentFromMonitorProcessing` still see the text.
 
 - Hands-free ✕/✓ use a 30 ms cursor poll that toggles click-through over the pill (not `setShape`). A click in the first ~30 ms after the cursor arrives can fall through.
@@ -667,16 +667,16 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - The UIPI pre-check compares token integrity levels only. UIAccess targets and protected processes (level unreadable) fall through to the normal paste.
 - The hook watchdog probes only while the user is active and at most every 5 s, so a dead hook is noticed after the next input, not instantly.
 - There is no mouse-button shortcut (`WH_MOUSE_LL`) and no Caps Lock single-key shortcut.
-- Learn-from-edits polls (default every 1 s for 45 s) instead of subscribing to UIA `TextChanged` events, and uses no local LLM to vet candidates ("is this a proper noun?"): flow-core's alignment filters plus the user's explicit accept do that job. Controls without TextPattern/ValuePattern (some Electron/canvas editors) are not watched.
+- Learn-from-edits polls (default every 1 s for 45 s) instead of subscribing to UIA `TextChanged` events, and uses no local LLM to vet candidates ("is this a proper noun?"): murmur-core's alignment filters plus the user's explicit accept do that job. Controls without TextPattern/ValuePattern (some Electron/canvas editors) are not watched.
 - LLM cleanup load is 10-50 s on CPU and quality with the default 1.5B model is 8/8 on the core's messy-dictation set (74 % on the 88-suite; the old 0.5B default: 4/8, 43 %, ~2x faster); see `docs/core-architecture.md`.
 - "Re-paste" from the History tab hides Settings and pastes into whatever window Windows activates next (normally the one used before Settings).
 - Cue sounds are synthesised tones; see [Custom sounds](#custom-sounds) to use your own.
 
-## flow-core integration
+## murmur-core integration
 
-`Cargo.toml` takes `flow-core = { path = "../../crates/flow-core" }`; the crate
+`Cargo.toml` takes `murmur-core = { path = "../../crates/murmur-core" }`; the crate
 stays a standalone workspace (Tauri/Win32 deps stay out of the core lockfile).
-`src/core_adapter.rs` maps the shell's API types onto flow-core's:
+`src/core_adapter.rs` maps the shell's API types onto murmur-core's:
 
 * `SessionConfig`: the ordered `[{word, replacement, isSnippet}]` list, languages, styles (strings → `Style`), cleanup level, raw mode, `max_samples` from the 20-min policy, `platform: windows`, `partial_interval_ms` from the live-preview pref.
 * `FieldContext`: exe stem as `app_id`, URL host, `AppKind`/`StyleBucket` → `AppCategory`, before/selected/after.

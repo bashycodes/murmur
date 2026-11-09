@@ -1,5 +1,5 @@
 //! Streaming-transducer backend (`AsrBackend::SherpaOnline`, feature
-//! `parakeet`, crate `flow-asr-sherpa`): icefall zipformer2 models such as
+//! `parakeet`, crate `murmur-asr-sherpa`): icefall zipformer2 models such as
 //! `ivrit-ai/zipformer2-66m-streaming-he`, the default Hebrew model
 //! (docs/proposals/hebrew-stt.md decisions 2-3).
 //!
@@ -11,7 +11,7 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use flow_asr_sherpa::{OnlineConfig, OnlineEngine, Search};
+use murmur_asr_sherpa::{OnlineConfig, OnlineEngine, Search};
 
 use crate::asr::{AsrEngine, AsrError, AsrOutput, AsrRequest};
 use crate::parakeet::{hotwords_from_prompt, implausibly_short};
@@ -43,7 +43,7 @@ impl SherpaOnlineAsr {
     }
 
     /// How long each step of the load took (sherpa sessions etc.).
-    pub fn load_phases(&self) -> &[flow_asr_sherpa::LoadPhase] {
+    pub fn load_phases(&self) -> &[murmur_asr_sherpa::LoadPhase] {
         self.engine.load_phases()
     }
 

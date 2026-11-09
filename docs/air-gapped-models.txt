@@ -1,9 +1,9 @@
-# Every model Flow Clone can use, pinned: one line per file.
+# Every model Murmur can use, pinned: one line per file.
 # Columns: folder kind engine file bytes sha256 url title
 # folder = the server library folder (= the catalogue id the apps check
 # the file against); kind/engine/title go into that folder's model.toml.
 # URLs and SHA-256 are the Windows app's catalogue
-# (apps/flow-windows/src/model_download.rs CATALOG; Android pins the same).
+# (apps/murmur-windows/src/model_download.rs CATALOG; Android pins the same).
 # How to use it: docs/air-gapped.md "Download the models".
 
 # English speech

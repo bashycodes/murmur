@@ -24,7 +24,7 @@ out = HERE / "shots"
 out.mkdir(exist_ok=True)
 fails = []
 GPU = {"gpu": True, "backend": "Vulkan", "device": "Intel(R) Arc(TM) 140V GPU (16GB)",
-       "plugin": "C:\\Program Files\\Murmur\\flow_whisper_vulkan.dll", "error": None}
+       "plugin": "C:\\Program Files\\Murmur\\murmur_whisper_vulkan.dll", "error": None}
 
 
 def check(name, cond, extra=""):

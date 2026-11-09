@@ -1,17 +1,17 @@
-//! formatting-eval: run the eval cases through the real flow-core commit
-//! path (`FlowCore::from_engines` with a text "ASR", like `flow-cli clean`),
+//! formatting-eval: run the eval cases through the real murmur-core commit
+//! path (`MurmurCore::from_engines` with a text "ASR", like `murmur-cli clean`),
 //! optionally with the llama.cpp cleaner, optionally with the system prompt
 //! and few-shot turns swapped for a candidate prompt file. Product code is
 //! used unmodified; only the prompt the cleaner receives is replaced.
 //!
 //! usage: formatting-eval --cases cases.jsonl --session session.json
-//!          [--llm model.gguf --llm-lib libflow_llm.so [--threads 4]
+//!          [--llm model.gguf --llm-lib libmurmur_llm.so [--threads 4]
 //!           [--prompt prompt.json]] > out.jsonl
 //!
 //! prompt.json: {"system": "...", "examples": [[app, category, transcript, output], ...]}
 //! The example user turns are rendered in the product's user-message format.
 //!
-//! --tuned-guard: instead of `FlowCore::commit`, replay `Engine::finish`
+//! --tuned-guard: instead of `MurmurCore::commit`, replay `Engine::finish`
 //! step by step (spoken_cleanup -> layout -> close_sentence -> LLM ->
 //! postprocess::apply) with one change: the guard sees input and output
 //! with formatting-command words (quote/unquote, paren, brackets, dash)
@@ -21,10 +21,10 @@
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use flow_core::asr::{AsrEngine, AsrError, AsrOutput, AsrRequest};
-use flow_core::cleanup::{CleanError, CleanPrompt, Cleaner};
-use flow_core::config::{AppCategory, FieldContext, SessionConfig};
-use flow_core::FlowCore;
+use murmur_core::asr::{AsrEngine, AsrError, AsrOutput, AsrRequest};
+use murmur_core::cleanup::{CleanError, CleanPrompt, Cleaner};
+use murmur_core::config::{AppCategory, FieldContext, SessionConfig};
+use murmur_core::MurmurCore;
 use serde::Deserialize;
 
 struct TextAsr(Arc<Mutex<String>>);
@@ -68,7 +68,7 @@ impl Cleaner for Swapped {
         &self,
         p: &CleanPrompt,
         d: Instant,
-        c: &flow_core::asr::AbortFlag,
+        c: &murmur_core::asr::AbortFlag,
     ) -> Result<String, CleanError> {
         self.inner.clean_cancellable(&self.swap(p), d, c)
     }
@@ -99,9 +99,9 @@ fn replica(
     ctx: &FieldContext,
     raw: &str,
 ) -> (String, Option<String>, u64, Option<String>) {
-    use flow_core::cleanup::*;
-    use flow_core::config::CleanupLevel;
-    use flow_core::postprocess;
+    use murmur_core::cleanup::*;
+    use murmur_core::config::CleanupLevel;
+    use murmur_core::postprocess;
     let mut text = raw.to_string();
     if cfg.spoken_cleanup && cfg.cleanup_level != CleanupLevel::None {
         text = postprocess::spoken::spoken_cleanup(&text);
@@ -123,7 +123,7 @@ fn replica(
         let timeout = std::time::Duration::from_millis(cfg.llm_timeout_ms);
         let deadline = t + timeout;
         let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let flag = flow_core::asr::AbortFlag(Some(cancel.clone()));
+        let flag = murmur_core::asr::AbortFlag(Some(cancel.clone()));
         let (tx, rx) = std::sync::mpsc::channel();
         let c2 = cl.clone();
         std::thread::spawn(move || {
@@ -136,10 +136,10 @@ fn replica(
                 if out.is_empty() {
                     fb = Some("llm_empty".to_string());
                 } else {
-                    match flow_core::guard::check(&text, &out) {
-                        flow_core::guard::Verdict::Ok => text = out,
-                        flow_core::guard::Verdict::Unsupported(_) => fb = Some("llm_unsupported".into()),
-                        flow_core::guard::Verdict::Dropped(_) => fb = Some("llm_dropped".into()),
+                    match murmur_core::guard::check(&text, &out) {
+                        murmur_core::guard::Verdict::Ok => text = out,
+                        murmur_core::guard::Verdict::Unsupported(_) => fb = Some("llm_unsupported".into()),
+                        murmur_core::guard::Verdict::Dropped(_) => fb = Some("llm_dropped".into()),
                     }
                 }
             }
@@ -172,7 +172,7 @@ fn main() {
     let cleaner: Option<Arc<dyn Cleaner>> = get("--llm").map(|m| {
         let t = Instant::now();
         let base: Arc<dyn Cleaner> = Arc::new(
-            flow_core::llama::LlamaCleaner::load(&m, threads, get("--llm-lib").as_deref())
+            murmur_core::llama::LlamaCleaner::load(&m, threads, get("--llm-lib").as_deref())
                 .expect("llm load"),
         );
         eprintln!("llm load {} ms", t.elapsed().as_millis());
@@ -198,7 +198,7 @@ fn main() {
     });
     let text = Arc::new(Mutex::new(String::new()));
     let cleaner_ref = cleaner.clone();
-    let core = FlowCore::from_engines(Arc::new(TextAsr(text.clone())), cleaner);
+    let core = MurmurCore::from_engines(Arc::new(TextAsr(text.clone())), cleaner);
     let tone: Vec<i16> = (0..16_000)
         .map(|i| ((i as f32 * 0.05).sin() * 8000.0) as i16)
         .collect();
@@ -208,7 +208,7 @@ fn main() {
     // dictation pays the cold prefix. One untimed clean does the same here.
     if let Some(cl) = &cleaner_ref {
         let t = Instant::now();
-        let p = flow_core::cleanup::build_prompt(
+        let p = murmur_core::cleanup::build_prompt(
             "Warm up the cache.",
             session.cleanup_level,
             session.styles.for_category(AppCategory::Other),
@@ -228,7 +228,7 @@ fn main() {
             };
             if let Some(cl) = &cleaner_ref {
                 let style = session.styles.for_category(c.app_category);
-                cl.prefill(&flow_core::cleanup::build_prompt(
+                cl.prefill(&murmur_core::cleanup::build_prompt(
                     "", session.cleanup_level, style, &ctx, &session.dictionary,
                 ));
             }

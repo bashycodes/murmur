@@ -67,7 +67,7 @@ with sync_playwright() as p:
         r = rows(pg)
         check(tag + "three keys, revoked last", len(r) == 3 and "old-tablet" in r[2], str(r))
         owner = pg.inner_text(row_of(pg, "owner"))
-        check(tag + "owner row: badges and usage", "admin" in owner and "this app" in owner and "412" in owner and "66.0" in owner and "flow-windows 0.12.0" in owner, owner)
+        check(tag + "owner row: badges and usage", "admin" in owner and "this app" in owner and "412" in owner and "66.0" in owner and "murmur-windows 0.12.0" in owner, owner)
         dl = pg.locator(row_of(pg, "owner") + " td.num").nth(2)
         check(tag + "owner row: downloads, bytes on hover", dl.inner_text().strip() == "3" and dl.get_attribute("title") == "1620.0 MB", dl.inner_text())
         heads = pg.eval_on_selector_all("#keys_table thead th", "hs => hs.map(h => h.innerText.trim())")

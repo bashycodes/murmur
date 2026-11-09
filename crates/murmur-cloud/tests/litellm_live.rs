@@ -2,9 +2,9 @@
 //! Ignored by default (needs a running proxy); run with
 //!
 //! ```sh
-//! FLOW_LITELLM_URL=http://host:4000 FLOW_LITELLM_MODEL=<model> \
-//! FLOW_LITELLM_KEY=<key, optional> \
-//!   cargo test -p flow-cloud --test litellm_live -- --ignored --nocapture
+//! MURMUR_LITELLM_URL=http://host:4000 MURMUR_LITELLM_MODEL=<model> \
+//! MURMUR_LITELLM_KEY=<key, optional> \
+//!   cargo test -p murmur-cloud --test litellm_live -- --ignored --nocapture
 //! ```
 //!
 //! It checks what the settings page and a dictation do: the model list
@@ -16,11 +16,11 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use flow_cloud::custom;
-use flow_core::asr::MockAsr;
-use flow_core::FlowCore;
-use flow_router::cloud::{custom_server_address, CustomCleanupConfig};
-use flow_router::{
+use murmur_cloud::custom;
+use murmur_core::asr::MockAsr;
+use murmur_core::MurmurCore;
+use murmur_router::cloud::{custom_server_address, CustomCleanupConfig};
+use murmur_router::{
     Backend, CleanupRoute, CloudProvider, Router, RouterConfig, SecretString, SessionConfig,
 };
 
@@ -35,9 +35,9 @@ struct Live {
 }
 
 fn live() -> Live {
-    let url = std::env::var("FLOW_LITELLM_URL").expect("FLOW_LITELLM_URL");
-    let model = std::env::var("FLOW_LITELLM_MODEL").expect("FLOW_LITELLM_MODEL");
-    let key = std::env::var("FLOW_LITELLM_KEY")
+    let url = std::env::var("MURMUR_LITELLM_URL").expect("MURMUR_LITELLM_URL");
+    let model = std::env::var("MURMUR_LITELLM_MODEL").expect("MURMUR_LITELLM_MODEL");
+    let key = std::env::var("MURMUR_LITELLM_KEY")
         .ok()
         .filter(|k| !k.trim().is_empty())
         .map(SecretString::new);
@@ -63,7 +63,7 @@ fn shape(s: &str) -> String {
 }
 
 #[test]
-#[ignore = "needs a running LiteLLM proxy (FLOW_LITELLM_URL / _MODEL / _KEY)"]
+#[ignore = "needs a running LiteLLM proxy (MURMUR_LITELLM_URL / _MODEL / _KEY)"]
 fn litellm_proxy_end_to_end() {
     let l = live();
     let secret = l.key.as_ref().map(|k| k.expose().to_string());
@@ -137,8 +137,8 @@ fn litellm_proxy_end_to_end() {
         c.cloud.provider = CloudProvider::LiteLlm;
         c.cloud.custom_cleanup = cfg(&l, &l.model);
         c.validate().unwrap();
-        let core = FlowCore::from_engines(Arc::new(MockAsr::new(SAID)), None);
-        let router = flow_cloud::attach(
+        let core = MurmurCore::from_engines(Arc::new(MockAsr::new(SAID)), None);
+        let router = murmur_cloud::attach(
             Router::new(c, Some(Arc::new(core) as Arc<dyn Backend>), None),
             None,
         );

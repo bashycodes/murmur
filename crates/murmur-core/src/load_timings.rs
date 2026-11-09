@@ -1,4 +1,4 @@
-//! How long a [`crate::FlowCore`] load took, per model and per phase
+//! How long a [`crate::MurmurCore`] load took, per model and per phase
 //! (ticket "Load 3"), so a shell can log it and a phone load can be
 //! measured: `docs/findings/2026-11-05-phone-model-load-time.md`.
 

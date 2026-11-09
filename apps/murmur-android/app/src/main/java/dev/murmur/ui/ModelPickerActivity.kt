@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.app.Activity
 import android.app.AlertDialog
@@ -14,14 +14,14 @@ import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
-import dev.flowclone.FlowApp
-import dev.flowclone.R
-import dev.flowclone.core.NativeFlowCore
-import dev.flowclone.data.CloudCatalog
-import dev.flowclone.data.CloudCatalog.Use
-import dev.flowclone.data.DevSettings
-import dev.flowclone.data.OpenRouter
-import dev.flowclone.data.OpenRouterPage
+import dev.murmur.MurmurApp
+import dev.murmur.R
+import dev.murmur.core.NativeMurmurCore
+import dev.murmur.data.CloudCatalog
+import dev.murmur.data.CloudCatalog.Use
+import dev.murmur.data.DevSettings
+import dev.murmur.data.OpenRouter
+import dev.murmur.data.OpenRouterPage
 import java.text.DateFormat
 import java.util.Date
 import kotlin.concurrent.thread
@@ -34,7 +34,7 @@ import kotlin.concurrent.thread
  * per dictation (cleanup), badges, and any model id typed by hand.
  */
 class ModelPickerActivity : Activity() {
-    private val app get() = FlowApp.of(this)
+    private val app get() = MurmurApp.of(this)
     private lateinit var ui: DevUi
     private lateinit var use: Use
     private var query = ""
@@ -52,7 +52,7 @@ class ModelPickerActivity : Activity() {
         title = if (use == Use.STT) "Speech-to-text model" else "Cleanup model"
         ui = DevUi(this)
         if (!app.caps.cloud) { finish(); return }
-        runCatching { NativeFlowCore.setCloudCacheDir(cacheDir.path) }
+        runCatching { NativeMurmurCore.setCloudCacheDir(cacheDir.path) }
         render()
         reload()
         refresh(force = false)
@@ -120,7 +120,7 @@ class ModelPickerActivity : Activity() {
 
     /** Re-reads the rows (no network) and redraws the list. */
     private fun reload() {
-        val rows = CloudCatalog.decodeRows(NativeFlowCore.cloudCatalog(use.wire, query, filters.toJson()))
+        val rows = CloudCatalog.decodeRows(NativeMurmurCore.cloudCatalog(use.wire, query, filters.toJson()))
         val inUse = OpenRouterPage.model(stored(), use)
         current.text = CloudCatalog.modelSummary(inUse, if (use == Use.STT) stored().cloud.stt.sttPath else null)
         statusLine.text = CloudCatalog.sourceLine(status, System.currentTimeMillis()) { DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(it)) } +
@@ -151,7 +151,7 @@ class ModelPickerActivity : Activity() {
         refreshing = true
         reload()
         thread(name = "or-catalog") {
-            val json = runCatching { app.engine.router()?.refreshCloudCatalog(force) ?: NativeFlowCore.refreshCloudCatalog(force) }.getOrNull()
+            val json = runCatching { app.engine.router()?.refreshCloudCatalog(force) ?: NativeMurmurCore.refreshCloudCatalog(force) }.getOrNull()
             json?.let { app.debugLog.event("cloud_catalog_refresh", it) }
             runOnUiThread {
                 refreshing = false

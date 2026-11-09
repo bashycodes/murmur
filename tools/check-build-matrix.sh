@@ -12,9 +12,9 @@
 #
 # D28: cloud builds talk to OpenRouter only. The host-string checks below
 # fail on any other speech/LLM provider host in (a) the Rust sources linked
-# into cloud builds, (b) flow-cloud's compiled artefact (built here, dev
+# into cloud builds, (b) murmur-cloud's compiled artefact (built here, dev
 # profile, usually cached) and (c) any shipped artefact listed in
-# FLOW_CLOUD_ARTIFACTS (space-separated .so/.exe/.apk paths), plus the
+# MURMUR_CLOUD_ARTIFACTS (space-separated .so/.exe/.apk paths), plus the
 # shells' main sources.
 # CHECK_BUILD_MATRIX_NO_BUILD=1 skips (b).
 # D80: NOTICE and THIRD-PARTY-LICENSES are current (tools/notice/crate-licences.py
@@ -27,10 +27,10 @@ cd "$ROOT"
 
 NET='^(tokio|tokio-tungstenite|tungstenite|rustls|tokio-rustls|axum|hyper|hyper-util|reqwest|ureq|mio) v'
 # Tauri itself uses tokio, so the Windows check looks for our client stack.
-WIN_NET='^(flow-remote|tokio-tungstenite|tungstenite|axum) v'
-ASR='^(whisper-rs|whisper-rs-sys|sherpa-onnx|sherpa-onnx-sys|llama-cpp-2|llama-cpp-sys-2|flow-asr-sherpa) v'
+WIN_NET='^(murmur-remote|tokio-tungstenite|tungstenite|axum) v'
+ASR='^(whisper-rs|whisper-rs-sys|sherpa-onnx|sherpa-onnx-sys|llama-cpp-2|llama-cpp-sys-2|murmur-asr-sherpa) v'
 # Cloud STT client stack (C2): never in client-only builds.
-CLOUD='^(flow-cloud|reqwest|hyper|hyper-util|hyper-rustls|rustls|tokio-rustls|webpki-roots|rustls-webpki) v'
+CLOUD='^(murmur-cloud|reqwest|hyper|hyper-util|hyper-rustls|rustls|tokio-rustls|webpki-roots|rustls-webpki) v'
 fail=0
 skip=0
 cloud_skip=0
@@ -89,29 +89,29 @@ check() {
 }
 
 # Router stack: no network code below the injected remote factory.
-check "flow-protocol has no network deps" "$NET" -p flow-protocol
-check "flow-router has no network deps" "$NET" -p flow-router
-check "flow-remote has no ASR/LLM libs" "$ASR" -p flow-remote --features tls
-# flow-ffi (Android / C ABI): client-only vs server-only flavours.
-check "flow-ffi jni,whisper (local flavour) has no network deps" "$NET" -p flow-ffi --features jni,whisper
-check "flow-ffi jni,whisper,llm,parakeet (local flavour) has no network deps" "$NET" -p flow-ffi --features jni,whisper,llm,parakeet
-check "flow-ffi jni,remote (remote flavour) has no ASR/LLM libs" "$ASR" -p flow-ffi --features jni,remote
+check "murmur-protocol has no network deps" "$NET" -p murmur-protocol
+check "murmur-router has no network deps" "$NET" -p murmur-router
+check "murmur-remote has no ASR/LLM libs" "$ASR" -p murmur-remote --features tls
+# murmur-ffi (Android / C ABI): client-only vs server-only flavours.
+check "murmur-ffi jni,whisper (local flavour) has no network deps" "$NET" -p murmur-ffi --features jni,whisper
+check "murmur-ffi jni,whisper,llm,parakeet (local flavour) has no network deps" "$NET" -p murmur-ffi --features jni,whisper,llm,parakeet
+check "murmur-ffi jni,remote (remote flavour) has no ASR/LLM libs" "$ASR" -p murmur-ffi --features jni,remote
 # D41: the model-library client (hybrid / remote only) links no ASR/LLM code either.
-check "flow-ffi jni,remote,cloud,library (remote flavour) has no ASR/LLM libs" "$ASR" -p flow-ffi --features jni,remote,cloud,library
+check "murmur-ffi jni,remote,cloud,library (remote flavour) has no ASR/LLM libs" "$ASR" -p murmur-ffi --features jni,remote,cloud,library
 # Windows shell (own workspace).
-WIN=(--manifest-path apps/flow-windows/Cargo.toml --locked --no-default-features)
-check "flow-windows local,app has no WS client" "$WIN_NET" "${WIN[@]}" --features local,app
-check "flow-windows remote,app has no ASR/LLM libs" "$ASR" "${WIN[@]}" --features remote,app
+WIN=(--manifest-path apps/murmur-windows/Cargo.toml --locked --no-default-features)
+check "murmur-windows local,app has no WS client" "$WIN_NET" "${WIN[@]}" --features local,app
+check "murmur-windows remote,app has no ASR/LLM libs" "$ASR" "${WIN[@]}" --features remote,app
 
 # Cloud STT (D18 C2): the client-only flavours link no cloud client; the
 # cloud crate itself links no ASR/LLM native code.
-check "flow-core has no cloud client" "$CLOUD" -p flow-core
-check "flow-router has no cloud client" "$CLOUD" -p flow-router
-check "flow-cloud has no ASR/LLM libs" "$ASR" -p flow-cloud
-check "flow-ffi jni,whisper,llm,parakeet (local flavour) has no cloud client" "$CLOUD" -p flow-ffi --features jni,whisper,llm,parakeet
-check "flow-windows local,app has no cloud client" "$CLOUD" "${WIN[@]}" --features local,app
-check "flow-ffi jni,remote,cloud (remote+cloud flavour) has no ASR/LLM libs" "$ASR" -p flow-ffi --features jni,remote,cloud
-check "flow-windows remote,cloud,app has no ASR/LLM libs" "$ASR" "${WIN[@]}" --features remote,cloud,app
+check "murmur-core has no cloud client" "$CLOUD" -p murmur-core
+check "murmur-router has no cloud client" "$CLOUD" -p murmur-router
+check "murmur-cloud has no ASR/LLM libs" "$ASR" -p murmur-cloud
+check "murmur-ffi jni,whisper,llm,parakeet (local flavour) has no cloud client" "$CLOUD" -p murmur-ffi --features jni,whisper,llm,parakeet
+check "murmur-windows local,app has no cloud client" "$CLOUD" "${WIN[@]}" --features local,app
+check "murmur-ffi jni,remote,cloud (remote+cloud flavour) has no ASR/LLM libs" "$ASR" -p murmur-ffi --features jni,remote,cloud
+check "murmur-windows remote,cloud,app has no ASR/LLM libs" "$ASR" "${WIN[@]}" --features remote,cloud,app
 
 # The same flavour checks on the shells' real targets (review P4): `cargo
 # tree` on the host misses target-specific dependencies
@@ -119,14 +119,14 @@ check "flow-windows remote,cloud,app has no ASR/LLM libs" "$ASR" "${WIN[@]}" --f
 # toolchain is needed.
 ANDROID=(--target aarch64-linux-android)
 WINT=(--target x86_64-pc-windows-msvc)
-check "flow-ffi jni,whisper,llm,parakeet (local flavour, android) has no network deps" "$NET" -p flow-ffi --features jni,whisper,llm,parakeet "${ANDROID[@]}"
-check "flow-ffi jni,whisper,llm,parakeet (local flavour, android) has no cloud client" "$CLOUD" -p flow-ffi --features jni,whisper,llm,parakeet "${ANDROID[@]}"
-check "flow-ffi jni,remote,cloud (remote+cloud flavour, android) has no ASR/LLM libs" "$ASR" -p flow-ffi --features jni,remote,cloud "${ANDROID[@]}"
-check "flow-ffi jni,remote,cloud,admin (remote flavour + D39 admin, android) has no ASR/LLM libs" "$ASR" -p flow-ffi --features jni,remote,cloud,admin "${ANDROID[@]}"
-check "flow-ffi jni,remote,cloud,library (remote flavour, android) has no ASR/LLM libs" "$ASR" -p flow-ffi --features jni,remote,cloud,library "${ANDROID[@]}"
-check "flow-windows local,app (windows) has no WS client" "$WIN_NET" "${WIN[@]}" --features local,app "${WINT[@]}"
-check "flow-windows local,app (windows) has no cloud client" "$CLOUD" "${WIN[@]}" --features local,app "${WINT[@]}"
-check "flow-windows remote,cloud,app (windows) has no ASR/LLM libs" "$ASR" "${WIN[@]}" --features remote,cloud,app "${WINT[@]}"
+check "murmur-ffi jni,whisper,llm,parakeet (local flavour, android) has no network deps" "$NET" -p murmur-ffi --features jni,whisper,llm,parakeet "${ANDROID[@]}"
+check "murmur-ffi jni,whisper,llm,parakeet (local flavour, android) has no cloud client" "$CLOUD" -p murmur-ffi --features jni,whisper,llm,parakeet "${ANDROID[@]}"
+check "murmur-ffi jni,remote,cloud (remote+cloud flavour, android) has no ASR/LLM libs" "$ASR" -p murmur-ffi --features jni,remote,cloud "${ANDROID[@]}"
+check "murmur-ffi jni,remote,cloud,admin (remote flavour + D39 admin, android) has no ASR/LLM libs" "$ASR" -p murmur-ffi --features jni,remote,cloud,admin "${ANDROID[@]}"
+check "murmur-ffi jni,remote,cloud,library (remote flavour, android) has no ASR/LLM libs" "$ASR" -p murmur-ffi --features jni,remote,cloud,library "${ANDROID[@]}"
+check "murmur-windows local,app (windows) has no WS client" "$WIN_NET" "${WIN[@]}" --features local,app "${WINT[@]}"
+check "murmur-windows local,app (windows) has no cloud client" "$CLOUD" "${WIN[@]}" --features local,app "${WINT[@]}"
+check "murmur-windows remote,cloud,app (windows) has no ASR/LLM libs" "$ASR" "${WIN[@]}" --features remote,cloud,app "${WINT[@]}"
 
 # ---- D28: no non-OpenRouter provider host in cloud builds ------------------
 # Known third-party speech / LLM API hosts (the D18 presets and the
@@ -134,8 +134,8 @@ check "flow-windows remote,cloud,app (windows) has no ASR/LLM libs" "$ASR" "${WI
 # exists next to OpenRouter.
 PROVIDER_HOSTS='(api\.elevenlabs\.io|api\.deepgram\.com|api\.assemblyai\.com|api\.groq\.com|api\.openai\.com|api\.anthropic\.com|api\.mistral\.ai|api\.together\.(ai|xyz)|api\.fireworks\.ai|api\.deepinfra\.com|api\.cerebras\.ai|api\.sambanova\.ai|generativelanguage\.googleapis\.com|speech\.googleapis\.com|api\.speechmatics\.com|api\.rev\.ai|api\.gladia\.io|api\.x\.ai|stt\.speech\.microsoft\.com|cognitiveservices\.azure\.com|api\.cohere\.(ai|com)|api\.perplexity\.ai)'
 # (a) Rust sources linked into cloud builds (not tests / fixtures).
-hits=$(grep -rnE "$PROVIDER_HOSTS" crates/flow-cloud/src crates/flow-router/src crates/flow-core/src \
-    crates/flow-ffi/src crates/flow-remote/src crates/flow-protocol/src 2>/dev/null)
+hits=$(grep -rnE "$PROVIDER_HOSTS" crates/murmur-cloud/src crates/murmur-router/src crates/murmur-core/src \
+    crates/murmur-ffi/src crates/murmur-remote/src crates/murmur-protocol/src 2>/dev/null)
 if [ -n "$hits" ]; then
     echo "FAIL  cloud-build Rust sources name a non-OpenRouter provider host:"
     echo "$hits" | head -20 | sed 's/^/      /'
@@ -143,21 +143,21 @@ if [ -n "$hits" ]; then
 else
     echo "ok    cloud-build Rust sources name no provider host but openrouter.ai"
 fi
-# flow-cloud's own URL literals: openrouter.ai only.
+# murmur-cloud's own URL literals: openrouter.ai only.
 # Non-test code only: testing.rs and `#[cfg(test)]` modules (at the end of
 # each file) are excluded.
-urls=$(find crates/flow-cloud/src -name '*.rs' ! -name testing.rs -exec awk '/^#\[cfg\(test\)\]/{exit} {print}' {} \; |
+urls=$(find crates/murmur-cloud/src -name '*.rs' ! -name testing.rs -exec awk '/^#\[cfg\(test\)\]/{exit} {print}' {} \; |
     grep -oE 'https?://[A-Za-z0-9.-]+' | sort -u | grep -vE '^https://openrouter\.ai$')
 if [ -n "$urls" ]; then
-    echo "FAIL  flow-cloud/src has URL literals other than https://openrouter.ai:"
+    echo "FAIL  murmur-cloud/src has URL literals other than https://openrouter.ai:"
     echo "$urls" | sed 's/^/      /'
     fail=1
 else
-    echo "ok    flow-cloud/src URL literals are https://openrouter.ai only"
+    echo "ok    murmur-cloud/src URL literals are https://openrouter.ai only"
 fi
 # Shell sources (main code only).
-shell_hits=$(grep -rnE "$PROVIDER_HOSTS" apps/flow-windows/src apps/flow-windows/ui/src \
-    apps/flow-android/app/src/main 2>/dev/null)
+shell_hits=$(grep -rnE "$PROVIDER_HOSTS" apps/murmur-windows/src apps/murmur-windows/ui/src \
+    apps/murmur-android/app/src/main 2>/dev/null)
 if [ -n "$shell_hits" ]; then
     if [ "${CHECK_BUILD_MATRIX_STRICT_CLOUD:-1}" = "1" ]; then
         echo "FAIL  shell sources name a non-OpenRouter provider host:"
@@ -170,39 +170,39 @@ if [ -n "$shell_hits" ]; then
 else
     echo "ok    shell sources name no provider host but openrouter.ai"
 fi
-# (b) flow-cloud's compiled artefact, as a cloud build links it (no
+# (b) murmur-cloud's compiled artefact, as a cloud build links it (no
 # mock-server feature).
 if [ "${CHECK_BUILD_MATRIX_NO_BUILD:-0}" != "1" ]; then
-    if arts=$(cargo build -p flow-cloud --lib --message-format=json 2>/dev/null |
-        grep -o '"filenames":\[[^]]*\]' | grep 'flow_cloud' | grep -oE '"[^"]+\.(rlib|rmeta|so|a)"' | tr -d '"'); then
+    if arts=$(cargo build -p murmur-cloud --lib --message-format=json 2>/dev/null |
+        grep -o '"filenames":\[[^]]*\]' | grep 'murmur_cloud' | grep -oE '"[^"]+\.(rlib|rmeta|so|a)"' | tr -d '"'); then
         bad=""
         for a in $arts; do
             [ -f "$a" ] || continue
             if grep -aqE "$PROVIDER_HOSTS" "$a"; then bad="$bad $a"; fi
         done
         if [ -z "$arts" ]; then
-            echo "ERROR flow-cloud artefact: no build output found"
+            echo "ERROR murmur-cloud artefact: no build output found"
             fail=1
         elif [ -n "$bad" ]; then
-            echo "FAIL  flow-cloud artefact contains a non-OpenRouter provider host:$bad"
+            echo "FAIL  murmur-cloud artefact contains a non-OpenRouter provider host:$bad"
             fail=1
         else
-            echo "ok    flow-cloud artefact contains no provider host but openrouter.ai"
+            echo "ok    murmur-cloud artefact contains no provider host but openrouter.ai"
         fi
     else
-        echo "ERROR flow-cloud artefact: cargo build failed"
+        echo "ERROR murmur-cloud artefact: cargo build failed"
         fail=1
     fi
 else
-    echo "SKIP  flow-cloud artefact host scan (CHECK_BUILD_MATRIX_NO_BUILD=1)"
+    echo "SKIP  murmur-cloud artefact host scan (CHECK_BUILD_MATRIX_NO_BUILD=1)"
 fi
 # (c) Shipped artefacts (APK .so, Windows .exe), when given.
-for a in ${FLOW_CLOUD_ARTIFACTS:-}; do
+for a in ${MURMUR_CLOUD_ARTIFACTS:-}; do
     if [ ! -f "$a" ]; then
         echo "ERROR $a: not found"
         fail=1
     elif [[ "$a" == *.apk ]]; then
-        if unzip -p "$a" 'lib/*/libflow_ffi*.so' 2>/dev/null | grep -aqE "$PROVIDER_HOSTS"; then
+        if unzip -p "$a" 'lib/*/libmurmur_ffi*.so' 2>/dev/null | grep -aqE "$PROVIDER_HOSTS"; then
             echo "FAIL  $(basename "$a") native lib contains a non-OpenRouter provider host"
             fail=1
         else
@@ -217,15 +217,15 @@ for a in ${FLOW_CLOUD_ARTIFACTS:-}; do
 done
 # The test-only mock seam (`mock-server`: plain-http base-URL override)
 # must never be enabled in a shipped cloud flavour.
-for spec in "-p flow-ffi --features jni,remote,cloud" \
-    "--manifest-path apps/flow-windows/Cargo.toml --locked --no-default-features --features remote,cloud,app"; do
+for spec in "-p murmur-ffi --features jni,remote,cloud" \
+    "--manifest-path apps/murmur-windows/Cargo.toml --locked --no-default-features --features remote,cloud,app"; do
     # shellcheck disable=SC2086
-    if out=$(cargo tree -e features,normal --prefix none -i flow-cloud $spec 2>&1); then
-        if grep -q 'flow-cloud feature "mock-server"' <<<"$out"; then
-            echo "FAIL  $spec enables flow-cloud/mock-server"
+    if out=$(cargo tree -e features,normal --prefix none -i murmur-cloud $spec 2>&1); then
+        if grep -q 'murmur-cloud feature "mock-server"' <<<"$out"; then
+            echo "FAIL  $spec enables murmur-cloud/mock-server"
             fail=1
         else
-            echo "ok    $spec does not enable flow-cloud/mock-server"
+            echo "ok    $spec does not enable murmur-cloud/mock-server"
         fi
     elif grep -qiE "does not (have|contain)|not (defined|found)|did not match" <<<"$out"; then
         echo "SKIP  $spec mock-server check (feature not defined yet)"

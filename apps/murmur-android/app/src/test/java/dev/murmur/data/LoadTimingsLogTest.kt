@@ -1,4 +1,4 @@
-package dev.flowclone.data
+package dev.murmur.data
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals

@@ -4,7 +4,7 @@
 //! exactly one OpenRouter entry. Prices come from the catalogue
 //! (`crate::budget`).
 
-use flow_router::CloudProviderConfig;
+use murmur_router::CloudProviderConfig;
 
 use crate::api::BASE_URL;
 use crate::settings::DEFAULT_STT_MODEL;

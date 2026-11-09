@@ -1,4 +1,4 @@
-package dev.flowclone.data
+package dev.murmur.data
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -7,7 +7,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** D28 picker data: flow-cloud `PickerRow` JSON → rows, the status line, and the filter JSON. */
+/** D28 picker data: murmur-cloud `PickerRow` JSON → rows, the status line, and the filter JSON. */
 class CloudCatalogTest {
     private val rowsJson = requireNotNull(javaClass.classLoader!!.getResource("openrouter_picker_stt.json")).readText()
 

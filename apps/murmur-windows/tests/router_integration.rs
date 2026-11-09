@@ -1,6 +1,6 @@
 //! D17 end to end through the shell: controller → RouterAdapter →
-//! (flow-remote WebSocket client → in-process flow-server with MockAsr) or
-//! the local FlowCoreAdapter (MockAsr), with only the OS side faked.
+//! (murmur-remote WebSocket client → in-process murmur-server with MockAsr) or
+//! the local MurmurCoreAdapter (MockAsr), with only the OS side faked.
 //!
 //! The two mocks say different things, so every paste names the engine
 //! that produced it. Covers the four toggle combinations, server down at
@@ -9,15 +9,15 @@
 
 #![cfg(feature = "remote")]
 
-use flow_windows::context::RawSnapshot;
-use flow_windows::controller::{AudioSink, Controller, Platform};
-use flow_windows::core_adapter::{FlowCoreAdapter, ModelSpec};
-use flow_windows::core_api::PasteKey;
-use flow_windows::dev_settings::{BuildCaps, DevSettings, ServerSettings};
-use flow_windows::dictation::{Input, OverlayState};
-use flow_windows::hotkeys::HotkeyAction;
-use flow_windows::prefs::Prefs;
-use flow_windows::router_adapter::{router_config, RouterAdapter};
+use murmur_windows::context::RawSnapshot;
+use murmur_windows::controller::{AudioSink, Controller, Platform};
+use murmur_windows::core_adapter::{ModelSpec, MurmurCoreAdapter};
+use murmur_windows::core_api::PasteKey;
+use murmur_windows::dev_settings::{BuildCaps, DevSettings, ServerSettings};
+use murmur_windows::dictation::{Input, OverlayState};
+use murmur_windows::hotkeys::HotkeyAction;
+use murmur_windows::prefs::Prefs;
+use murmur_windows::router_adapter::{router_config, RouterAdapter};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, RwLock};
@@ -62,7 +62,7 @@ impl FakeOs {
 }
 
 impl Platform for FakeOs {
-    fn play(&self, _s: flow_windows::dictation::Sound) {}
+    fn play(&self, _s: murmur_windows::dictation::Sound) {}
     fn duck(&self) {}
     fn unduck(&self) {}
     fn snapshot_context(&self) -> Option<RawSnapshot> {
@@ -93,9 +93,9 @@ impl Platform for FakeOs {
     fn max_duration_warning(&self, _r: u64) {}
 }
 
-/// In-process flow-server on 127.0.0.1:0 (MockAsr), on its own runtime.
+/// In-process murmur-server on 127.0.0.1:0 (MockAsr), on its own runtime.
 struct Server {
-    handle: flow_server::ServerHandle,
+    handle: murmur_server::ServerHandle,
     _rt: tokio::runtime::Runtime,
 }
 
@@ -106,11 +106,11 @@ impl Server {
             .enable_all()
             .build()
             .unwrap();
-        let cfg = flow_server::Config {
+        let cfg = murmur_server::Config {
             bind: vec!["127.0.0.1:0".into()],
             token: Some(TOKEN.into()),
-            model: flow_core::config::ModelConfig {
-                asr_backend: flow_core::config::AsrBackend::Mock {
+            model: murmur_core::config::ModelConfig {
+                asr_backend: murmur_core::config::AsrBackend::Mock {
                     text: SERVER_SAYS.into(),
                 },
                 ..Default::default()
@@ -119,7 +119,7 @@ impl Server {
         };
         let handle = rt.block_on(async {
             let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-            flow_server::serve(cfg, vec![l]).await.unwrap()
+            murmur_server::serve(cfg, vec![l]).await.unwrap()
         });
         Server { handle, _rt: rt }
     }
@@ -143,18 +143,18 @@ fn dev(server: &Server, allow_server: bool, allow_client: bool) -> DevSettings {
             connect_timeout_ms: 500,
             ..ServerSettings::default()
         },
-        token_dpapi: flow_windows::secrets::protect(TOKEN).unwrap(),
+        token_dpapi: murmur_windows::secrets::protect(TOKEN).unwrap(),
         ..DevSettings::for_build(BOTH)
     };
     // D36: server cleanup is its own switch (a configured server with it
     // on cleans this PC's dictations too); "server off" here means not
     // used at all.
-    d.set_cleanup_on(flow_router::CleanupRoute::Server, allow_server);
+    d.set_cleanup_on(murmur_router::CleanupRoute::Server, allow_server);
     d
 }
 
 fn rig(d: &DevSettings) -> Rig {
-    let local = FlowCoreAdapter::new();
+    let local = MurmurCoreAdapter::new();
     assert!(local
         .load_now(&ModelSpec::Mock {
             text: LOCAL_SAYS.into()
@@ -163,7 +163,7 @@ fn rig(d: &DevSettings) -> Rig {
     let router = RouterAdapter::new(
         router_config(d, BOTH).unwrap(),
         Some(local),
-        Some(flow_remote::factory("flow-windows test")),
+        Some(murmur_remote::factory("murmur-windows test")),
     );
     let os = Arc::new(FakeOs::default());
     let (tx, rx) = mpsc::channel();
@@ -304,16 +304,16 @@ fn on_off_server_down_shows_server_unreachable() {
     );
 }
 
-/// An in-process flow-server whose LLM ends the text with "!" (D36
+/// An in-process murmur-server whose LLM ends the text with "!" (D36
 /// `clean`), so a paste shows which engine cleaned it.
 fn llm_server() -> Server {
     struct Bang;
-    impl flow_core::cleanup::Cleaner for Bang {
+    impl murmur_core::cleanup::Cleaner for Bang {
         fn clean(
             &self,
-            p: &flow_core::cleanup::CleanPrompt,
+            p: &murmur_core::cleanup::CleanPrompt,
             _d: Instant,
-        ) -> Result<String, flow_core::cleanup::CleanError> {
+        ) -> Result<String, murmur_core::cleanup::CleanError> {
             Ok(format!("{}!", p.transcript.trim().trim_end_matches('.')))
         }
     }
@@ -322,26 +322,26 @@ fn llm_server() -> Server {
         .enable_all()
         .build()
         .unwrap();
-    let model = flow_core::config::ModelConfig {
-        asr_backend: flow_core::config::AsrBackend::Mock {
+    let model = murmur_core::config::ModelConfig {
+        asr_backend: murmur_core::config::AsrBackend::Mock {
             text: SERVER_SAYS.into(),
         },
         ..Default::default()
     };
-    let cfg = flow_server::Config {
+    let cfg = murmur_server::Config {
         bind: vec!["127.0.0.1:0".into()],
         token: Some(TOKEN.into()),
         model: model.clone(),
         ..Default::default()
     };
-    let core = flow_core::FlowCore::from_engines(
-        Arc::new(flow_core::asr::MockAsr::new(SERVER_SAYS)),
-        Some(Arc::new(Bang) as Arc<dyn flow_core::cleanup::Cleaner>),
+    let core = murmur_core::MurmurCore::from_engines(
+        Arc::new(murmur_core::asr::MockAsr::new(SERVER_SAYS)),
+        Some(Arc::new(Bang) as Arc<dyn murmur_core::cleanup::Cleaner>),
     );
-    let pool = flow_server::Pool::from_cores(vec![Arc::new(core)], &model, cfg.max_queue);
+    let pool = murmur_server::Pool::from_cores(vec![Arc::new(core)], &model, cfg.max_queue);
     let handle = rt.block_on(async {
         let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        flow_server::serve_with_pool(cfg, Arc::new(pool), vec![l])
+        murmur_server::serve_with_pool(cfg, Arc::new(pool), vec![l])
             .await
             .unwrap()
     });
@@ -355,7 +355,7 @@ fn server_speech_off_server_cleanup_on_cleans_this_pcs_dictation_on_the_server()
     // never gets the audio.
     let s = llm_server();
     let mut d = dev(&s, false, true);
-    d.set_cleanup_on(flow_router::CleanupRoute::Server, true);
+    d.set_cleanup_on(murmur_router::CleanupRoute::Server, true);
     let mut r = rig(&d);
     r.dictate();
     assert!(
@@ -413,11 +413,11 @@ fn test_connection_and_test_session_against_a_real_server() {
     let s = Server::start();
     let d = dev(&s, true, true);
     let r = rig(&d);
-    let server = flow_windows::router_adapter::server_config(&d, TOKEN).unwrap();
+    let server = murmur_windows::router_adapter::server_config(&d, TOKEN).unwrap();
     let h = r.router.router().probe_config(&server);
     assert!(h.ok, "{h:?}");
     assert!(h.rtt_ms.is_some());
-    let bad = flow_windows::router_adapter::server_config(&d, "wrong-token-0123456789").unwrap();
+    let bad = murmur_windows::router_adapter::server_config(&d, "wrong-token-0123456789").unwrap();
     let h = r.router.router().probe_config(&bad);
     assert!(!h.ok);
     assert_eq!(h.error.as_deref(), Some("auth_failed"), "{h:?}");

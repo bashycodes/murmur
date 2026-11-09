@@ -1,4 +1,4 @@
-package dev.flowclone.calls
+package dev.murmur.calls
 
 import android.Manifest
 import android.app.job.JobInfo
@@ -14,7 +14,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
 import android.util.Log
-import dev.flowclone.FlowApp
+import dev.murmur.MurmurApp
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import java.util.concurrent.Executors
@@ -57,31 +57,31 @@ class MediaStoreRecordings(private val ctx: Context) : RecordingSource {
  * which scans ([AutoQueue.scan]) and hands queued recordings to [CallJobService] (or, when
  * Android refuses a foreground start from the background, transcribes inside the job). Nothing
  * holds a wake lock while idle; the opt-in lives in [AutoQueue]'s file, and [arm] runs again
- * after a reboot or an update ([dev.flowclone.receiver.BootReceiver]) and at every app start.
+ * after a reboot or an update ([dev.murmur.receiver.BootReceiver]) and at every app start.
  */
 object AutoCalls {
-    private const val TAG = "FlowCalls"
+    private const val TAG = "MurmurCalls"
     private const val PREFS = "calls"
     private const val KEY_LANG = "language"
-    private val io = Executors.newSingleThreadExecutor { r -> Thread(r, "flow-calls-auto").apply { isDaemon = true } }
+    private val io = Executors.newSingleThreadExecutor { r -> Thread(r, "murmur-calls-auto").apply { isDaemon = true } }
     private var observer: ContentObserver? = null
 
     fun hasPermission(ctx: Context) = ctx.checkSelfPermission(Manifest.permission.READ_MEDIA_AUDIO) == PackageManager.PERMISSION_GRANTED
 
     /** The language of call jobs: the Calls page's choice, else the dictation language. */
-    fun language(app: FlowApp): String = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_LANG, null) ?: CallEngine.defaultLanguage(app)
+    fun language(app: MurmurApp): String = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_LANG, null) ?: CallEngine.defaultLanguage(app)
 
     fun setLanguage(ctx: Context, l: String) { ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_LANG, l).apply() }
 
     /** Opt in (the page asked for READ_MEDIA_AUDIO first) and start watching. */
     fun enable(ctx: Context) {
-        val app = FlowApp.of(ctx)
+        val app = MurmurApp.of(ctx)
         app.autoCalls.enable()
         arm(ctx)
     }
 
     fun disable(ctx: Context) {
-        val app = FlowApp.of(ctx)
+        val app = MurmurApp.of(ctx)
         app.autoCalls.disable()
         val js = ctx.getSystemService(JobScheduler::class.java)
         for (id in CallRecordingJob.IDS) js?.cancel(id)
@@ -92,7 +92,7 @@ object AutoCalls {
     /** Boot, update, app start, opt-in: watch again (when on) and catch up once. Cheap; never throws. */
     fun arm(ctx: Context) {
         runCatching {
-            val app = FlowApp.of(ctx)
+            val app = MurmurApp.of(ctx)
             if (!app.autoCalls.isEnabled) return
             val js = ctx.getSystemService(JobScheduler::class.java) ?: return
             if (CallRecordingJob.TRIGGERS.none { js.getPendingJob(it) != null }) CallRecordingJob.scheduleTrigger(ctx, CallRecordingJob.TRIGGERS[0])
@@ -103,7 +103,7 @@ object AutoCalls {
 
     /** The page is open (the app is in the foreground): scan and start the queue now. */
     fun kick(ctx: Context, done: (() -> Unit)? = null) {
-        val app = FlowApp.of(ctx)
+        val app = MurmurApp.of(ctx)
         io.execute {
             runCatching { app.autoCalls.scan() }
             runCatching { startService(ctx) }
@@ -113,7 +113,7 @@ object AutoCalls {
 
     /** Hands the queue to [CallJobService]; false when there is nothing to do or Android refused. */
     fun startService(ctx: Context): Boolean {
-        val app = FlowApp.of(ctx)
+        val app = MurmurApp.of(ctx)
         if (app.calls.state.value.busy || app.autoCalls.pending() == 0) return false
         return try {
             ctx.startForegroundService(CallJobService.drainIntent(ctx))
@@ -151,7 +151,7 @@ class CallRecordingJob : JobService() {
     @Volatile private var mine: Long? = null
 
     override fun onStartJob(params: JobParameters): Boolean {
-        val app = FlowApp.of(this)
+        val app = MurmurApp.of(this)
         if (!app.autoCalls.isEnabled) return false
         if (params.jobId in TRIGGERS) {
             val other = TRIGGERS.first { it != params.jobId }
@@ -160,14 +160,14 @@ class CallRecordingJob : JobService() {
             return false
         }
         Thread({
-            runCatching { work(app) }.onFailure { Log.w("FlowCalls", "run job: ${it.message}") }
+            runCatching { work(app) }.onFailure { Log.w("MurmurCalls", "run job: ${it.message}") }
             mine = null
             jobFinished(params, false)
-        }, "flow-calls-job").apply { isDaemon = true }.start()
+        }, "murmur-calls-job").apply { isDaemon = true }.start()
         return true
     }
 
-    private fun work(app: FlowApp) {
+    private fun work(app: MurmurApp) {
         while (!stopped) {
             app.autoCalls.scan()
             // Busy: a manual job, or the service's queue; the service takes the next one after it.
@@ -182,7 +182,7 @@ class CallRecordingJob : JobService() {
 
     override fun onStopJob(params: JobParameters): Boolean {
         stopped = true
-        val app = FlowApp.of(this)
+        val app = MurmurApp.of(this)
         val cur = app.calls.current
         if (cur?.autoId != null && cur.autoId == mine) app.calls.cancel(CallStop.SYSTEM)
         return true

@@ -11,17 +11,17 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use flow_core::config::{FieldContext, SessionConfig, SAMPLE_RATE};
-use flow_core::dictionary::Dictionary;
-use flow_core::endpoint::{EndpointState, Endpointer};
-use flow_core::learn::Candidate;
-use flow_core::{CommitResult, CommitStatus, RouteInfo, SessionPoll};
+use murmur_core::config::{FieldContext, SessionConfig, SAMPLE_RATE};
+use murmur_core::dictionary::Dictionary;
+use murmur_core::endpoint::{EndpointState, Endpointer};
+use murmur_core::learn::Candidate;
+use murmur_core::{CommitResult, CommitStatus, RouteInfo, SessionPoll};
 
-use flow_core::asr::AbortFlag;
-use flow_core::cleanup::{
+use murmur_core::asr::AbortFlag;
+use murmur_core::cleanup::{
     ChainCleaner, CleanError, CleanPrompt, CleanUsage, Cleaner, RoutedCleaner,
 };
-use flow_core::config::CleanupLevel;
+use murmur_core::config::CleanupLevel;
 
 use crate::cloud::{
     month_of, CleanupRoute, CleanupView, CloudProvider, CloudUsage, OpenRouterConfig, Privacy,
@@ -343,7 +343,7 @@ struct CommitCtl {
 }
 
 /// The §9 session API over local, remote and cloud backends. Thread-safe;
-/// one active session at a time (like `FlowCore`).
+/// one active session at a time (like `MurmurCore`).
 pub struct Router {
     state: Mutex<State>,
     session: Mutex<Option<Active>>,
@@ -592,7 +592,7 @@ impl Router {
     }
 
     /// Enable the cloud route (D18): `f` builds a provider backend
-    /// (`flow_cloud::factory`). Without it the cloud is never used and
+    /// (`murmur_cloud::factory`). Without it the cloud is never used and
     /// `capabilities().cloud` is false. Additive.
     pub fn with_cloud(mut self, f: CloudFactory) -> Self {
         self.cloud_factory = Some(f);
@@ -613,7 +613,7 @@ impl Router {
     }
 
     /// Enable opt-in cloud text cleanup (D28): `f` builds the OpenRouter
-    /// cleaner (`flow_cloud::cleanup_factory`). Without it cloud cleanup is
+    /// cleaner (`murmur_cloud::cleanup_factory`). Without it cloud cleanup is
     /// never used, whatever the config says. Additive.
     pub fn with_cleanup_factory(mut self, f: CleanupFactory) -> Self {
         self.cleanup_factory = Some(f);
@@ -624,7 +624,7 @@ impl Router {
     }
 
     /// Enable cleanup through the user's own OpenAI-compatible server
-    /// (D52): `f` builds the custom cleaner (`flow_cloud::custom_cleanup_factory`).
+    /// (D52): `f` builds the custom cleaner (`murmur_cloud::custom_cleanup_factory`).
     /// Used when `cloud.provider` is `custom`. Additive.
     pub fn with_custom_cleanup_factory(mut self, f: CustomCleanupFactory) -> Self {
         self.custom_cleanup_factory = Some(f);
@@ -924,7 +924,7 @@ impl Router {
     }
 
     /// The cleaner a one-off LLM request outside a dictation should use
-    /// (Command Mode, `flow_core::command`): the same route as dictation
+    /// (Command Mode, `murmur_core::command`): the same route as dictation
     /// cleanup. `base` is the shell's on-device LLM, if loaded. With cloud
     /// cleanup wanted (consent, key, `cloud` in `cleanup_order`) this is
     /// the cleanup plan applied to `base`, so the gate's consent, budget
@@ -938,7 +938,7 @@ impl Router {
     }
 
     /// D53: the user's cleanup order as one cleaner for a long text task
-    /// outside a dictation (meeting summaries, `flow_core::summary`): the
+    /// outside a dictation (meeting summaries, `murmur_core::summary`): the
     /// on-device LLM `base` (when loaded and listed), the server (when
     /// listed and configured) and the cloud gate (when listed and allowed,
     /// with its consent, key, budget and circuit checked per call), in
@@ -953,14 +953,14 @@ impl Router {
     }
 
     /// Load 3: hold the warm local engine's on-device LLM for the next
-    /// local load (`FlowCore::keep_llm`), before the shell frees this
+    /// local load (`MurmurCore::keep_llm`), before the shell frees this
     /// router for a language switch. Whether there was one.
     pub fn keep_llm(&self) -> bool {
         let local = self.state.lk().warm_local();
         local.is_some_and(|l| l.keep_llm())
     }
 
-    /// Command Mode (`flow_core::command::run`) for a shell whose local
+    /// Command Mode (`murmur_core::command::run`) for a shell whose local
     /// engine the router owns (Android, `nativeCommand`): the base LLM is
     /// the warm local engine's on-device model, then [`Self::command_cleaner`]
     /// applies the cleanup route (cloud first / local first, consent,
@@ -973,7 +973,7 @@ impl Router {
         instruction: &str,
         selected: Option<&str>,
         timeout: std::time::Duration,
-    ) -> Result<String, flow_core::command::CommandError> {
+    ) -> Result<String, murmur_core::command::CommandError> {
         let (warm, cold) = {
             let st = self.state.lk();
             (st.warm_local(), st.cold_local())
@@ -985,7 +985,7 @@ impl Router {
                 base = z.ensure().0.ok().and_then(|l| l.llm_cleaner());
             }
         }
-        flow_core::command::run(self.command_cleaner(base), instruction, selected, timeout)
+        murmur_core::command::run(self.command_cleaner(base), instruction, selected, timeout)
     }
 
     /// Takes effect at the next `start_session`, except (review S5): the
@@ -1080,7 +1080,7 @@ impl Router {
         }
     }
 
-    /// Run `f` with the OpenRouter key (or `None`), for flow-cloud calls
+    /// Run `f` with the OpenRouter key (or `None`), for murmur-cloud calls
     /// to openrouter.ai that are not dictations: the model catalogue's
     /// account filter and the key-info page (`nativeCloudKeyInfo`). The
     /// key is lent, never returned. Additive (D28).
@@ -1176,8 +1176,8 @@ impl Router {
             remote: self.remote_factory.is_some(),
             asr_engines: st.asr_engines.clone(),
             llm: st.llm,
-            proto: flow_protocol::PROTO_MAX,
-            core_version: flow_core::VERSION.into(),
+            proto: murmur_protocol::PROTO_MAX,
+            core_version: murmur_core::VERSION.into(),
         }
     }
 
@@ -1336,7 +1336,7 @@ impl Router {
         self.endpoint().is_some_and(|e| e.reached)
     }
 
-    /// Partial + endpoint (mirrors `FlowCore::poll`) + the live route, in
+    /// Partial + endpoint (mirrors `MurmurCore::poll`) + the live route, in
     /// one call. Poll it on the partial timer: `route` changes when a
     /// mid-session failure switches route (e.g. server dies → local).
     pub fn poll(&self) -> RouterPoll {
@@ -1435,7 +1435,7 @@ impl Router {
     /// Always local and model-free: same answer in every build.
     pub fn learn_edit(&self, pasted: &str, edited: &str) -> Vec<Candidate> {
         let st = self.state.lk();
-        flow_core::learn::learn_edit(pasted, edited, &st.last_dictionary)
+        murmur_core::learn::learn_edit(pasted, edited, &st.last_dictionary)
     }
 
     /// Blocking health probe of the configured server (Developer "Test
@@ -2156,7 +2156,7 @@ impl Router {
             }
             let (e2, tx2) = (engine.clone(), tx.clone());
             std::thread::Builder::new()
-                .name("flow-router-commit".into())
+                .name("murmur-router-commit".into())
                 .spawn(move || {
                     let _ = tx2.send(CommitMsg::Done(Box::new(e2.commit(deadline))));
                 })
@@ -2231,7 +2231,7 @@ impl Router {
             if let Some(cl) = self.refinish_cleaner(a, &r) {
                 let ctx = a.last_ctx.clone().unwrap_or_default();
                 // Keeps the server's route info (taken below).
-                r = flow_core::refinish(&a.cfg, &ctx, cl, r);
+                r = murmur_core::refinish(&a.cfg, &ctx, cl, r);
                 engine = "local";
             }
         }
@@ -2321,7 +2321,7 @@ impl Router {
         let (cfg, ctx, c2, cause) = (a.cfg.clone(), a.last_ctx.clone(), cancel.clone(), e.clone());
         let rcfg = a.remote_cfg.clone();
         std::thread::Builder::new()
-            .name("flow-router-failover".into())
+            .name("murmur-router-failover".into())
             .spawn(move || {
                 let cfgs = (&cfg, &rcfg);
                 let done = run_switch(hops, snapshot, cfgs, ctx.as_ref(), &c2, &cause);
@@ -2414,7 +2414,7 @@ impl Router {
         // Audio that arrived while the helper connected and replayed.
         let tail = sw.tail;
         let mut ok = true;
-        for chunk in tail.chunks(flow_protocol::RECOMMENDED_FRAME_SAMPLES * 10) {
+        for chunk in tail.chunks(murmur_protocol::RECOMMENDED_FRAME_SAMPLES * 10) {
             ok &= hop.backend.push_audio(chunk);
         }
         if let Some(ctx) = &a.last_ctx {
@@ -2526,7 +2526,7 @@ fn run_switch(
             }
         }
         let mut replayed = true;
-        for chunk in buf.chunks(flow_protocol::RECOMMENDED_FRAME_SAMPLES * 10) {
+        for chunk in buf.chunks(murmur_protocol::RECOMMENDED_FRAME_SAMPLES * 10) {
             if !hop.backend.push_audio(chunk) && hop.kind != EngineKind::Local {
                 replayed = false;
                 break;

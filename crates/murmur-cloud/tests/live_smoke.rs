@@ -1,24 +1,24 @@
 //! Live OpenRouter smoke tests (D28 §5.3). Run only when
-//! `FLOW_CLOUD_LIVE_OPENROUTER_KEY` is set; otherwise each prints a skip
-//! line and passes. Optional `FLOW_CLOUD_LIVE_OPENROUTER_STT_MODEL` /
-//! `FLOW_CLOUD_LIVE_OPENROUTER_CLEANUP_MODEL` (default: the recommended
+//! `MURMUR_CLOUD_LIVE_OPENROUTER_KEY` is set; otherwise each prints a skip
+//! line and passes. Optional `MURMUR_CLOUD_LIVE_OPENROUTER_STT_MODEL` /
+//! `MURMUR_CLOUD_LIVE_OPENROUTER_CLEANUP_MODEL` (default: the recommended
 //! STT models + one chat-audio model, and the default cleanup model).
-//! Audio: `jfk.wav` from `FLOW_MODELS_DIR` (or `models/`). Never part of
+//! Audio: `jfk.wav` from `MURMUR_MODELS_DIR` (or `models/`). Never part of
 //! default CI: it sends audio/text to OpenRouter and costs money.
 //!
-//! `cargo test -p flow-cloud --test live_smoke -- --nocapture --test-threads 1`
+//! `cargo test -p murmur-cloud --test live_smoke -- --nocapture --test-threads 1`
 
 use std::time::{Duration, Instant};
 
-use flow_cloud::catalog::{Catalog, RECOMMENDED_STT};
-use flow_cloud::{CleanupSettings, CloudBackend, OpenRouterCleaner, SttPath, SttSettings};
-use flow_core::asr::AbortFlag;
-use flow_core::cleanup::{build_prompt, Cleaner};
-use flow_core::config::{CleanupLevel, FieldContext, SessionConfig, Style};
-use flow_core::dictionary::{DictEntry, Dictionary};
-use flow_router::{Backend, SecretString};
+use murmur_cloud::catalog::{Catalog, RECOMMENDED_STT};
+use murmur_cloud::{CleanupSettings, CloudBackend, OpenRouterCleaner, SttPath, SttSettings};
+use murmur_core::asr::AbortFlag;
+use murmur_core::cleanup::{build_prompt, Cleaner};
+use murmur_core::config::{CleanupLevel, FieldContext, SessionConfig, Style};
+use murmur_core::dictionary::{DictEntry, Dictionary};
+use murmur_router::{Backend, SecretString};
 
-const ENV_KEY: &str = "FLOW_CLOUD_LIVE_OPENROUTER_KEY";
+const ENV_KEY: &str = "MURMUR_CLOUD_LIVE_OPENROUTER_KEY";
 
 fn key() -> Option<SecretString> {
     match std::env::var(ENV_KEY) {
@@ -63,7 +63,7 @@ fn wer(reference: &str, hyp: &str) -> f64 {
 
 fn jfk() -> Option<Vec<i16>> {
     let dirs = [
-        std::env::var("FLOW_MODELS_DIR").unwrap_or_default(),
+        std::env::var("MURMUR_MODELS_DIR").unwrap_or_default(),
         concat!(env!("CARGO_MANIFEST_DIR"), "/../../models").to_string(),
     ];
     let p = dirs
@@ -115,15 +115,15 @@ fn wer_helper() {
 fn live_openrouter_stt() {
     let Some(key) = key() else { return };
     let Some(pcm) = jfk() else {
-        eprintln!("SKIP live openrouter stt: jfk.wav not found (FLOW_MODELS_DIR)");
+        eprintln!("SKIP live openrouter stt: jfk.wav not found (MURMUR_MODELS_DIR)");
         return;
     };
-    let models: Vec<String> = match std::env::var("FLOW_CLOUD_LIVE_OPENROUTER_STT_MODEL") {
+    let models: Vec<String> = match std::env::var("MURMUR_CLOUD_LIVE_OPENROUTER_STT_MODEL") {
         Ok(m) => vec![m],
         Err(_) => {
             let mut v: Vec<String> = RECOMMENDED_STT.iter().map(|s| s.to_string()).collect();
             if let Some(m) = Catalog::baked()
-                .search("", flow_cloud::catalog::Use::Stt, Default::default())
+                .search("", murmur_cloud::catalog::Use::Stt, Default::default())
                 .into_iter()
                 .find(|m| m.stt_path == Some(SttPath::ChatAudio))
             {
@@ -152,7 +152,7 @@ const MESSY: [&str; 8] = [
 fn live_openrouter_cleanup() {
     let Some(key) = key() else { return };
     let mut s = CleanupSettings::default();
-    if let Ok(m) = std::env::var("FLOW_CLOUD_LIVE_OPENROUTER_CLEANUP_MODEL") {
+    if let Ok(m) = std::env::var("MURMUR_CLOUD_LIVE_OPENROUTER_CLEANUP_MODEL") {
         s.model = m;
     }
     let timeout = Duration::from_millis(s.timeout_ms);
@@ -168,7 +168,7 @@ fn live_openrouter_cleanup() {
             &Dictionary::default(),
         );
         let t0 = Instant::now();
-        let out = flow_core::cleanup::run_cleanup(c.clone(), p, t, timeout);
+        let out = murmur_core::cleanup::run_cleanup(c.clone(), p, t, timeout);
         lat.push(t0.elapsed().as_millis() as u64);
         let call = c.last_call().unwrap_or_default();
         eprintln!(
@@ -180,7 +180,7 @@ fn live_openrouter_cleanup() {
             call.generation_id,
             call.error
         );
-        if matches!(out, flow_core::cleanup::CleanOutcome::Formatted(_)) {
+        if matches!(out, murmur_core::cleanup::CleanOutcome::Formatted(_)) {
             ok += 1;
         }
     }
@@ -190,7 +190,7 @@ fn live_openrouter_cleanup() {
     assert!(ok >= 6, "formatted only {ok}/8");
     assert!(p90 < s.timeout_ms, "p90 {p90} ms ≥ timeout");
     let _ = c.clean_cancellable(
-        &flow_core::cleanup::warm_prompt(),
+        &murmur_core::cleanup::warm_prompt(),
         Instant::now() + timeout,
         &AbortFlag::default(),
     );
@@ -199,7 +199,7 @@ fn live_openrouter_cleanup() {
 #[test]
 fn live_openrouter_key_info() {
     let Some(key) = key() else { return };
-    let k = flow_cloud::keyinfo::fetch(&key).expect("/key parses");
+    let k = murmur_cloud::keyinfo::fetch(&key).expect("/key parses");
     eprintln!(
         "LIVE key limit={:?} remaining={:?} usage_monthly={:?} free_tier={}",
         k.limit, k.limit_remaining, k.usage_monthly, k.is_free_tier
@@ -210,7 +210,8 @@ fn live_openrouter_key_info() {
 fn live_openrouter_catalog() {
     let Some(key) = key() else { return };
     let t = Instant::now();
-    let c = flow_cloud::catalog::refresh(&flow_cloud::Api::new(), Some(&key)).expect("catalogue");
+    let c =
+        murmur_cloud::catalog::refresh(&murmur_cloud::Api::new(), Some(&key)).expect("catalogue");
     eprintln!(
         "LIVE catalog ms={} models={} stt={} cleanup={}",
         t.elapsed().as_millis(),
@@ -218,5 +219,5 @@ fn live_openrouter_catalog() {
         c.stt_models().count(),
         c.cleanup_models().count()
     );
-    assert!(c.get(flow_cloud::DEFAULT_STT_MODEL).is_some());
+    assert!(c.get(murmur_cloud::DEFAULT_STT_MODEL).is_some());
 }

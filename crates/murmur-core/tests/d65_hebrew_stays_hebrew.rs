@@ -6,10 +6,10 @@
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use flow_core::asr::{AsrEngine, AsrError, AsrOutput, AsrRequest};
-use flow_core::cleanup::{CleanError, CleanPrompt, Cleaner};
-use flow_core::config::SessionConfig;
-use flow_core::{CommitResult, CommitStatus, FlowCore};
+use murmur_core::asr::{AsrEngine, AsrError, AsrOutput, AsrRequest};
+use murmur_core::cleanup::{CleanError, CleanPrompt, Cleaner};
+use murmur_core::config::SessionConfig;
+use murmur_core::{CommitResult, CommitStatus, MurmurCore};
 
 const HE: &str = "תזכיר לי לקנות לחם וחלב בדרך הביתה ואם יש זמן גם לעבור בדואר לאסוף את החבילה";
 
@@ -43,7 +43,7 @@ fn dictate(
     answer: Option<&'static str>,
 ) -> (CommitResult, CleanPrompt) {
     let local = Arc::new(Local(answer, Mutex::new(None)));
-    let core = FlowCore::from_engines(Arc::new(Said(text, language)), Some(local.clone()));
+    let core = MurmurCore::from_engines(Arc::new(Said(text, language)), Some(local.clone()));
     core.start_session(SessionConfig {
         languages: vec![language.into()],
         ..Default::default()

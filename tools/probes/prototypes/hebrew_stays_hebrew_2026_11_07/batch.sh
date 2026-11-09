@@ -25,7 +25,7 @@ holdout)
   "$here/run.sh" ho_sfx2_shot_t20 "$h" he --timeout-ms 20000 --user-suffix "$L2" --extra-shots "$shot"
   ;;
 product)
-  # BIN = the runner built against this branch's flow-core (no prompt
+  # BIN = the runner built against this branch's murmur-core (no prompt
   # overrides: the shipped prompt and the script check). TAG = before|after.
   "$here/run.sh" "he_${TAG}_t20" "$here/he_cases.jsonl" he --timeout-ms 20000
   "$here/run.sh" "ho_${TAG}_t20" "$here/he_holdout.jsonl" he --timeout-ms 20000

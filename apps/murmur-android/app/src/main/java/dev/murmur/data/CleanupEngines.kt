@@ -1,6 +1,6 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.data.DevSettings.CleanupRoute
+import dev.murmur.data.DevSettings.CleanupRoute
 
 /**
  * D36 Settings → AI cleanup's ranked engine list (ui/CleanupPage), the same widget as Speech to

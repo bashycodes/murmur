@@ -1,4 +1,4 @@
-package dev.flowclone.service
+package dev.murmur.service
 
 import android.content.ClipData
 import android.content.ClipDescription
@@ -6,7 +6,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.os.PersistableBundle
 import android.os.SystemClock
-import dev.flowclone.insert.ClipboardGuard
+import dev.murmur.insert.ClipboardGuard
 
 /**
  * [ClipboardGuard.Port] over the system clipboard. Clips are marked sensitive
@@ -56,6 +56,6 @@ class AndroidClipPort(context: Context) : ClipboardGuard.Port {
 
     companion object {
         const val LABEL = "Murmur"
-        const val EXTRA_MARKER = "dev.flowclone.clip_marker"
+        const val EXTRA_MARKER = "dev.murmur.clip_marker"
     }
 }

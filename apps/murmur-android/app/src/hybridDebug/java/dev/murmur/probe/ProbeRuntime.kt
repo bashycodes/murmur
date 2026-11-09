@@ -1,4 +1,4 @@
-package dev.flowclone.probe
+package dev.murmur.probe
 
 import android.content.Context
 import android.os.ParcelFileDescriptor
@@ -42,7 +42,7 @@ object ProbeRuntime {
         return line
     }
 
-    fun build(): String = dev.flowclone.data.AppVersion.current.full
+    fun build(): String = dev.murmur.data.AppVersion.current.full
 }
 
 /**

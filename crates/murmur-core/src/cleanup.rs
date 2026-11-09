@@ -200,7 +200,7 @@ pub enum CleanError {
     /// The backend failed *fast*, before producing anything: connect/DNS
     /// error, open circuit, rejected key, no credit, no consent or budget,
     /// no private route. A [`RoutedCleaner`] may try its fallback. The
-    /// string is a stable code (`flow_router::Failure` names, e.g.
+    /// string is a stable code (`murmur_router::Failure` names, e.g.
     /// `"auth_failed"`, `"cloud_cleanup_not_configured"`). Additive (D28).
     #[error("{0}")]
     Unavailable(String),
@@ -1299,7 +1299,7 @@ pub fn build_prompt_scoped(
 /// already the effective one: the session's level, the category's style,
 /// the user's dictionary, `language` named when not English, and the
 /// session's time budget recorded for chain hops. The engine and
-/// flow-replay both build through here, so a replayed prompt is the one
+/// murmur-replay both build through here, so a replayed prompt is the one
 /// the product sends.
 pub fn session_prompt(
     text: &str,

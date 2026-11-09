@@ -1,9 +1,9 @@
-package dev.flowclone.calls
+package dev.murmur.calls
 
-import dev.flowclone.core.CoreException
-import dev.flowclone.core.MeetingException
-import dev.flowclone.core.MeetingJob
-import dev.flowclone.core.MeetingSegment
+import dev.murmur.core.CoreException
+import dev.murmur.core.MeetingException
+import dev.murmur.core.MeetingJob
+import dev.murmur.core.MeetingSegment
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -210,7 +210,7 @@ class CallJobs(
             Thread({
                 runCatching { android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND) }
                 r.run()
-            }, "flow-call-job").apply { priority = Thread.MIN_PRIORITY; isDaemon = true }.start()
+            }, "murmur-call-job").apply { priority = Thread.MIN_PRIORITY; isDaemon = true }.start()
         }
     }
 }

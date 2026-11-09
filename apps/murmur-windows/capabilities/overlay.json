@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "overlay",
-  "description": "Flow bar: listens to dictation events and may only send the hands-free cancel/finish click, open one of a fixed list of settings pages, report where its settings link is (so it is clickable) and read the theme pref (review S18).",
+  "description": "Murmur bar: listens to dictation events and may only send the hands-free cancel/finish click, open one of a fixed list of settings pages, report where its settings link is (so it is clickable) and read the theme pref (review S18).",
   "windows": [
     "overlay"
   ],

@@ -1,4 +1,4 @@
-package dev.flowclone.core
+package dev.murmur.core
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -6,9 +6,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * [CommandOutcome.decode] against flow-core's Command Mode wire vectors
- * (crates/flow-core/fixtures/command/command_results.json, on the test classpath; the Rust
- * test crates/flow-core/tests/command_vectors.rs checks the encoder against the same file).
+ * [CommandOutcome.decode] against murmur-core's Command Mode wire vectors
+ * (crates/murmur-core/fixtures/command/command_results.json, on the test classpath; the Rust
+ * test crates/murmur-core/tests/command_vectors.rs checks the encoder against the same file).
  */
 class CommandVectorsTest {
     private val fixture by lazy {

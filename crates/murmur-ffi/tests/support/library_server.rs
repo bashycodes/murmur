@@ -1,12 +1,12 @@
 #![allow(dead_code)] // each test crate uses part of it
-//! An in-process flow-server (mock ASR) with a temp model library of one
+//! An in-process murmur-server (mock ASR) with a temp model library of one
 //! custom whisper model, for tests/library.rs and tests/jni_library.rs.
 
 use std::path::Path;
 use std::time::Duration;
 
-use flow_core::config::{AsrBackend, ModelConfig};
-use flow_server::{Config, ServerHandle};
+use murmur_core::config::{AsrBackend, ModelConfig};
+use murmur_server::{Config, ServerHandle};
 use sha2::{Digest, Sha256};
 
 pub const TOKEN: &str = "test-token-0123456789abcdef";
@@ -62,7 +62,7 @@ impl LibraryServer {
                 ..Default::default()
             },
             state_dir: Some(d.path().join("state")),
-            library: flow_server::library::LibraryConfig {
+            library: murmur_server::library::LibraryConfig {
                 dir: Some(lib),
                 rescan_s: 0,
             },
@@ -75,7 +75,7 @@ impl LibraryServer {
             .unwrap();
         let handle = rt.block_on(async {
             let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-            flow_server::serve(cfg, vec![l]).await.unwrap()
+            murmur_server::serve(cfg, vec![l]).await.unwrap()
         });
         let s = Self {
             handle,
@@ -85,7 +85,8 @@ impl LibraryServer {
         // The first scan hashes in the background.
         for _ in 0..100 {
             let r: serde_json::Value =
-                serde_json::from_str(&flow_ffi::library_api::list(&s.server_json(TOKEN))).unwrap();
+                serde_json::from_str(&murmur_ffi::library_api::list(&s.server_json(TOKEN)))
+                    .unwrap();
             if r["models"].as_array().is_some_and(|m| m.len() == 1) {
                 return s;
             }

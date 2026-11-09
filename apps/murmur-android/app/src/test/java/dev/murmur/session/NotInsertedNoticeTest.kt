@@ -1,6 +1,6 @@
-package dev.flowclone.session
+package dev.murmur.session
 
-import dev.flowclone.debug.InsertOutcome
+import dev.murmur.debug.InsertOutcome
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

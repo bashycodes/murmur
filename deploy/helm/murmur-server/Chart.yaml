@@ -1,6 +1,6 @@
 apiVersion: v2
-name: flow-server
-description: Self-hosted Flow Clone dictation server (speech-to-text + AI cleanup), LAN/VPN only
+name: murmur-server
+description: Self-hosted Murmur dictation server (speech-to-text + AI cleanup), LAN/VPN only
 type: application
 # The chart's own version; appVersion follows the repo VERSION.
 version: 0.1.0

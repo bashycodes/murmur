@@ -1,4 +1,4 @@
-package dev.flowclone.debug
+package dev.murmur.debug
 
 import org.json.JSONObject
 import java.io.File
@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * default off). One JSON line per dictation (and per notable non-dictation error) goes to logcat
  * tag [DebugLogger.TAG] and to `files/debug/dictations.jsonl` (last [DebugLogFile.MAX_ENTRIES]).
  *
- * Field names are shared with apps/flow-windows: ts, mode, route, fallback, rtt_ms, audio_ms,
+ * Field names are shared with apps/murmur-windows: ts, mode, route, fallback, rtt_ms, audio_ms,
  * endpoint_wait_ms, asr_ms, post_ms, total_ms, perceived_ms, target, insert, raw, text, error,
  * and since D22 wait_ms, segments, pre_asr_ms, client_ms, since D24 connect_ms, local_cold, local_load_ms, since D55 load_wait_ms (+ `kind` on every line, `stack` when there is an exception, `event` on non-dictation lines).
  * Android since 2026-10-23: engine (whisper|parakeet|server|cloud|mock), model (file / folder
@@ -106,7 +106,7 @@ data class DictationTrace(
     val llm: String? = null,
     /**
      * 2026-11-02: why no AI cleanup was tried when [llm] is null and there was a transcript
-     * ([dev.flowclone.data.LlmOutcome.offReason]: ai_cleanup_off | no_phone_model |
+     * ([dev.murmur.data.LlmOutcome.offReason]: ai_cleanup_off | no_phone_model |
      * phone_model_failed | no_engine_available); set by the app. Android only.
      */
     val llmOff: String? = null,
@@ -159,7 +159,7 @@ object DebugEngine {
      * [asr]: the on-device ASR that loaded; [serverModel]: the ASR model the server reported in
      * its last health probe; [routeModel]: the model in the commit's route (cloud).
      */
-    fun of(route: String?, mock: Boolean, asr: dev.flowclone.data.LoadedAsr?, serverModel: String?, routeModel: String?): Pair<String?, String?> = when {
+    fun of(route: String?, mock: Boolean, asr: dev.murmur.data.LoadedAsr?, serverModel: String?, routeModel: String?): Pair<String?, String?> = when {
         mock -> "mock" to null
         route == "local" -> asr?.engine?.wire to asr?.model
         route == "remote" -> "server" to serverModel
@@ -197,11 +197,11 @@ object DebugRedact {
 
     /** Password-type input, a password node, or (API 34+) an accessibility-data-sensitive field. */
     fun isProtectedField(inputType: Int, nodePassword: Boolean, dataSensitive: Boolean) =
-        nodePassword || dataSensitive || dev.flowclone.policy.EditorInputType.isPassword(inputType)
+        nodePassword || dataSensitive || dev.murmur.policy.EditorInputType.isPassword(inputType)
 
     /** Restricted banking apps and the user's denylist (the apps the bubble stays hidden in). */
     fun isProtectedApp(pkg: String?, userDenylist: Set<String>) =
-        dev.flowclone.policy.BubbleVisibilityPolicy.isRestricted(pkg) || (pkg != null && pkg in userDenylist)
+        dev.murmur.policy.BubbleVisibilityPolicy.isRestricted(pkg) || (pkg != null && pkg in userDenylist)
 
     /** Defence in depth: no secret (server token, cloud key) survives into a line, whatever path it took. */
     fun scrub(line: String, secrets: Collection<String>): String {
@@ -220,7 +220,7 @@ object DebugFormat {
     fun ts(ms: Long): String = iso.get()!!.format(Date(ms))
 
     /** D26: every line names the APK that wrote it (`app_version` 0.2.0, `build` abc1234 / abc1234-dirty). */
-    @Volatile var build: dev.flowclone.data.AppBuild = dev.flowclone.data.AppVersion.current
+    @Volatile var build: dev.murmur.data.AppBuild = dev.murmur.data.AppVersion.current
 
     private fun v(x: Any?): String = when (x) {
         null -> "null"
@@ -273,7 +273,7 @@ object DebugFormat {
         "llm_cost_usd" to t.llmCostUsd,
         "cleanup_route" to t.cleanupRoute,
         "cloud_fallback" to t.cloudFallback,
-        dev.flowclone.core.CoreJson.FALLBACK_DETAIL_KEY to t.fallbackDetail,
+        dev.murmur.core.CoreJson.FALLBACK_DETAIL_KEY to t.fallbackDetail,
         "llm_ttft_ms" to t.llmTtftMs,
         "llm_generation_id" to t.llmGenerationId,
         "stt_cost_usd" to t.sttCostUsd,
@@ -309,8 +309,8 @@ object DebugFormat {
         val outcome = o.optJSONObject("insert")?.optString("outcome") ?: "?"
         val route = listOfNotNull(s("route") ?: "-", s("fallback")?.let { "($it)" }, s("engine"), s("model")).joinToString(" ") +
             (s("language")?.let { " · lang $it" + (s("language_source")?.let { src -> " ($src)" } ?: "") } ?: "") + (s("style")?.let { " · $it" } ?: "") +
-            (dev.flowclone.data.LlmOutcome.label(s("llm"))?.let { " · $it" } ?: "") +
-            (dev.flowclone.data.LlmOutcome.offLabel(s("llm_off"))?.let { " · $it" } ?: "") +
+            (dev.murmur.data.LlmOutcome.label(s("llm"))?.let { " · $it" } ?: "") +
+            (dev.murmur.data.LlmOutcome.offLabel(s("llm_off"))?.let { " · $it" } ?: "") +
             (s("llm_engine")?.let { e -> " · AI " + (if (e == "cloud") (if (s("llm_provider") == "custom") "custom server" else "OpenRouter") else e) + (s("llm_model")?.let { " ${it.substringAfter('/')}" } ?: "") } ?: "") +
             (s("cleanup_route")?.let { c -> " · text by $c" + (s("cloud_fallback")?.let { " (cloud: $it)" } ?: "") } ?: "") +
             (listOfNotNull(s("stt_cost_usd"), s("llm_cost_usd")).takeIf { it.isNotEmpty() }?.let { " · $" + it.sumOf { c -> c.toDoubleOrNull() ?: 0.0 }.let { v -> String.format(java.util.Locale.US, "%.4f", v) } } ?: "")
@@ -324,7 +324,7 @@ object DebugFormat {
         ).joinToString(" · ")
         val text = s("text") ?: s("raw") ?: ""
         val err = s("error")?.let { "\n  error: $it" } ?: ""
-        val rejected = s(dev.flowclone.core.CoreJson.FALLBACK_DETAIL_KEY)?.let { "\n  AI cleanup fell back: $it" } ?: ""
+        val rejected = s(dev.murmur.core.CoreJson.FALLBACK_DETAIL_KEY)?.let { "\n  AI cleanup fell back: $it" } ?: ""
         val src = s("source")?.takeIf { it != "mic" }?.let { " · source=$it" } ?: ""
         "$time  ${s("mode")}$src · $route · $outcome · $ms · ${s("target") ?: "-"}\n  “$text”$err$rejected"
     }.getOrElse { line }
@@ -390,12 +390,12 @@ class DebugLogger(
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     companion object {
-        const val TAG = "FlowDebug"
+        const val TAG = "MurmurDebug"
         /** logcat drops anything past ~4 KB per line; the file keeps the full entry. */
         const val LOGCAT_MAX = 3_800
 
         fun defaultRunner(): (Runnable) -> Unit {
-            val ex = Executors.newSingleThreadExecutor { r -> Thread(r, "flow-debug-log").apply { isDaemon = true; priority = Thread.MIN_PRIORITY } }
+            val ex = Executors.newSingleThreadExecutor { r -> Thread(r, "murmur-debug-log").apply { isDaemon = true; priority = Thread.MIN_PRIORITY } }
             return { r -> ex.execute(r) }
         }
 
@@ -464,11 +464,11 @@ class DebugLogger(
 }
 
 /**
- * FlowService's always-on `commit …` logcat line (tag FlowService): timings, status and route
- * only. Never any text, with the debug log on or off (D21 keeps text in the FlowDebug sink).
+ * MurmurService's always-on `commit …` logcat line (tag MurmurService): timings, status and route
+ * only. Never any text, with the debug log on or off (D21 keeps text in the MurmurDebug sink).
  */
 object CommitLine {
-    fun of(r: dev.flowclone.core.CommitResult): String {
+    fun of(r: dev.murmur.core.CommitResult): String {
         val t = r.timings
         return "commit ${r.status} audio=${t.audioMs}ms asr=${t.asrMs}ms llm=${t.llmMs}ms total=${t.totalMs}ms dropped=${t.droppedSamples} " +
             "wait=${t.waitMs}ms segments=${t.segments} pre_asr=${t.preAsrMs}ms client=${r.route?.clientMs?.let { "${it}ms" } ?: "-"} " +

@@ -40,7 +40,7 @@ after a noun ("gate three").
 
 ## Measurements
 
-All runs use the real `FlowCore` commit path (the parity runner, local mode
+All runs use the real `MurmurCore` commit path (the parity runner, local mode
 = phone pipeline, phone session: light, casual styles, 3 s budget) with
 Qwen2.5-1.5B Q4_K_M on this shared 4-core box. "Before" is the same runner
 built against integration `4839345`.
@@ -138,7 +138,7 @@ at model load.
 
 * "Don't forget that we have dinner at eight" loses "that" on the 1.5B (the
   D27 case): a model-size limit.
-* Not measured: prompt v2 is also what flow-server's cleanup sends (with
+* Not measured: prompt v2 is also what murmur-server's cleanup sends (with
   whatever model the server runs) and what the Windows cloud-cleanup test
   button builds (`app.rs` `build_prompt`). Both get the new rule and the two
   new few-shots. Only the D27 skip gate is on-device-only (D43). The cloud /

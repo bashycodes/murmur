@@ -1,14 +1,14 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.content.ClipboardManager
 import android.content.Intent
 import android.widget.EditText
 import android.widget.TextView
-import dev.flowclone.FlowApp
-import dev.flowclone.notes.DocumentStore
-import dev.flowclone.ui.UiTestKit.idle
-import dev.flowclone.ui.UiTestKit.texts
-import dev.flowclone.ui.UiTestKit.walk
+import dev.murmur.MurmurApp
+import dev.murmur.notes.DocumentStore
+import dev.murmur.ui.UiTestKit.idle
+import dev.murmur.ui.UiTestKit.texts
+import dev.murmur.ui.UiTestKit.walk
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -26,10 +26,10 @@ import java.io.File
 
 /** Note editor (Quick note + notes): restore on open, save on pause, Copy / Share / Clear, word count, dictation surface, note ids. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], application = FlowApp::class)
+@Config(sdk = [34], application = MurmurApp::class)
 class NoteEditorUiTest {
     private val ctx get() = RuntimeEnvironment.getApplication()
-    private val app get() = FlowApp.of(ctx)
+    private val app get() = MurmurApp.of(ctx)
     private val file get() = File(ctx.filesDir, "notes/scratchpad.txt")
 
     @After fun cleanup() { File(ctx.filesDir, "notes").deleteRecursively(); app.dictationSurface = null }

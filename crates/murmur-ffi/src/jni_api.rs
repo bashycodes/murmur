@@ -1,7 +1,7 @@
 //! JNI exports for the Android shell (feature `jni`).
 //!
-//! The contract is `apps/flow-android/JNI_CONTRACT.md`: static natives on
-//! `dev.flowclone.core.NativeFlowCore` (Kotlin `companion object` +
+//! The contract is `apps/murmur-android/JNI_CONTRACT.md`: static natives on
+//! `dev.murmur.core.NativeMurmurCore` (Kotlin `companion object` +
 //! `@JvmStatic external`), so the second C parameter is a `jclass`.
 //!
 //! Rules the contract imposes, and how they are met here:
@@ -19,10 +19,10 @@ use jni::objects::{JClass, JShortArray, JString};
 use jni::sys::{jboolean, jint, jlong, jstring, JNI_FALSE, JNI_TRUE};
 use jni::JNIEnv;
 
-use flow_core::command::CommandError;
+use murmur_core::command::CommandError;
 
 use crate::{
-    clear_error, json_api, set_error, set_error_kind, FlowHandle, LAST_ERROR, LAST_ERROR_KIND,
+    clear_error, json_api, set_error, set_error_kind, MurmurHandle, LAST_ERROR, LAST_ERROR_KIND,
 };
 
 thread_local! {
@@ -34,7 +34,7 @@ thread_local! {
 
 fn guard<T>(fallback: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or_else(|_| {
-        set_error("panic inside flow-core");
+        set_error("panic inside murmur-core");
         fallback
     })
 }
@@ -47,10 +47,10 @@ fn clear(env: &mut JNIEnv) {
     }
 }
 
-fn handle<'a>(h: jlong) -> Option<&'a FlowHandle> {
+fn handle<'a>(h: jlong) -> Option<&'a MurmurHandle> {
     // SAFETY: the shell only passes values returned by nativeLoadModels and not
     // yet passed to nativeUnload (it serialises unload against other calls).
-    unsafe { (h as *const FlowHandle).as_ref() }
+    unsafe { (h as *const MurmurHandle).as_ref() }
 }
 
 fn jstr(env: &mut JNIEnv, s: &JString, what: &str) -> Option<String> {
@@ -87,18 +87,18 @@ fn jbool(b: bool) -> jboolean {
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeVersion(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeVersion(
     mut env: JNIEnv,
     _c: JClass,
 ) -> jstring {
-    // D26: product version + commit (`flow-ffi 0.2.0+abc1234`); the .so is built
+    // D26: product version + commit (`murmur-ffi 0.2.0+abc1234`); the .so is built
     // separately from the APK, so its own build is what pins it.
-    let v = format!("flow-ffi {}", flow_build_info::FULL);
+    let v = format!("murmur-ffi {}", murmur_build_info::FULL);
     guard(std::ptr::null_mut(), || out(&mut env, &v))
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeLastError(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeLastError(
     mut env: JNIEnv,
     _c: JClass,
 ) -> jstring {
@@ -113,7 +113,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeLastError(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeLoadModels(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeLoadModels(
     mut env: JNIEnv,
     _c: JClass,
     cfg: JString,
@@ -128,7 +128,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeLoadModels(
                 clear_error();
                 let t = c.load_timings().to_json();
                 LOAD_TIMINGS.with(|l| *l.borrow_mut() = Some(t));
-                Box::into_raw(Box::new(FlowHandle::Core(c))) as jlong
+                Box::into_raw(Box::new(MurmurHandle::Core(c))) as jlong
             }
             // The message keeps a stable prefix per kind ("model not found:
             // <path>", "llm plugin not found (…)") for nativeLastError.
@@ -141,10 +141,10 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeLoadModels(
 }
 
 /// Load 3: how long this thread's last successful `nativeLoadModels` took,
-/// per model and phase (`flow_core::load_timings::LoadTimings` JSON); null
+/// per model and phase (`murmur_core::load_timings::LoadTimings` JSON); null
 /// before the first one.
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeLastLoadTimings(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeLastLoadTimings(
     mut env: JNIEnv,
     _c: JClass,
 ) -> jstring {
@@ -158,42 +158,44 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeLastLoadTimi
 
 /// Load 3: hold handle `h`'s own on-device LLM (a core's, or a router's
 /// warm local engine's) for the next load naming the same model
-/// (`FlowCore::keep_llm`); whether there was one. Call it before
+/// (`MurmurCore::keep_llm`); whether there was one. Call it before
 /// `nativeUnload(h)` for a language switch.
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeKeepLlm(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeKeepLlm(
     _env: JNIEnv,
     _c: JClass,
     h: jlong,
 ) -> jboolean {
     guard(JNI_FALSE, || {
-        jbool(handle(h).is_some_and(FlowHandle::keep_llm))
+        jbool(handle(h).is_some_and(MurmurHandle::keep_llm))
     })
 }
 
 /// Load 3: free an LLM `nativeKeepLlm` holds (`llm_keep::release`).
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeReleaseKeptLlm(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeReleaseKeptLlm(
     _env: JNIEnv,
     _c: JClass,
 ) {
-    guard((), flow_core::llm_keep::release)
+    guard((), murmur_core::llm_keep::release)
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeUnload(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeUnload(
     _env: JNIEnv,
     _c: JClass,
     h: jlong,
 ) {
     if h != 0 {
         // SAFETY: see `handle`; Kotlin never uses `h` after this call.
-        guard((), || drop(unsafe { Box::from_raw(h as *mut FlowHandle) }));
+        guard((), || {
+            drop(unsafe { Box::from_raw(h as *mut MurmurHandle) })
+        });
     }
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeStartSession(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeStartSession(
     mut env: JNIEnv,
     _c: JClass,
     h: jlong,
@@ -218,7 +220,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeStartSession
 /// `nativeStartSession` returning the `StartInfo` JSON, or `null` with the
 /// last error / kind set (2026-10-22, additive).
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeStartSessionInfo(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeStartSessionInfo(
     env: JNIEnv,
     _c: JClass,
     h: jlong,
@@ -231,7 +233,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeStartSession
 /// handle never uses the server or the cloud for this session; a core handle
 /// is on-device already). Same result and errors (additive, 2026-11-05).
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeStartSessionLocal(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeStartSessionLocal(
     env: JNIEnv,
     _c: JClass,
     h: jlong,
@@ -261,7 +263,7 @@ fn start_info(mut env: JNIEnv, h: jlong, cfg: JString, local_only: bool) -> jstr
 /// Non-blocking `RouterPoll` JSON (partial + endpoint + live route). Never
 /// null: a `0` handle gives the idle poll (2026-10-22, additive).
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativePoll(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativePoll(
     mut env: JNIEnv,
     _c: JClass,
     h: jlong,
@@ -271,7 +273,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativePoll(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativePushAudio(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativePushAudio(
     mut env: JNIEnv,
     _c: JClass,
     h: jlong,
@@ -307,7 +309,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativePushAudio(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeSetContext(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeSetContext(
     mut env: JNIEnv,
     _c: JClass,
     h: jlong,
@@ -323,7 +325,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeSetContext(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativePartial(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativePartial(
     mut env: JNIEnv,
     _c: JClass,
     h: jlong,
@@ -337,21 +339,21 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativePartial(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCommit(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeCommit(
     mut env: JNIEnv,
     _c: JClass,
     h: jlong,
 ) -> jstring {
     // Never fails at the JNI level: a panic becomes an ERROR CommitResult.
     let r = catch_unwind(AssertUnwindSafe(|| json_api::commit(handle(h)))).unwrap_or_else(|_| {
-        set_error("panic inside flow-core");
-        json_api::error_result("panic inside flow-core")
+        set_error("panic inside murmur-core");
+        json_api::error_result("panic inside murmur-core")
     });
     guard(std::ptr::null_mut(), || out(&mut env, &r))
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCancel(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeCancel(
     _env: JNIEnv,
     _c: JClass,
     h: jlong,
@@ -362,7 +364,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCancel(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeLearnEdit(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeLearnEdit(
     mut env: JNIEnv,
     _c: JClass,
     h: jlong,
@@ -388,7 +390,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeLearnEdit(
 // The handle returned by nativeOpenRouter works with every session symbol above.
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeLastErrorKind(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeLastErrorKind(
     mut env: JNIEnv,
     _c: JClass,
 ) -> jstring {
@@ -403,7 +405,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeLastErrorKin
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCapabilities(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeCapabilities(
     mut env: JNIEnv,
     _c: JClass,
 ) -> jstring {
@@ -412,7 +414,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCapabilities
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeOpenRouter(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeOpenRouter(
     mut env: JNIEnv,
     _c: JClass,
     cfg: JString,
@@ -424,9 +426,9 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeOpenRouter(
             None
         } else {
             // SAFETY: a value from nativeLoadModels that Kotlin released to us.
-            match *unsafe { Box::from_raw(local as *mut FlowHandle) } {
-                FlowHandle::Core(c) => Some(c),
-                FlowHandle::Router(_) => {
+            match *unsafe { Box::from_raw(local as *mut MurmurHandle) } {
+                MurmurHandle::Core(c) => Some(c),
+                MurmurHandle::Router(_) => {
                     set_error_kind("bad_config", "bad_config: local handle is a router");
                     return 0;
                 }
@@ -449,7 +451,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeOpenRouter(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeUpdateRouter(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeUpdateRouter(
     mut env: JNIEnv,
     _c: JClass,
     h: jlong,
@@ -472,7 +474,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeUpdateRouter
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeProbeServer(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeProbeServer(
     mut env: JNIEnv,
     _c: JClass,
     cfg: JString,
@@ -486,7 +488,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeProbeServer(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeProbeRouter(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeProbeRouter(
     mut env: JNIEnv,
     _c: JClass,
     h: jlong,
@@ -503,7 +505,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeProbeRouter(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeRouteStatus(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeRouteStatus(
     mut env: JNIEnv,
     _c: JClass,
     h: jlong,
@@ -515,12 +517,12 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeRouteStatus(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeResetCircuit(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeResetCircuit(
     _env: JNIEnv,
     _c: JClass,
     h: jlong,
 ) {
-    if let Some(r) = handle(h).and_then(FlowHandle::router) {
+    if let Some(r) = handle(h).and_then(MurmurHandle::router) {
         guard((), || r.reset_circuit());
     }
 }
@@ -528,7 +530,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeResetCircuit
 // ---- D24 never-fail fallback (JNI_CONTRACT.md "On-demand local engine") --
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeSetLocalLoader(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeSetLocalLoader(
     mut env: JNIEnv,
     _c: JClass,
     h: jlong,
@@ -551,7 +553,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeSetLocalLoad
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativePrewarm(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativePrewarm(
     _env: JNIEnv,
     _c: JClass,
     h: jlong,
@@ -580,7 +582,7 @@ fn opt_jstr(env: &mut JNIEnv, s: &JString) -> Option<String> {
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeSetCloudKey(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeSetCloudKey(
     mut env: JNIEnv,
     _c: JClass,
     h: jlong,
@@ -606,7 +608,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeSetCloudKey(
 
 /// `nativeSetCloudKey` bound to a provider config (host + adapter), review S4.
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeSetCloudKeyFor(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeSetCloudKeyFor(
     mut env: JNIEnv,
     _c: JClass,
     h: jlong,
@@ -635,7 +637,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeSetCloudKeyF
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeProbeCloud(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeProbeCloud(
     mut env: JNIEnv,
     _c: JClass,
     h: jlong,
@@ -659,7 +661,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeProbeCloud(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCloudUsage(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeCloudUsage(
     mut env: JNIEnv,
     _c: JClass,
     h: jlong,
@@ -671,7 +673,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCloudUsage(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeSetCloudUsage(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeSetCloudUsage(
     mut env: JNIEnv,
     _c: JClass,
     h: jlong,
@@ -694,7 +696,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeSetCloudUsag
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeResetCloudUsage(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeResetCloudUsage(
     _env: JNIEnv,
     _c: JClass,
     h: jlong,
@@ -705,7 +707,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeResetCloudUs
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCloudCapabilities(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeCloudCapabilities(
     mut env: JNIEnv,
     _c: JClass,
 ) -> jstring {
@@ -717,7 +719,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCloudCapabil
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCloudPresets(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeCloudPresets(
     mut env: JNIEnv,
     _c: JClass,
 ) -> jstring {
@@ -728,7 +730,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCloudPresets
 // ---- D28 OpenRouter-only cloud (JNI_CONTRACT.md "OpenRouter") -------------
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeMigrateCloud(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeMigrateCloud(
     mut env: JNIEnv,
     _c: JClass,
     dev_json: JString,
@@ -749,7 +751,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeMigrateCloud
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeSetCleanup(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeSetCleanup(
     mut env: JNIEnv,
     _c: JClass,
     h: jlong,
@@ -772,7 +774,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeSetCleanup(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCleanupStatus(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeCleanupStatus(
     mut env: JNIEnv,
     _c: JClass,
     h: jlong,
@@ -787,7 +789,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCleanupStatu
 /// `selected` null = generate at the cursor. Never null: failures are
 /// `{"ok":false,"kind":…,"error":…}` JSON.
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCommand(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeCommand(
     mut env: JNIEnv,
     _c: JClass,
     h: jlong,
@@ -795,7 +797,9 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCommand(
     selected: JString,
 ) -> jstring {
     let r = guard(
-        json_api::command_json(Err(CommandError::Backend("panic inside flow-core".into()))),
+        json_api::command_json(Err(CommandError::Backend(
+            "panic inside murmur-core".into(),
+        ))),
         || {
             let Some(h) = handle(h) else {
                 return json_api::command_json(Err(CommandError::Backend("null handle".into())));
@@ -821,18 +825,18 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCommand(
     guard(std::ptr::null_mut(), || out(&mut env, &r))
 }
 
-/// Benchmark hook (`dev.flowclone.debug.BenchActivity`): one AI-cleanup
+/// Benchmark hook (`dev.murmur.debug.BenchActivity`): one AI-cleanup
 /// request on a core handle's on-device LLM ([`crate::bench`]). Blocking.
 /// Never null: the result JSON, or `{"error":…}`.
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeBenchClean(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeBenchClean(
     mut env: JNIEnv,
     _c: JClass,
     h: jlong,
     request: JString,
 ) -> jstring {
     let err = |m: &str| serde_json::json!({ "error": m }).to_string();
-    let r = guard(err("panic inside flow-core"), || {
+    let r = guard(err("panic inside murmur-core"), || {
         let Some(h) = handle(h) else {
             return err("null handle");
         };
@@ -845,7 +849,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeBenchClean(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCloudNotice(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeCloudNotice(
     mut env: JNIEnv,
     _c: JClass,
     h: jlong,
@@ -857,7 +861,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCloudNotice(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeAckCloudNotice(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeAckCloudNotice(
     _env: JNIEnv,
     _c: JClass,
     h: jlong,
@@ -868,7 +872,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeAckCloudNoti
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeSetCloudModel(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeSetCloudModel(
     mut env: JNIEnv,
     _c: JClass,
     h: jlong,
@@ -895,7 +899,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeSetCloudMode
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeSetCloudCacheDir(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeSetCloudCacheDir(
     mut env: JNIEnv,
     _c: JClass,
     dir: JString,
@@ -908,7 +912,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeSetCloudCach
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCloudCatalog(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeCloudCatalog(
     mut env: JNIEnv,
     _c: JClass,
     _h: jlong,
@@ -931,7 +935,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCloudCatalog
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeRefreshCloudCatalog(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeRefreshCloudCatalog(
     mut env: JNIEnv,
     _c: JClass,
     h: jlong,
@@ -944,7 +948,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeRefreshCloud
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCloudKeyInfo(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeCloudKeyInfo(
     mut env: JNIEnv,
     _c: JClass,
     h: jlong,
@@ -960,7 +964,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCloudKeyInfo
 
 /// D52 custom cleanup server: `GET {base}/models` (blocking).
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCustomCleanupModels(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeCustomCleanupModels(
     mut env: JNIEnv,
     _c: JClass,
     h: jlong,
@@ -983,7 +987,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCustomCleanu
 /// D52 custom cleanup server address: normalised URL + canonical host, or
 /// an error, plus `model_ok` (`json_api::custom_cleanup_address`). Pure.
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCustomCleanupAddress(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeCustomCleanupAddress(
     mut env: JNIEnv,
     _c: JClass,
     base_url: JString,
@@ -1032,7 +1036,7 @@ fn meeting_out(env: &mut JNIEnv, r: Result<String, crate::meeting_api::JobError>
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeMeetingOpen(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeMeetingOpen(
     mut env: JNIEnv,
     _c: JClass,
     engine: jlong,
@@ -1046,7 +1050,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeMeetingOpen(
         }
         // Ownership of `engine` moves here whatever happens next (contract).
         // SAFETY: a value from nativeLoadModels / nativeOpenRouter that Kotlin released to us.
-        let engine = *unsafe { Box::from_raw(engine as *mut FlowHandle) };
+        let engine = *unsafe { Box::from_raw(engine as *mut MurmurHandle) };
         let Some(s) = jstr(&mut env, &session, "bad_config: session config") else {
             return 0;
         };
@@ -1072,7 +1076,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeMeetingOpen(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeMeetingSetTotal(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeMeetingSetTotal(
     _env: JNIEnv,
     _c: JClass,
     m: jlong,
@@ -1086,7 +1090,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeMeetingSetTo
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeMeetingPush(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeMeetingPush(
     mut env: JNIEnv,
     _c: JClass,
     m: jlong,
@@ -1122,7 +1126,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeMeetingPush(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeMeetingFinish(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeMeetingFinish(
     mut env: JNIEnv,
     _c: JClass,
     m: jlong,
@@ -1138,7 +1142,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeMeetingFinis
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeMeetingProgress(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeMeetingProgress(
     mut env: JNIEnv,
     _c: JClass,
     m: jlong,
@@ -1150,7 +1154,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeMeetingProgr
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeMeetingCancel(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeMeetingCancel(
     _env: JNIEnv,
     _c: JClass,
     m: jlong,
@@ -1163,7 +1167,7 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeMeetingCance
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeMeetingClose(
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeMeetingClose(
     _env: JNIEnv,
     _c: JClass,
     m: jlong,
@@ -1177,13 +1181,13 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeMeetingClose
 }
 
 // ---- D41 model library (JNI_CONTRACT.md "Model library"; feature `library`) --
-// Static natives on `dev.flowclone.server.ServerLibraryNative`, a class only
+// Static natives on `dev.murmur.server.ServerLibraryNative`, a class only
 // the `hybrid` / `remote` flavours compile; the `local` library has neither
 // these symbols nor any network code. Both calls block (worker thread).
 
 #[cfg(feature = "library")]
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_server_ServerLibraryNative_nativeList(
+pub extern "system" fn Java_dev_murmur_server_ServerLibraryNative_nativeList(
     mut env: JNIEnv,
     _c: JClass,
     server: JString,
@@ -1205,7 +1209,7 @@ pub extern "system" fn Java_dev_flowclone_server_ServerLibraryNative_nativeList(
 #[cfg(feature = "library")]
 #[no_mangle]
 #[allow(clippy::too_many_arguments)]
-pub extern "system" fn Java_dev_flowclone_server_ServerLibraryNative_nativeDownload(
+pub extern "system" fn Java_dev_murmur_server_ServerLibraryNative_nativeDownload(
     mut env: JNIEnv,
     _c: JClass,
     server: JString,

@@ -1,6 +1,6 @@
 //! Models from the server's library (D41) end to end: a real in-process
-//! flow-server with a temp library, the Windows planner and installer on
-//! top of flow-remote's client. A custom model downloads, verifies,
+//! murmur-server with a temp library, the Windows planner and installer on
+//! top of murmur-remote's client. A custom model downloads, verifies,
 //! installs under `models\server\<id>` and is selected; a catalogue
 //! model comes from the server (its pins), never from Hugging Face, and
 //! with Hugging Face unreachable it still installs and resumes (D79).
@@ -13,18 +13,20 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use flow_core::config::{AsrBackend, ModelConfig};
-use flow_remote::library::LibraryClient;
-use flow_router::ServerConfig;
-use flow_windows::model_download::{self as md, CatalogEntry, ModelEngine, ModelFile, State, Stop};
-use flow_windows::prefs::{AsrEngineChoice, ModelSource, Prefs};
-use flow_windows::server_library::{self as sl, Origin, Slot};
+use murmur_core::config::{AsrBackend, ModelConfig};
+use murmur_remote::library::LibraryClient;
+use murmur_router::ServerConfig;
+use murmur_windows::model_download::{
+    self as md, CatalogEntry, ModelEngine, ModelFile, State, Stop,
+};
+use murmur_windows::prefs::{AsrEngineChoice, ModelSource, Prefs};
+use murmur_windows::server_library::{self as sl, Origin, Slot};
 use sha2::{Digest, Sha256};
 
 const TOKEN: &str = "test-token-0123456789abcdef";
 
 fn tmp(name: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("flow-srvlib-it-{name}-{}", std::process::id()));
+    let d = std::env::temp_dir().join(format!("murmur-srvlib-it-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     d
@@ -49,7 +51,7 @@ const WHISPER: &[u8] = b"custom whisper weights";
 const CATALOGUE: &[u8] = b"catalogue copy bytes";
 
 struct Server {
-    handle: flow_server::ServerHandle,
+    handle: murmur_server::ServerHandle,
     _rt: tokio::runtime::Runtime,
 }
 
@@ -60,7 +62,7 @@ impl Drop for Server {
 }
 
 fn start(lib: &Path, state: &Path, models: usize) -> (Server, ServerConfig) {
-    let cfg = flow_server::Config {
+    let cfg = murmur_server::Config {
         bind: vec!["127.0.0.1:0".into()],
         token: Some(TOKEN.into()),
         model: ModelConfig {
@@ -68,7 +70,7 @@ fn start(lib: &Path, state: &Path, models: usize) -> (Server, ServerConfig) {
             ..Default::default()
         },
         state_dir: Some(state.to_path_buf()),
-        library: flow_server::library::LibraryConfig {
+        library: murmur_server::library::LibraryConfig {
             dir: Some(lib.to_path_buf()),
             rescan_s: 0,
         },
@@ -81,7 +83,7 @@ fn start(lib: &Path, state: &Path, models: usize) -> (Server, ServerConfig) {
         .unwrap();
     let handle = rt.block_on(async {
         let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        flow_server::serve(cfg, vec![l]).await.unwrap()
+        murmur_server::serve(cfg, vec![l]).await.unwrap()
     });
     let sc = ServerConfig {
         host: "127.0.0.1".into(),

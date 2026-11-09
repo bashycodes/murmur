@@ -1,18 +1,18 @@
-//! D28 W0: prompt scope, RoutedCleaner, `FlowCore::set_cleaner`
+//! D28 W0: prompt scope, RoutedCleaner, `MurmurCore::set_cleaner`
 //! (docs/proposals/openrouter-only-cloud.md §2.5). Fake cleaners only.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use flow_core::asr::{AbortFlag, MockAsr};
-use flow_core::cleanup::{
+use murmur_core::asr::{AbortFlag, MockAsr};
+use murmur_core::cleanup::{
     build_prompt, build_prompt_scoped, run_cleanup, CleanError, CleanOutcome, CleanPrompt,
     CleanUsage, Cleaner, FallbackReason, PromptScope, RoutedCleaner,
 };
-use flow_core::config::{AppCategory, CleanupLevel, FieldContext, SessionConfig, Style};
-use flow_core::dictionary::{DictEntry, Dictionary};
-use flow_core::{CommitStatus, FlowCore, Usd};
+use murmur_core::config::{AppCategory, CleanupLevel, FieldContext, SessionConfig, Style};
+use murmur_core::dictionary::{DictEntry, Dictionary};
+use murmur_core::{CommitStatus, MurmurCore, Usd};
 
 const SENTINELS: [&str; 5] = [
     "BEFORESECRET",
@@ -318,7 +318,7 @@ fn routed_scope_is_the_intersection() {
     assert_eq!(routed(&p, &f).engine(), "cloud");
 }
 
-// ---- FlowCore::set_cleaner ---------------------------------------------
+// ---- MurmurCore::set_cleaner ---------------------------------------------
 
 fn speech(ms: usize) -> Vec<i16> {
     (0..ms * 16)
@@ -326,7 +326,7 @@ fn speech(ms: usize) -> Vec<i16> {
         .collect()
 }
 
-fn dictate(core: &FlowCore, cfg: SessionConfig, ctx: FieldContext) -> flow_core::CommitResult {
+fn dictate(core: &MurmurCore, cfg: SessionConfig, ctx: FieldContext) -> murmur_core::CommitResult {
     core.start_session(cfg).unwrap();
     core.set_context(ctx);
     for c in speech(300).chunks(640) {
@@ -345,7 +345,7 @@ fn cfg() -> SessionConfig {
 #[test]
 fn set_cleaner_installs_and_none_restores_the_built_in() {
     let local = Arc::new(Fake::ok(OUT));
-    let core = FlowCore::from_engines(Arc::new(MockAsr::new(IN)), Some(local.clone()));
+    let core = MurmurCore::from_engines(Arc::new(MockAsr::new(IN)), Some(local.clone()));
     let cloud = Arc::new(Fake::ok(OUT).cloud());
     core.set_cleaner(Some(routed(&cloud, &local)));
     let r = dictate(&core, cfg(), leaky_ctx());
@@ -381,7 +381,7 @@ fn llm_skip_clean_still_skips_the_local_llm_after_ai_cleanup() {
     // skips the on-device LLM on a clean dictation.
     let local = Arc::new(Fake::ok(OUT));
     let cloud = Arc::new(Fake::ok(" ").cloud());
-    let core = FlowCore::from_engines(Arc::new(MockAsr::new("The demo is on Thursday.")), None);
+    let core = MurmurCore::from_engines(Arc::new(MockAsr::new("The demo is on Thursday.")), None);
     core.set_cleaner(Some(routed(&cloud, &local)));
     let r = dictate(&core, SessionConfig::default(), FieldContext::default());
     assert_eq!(
@@ -399,7 +399,7 @@ fn cleaner_timeout_overrides_the_session_llm_timeout() {
     let mut cloud = Fake::ok(OUT).cloud().slow(Duration::from_millis(250));
     cloud.timeout = Some(1000);
     let cloud = Arc::new(cloud);
-    let core = FlowCore::from_engines(Arc::new(MockAsr::new(IN)), None);
+    let core = MurmurCore::from_engines(Arc::new(MockAsr::new(IN)), None);
     core.set_cleaner(Some(cloud.clone()));
     let r = dictate(
         &core,
@@ -418,7 +418,7 @@ fn cloud_down_gives_deterministic_text_within_the_timeout() {
     // text at the cleaner's timeout (+ slack), never blocking dictation.
     let mut cloud = Fake::ok(OUT).cloud().slow(Duration::from_secs(5));
     cloud.timeout = Some(300);
-    let core = FlowCore::from_engines(Arc::new(MockAsr::new(IN)), None);
+    let core = MurmurCore::from_engines(Arc::new(MockAsr::new(IN)), None);
     core.set_cleaner(Some(Arc::new(cloud)));
     let t = Instant::now();
     let r = dictate(&core, cfg(), FieldContext::default());

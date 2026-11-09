@@ -4,12 +4,12 @@
 
 use std::ffi::CStr;
 
-use flow_ffi::*;
+use murmur_ffi::*;
 
 unsafe fn take(p: *mut std::os::raw::c_char) -> String {
     assert!(!p.is_null());
     let s = CStr::from_ptr(p).to_str().unwrap().to_string();
-    flow_string_free(p);
+    murmur_string_free(p);
     s
 }
 
@@ -35,15 +35,15 @@ fn cold_router_loads_the_first_config_that_works_and_dictates() {
             .map(|i| ((i as f32 * 0.05).sin() * 8000.0) as i16)
             .collect();
         for ch in pcm.chunks(640) {
-            assert_eq!(flow_push_audio(h, ch.as_ptr(), ch.len()), 0);
+            assert_eq!(murmur_push_audio(h, ch.as_ptr(), ch.len()), 0);
         }
-        let r: serde_json::Value = serde_json::from_str(&take(flow_commit(h))).unwrap();
+        let r: serde_json::Value = serde_json::from_str(&take(murmur_commit(h))).unwrap();
         assert_eq!(r["status"], "RAW_TRANSCRIPT", "{r}");
         assert_eq!(r["final_text"], "hello there ");
-        let st: serde_json::Value = serde_json::from_str(&take(flow_route_status(h))).unwrap();
+        let st: serde_json::Value = serde_json::from_str(&take(murmur_route_status(h))).unwrap();
         assert_eq!(st["last_diag"]["local_cold"], true, "{st}");
         assert!(st["last_diag"]["local_load_ms"].is_u64());
-        flow_unload(h);
+        murmur_unload(h);
     }
 }
 

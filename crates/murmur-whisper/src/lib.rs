@@ -1,33 +1,33 @@
-//! flow-whisper: whisper.cpp as a plugin library, for a GPU build of the
+//! murmur-whisper: whisper.cpp as a plugin library, for a GPU build of the
 //! speech engine next to the app's built-in CPU whisper.
 //!
 //! The app links whisper.cpp for the CPU. A Vulkan whisper.cpp in the same
 //! binary would make the exe need `vulkan-1.dll` to start at all, so the
-//! GPU build lives here and is loaded at runtime by flow-core's
-//! `whisper_plugin` (Windows: `flow_whisper_vulkan.dll`). When it does not
+//! GPU build lives here and is loaded at runtime by murmur-core's
+//! `whisper_plugin` (Windows: `murmur_whisper_vulkan.dll`). When it does not
 //! load (no Vulkan driver) the app keeps its CPU engine. The decode is
-//! flow-core's [`WhisperEngine`], so both transcribe the same way.
+//! murmur-core's [`WhisperEngine`], so both transcribe the same way.
 //!
 //! All strings are UTF-8, NUL-terminated. Strings returned by the plugin
-//! are freed with [`flow_whisper_free_string`].
+//! are freed with [`murmur_whisper_free_string`].
 //!
 //! ABI version 1:
 //! ```c
-//! uint32_t flow_whisper_abi_version(void);
-//! char*    flow_whisper_backends(void);
+//! uint32_t murmur_whisper_abi_version(void);
+//! char*    murmur_whisper_backends(void);
 //!          // JSON {"devices":[…],"backend":"Vulkan"|"CPU","device":"…"}; no model needed
-//! void*    flow_whisper_load(const char* model, const char* opts, char** err);
+//! void*    murmur_whisper_load(const char* model, const char* opts, char** err);
 //!          // opts = JSON {"threads":4,"fit_ctx":true,"vad_model":null}
-//! char*    flow_whisper_info(void* h);
+//! char*    murmur_whisper_info(void* h);
 //!          // JSON {"backend","device","gpu_error","load_ms","multilingual"}
-//! int32_t  flow_whisper_transcribe(void* h, const float* pcm, size_t n,
+//! int32_t  murmur_whisper_transcribe(void* h, const float* pcm, size_t n,
 //!                                  const char* req, const bool* cancel /* nullable */,
 //!                                  char** out);
 //!          // req = JSON {"initial_prompt":"…","language":"he"|null,"prior_text":null}
 //!          // 0 = ok (*out = JSON {"text","language","no_speech_prob"}),
 //!          // 2 = error (*out = message)
-//! void     flow_whisper_free_string(char*);
-//! void     flow_whisper_unload(void* h);
+//! void     murmur_whisper_free_string(char*);
+//! void     murmur_whisper_unload(void* h);
 //! ```
 
 pub mod backend;
@@ -36,15 +36,15 @@ use std::ffi::{c_char, CStr, CString};
 use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
-use flow_core::asr::{AsrOutput, AsrRequest};
-use flow_core::whisper::{WhisperDevice, WhisperEngine};
+use murmur_core::asr::{AsrOutput, AsrRequest};
+use murmur_core::whisper::{WhisperDevice, WhisperEngine};
 
 pub const ABI_VERSION: u32 = 1;
 
 pub const OK: i32 = 0;
 pub const ERROR: i32 = 2;
 
-/// Load options (`flow_whisper_load`'s `opts`).
+/// Load options (`murmur_whisper_load`'s `opts`).
 #[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct LoadOptions {
@@ -55,7 +55,7 @@ pub struct LoadOptions {
     pub vad_model: Option<String>,
 }
 
-/// One request (`flow_whisper_transcribe`'s `req`): the fields of
+/// One request (`murmur_whisper_transcribe`'s `req`): the fields of
 /// [`AsrRequest`] whisper uses.
 #[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
@@ -158,14 +158,14 @@ unsafe fn from_c(p: *const c_char) -> String {
 }
 
 #[no_mangle]
-pub extern "C" fn flow_whisper_abi_version() -> u32 {
+pub extern "C" fn murmur_whisper_abi_version() -> u32 {
     ABI_VERSION
 }
 
 /// The devices this build sees and where a model would load, without
-/// loading one. Free with [`flow_whisper_free_string`].
+/// loading one. Free with [`murmur_whisper_free_string`].
 #[no_mangle]
-pub extern "C" fn flow_whisper_backends() -> *mut c_char {
+pub extern "C" fn murmur_whisper_backends() -> *mut c_char {
     let r = std::panic::catch_unwind(|| {
         let devices = backend::devices();
         let plan = backend::choose(&devices, backend::force_cpu_from_env());
@@ -186,7 +186,7 @@ pub extern "C" fn flow_whisper_backends() -> *mut c_char {
 /// # Safety
 /// String arguments are null or NUL-terminated; `err` is null or writable.
 #[no_mangle]
-pub unsafe extern "C" fn flow_whisper_load(
+pub unsafe extern "C" fn murmur_whisper_load(
     model: *const c_char,
     opts: *const c_char,
     err: *mut *mut c_char,
@@ -223,9 +223,9 @@ pub unsafe extern "C" fn flow_whisper_load(
 }
 
 /// # Safety
-/// `h` is a live handle from [`flow_whisper_load`].
+/// `h` is a live handle from [`murmur_whisper_load`].
 #[no_mangle]
-pub unsafe extern "C" fn flow_whisper_info(h: *const Engine) -> *mut c_char {
+pub unsafe extern "C" fn murmur_whisper_info(h: *const Engine) -> *mut c_char {
     match h.as_ref() {
         Some(e) => to_c(&serde_json::to_string(&e.info).expect("info serialises")),
         None => std::ptr::null_mut(),
@@ -233,12 +233,12 @@ pub unsafe extern "C" fn flow_whisper_info(h: *const Engine) -> *mut c_char {
 }
 
 /// # Safety
-/// `h` is a live handle from [`flow_whisper_load`]; `pcm` points at `n`
+/// `h` is a live handle from [`murmur_whisper_load`]; `pcm` points at `n`
 /// floats (16 kHz mono); `req` is null or NUL-terminated; `cancel` is null
 /// or points at a `bool` that stays valid for the call and is only written
 /// atomically; `out` is writable.
 #[no_mangle]
-pub unsafe extern "C" fn flow_whisper_transcribe(
+pub unsafe extern "C" fn murmur_whisper_transcribe(
     h: *const Engine,
     pcm: *const f32,
     n: usize,
@@ -272,7 +272,9 @@ pub unsafe extern "C" fn flow_whisper_transcribe(
     };
     // SAFETY: AtomicBool has the same layout as bool.
     let abort = (cancel as *const AtomicBool).as_ref();
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| e.transcribe(audio, &r, abort))) {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        e.transcribe(audio, &r, abort)
+    })) {
         Ok(Ok(o)) => {
             *out = to_c(
                 &serde_json::json!({
@@ -298,7 +300,7 @@ pub unsafe extern "C" fn flow_whisper_transcribe(
 /// # Safety
 /// `s` is null or a string returned by this library, freed once.
 #[no_mangle]
-pub unsafe extern "C" fn flow_whisper_free_string(s: *mut c_char) {
+pub unsafe extern "C" fn murmur_whisper_free_string(s: *mut c_char) {
     if !s.is_null() {
         drop(CString::from_raw(s));
     }
@@ -307,9 +309,9 @@ pub unsafe extern "C" fn flow_whisper_free_string(s: *mut c_char) {
 /// Free the model.
 ///
 /// # Safety
-/// `h` is null or a handle from [`flow_whisper_load`], not used afterwards.
+/// `h` is null or a handle from [`murmur_whisper_load`], not used afterwards.
 #[no_mangle]
-pub unsafe extern "C" fn flow_whisper_unload(h: *mut Engine) {
+pub unsafe extern "C" fn murmur_whisper_unload(h: *mut Engine) {
     if !h.is_null() {
         drop(Box::from_raw(h));
     }
@@ -324,10 +326,10 @@ mod tests {
         let m = CString::new("/nonexistent/ggml.bin").unwrap();
         let mut err: *mut c_char = std::ptr::null_mut();
         // SAFETY: valid strings; err writable.
-        let h = unsafe { flow_whisper_load(m.as_ptr(), std::ptr::null(), &mut err) };
+        let h = unsafe { murmur_whisper_load(m.as_ptr(), std::ptr::null(), &mut err) };
         assert!(h.is_null());
         let e = unsafe { from_c(err) };
-        unsafe { flow_whisper_free_string(err) };
+        unsafe { murmur_whisper_free_string(err) };
         assert!(e.contains("nonexistent"), "{e}");
     }
 
@@ -336,18 +338,18 @@ mod tests {
         let m = CString::new("x.bin").unwrap();
         let o = CString::new("{not json").unwrap();
         let mut err: *mut c_char = std::ptr::null_mut();
-        let h = unsafe { flow_whisper_load(m.as_ptr(), o.as_ptr(), &mut err) };
+        let h = unsafe { murmur_whisper_load(m.as_ptr(), o.as_ptr(), &mut err) };
         assert!(h.is_null());
         let e = unsafe { from_c(err) };
-        unsafe { flow_whisper_free_string(err) };
+        unsafe { murmur_whisper_free_string(err) };
         assert!(e.starts_with("options json"), "{e}");
     }
 
     #[test]
     fn backends_json_names_a_device() {
-        let p = flow_whisper_backends();
+        let p = murmur_whisper_backends();
         let s = unsafe { from_c(p) };
-        unsafe { flow_whisper_free_string(p) };
+        unsafe { murmur_whisper_free_string(p) };
         let v: serde_json::Value = serde_json::from_str(&s).unwrap();
         assert!(v["devices"].is_array(), "{s}");
         let b = v["backend"].as_str().unwrap();
@@ -361,9 +363,16 @@ mod tests {
     fn null_handle_transcribe_is_an_error() {
         let mut out: *mut c_char = std::ptr::null_mut();
         let rc = unsafe {
-            flow_whisper_transcribe(std::ptr::null(), std::ptr::null(), 0, std::ptr::null(), std::ptr::null(), &mut out)
+            murmur_whisper_transcribe(
+                std::ptr::null(),
+                std::ptr::null(),
+                0,
+                std::ptr::null(),
+                std::ptr::null(),
+                &mut out,
+            )
         };
         assert_eq!(rc, ERROR);
-        unsafe { flow_whisper_free_string(out) };
+        unsafe { murmur_whisper_free_string(out) };
     }
 }

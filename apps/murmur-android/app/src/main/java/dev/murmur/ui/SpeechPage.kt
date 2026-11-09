@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.app.Activity
 import android.content.Intent
@@ -10,23 +10,23 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.Switch
 import android.widget.TextView
-import dev.flowclone.FlowApp
-import dev.flowclone.R
-import dev.flowclone.core.AsrEngine
-import dev.flowclone.core.HealthReport
-import dev.flowclone.data.CloudText
-import dev.flowclone.data.DevPages
-import dev.flowclone.data.DevSettings
-import dev.flowclone.data.DevSettings.Route
-import dev.flowclone.data.DevSettingsForm
-import dev.flowclone.data.OpenRouter
-import dev.flowclone.data.OpenRouterPage
-import dev.flowclone.data.Settings
-import dev.flowclone.data.SettingsSummary
+import dev.murmur.MurmurApp
+import dev.murmur.R
+import dev.murmur.core.AsrEngine
+import dev.murmur.core.HealthReport
+import dev.murmur.data.CloudText
+import dev.murmur.data.DevPages
+import dev.murmur.data.DevSettings
+import dev.murmur.data.DevSettings.Route
+import dev.murmur.data.DevSettingsForm
+import dev.murmur.data.OpenRouter
+import dev.murmur.data.OpenRouterPage
+import dev.murmur.data.Settings
+import dev.murmur.data.SettingsSummary
 import java.io.File
 
 /**
- * Settings → Speech to text ([dev.flowclone.data.SettingsPages.Page.SPEECH], AndroidSpeech.dc.html):
+ * Settings → Speech to text ([dev.murmur.data.SettingsPages.Page.SPEECH], AndroidSpeech.dc.html):
  *   Engines        ranked rows (rank square, name, state line, switch) for this build's engines in
  *                  the stored try order; "Change order" swaps the switches for ↑ / ↓. Everything
  *                  applies at once ([DevPages.withEngine], [DevPages.reorder]). OpenRouter asks for
@@ -46,7 +46,7 @@ internal class SpeechPage(
     /** Opens the on-device engine page (whisper / Parakeet, imports). */
     private val openEngine: () -> Unit,
 ) {
-    private val app get() = FlowApp.of(activity)
+    private val app get() = MurmurApp.of(activity)
     private val caps get() = app.caps
     private lateinit var banner: DevUi.Result
     private lateinit var engineBox: LinearLayout

@@ -1,11 +1,11 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.core.CommitResult
-import dev.flowclone.core.CommitStatus
-import dev.flowclone.core.FieldContext
-import dev.flowclone.core.Style
-import dev.flowclone.core.Styles
-import dev.flowclone.policy.AppCategorizer.Category
+import dev.murmur.core.CommitResult
+import dev.murmur.core.CommitStatus
+import dev.murmur.core.FieldContext
+import dev.murmur.core.Style
+import dev.murmur.core.Styles
+import dev.murmur.policy.AppCategorizer.Category
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue

@@ -1,120 +1,120 @@
-package dev.flowclone.core;
+package dev.murmur.core;
 
 // Single-file source launch: `java -Djava.library.path=DIR JniSmoke.java`.
-// Mirrors apps/flow-android/JNI_CONTRACT.md: static natives on dev.flowclone.core.NativeFlowCore.
+// Mirrors apps/murmur-android/JNI_CONTRACT.md: static natives on dev.murmur.core.NativeMurmurCore.
 public class JniSmoke {
     static void check(boolean ok, String what) { if (!ok) throw new RuntimeException(what); }
 
     public static void main(String[] args) {
-        System.loadLibrary("flow_ffi");
-        System.out.println(NativeFlowCore.nativeVersion());
-        check(NativeFlowCore.nativeLastError() == null, "fresh thread has no error");
-        check(NativeFlowCore.nativeLastLoadTimings() == null, "no load yet, no timings");
-        long bad = NativeFlowCore.nativeLoadModels("{\"asr_backend\":\"whisper\",\"asr_path\":\"/nonexistent.bin\",\"threads\":1}");
+        System.loadLibrary("murmur_ffi");
+        System.out.println(NativeMurmurCore.nativeVersion());
+        check(NativeMurmurCore.nativeLastError() == null, "fresh thread has no error");
+        check(NativeMurmurCore.nativeLastLoadTimings() == null, "no load yet, no timings");
+        long bad = NativeMurmurCore.nativeLoadModels("{\"asr_backend\":\"whisper\",\"asr_path\":\"/nonexistent.bin\",\"threads\":1}");
         check(bad == 0, "missing model must fail");
-        check(NativeFlowCore.nativeLastError() != null, "load failure sets last error");
+        check(NativeMurmurCore.nativeLastError() != null, "load failure sets last error");
         // Payloads shaped exactly like CoreJson.kt sends them.
-        long h = NativeFlowCore.nativeLoadModels(
+        long h = NativeMurmurCore.nativeLoadModels(
             "{\"asr_backend\":{\"mock\":{\"text\":\"hello btw\"}},\"asr_path\":\"\",\"llm_path\":null,\"threads\":2}");
-        check(h != 0, "load failed: " + NativeFlowCore.nativeLastError());
-        check(NativeFlowCore.nativeLastError() == null, "a successful load clears the previous load's error");
-        String timings = NativeFlowCore.nativeLastLoadTimings();
+        check(h != 0, "load failed: " + NativeMurmurCore.nativeLastError());
+        check(NativeMurmurCore.nativeLastError() == null, "a successful load clears the previous load's error");
+        String timings = NativeMurmurCore.nativeLastLoadTimings();
         check(timings != null && timings.contains("\"kind\":\"asr\"") && timings.contains("\"backend\":\"mock\""),
             "load timings: " + timings);
-        check(!NativeFlowCore.nativeKeepLlm(h), "no LLM loaded, nothing to keep");
-        check(!NativeFlowCore.nativeKeepLlm(0), "null handle");
-        NativeFlowCore.nativeReleaseKeptLlm();
-        boolean ok = NativeFlowCore.nativeStartSession(h,
+        check(!NativeMurmurCore.nativeKeepLlm(h), "no LLM loaded, nothing to keep");
+        check(!NativeMurmurCore.nativeKeepLlm(0), "null handle");
+        NativeMurmurCore.nativeReleaseKeptLlm();
+        boolean ok = NativeMurmurCore.nativeStartSession(h,
             "{\"languages\":[\"en\"],\"dictionary\":[{\"word\":\"btw\",\"replacement\":\"by the way\",\"isSnippet\":false}],"
             + "\"styles\":{\"personal\":\"formal\",\"work\":\"formal\",\"email\":\"formal\",\"other\":\"formal\"},"
             + "\"cleanup_level\":\"none\",\"raw_mode\":false,\"max_samples\":4800000,\"platform\":\"android\","
             + "\"partial_interval_ms\":null,\"llm_timeout_ms\":1500}");
-        check(ok, "start failed: " + NativeFlowCore.nativeLastError());
+        check(ok, "start failed: " + NativeMurmurCore.nativeLastError());
         short[] buf = new short[640];
         for (int c = 0; c < 25; c++) {
             for (int i = 0; i < buf.length; i++) buf[i] = (short) (Math.sin((c * 640 + i) * 0.05) * 8000);
-            check(NativeFlowCore.nativePushAudio(h, buf, buf.length), "push failed");
+            check(NativeMurmurCore.nativePushAudio(h, buf, buf.length), "push failed");
         }
         // Over-long length is clamped, not an ArrayIndexOutOfBoundsException.
-        check(NativeFlowCore.nativePushAudio(h, new short[0], 999), "clamped push");
-        NativeFlowCore.nativeSetContext(h,
+        check(NativeMurmurCore.nativePushAudio(h, new short[0], 999), "clamped push");
+        NativeMurmurCore.nativeSetContext(h,
             "{\"app_id\":\"com.whatsapp\",\"url_host\":\"\",\"app_category\":\"personal_chat\",\"before\":\"\",\"selected\":\"\",\"after\":\"\",\"screen_words\":[]}");
-        NativeFlowCore.nativeSetContext(h, "not json"); // ignored
-        System.out.println(NativeFlowCore.nativePartial(h));
-        System.out.println(NativeFlowCore.nativeCommit(h));
-        System.out.println(NativeFlowCore.nativeLearnEdit(h, "ask whisper now", "ask Zephyr now"));
-        check(!NativeFlowCore.nativeStartSession(h, "["), "bad json accepted");
-        System.out.println("ERR " + NativeFlowCore.nativeLastError());
-        NativeFlowCore.nativeCancel(h);
-        NativeFlowCore.nativeCancel(h);
-        check(!NativeFlowCore.nativePushAudio(h, buf, buf.length), "push after cancel must be false");
-        System.out.println(NativeFlowCore.nativeCommit(0));
-        System.out.println(NativeFlowCore.nativeLearnEdit(0, "a", "b"));
-        NativeFlowCore.nativeUnload(h);
-        NativeFlowCore.nativeUnload(0);
+        NativeMurmurCore.nativeSetContext(h, "not json"); // ignored
+        System.out.println(NativeMurmurCore.nativePartial(h));
+        System.out.println(NativeMurmurCore.nativeCommit(h));
+        System.out.println(NativeMurmurCore.nativeLearnEdit(h, "ask whisper now", "ask Zephyr now"));
+        check(!NativeMurmurCore.nativeStartSession(h, "["), "bad json accepted");
+        System.out.println("ERR " + NativeMurmurCore.nativeLastError());
+        NativeMurmurCore.nativeCancel(h);
+        NativeMurmurCore.nativeCancel(h);
+        check(!NativeMurmurCore.nativePushAudio(h, buf, buf.length), "push after cancel must be false");
+        System.out.println(NativeMurmurCore.nativeCommit(0));
+        System.out.println(NativeMurmurCore.nativeLearnEdit(0, "a", "b"));
+        NativeMurmurCore.nativeUnload(h);
+        NativeMurmurCore.nativeUnload(0);
 
         // ---- D17 router: the shell's real flow (load local, hand it to the router, session on the router) ----
-        // args[0] (optional): "host:port" of a running flow-server (mock ASR) to route to.
+        // args[0] (optional): "host:port" of a running murmur-server (mock ASR) to route to.
         String server = args.length > 0 ? args[0] : null;
-        long local = NativeFlowCore.nativeLoadModels("{\"asr_backend\":{\"mock\":{\"text\":\"hello btw\"}},\"asr_path\":\"\",\"threads\":1}");
+        long local = NativeMurmurCore.nativeLoadModels("{\"asr_backend\":{\"mock\":{\"text\":\"hello btw\"}},\"asr_path\":\"\",\"threads\":1}");
         String host = server == null ? "" : server.substring(0, server.lastIndexOf(':'));
         String port = server == null ? "7313" : server.substring(server.lastIndexOf(':') + 1);
         String cfg = "{\"allow_server\":" + (server != null) + ",\"allow_client\":true,\"prefer\":\"server\",\"keep_local_warm\":true,"
             + "\"server\":{\"host\":\"" + host + "\",\"port\":" + port + ",\"tls\":false,\"tls_pin_sha256\":null,"
             + "\"token\":\"" + (args.length > 1 ? args[1] : "") + "\",\"connect_timeout_ms\":800,\"commit_timeout_base_ms\":3000,\"health_ttl_s\":30}}";
-        long r = NativeFlowCore.nativeOpenRouter(cfg, local);
-        check(r != 0, "open_router: " + NativeFlowCore.nativeLastError());
+        long r = NativeMurmurCore.nativeOpenRouter(cfg, local);
+        check(r != 0, "open_router: " + NativeMurmurCore.nativeLastError());
         String rsess = "{\"languages\":[\"en\"],\"platform\":\"android\",\"dictionary\":[{\"word\":\"btw\",\"replacement\":\"by the way\",\"isSnippet\":false}]";
         // Hands-free session: endpoint_silence_ms only in hands-free mode.
-        String info = NativeFlowCore.nativeStartSessionInfo(r, rsess + ",\"endpoint_silence_ms\":2000}");
-        check(info != null, "router start: " + NativeFlowCore.nativeLastError());
+        String info = NativeMurmurCore.nativeStartSessionInfo(r, rsess + ",\"endpoint_silence_ms\":2000}");
+        check(info != null, "router start: " + NativeMurmurCore.nativeLastError());
         System.out.println(info);
         for (int c = 0; c < 25; c++) {
             for (int i = 0; i < buf.length; i++) buf[i] = (short) (Math.sin((c * 640 + i) * 0.05) * 8000);
-            NativeFlowCore.nativePushAudio(r, buf, buf.length);
+            NativeMurmurCore.nativePushAudio(r, buf, buf.length);
         }
-        System.out.println(NativeFlowCore.nativePoll(r));
-        System.out.println(NativeFlowCore.nativePoll(0));
-        String badInfo = NativeFlowCore.nativeStartSessionInfo(r, "[");
-        System.out.println("INFO " + badInfo + " KIND " + NativeFlowCore.nativeLastErrorKind());
+        System.out.println(NativeMurmurCore.nativePoll(r));
+        System.out.println(NativeMurmurCore.nativePoll(0));
+        String badInfo = NativeMurmurCore.nativeStartSessionInfo(r, "[");
+        System.out.println("INFO " + badInfo + " KIND " + NativeMurmurCore.nativeLastErrorKind());
         // Push-to-talk: plain start (no endpointing), as before.
-        check(NativeFlowCore.nativeStartSession(r, rsess + "}"), "router start: " + NativeFlowCore.nativeLastError());
+        check(NativeMurmurCore.nativeStartSession(r, rsess + "}"), "router start: " + NativeMurmurCore.nativeLastError());
         for (int c = 0; c < 25; c++) {
             for (int i = 0; i < buf.length; i++) buf[i] = (short) (Math.sin((c * 640 + i) * 0.05) * 8000);
-            NativeFlowCore.nativePushAudio(r, buf, buf.length);
+            NativeMurmurCore.nativePushAudio(r, buf, buf.length);
         }
-        System.out.println(NativeFlowCore.nativeCommit(r));
-        System.out.println(NativeFlowCore.nativeRouteStatus(r));
-        System.out.println(NativeFlowCore.nativeLearnEdit(r, "ask whisper now", "ask Zephyr now"));
+        System.out.println(NativeMurmurCore.nativeCommit(r));
+        System.out.println(NativeMurmurCore.nativeRouteStatus(r));
+        System.out.println(NativeMurmurCore.nativeLearnEdit(r, "ask whisper now", "ask Zephyr now"));
         // D55: a local start stays on the phone, even with the server first and up.
-        check(NativeFlowCore.nativeStartSessionLocal(r, rsess + "}") != null, "local start: " + NativeFlowCore.nativeLastError());
+        check(NativeMurmurCore.nativeStartSessionLocal(r, rsess + "}") != null, "local start: " + NativeMurmurCore.nativeLastError());
         for (int c = 0; c < 25; c++) {
             for (int i = 0; i < buf.length; i++) buf[i] = (short) (Math.sin((c * 640 + i) * 0.05) * 8000);
-            NativeFlowCore.nativePushAudio(r, buf, buf.length);
+            NativeMurmurCore.nativePushAudio(r, buf, buf.length);
         }
-        System.out.println(NativeFlowCore.nativeCommit(r));
-        System.out.println("LOCAL0 " + NativeFlowCore.nativeStartSessionLocal(0, rsess + "}"));
-        check(NativeFlowCore.nativeUpdateRouter(r, cfg.replace("\"prefer\":\"server\"", "\"prefer\":\"client\"")), "update: " + NativeFlowCore.nativeLastError());
-        check(!NativeFlowCore.nativeUpdateRouter(r, "{\"server\":{\"port\":0}}"), "port 0 must be bad_config");
-        System.out.println("KIND " + NativeFlowCore.nativeLastErrorKind());
+        System.out.println(NativeMurmurCore.nativeCommit(r));
+        System.out.println("LOCAL0 " + NativeMurmurCore.nativeStartSessionLocal(0, rsess + "}"));
+        check(NativeMurmurCore.nativeUpdateRouter(r, cfg.replace("\"prefer\":\"server\"", "\"prefer\":\"client\"")), "update: " + NativeMurmurCore.nativeLastError());
+        check(!NativeMurmurCore.nativeUpdateRouter(r, "{\"server\":{\"port\":0}}"), "port 0 must be bad_config");
+        System.out.println("KIND " + NativeMurmurCore.nativeLastErrorKind());
         // Command Mode: the mock local engine has no LLM, so both answer no_llm (never null).
-        System.out.println(NativeFlowCore.nativeCommand(r, "make it shorter", "a long text"));
-        System.out.println(NativeFlowCore.nativeCommand(r, "write hello", null));
-        NativeFlowCore.nativeResetCircuit(r);
-        NativeFlowCore.nativeUnload(r);
-        check(NativeFlowCore.nativeOpenRouter("{\"allow_server\":false,\"allow_client\":false}", 0) == 0, "both off must refuse");
-        System.out.println("KIND " + NativeFlowCore.nativeLastErrorKind());
-        System.out.println(NativeFlowCore.nativeCapabilities());
+        System.out.println(NativeMurmurCore.nativeCommand(r, "make it shorter", "a long text"));
+        System.out.println(NativeMurmurCore.nativeCommand(r, "write hello", null));
+        NativeMurmurCore.nativeResetCircuit(r);
+        NativeMurmurCore.nativeUnload(r);
+        check(NativeMurmurCore.nativeOpenRouter("{\"allow_server\":false,\"allow_client\":false}", 0) == 0, "both off must refuse");
+        System.out.println("KIND " + NativeMurmurCore.nativeLastErrorKind());
+        System.out.println(NativeMurmurCore.nativeCapabilities());
         // Nothing listens on port 9 of loopback: a fast connect_failed (or "no server support" without `remote`).
-        System.out.println(NativeFlowCore.nativeProbeServer("{\"host\":\"127.0.0.1\",\"port\":9,\"connect_timeout_ms\":300}"));
+        System.out.println(NativeMurmurCore.nativeProbeServer("{\"host\":\"127.0.0.1\",\"port\":9,\"connect_timeout_ms\":300}"));
         if (server != null) {
-            String probe = NativeFlowCore.nativeProbeServer(cfg.substring(cfg.indexOf("\"server\":") + 9, cfg.length() - 1));
+            String probe = NativeMurmurCore.nativeProbeServer(cfg.substring(cfg.indexOf("\"server\":") + 9, cfg.length() - 1));
             System.out.println(probe);
         }
     }
 }
 
-class NativeFlowCore {
+class NativeMurmurCore {
     static native String nativeVersion();
     static native String nativeLastError();
     static native long nativeLoadModels(String cfg);

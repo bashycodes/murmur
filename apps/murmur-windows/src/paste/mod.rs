@@ -186,7 +186,7 @@ pub fn unicode_text_bytes(text: &str) -> Vec<u8> {
 }
 
 /// Paste-layer markers: `{{BREAK}}` = split the insertion (let a mention
-/// popup open), `{{TAB}}` = press Tab (accept it). flow-core no longer
+/// popup open), `{{TAB}}` = press Tab (accept it). murmur-core no longer
 /// produces them (D82); they act only when the text carries them, e.g. a
 /// snippet body.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -413,7 +413,7 @@ mod tests {
     #[test]
     fn plan_pastes_plain_text_then_enter() {
         use crate::core_api::{PasteKey, PasteSegment};
-        let segs = flow_core::paste::segments("Hello there.", true);
+        let segs = murmur_core::paste::segments("Hello there.", true);
         assert_eq!(
             plan(&segs),
             vec![
@@ -431,7 +431,7 @@ mod tests {
     #[test]
     fn plan_types_mention_segments() {
         use crate::core_api::PasteKey;
-        let segs = flow_core::paste::segments("open @{{BREAK}}main.rs{{TAB}} now", false);
+        let segs = murmur_core::paste::segments("open @{{BREAK}}main.rs{{TAB}} now", false);
         assert_eq!(
             plan(&segs),
             vec![

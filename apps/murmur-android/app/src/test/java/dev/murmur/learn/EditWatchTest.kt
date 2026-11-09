@@ -1,6 +1,6 @@
-package dev.flowclone.learn
+package dev.murmur.learn
 
-import dev.flowclone.core.FieldContext
+import dev.murmur.core.FieldContext
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -14,8 +14,8 @@ class EditWatchTest {
     private fun t(s: String) = FieldRead.Text(s)
 
     @Test fun regionBetweenAnchors() {
-        val f = "Dear Bob, I use whisper flow daily. Thanks"
-        assertEquals("I use whisper flow daily.", EditText.region(f, a("Dear Bob, ", " Thanks"), 30))
+        val f = "Dear Bob, I use mer mur daily. Thanks"
+        assertEquals("I use mer mur daily.", EditText.region(f, a("Dear Bob, ", " Thanks"), 30))
         assertNull(EditText.region(f, a("Dear Alice, ", ""), 10))
         assertEquals("empty anchors = whole field", "hello", EditText.region("hello", a("", ""), 5))
     }
@@ -31,17 +31,17 @@ class EditWatchTest {
         assertTrue(an.after.startsWith("START"))
     }
 
-    @Test fun floCloneEditThenTimeoutYieldsTheCorrection() {
-        val w = EditWatch("I use local whisper daily. ", a("Hi. ", ""), 0, fast.copy(stableMs = 60_000))
-        assertNull(w.observe(0, t("Hi. I use local whisper daily. ")))
-        assertNull(w.observe(1_000, t("Hi. I use Murmur daily.")))
+    @Test fun brandNameEditThenTimeoutYieldsTheCorrection() {
+        val w = EditWatch("I use mer mur daily. ", a("Hi. ", ""), 0, fast.copy(stableMs = 60_000))
+        assertNull(w.observe(0, t("Hi. I use mer mur daily. ")))
+        assertNull(w.observe(1_000, t("Hi. I use Murm daily.")))
         assertNull(w.observe(2_000, t("Hi. I use Murmur daily.")))
         assertEquals(Outcome(EndReason.TIMEOUT, "I use Murmur daily."), w.observe(10_000, t("Hi. I use Murmur daily.")))
     }
 
     @Test fun anEditThatStopsChangingEndsTheWatchEarly() {
-        val w = EditWatch("local whisper", a("", ""), 0, fast)
-        assertNull(w.observe(0, t("local whisper")))
+        val w = EditWatch("mer mur", a("", ""), 0, fast)
+        assertNull(w.observe(0, t("mer mur")))
         assertNull(w.observe(1_000, t("Murmur")))
         assertNull(w.observe(2_000, t("Murmur")))
         assertNull("not yet stable for 3 s", w.observe(3_500, t("Murmur")))
@@ -107,8 +107,8 @@ class EditWatchTest {
         var reads = 0
         var enabled = true
         val o = runWatch(
-            { reads++; if (reads == 2) enabled = false; t(if (reads == 1) "local whisper" else "Murmur") },
-            EditWatch("local whisper", a("", ""), 0, fast), { now }, { now += it }, stillWanted = { enabled },
+            { reads++; if (reads == 2) enabled = false; t(if (reads == 1) "mer mur" else "Murmur") },
+            EditWatch("mer mur", a("", ""), 0, fast), { now }, { now += it }, stillWanted = { enabled },
         )
         assertEquals(Outcome(EndReason.CANCELLED, null), o)
         assertEquals("no read after the switch went off", 2, reads)

@@ -8,8 +8,8 @@ export const settingsSystemPage = {
     template: `
 ${heading("System")}
 ${group("App settings", row("Start when you sign in to Windows", "", toggle("launch_at_login", "Start when you sign in to Windows", `data-save="prefs"`)) +
-        row("Keep the Flow bar on screen", "Otherwise it only appears while you dictate.", toggle("show_flow_bar_always", "Keep the Flow bar on screen", `data-save="prefs"`)) +
-        row("Show which engine was used", "A small <b>L</b>, <b>S</b> or <b>C</b> on the Flow bar after each dictation: this PC, your server or the cloud.", toggle("dev_show_engine_badge", "Show which engine was used", `data-save="dev"`), `data-needs="dev"`))}
+        row("Keep the Murmur bar on screen", "Otherwise it only appears while you dictate.", toggle("show_murmur_bar_always", "Keep the Murmur bar on screen", `data-save="prefs"`)) +
+        row("Show which engine was used", "A small <b>L</b>, <b>S</b> or <b>C</b> on the Murmur bar after each dictation: this PC, your server or the cloud.", toggle("dev_show_engine_badge", "Show which engine was used", `data-save="dev"`), `data-needs="dev"`))}
 ${group("Sound", row("Dictation sounds", "A soft click when dictation starts and stops.", toggle("enable_sounds", "Dictation sounds", `data-save="prefs"`)) +
         row("Mute other audio while dictating", "", toggle("mute_audio_while_dictating", "Mute other audio while dictating", `data-save="prefs"`)))}
 ${group("Pasting", row("Paste with", "Change this if an app ignores Ctrl+V.", `<select id="paste_method" class="fl-select lw-w160" data-save="prefs" aria-label="Paste with">

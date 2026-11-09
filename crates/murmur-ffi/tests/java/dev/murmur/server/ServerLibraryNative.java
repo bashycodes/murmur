@@ -1,4 +1,4 @@
-package dev.flowclone.server;
+package dev.murmur.server;
 
 // tests/jni_library.rs: the D41 library natives through a real JVM, as the
 // Android shell's ServerLibraryNative (Kotlin) declares them.
@@ -15,7 +15,7 @@ public final class ServerLibraryNative {
     static native String nativeDownload(String server, String modelId, String file, String dest, String part, Object listener);
 
     public static void main(String[] a) {
-        System.loadLibrary("flow_ffi");
+        System.loadLibrary("murmur_ffi");
         System.out.println(nativeList(a[0]));
         final long[] last = {-1};
         Listener l = new Listener() {

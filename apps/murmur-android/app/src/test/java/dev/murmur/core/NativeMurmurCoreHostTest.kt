@@ -1,4 +1,4 @@
-package dev.flowclone.core
+package dev.murmur.core
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -10,21 +10,21 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /**
- * Runs only with `-Pflow.jniLibDir=…` (tools/probes/host_native/run.sh): loads a host x86_64
- * build of the REAL crates/flow-ffi (not the C stub) through the shipped [NativeFlowCore]
- * binding and [CoreJson] payloads. With `-Pflow.model` + `-Pflow.wav` it also runs whisper on
+ * Runs only with `-Pmurmur.jniLibDir=…` (tools/probes/host_native/run.sh): loads a host x86_64
+ * build of the REAL crates/murmur-ffi (not the C stub) through the shipped [NativeMurmurCore]
+ * binding and [CoreJson] payloads. With `-Pmurmur.model` + `-Pmurmur.wav` it also runs whisper on
  * the WAV, pushing 100 ms frames exactly like MicRecorder, and writes timings to
  * `build/reports/host-native/timings.txt`.
  */
-class NativeFlowCoreHostTest {
-    private fun requireLib() = assumeTrue("host flow-ffi not built", System.getProperty("flow.jniReal") == "1")
+class NativeMurmurCoreHostTest {
+    private fun requireLib() = assumeTrue("host murmur-ffi not built", System.getProperty("murmur.jniReal") == "1")
 
     @Test fun mockEngineRoundTripsThroughRealCore() {
         requireLib()
-        val lib = NativeFlowCore.loadLibrary()
-        assertTrue(lib.toString(), lib is NativeFlowCore.LibraryState.Loaded)
-        assertTrue((lib as NativeFlowCore.LibraryState.Loaded).version.startsWith("flow-ffi "))
-        val core = NativeFlowCore.loadModels(ModelConfig(asrPath = "", mockText = "hello btw", threads = 2))
+        val lib = NativeMurmurCore.loadLibrary()
+        assertTrue(lib.toString(), lib is NativeMurmurCore.LibraryState.Loaded)
+        assertTrue((lib as NativeMurmurCore.LibraryState.Loaded).version.startsWith("murmur-ffi "))
+        val core = NativeMurmurCore.loadModels(ModelConfig(asrPath = "", mockText = "hello btw", threads = 2))
         core.startSession(
             SessionConfig(languages = listOf("en"), dictionary = listOf(DictEntry("btw", "by the way"))),
         )
@@ -46,23 +46,23 @@ class NativeFlowCoreHostTest {
      * D17: the shell's real engine assembly (EngineRoute → nativeLoadModels → nativeOpenRouter)
      * against the host library: per flavour toggles, the session goes through the router and
      * the result carries `route`; both-off and bad configs come back as typed errors.
-     * With `-Pflow.server=host:port[/token]` (a running flow-server) the server route is used.
+     * With `-Pmurmur.server=host:port[/token]` (a running murmur-server) the server route is used.
      */
     @Test fun routerRoundTripThroughTheShellsAssembly() {
         requireLib()
-        val caps = NativeFlowCore.capabilities()!!
+        val caps = NativeMurmurCore.capabilities()!!
         assertEquals(1, caps.proto)
-        val loader = FlowCoreLoader { NativeFlowCore.loadModels(it.copy(mockText = "hello btw")) }
-        val plan = dev.flowclone.data.EnginePlan.Plan.Native(ModelConfig(asrPath = "", threads = 2), dev.flowclone.data.EnginePlan.LlmStatus.Off)
-        val server = System.getProperty("flow.server")?.takeIf { it.isNotBlank() }
-        val dev0 = dev.flowclone.data.DevSettings(allowServer = server != null, allowClient = true)
+        val loader = MurmurCoreLoader { NativeMurmurCore.loadModels(it.copy(mockText = "hello btw")) }
+        val plan = dev.murmur.data.EnginePlan.Plan.Native(ModelConfig(asrPath = "", threads = 2), dev.murmur.data.EnginePlan.LlmStatus.Off)
+        val server = System.getProperty("murmur.server")?.takeIf { it.isNotBlank() }
+        val dev0 = dev.murmur.data.DevSettings(allowServer = server != null, allowClient = true)
         val dev1 = if (server == null) dev0 else dev0.copy(
             host = server.substringBefore('/').substringBeforeLast(':'), port = server.substringBefore('/').substringAfterLast(':').toInt(),
             token = server.substringAfter('/', ""),
         )
-        val routed = dev.flowclone.data.EngineRoute.plan(plan, dev1, dev.flowclone.data.BuildCaps(true, caps.remote)) as dev.flowclone.data.EngineRoute.Plan.Routed
-        val a = dev.flowclone.data.EngineRoute.assemble(routed, loader, NativeFlowCore.routerOpener)
-        val r = a.core as NativeFlowCore
+        val routed = dev.murmur.data.EngineRoute.plan(plan, dev1, dev.murmur.data.BuildCaps(true, caps.remote)) as dev.murmur.data.EngineRoute.Plan.Routed
+        val a = dev.murmur.data.EngineRoute.assemble(routed, loader, NativeMurmurCore.routerOpener)
+        val r = a.core as NativeMurmurCore
         assertTrue(r.isRouter)
         r.startSession(SessionConfig(languages = listOf("en"), dictionary = listOf(DictEntry("btw", "by the way"))))
         assertTrue(r.pushAudio(sine(16_000), 16_000))
@@ -72,21 +72,21 @@ class NativeFlowCoreHostTest {
         assertEquals(if (server != null && caps.remote) "remote" else "local", res.route!!.engine)
         assertEquals(res.route, r.routeStatus().last)
         // Settings change in place, then a bad one is refused with its kind.
-        r.updateRouter(dev1.copy(routeOrder = dev.flowclone.data.DevSettings.orderFor(dev.flowclone.data.DevSettings.Prefer.CLIENT)).toRouterConfigJson().toString())
+        r.updateRouter(dev1.copy(routeOrder = dev.murmur.data.DevSettings.orderFor(dev.murmur.data.DevSettings.Prefer.CLIENT)).toRouterConfigJson().toString())
         val bad = runCatching { r.updateRouter("""{"server":{"port":0}}""") }.exceptionOrNull() as CoreException
         assertEquals("bad_config", bad.kind)
         r.resetCircuit()
         r.unload()
         // Both routes off: a typed error before any session.
-        val off = runCatching { NativeFlowCore.routerOpener.open("""{"allow_server":false,"allow_client":false}""", null) }.exceptionOrNull() as CoreException
+        val off = runCatching { NativeMurmurCore.routerOpener.open("""{"allow_server":false,"allow_client":false}""", null) }.exceptionOrNull() as CoreException
         assertEquals("no_engine_enabled", off.kind)
         assertTrue(RouterErrors.userMessage(off.kind, off.message!!).startsWith("Dictation disabled"))
         // Test connection to a closed port: never throws.
-        val h = NativeFlowCore.probeServer("""{"host":"127.0.0.1","port":9,"connect_timeout_ms":300}""")
+        val h = NativeMurmurCore.probeServer("""{"host":"127.0.0.1","port":9,"connect_timeout_ms":300}""")
         assertFalse(h.ok)
         assertEquals(if (caps.remote) "connect_failed" else "server_not_configured", h.error)
         if (server != null) {
-            val ok = NativeFlowCore.probeServer(dev1.toServerConfigJson().toString())
+            val ok = NativeMurmurCore.probeServer(dev1.toServerConfigJson().toString())
             assertTrue(ok.toString(), ok.ok)
             println("HOST-ROUTER probe: ${DevText.probe(ok)}")
         }
@@ -94,20 +94,20 @@ class NativeFlowCoreHostTest {
 
     @Test fun missingModelSurfacesCoreError() {
         requireLib()
-        val e = runCatching { NativeFlowCore.loadModels(ModelConfig(asrPath = "/nonexistent/ggml.bin")) }.exceptionOrNull()
+        val e = runCatching { NativeMurmurCore.loadModels(ModelConfig(asrPath = "/nonexistent/ggml.bin")) }.exceptionOrNull()
         assertTrue(e.toString(), e is CoreException && !e.message.isNullOrBlank())
     }
 
     @Test fun whisperTranscribesWavThroughKotlinBinding() {
         requireLib()
-        val model = System.getProperty("flow.model").orEmpty()
-        val wav = System.getProperty("flow.wav").orEmpty()
+        val model = System.getProperty("murmur.model").orEmpty()
+        val wav = System.getProperty("murmur.wav").orEmpty()
         assumeTrue("no model/wav", File(model).isFile && File(wav).isFile)
         val pcm = readWav16kMono(File(wav))
-        val threads = System.getProperty("flow.threads")?.toIntOrNull() ?: 4
+        val threads = System.getProperty("murmur.threads")?.toIntOrNull() ?: 4
 
         val t0 = System.nanoTime()
-        val core = NativeFlowCore.loadModels(ModelConfig(asrPath = model, threads = threads))
+        val core = NativeMurmurCore.loadModels(ModelConfig(asrPath = model, threads = threads))
         val loadMs = (System.nanoTime() - t0) / 1_000_000
         try {
             core.startSession(
@@ -131,7 +131,7 @@ class NativeFlowCoreHostTest {
             val report = "model=${File(model).name} threads=$threads load_ms=$loadMs commit_wall_ms=$commitMs " +
                 "push_max_us=$pushMaxUs core_timings=${r.timings} status=${r.status}\ntext=${r.finalText}\n"
             println(report)
-            File(System.getProperty("flow.reportDir") ?: "build/reports/host-native").apply { mkdirs() }
+            File(System.getProperty("murmur.reportDir") ?: "build/reports/host-native").apply { mkdirs() }
                 .resolve("timings.txt").appendText(report)
             assertTrue(r.toString(), r.status == CommitStatus.RAW_TRANSCRIPT || r.status == CommitStatus.FORMATTED)
             assertTrue(r.finalText, r.finalText.lowercase().contains("what your country can do for you"))
@@ -142,21 +142,21 @@ class NativeFlowCoreHostTest {
         }
     }
 
-    // ---- LLM cleanup through the real binding (flow-ffi `llm` + the flow-llm plugin) ----
+    // ---- LLM cleanup through the real binding (murmur-ffi `llm` + the murmur-llm plugin) ----
 
     private fun llm(): Pair<String, String>? {
-        val model = System.getProperty("flow.llmModel").orEmpty()
-        val lib = System.getProperty("flow.llmLib").orEmpty()
+        val model = System.getProperty("murmur.llmModel").orEmpty()
+        val lib = System.getProperty("murmur.llmLib").orEmpty()
         return if (File(model).isFile && File(lib).isFile) model to lib else null
     }
 
     /** The shell's own settings path: LLM on, light cleanup (the Android default when enabled). */
     private fun llmSession(budgetMs: Long) =
-        dev.flowclone.data.Settings(language = "en", llmEnabled = true).toSessionConfig(emptyList()).copy(llmTimeoutMs = budgetMs)
+        dev.murmur.data.Settings(language = "en", llmEnabled = true).toSessionConfig(emptyList()).copy(llmTimeoutMs = budgetMs)
 
     private fun report(line: String) {
         println(line)
-        File(System.getProperty("flow.reportDir") ?: "build/reports/host-native").apply { mkdirs() }.resolve("timings.txt").appendText(line + "\n")
+        File(System.getProperty("murmur.reportDir") ?: "build/reports/host-native").apply { mkdirs() }.resolve("timings.txt").appendText(line + "\n")
     }
 
     @Test fun llmCleansTranscriptThroughKotlinBinding() {
@@ -164,7 +164,7 @@ class NativeFlowCoreHostTest {
         val (model, lib) = llm() ?: return assumeTrue("no LLM model/plugin", false)
         val raw = "so um i think we should meet tomorrow at noon and uh bring the slides"
         val t0 = System.nanoTime()
-        val core = NativeFlowCore.loadModels(ModelConfig(asrPath = "", mockText = raw, llmPath = model, llmLib = lib, threads = 4))
+        val core = NativeMurmurCore.loadModels(ModelConfig(asrPath = "", mockText = raw, llmPath = model, llmLib = lib, threads = 4))
         val loadMs = (System.nanoTime() - t0) / 1_000_000
         try {
             core.startSession(llmSession(budgetMs = 60_000))
@@ -183,9 +183,9 @@ class NativeFlowCoreHostTest {
     @Test fun llmOffInSettingsNeverCallsTheModel() {
         requireLib()
         val (model, lib) = llm() ?: return assumeTrue("no LLM model/plugin", false)
-        val core = NativeFlowCore.loadModels(ModelConfig(asrPath = "", mockText = "um hello there", llmPath = model, llmLib = lib, threads = 4))
+        val core = NativeMurmurCore.loadModels(ModelConfig(asrPath = "", mockText = "um hello there", llmPath = model, llmLib = lib, threads = 4))
         try {
-            core.startSession(dev.flowclone.data.Settings(language = "en", llmEnabled = false).toSessionConfig(emptyList()))
+            core.startSession(dev.murmur.data.Settings(language = "en", llmEnabled = false).toSessionConfig(emptyList()))
             core.pushAudio(sine(16_000), 16_000)
             val r = core.commit()
             assertEquals(CommitStatus.RAW_TRANSCRIPT, r.status)
@@ -198,24 +198,24 @@ class NativeFlowCoreHostTest {
     @Test fun missingPluginFallsBackToAsrOnlyThroughEnginePlan() {
         requireLib()
         val model = llm()?.first ?: return assumeTrue("no LLM model", false)
-        val plan = dev.flowclone.data.EnginePlan.Plan.Native(
-            ModelConfig(asrPath = "", mockText = "hello", llmPath = model, llmLib = "/nonexistent/libflow_llm.so", threads = 2),
-            dev.flowclone.data.EnginePlan.LlmStatus.Loaded(File(model).name),
+        val plan = dev.murmur.data.EnginePlan.Plan.Native(
+            ModelConfig(asrPath = "", mockText = "hello", llmPath = model, llmLib = "/nonexistent/libmurmur_llm.so", threads = 2),
+            dev.murmur.data.EnginePlan.LlmStatus.Loaded(File(model).name),
         )
-        val r = dev.flowclone.data.EnginePlan.load(plan, NativeFlowCore)
-        assertTrue(r.toString(), r.core != null && r.llm is dev.flowclone.data.EnginePlan.LlmStatus.Failed)
-        report("llm fallback: ${(r.llm as dev.flowclone.data.EnginePlan.LlmStatus.Failed).message}")
+        val r = dev.murmur.data.EnginePlan.load(plan, NativeMurmurCore)
+        assertTrue(r.toString(), r.core != null && r.llm is dev.murmur.data.EnginePlan.LlmStatus.Failed)
+        report("llm fallback: ${(r.llm as dev.murmur.data.EnginePlan.LlmStatus.Failed).message}")
         r.core!!.unload()
     }
 
     @Test fun whisperThenLlmInOneJvmProcess() {
         requireLib()
         val (llmModel, lib) = llm() ?: return assumeTrue("no LLM model/plugin", false)
-        val model = System.getProperty("flow.model").orEmpty()
-        val wav = System.getProperty("flow.wav").orEmpty()
+        val model = System.getProperty("murmur.model").orEmpty()
+        val wav = System.getProperty("murmur.wav").orEmpty()
         assumeTrue("no model/wav", File(model).isFile && File(wav).isFile)
         val pcm = readWav16kMono(File(wav))
-        val core = NativeFlowCore.loadModels(ModelConfig(asrPath = model, llmPath = llmModel, llmLib = lib, threads = 4))
+        val core = NativeMurmurCore.loadModels(ModelConfig(asrPath = model, llmPath = llmModel, llmLib = lib, threads = 4))
         try {
             core.startSession(llmSession(budgetMs = 60_000))
             core.setContext(FieldContext(appId = "com.google.android.keep", appCategory = "document"))
@@ -245,7 +245,7 @@ class NativeFlowCoreHostTest {
     @Test fun unloadRacingPushPollCommitNeverFreesUnderACall() {
         requireLib()
         repeat(40) { round ->
-            val core = NativeFlowCore.loadModels(ModelConfig(asrPath = "", mockText = "hello btw", threads = 2)) as NativeFlowCore
+            val core = NativeMurmurCore.loadModels(ModelConfig(asrPath = "", mockText = "hello btw", threads = 2)) as NativeMurmurCore
             core.startSession(SessionConfig(languages = listOf("en")))
             val stop = java.util.concurrent.atomic.AtomicBoolean(false)
             val errors = java.util.concurrent.ConcurrentLinkedQueue<Throwable>()

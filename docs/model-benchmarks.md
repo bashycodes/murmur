@@ -1,6 +1,6 @@
 # Local model benchmarks (ASR + cleanup LLM)
 
-Measured 2026-10-20 to check the defaults in `DECISIONS.md` D3–D5 against data. The scripts are in `tools/probes/bench/`. Binaries, models and audio live in the bench cache directory (`$CACHE`, see `run_all.sh`; default `~/.cache/flow-clone`) and are not in git. Set CACHE=<dir> to reuse an existing cache. To reproduce, run `tools/probes/bench/run_all.sh`; the reproduce section at the end has the details.
+Measured 2026-10-20 to check the defaults in `DECISIONS.md` D3–D5 against data. The scripts are in `tools/probes/bench/`. Binaries, models and audio live in the bench cache directory (`$CACHE`, see `run_all.sh`; default `~/.cache/murmur`) and are not in git. Set CACHE=<dir> to reuse an existing cache. To reproduce, run `tools/probes/bench/run_all.sh`; the reproduce section at the end has the details.
 
 ## TL;DR
 
@@ -201,7 +201,7 @@ At those speeds, cleanup is cheap enough to default **ON** on GPU machines with 
    * Default on when a GPU with ≥ 6 GB VRAM is present.
    * Opt-in model: Qwen2.5-3B-Instruct Q4_K_M (Qwen2.5-1.5B on Android or slow CPUs), using the few-shot prompt with a cached prefix.
 4. Move fillers, spoken punctuation, explicit backtrack phrases and number/money/time ITN into the deterministic, always-on post-processing pass. Most of the LLM's useful work in this test was in these categories.
-5. Revise the cleanup prompt in `flow-core`:
+5. Revise the cleanup prompt in `murmur-core`:
    * short system prompt plus few-shot examples;
    * app and category go in the user turn, so the prefix is cacheable;
    * guardrail: containment check plus a backtrack exemption.
@@ -237,13 +237,13 @@ Raw result files from this session (in `.cache/results/`):
 | LLM rules | `llm-20261020-155222-t4.jsonl`, `llm-rules-20261020-162610-t4.jsonl` |
 | LLM fewshot | `llm-fewshot-20261020-160825-t4.jsonl`, `-161801-t4`, `-170741-t4`, `-171725-t8` |
 
-## Hybrid: local vs via flow-server (2026-10-22)
+## Hybrid: local vs via murmur-server (2026-10-22)
 
 Smoke test of the D17 path on the i7-6700 (load ≈ 8-11 from other jobs):
-a release `flow-server` (Parakeet-TDT-0.6B-v2 int8, 4 threads, 1 worker) in
+a release `murmur-server` (Parakeet-TDT-0.6B-v2 int8, 4 threads, 1 worker) in
 the foreground on `127.0.0.1:17313` with a bearer token, and the same 10
-LibriSpeech clips (5.3-14.4 s) dictated in-process (FlowCore, Parakeet,
-4 threads) and through `Router` → `flow-remote` → server. Audio was pushed in
+LibriSpeech clips (5.3-14.4 s) dictated in-process (MurmurCore, Parakeet,
+4 threads) and through `Router` → `murmur-remote` → server. Audio was pushed in
 100 ms frames at real-time pace, so the number is commit → result
 ("release → text"). Script: `tools/probes/hybrid_smoke/run.sh`; raw rows:
 `docs/bench/hybrid-2026-10-22/latency.tsv`.

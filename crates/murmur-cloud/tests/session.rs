@@ -7,14 +7,14 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use common::*;
-use flow_cloud::testing::Reply;
-use flow_cloud::CloudBackend;
+use murmur_cloud::testing::Reply;
+use murmur_cloud::CloudBackend;
 
 type Srv = Mock;
-use flow_core::config::SessionConfig;
-use flow_core::dictionary::{DictEntry, Dictionary};
-use flow_core::CommitStatus;
-use flow_router::{Backend, Failure, Route, Router, RouterConfig, SecretString};
+use murmur_core::config::SessionConfig;
+use murmur_core::dictionary::{DictEntry, Dictionary};
+use murmur_core::CommitStatus;
+use murmur_router::{Backend, Failure, Route, Router, RouterConfig, SecretString};
 
 fn speech_i16(ms: usize) -> Vec<i16> {
     (0..ms * 16)
@@ -24,7 +24,7 @@ fn speech_i16(ms: usize) -> Vec<i16> {
 
 fn backend(_srv: &Srv) -> CloudBackend {
     CloudBackend::new(
-        settings(flow_cloud::DEFAULT_STT_MODEL),
+        settings(murmur_cloud::DEFAULT_STT_MODEL),
         SecretString::new(KEY),
         None,
     )
@@ -71,8 +71,10 @@ fn provider_text_goes_through_the_local_pipeline() {
     assert_eq!(r.status, CommitStatus::RawTranscript);
     assert_eq!(r.asr_text, "um so i use zephyr every day");
     // Same as a local engine returning that text.
-    let local = flow_core::FlowCore::from_engines(
-        Arc::new(flow_core::asr::MockAsr::new("um so i use zephyr every day")),
+    let local = murmur_core::MurmurCore::from_engines(
+        Arc::new(murmur_core::asr::MockAsr::new(
+            "um so i use zephyr every day",
+        )),
         None,
     );
     local.start_session(cfg).unwrap();
@@ -193,21 +195,21 @@ fn router_with_cloud_attached_end_to_end() {
     let _srv = mock_fixed(reply("hello from the cloud"));
     // A production-shaped entry: the mock is reached only through the
     // test base-URL override, never through config.
-    let mut o = flow_router::OpenRouterConfig::default();
+    let mut o = murmur_router::OpenRouterConfig::default();
     o.stt.consent_host = "openrouter.ai".into();
     o.stt.consent_at_ms = 1;
     let cfg = RouterConfig {
         allow_cloud: true,
         allow_server: false,
         order: vec![Route::Cloud, Route::Client],
-        cloud: flow_router::CloudConfig {
+        cloud: murmur_router::CloudConfig {
             openrouter: o,
             ..Default::default()
         },
         ..Default::default()
     };
     cfg.validate().unwrap();
-    let router = flow_cloud::attach(Router::new(cfg, None, None), None);
+    let router = murmur_cloud::attach(Router::new(cfg, None, None), None);
     assert!(router.cloud_capabilities().cloud);
     assert_eq!(router.cloud_capabilities().adapters, ["openrouter"]);
     router.set_cloud_key("openrouter", Some(SecretString::new(KEY)));

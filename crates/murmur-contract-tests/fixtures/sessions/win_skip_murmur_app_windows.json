@@ -7,12 +7,12 @@
   {
    "at_ms": 0,
    "ctx": {
-    "app_id": "wispr flow",
+    "app_id": "murmur",
     "before": "abc"
    }
   }
  ],
- "name": "win_skip_flow_app_windows",
+ "name": "win_skip_murmur_app_windows",
  "session_config": {
   "dictionary": [],
   "platform": "windows"

@@ -1,4 +1,4 @@
-package dev.flowclone.service
+package dev.murmur.service
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.InputMethod
@@ -6,10 +6,10 @@ import android.graphics.Rect
 import android.os.Bundle
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.inputmethod.EditorInfo
-import dev.flowclone.insert.EditableNode
-import dev.flowclone.insert.InputConnectionPort
-import dev.flowclone.insert.NodeSnapshot
-import dev.flowclone.insert.SurroundingText
+import dev.murmur.insert.EditableNode
+import dev.murmur.insert.InputConnectionPort
+import dev.murmur.insert.NodeSnapshot
+import dev.murmur.insert.SurroundingText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
@@ -158,7 +158,7 @@ object FocusedNodeFinder {
     }
 
     fun isExcludedField(n: AccessibilityNodeInfo) =
-        n.isPassword || dev.flowclone.policy.EditorInputType.isContentExtractionExcluded(n.inputType)
+        n.isPassword || dev.murmur.policy.EditorInputType.isContentExtractionExcluded(n.inputType)
 
     fun find(service: AccessibilityService, root: AccessibilityNodeInfo?, keyboardVisible: Boolean): AccessibilityNodeInfo? {
         service.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.let { return it }

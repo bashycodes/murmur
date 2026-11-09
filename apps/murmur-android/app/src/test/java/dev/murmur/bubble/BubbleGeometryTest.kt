@@ -1,13 +1,13 @@
-package dev.flowclone.bubble
+package dev.murmur.bubble
 
-import dev.flowclone.bubble.BubbleButton.CANCEL
-import dev.flowclone.bubble.BubbleButton.COPY
-import dev.flowclone.bubble.BubbleButton.DISMISS
-import dev.flowclone.bubble.BubbleButton.DONE
-import dev.flowclone.bubble.BubbleButton.MAIN
-import dev.flowclone.bubble.BubbleButton.PASTE
-import dev.flowclone.session.DictationState
-import dev.flowclone.session.DictationState.ErrorKind
+import dev.murmur.bubble.BubbleButton.CANCEL
+import dev.murmur.bubble.BubbleButton.COPY
+import dev.murmur.bubble.BubbleButton.DISMISS
+import dev.murmur.bubble.BubbleButton.DONE
+import dev.murmur.bubble.BubbleButton.MAIN
+import dev.murmur.bubble.BubbleButton.PASTE
+import dev.murmur.session.DictationState
+import dev.murmur.session.DictationState.ErrorKind
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

@@ -1,12 +1,12 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.core.CleanupLevel
-import dev.flowclone.data.DevSettings.CleanupRoute
-import dev.flowclone.data.ShellPages.Dot
-import dev.flowclone.data.ShellPages.Extra
-import dev.flowclone.data.ShellPages.RouteKind
-import dev.flowclone.data.ShellPages.Tab
-import dev.flowclone.health.AccessibilityHealth.Status
+import dev.murmur.core.CleanupLevel
+import dev.murmur.data.DevSettings.CleanupRoute
+import dev.murmur.data.ShellPages.Dot
+import dev.murmur.data.ShellPages.Extra
+import dev.murmur.data.ShellPages.RouteKind
+import dev.murmur.data.ShellPages.Tab
+import dev.murmur.health.AccessibilityHealth.Status
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test

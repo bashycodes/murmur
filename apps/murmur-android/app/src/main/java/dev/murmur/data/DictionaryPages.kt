@@ -1,6 +1,6 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.core.DictEntry
+import dev.murmur.core.DictEntry
 
 /**
  * Dictionary & snippets: the Dictionary and Snippets tabs (ui/tabs, AndroidDictionary /

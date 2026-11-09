@@ -1,16 +1,16 @@
-package dev.flowclone.session
+package dev.murmur.session
 
-import dev.flowclone.core.CommitResult
-import dev.flowclone.core.CoreException
-import dev.flowclone.core.FakeFlowCore
-import dev.flowclone.core.FieldContext
-import dev.flowclone.core.SessionConfig
-import dev.flowclone.core.SessionRoute
-import dev.flowclone.debug.CommitLine
-import dev.flowclone.debug.DebugLogFile
-import dev.flowclone.debug.DebugLogger
-import dev.flowclone.debug.DictationTrace
-import dev.flowclone.debug.InsertOutcome
+import dev.murmur.core.CommitResult
+import dev.murmur.core.CoreException
+import dev.murmur.core.FakeMurmurCore
+import dev.murmur.core.FieldContext
+import dev.murmur.core.SessionConfig
+import dev.murmur.core.SessionRoute
+import dev.murmur.debug.CommitLine
+import dev.murmur.debug.DebugLogFile
+import dev.murmur.debug.DebugLogger
+import dev.murmur.debug.DictationTrace
+import dev.murmur.debug.InsertOutcome
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -44,7 +44,7 @@ class DictationTraceTest {
         }
     }
 
-    /** Mirrors FlowService.Host: history = the `commit …` logcat line; traces go to [onTrace]. */
+    /** Mirrors MurmurService.Host: history = the `commit …` logcat line; traces go to [onTrace]. */
     private class Host(val onTrace: (DictationTrace) -> Unit) : DictationController.Host {
         val inserted = mutableListOf<String>()
         val commitLines = mutableListOf<String>()
@@ -59,7 +59,7 @@ class DictationTraceTest {
     }
 
     private val audio = Audio()
-    private val core = FakeFlowCore(transcript = "my secret phrase")
+    private val core = FakeMurmurCore(transcript = "my secret phrase")
     private fun TestScope.settle() { advanceTimeBy(1_000); runCurrent() }
 
     private fun TestScope.controller(host: DictationController.Host) = DictationController(
@@ -151,10 +151,10 @@ class DictationTraceTest {
         val host = Host(log::dictation)
         dictate(controller(host))
         assertEquals(listOf("my secret phrase"), host.inserted)
-        assertTrue("FlowDebug got $logcat", logcat.isEmpty())
+        assertTrue("MurmurDebug got $logcat", logcat.isEmpty())
         assertFalse(file.file.exists())
         assertFalse(File(dir, "debug").exists())
-        // The always-on FlowService line carries timings only.
+        // The always-on MurmurService line carries timings only.
         val line = host.commitLines.single()
         assertFalse(line, line.contains("secret"))
         assertTrue(line, line.contains("audio=1100ms"))
@@ -181,7 +181,7 @@ class DictationTraceTest {
 
     @Test fun streamingTimingsReachTheTrace() = runTest {
         val traces = mutableListOf<DictationTrace>()
-        core.shapeResult = { it.copy(timings = it.timings.copy(waitMs = 90, segments = 2, preAsrMs = 1300), route = dev.flowclone.core.RouteInfo("local", clientMs = 450)) }
+        core.shapeResult = { it.copy(timings = it.timings.copy(waitMs = 90, segments = 2, preAsrMs = 1300), route = dev.murmur.core.RouteInfo("local", clientMs = 450)) }
         dictate(controller(Host { traces += it }))
         val t = traces.single()
         assertEquals(90L, t.waitMs)
@@ -194,7 +194,7 @@ class DictationTraceTest {
     @Test fun aiCleanupFallbackDetailReachesTheTrace() = runTest {
         val traces = mutableListOf<DictationTrace>()
         core.shapeResult = {
-            it.copy(route = dev.flowclone.core.RouteInfo("local", cleanupRoute = "local", cloudFallback = "llm_timeout",
+            it.copy(route = dev.murmur.core.RouteInfo("local", cleanupRoute = "local", cloudFallback = "llm_timeout",
                 fallbackDetail = "no answer within 5000 ms"))
         }
         dictate(controller(Host { traces += it }))
@@ -224,7 +224,7 @@ class DictationTraceTest {
 
     @Test fun cloudModelAndSessionLanguageReachTheTrace() = runTest {
         val traces = mutableListOf<DictationTrace>()
-        core.shapeResult = { it.copy(route = dev.flowclone.core.RouteInfo("cloud", provider = "openai", model = "whisper-1")) }
+        core.shapeResult = { it.copy(route = dev.murmur.core.RouteInfo("cloud", provider = "openai", model = "whisper-1")) }
         val host = object : DictationController.Host by Host({ traces += it }) {
             override fun sessionConfig() = SessionConfig(languages = listOf("en"))
             override fun onDictationTrace(trace: DictationTrace) { traces += trace }

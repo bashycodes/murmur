@@ -1,9 +1,9 @@
-package dev.flowclone.data
+package dev.murmur.data
 
 import android.database.sqlite.SQLiteDatabase
-import dev.flowclone.FlowApp
-import dev.flowclone.core.CommitResult
-import dev.flowclone.core.CommitStatus
+import dev.murmur.MurmurApp
+import dev.murmur.core.CommitResult
+import dev.murmur.core.CommitStatus
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -18,7 +18,7 @@ import java.io.File
 
 /** history.db v5 (D35): recordings for Retry, versions of retried rows, and the upgrade from v4. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], application = FlowApp::class)
+@Config(sdk = [34], application = MurmurApp::class)
 class RetryStoreTest {
     private val ctx get() = RuntimeEnvironment.getApplication()
     private val dir get() = File(ctx.filesDir, "retry_audio")

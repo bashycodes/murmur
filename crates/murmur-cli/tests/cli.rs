@@ -1,10 +1,10 @@
-//! flow-cli is the end-to-end consumer: WAV in -> CommitResult JSON out.
+//! murmur-cli is the end-to-end consumer: WAV in -> CommitResult JSON out.
 
 use std::path::PathBuf;
 use std::process::Command;
 
 fn bin() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_flow-cli"))
+    Command::new(env!("CARGO_BIN_EXE_murmur-cli"))
 }
 
 fn write_wav(path: &PathBuf, secs: f32, rate: u32, channels: u16) {
@@ -138,8 +138,8 @@ fn clean_with_real_llm_if_present() {
     let model = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../models/qwen2.5-0.5b-instruct-q4_k_m.gguf");
     // `cargo test` builds the plugin into deps/ without copying it up.
-    let exe = PathBuf::from(env!("CARGO_BIN_EXE_flow-cli"));
-    let plugin = exe.parent().unwrap().join("deps/libflow_llm.so");
+    let exe = PathBuf::from(env!("CARGO_BIN_EXE_murmur-cli"));
+    let plugin = exe.parent().unwrap().join("deps/libmurmur_llm.so");
     if !model.is_file() || !plugin.is_file() {
         eprintln!("SKIP: LLM model or plugin missing (tools/fetch-models.sh --llm)");
         return;
@@ -191,8 +191,8 @@ fn whisper_then_llm_in_one_process_if_present() {
         m.join("qwen2.5-0.5b-instruct-q4_k_m.gguf"),
         m.join("jfk.wav"),
     );
-    let exe = PathBuf::from(env!("CARGO_BIN_EXE_flow-cli"));
-    let plugin = exe.parent().unwrap().join("deps/libflow_llm.so");
+    let exe = PathBuf::from(env!("CARGO_BIN_EXE_murmur-cli"));
+    let plugin = exe.parent().unwrap().join("deps/libmurmur_llm.so");
     if ![&asr, &llm, &wav, &plugin].iter().all(|p| p.is_file()) {
         eprintln!("SKIP: whisper/LLM model, sample or plugin missing");
         return;

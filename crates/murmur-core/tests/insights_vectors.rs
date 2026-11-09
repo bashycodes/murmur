@@ -4,7 +4,7 @@
 //! `InsightsVectorsTest`) must stay true for the Rust math, so the Kotlin
 //! mirror can't drift from it unnoticed.
 
-use flow_core::insights::{streaks, Aggregates, LocalDate};
+use murmur_core::insights::{streaks, Aggregates, LocalDate};
 use serde_json::Value;
 
 fn fixture() -> Value {

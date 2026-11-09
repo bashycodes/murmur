@@ -1,4 +1,4 @@
-// Settings → Your server (design: SettingsServer.dc.html): the flow-server
+// Settings → Your server (design: SettingsServer.dc.html): the murmur-server
 // connection (features/engines.ts validates it and saves it with Save).
 // Markup only.
 
@@ -20,7 +20,7 @@ export const settingsServerPage: Page = {
   template: `
 ${heading(
   "Your server",
-  `Run flow-server on a faster computer you own, at home or on a VPN like Tailscale, and this PC sends it the audio. It keeps nothing, and nothing goes to a third party. ${extLink(SERVER_HELP, "Set up a server →")}`,
+  `Run murmur-server on a faster computer you own, at home or on a VPN like Tailscale, and this PC sends it the audio. It keeps nothing, and nothing goes to a third party. ${extLink(SERVER_HELP, "Set up a server →")}`,
 )}
 ${group(
   "Connection",
@@ -32,8 +32,8 @@ ${group(
   ) +
     row(
       `<label for="dev_token">Access token</label>`,
-      `From <code>flow-server gen-token</code>. Stored encrypted for your Windows account; never logged. ${err("token")}`,
-      `<input id="dev_token" class="fl-input lw-w180" data-dev-field type="password" autocomplete="off" spellcheck="false" placeholder="from flow-server gen-token" />
+      `From <code>murmur-server gen-token</code>. Stored encrypted for your Windows account; never logged. ${err("token")}`,
+      `<input id="dev_token" class="fl-input lw-w180" data-dev-field type="password" autocomplete="off" spellcheck="false" placeholder="from murmur-server gen-token" />
        <button type="button" class="fl-btn fl-btn-secondary" id="dev_token_paste">Paste</button>
        <span class="lw-row-extra">
          <button type="button" class="fl-btn fl-btn-ghost fl-btn-sm" id="dev_token_show">Show</button>

@@ -10,7 +10,7 @@ oids. URLs are `https://huggingface.co/<repo>/resolve/<revision>/<path>`.
 * Repo `ivrit-ai/zipformer2-66m-streaming-he`, revision
   `ee769a2a13b887f91572eec349458bfb0fe79e7a`. CC-BY-4.0 (attribution: Yakov
   Kolani / ivrit.ai).
-* Engine: `flow_asr_sherpa::OnlineEngine` (sherpa `OnlineRecognizer`, model type
+* Engine: `murmur_asr_sherpa::OnlineEngine` (sherpa `OnlineRecognizer`, model type
   auto-detected as zipformer2). Put the four files in one directory.
 
 | path in repo | local name | size | SHA-256 |
@@ -79,9 +79,9 @@ changed unrelated words, so the default stays 1.0.
 ## Reproduce
 
 ```sh
-cargo run --release -p flow-asr-sherpa --example online_check -- \
+cargo run --release -p murmur-asr-sherpa --example online_check -- \
   MODEL_DIR --norm [--hotwords a,b] [--beam N] [--score F] clip.wav ...
-FLOW_ZIPFORMER_HE_DIR=… FLOW_HE_WAV=…/10012360550181770926.wav \
-  FLOW_HE_HOTWORD=הארכיפלג cargo test -p flow-asr-sherpa --test online -- --nocapture
-FLOW_PARAKEET_HE_DIR=… FLOW_HE_WAV=… cargo test -p flow-asr-sherpa --test model parakeet_he
+MURMUR_ZIPFORMER_HE_DIR=… MURMUR_HE_WAV=…/10012360550181770926.wav \
+  MURMUR_HE_HOTWORD=הארכיפלג cargo test -p murmur-asr-sherpa --test online -- --nocapture
+MURMUR_PARAKEET_HE_DIR=… MURMUR_HE_WAV=… cargo test -p murmur-asr-sherpa --test model parakeet_he
 ```

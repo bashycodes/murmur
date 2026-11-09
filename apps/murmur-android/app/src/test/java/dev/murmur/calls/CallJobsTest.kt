@@ -1,10 +1,10 @@
-package dev.flowclone.calls
+package dev.murmur.calls
 
-import dev.flowclone.core.CoreException
-import dev.flowclone.core.MeetingException
-import dev.flowclone.core.MeetingJob
-import dev.flowclone.core.MeetingProgress
-import dev.flowclone.core.MeetingSegment
+import dev.murmur.core.CoreException
+import dev.murmur.core.MeetingException
+import dev.murmur.core.MeetingJob
+import dev.murmur.core.MeetingProgress
+import dev.murmur.core.MeetingSegment
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

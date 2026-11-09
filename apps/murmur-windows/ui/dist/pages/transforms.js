@@ -10,7 +10,7 @@ import { ICON, iconEl, iconSvg } from "../lib/icons.js";
 import { invoke } from "../lib/ipc.js";
 import { captureChord, RECORDING_TEXT, stopCapture } from "../lib/keycapture.js";
 import { prefsStore } from "../lib/prefs-store.js";
-/** flow_core::transform limits (the backend checks them again). */
+/** murmur_core::transform limits (the backend checks them again). */
 const MAX_TRANSFORMS = 20;
 const MAX_NAME = 40;
 const MAX_DESCRIPTION = 200;

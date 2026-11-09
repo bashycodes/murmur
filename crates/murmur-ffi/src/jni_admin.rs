@@ -1,11 +1,11 @@
 //! JNI exports for the Android "Users & keys" page (D39; features `jni` +
 //! `admin`, so only the `hybrid` / `remote` flavours' library has them).
 //!
-//! Static natives on `dev.flowclone.admin.NativeAdmin` (Kotlin `object` +
-//! `@JvmStatic external`), kept apart from `NativeFlowCore` so the admin
+//! Static natives on `dev.murmur.admin.NativeAdmin` (Kotlin `object` +
+//! `@JvmStatic external`), kept apart from `NativeMurmurCore` so the admin
 //! surface is one file on each side. Contract:
-//! `apps/flow-android/JNI_CONTRACT.md` "Admin API". Each call is blocking
-//! (≤ `flow_remote::admin::REQUEST_TIMEOUT`) and answers the JSON envelope of
+//! `apps/murmur-android/JNI_CONTRACT.md` "Admin API". Each call is blocking
+//! (≤ `murmur_remote::admin::REQUEST_TIMEOUT`) and answers the JSON envelope of
 //! [`crate::admin_api`]; it never returns null, panics into the JVM or leaves
 //! a Java exception pending. Nothing is logged.
 
@@ -17,7 +17,7 @@ use jni::JNIEnv;
 
 use crate::admin_api;
 
-const PANIC: &str = r#"{"ok":false,"code":"server_error","message":"panic inside flow-ffi"}"#;
+const PANIC: &str = r#"{"ok":false,"code":"server_error","message":"panic inside murmur-ffi"}"#;
 
 fn clear(env: &mut JNIEnv) {
     if env.exception_check().unwrap_or(false) {
@@ -65,7 +65,7 @@ fn reply(env: &mut JNIEnv, f: impl FnOnce(&mut JNIEnv) -> String) -> jstring {
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_admin_NativeAdmin_nativeAdminWhoami(
+pub extern "system" fn Java_dev_murmur_admin_NativeAdmin_nativeAdminWhoami(
     mut env: JNIEnv,
     _c: JClass,
     server: JString,
@@ -77,7 +77,7 @@ pub extern "system" fn Java_dev_flowclone_admin_NativeAdmin_nativeAdminWhoami(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_admin_NativeAdmin_nativeAdminListKeys(
+pub extern "system" fn Java_dev_murmur_admin_NativeAdmin_nativeAdminListKeys(
     mut env: JNIEnv,
     _c: JClass,
     server: JString,
@@ -89,7 +89,7 @@ pub extern "system" fn Java_dev_flowclone_admin_NativeAdmin_nativeAdminListKeys(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_admin_NativeAdmin_nativeAdminCreateKey(
+pub extern "system" fn Java_dev_murmur_admin_NativeAdmin_nativeAdminCreateKey(
     mut env: JNIEnv,
     _c: JClass,
     server: JString,
@@ -104,7 +104,7 @@ pub extern "system" fn Java_dev_flowclone_admin_NativeAdmin_nativeAdminCreateKey
 }
 
 #[no_mangle]
-pub extern "system" fn Java_dev_flowclone_admin_NativeAdmin_nativeAdminRevokeKey(
+pub extern "system" fn Java_dev_murmur_admin_NativeAdmin_nativeAdminRevokeKey(
     mut env: JNIEnv,
     _c: JClass,
     server: JString,

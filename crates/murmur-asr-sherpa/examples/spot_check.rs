@@ -1,13 +1,13 @@
 //! WER/RTF spot check against docs/model-benchmarks.md (one warm engine).
 //!
-//! cargo run --release -p flow-asr-sherpa --example spot_check -- \
+//! cargo run --release -p murmur-asr-sherpa --example spot_check -- \
 //!   MODEL_DIR MANIFEST.json AUDIO_DIR [--threads N] [--greedy] [--hotwords a,b,c]
 //! Prints one JSON line per clip ({id, ref, hyp, dur_s, infer_ms}) on stdout
 //! and load/RTF totals on stderr; score with tools/probes/parakeet_wer.py.
 
 use std::time::Instant;
 
-use flow_asr_sherpa::{ParakeetConfig, ParakeetEngine};
+use murmur_asr_sherpa::{ParakeetConfig, ParakeetEngine};
 
 fn main() {
     let a: Vec<String> = std::env::args().skip(1).collect();

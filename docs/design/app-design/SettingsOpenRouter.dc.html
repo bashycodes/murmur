@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <title>Settings: Cloud</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="flow-theme.css">
-<link rel="stylesheet" href="ds/flow/components/bundle.css">
-<script src="ds/flow/components/bundle.js"></script>
+<link rel="stylesheet" href="murmur-theme.css">
+<link rel="stylesheet" href="ds/murmur/components/bundle.css">
+<script src="ds/murmur/components/bundle.js"></script>
 </head>
 <body>
 <x-dc>
@@ -62,7 +62,7 @@ a{color:#1a1a1a}a:hover{color:#30302f}
         <div class="fl-group">
           <div class="fl-row">
             <div class="fl-row-text"><div class="fl-row-title lw-mono" style="font-size: 14px;">sk-or-v1-••••••••a91f</div><div class="fl-row-desc">Saved in Windows Credential Manager. Only ever sent to openrouter.ai.</div></div>
-            <div class="fl-row-control" style="gap: 8px;"><x-import component-from-global-scope="Flow.Button" variant="ghost">Remove</x-import><x-import component-from-global-scope="Flow.Button" variant="secondary">Check key</x-import></div>
+            <div class="fl-row-control" style="gap: 8px;"><x-import component-from-global-scope="Murmur.Button" variant="ghost">Remove</x-import><x-import component-from-global-scope="Murmur.Button" variant="secondary">Check key</x-import></div>
           </div>
           <div class="fl-row">
             <div class="fl-row-text"><div class="fl-row-title">Credit</div><div class="fl-row-desc">$8.42 left of a $10.00 limit on this key.</div></div>
@@ -84,7 +84,7 @@ a{color:#1a1a1a}a:hover{color:#30302f}
           </div>
           <div class="fl-row">
             <div class="fl-row-text"><div class="fl-row-title">Connection</div><div class="fl-row-desc">Connected · 6 models · 41 ms</div></div>
-            <div class="fl-row-control" style="gap: 12px; align-items: center;"><span class="fl-badge fl-badge-success">Works</span><x-import component-from-global-scope="Flow.Button" variant="secondary">Test connection</x-import></div>
+            <div class="fl-row-control" style="gap: 12px; align-items: center;"><span class="fl-badge fl-badge-success">Works</span><x-import component-from-global-scope="Murmur.Button" variant="secondary">Test connection</x-import></div>
           </div>
           <div class="fl-row" style="padding: 12px 0;">
             <div class="fl-callout fl-callout-warning" style="flex: 1;"><div class="fl-callout-body">This address starts with http, so your key and your words cross the network unencrypted. Use https if your proxy supports it.</div></div>
@@ -101,7 +101,7 @@ a{color:#1a1a1a}a:hover{color:#30302f}
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">AI cleanup</div><div class="fl-row-desc">{{cleanDesc}}</div></div>
           <div class="fl-row-control" style="gap: 16px; align-items: center;">
-            <sc-if value="{{isLL}}" hint-placeholder-val="{{false}}"><x-import component-from-global-scope="Flow.Select" options="{{llModels}}" default-value="qwen2.5-32b" width="{{w200}}"></x-import></sc-if>
+            <sc-if value="{{isLL}}" hint-placeholder-val="{{false}}"><x-import component-from-global-scope="Murmur.Select" options="{{llModels}}" default-value="qwen2.5-32b" width="{{w200}}"></x-import></sc-if>
             <span class="{{cleanBadgeCls}}">{{cleanBadge}}</span><a class="lw-link" href="SettingsCleanup.dc.html">Manage →</a>
           </div>
         </div>
@@ -109,7 +109,7 @@ a{color:#1a1a1a}a:hover{color:#30302f}
           <div class="fl-row">
             <span class="lw-dot" style="background: var(--warning-700);"></span>
             <div class="fl-row-text"><div class="fl-row-title">{{statusTitle}}</div><div class="fl-row-desc">{{statusDesc}}</div></div>
-            <sc-if value="{{canRetry}}" hint-placeholder-val="{{true}}"><div class="fl-row-control"><x-import component-from-global-scope="Flow.Button" variant="secondary">Try now</x-import></div></sc-if>
+            <sc-if value="{{canRetry}}" hint-placeholder-val="{{true}}"><div class="fl-row-control"><x-import component-from-global-scope="Murmur.Button" variant="secondary">Try now</x-import></div></sc-if>
           </div>
         </sc-if>
       </div>
@@ -123,11 +123,11 @@ a{color:#1a1a1a}a:hover{color:#30302f}
         <sc-if value="{{isOR}}" hint-placeholder-val="{{true}}">
           <div class="fl-row">
             <div class="fl-row-text"><div class="fl-row-title">Zero-retention providers only</div><div class="fl-row-desc">Only providers that delete your request as soon as they answer.</div></div>
-            <div class="fl-row-control"><x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Zero-retention providers only"></x-import></div>
+            <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Toggle" default-checked="{{yes}}" label="Zero-retention providers only"></x-import></div>
           </div>
           <div class="fl-row">
             <div class="fl-row-text"><div class="fl-row-title">Block providers that collect data</div><div class="fl-row-desc">Skips providers that may train on what you send.</div></div>
-            <div class="fl-row-control"><x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Block providers that collect data"></x-import></div>
+            <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Toggle" default-checked="{{yes}}" label="Block providers that collect data"></x-import></div>
           </div>
         </sc-if>
       </div>
@@ -142,7 +142,7 @@ a{color:#1a1a1a}a:hover{color:#30302f}
           </div>
           <div class="fl-row">
             <div class="fl-row-text"><div class="fl-row-title">Monthly budget</div><div class="fl-row-desc">When it runs out, OpenRouter pauses and this PC does the work until next month.</div></div>
-            <div class="fl-row-control"><x-import component-from-global-scope="Flow.Select" options="{{budgetOpts}}" default-value="5" width="{{w160}}"></x-import></div>
+            <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Select" options="{{budgetOpts}}" default-value="5" width="{{w160}}"></x-import></div>
           </div>
         </div>
       </sc-if>

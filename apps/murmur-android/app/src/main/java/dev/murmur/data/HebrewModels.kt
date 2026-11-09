@@ -1,8 +1,8 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.core.AsrEngine
-import dev.flowclone.core.LanguageModel
-import dev.flowclone.core.ParakeetDecoding
+import dev.murmur.core.AsrEngine
+import dev.murmur.core.LanguageModel
+import dev.murmur.core.ParakeetDecoding
 
 /**
  * H5: the Hebrew model slot (docs/proposals/hebrew-stt.md, D33). The user imports one of the
@@ -101,7 +101,7 @@ object HebrewModels {
      * "sherpa_online" | "parakeet", "title": …}`), written by the hybrid / remote installer after
      * every file verified against the server's SHA-256. Pinned models never need it.
      */
-    const val ENGINE_FILE = "flow-model.json"
+    const val ENGINE_FILE = "murmur-model.json"
 
     /** The Hebrew model in [dir]: a pinned one by its sizes, else a custom one by its [ENGINE_FILE]; null = none / incomplete. */
     fun installed(dir: java.io.File): Installed? {

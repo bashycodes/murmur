@@ -1,7 +1,7 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.core.CleanupLevel
-import dev.flowclone.core.DictEntry
+import dev.murmur.core.CleanupLevel
+import dev.murmur.core.DictEntry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -106,7 +106,7 @@ class FieldContextBuilderTest {
         assertEquals("PRAGMA secure_delete=ON", HistoryHygiene.ON_OPEN)
         assertEquals("PRAGMA wal_checkpoint(TRUNCATE)", HistoryHygiene.AFTER_DELETE)
         assertEquals("VACUUM", HistoryHygiene.AFTER_CLEAR)
-        val src = java.io.File("src/main/java/dev/flowclone/data/Stores.kt").readText()
+        val src = java.io.File("src/main/java/dev/murmur/data/Stores.kt").readText()
         for (f in listOf("fun delete(", "fun clear(")) {
             val body = src.substringAfter(f).substringBefore("\n    fun ")
             assertTrue("$f scrubs", body.contains("scrub("))
@@ -133,9 +133,9 @@ class FieldContextBuilderTest {
 
 /** 2026-10-23: English dictations came out as Bulgarian with `auto` on 2 s clips (findings). */
 class LanguageDefaultTest {
-    private val multi = LoadedAsr(dev.flowclone.core.AsrEngine.WHISPER, "ggml-base-q5_1.bin")
-    private val english = LoadedAsr(dev.flowclone.core.AsrEngine.WHISPER, "ggml-base.en-q5_1.bin")
-    private val parakeet = LoadedAsr(dev.flowclone.core.AsrEngine.PARAKEET, "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8")
+    private val multi = LoadedAsr(dev.murmur.core.AsrEngine.WHISPER, "ggml-base-q5_1.bin")
+    private val english = LoadedAsr(dev.murmur.core.AsrEngine.WHISPER, "ggml-base.en-q5_1.bin")
+    private val parakeet = LoadedAsr(dev.murmur.core.AsrEngine.PARAKEET, "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8")
 
     @Test fun unsetFollowsThePhoneLanguageOnAMultilingualWhisper() {
         assertEquals("en", LanguageDefault.effective(Settings.LANGUAGE_UNSET, "en", multi))
@@ -169,12 +169,12 @@ class LanguageDefaultTest {
 
     @Test fun multilingualDetectionFromTheFileName() {
         assertTrue(LanguageDefault.isMultilingual(multi))
-        assertTrue(LanguageDefault.isMultilingual(LoadedAsr(dev.flowclone.core.AsrEngine.WHISPER, "ggml-large-v3-turbo-q5_0.bin")))
-        assertTrue(LanguageDefault.isMultilingual(LoadedAsr(dev.flowclone.core.AsrEngine.WHISPER, "ggml-small.bin")))
+        assertTrue(LanguageDefault.isMultilingual(LoadedAsr(dev.murmur.core.AsrEngine.WHISPER, "ggml-large-v3-turbo-q5_0.bin")))
+        assertTrue(LanguageDefault.isMultilingual(LoadedAsr(dev.murmur.core.AsrEngine.WHISPER, "ggml-small.bin")))
         assertTrue(!LanguageDefault.isMultilingual(english))
-        assertTrue(!LanguageDefault.isMultilingual(LoadedAsr(dev.flowclone.core.AsrEngine.WHISPER, "ggml-small.en.bin")))
-        assertTrue(!LanguageDefault.isMultilingual(LoadedAsr(dev.flowclone.core.AsrEngine.WHISPER, "ggml-tiny.en-q8_0.bin")))
-        assertTrue("distil-whisper is English-only", !LanguageDefault.isMultilingual(LoadedAsr(dev.flowclone.core.AsrEngine.WHISPER, "ggml-distil-large-v3.bin")))
+        assertTrue(!LanguageDefault.isMultilingual(LoadedAsr(dev.murmur.core.AsrEngine.WHISPER, "ggml-small.en.bin")))
+        assertTrue(!LanguageDefault.isMultilingual(LoadedAsr(dev.murmur.core.AsrEngine.WHISPER, "ggml-tiny.en-q8_0.bin")))
+        assertTrue("distil-whisper is English-only", !LanguageDefault.isMultilingual(LoadedAsr(dev.murmur.core.AsrEngine.WHISPER, "ggml-distil-large-v3.bin")))
         assertTrue(!LanguageDefault.isMultilingual(parakeet))
     }
 

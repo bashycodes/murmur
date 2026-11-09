@@ -3,7 +3,7 @@
 //   plain-text editor the user dictates into (the normal paste pipeline
 //   types into this textarea like any other app), edits and copies out.
 //   Every change goes to the shell (`note_edit`), which writes it to
-//   %APPDATA%\FlowClone\notes\<id>.txt after a short pause and on close/quit.
+//   %APPDATA%\Murmur\notes\<id>.txt after a short pause and on close/quit.
 // - `?view=notes`: the Notes list (search by content, New note, Pin,
 //   Export, Delete). Opening a note navigates this window to its editor.
 // Styled with the app window's tokens (theme.css + components.css), light

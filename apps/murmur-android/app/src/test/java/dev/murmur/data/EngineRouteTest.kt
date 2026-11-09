@@ -1,11 +1,11 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.core.AsrEngine
-import dev.flowclone.core.CoreException
-import dev.flowclone.core.FakeFlowCore
-import dev.flowclone.core.FlowCore
-import dev.flowclone.core.ModelConfig
-import dev.flowclone.core.ParakeetDecoding
+import dev.murmur.core.AsrEngine
+import dev.murmur.core.CoreException
+import dev.murmur.core.FakeMurmurCore
+import dev.murmur.core.MurmurCore
+import dev.murmur.core.ModelConfig
+import dev.murmur.core.ParakeetDecoding
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -22,10 +22,10 @@ class EngineRouteTest {
 
     private class Opener : RouterOpener {
         var json: String? = null
-        var local: FlowCore? = null
+        var local: MurmurCore? = null
         var fail: CoreException? = null
-        val router = FakeFlowCore("routed")
-        override fun open(routerConfigJson: String, local: FlowCore?): FlowCore {
+        val router = FakeMurmurCore("routed")
+        override fun open(routerConfigJson: String, local: MurmurCore?): MurmurCore {
             json = routerConfigJson; this.local = local
             fail?.let { throw it }
             return router
@@ -79,7 +79,7 @@ class EngineRouteTest {
 
     @Test fun assembleHandsTheLocalCoreToTheRouter() {
         val o = Opener()
-        val loaded = FakeFlowCore("local")
+        val loaded = FakeMurmurCore("local")
         val r = EngineRoute.assemble(routed(EngineRoute.plan(local(), server, BuildCaps.ALL)), { loaded }, o)
         assertSame(o.router, r.core)
         assertSame(loaded, o.local)
@@ -106,7 +106,7 @@ class EngineRouteTest {
 
     @Test fun routerOpenFailureCarriesItsKind() {
         val o = Opener().apply { fail = CoreException("bad_config: public address: TLS (wss) is required", "bad_config") }
-        val r = EngineRoute.assemble(routed(EngineRoute.plan(local(), server, BuildCaps.ALL)), { FakeFlowCore() }, o)
+        val r = EngineRoute.assemble(routed(EngineRoute.plan(local(), server, BuildCaps.ALL)), { FakeMurmurCore() }, o)
         assertNull(r.core)
         assertEquals("bad_config", r.errorKind)
     }
@@ -133,7 +133,7 @@ class EngineRouteTest {
     @Test fun parakeetLoadFailureFallsBackToWhisper() {
         val p = EnginePlan.plan(Settings(asrEngine = AsrEngine.PARAKEET), "/m/base.bin", null, exists, 4, parakeetPath = "/m/pk", isModelDir = { true }) as EnginePlan.Plan.Native
         val tried = mutableListOf<ModelConfig>()
-        val r = EnginePlan.load(p) { cfg -> tried += cfg; if (cfg.asrEngine == AsrEngine.PARAKEET) throw CoreException("model load failed: oom") else FakeFlowCore() }
+        val r = EnginePlan.load(p) { cfg -> tried += cfg; if (cfg.asrEngine == AsrEngine.PARAKEET) throw CoreException("model load failed: oom") else FakeMurmurCore() }
         assertTrue(r.core != null)
         assertEquals(listOf(AsrEngine.PARAKEET, AsrEngine.WHISPER), tried.map { it.asrEngine })
         assertTrue(r.description, r.description.contains("Parakeet failed"))
@@ -142,7 +142,7 @@ class EngineRouteTest {
 
     @Test fun loadedAsrNamesTheParakeetFolder() {
         val p = EnginePlan.plan(Settings(asrEngine = AsrEngine.PARAKEET), "/m/base.bin", null, exists, 4, parakeetPath = "/m/pk-int8/", isModelDir = { true }) as EnginePlan.Plan.Native
-        assertEquals(LoadedAsr(AsrEngine.PARAKEET, "pk-int8"), EnginePlan.load(p) { FakeFlowCore() }.asr)
+        assertEquals(LoadedAsr(AsrEngine.PARAKEET, "pk-int8"), EnginePlan.load(p) { FakeMurmurCore() }.asr)
     }
 
     @Test fun loadedAsrIsNullWhenNothingLoaded() {
@@ -186,13 +186,13 @@ class EngineRouteTest {
 
     @Test fun mismatchWhenParakeetFailedAndWhisperLoaded() {
         val p = EnginePlan.plan(Settings(asrEngine = AsrEngine.PARAKEET), "/m/base.bin", null, exists, 4, parakeetPath = "/m/pk", isModelDir = { true }) as EnginePlan.Plan.Native
-        val r = EnginePlan.load(p) { cfg -> if (cfg.asrEngine == AsrEngine.PARAKEET) throw CoreException("model load failed: oom") else FakeFlowCore() }
+        val r = EnginePlan.load(p) { cfg -> if (cfg.asrEngine == AsrEngine.PARAKEET) throw CoreException("model load failed: oom") else FakeMurmurCore() }
         assertEquals("selected parakeet, loaded whisper base.bin: model load failed: oom", EngineMismatch.message(AsrEngine.PARAKEET, p, r.asr, r.description))
     }
 
     @Test fun mismatchWhenParakeetSelectedButNotImported() {
         val p = EnginePlan.plan(Settings(asrEngine = AsrEngine.PARAKEET), "/m/base.bin", null, exists, 4, parakeetPath = null) as EnginePlan.Plan.Native
-        val r = EnginePlan.load(p) { FakeFlowCore() }
+        val r = EnginePlan.load(p) { FakeMurmurCore() }
         assertEquals("selected parakeet, loaded whisper base.bin: no Parakeet model folder imported", EngineMismatch.message(AsrEngine.PARAKEET, p, r.asr, r.description))
     }
 
@@ -204,13 +204,13 @@ class EngineRouteTest {
 
     @Test fun noMismatchWhenTheSelectedEngineLoaded() {
         val p = local() as EnginePlan.Plan.Native
-        assertNull(EngineMismatch.message(AsrEngine.WHISPER, p, EnginePlan.load(p) { FakeFlowCore() }.asr, "base.bin"))
+        assertNull(EngineMismatch.message(AsrEngine.WHISPER, p, EnginePlan.load(p) { FakeMurmurCore() }.asr, "base.bin"))
         assertNull("no local engine needed (server only)", EngineMismatch.message(AsrEngine.PARAKEET, null, null, "server: h:1"))
     }
 
     // ---- D24 never-fail fallback ----
 
-    private class LoaderRouter(val inner: FakeFlowCore = FakeFlowCore("routed")) : FlowCore by inner {
+    private class LoaderRouter(val inner: FakeMurmurCore = FakeMurmurCore("routed")) : MurmurCore by inner {
         var configs: List<ModelConfig>? = null
         override fun setLocalLoader(configs: List<ModelConfig>): Boolean { this.configs = configs; return true }
     }
@@ -221,7 +221,7 @@ class EngineRouteTest {
         assertNull("nothing loaded at startup", p.local)
         assertTrue(p.onDemand != null)
         var loads = 0
-        val r = EngineRoute.assemble(p, { loads++; FakeFlowCore() }, { _, _ -> router })
+        val r = EngineRoute.assemble(p, { loads++; FakeMurmurCore() }, { _, _ -> router })
         assertEquals(0, loads)
         assertEquals(listOf("/m/base.bin"), router.configs!!.map { it.asrPath })
         assertNull("the phone can take over", r.clientNote)
@@ -234,7 +234,7 @@ class EngineRouteTest {
         assertNull("remote build", routed(EngineRoute.plan(local(), DevSettings.defaults(BuildCaps.REMOTE).copy(host = "10.0.0.2", keepLocalWarm = false), BuildCaps.REMOTE)).onDemand)
         val noModel = routed(EngineRoute.plan(local(asr = null), server.copy(keepLocalWarm = false), BuildCaps.ALL))
         assertNull(noModel.onDemand)
-        val r = EngineRoute.assemble(noModel, { FakeFlowCore() }, { _, _ -> LoaderRouter() })
+        val r = EngineRoute.assemble(noModel, { FakeMurmurCore() }, { _, _ -> LoaderRouter() })
         assertTrue("error toast can say why: ${r.clientNote}", r.clientNote!!.contains("No speech model"))
     }
 

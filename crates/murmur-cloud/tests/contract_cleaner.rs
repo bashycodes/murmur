@@ -1,7 +1,7 @@
 //! `OpenRouterCleaner` wire contract (D28 §2.5, §5.1): streamed chat
 //! completions, privacy + latency routing + `max_price`, SSE parsing,
 //! cancel within 50 ms, usage/cost capture, error codes, and the
-//! flow-core `run_cleanup` integration.
+//! murmur-core `run_cleanup` integration.
 
 mod common;
 
@@ -10,15 +10,15 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use common::*;
-use flow_cloud::testing::Reply;
-use flow_cloud::{Catalog, CleanupSettings, OpenRouterCleaner, DEFAULT_CLEANUP_MODEL};
-use flow_core::asr::AbortFlag;
-use flow_core::cleanup::{
+use murmur_cloud::testing::Reply;
+use murmur_cloud::{Catalog, CleanupSettings, OpenRouterCleaner, DEFAULT_CLEANUP_MODEL};
+use murmur_core::asr::AbortFlag;
+use murmur_core::cleanup::{
     build_prompt, run_cleanup, CleanOutcome, CleanPrompt, Cleaner, FallbackReason,
 };
-use flow_core::config::{CleanupLevel, FieldContext, Style};
-use flow_core::dictionary::Dictionary;
-use flow_router::SecretString;
+use murmur_core::config::{CleanupLevel, FieldContext, Style};
+use murmur_core::dictionary::Dictionary;
+use murmur_router::SecretString;
 
 const ASR: &str = "lets meet at noon";
 
@@ -121,7 +121,7 @@ fn settings_change_routing() {
     let s = CleanupSettings {
         sort: String::new(),
         allow_fallbacks: false,
-        privacy: flow_cloud::Privacy {
+        privacy: murmur_cloud::Privacy {
             zdr: false,
             data_collection: "allow".into(),
         },
@@ -292,7 +292,7 @@ fn estimate_and_default_scope() {
     let c = cleaner();
     let e = c.estimate_cost_usd(&prompt()).unwrap();
     assert!(e > 0.0 && e < 0.01, "{e}");
-    assert_eq!(c.scope(), flow_cloud::CleanupScope::default());
+    assert_eq!(c.scope(), murmur_cloud::CleanupScope::default());
     let unknown = OpenRouterCleaner::new(
         CleanupSettings {
             model: "acme/nope".into(),
@@ -336,7 +336,10 @@ fn metered_usage_and_fast_failures_for_the_router() {
     assert_eq!(c.engine(), "cloud");
     assert_eq!(c.model().as_deref(), Some(DEFAULT_CLEANUP_MODEL));
     assert_eq!(c.timeout_ms(), Some(2500));
-    assert_eq!(c.prompt_scope(), flow_core::cleanup::PromptScope::default());
+    assert_eq!(
+        c.prompt_scope(),
+        murmur_core::cleanup::PromptScope::default()
+    );
     let (r, u) = c.clean_metered(
         &prompt(),
         Instant::now() + Duration::from_secs(3),
@@ -344,7 +347,7 @@ fn metered_usage_and_fast_failures_for_the_router() {
     );
     assert_eq!(r.unwrap(), "Let's meet at noon.");
     assert_eq!(u.engine.as_deref(), Some("cloud"));
-    assert_eq!(u.cost_usd, Some(flow_core::Usd(0.0000061)));
+    assert_eq!(u.cost_usd, Some(murmur_core::Usd(0.0000061)));
     assert_eq!(u.generation_id.as_deref(), Some("gen-stream-1"));
     assert!(u.latency_ms.is_some() && u.ttft_ms.is_some());
     drop(_srv);
@@ -364,7 +367,7 @@ fn metered_usage_and_fast_failures_for_the_router() {
         );
         let e = r.unwrap_err();
         assert_eq!(
-            matches!(e, flow_core::cleanup::CleanError::Unavailable(_)),
+            matches!(e, murmur_core::cleanup::CleanError::Unavailable(_)),
             fast,
             "{e:?}"
         );

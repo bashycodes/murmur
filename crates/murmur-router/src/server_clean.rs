@@ -1,4 +1,4 @@
-//! Server cleanup hop (D36): the configured flow-server's LLM as one
+//! Server cleanup hop (D36): the configured murmur-server's LLM as one
 //! [`Cleaner`] of the cleanup chain, through the remote backend's text-only
 //! `clean` request. No network code here: the backend does the talking.
 //!
@@ -17,8 +17,8 @@
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use flow_core::asr::AbortFlag;
-use flow_core::cleanup::{CleanError, CleanPrompt, CleanUsage, Cleaner, PromptScope};
+use murmur_core::asr::AbortFlag;
+use murmur_core::cleanup::{CleanError, CleanPrompt, CleanUsage, Cleaner, PromptScope};
 
 use crate::router::{Circuit, LockExt};
 use crate::{Backend, CircuitStatus, Failure};
@@ -46,7 +46,7 @@ pub(crate) struct ServerCleanState {
 pub type Clock = Arc<dyn Fn() -> Instant + Send + Sync>;
 
 struct NoClean {
-    /// `hello_ok.server`, e.g. `"flow-server 0.12.0"`.
+    /// `hello_ok.server`, e.g. `"murmur-server 0.12.0"`.
     build: String,
     since: Instant,
 }
@@ -108,7 +108,10 @@ impl ServerClean {
         // The backend's own lock: taken before ours, never inside it.
         let h = b.server_hello()?;
         let mut st = self.st.lk();
-        if h.features.iter().any(|f| f == flow_protocol::FEATURE_CLEAN) {
+        if h.features
+            .iter()
+            .any(|f| f == murmur_protocol::FEATURE_CLEAN)
+        {
             st.no_clean = None;
             return Some(true);
         }

@@ -1,4 +1,4 @@
-package dev.flowclone.session
+package dev.murmur.session
 
 import kotlin.math.log10
 import kotlin.math.sqrt

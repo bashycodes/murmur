@@ -6,22 +6,22 @@
 //! line per case. Run it on two trees and diff the outputs:
 //!
 //! ```text
-//! cp tools/probes/prototypes/cleanroom_2026_11_09/probe.rs crates/flow-core/tests/zz_probe.rs
+//! cp tools/probes/prototypes/cleanroom_2026_11_09/probe.rs crates/murmur-core/tests/zz_probe.rs
 //! PROBE_CASES=$PWD/tools/probes/prototypes/cleanroom_2026_11_09/cases.json \
-//!   cargo test -p flow-core --test zz_probe -- --nocapture > out.jsonl
-//! rm crates/flow-core/tests/zz_probe.rs
+//!   cargo test -p murmur-core --test zz_probe -- --nocapture > out.jsonl
+//! rm crates/murmur-core/tests/zz_probe.rs
 //! ```
 //!
 //! Not promoted; the spec it informed is `docs/specs/text-postprocess.md`.
 
 use std::sync::{Arc, Mutex};
 
-use flow_core::asr::{AsrEngine, AsrError, AsrOutput, AsrRequest};
-use flow_core::config::{AppCategory, FieldContext, Platform, SessionConfig};
-use flow_core::dictionary::Dictionary;
-use flow_core::learn::learn_edit;
-use flow_core::postprocess::{self, DictMatcher};
-use flow_core::FlowCore;
+use murmur_core::asr::{AsrEngine, AsrError, AsrOutput, AsrRequest};
+use murmur_core::config::{AppCategory, FieldContext, Platform, SessionConfig};
+use murmur_core::dictionary::Dictionary;
+use murmur_core::learn::learn_edit;
+use murmur_core::postprocess::{self, DictMatcher};
+use murmur_core::MurmurCore;
 use serde_json::{json, Value};
 
 struct TextAsr(Arc<Mutex<String>>);
@@ -36,12 +36,12 @@ impl AsrEngine for TextAsr {
 
 /// Eval mode (`PROBE_FE_CASES` = formatting-eval style JSONL, `PROBE_FE_SESSION`
 /// = session JSON): each case's `input` as the transcript through the real
-/// `FlowCore::commit` path with no LLM (the fallback rules + post-processing),
+/// `MurmurCore::commit` path with no LLM (the fallback rules + post-processing),
 /// one `{"id", "output"}` line per case, as formatting_eval's score.py reads.
 fn eval_mode(cases: &str, session: &str) {
     let session: SessionConfig = serde_json::from_str(&std::fs::read_to_string(session).unwrap()).unwrap();
     let text = Arc::new(Mutex::new(String::new()));
-    let core = FlowCore::from_engines(Arc::new(TextAsr(text.clone())), None);
+    let core = MurmurCore::from_engines(Arc::new(TextAsr(text.clone())), None);
     let tone: Vec<i16> = (0..16_000).map(|i| ((i as f32 * 0.05).sin() * 8000.0) as i16).collect();
     for line in std::fs::read_to_string(cases).unwrap().lines().filter(|l| !l.trim().is_empty()) {
         let c: Value = serde_json::from_str(line).unwrap();

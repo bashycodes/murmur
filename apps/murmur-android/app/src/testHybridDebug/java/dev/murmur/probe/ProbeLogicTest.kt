@@ -1,4 +1,4 @@
-package dev.flowclone.probe
+package dev.murmur.probe
 
 import android.speech.SpeechRecognizer
 import com.google.mlkit.genai.common.FeatureStatus

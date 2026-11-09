@@ -1,12 +1,12 @@
-package dev.flowclone.server
+package dev.murmur.server
 
-import dev.flowclone.data.HebrewModels
-import dev.flowclone.data.ModelPages
+import dev.murmur.data.HebrewModels
+import dev.murmur.data.ModelPages
 import java.io.File
 
 /**
  * D41: where a library model goes on the phone. Mirrors the Windows rules
- * (apps/flow-windows/src/server_library.rs `plan`): a model tagged with a catalogue id this
+ * (apps/murmur-windows/src/server_library.rs `plan`): a model tagged with a catalogue id this
  * build knows is that catalogue model and must match its built-in pins; any other model is
  * custom, checked against the server's SHA-256, and its `kind` + `engine` pick the slot.
  * Android differences: there is no language-ID slot (the phone loads one model for the
@@ -109,7 +109,7 @@ object ServerCatalog {
     fun entry(id: String?): CatalogueModel? = id?.let { i -> ALL.firstOrNull { it.id == i } }
 }
 
-/** The app folders each slot installs into (`FlowApp.Engine.*Dir()`). */
+/** The app folders each slot installs into (`MurmurApp.Engine.*Dir()`). */
 data class ModelDirs(val models: File, val parakeet: File, val hebrew: File, val llm: File) {
     fun of(slot: Slot): File = when (slot) {
         Slot.STT_WHISPER -> models
@@ -142,7 +142,7 @@ data class Plan(val slot: Slot, val catalogue: CatalogueModel?, val target: File
 }
 
 object ServerSlots {
-    /** The engines a tag can name (`flow_protocol::library::ENGINES`; ServerCatalogTest keeps them equal). */
+    /** The engines a tag can name (`murmur_protocol::library::ENGINES`; ServerCatalogTest keeps them equal). */
     val ENGINES = listOf("whisper", "parakeet", "sherpa_online", "gguf")
 
     /** [ENGINES] for a message: `"whisper", "parakeet", "sherpa_online" or "gguf"`. */

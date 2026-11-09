@@ -1,7 +1,7 @@
-package dev.flowclone.debug
+package dev.murmur.debug
 
-import dev.flowclone.session.DictationState
-import dev.flowclone.session.InsertTarget
+import dev.murmur.session.DictationState
+import dev.murmur.session.InsertTarget
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull

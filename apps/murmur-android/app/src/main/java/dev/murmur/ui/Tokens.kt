@@ -1,11 +1,11 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Color
 
 /**
- * Design tokens of the Android app, from docs/design/app-design/flow-theme.css:
+ * Design tokens of the Android app, from docs/design/app-design/murmur-theme.css:
  * light = the `.lw-android` block (cool-grey Material-style surfaces) plus the design
  * system's badge / route / segment colours; dark = derived from the `.lw-dark` block (the design
  * has no dark Android artboard, so the Android roles take the desktop dark values).

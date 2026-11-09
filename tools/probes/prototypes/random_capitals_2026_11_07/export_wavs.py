@@ -2,7 +2,7 @@
 """Write each history_audio recording of a history.sqlite copy as a WAV.
 
 Probe for docs/findings/2026-11-07-random-capitals.md: builds a
-flow-replay corpus (`OUT/audio/<history id>.wav`, 16-bit mono) outside the
+murmur-replay corpus (`OUT/audio/<history id>.wav`, 16-bit mono) outside the
 repo. Usage: export_wavs.py <history.sqlite> <OUT dir>
 """
 import sqlite3

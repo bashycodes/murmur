@@ -1,4 +1,4 @@
-package dev.flowclone.policy
+package dev.murmur.policy
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -6,9 +6,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The shared app-group vectors (crates/flow-core/fixtures/app-groups/vectors.json, on the test
- * classpath via sourceSets). flow-core's tests/app_groups_vectors.rs checks the same file, so
- * PolicyLists and the Rust core read crates/flow-core/data/app-groups.json the same way (D81).
+ * The shared app-group vectors (crates/murmur-core/fixtures/app-groups/vectors.json, on the test
+ * classpath via sourceSets). murmur-core's tests/app_groups_vectors.rs checks the same file, so
+ * PolicyLists and the Rust core read crates/murmur-core/data/app-groups.json the same way (D81).
  */
 class AppGroupsVectorsTest {
     private val vectors = JSONObject(javaClass.classLoader!!.getResource("app-groups/vectors.json")!!.readText())
@@ -57,7 +57,7 @@ class AppGroupsVectorsTest {
     @Test fun placeholdersAreNormalized() {
         assertTrue(PolicyLists.COMPOSE_PLACEHOLDERS.isNotEmpty())
         for (s in PolicyLists.COMPOSE_PLACEHOLDERS)
-            assertEquals(s, dev.flowclone.insert.TextMatching.normalizePlaceholder(s))
+            assertEquals(s, dev.murmur.insert.TextMatching.normalizePlaceholder(s))
     }
 
     @Test fun nullAndBlankMatchNothing() {

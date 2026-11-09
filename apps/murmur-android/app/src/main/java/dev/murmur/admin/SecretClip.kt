@@ -1,4 +1,4 @@
-package dev.flowclone.admin
+package dev.murmur.admin
 
 import android.content.ClipData
 import android.content.ClipDescription

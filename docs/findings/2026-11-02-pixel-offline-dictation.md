@@ -1,4 +1,4 @@
-# 2026-11-02: Pixel offline dictation, and how Flow Clone could match it in English
+# 2026-11-02: Pixel offline dictation, and how Murmur could match it in English
 
 **Question (owner).** Hebrew is fine; English is not. Pixels have dictation with AI cleanup that is
 great even offline. What is it, can we use it on the S25 Edge (SM-S936B, One UI 9 / Android 17), and
@@ -49,7 +49,7 @@ The English gap is context, vocabulary and cleanup, not acoustic WER.
 * Google has not published the model's architecture or size. Press reports that Rambler uses
   "Gemini Nano v3" are unconfirmed.
 
-## 2. Can Flow Clone use it on the S25 Edge?
+## 2. Can Murmur use it on the S25 Edge?
 
 ### 2a. ML Kit GenAI Speech Recognition (`com.google.mlkit:genai-speech-recognition:1.0.0-alpha1`) ([docs](https://developers.google.com/ml-kit/genai/speech-recognition/android))
 
@@ -101,7 +101,7 @@ The English gap is context, vocabulary and cleanup, not acoustic WER.
 ### 2c. Gboard / Rambler itself
 
 * No app API exists. The only way to use it is to switch to Gboard as the keyboard, which replaces
-  Flow Clone.
+  Murmur.
 * As of late 2026, Rambler is listed for the Pixel 11 only. Press says wider Android rollout will
   follow (unconfirmed).
 

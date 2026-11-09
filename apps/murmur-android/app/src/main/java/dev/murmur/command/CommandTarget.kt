@@ -1,4 +1,4 @@
-package dev.flowclone.command
+package dev.murmur.command
 
 /**
  * Command Mode: the field a command acts on, read when the command starts (the a11y service

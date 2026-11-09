@@ -5,7 +5,7 @@
 
 use std::time::Instant;
 
-use flow_router::SecretString;
+use murmur_router::SecretString;
 
 use crate::encode::{AudioFormat, EncodedAudio};
 use crate::http::CloudError;

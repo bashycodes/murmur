@@ -25,7 +25,7 @@
     },
     "server": "100.64.0.10:7313",
     "server_core": "0.1.0",
-    "server_version": "flow-server 0.1.0",
+    "server_version": "murmur-server 0.1.0",
     "workers": 1
   },
   "last": {

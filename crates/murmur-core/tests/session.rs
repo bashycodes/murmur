@@ -3,11 +3,11 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use flow_core::asr::{AsrEngine, AsrError, AsrOutput, AsrRequest, MockAsr};
-use flow_core::cleanup::{CleanError, CleanPrompt, Cleaner};
-use flow_core::config::{FieldContext, SessionConfig};
-use flow_core::dictionary::{DictEntry, Dictionary};
-use flow_core::{CommitStatus, FlowCore};
+use murmur_core::asr::{AsrEngine, AsrError, AsrOutput, AsrRequest, MockAsr};
+use murmur_core::cleanup::{CleanError, CleanPrompt, Cleaner};
+use murmur_core::config::{FieldContext, SessionConfig};
+use murmur_core::dictionary::{DictEntry, Dictionary};
+use murmur_core::{CommitStatus, MurmurCore};
 
 const CHUNK: usize = 640; // 40 ms @ 16 kHz, the clients' chunk size
 
@@ -17,15 +17,15 @@ fn speech(ms: usize) -> Vec<i16> {
         .collect()
 }
 
-fn push_all(core: &FlowCore, pcm: &[i16]) {
+fn push_all(core: &MurmurCore, pcm: &[i16]) {
     for c in pcm.chunks(CHUNK) {
         core.push_audio(c);
     }
 }
 
-fn mock_core(text: &str) -> (FlowCore, Arc<MockAsr>) {
+fn mock_core(text: &str) -> (MurmurCore, Arc<MockAsr>) {
     let asr = Arc::new(MockAsr::new(text));
-    (FlowCore::from_engines(asr.clone(), None), asr)
+    (MurmurCore::from_engines(asr.clone(), None), asr)
 }
 
 struct FixedCleaner(&'static str, Duration);
@@ -134,7 +134,7 @@ fn auto_language_with_multiple_prefs() {
 #[test]
 fn llm_cleanup_formats() {
     let asr = Arc::new(MockAsr::new("um so lets ship it"));
-    let core = FlowCore::from_engines(
+    let core = MurmurCore::from_engines(
         asr,
         Some(Arc::new(FixedCleaner("So let's ship it.", Duration::ZERO))),
     );
@@ -149,7 +149,7 @@ fn llm_cleanup_formats() {
 #[test]
 fn llm_timeout_falls_back_to_raw_transcript() {
     let asr = Arc::new(MockAsr::new("hello there"));
-    let core = FlowCore::from_engines(
+    let core = MurmurCore::from_engines(
         asr,
         Some(Arc::new(FixedCleaner(
             "Hello there.",
@@ -171,7 +171,8 @@ fn llm_timeout_falls_back_to_raw_transcript() {
 #[test]
 fn raw_mode_skips_llm() {
     let asr = Arc::new(MockAsr::new("hello there"));
-    let core = FlowCore::from_engines(asr, Some(Arc::new(FixedCleaner("CHANGED", Duration::ZERO))));
+    let core =
+        MurmurCore::from_engines(asr, Some(Arc::new(FixedCleaner("CHANGED", Duration::ZERO))));
     core.start_session(SessionConfig {
         raw_mode: true,
         ..Default::default()
@@ -232,7 +233,7 @@ fn max_samples_truncates() {
 #[test]
 fn push_audio_does_not_block_on_slow_asr() {
     let asr = Arc::new(MockAsr::new("partial").with_delay(Duration::from_millis(300)));
-    let core = FlowCore::from_engines(asr, None);
+    let core = MurmurCore::from_engines(asr, None);
     core.start_session(SessionConfig {
         partial_interval_ms: Some(40),
         ..Default::default()
@@ -281,7 +282,7 @@ impl AsrEngine for Broken {
 
 #[test]
 fn asr_failure_is_error_status() {
-    let core = FlowCore::from_engines(Arc::new(Broken), None);
+    let core = MurmurCore::from_engines(Arc::new(Broken), None);
     core.start_session(SessionConfig::default()).unwrap();
     push_all(&core, &speech(300));
     let r = core.commit();
@@ -315,7 +316,7 @@ fn commit_result_serializes_to_spec_json() {
     assert_eq!(j["asr_text"], "hello");
 }
 
-fn run_text(asr_text: &str, cfg: SessionConfig, ctx: FieldContext) -> flow_core::CommitResult {
+fn run_text(asr_text: &str, cfg: SessionConfig, ctx: FieldContext) -> murmur_core::CommitResult {
     let (core, _) = mock_core(asr_text);
     core.start_session(cfg).unwrap();
     core.set_context(ctx);
@@ -379,7 +380,7 @@ fn press_enter_is_reported_on_windows_only() {
     // the text, as with server-punctuated "Send it press enter."
     assert_eq!(r.final_text, "Send it.");
     let android = SessionConfig {
-        platform: flow_core::config::Platform::Android,
+        platform: murmur_core::config::Platform::Android,
         ..Default::default()
     };
     let r = run_text("Send it press enter", android, FieldContext::default());
@@ -397,7 +398,7 @@ fn chat_app_drops_trailing_period_by_classification() {
         "Sounds good "
     );
     let android = SessionConfig {
-        platform: flow_core::config::Platform::Android,
+        platform: murmur_core::config::Platform::Android,
         ..Default::default()
     };
     let ctx = FieldContext {
@@ -413,7 +414,7 @@ fn chat_app_drops_trailing_period_by_classification() {
 #[test]
 fn android_unknown_context_gets_no_trailing_space() {
     let android = SessionConfig {
-        platform: flow_core::config::Platform::Android,
+        platform: murmur_core::config::Platform::Android,
         ..Default::default()
     };
     let ctx = FieldContext {
@@ -429,7 +430,8 @@ fn android_unknown_context_gets_no_trailing_space() {
 #[test]
 fn terminal_skips_llm() {
     let asr = Arc::new(MockAsr::new("ls dash la"));
-    let core = FlowCore::from_engines(asr, Some(Arc::new(FixedCleaner("CHANGED", Duration::ZERO))));
+    let core =
+        MurmurCore::from_engines(asr, Some(Arc::new(FixedCleaner("CHANGED", Duration::ZERO))));
     core.start_session(SessionConfig::default()).unwrap();
     core.set_context(FieldContext {
         app_id: "windowsterminal".into(),
@@ -447,7 +449,7 @@ fn commit_preempts_in_flight_partial() {
     // A partial decode that is running when the user releases must not add
     // its full duration to release->text latency.
     let asr = Arc::new(MockAsr::new("x").with_delay(Duration::from_millis(800)));
-    let core = FlowCore::from_engines(asr, None);
+    let core = MurmurCore::from_engines(asr, None);
     core.start_session(SessionConfig {
         partial_interval_ms: Some(40),
         ..Default::default()
@@ -464,7 +466,7 @@ fn commit_preempts_in_flight_partial() {
 #[test]
 fn whole_utterance_snippet_skips_llm() {
     let asr = Arc::new(MockAsr::new("My email."));
-    let core = FlowCore::from_engines(
+    let core = MurmurCore::from_engines(
         asr,
         Some(Arc::new(FixedCleaner(
             "Totally different words here",
@@ -634,7 +636,7 @@ fn wait_until(mut f: impl FnMut() -> bool) -> bool {
 #[test]
 fn llm_prefill_follows_context_and_partials_while_speaking() {
     let spy = Arc::new(PrefillSpy::default());
-    let core = FlowCore::from_engines(Arc::new(MockAsr::new("hello world")), Some(spy.clone()));
+    let core = MurmurCore::from_engines(Arc::new(MockAsr::new("hello world")), Some(spy.clone()));
     core.start_session(SessionConfig {
         partial_interval_ms: Some(100),
         ..Default::default()
@@ -686,7 +688,7 @@ fn llm_prefill_hint_is_the_rules_text_the_commit_prompt_starts_with() {
     }
     let spy = Arc::new(Spy::default());
     let asr = "um so the meeting moved to tuesday comma right after lunch";
-    let core = FlowCore::from_engines(Arc::new(MockAsr::new(asr)), Some(spy.clone()));
+    let core = MurmurCore::from_engines(Arc::new(MockAsr::new(asr)), Some(spy.clone()));
     core.start_session(SessionConfig {
         partial_interval_ms: Some(100),
         llm_skip_clean: false,
@@ -735,7 +737,7 @@ fn llm_prefill_is_skipped_when_llm_would_not_run() {
         },
     ] {
         let spy = Arc::new(PrefillSpy::default());
-        let core = FlowCore::from_engines(Arc::new(MockAsr::new("hi")), Some(spy.clone()));
+        let core = MurmurCore::from_engines(Arc::new(MockAsr::new("hi")), Some(spy.clone()));
         core.start_session(cfg).unwrap();
         push_all(&core, &speech(300));
         std::thread::sleep(Duration::from_millis(100));
@@ -765,7 +767,7 @@ fn spoken_cleanup_runs_by_default_and_can_be_disabled() {
 fn spoken_cleanup_runs_with_the_llm_switched_off() {
     // D27: Android with local AI off sends level none + raw_mode; it must
     // still get the deterministic layer (it used to get none of it).
-    use flow_core::config::{CleanupLevel, Platform};
+    use murmur_core::config::{CleanupLevel, Platform};
     for (level, raw) in [
         (CleanupLevel::None, true),
         (CleanupLevel::None, false),
@@ -808,13 +810,13 @@ fn llm_never_runs_at_level_none_or_raw_mode() {
             Ok("LLM WAS HERE".into())
         }
     }
-    use flow_core::config::CleanupLevel;
+    use murmur_core::config::CleanupLevel;
     for (level, raw) in [
         (CleanupLevel::None, true),
         (CleanupLevel::None, false),
         (CleanupLevel::Light, true),
     ] {
-        let core = FlowCore::from_engines(
+        let core = MurmurCore::from_engines(
             Arc::new(MockAsr::new("send it period")),
             Some(Arc::new(Shout)),
         );
@@ -840,7 +842,7 @@ fn llm_is_skipped_when_it_cannot_help() {
         }
     }
     let run = |skip: bool| {
-        let core = FlowCore::from_engines(
+        let core = MurmurCore::from_engines(
             Arc::new(MockAsr::new("Can you send me the slides?")),
             Some(Arc::new(Shout)),
         );
@@ -864,7 +866,7 @@ fn llm_is_skipped_when_it_cannot_help() {
 #[test]
 fn verbatim_is_spoken_cleanup_off_at_level_none() {
     let cfg = SessionConfig {
-        cleanup_level: flow_core::config::CleanupLevel::None,
+        cleanup_level: murmur_core::config::CleanupLevel::None,
         spoken_cleanup: false,
         ..Default::default()
     };
@@ -897,7 +899,7 @@ fn llm_sees_the_spoken_cleanup_output() {
         }
     }
     let echo = Arc::new(Echo(Default::default()));
-    let core = FlowCore::from_engines(
+    let core = MurmurCore::from_engines(
         Arc::new(MockAsr::new("um I I think it works period")),
         Some(echo.clone()),
     );
@@ -925,7 +927,7 @@ struct GatedPartialAsr {
 
 impl AsrEngine for GatedPartialAsr {
     fn transcribe(&self, _pcm: &[f32], req: &AsrRequest) -> Result<AsrOutput, AsrError> {
-        if req.purpose != flow_core::asr::AsrPurpose::Partial {
+        if req.purpose != murmur_core::asr::AsrPurpose::Partial {
             return Ok(AsrOutput {
                 text: "final".into(),
                 ..Default::default()
@@ -968,7 +970,7 @@ fn stale_partial_from_a_cancelled_session_is_dropped() {
         entered: std::sync::Mutex::new(Some(etx)),
         release: std::sync::Mutex::new(Some(rrx)),
     });
-    let core = FlowCore::from_engines(asr, None);
+    let core = MurmurCore::from_engines(asr, None);
     core.start_session(partial_cfg()).unwrap();
     push_all(&core, &speech(500));
     erx.recv_timeout(Duration::from_secs(5))
@@ -1027,7 +1029,7 @@ impl AsrEngine for AbortableAsr {
 
 #[test]
 fn cancel_during_commit_aborts_it_and_frees_the_worker() {
-    let core = FlowCore::from_engines(Arc::new(AbortableAsr), None);
+    let core = MurmurCore::from_engines(Arc::new(AbortableAsr), None);
     let cfg = SessionConfig {
         vad: false,
         ..Default::default()
@@ -1080,7 +1082,7 @@ impl AsrEngine for GatedFinalAsr {
 fn start_during_commit_keeps_the_committing_sessions_context_and_drops() {
     let (etx, erx) = std::sync::mpsc::channel();
     let (rtx, rrx) = std::sync::mpsc::channel();
-    let core = FlowCore::from_engines(
+    let core = MurmurCore::from_engines(
         Arc::new(GatedFinalAsr {
             entered: std::sync::Mutex::new(Some(etx)),
             release: std::sync::Mutex::new(Some(rrx)),
@@ -1222,7 +1224,7 @@ fn wait_ms_reports_a_commit_queued_behind_the_worker() {
     struct Stubborn(std::sync::atomic::AtomicUsize);
     impl AsrEngine for Stubborn {
         fn transcribe(&self, _pcm: &[f32], req: &AsrRequest) -> Result<AsrOutput, AsrError> {
-            if req.purpose == flow_core::asr::AsrPurpose::Partial {
+            if req.purpose == murmur_core::asr::AsrPurpose::Partial {
                 self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 std::thread::sleep(Duration::from_millis(400));
             }
@@ -1233,7 +1235,7 @@ fn wait_ms_reports_a_commit_queued_behind_the_worker() {
         }
     }
     let asr = Arc::new(Stubborn(Default::default()));
-    let core = FlowCore::from_engines(asr.clone(), None);
+    let core = MurmurCore::from_engines(asr.clone(), None);
     core.start_session(SessionConfig {
         partial_interval_ms: Some(40),
         ..Default::default()
@@ -1265,7 +1267,7 @@ fn wait_ms_reports_a_commit_queued_behind_the_worker() {
 /// a quote, money and a height), with AI cleanup off as Android sends it.
 #[test]
 fn fallback_rules_fix_the_four_ab_shapes_without_ai() {
-    use flow_core::config::{CleanupLevel, Platform};
+    use murmur_core::config::{CleanupLevel, Platform};
     let run = |s: &str| {
         let cfg = SessionConfig {
             cleanup_level: CleanupLevel::None,
@@ -1321,9 +1323,9 @@ impl AsrEngine for GatedAsr {
 }
 
 /// Commit `pcm` with VAD on; also the RMS the ASR got (None: not called).
-fn gated_commit(pcm: &[i16]) -> (flow_core::CommitResult, Option<f32>) {
+fn gated_commit(pcm: &[i16]) -> (murmur_core::CommitResult, Option<f32>) {
     let asr = Arc::new(GatedAsr(Default::default()));
-    let core = FlowCore::from_engines(asr.clone(), None);
+    let core = MurmurCore::from_engines(asr.clone(), None);
     core.start_session(SessionConfig::default()).unwrap();
     push_all(&core, pcm);
     let r = core.commit();

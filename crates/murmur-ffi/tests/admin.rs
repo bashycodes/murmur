@@ -1,32 +1,32 @@
-//! D39 admin API through flow-ffi (feature `admin`): the JSON layer against
-//! a real in-process flow-server, and (with `jni`) a real JVM driving the
-//! `dev.flowclone.admin.NativeAdmin` exports. The JVM test skips when no
+//! D39 admin API through murmur-ffi (feature `admin`): the JSON layer against
+//! a real in-process murmur-server, and (with `jni`) a real JVM driving the
+//! `dev.murmur.admin.NativeAdmin` exports. The JVM test skips when no
 //! `java` is on PATH.
 #![cfg(feature = "admin")]
 
 use std::path::PathBuf;
 use std::process::Command;
 
-use flow_ffi::admin_api;
+use murmur_ffi::admin_api;
 
 const TOKEN: &str = "admin-test-token-0123456789abcdef";
 
 struct InProcessServer {
     addr: std::net::SocketAddr,
-    _handle: flow_server::ServerHandle,
+    _handle: murmur_server::ServerHandle,
     _rt: tokio::runtime::Runtime,
 }
 
 impl InProcessServer {
     fn start() -> Self {
-        use flow_core::config::{AsrBackend, ModelConfig};
+        use murmur_core::config::{AsrBackend, ModelConfig};
         let rt = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .enable_all()
             .build()
             .unwrap();
         // A token without state_dir = in-memory keys; the token is admin key `owner`.
-        let cfg = flow_server::config::Config {
+        let cfg = murmur_server::config::Config {
             bind: vec!["127.0.0.1:0".into()],
             token: Some(TOKEN.into()),
             model: ModelConfig {
@@ -37,7 +37,7 @@ impl InProcessServer {
         };
         let handle = rt.block_on(async {
             let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-            flow_server::serve(cfg, vec![l])
+            murmur_server::serve(cfg, vec![l])
                 .await
                 .expect("server starts")
         });
@@ -107,12 +107,12 @@ fn json_api_round_trip() {
 #[test]
 fn contract_lists_every_admin_symbol() {
     let contract = std::fs::read_to_string(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../apps/flow-android/JNI_CONTRACT.md"),
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../apps/murmur-android/JNI_CONTRACT.md"),
     )
     .unwrap();
     let want: std::collections::BTreeSet<&str> = contract
         .split('`')
-        .filter(|w| w.starts_with("Java_dev_flowclone_admin_NativeAdmin_native"))
+        .filter(|w| w.starts_with("Java_dev_murmur_admin_NativeAdmin_native"))
         .collect();
     assert_eq!(want.len(), 4, "{want:?}");
     let src = include_str!("../src/jni_admin.rs");
@@ -135,15 +135,15 @@ fn jvm_admin_round_trip() {
         features.push("cloud");
     }
     let st = Command::new(env!("CARGO"))
-        .args(["build", "-q", "-p", "flow-ffi", "--lib", "--features"])
+        .args(["build", "-q", "-p", "murmur-ffi", "--lib", "--features"])
         .arg(features.join(","))
         .status()
         .unwrap();
     assert!(st.success());
     let exe = std::env::current_exe().unwrap();
     let lib_dir = exe.parent().unwrap().parent().unwrap().to_path_buf();
-    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/java/dev/flowclone/admin/JniAdmin.java");
+    let src =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/java/dev/murmur/admin/JniAdmin.java");
     let s = InProcessServer::start();
     let out = Command::new("java")
         .arg(format!("-Djava.library.path={}", lib_dir.display()))

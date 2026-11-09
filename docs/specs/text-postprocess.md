@@ -1,12 +1,12 @@
 # Spec: text post-processing and edit learning
 
-Status: the behaviour contract for `crates/flow-core/src/postprocess/`
+Status: the behaviour contract for `crates/murmur-core/src/postprocess/`
 (minus `spoken*.rs` and `terminal.rs`, which are specified by their own
-module docs and tests) and `crates/flow-core/src/learn.rs`. Written
+module docs and tests) and `crates/murmur-core/src/learn.rs`. Written
 2026-11-09 for a from-scratch rewrite of those modules.
 
-Sources: the public API and its callers (`engine.rs`, `flow-ffi`,
-`flow-router`, the Windows and Android shells), `docs/DECISIONS.md`,
+Sources: the public API and its callers (`engine.rs`, `murmur-ffi`,
+`murmur-router`, the Windows and Android shells), `docs/DECISIONS.md`,
 `docs/core-architecture.md`, `CHANGELOG.md`, this repo's own tests, and
 the observed output of the pre-rewrite code on invented inputs
 (`tools/probes/prototypes/cleanroom_2026_11_09/`: `cases.json` from
@@ -29,7 +29,7 @@ cached by the engine).
 ## 2. Public API (must keep compiling)
 
 ```rust
-// crates/flow-core/src/postprocess/mod.rs
+// crates/murmur-core/src/postprocess/mod.rs
 pub mod spoken;      // unchanged
 pub mod terminal;    // unchanged
 pub use DictMatcher; // see §4
@@ -50,7 +50,7 @@ impl DictMatcher {
     pub fn find_and_replace(&self, text: &str) -> String;
 }
 
-// crates/flow-core/src/learn.rs
+// crates/murmur-core/src/learn.rs
 pub const MAX_RUN_WORDS: usize = 4;
 pub const MAX_CANDIDATES: usize = 4;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -62,8 +62,8 @@ pub fn learn_edit(pasted: &str, edited: &str, dict: &Dictionary) -> Vec<Candidat
 
 Callers: `engine.rs` (`apply_with`, `effective_category`,
 `DictMatcher::{new, whole_snippet}`, `spoken::*`, `terminal::close_sentence`,
-`learn::learn_edit`), `flow-ffi` (`effective_category`, `learn_edit`),
-`flow-router` (`learn::{Candidate, learn_edit}`), `flow-replay`
+`learn::learn_edit`), `murmur-ffi` (`effective_category`, `learn_edit`),
+`murmur-router` (`learn::{Candidate, learn_edit}`), `murmur-replay`
 (`effective_category`), the probe runners under `tools/probes/prototypes/`
 (`apply`). `Candidate` crosses the JNI boundary as JSON with the keys
 `original`, `corrected`, `looks_like_name` (the Kotlin decoder treats a
@@ -402,16 +402,16 @@ early. "; "so " with `after` "x" → "the parcel arrived early "; empty
 `before` → "The parcel arrived early. ". Not Notion: `www.notion.so`,
 `Notion.so`, `*.notion.site`, the Windows app `Notion.exe`.
 
-*This app's own windows* (Windows only): when `app.is_flow_app`, §5.1–§5.6
+*This app's own windows* (Windows only): when `app.is_murmur_app`, §5.1–§5.6
 are skipped whatever the context: `t` is inserted as is, with no
 trailing space; Press Enter (§8) still applies, and style punctuation
 (§6) applies only when `selected` is empty (over a selection the text
 keeps its period, as in §5.6).
-Observed, kept: `murmur.exe` / `flow-windows.exe` with any `before`,
+Observed, kept: `murmur.exe` / `murmur-windows.exe` with any `before`,
 `after` or selection → "The parcel arrived early."; casual over the
 selection "abc" → "The parcel arrived early."; casual → "The parcel
 arrived early"; "Send it press enter." → "Send it." with `press_enter`.
-Android `dev.flowclone` is not special.
+Android `dev.murmur` is not special.
 
 ## 6. Style punctuation
 
@@ -512,7 +512,7 @@ text, so "Send it press enter." after " more" → "Send it", and casual
 ## 9. App category
 
 Classification comes from the shared app groups (`crate::app_groups`,
-`crates/flow-core/data/app-groups.json`, D81) through
+`crates/murmur-core/data/app-groups.json`, D81) through
 `postprocess::apps::classify(platform, app_id, url_host) -> AppInfo`
 (that module and `AppInfo`/`AppType`/`Bucket` are kept as they are; the
 `app_groups_vectors` test reads `classify(..).bucket`). Post-processing
@@ -523,7 +523,7 @@ has no app lists of its own.
 * `listed` (§3 step 1) is `classify(..)`, which ignores
   `ctx.app_category`: chat (§6) = `listed.is_messaging`; email (§7) =
   `listed.app_type == AppType::Email`; Notion and own-app (§5.7) =
-  `listed.is_notion` / `listed.is_flow_app`.
+  `listed.is_notion` / `listed.is_murmur_app`.
 * Windows app ids are compared case-insensitively and without a trailing
   `.exe` ("Outlook.EXE" = "outlook"), as the Windows shell does. **Fix**:
   `classify` passed the id with `.exe` to the groups, so on Windows no
@@ -541,7 +541,7 @@ Outlook `olk`, Teams, Android Slack and WeChat are now email / chat).
   in the product. `ctx.file_names` stays in `FieldContext` because it is
   part of the client/server wire format. `paste.rs` keeps its
   `{{BREAK}}`/`{{TAB}}` marker splitting, which now has no producer in
-  flow-core (the markers only pass through when they are in the text,
+  murmur-core (the markers only pass through when they are in the text,
   e.g. a snippet body).
 * **Slack "at Name" → "@Name"** tagging: gated on macOS app ids that no
   supported platform reports, and off on the engine path, so it never ran.
@@ -632,14 +632,14 @@ app), so the core does not guess where the dictation ended.
 * Unit tests next to the new code cover every "Observed, kept" and
   "Change" example in this spec, with made-up text only. They include
   "IPhone" → "iPhone" and "NASA" kept mid-sentence.
-* `crates/flow-core/tests/vectors.rs` and `tests/vectors/*.json` are
+* `crates/murmur-core/tests/vectors.rs` and `tests/vectors/*.json` are
   removed: their expectations were produced by another product's code,
   not by this project's decisions.
 * `learn.rs`'s own tests stay (they are this project's), with the
   example brand name replaced by an invented one.
 * The engine-level tests (`tests/session.rs`, `tests/d*_*.rs`,
-  `tests/spoken_bench.rs`, `flow-router`, `flow-protocol` and
-  `flow-windows` tests and fixtures) must pass unchanged, except where a
+  `tests/spoken_bench.rs`, `murmur-router`, `murmur-protocol` and
+  `murmur-windows` tests and fixtures) must pass unchanged, except where a
   test asserts a behaviour this spec marks **Change**; such an edit is
   listed in the commit. Edited: `tests/api_additions.rs` (IDE tagging
   test → "file names are not tagged", §10).

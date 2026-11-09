@@ -8,7 +8,7 @@
 
 use std::time::{Duration, Instant};
 
-use flow_router::{BackendError, Failure};
+use murmur_router::{BackendError, Failure};
 
 pub use reqwest::blocking::{Client, RequestBuilder, Response};
 
@@ -158,7 +158,7 @@ pub fn client_with(https_only: bool, connect: Duration) -> Client {
     Client::builder()
         .connect_timeout(connect)
         .pool_idle_timeout(Duration::from_secs(90))
-        .user_agent(concat!("flow-clone/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("murmur/", env!("CARGO_PKG_VERSION")))
         .redirect(reqwest::redirect::Policy::none())
         .referer(false)
         .https_only(https_only)

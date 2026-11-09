@@ -6,7 +6,7 @@
 //! context at dictation start (the text just before and just after the
 //! caret), so edits elsewhere in the document don't count. When the
 //! watch ends, the last region is word-aligned against what was pasted
-//! (`flow_core::learn_edit`), and the surviving substitutions become
+//! (`murmur_core::learn_edit`), and the surviving substitutions become
 //! **suggestions** the user must accept (`suggestions.rs`): nothing is
 //! ever added to the dictionary automatically.
 //!

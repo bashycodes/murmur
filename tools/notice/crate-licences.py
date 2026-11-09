@@ -4,9 +4,9 @@
     python3 -I tools/notice/crate-licences.py           # rewrite both
     python3 -I tools/notice/crate-licences.py --check   # fail if either is stale
 
-The crates are the ones linked into what we ship: flow-server, flow-ffi
-(Android) and flow-llm from the root workspace, flow-windows from
-apps/flow-windows, for the platforms they ship on, with every feature on
+The crates are the ones linked into what we ship: murmur-server, murmur-ffi
+(Android) and murmur-llm from the root workspace, murmur-windows from
+apps/murmur-windows, for the platforms they ship on, with every feature on
 (a superset: CUDA/Vulkan builds included). Dev-dependencies and build
 scripts' own dependencies are left out; proc-macros are kept. Our own path
 crates are left out. Runs `cargo metadata --offline`, so the registry cache
@@ -34,15 +34,15 @@ BEGIN = "--- BEGIN GENERATED: Rust crates (tools/notice/crate-licences.py) ---"
 END = "--- END GENERATED: Rust crates ---"
 APPENDIX = ROOT / "THIRD-PARTY-LICENSES"
 TEXTS = ROOT / "third_party/licenses"
-FONTS = ROOT / "apps/flow-windows/ui/dist/fonts"
+FONTS = ROOT / "apps/murmur-windows/ui/dist/fonts"
 LICENCE_FILE = re.compile(r"^(licen[cs]e|copying|notice|unlicense|copyright)([-_.][^/]*)?$", re.I)
 NOT_TEXT = {".cmake", ".rs", ".py", ".c", ".h", ".cpp", ".toml", ".json", ".yml", ".yaml", ".html", ".sh"}
 SYS_CRATES = {"llama-cpp-sys-2", "whisper-rs-sys", "libsqlite3-sys"}
 # (workspace dir, shipped root crates, target platforms)
 SHIPPED = [
-    (ROOT, ["flow-server", "flow-ffi", "flow-llm"],
+    (ROOT, ["murmur-server", "murmur-ffi", "murmur-llm"],
      ["x86_64-unknown-linux-gnu", "aarch64-linux-android", "x86_64-pc-windows-msvc"]),
-    (ROOT / "apps/flow-windows", ["flow-windows"], ["x86_64-pc-windows-msvc"]),
+    (ROOT / "apps/murmur-windows", ["murmur-windows"], ["x86_64-pc-windows-msvc"]),
 ]
 
 

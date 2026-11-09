@@ -1,4 +1,4 @@
-package dev.flowclone.policy
+package dev.murmur.policy
 
 /**
  * `EditorInfo.inputType` predicates (spec 07 §4.1). ALL number fields count as sensitive
@@ -101,19 +101,19 @@ object InsertGuard {
     /** Package + loose identity hash (package, class, view id, description) of a focused field. */
     data class Field(val pkg: String?, val identity: Long?)
 
-    fun check(start: Field?, now: Field, policyAllows: Boolean, explicit: Boolean): dev.flowclone.session.InsertTarget {
-        if (!policyAllows) return dev.flowclone.session.InsertTarget.PROTECTED
-        if (explicit || start == null) return dev.flowclone.session.InsertTarget.OK
-        if (start.pkg != null && now.pkg != null && start.pkg != now.pkg) return dev.flowclone.session.InsertTarget.CHANGED
-        if (start.identity != null && now.identity != null && start.identity != now.identity) return dev.flowclone.session.InsertTarget.CHANGED
-        return dev.flowclone.session.InsertTarget.OK
+    fun check(start: Field?, now: Field, policyAllows: Boolean, explicit: Boolean): dev.murmur.session.InsertTarget {
+        if (!policyAllows) return dev.murmur.session.InsertTarget.PROTECTED
+        if (explicit || start == null) return dev.murmur.session.InsertTarget.OK
+        if (start.pkg != null && now.pkg != null && start.pkg != now.pkg) return dev.murmur.session.InsertTarget.CHANGED
+        if (start.identity != null && now.identity != null && start.identity != now.identity) return dev.murmur.session.InsertTarget.CHANGED
+        return dev.murmur.session.InsertTarget.OK
     }
 }
 
 /**
  * This app's own windows. The bubble normally ignores them (a settings field is not a place to
  * dictate), except while a screen made for dictation is in front: a note editor
- * ([dev.flowclone.ui.NoteEditorActivity] registers itself in [dev.flowclone.FlowApp.dictationSurface]).
+ * ([dev.murmur.ui.NoteEditorActivity] registers itself in [dev.murmur.MurmurApp.dictationSurface]).
  */
 object OwnAppGate {
     /** True when [pkg] is this app and no dictation surface of ours is in front: no bubble, no insert. */

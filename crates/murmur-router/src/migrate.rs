@@ -32,9 +32,9 @@ pub struct MigrationReport {
     /// The config was schema 1 and is now schema 2.
     pub migrated: bool,
     /// Move this stored key to `key_to` (the kept OpenRouter entry's old
-    /// id → `"openrouter"`): Windows `flow-clone/cloud/<from>` →
-    /// `flow-clone/cloud/openrouter`, Android `flow_cloud_<from>` →
-    /// `flow_cloud_openrouter`. `None` when there is nothing to move.
+    /// id → `"openrouter"`): Windows `murmur/cloud/<from>` →
+    /// `murmur/cloud/openrouter`, Android `murmur_cloud_<from>` →
+    /// `murmur_cloud_openrouter`. `None` when there is nothing to move.
     pub key_from: Option<String>,
     pub key_to: Option<String>,
     /// Stored keys to delete (every non-OpenRouter entry, and extra

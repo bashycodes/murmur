@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.app.Activity
 import android.text.format.DateFormat
@@ -8,14 +8,14 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.Toast
-import dev.flowclone.FlowApp
-import dev.flowclone.R
-import dev.flowclone.data.HistoryPages
-import dev.flowclone.data.HistoryRow
-import dev.flowclone.data.HistoryVersion
-import dev.flowclone.data.RetryLogic
-import dev.flowclone.ui.RetryUi.versionPills
-import dev.flowclone.data.ShellPages
+import dev.murmur.MurmurApp
+import dev.murmur.R
+import dev.murmur.data.HistoryPages
+import dev.murmur.data.HistoryRow
+import dev.murmur.data.HistoryVersion
+import dev.murmur.data.RetryLogic
+import dev.murmur.ui.RetryUi.versionPills
+import dev.murmur.data.ShellPages
 import java.util.Date
 import kotlin.concurrent.thread
 
@@ -27,7 +27,7 @@ import kotlin.concurrent.thread
  * notices (setup missing, engine down) that open where they are fixed. Reloads on every [onShow].
  */
 internal class HomeTab(private val activity: Activity, private val ui: DevUi) : ShellTab {
-    private val app get() = FlowApp.of(activity)
+    private val app get() = MurmurApp.of(activity)
     override val title = ShellPages.APP_NAME
 
     /** A peach notice above the cards; tapping it runs [onClick]. */
@@ -80,7 +80,7 @@ internal class HomeTab(private val activity: Activity, private val ui: DevUi) : 
 
     private fun time(r: HistoryRow) = DateFormat.getTimeFormat(activity).format(Date(r.createdAt))
 
-    private fun render(rows: List<HistoryRow>, retention: dev.flowclone.data.Retention): Unit = with(ui) {
+    private fun render(rows: List<HistoryRow>, retention: dev.murmur.data.Retention): Unit = with(ui) {
         if (view == null) createView()
         list.removeAllViews()
         loaded = true

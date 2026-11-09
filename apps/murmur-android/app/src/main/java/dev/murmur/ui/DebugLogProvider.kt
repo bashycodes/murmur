@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.content.ContentProvider
 import android.content.ContentValues
@@ -9,7 +9,7 @@ import android.database.MatrixCursor
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
-import dev.flowclone.FlowApp
+import dev.murmur.MurmurApp
 
 /**
  * D21 "Share / Export": serves exactly one file, `files/debug/dictations.jsonl`, read-only, to
@@ -36,7 +36,7 @@ class DebugLogProvider : ContentProvider() {
         }
     }
 
-    private fun file() = FlowApp.of(context!!).debugFile.file
+    private fun file() = MurmurApp.of(context!!).debugFile.file
 
     private fun check(uri: Uri) = require(uri.lastPathSegment == NAME) { "unknown file" }
 

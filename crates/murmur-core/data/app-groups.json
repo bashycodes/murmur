@@ -1,12 +1,12 @@
 {
   "about": [
-    "Which apps get special handling: one source for flow-core (Rust, both platforms), the Windows app (through flow-core) and the Android PolicyLists.kt (packed as a Java resource).",
+    "Which apps get special handling: one source for murmur-core (Rust, both platforms), the Windows app (through murmur-core) and the Android PolicyLists.kt (packed as a Java resource).",
     "Method: each group is defined by what its caller does with it (see docs/DECISIONS.md D81). Membership comes from public sources only: an app's package name is the id in its public Google Play listing (play.google.com/store/apps/details?id=<package>), a Windows id is the program's own executable name as its vendor ships it, a web host is the vendor's own address. Naming rules cover whole families where the vendor's naming makes that safe; lists hold the rest.",
     "Matching (any case; ids and hosts are lowercased on load and on lookup): exact = equal; families = equal or starts with '<family>.'; parts = one dot-separated part equals; words = substring. Windows ids are exe names without '.exe', matched exactly (the old lists matched by prefix). Hosts (no 'www.'): suffixes = equal or ends with '.<suffix>'; prefixes = starts with."
   ],
   "android": {
     "restart_prone": {
-      "about": "Chat apps whose IME session goes stale: stale-session probe + keep-alive nudge (V3Inserter, FlowAccessibilityService).",
+      "about": "Chat apps whose IME session goes stale: stale-session probe + keep-alive nudge (V3Inserter, MurmurAccessibilityService).",
       "apps": {
         "exact": [
           "com.whatsapp", "com.whatsapp.w4b", "org.telegram.messenger", "org.thoughtcrime.securesms",
@@ -150,19 +150,19 @@
       }
     },
     "work_chat": {
-      "about": "Work apps that are chats (flow-core: trailing-period drop).",
+      "about": "Work apps that are chats (murmur-core: trailing-period drop).",
       "apps": {
         "exact": ["com.slack", "com.microsoft.teams", "com.google.android.apps.dynamite", "com.mattermost.rn", "chat.rocket.android", "com.zulipmobile"]
       },
       "hosts": { "suffixes": ["slack.com", "teams.microsoft.com", "teams.live.com", "chat.google.com"] }
     },
     "ai": {
-      "about": "AI assistants (flow-core: AI prompt formatting).",
+      "about": "AI assistants (murmur-core: AI prompt formatting).",
       "apps": { "exact": ["com.openai.chatgpt", "com.anthropic.claude", "com.google.android.apps.bard"] },
       "hosts": { "suffixes": ["chatgpt.com", "chat.openai.com", "claude.ai", "gemini.google.com", "perplexity.ai"] }
     },
     "terminal": {
-      "about": "Terminals (flow-core: no prose cleanup).",
+      "about": "Terminals (murmur-core: no prose cleanup).",
       "apps": { "words": ["termux"] }
     }
   },
@@ -173,7 +173,7 @@
       "hosts": { "suffixes": ["slack.com", "teams.microsoft.com", "teams.live.com", "chat.google.com", "linkedin.com", "zulipchat.com", "ringcentral.com"] }
     },
     "messaging": {
-      "about": "Chat apps, work or personal (flow-core: trailing-period drop). Not work = style bucket personal.",
+      "about": "Chat apps, work or personal (murmur-core: trailing-period drop). Not work = style bucket personal.",
       "apps": {
         "exact": ["slack", "ms-teams", "msteams", "teams", "mattermost", "whatsapp", "whatsapp.root", "telegram", "discord", "signal", "messenger", "viber", "line", "wechat", "element", "zulip", "rocket.chat", "ringcentral", "webex"]
       },
@@ -205,9 +205,9 @@
       "apps": { "exact": ["notepad", "notepad++", "sublime_text", "winword", "excel", "powerpnt", "onenote", "obsidian", "notion", "evernote", "logseq"] },
       "hosts": { "suffixes": ["docs.google.com", "notion.so", "coda.io"] }
     },
-    "flow": {
+    "murmur": {
       "about": "This app itself (no context matching inside it).",
-      "apps": { "exact": ["flow-windows", "murmur"] }
+      "apps": { "exact": ["murmur-windows", "murmur"] }
     }
   },
   "compose_placeholders": [

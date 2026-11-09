@@ -34,7 +34,7 @@ Boundary design (ending a command without a close): §6. Recommendation, impleme
 
 ### 1.1 Deterministic layer (always on unless `cleanup_level` is none)
 
-Order inside `Engine::finish` (`crates/flow-core/src/engine.rs:1358-1427`):
+Order inside `Engine::finish` (`crates/murmur-core/src/engine.rs:1358-1427`):
 
 1. `spoken_cleanup` (`postprocess/spoken.rs:945`).
 2. `layout` (`spoken.rs:1314`).
@@ -55,7 +55,7 @@ Order inside `Engine::finish` (`crates/flow-core/src/engine.rs:1358-1427`):
 | Closing period | adds "." to open dictations of ≥ 4 words | `terminal.rs` (D25) |
 | Period drop / casing / spacing | Cursor-context pass: drops the trailing "." by **style** (formal never; casual ≤ 10 sentences; very casual always; default/excited only in messaging apps ≤ 2 sentences); cursor-context casing and spacing; trailing space | `postprocess/context.rs:150-170` |
 
-### 1.2 LLM prompt (`crates/flow-core/src/cleanup.rs`)
+### 1.2 LLM prompt (`crates/murmur-core/src/cleanup.rs`)
 
 * **System prompt** (`cleanup.rs:143-152`, short "fewshot" variant from docs/model-benchmarks.md):
   * remove fillers;
@@ -82,8 +82,8 @@ Order inside `Engine::finish` (`crates/flow-core/src/engine.rs:1358-1427`):
   | formal / default | nothing |
 
   A casual style exists in the core. **No shell ever sends it:**
-  * Android `Styles()` defaults every bucket to `FORMAL` (`apps/flow-android/.../core/FlowCore.kt:172-176`), and `toSessionConfig` never sets styles (`data/DataLogic.kt:123-133`). There is no style UI.
-  * Windows defaults all four buckets to `"formal"` (`apps/flow-windows/src/prefs.rs:143-149`).
+  * Android `Styles()` defaults every bucket to `FORMAL` (`apps/murmur-android/.../core/MurmurCore.kt:172-176`), and `toSessionConfig` never sets styles (`data/DataLogic.kt:123-133`). There is no style UI.
+  * Windows defaults all four buckets to `"formal"` (`apps/murmur-windows/src/prefs.rs:143-149`).
 * **Examples**: 7 few-shot turns (`cleanup.rs:168-185`). None shows quotes, parentheses or
   casual chat.
 * **Guard** (`guard.rs`, the default output check; the edit-distance cap only applies when a
@@ -103,7 +103,7 @@ Order inside `Engine::finish` (`crates/flow-core/src/engine.rs:1358-1427`):
 | | Android | Windows |
 |---|---|---|
 | cleanup level | `effectiveCleanup` (`DataLogic.kt:120-121`): LLM off → **none** + `raw_mode` (no deterministic cleanup either, see §0 item 3); LLM on → selected strength, None promoted to **Light** | Light (`prefs.rs:141`) |
-| styles | all formal (`FlowCore.kt:172-176`), no UI | all formal (`prefs.rs:143-149`), settings UI exists |
+| styles | all formal (`MurmurCore.kt:172-176`), no UI | all formal (`prefs.rs:143-149`), settings UI exists |
 | budget | `ANDROID_LLM_TIMEOUT_MS = 3000` (`DataLogic.kt:88`) | `llm_timeout_ms = 1500` (`prefs.rs:168`) |
 | category | `AppCategorizer` → email / work_chat / personal_chat / other (`policy/Policy.kt:76-93`); never "document" | own classifier (`context/mod.rs:186`) |
 
@@ -157,8 +157,8 @@ land well. No other implementation is documented in this repository.
     variants, whitespace collapsed; case and line breaks kept).
   * *sim*: difflib similarity.
   * Per-category pass, llm_ms and commit_ms p50/p90, and fallback reasons.
-* `runner/`: a probe binary (own Cargo workspace, flow-core unmodified, path dependency). It
-  drives `FlowCore::from_engines` with a text "ASR", like `flow-cli clean`. Platform android,
+* `runner/`: a probe binary (own Cargo workspace, murmur-core unmodified, path dependency). It
+  drives `MurmurCore::from_engines` with a text "ASR", like `murmur-cli clean`. Platform android,
   `vad` / `hallucination_guard` off (no real audio), session files in `sessions/`.
   * `--prompt` swaps only the system prompt and the few-shot turns; the product's per-dictation
     user message is kept.
@@ -176,8 +176,8 @@ land well. No other implementation is documented in this repository.
   * v3 adds: "keep existing line breaks/quotes/lists" plus two examples.
   * No example overlaps a test case.
 
-Box: i7-6700 (4C/8T), no GPU, 20 GB RAM with swap full. flow-server with Qwen 1.5B was
-resident throughout. LLM threads = 4, `nice`, greedy decoding (flow-llm plugin). Load average
+Box: i7-6700 (4C/8T), no GPU, 20 GB RAM with swap full. murmur-server with Qwen 1.5B was
+resident throughout. LLM threads = 4, `nice`, greedy decoding (murmur-llm plugin). Load average
 during the runs is in `results/run_all.log`. Absolute latency is "shared, loaded box";
 compare columns, not the numbers against other boxes.
 
@@ -349,9 +349,9 @@ two words. The hard cases have no close:
 2. **ASR word timings. Not available today, but cheap to add.**
    * sherpa-onnx already returns per-token `timestamps` (and TDT `durations`) in
      `OfflineRecognizerResult` (sherpa-onnx 1.13.8 `offline_asr.rs:619-624`).
-     `flow-asr-sherpa::transcribe_with` throws them away and returns only `r.text`
-     (`crates/flow-asr-sherpa/src/lib.rs:349-351`).
-   * `AsrOutput` has no word field (`crates/flow-core/src/asr.rs:120-126`).
+     `murmur-asr-sherpa::transcribe_with` throws them away and returns only `r.text`
+     (`crates/murmur-asr-sherpa/src/lib.rs:349-351`).
+   * `AsrOutput` has no word field (`crates/murmur-core/src/asr.rs:120-126`).
    * D22 segment cuts (≥ 800 ms pauses) are known inside the engine, but only the joined text
      survives (`engine.rs:821`).
    * Whisper can produce token timestamps too; not plumbed.
@@ -359,7 +359,7 @@ two words. The hard cases have no close:
      a real gap (say ≥ 250 ms) when Parakeet did not write a comma, and would also help
      run-on sentence breaks.
    * Cost: decode time ≈ 0; a few hundred bytes per dictation. Server mode needs no protocol
-     change, because it runs inside FlowCore.
+     change, because it runs inside MurmurCore.
 3. **LLM judgement, for no pause and no close (p1).**
    * The 1.5B with prompt v2 got p1 right ("(the USB-C one) to the meeting"), but it also got
      q6 wrong ("It was fine", the quotes dropped).
@@ -389,7 +389,7 @@ dictations where it can't.
 
 ### 7.1 Implementation plan (parallel, by file ownership)
 
-**A. `crates/flow-core` — spoken rules (owner 1).**
+**A. `crates/murmur-core` — spoken rules (owner 1).**
 `postprocess/spoken.rs`:
 * a new `spoken_commands` pass before `spoken_punctuation`, token-based like the existing passes:
   * paired quote / paren / bracket spans;
@@ -406,12 +406,12 @@ Tests:
 * every eval quote / paren / negative case as a unit test;
 * `clean_text_is_unchanged` extended with the 16 negatives.
 
-**B. `crates/flow-core` — layout / ITN fixes (owner 2).** All in `spoken.rs`, a separate
+**B. `crates/murmur-core` — layout / ITN fixes (owner 2).** All in `spoken.rs`, a separate
 region from A: `GREETING` abbreviations, bare sign-off, filler comma cleanup, the ITN gaps,
 cardinal list markers. Coordinate on `tokenize` / `render` only, without changing their
 signatures.
 
-**C. `crates/flow-core` — guard + prompt (owner 3).**
+**C. `crates/murmur-core` — guard + prompt (owner 3).**
 * `guard.rs`: `SPOKEN` += command words; number-word ↔ digit equivalence; the "sorry," /
   "I mean" correction exemption.
 * `cleanup.rs`: SYSTEM + EXAMPLES from `prompt_v2.json` (keep `prompt_follows_03_section7_template`
@@ -419,14 +419,14 @@ signatures.
 * Optional: an "LLM worth running?" predicate (layer 6) next to `should_run`, with
   `CommitResult.fallback_reason = "llm_skipped_clean"` for telemetry.
 
-**D. `crates/flow-asr-sherpa` + `crates/flow-core/src/asr.rs` (owner 4, optional, after A).**
+**D. `crates/murmur-asr-sherpa` + `crates/murmur-core/src/asr.rs` (owner 4, optional, after A).**
 * Keep sherpa token timestamps;
 * `AsrOutput.words`;
 * the engine passes a pause mask to `spoken_commands`; segment joins keep word timings.
 
-**E. `crates/flow-llm`.** No change needed. The plugin ABI is untouched by A-D.
+**E. `crates/murmur-llm`.** No change needed. The plugin ABI is untouched by A-D.
 
-**F. `apps/flow-android` (owner 5).**
+**F. `apps/murmur-android` (owner 5).**
 * `Styles` defaults: personal = CASUAL, work = CASUAL, email = FORMAL, other = FORMAL;
 * `toSessionConfig` sends `styles`;
 * a Settings "Style" page with 4 buckets;
@@ -434,16 +434,16 @@ signatures.
   or the core must split the two gates (see C/G). Otherwise local-AI-off users keep getting
   zero cleanup.
 
-**G. `crates/flow-core/src/engine.rs` (owner 3, small).** Gate `spoken_cleanup` / `layout` /
+**G. `crates/murmur-core/src/engine.rs` (owner 3, small).** Gate `spoken_cleanup` / `layout` /
 `close_sentence` on `spoken_cleanup && !verbatim_level`, not on `cleanup_level != none`.
 `raw_mode` already skips the LLM. This is a behaviour change for Windows "none", so it needs a
 D-row decision: none = truly verbatim, or "no LLM".
 
-**H. `apps/flow-windows` (owner 6).** Same style defaults (or keep formal, but surface the
+**H. `apps/murmur-windows` (owner 6).** Same style defaults (or keep formal, but surface the
 setting). Raise `llm_timeout_ms` default 1500 → 3000, which
 matches Android: the cost finding showed 1500 ms times out on nearly everything.
 
-**I. Eval as a regression gate.** Promote the probe to a `flow-core` test that runs
+**I. Eval as a regression gate.** Promote the probe to a `murmur-core` test that runs
 `cases.jsonl` through the deterministic path, with a floor of the measured pass rates per
 category. The LLM columns stay a manual bench.
 
@@ -459,14 +459,14 @@ python3 gen_cases.py && python3 rules_proto.py cases.jsonl > cases_rules.jsonl
 CARGO_TARGET_DIR=../../../../target/formatting-eval cargo build --release --manifest-path runner/Cargo.toml
 B=../../../../target/formatting-eval/release/formatting-eval
 $B --cases cases.jsonl --session sessions/shipped.json > results/det_shipped.jsonl   # etc.
-MODELS=<gguf dir> FLOW_LLM_LIB=<libflow_llm.so> ./run_all_llm.sh > results/run_all.log
+MODELS=<gguf dir> MURMUR_LLM_LIB=<libmurmur_llm.so> ./run_all_llm.sh > results/run_all.log
 python3 score.py cases.jsonl det=results/det_shipped.jsonl llm=results/llm15_current_shipped.jsonl --fails llm
 ```
 
-## 9. Update (branch `feat/fmt-rules`): layers 2 + 3 in flow-core
+## 9. Update (branch `feat/fmt-rules`): layers 2 + 3 in murmur-core
 
 The spoken-command rules (§7 layer 2) and the deterministic bug fixes (layer 3) are now in
-`crates/flow-core/src/postprocess/spoken.rs` and its child module `spoken_commands.rs`, inside
+`crates/murmur-core/src/postprocess/spoken.rs` and its child module `spoken_commands.rs`, inside
 `spoken_cleanup` (same `spoken_cleanup` / `cleanup_level` gate as before). `run_det.sh` scores
 the real pipeline on the raw cases (no `rules_proto.py` pre-pass) and fails below the D27 floor
 (72 %, 16/16 negatives):

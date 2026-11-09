@@ -1,7 +1,7 @@
-package dev.flowclone.admin
+package dev.murmur.admin
 
-import dev.flowclone.data.BuildCaps
-import dev.flowclone.data.DevSettings
+import dev.murmur.data.BuildCaps
+import dev.murmur.data.DevSettings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -24,18 +24,18 @@ class UsersKeysTest {
 
     @Test fun decodesKeysWithUsageAndDownloads() {
         val json = """{"ok":true,"value":{"keys":[
-            {"id":"k-1","name":"owner","admin":true,"created":1700000000,"last_used":1700000400,"last_connected":1700000500,"last_seen":1700000500,"client":"flow-android 1.0.0",
+            {"id":"k-1","name":"owner","admin":true,"created":1700000000,"last_used":1700000400,"last_connected":1700000500,"last_seen":1700000500,"client":"murmur-android 1.0.0",
              "dictations":3,"audio_ms":90000,"downloads":2,"download_bytes":2500000,"current":true},
             {"id":"k-2","name":"old","admin":false,"created":1700000000,"revoked":1700000900,"dictations":0,"audio_ms":0,"current":false}]}}"""
         val keys = (AdminJson.decode(json, AdminJson::keys) as AdminResult.Ok).value
         assertEquals(2, keys.size)
         val o = keys[0]
         assertEquals(KeyView("k-1", "owner", true, 1700000000, null, lastUsed = 1700000400, lastConnected = 1700000500,
-            client = "flow-android 1.0.0", dictations = 3, audioMs = 90000, downloads = 2, downloadBytes = 2500000, current = true), o)
+            client = "murmur-android 1.0.0", dictations = 3, audioMs = 90000, downloads = 2, downloadBytes = 2500000, current = true), o)
         assertTrue(o.active)
         assertFalse(keys[1].active); assertNull(keys[1].client); assertEquals(0L, keys[1].downloads)
         val meta = UsersKeys.meta(o)
-        assertTrue(meta, meta.contains("flow-android 1.0.0") && meta.contains("3 dictations") && meta.contains("1.5 min audio"))
+        assertTrue(meta, meta.contains("murmur-android 1.0.0") && meta.contains("3 dictations") && meta.contains("1.5 min audio"))
         assertTrue(meta, meta.contains("2 downloads (2.5 MB)"))
         assertTrue(UsersKeys.meta(keys[1]).startsWith("Revoked "))
         assertEquals("admin · this app", UsersKeys.badge(o))

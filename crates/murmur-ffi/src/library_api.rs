@@ -1,5 +1,5 @@
 //! Model library (D40 server, D41 client) for the Android shell: JSON in,
-//! JSON out over `flow_remote::library` (feature `library`, only in the
+//! JSON out over `murmur_remote::library` (feature `library`, only in the
 //! `hybrid` / `remote` flavours; the `local` library has no network code).
 //!
 //! * [`list`]: `ServerConfig` JSON → `{"ok":true,"models":[…]}`, the
@@ -18,14 +18,14 @@
 
 use std::path::Path;
 
-use flow_protocol::library::LibraryFile;
-use flow_remote::library::{ErrorKind, LibraryClient, LibraryError};
-use flow_router::ServerConfig;
+use murmur_protocol::library::LibraryFile;
+use murmur_remote::library::{ErrorKind, LibraryClient, LibraryError};
+use murmur_router::ServerConfig;
 use serde_json::json;
 
 /// `User-Agent` of the shell's library requests.
 fn client_name() -> String {
-    format!("flow-ffi {}", flow_build_info::FULL)
+    format!("murmur-ffi {}", murmur_build_info::FULL)
 }
 
 pub fn kind_str(k: ErrorKind) -> &'static str {

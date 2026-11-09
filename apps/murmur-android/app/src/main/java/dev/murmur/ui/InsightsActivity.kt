@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.app.Activity
 import android.content.Context
@@ -10,10 +10,10 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
-import dev.flowclone.FlowApp
-import dev.flowclone.data.Insights
-import dev.flowclone.data.InsightsPage
-import dev.flowclone.data.ShellPages
+import dev.murmur.MurmurApp
+import dev.murmur.data.Insights
+import dev.murmur.data.InsightsPage
+import dev.murmur.data.ShellPages
 import kotlin.concurrent.thread
 
 /**
@@ -21,11 +21,11 @@ import kotlin.concurrent.thread
  * PageInsights.dc.html and the drawer's stat card): top bar with back, the serif stat row
  * (words / wpm / day streak) with how that compares with typing, then words dictated, last 7 days, speaking speed, streaks,
  * time saved vs typing, dictations, top apps and a words-per-day chart. Read from
- * [dev.flowclone.data.InsightsStore] (counts only, on this phone; History can be cleared without
+ * [dev.murmur.data.InsightsStore] (counts only, on this phone; History can be cleared without
  * touching it). Reloaded on every resume, so a dictation made meanwhile shows when you come back.
  */
 class InsightsActivity : Activity() {
-    private val app get() = FlowApp.of(this)
+    private val app get() = MurmurApp.of(this)
     private lateinit var ui: DevUi
 
     override fun onCreate(savedInstanceState: Bundle?) {

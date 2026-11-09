@@ -1,5 +1,5 @@
 //! Meeting jobs for the shells (D44, D46): one long recording (a call
-//! recording on Android) through [`flow_core::meeting`] on an engine handle
+//! recording on Android) through [`murmur_core::meeting`] on an engine handle
 //! the job owns, so a dictation on the shell's own engine never shares a
 //! session with it.
 //!
@@ -10,22 +10,22 @@
 
 use std::sync::{Mutex, MutexGuard};
 
-use flow_core::config::SessionConfig;
-use flow_core::CommitResult;
-use flow_router::meeting::{
+use murmur_core::config::SessionConfig;
+use murmur_core::CommitResult;
+use murmur_router::meeting::{
     CancelHandle, ChunkTranscriber, MeetingError, MeetingParams, MeetingTranscriber, Progress,
     Segment,
 };
 
-use crate::FlowHandle;
+use crate::MurmurHandle;
 
-/// A core handle transcribes on the device only (`FlowCore`); a router
+/// A core handle transcribes on the device only (`MurmurCore`); a router
 /// handle takes the route order with every fallback (`Router`).
-impl ChunkTranscriber for FlowHandle {
+impl ChunkTranscriber for MurmurHandle {
     fn transcribe_chunk(&self, pcm: &[i16], cfg: &SessionConfig) -> CommitResult {
         match self {
-            FlowHandle::Core(c) => c.transcribe_chunk(pcm, cfg),
-            FlowHandle::Router(r) => r.transcribe_chunk(pcm, cfg),
+            MurmurHandle::Core(c) => c.transcribe_chunk(pcm, cfg),
+            MurmurHandle::Router(r) => r.transcribe_chunk(pcm, cfg),
         }
     }
 
@@ -37,7 +37,7 @@ impl ChunkTranscriber for FlowHandle {
 /// One running job: the transcriber (used by the worker thread) and what
 /// other threads may touch without waiting for a chunk.
 pub struct MeetingJob {
-    t: Mutex<MeetingTranscriber<FlowHandle>>,
+    t: Mutex<MeetingTranscriber<MurmurHandle>>,
     cancel: CancelHandle,
     progress: Mutex<Progress>,
 }
@@ -67,7 +67,7 @@ impl MeetingJob {
     /// `session_json` = the dictation `SessionConfig` (languages, dictionary,
     /// cleanup); `params_json` = `MeetingParams` (`{}` or empty = defaults).
     pub fn open(
-        engine: FlowHandle,
+        engine: MurmurHandle,
         session_json: &str,
         params_json: &str,
     ) -> Result<Self, JobError> {
@@ -127,17 +127,17 @@ impl MeetingJob {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use flow_core::config::ModelConfig;
-    use flow_core::FlowCore;
+    use murmur_core::config::ModelConfig;
+    use murmur_core::MurmurCore;
 
     const S: usize = 16_000;
 
-    fn mock_core(text: &str) -> FlowHandle {
+    fn mock_core(text: &str) -> MurmurHandle {
         let cfg: ModelConfig = serde_json::from_value(serde_json::json!({
             "asr_backend": {"mock": {"text": text}}, "asr_path": "", "threads": 1
         }))
         .unwrap();
-        FlowHandle::Core(FlowCore::load_models(&cfg).unwrap())
+        MurmurHandle::Core(MurmurCore::load_models(&cfg).unwrap())
     }
 
     /// Voiced "speech": a 150 Hz tone with a 4 Hz syllable envelope.

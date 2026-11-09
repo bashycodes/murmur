@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use flow_router::SecretString;
+use murmur_router::SecretString;
 
 use crate::api::Api;
 use crate::http::{self, CloudError};
@@ -1125,7 +1125,7 @@ mod tests {
 
     #[test]
     fn store_falls_back_to_baked_and_reads_cache() {
-        let dir = std::env::temp_dir().join(format!("flow-cloud-cat-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("murmur-cloud-cat-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let f = dir.join(CACHE_FILE_NAME);
         let _ = std::fs::remove_file(&f);

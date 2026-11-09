@@ -1,4 +1,4 @@
-package dev.flowclone
+package dev.murmur
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

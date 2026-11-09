@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Prototype of the proposed deterministic quote / parenthesis / dash rules
 (D27 layer 1), applied as a pre-pass on the eval inputs so the existing
-flow-core pipeline can be scored with them. Throwaway: the real rules go
-into crates/flow-core/src/postprocess/spoken.rs (token-based, like
+murmur-core pipeline can be scored with them. Throwaway: the real rules go
+into crates/murmur-core/src/postprocess/spoken.rs (token-based, like
 `spoken_punctuation`).
 
 usage: rules_proto.py cases.jsonl > cases_rules.jsonl

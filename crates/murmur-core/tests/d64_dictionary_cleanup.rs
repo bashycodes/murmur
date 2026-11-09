@@ -6,11 +6,11 @@
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use flow_core::asr::{AsrEngine, AsrError, AsrOutput, AsrRequest};
-use flow_core::cleanup::{CleanError, CleanPrompt, Cleaner};
-use flow_core::config::SessionConfig;
-use flow_core::dictionary::{DictEntry, Dictionary};
-use flow_core::FlowCore;
+use murmur_core::asr::{AsrEngine, AsrError, AsrOutput, AsrRequest};
+use murmur_core::cleanup::{CleanError, CleanPrompt, Cleaner};
+use murmur_core::config::SessionConfig;
+use murmur_core::dictionary::{DictEntry, Dictionary};
+use murmur_core::MurmurCore;
 
 /// Reports a fixed English transcript and keeps the hotwords it was given.
 struct Said(&'static str, Arc<Mutex<Vec<String>>>);
@@ -54,7 +54,7 @@ fn dictate(text: &'static str, engine: &'static str, cfg: SessionConfig) -> Run 
         prompts: Mutex::new(Vec::new()),
     });
     let hot = Arc::new(Mutex::new(Vec::new()));
-    let core = FlowCore::from_engines(Arc::new(Said(text, hot.clone())), Some(seen.clone()));
+    let core = MurmurCore::from_engines(Arc::new(Said(text, hot.clone())), Some(seen.clone()));
     core.start_session(cfg).unwrap();
     let tone: Vec<i16> = (0..16_000)
         .map(|i| ((i as f32 * 0.05).sin() * 8000.0) as i16)

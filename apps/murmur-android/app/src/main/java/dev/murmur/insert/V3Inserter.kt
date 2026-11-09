@@ -1,11 +1,11 @@
-package dev.flowclone.insert
+package dev.murmur.insert
 
-import dev.flowclone.insert.InsertResult.FailureReason
-import dev.flowclone.insert.InsertResult.Status
-import dev.flowclone.insert.InsertResult.VerifySource
-import dev.flowclone.policy.BubbleVisibilityPolicy
-import dev.flowclone.policy.EditorInputType
-import dev.flowclone.policy.PolicyLists
+import dev.murmur.insert.InsertResult.FailureReason
+import dev.murmur.insert.InsertResult.Status
+import dev.murmur.insert.InsertResult.VerifySource
+import dev.murmur.policy.BubbleVisibilityPolicy
+import dev.murmur.policy.EditorInputType
+import dev.murmur.policy.PolicyLists
 import kotlinx.coroutines.delay
 
 /**

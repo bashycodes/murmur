@@ -1,8 +1,8 @@
 # Fetch the 0.12.0 catalogue files (pinned URL + size + SHA-256 from
-# apps/flow-windows/src/model_download.rs) into %APPDATA%\FlowClone\models,
+# apps/murmur-windows/src/model_download.rs) into %APPDATA%\Murmur\models,
 # at the paths the in-app downloader uses. .part then rename after the hash.
 $ErrorActionPreference = 'Stop'
-$m = "$env:APPDATA\FlowClone\models"
+$m = "$env:APPDATA\Murmur\models"
 $hf = 'https://huggingface.co'
 $zb = "$hf/ivrit-ai/zipformer2-66m-streaming-he/resolve/ee769a2a13b887f91572eec349458bfb0fe79e7a/sherpa-onnx"
 $files = @(

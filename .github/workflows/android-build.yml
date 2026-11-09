@@ -1,10 +1,10 @@
-# Android shell (apps/flow-android): arm64 native libs for the three flavours
+# Android shell (apps/murmur-android): arm64 native libs for the three flavours
 # (tools/build-native.sh), JVM unit tests, debug APKs, and the native .so/APK
 # gates. No release signing: the artifacts are debug-signed with the owner's
 # fixed debug key (D56), restored from the repo secret ANDROID_DEBUG_KEYSTORE_B64
-# into the debug signingConfig (FLOW_DEBUG_STORE_FILE), so a CI APK installs over a locally built one (install -r keeps the app's data)
+# into the debug signingConfig (MURMUR_DEBUG_STORE_FILE), so a CI APK installs over a locally built one (install -r keeps the app's data)
 # and the "Debug key" gate checks every APK's certificate against the pinned
-# apps/flow-android/debug-cert.sha256. Without the secret (forks) the runner
+# apps/murmur-android/debug-cert.sha256. Without the secret (forks) the runner
 # makes a throwaway debug key, and those APKs cannot update another machine's
 # (INSTALL.md "Live test on phone").
 # A pushed tag vX.Y.Z (tools/release.sh, D26) also checks the tag against
@@ -18,7 +18,7 @@ on:
     # Path filters are not evaluated for tag pushes: every release tag builds.
     tags: ["v*"]
     paths:
-      - "apps/flow-android/**"
+      - "apps/murmur-android/**"
       - "crates/**"
       - "Cargo.lock"
       - "VERSION"
@@ -28,7 +28,7 @@ on:
       - ".github/workflows/android-build.yml"
   pull_request:
     paths:
-      - "apps/flow-android/**"
+      - "apps/murmur-android/**"
       - "crates/**"
       - "Cargo.lock"
       - "VERSION"
@@ -69,12 +69,12 @@ jobs:
           v=$(cat VERSION)
           label="$v+$(git rev-parse --short=7 HEAD)"
           [ "$GITHUB_REF_TYPE" = tag ] && label="$GITHUB_REF_NAME"
-          echo "FLOW_VERSION=$v" >> "$GITHUB_ENV"
-          echo "FLOW_LABEL=$label" >> "$GITHUB_ENV"
+          echo "MURMUR_VERSION=$v" >> "$GITHUB_ENV"
+          echo "MURMUR_LABEL=$label" >> "$GITHUB_ENV"
 
       # D56: sign the debug APKs with the owner's fixed debug key. The secret is
       # decoded to a temp file that app/build.gradle.kts makes the debug
-      # signingConfig (FLOW_DEBUG_STORE_FILE), not to ~/.android, which AGP did
+      # signingConfig (MURMUR_DEBUG_STORE_FILE), not to ~/.android, which AGP did
       # not use on the runner (run 42086465430 signed with another key). The
       # secret goes through env and a file only; the log gets the public cert
       # SHA-256 alone, to tell a wrong secret from a wrong signer.
@@ -86,13 +86,13 @@ jobs:
             echo "::notice::ANDROID_DEBUG_KEYSTORE_B64 not set: throwaway debug key, these APKs cannot update a locally built app"
             exit 0
           fi
-          ks="$RUNNER_TEMP/flow-debug.keystore"
+          ks="$RUNNER_TEMP/murmur-debug.keystore"
           (umask 077; printf '%s' "$KEYSTORE_B64" | base64 -d > "$ks")
           chmod 600 "$ks"
           echo "restored keystore cert: $(keytool -list -v -keystore "$ks" -storepass android -alias androiddebugkey \
             | sed -n 's/^[[:space:]]*SHA256: //p' | tr -d ':' | tr 'A-F' 'a-f')"
-          echo "FLOW_DEBUG_STORE_FILE=$ks" >> "$GITHUB_ENV"
-          echo "FLOW_FIXED_DEBUG_KEY=1" >> "$GITHUB_ENV"
+          echo "MURMUR_DEBUG_STORE_FILE=$ks" >> "$GITHUB_ENV"
+          echo "MURMUR_FIXED_DEBUG_KEY=1" >> "$GITHUB_ENV"
 
       - uses: actions/setup-java@v4
         with:
@@ -115,7 +115,7 @@ jobs:
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
-          echo "sdk.dir=$ANDROID_HOME" > apps/flow-android/local.properties
+          echo "sdk.dir=$ANDROID_HOME" > apps/murmur-android/local.properties
 
       # Parakeet runtime for local/hybrid: sherpa-onnx built from its source
       # with text to speech off (D80: upstream's Android release links
@@ -126,11 +126,11 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/sherpa-no-tts
-          key: sherpa-android-no-tts-${{ env.SHERPA_VERSION }}-${{ env.NDK_VERSION }}-${{ hashFiles('apps/flow-android/tools/build-sherpa-android.sh') }}
+          key: sherpa-android-no-tts-${{ env.SHERPA_VERSION }}-${{ env.NDK_VERSION }}-${{ hashFiles('apps/murmur-android/tools/build-sherpa-android.sh') }}
 
       - name: sherpa-onnx Android no-TTS (build)
         if: steps.sherpa-cache.outputs.cache-hit != 'true'
-        run: JOBS=4 SHERPA_BUILD_DIR="$RUNNER_TEMP/sherpa-build" apps/flow-android/tools/build-sherpa-android.sh "$RUNNER_TEMP/sherpa-no-tts"
+        run: JOBS=4 SHERPA_BUILD_DIR="$RUNNER_TEMP/sherpa-build" apps/murmur-android/tools/build-sherpa-android.sh "$RUNNER_TEMP/sherpa-no-tts"
 
       - name: sherpa-onnx Android no-TTS (use)
         run: |
@@ -138,12 +138,12 @@ jobs:
           echo "SHERPA_ANDROID_LIBS=$RUNNER_TEMP/sherpa-no-tts" >> "$GITHUB_ENV"
 
       - name: Native libs (local, hybrid, remote)
-        working-directory: apps/flow-android
+        working-directory: apps/murmur-android
         run: |
           for f in local hybrid remote; do tools/build-native.sh --flavor "$f"; done
 
       - name: Unit tests (3 flavours)
-        working-directory: apps/flow-android
+        working-directory: apps/murmur-android
         run: ./gradlew --no-daemon testDebugUnitTest
 
       # A release build must say exactly which commit it is: no "-dirty".
@@ -154,7 +154,7 @@ jobs:
           test -z "$(git status --porcelain --untracked-files=no)"
 
       - name: APKs + native gates
-        working-directory: apps/flow-android
+        working-directory: apps/murmur-android
         env:
           GRADLE_FLAGS: --no-daemon
         run: |
@@ -165,7 +165,7 @@ jobs:
       # and its native libraries no TTS (espeak-ng) code.
       - name: APKs carry the notices
         run: |
-          for apk in apps/flow-android/dist/*.apk; do
+          for apk in apps/murmur-android/dist/*.apk; do
             for f in COPYRIGHT NOTICE THIRD-PARTY-LICENSES; do
               unzip -l "$apk" | grep -q " assets/licenses/$f.txt$" || { echo "FAIL $apk: no assets/licenses/$f.txt"; exit 1; }
             done
@@ -179,36 +179,36 @@ jobs:
       # certificate (pinned public SHA-256), or it would not install over the
       # phone's app without wiping it.
       - name: Debug key gate
-        if: env.FLOW_FIXED_DEBUG_KEY == '1'
+        if: env.MURMUR_FIXED_DEBUG_KEY == '1'
         # apksigner pinned to build-tools 36.0.0: the image's newest (37.0.0)
         # printed no certificate line for these APKs (run 42081648042, cause
         # not confirmed); 36.0.0 is the version checked locally.
         run: |
           APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner" \
-            apps/flow-android/tools/check-apk-cert.sh apps/flow-android/dist/*-debug.apk
+            apps/murmur-android/tools/check-apk-cert.sh apps/murmur-android/dist/*-debug.apk
 
       # I3/I4 + C2 + D28 gate, strict and cloud-strict (the defaults): every
       # flavour check runs, and neither the sources nor the shipped APKs'
       # native libs name a provider host other than openrouter.ai.
       - name: Build matrix (strict + cloud) incl. the APKs
         run: |
-          FLOW_CLOUD_ARTIFACTS="$(ls apps/flow-android/dist/*.apk | tr '\n' ' ')" \
+          MURMUR_CLOUD_ARTIFACTS="$(ls apps/murmur-android/dist/*.apk | tr '\n' ' ')" \
           CHECK_BUILD_MATRIX_NOTICES=0 tools/check-build-matrix.sh
 
       - uses: actions/upload-artifact@v4
         with:
-          name: flow-clone-android-debug-apks-${{ env.FLOW_LABEL }}
+          name: murmur-android-debug-apks-${{ env.MURMUR_LABEL }}
           path: |
-            apps/flow-android/dist/*.apk
-            apps/flow-android/dist/SHA256SUMS
-            apps/flow-android/dist/sizes.txt
+            apps/murmur-android/dist/*.apk
+            apps/murmur-android/dist/SHA256SUMS
+            apps/murmur-android/dist/sizes.txt
           if-no-files-found: error
 
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: android-test-reports
-          path: apps/flow-android/app/build/reports/
+          path: apps/murmur-android/app/build/reports/
 
   # Tag pushes only: attach the APKs to the GitHub release (created here or
   # by windows-build, whichever finishes first). Debug-signed, as above: with
@@ -223,7 +223,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          pattern: flow-clone-android-debug-apks-*
+          pattern: murmur-android-debug-apks-*
           path: dl
           merge-multiple: true
       - name: Versioned file names + release upload
@@ -232,9 +232,9 @@ jobs:
         run: |
           tag="$GITHUB_REF_NAME"; v="${tag#v}"
           mkdir -p assets
-          for f in dl/flow-clone-*-debug.apk; do
-            fl=$(basename "$f" | sed -E 's/^flow-clone-(.*)-debug\.apk$/\1/')
-            cp "$f" "assets/flow-clone-android-$fl-$v-debug.apk"
+          for f in dl/murmur-*-debug.apk; do
+            fl=$(basename "$f" | sed -E 's/^murmur-(.*)-debug\.apk$/\1/')
+            cp "$f" "assets/murmur-android-$fl-$v-debug.apk"
           done
           (cd assets && sha256sum ./*.apk | sed 's| \./| |' > "SHA256SUMS-android-$v.txt")
           ls -la assets

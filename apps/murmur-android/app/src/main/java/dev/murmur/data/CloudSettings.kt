@@ -1,4 +1,4 @@
-package dev.flowclone.data
+package dev.murmur.data
 
 import org.json.JSONArray
 import org.json.JSONObject
@@ -9,7 +9,7 @@ import org.json.JSONObject
  * nothing here names a host to connect to (the consent records name it, as the router does).
  */
 object OpenRouter {
-    /** Secure-storage id of the one API key (`SecretVault("flow_cloud_openrouter")`). */
+    /** Secure-storage id of the one API key (`SecretVault("murmur_cloud_openrouter")`). */
     const val ID = "openrouter"
     /** The host consent is given for (`consent_host`). */
     const val HOST = "openrouter.ai"
@@ -22,7 +22,7 @@ object OpenRouter {
 
     private val MODEL_ID = Regex("^[a-z0-9._~/-]+(:[a-z]+)*$")
 
-    /** `flow_router::cloud::valid_model_id`: free text is allowed (e.g. `:nitro`), within this shape. */
+    /** `murmur_router::cloud::valid_model_id`: free text is allowed (e.g. `:nitro`), within this shape. */
     fun validModelId(id: String) = id.length in 1..128 && MODEL_ID.matches(id)
 
     /** Inline error for a typed model id, or null when it is valid. */
@@ -52,7 +52,7 @@ data class CloudPrivacy(val zdr: Boolean = true, val dataCollection: String = "d
     }
 }
 
-/** `cloud.openrouter.stt` (`flow_router::SttConfig`). */
+/** `cloud.openrouter.stt` (`murmur_router::SttConfig`). */
 data class SttSettings(
     val model: String = OpenRouter.DEFAULT_STT_MODEL,
     /** auto | transcriptions | chat_audio */
@@ -95,7 +95,7 @@ data class SttSettings(
     }
 }
 
-/** `cloud.openrouter.cleanup` (`flow_router::CleanupConfig`); its consent is separate from STT's. */
+/** `cloud.openrouter.cleanup` (`murmur_router::CleanupConfig`); its consent is separate from STT's. */
 data class CleanupSettings(
     val model: String = OpenRouter.DEFAULT_CLEANUP_MODEL,
     /** latency | throughput | price | "" (OpenRouter's load balancing) */
@@ -158,7 +158,7 @@ enum class CleanupProvider(val wire: String) {
 
 /**
  * D52 `nativeCustomCleanupAddress`: the router's own reading of a custom server address
- * (`flow_router::cloud::custom_server_address` + `valid_custom_model_id`). [url] is the normalised
+ * (`murmur_router::cloud::custom_server_address` + `valid_custom_model_id`). [url] is the normalised
  * API root and [host] the canonical host consent binds to; null [url] = unusable ([message] says why).
  */
 data class CustomAddress(
@@ -182,7 +182,7 @@ fun interface CustomAddressCheck {
  * (never a Kotlin URL parser), so the page records consent for exactly the host the router checks.
  */
 object CustomServer {
-    /** Secure-storage id of its optional key (`SecretVault("flow_cloud_custom")`, `set_cloud_key("custom")`). */
+    /** Secure-storage id of its optional key (`SecretVault("murmur_cloud_custom")`, `set_cloud_key("custom")`). */
     const val ID = "custom"
     const val NAME = "Custom server"
     const val TIMEOUT_MIN = 800L
@@ -193,7 +193,7 @@ object CustomServer {
     const val URL_HINT = "/v1 is added when no path is given; include the full path if your server uses a prefix."
 
     /** The router's reader; replaced in JVM tests. A library without D52 reads every address as unusable. */
-    @Volatile var check: CustomAddressCheck = CustomAddressCheck { u, m -> dev.flowclone.core.NativeFlowCore.customCleanupAddress(u, m) }
+    @Volatile var check: CustomAddressCheck = CustomAddressCheck { u, m -> dev.murmur.core.NativeMurmurCore.customCleanupAddress(u, m) }
 
     fun address(baseUrl: String, model: String = ""): CustomAddress = check.check(baseUrl, model)
 
@@ -207,7 +207,7 @@ object CustomServer {
 }
 
 /**
- * `cloud.custom_cleanup` (`flow_router::cloud::CustomCleanupConfig`). The consent is bound to the
+ * `cloud.custom_cleanup` (`murmur_router::cloud::CustomCleanupConfig`). The consent is bound to the
  * host of [baseUrl]: pointing it at another host voids it.
  */
 data class CustomCleanupSettings(
@@ -256,7 +256,7 @@ data class CustomCleanupSettings(
 }
 
 /**
- * `RouterConfig.cloud`, schema 2 (`crates/flow-router/fixtures/router_config_cloud.json`). API
+ * `RouterConfig.cloud`, schema 2 (`crates/murmur-router/fixtures/router_config_cloud.json`). API
  * keys are never part of it (one key, [OpenRouter.ID], in [CloudKeyStore]).
  */
 data class CloudSettings(
@@ -340,7 +340,7 @@ data class CloudSettings(
     }
 }
 
-/** flow_router `CloudUsage` (this month's counters; persisted by [DevStore.cloudUsageJson]). */
+/** murmur_router `CloudUsage` (this month's counters; persisted by [DevStore.cloudUsageJson]). */
 data class CloudUsage(val month: String = "", val providers: List<ProviderUsage> = emptyList()) {
     data class ProviderUsage(
         val providerId: String,
@@ -387,7 +387,7 @@ data class CloudUsage(val month: String = "", val providers: List<ProviderUsage>
     companion object {
         const val PURPOSE_STT = "stt"
         const val PURPOSE_CLEANUP = "cleanup"
-        /** `flow_router::cloud::REMOVED_PROVIDERS_ID`: the month's counters of providers D28 removed. */
+        /** `murmur_router::cloud::REMOVED_PROVIDERS_ID`: the month's counters of providers D28 removed. */
         const val REMOVED_ID = "removed"
 
         fun decode(json: String?): CloudUsage = runCatching {
@@ -463,7 +463,7 @@ object CloudText {
         else Triple(CLEANUP_CONSENT_TITLE, cleanupConsentBody(s.cleanup), CLEANUP_CONSENT_BUTTON)
 
     /** "Load models" / "Test connection" result: the count, or the error's hint and the server's message. */
-    fun customModelsLine(m: dev.flowclone.core.CustomModels): String = when {
+    fun customModelsLine(m: dev.murmur.core.CustomModels): String = when {
         m.error == null -> if (m.models.isEmpty()) "Connected: the server lists no models" else
             "Connected: ${m.models.size} model${if (m.models.size == 1) "" else "s"}"
         else -> "Failed: " + (hint(m.error)?.let { if (m.error == "connect_failed") "server not reachable" else it } ?: m.error) +
@@ -509,7 +509,7 @@ object CloudText {
     }
 
     /** "cloud · OpenRouter · openai/whisper-large-v3-turbo · ≈$0.0012" (Active engine row). */
-    fun engineRow(route: dev.flowclone.core.RouteInfo): String {
+    fun engineRow(route: dev.murmur.core.RouteInfo): String {
         val parts = mutableListOf("cloud", OpenRouter.NAME)
         route.model?.let { parts += it }
         route.costUsd?.let { parts += (if (route.costEstimated == true) "≈" else "") + usd(it) }
@@ -521,7 +521,7 @@ object CloudText {
      * D30: when the cloud answer was not used, the route actually used and why:
      * "AI cleanup: on-device · qwen · OpenRouter not used (llm_timeout)" / "AI cleanup: fixed rules · … ".
      */
-    fun cleanupRow(route: dev.flowclone.core.RouteInfo?, cloudName: String = OpenRouter.NAME): String? {
+    fun cleanupRow(route: dev.murmur.core.RouteInfo?, cloudName: String = OpenRouter.NAME): String? {
         route ?: return null
         val fellBack = route.cleanupRoute != null && route.cleanupRoute != "cloud"
         if (fellBack) {

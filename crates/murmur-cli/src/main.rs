@@ -1,4 +1,4 @@
-//! flow-cli: dev harness that drives the full flow-core pipeline on a WAV.
+//! murmur-cli: dev harness that drives the full murmur-core pipeline on a WAV.
 //!
 //! The audio is fed through `push_audio` in 40 ms chunks exactly like a
 //! shell would, so the reported `total_ms` is release-to-text latency.
@@ -8,20 +8,20 @@ use std::process::ExitCode;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use flow_core::asr::{AsrEngine, AsrError, AsrOutput, AsrRequest};
+use murmur_core::asr::{AsrEngine, AsrError, AsrOutput, AsrRequest};
 
-use flow_core::config::{AsrBackend, FieldContext, ModelConfig, Platform, SessionConfig};
-use flow_core::dictionary::Dictionary;
-use flow_core::{audio, FlowCore};
+use murmur_core::config::{AsrBackend, FieldContext, ModelConfig, Platform, SessionConfig};
+use murmur_core::dictionary::Dictionary;
+use murmur_core::{audio, MurmurCore};
 
 const USAGE: &str =
-    "usage: flow-cli transcribe (--model ggml.bin | --engine parakeet --model DIR | --mock TEXT) [--dict dict.json] \
+    "usage: murmur-cli transcribe (--model ggml.bin | --engine parakeet --model DIR | --mock TEXT) [--dict dict.json] \
 [--session session.json] [--context ctx.json] [--lang xx]... [--platform windows|android] \
-[--threads N] [--parakeet-decoding auto|greedy|beam] [--llm model.gguf [--llm-lib libflow_llm.so]] [--level none|light|medium|high] \
+[--threads N] [--parakeet-decoding auto|greedy|beam] [--llm model.gguf [--llm-lib libmurmur_llm.so]] [--level none|light|medium|high] \
 [--realtime] [--json] file.wav
-       flow-cli clean --llm model.gguf [same options, no wav/model] [--category email|work_chat|...] TEXT...
+       murmur-cli clean --llm model.gguf [same options, no wav/model] [--category email|work_chat|...] TEXT...
          (each TEXT runs as one dictation through LLM cleanup + post-processing; prints llm counters)
-       flow-cli meeting [transcribe's model/session/lang options] [--router router.json] [--progress] [--json] file.wav
+       murmur-cli meeting [transcribe's model/session/lang options] [--router router.json] [--progress] [--json] file.wav
          (a recording of any length: chunked at pauses, each chunk one dictation on the router's route
           order, streamed from disk; prints `[hh:mm:ss.mmm --> hh:mm:ss.mmm] text` per segment as it is made;
           --router needs the `remote` feature for a server route; without it the route is this machine)";
@@ -29,7 +29,7 @@ const USAGE: &str =
 struct Args {
     clean: Vec<String>,
     /// `meeting` mode: the router config (`None` = this machine only).
-    meeting: Option<Option<flow_router::RouterConfig>>,
+    meeting: Option<Option<murmur_router::RouterConfig>>,
     progress: bool,
     model: ModelConfig,
     session: SessionConfig,
@@ -203,7 +203,7 @@ impl AsrEngine for TextAsr {
 fn run_clean(a: Args) -> Result<String, String> {
     let t = Instant::now();
     let cl = Arc::new(
-        flow_core::llama::LlamaCleaner::load(
+        murmur_core::llama::LlamaCleaner::load(
             a.model.llm_path.as_deref().unwrap_or_default(),
             a.model.threads,
             a.model.llm_lib.as_deref(),
@@ -212,7 +212,7 @@ fn run_clean(a: Args) -> Result<String, String> {
     );
     eprintln!("load {} ms | {}", t.elapsed().as_millis(), cl.info_json());
     let text = Arc::new(Mutex::new(String::new()));
-    let core = FlowCore::from_engines(Arc::new(TextAsr(text.clone())), Some(cl.clone()));
+    let core = MurmurCore::from_engines(Arc::new(TextAsr(text.clone())), Some(cl.clone()));
     let mut out = Vec::new();
     let tone: Vec<i16> = (0..16_000)
         .map(|i| ((i as f32 * 0.05).sin() * 8000.0) as i16)
@@ -245,16 +245,16 @@ fn run_clean(a: Args) -> Result<String, String> {
 
 #[cfg(not(feature = "llm"))]
 fn run_clean(_a: Args) -> Result<String, String> {
-    Err("flow-cli was built without the `llm` feature".into())
+    Err("murmur-cli was built without the `llm` feature".into())
 }
 
 /// `meeting`: stream the WAV through `MeetingTranscriber` over a router.
-fn run_meeting(a: Args, router_cfg: Option<flow_router::RouterConfig>) -> Result<String, String> {
-    use flow_router::meeting::{transcribe_stream, MeetingParams, MeetingTranscriber};
+fn run_meeting(a: Args, router_cfg: Option<murmur_router::RouterConfig>) -> Result<String, String> {
+    use murmur_router::meeting::{transcribe_stream, MeetingParams, MeetingTranscriber};
     let t = Instant::now();
-    let core = FlowCore::load_models(&a.model).map_err(|e| e.to_string())?;
+    let core = MurmurCore::load_models(&a.model).map_err(|e| e.to_string())?;
     let load_ms = t.elapsed().as_millis();
-    let local: Arc<dyn flow_router::Backend> = Arc::new(core);
+    let local: Arc<dyn murmur_router::Backend> = Arc::new(core);
     let router = Arc::new(make_router(router_cfg, local)?);
     let blocks = audio::WavBlocks::open(&a.wav, 16_000)?;
     let total = blocks.total_samples();
@@ -278,8 +278,8 @@ fn run_meeting(a: Args, router_cfg: Option<flow_router::RouterConfig>) -> Result
                     .map_or(s.text.clone(), |e| format!("[error: {e}]"));
                 println!(
                     "[{} --> {}] {text}",
-                    flow_router::meeting::clock(s.start_ms),
-                    flow_router::meeting::clock(s.end_ms)
+                    murmur_router::meeting::clock(s.start_ms),
+                    murmur_router::meeting::clock(s.end_ms)
                 );
             }
         },
@@ -307,35 +307,37 @@ fn run_meeting(a: Args, router_cfg: Option<flow_router::RouterConfig>) -> Result
 
 #[cfg(feature = "remote")]
 fn make_router(
-    cfg: Option<flow_router::RouterConfig>,
-    local: Arc<dyn flow_router::Backend>,
-) -> Result<flow_router::Router, String> {
+    cfg: Option<murmur_router::RouterConfig>,
+    local: Arc<dyn murmur_router::Backend>,
+) -> Result<murmur_router::Router, String> {
     let cfg = cfg.unwrap_or_else(local_only);
     cfg.validate().map_err(|e| e.to_string())?;
-    Ok(flow_router::Router::new(
+    Ok(murmur_router::Router::new(
         cfg,
         Some(local),
-        Some(flow_remote::factory("flow-cli")),
+        Some(murmur_remote::factory("murmur-cli")),
     ))
 }
 
 #[cfg(not(feature = "remote"))]
 fn make_router(
-    cfg: Option<flow_router::RouterConfig>,
-    local: Arc<dyn flow_router::Backend>,
-) -> Result<flow_router::Router, String> {
+    cfg: Option<murmur_router::RouterConfig>,
+    local: Arc<dyn murmur_router::Backend>,
+) -> Result<murmur_router::Router, String> {
     if cfg.as_ref().is_some_and(|c| c.server.is_configured()) {
-        return Err("--router with a server needs flow-cli built with the `remote` feature".into());
+        return Err(
+            "--router with a server needs murmur-cli built with the `remote` feature".into(),
+        );
     }
     let cfg = cfg.unwrap_or_else(local_only);
     cfg.validate().map_err(|e| e.to_string())?;
-    Ok(flow_router::Router::new(cfg, Some(local), None))
+    Ok(murmur_router::Router::new(cfg, Some(local), None))
 }
 
-fn local_only() -> flow_router::RouterConfig {
-    flow_router::RouterConfig {
+fn local_only() -> murmur_router::RouterConfig {
+    murmur_router::RouterConfig {
         allow_server: false,
-        prefer: flow_router::Prefer::Client,
+        prefer: murmur_router::Prefer::Client,
         ..Default::default()
     }
 }
@@ -349,7 +351,7 @@ fn run(mut a: Args) -> Result<String, String> {
     }
     let pcm = audio::read_wav_16k_mono(&a.wav)?;
     let t = Instant::now();
-    let core = FlowCore::load_models(&a.model).map_err(|e| e.to_string())?;
+    let core = MurmurCore::load_models(&a.model).map_err(|e| e.to_string())?;
     let load_ms = t.elapsed().as_millis();
     // The pushes below outrun the worker's drain (no mic pacing), so a ring
     // smaller than the clip overflows and drops the tail: hold it all.

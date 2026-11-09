@@ -1,6 +1,6 @@
 //! D28 W6: cloud text cleanup through a mock OpenRouter.
 //!
-//! * Equivalence: a `FlowCore` whose cleaner is `OpenRouterCleaner` (mock
+//! * Equivalence: a `MurmurCore` whose cleaner is `OpenRouterCleaner` (mock
 //!   streaming text X) commits the same `CommitResult` as one whose cleaner
 //!   is a fake local backend returning X — unwrapping and post-processing
 //!   are shared by construction (D30: the cloud gets the raw transcript
@@ -11,14 +11,14 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use flow_cloud::testing::Reply;
-use flow_cloud::{CleanupSettings, OpenRouterCleaner};
-use flow_contract_tests::*;
-use flow_core::asr::MockAsr;
-use flow_core::cleanup::{CleanError, CleanPrompt, Cleaner};
-use flow_core::config::{CleanupLevel, SessionConfig};
-use flow_core::{CommitResult, FlowCore};
-use flow_router::SecretString;
+use murmur_cloud::testing::Reply;
+use murmur_cloud::{CleanupSettings, OpenRouterCleaner};
+use murmur_contract_tests::*;
+use murmur_core::asr::MockAsr;
+use murmur_core::cleanup::{CleanError, CleanPrompt, Cleaner};
+use murmur_core::config::{CleanupLevel, SessionConfig};
+use murmur_core::{CommitResult, MurmurCore};
+use murmur_router::SecretString;
 
 struct Fixed(String);
 impl Cleaner for Fixed {
@@ -38,7 +38,7 @@ fn cfg(timeout_ms: u64) -> SessionConfig {
     }
 }
 
-fn commit(core: &FlowCore, cfg: SessionConfig) -> CommitResult {
+fn commit(core: &MurmurCore, cfg: SessionConfig) -> CommitResult {
     core.start_session(cfg).unwrap();
     for c in speech(1500).chunks(1600) {
         core.push_audio(c);
@@ -113,13 +113,13 @@ const CASES: [(&str, &str); 4] = [
 fn cloud_cleanup_equals_a_local_cleaner_with_the_same_output() {
     let mut formatted = 0;
     for (asr, llm) in CASES {
-        let local = FlowCore::from_engines(
+        let local = MurmurCore::from_engines(
             Arc::new(MockAsr::new(asr)),
             Some(Arc::new(Fixed(llm.into())) as Arc<dyn Cleaner>),
         );
         let want = commit(&local, cfg(3000));
         let srv = mock_cloud_fixed(sse(llm));
-        let cloud = FlowCore::from_engines(Arc::new(MockAsr::new(asr)), Some(cloud_cleaner()));
+        let cloud = MurmurCore::from_engines(Arc::new(MockAsr::new(asr)), Some(cloud_cleaner()));
         let got = commit(&cloud, cfg(3000));
         assert_eq!(same_result(&want), same_result(&got), "case {asr:?}");
         let llm = serde_json::to_value(&got).unwrap()["llm"].clone();
@@ -152,7 +152,7 @@ fn cloud_cleanup_equals_a_local_cleaner_with_the_same_output() {
 fn cleanup_provider_down_gives_the_deterministic_text_in_time() {
     let asr = "um so lets meet at noon";
     let det = {
-        let none = FlowCore::from_engines(Arc::new(MockAsr::new(asr)), None);
+        let none = MurmurCore::from_engines(Arc::new(MockAsr::new(asr)), None);
         commit(&none, cfg(800))
     };
     let slow_ev = "data: {\"id\":\"gen-slow\",\"choices\":[{\"delta\":{\"content\":\"x\"}}]}\n\n";
@@ -177,7 +177,8 @@ fn cleanup_provider_down_gives_the_deterministic_text_in_time() {
     ];
     for (what, reply) in cases {
         let _srv = mock_cloud_fixed(reply);
-        let core = FlowCore::from_engines(Arc::new(MockAsr::new(asr)), Some(cloud_cleaner_ms(800)));
+        let core =
+            MurmurCore::from_engines(Arc::new(MockAsr::new(asr)), Some(cloud_cleaner_ms(800)));
         core.start_session(cfg(800)).unwrap();
         for c in speech(1500).chunks(1600) {
             core.push_audio(c);
@@ -195,7 +196,7 @@ fn cleanup_provider_down_gives_the_deterministic_text_in_time() {
     let port = dead.local_addr().unwrap().port();
     drop(dead);
     srv.point_at(&format!("http://127.0.0.1:{port}/api/v1"));
-    let core = FlowCore::from_engines(Arc::new(MockAsr::new(asr)), Some(cloud_cleaner_ms(800)));
+    let core = MurmurCore::from_engines(Arc::new(MockAsr::new(asr)), Some(cloud_cleaner_ms(800)));
     let r = commit(&core, cfg(800));
     assert_eq!(r.final_text, det.final_text);
     assert!(srv

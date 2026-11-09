@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.app.Activity
 import android.app.AlertDialog
@@ -10,11 +10,11 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.Toast
-import dev.flowclone.FlowApp
-import dev.flowclone.R
-import dev.flowclone.notes.DocumentStore
-import dev.flowclone.notes.Note
-import dev.flowclone.notes.NotesView
+import dev.murmur.MurmurApp
+import dev.murmur.R
+import dev.murmur.notes.DocumentStore
+import dev.murmur.notes.Note
+import dev.murmur.notes.NotesView
 import java.util.Date
 
 /**
@@ -24,13 +24,13 @@ import java.util.Date
  * per note (the ⋮ button, long-press, or TalkBack actions) Pin / Unpin, Share and Delete (asks
  * first). Tapping a note opens it in [NoteEditorActivity]. The Quick note (the Scratchpad from
  * before Notes) is one of them, pinned by default. Reloaded on every resume, so an edit shows
- * when you come back. All store calls run on [FlowApp.documentsIo], in order with the editor's saves.
+ * when you come back. All store calls run on [MurmurApp.documentsIo], in order with the editor's saves.
  *
  * Not a dictation surface: like every other screen of ours the bubble stays hidden here (the
  * search box included); it appears in the editor.
  */
 class NotesActivity : Activity() {
-    private val app get() = FlowApp.of(this)
+    private val app get() = MurmurApp.of(this)
     private lateinit var ui: DevUi
     private var notes: List<Note> = emptyList()
     private var query = ""

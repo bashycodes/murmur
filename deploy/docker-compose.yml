@@ -1,29 +1,29 @@
-# flow-server with Docker Compose (docs/server-setup.md). The same as the
+# murmur-server with Docker Compose (docs/server-setup.md). The same as the
 # quick start's `docker run`, plus a restart policy and hardening. From the
 # repo root:
 #
-#   FLOW_MODELS_PATH=/path/to/models docker compose -f deploy/docker-compose.yml up -d --build
-#   docker exec flow-server cat /data/admin.token     # the admin key
+#   MURMUR_MODELS_PATH=/path/to/models docker compose -f deploy/docker-compose.yml up -d --build
+#   docker exec murmur-server cat /data/admin.token     # the admin key
 #
-# FLOW_MODELS_PATH: a folder with one folder per model, each tagged by its
+# MURMUR_MODELS_PATH: a folder with one folder per model, each tagged by its
 # model.toml (e.g. the colleague bundle's unzipped library/), mounted
 # read-only at /models. The config is derived from it on every start;
-# keys and the admin key live in the flow_data volume.
-# Commands: docker exec flow-server flow-server keys add phone
+# keys and the admin key live in the murmur_data volume.
+# Commands: docker exec murmur-server murmur-server keys add phone
 #
 # Settings (environment or a .env file next to this one):
-#   FLOW_MODELS_PATH   the models folder on this machine (required)
-#   FLOW_STT / FLOW_LLM / FLOW_HEBREW / FLOW_LID
+#   MURMUR_MODELS_PATH   the models folder on this machine (required)
+#   MURMUR_STT / MURMUR_LLM / MURMUR_HEBREW / MURMUR_LID
 #                      a model folder to use instead of the default pick, or none
-#   FLOW_PUBLISH_ADDR  host address the port is published on (default 0.0.0.0: every
+#   MURMUR_PUBLISH_ADDR  host address the port is published on (default 0.0.0.0: every
 #                      IPv4 address; the server's peer filter, loopback/LAN/VPN only,
 #                      is then the only guard, and Docker-published ports bypass ufw).
 #                      Set your LAN or VPN address on a host with a public address.
-#   FLOW_HOST_PORT     host port (default 7313)
+#   MURMUR_HOST_PORT     host port (default 7313)
 #
 # GPU (NVIDIA; LLM cleanup on the GPU), instead of the CPU service:
-#   docker compose -f deploy/docker-compose.yml --profile gpu up -d --build flow-server-gpu
-name: flow-server
+#   docker compose -f deploy/docker-compose.yml --profile gpu up -d --build murmur-server-gpu
+name: murmur-server
 
 x-server: &server
   restart: unless-stopped
@@ -34,37 +34,37 @@ x-server: &server
   security_opt:
     - no-new-privileges:true
   environment: &env
-    FLOW_STT: ${FLOW_STT:-}
-    FLOW_LLM: ${FLOW_LLM:-}
-    FLOW_HEBREW: ${FLOW_HEBREW:-}
-    FLOW_LID: ${FLOW_LID:-}
+    MURMUR_STT: ${MURMUR_STT:-}
+    MURMUR_LLM: ${MURMUR_LLM:-}
+    MURMUR_HEBREW: ${MURMUR_HEBREW:-}
+    MURMUR_LID: ${MURMUR_LID:-}
   ports:
-    - "${FLOW_PUBLISH_ADDR:-0.0.0.0}:${FLOW_HOST_PORT:-7313}:7313"
+    - "${MURMUR_PUBLISH_ADDR:-0.0.0.0}:${MURMUR_HOST_PORT:-7313}:7313"
   volumes:
-    - ${FLOW_MODELS_PATH:?set FLOW_MODELS_PATH to your models folder}:/models:ro
-    - flow_data:/data
+    - ${MURMUR_MODELS_PATH:?set MURMUR_MODELS_PATH to your models folder}:/models:ro
+    - murmur_data:/data
   # Parakeet ~1 GB, + Qwen2.5-1.5B ~1.5 GB, + LID; same cap as the systemd unit.
   mem_limit: 8g
   stop_grace_period: 20s
 
 services:
-  flow-server:
+  murmur-server:
     <<: *server
-    container_name: flow-server
-    image: flow-server
+    container_name: murmur-server
+    image: murmur-server
     build:
       context: ..
       dockerfile: deploy/docker/Dockerfile
       target: runtime
 
-  flow-server-gpu:
+  murmur-server-gpu:
     <<: *server
     profiles: [gpu]
-    container_name: flow-server-gpu
+    container_name: murmur-server-gpu
     environment:
       <<: *env
-      FLOW_CONTAINER_NAME: flow-server-gpu
-    image: flow-server:local-cuda
+      MURMUR_CONTAINER_NAME: murmur-server-gpu
+    image: murmur-server:local-cuda
     build:
       context: ..
       dockerfile: deploy/docker/Dockerfile
@@ -80,4 +80,4 @@ services:
 volumes:
   # admin.token, keys.json, key usage, library hashes. Survives `down`;
   # `down -v` deletes it (and with it every key).
-  flow_data:
+  murmur_data:

@@ -1,25 +1,25 @@
-//! D22 equivalence bench (ignored; needs models + FLOW_AUDIO_DIR): the
+//! D22 equivalence bench (ignored; needs models + MURMUR_AUDIO_DIR): the
 //! 2026-10-23 probe's long clips (19-62 s, 700 ms gaps), whole-clip vs
-//! pause-segmented decoding through `FlowCore`, real Parakeet and whisper
+//! pause-segmented decoding through `MurmurCore`, real Parakeet and whisper
 //! base. Gate: pooled segmented WER <= whole + 0.3 points per engine.
 //! Also prints commit (tail) time with a paced push.
 //!
-//! FLOW_AUDIO_DIR=… FLOW_PARAKEET_DIR=… FLOW_WHISPER_BENCH_MODEL=…/ggml-base-q5_1.bin \
-//!   cargo test --release -p flow-core --features whisper,parakeet,wav \
+//! MURMUR_AUDIO_DIR=… MURMUR_PARAKEET_DIR=… MURMUR_WHISPER_BENCH_MODEL=…/ggml-base-q5_1.bin \
+//!   cargo test --release -p murmur-core --features whisper,parakeet,wav \
 //!   --test segment_bench -- --ignored --nocapture
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use flow_core::config::{ModelConfig, SessionConfig};
-use flow_core::FlowCore;
+use murmur_core::config::{ModelConfig, SessionConfig};
+use murmur_core::MurmurCore;
 
 mod common;
 use common::long_clips;
 
 fn engines() -> Vec<(&'static str, ModelConfig)> {
     let mut v = Vec::new();
-    if let Some(d) = std::env::var_os("FLOW_PARAKEET_DIR").map(PathBuf::from) {
+    if let Some(d) = std::env::var_os("MURMUR_PARAKEET_DIR").map(PathBuf::from) {
         if d.join("tokens.txt").is_file() {
             v.push((
                 "parakeet",
@@ -30,7 +30,7 @@ fn engines() -> Vec<(&'static str, ModelConfig)> {
             ));
         }
     }
-    if let Some(m) = std::env::var_os("FLOW_WHISPER_BENCH_MODEL").map(PathBuf::from) {
+    if let Some(m) = std::env::var_os("MURMUR_WHISPER_BENCH_MODEL").map(PathBuf::from) {
         if m.is_file() {
             v.push((
                 "whisper",
@@ -47,11 +47,11 @@ fn engines() -> Vec<(&'static str, ModelConfig)> {
 
 /// Push at `speed`× real time (0 = at once), then commit.
 fn dictate(
-    core: &FlowCore,
+    core: &MurmurCore,
     pcm: &[i16],
     cfg: SessionConfig,
     speed: f32,
-) -> flow_core::CommitResult {
+) -> murmur_core::CommitResult {
     core.start_session(SessionConfig {
         ring_capacity_samples: pcm.len() + 16_000,
         ..cfg
@@ -74,12 +74,12 @@ fn dictate(
 #[ignore]
 fn segmented_wer_matches_whole_clip() {
     let Some(clips) = long_clips::audio_dir().and_then(|d| long_clips::build(&d)) else {
-        eprintln!("SKIP: FLOW_AUDIO_DIR not set");
+        eprintln!("SKIP: MURMUR_AUDIO_DIR not set");
         return;
     };
     let engines = engines();
     if engines.is_empty() {
-        eprintln!("SKIP: set FLOW_PARAKEET_DIR and/or FLOW_WHISPER_BENCH_MODEL");
+        eprintln!("SKIP: set MURMUR_PARAKEET_DIR and/or MURMUR_WHISPER_BENCH_MODEL");
         return;
     }
     let seg = SessionConfig {
@@ -87,14 +87,14 @@ fn segmented_wer_matches_whole_clip() {
         ..Default::default()
     };
     for (name, model) in engines {
-        let core = FlowCore::load_models(&model).expect("load");
+        let core = MurmurCore::load_models(&model).expect("load");
         let (mut ew, mut es, mut n) = (0, 0, 0);
         for clip in clips.iter().filter(|c| c.secs() >= 15.0) {
             let whole = dictate(&core, &clip.pcm, SessionConfig::default(), 0.0);
             let segm = dictate(&core, &clip.pcm, seg.clone(), 0.0);
             let (a, w) = long_clips::wer_counts(&clip.reference, &whole.asr_text);
             let (b, _) = long_clips::wer_counts(&clip.reference, &segm.asr_text);
-            if std::env::var_os("FLOW_BENCH_DUMP").is_some() && a != b {
+            if std::env::var_os("MURMUR_BENCH_DUMP").is_some() && a != b {
                 eprintln!(
                     "REF   {}\nWHOLE {}\nSEG   {}",
                     clip.reference, whole.asr_text, segm.asr_text
@@ -159,7 +159,7 @@ fn punct_counts(reference: &str, hyp: &str) -> (usize, usize, usize, usize) {
 /// Agent W's regression: pieces punctuated alone turn every mid-sentence
 /// pause into a sentence break. Compares the segmented output with the
 /// whole-clip output (punctuation and case included) for three join
-/// strategies (`FLOW_SEGMENT_JOIN`): plain (no fix), smooth (text-only
+/// strategies (`MURMUR_SEGMENT_JOIN`): plain (no fix), smooth (text-only
 /// heuristic) and bridge (decode around each cut; the product). Sets:
 /// jfk at 800 ms; every manifest utterance >= 6 s cut at 300 ms pauses
 /// with 2 s minimum pieces (forces mid-sentence cuts); the long probe
@@ -168,7 +168,7 @@ fn punct_counts(reference: &str, hyp: &str) -> (usize, usize, usize, usize) {
 #[ignore]
 fn segmented_punctuation_matches_whole_clip() {
     let Some(audio) = long_clips::audio_dir() else {
-        eprintln!("SKIP: FLOW_AUDIO_DIR not set");
+        eprintln!("SKIP: MURMUR_AUDIO_DIR not set");
         return;
     };
     let m: serde_json::Value =
@@ -179,13 +179,13 @@ fn segmented_punctuation_matches_whole_clip() {
         .iter()
         .filter(|u| u["dur_s"].as_f64().unwrap_or(0.0) >= 6.0)
         .filter_map(|u| {
-            flow_core::audio::read_wav_16k_mono(&audio.join(format!("{}.wav", u["id"].as_str()?)))
+            murmur_core::audio::read_wav_16k_mono(&audio.join(format!("{}.wav", u["id"].as_str()?)))
                 .ok()
         })
         .collect();
-    let jfk = std::env::var_os("FLOW_MODELS_DIR")
+    let jfk = std::env::var_os("MURMUR_MODELS_DIR")
         .map(|d| PathBuf::from(d).join("jfk.wav"))
-        .and_then(|p| flow_core::audio::read_wav_16k_mono(&p).ok());
+        .and_then(|p| murmur_core::audio::read_wav_16k_mono(&p).ok());
     let long: Vec<Vec<i16>> = long_clips::build(&audio)
         .unwrap_or_default()
         .into_iter()
@@ -220,7 +220,7 @@ fn segmented_punctuation_matches_whole_clip() {
         ),
     ];
     for (name, model) in engines() {
-        let core = FlowCore::load_models(&model).expect("load");
+        let core = MurmurCore::load_models(&model).expect("load");
         for (set, clips, cfg) in &sets {
             let wholes: Vec<String> = clips
                 .iter()
@@ -229,7 +229,7 @@ fn segmented_punctuation_matches_whole_clip() {
             for mode in ["plain", "smooth", "bridge"] {
                 // SAFETY: this ignored bench is the only test in its binary
                 // that reads the variable, and it runs alone.
-                unsafe { std::env::set_var("FLOW_SEGMENT_JOIN", mode) };
+                unsafe { std::env::set_var("MURMUR_SEGMENT_JOIN", mode) };
                 let (mut e, mut n, mut exact, mut cuts) = (0, 0, 0, 0);
                 let (mut ends_w, mut ends_s) = (0, 0);
                 for (p, w) in clips.iter().zip(&wholes) {
@@ -248,7 +248,7 @@ fn segmented_punctuation_matches_whole_clip() {
                     clips.len()
                 );
             }
-            unsafe { std::env::remove_var("FLOW_SEGMENT_JOIN") };
+            unsafe { std::env::remove_var("MURMUR_SEGMENT_JOIN") };
         }
     }
 }

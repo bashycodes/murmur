@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.content.Intent
 import android.content.pm.ActivityInfo
@@ -7,16 +7,16 @@ import android.content.pm.PackageInfo
 import android.content.pm.ResolveInfo
 import android.view.View
 import android.widget.TextView
-import dev.flowclone.FlowApp
-import dev.flowclone.core.Style
-import dev.flowclone.core.Styles
-import dev.flowclone.data.ShellPages.Tab
-import dev.flowclone.data.SettingsStore
-import dev.flowclone.policy.AppCategorizer.Category
-import dev.flowclone.ui.UiTestKit.idle
-import dev.flowclone.ui.UiTestKit.texts
-import dev.flowclone.ui.UiTestKit.walk
-import dev.flowclone.ui.tabs.StyleTab
+import dev.murmur.MurmurApp
+import dev.murmur.core.Style
+import dev.murmur.core.Styles
+import dev.murmur.data.ShellPages.Tab
+import dev.murmur.data.SettingsStore
+import dev.murmur.policy.AppCategorizer.Category
+import dev.murmur.ui.UiTestKit.idle
+import dev.murmur.ui.UiTestKit.texts
+import dev.murmur.ui.UiTestKit.walk
+import dev.murmur.ui.tabs.StyleTab
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -33,10 +33,10 @@ import org.robolectric.shadows.ShadowAlertDialog
 
 /** Style tab (AndroidStyle.dc.html): group tabs, the group's apps, style cards that save on tap. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], application = FlowApp::class)
+@Config(sdk = [34], application = MurmurApp::class)
 class StyleTabUiTest {
     private val ctx get() = RuntimeEnvironment.getApplication()
-    private val app get() = FlowApp.of(ctx)
+    private val app get() = MurmurApp.of(ctx)
 
     private fun install(pkg: String, label: String) {
         val ai = ApplicationInfo().apply { packageName = pkg; nonLocalizedLabel = label }

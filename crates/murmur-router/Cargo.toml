@@ -1,13 +1,13 @@
 [package]
-name = "flow-router"
+name = "murmur-router"
 version.workspace = true
 edition.workspace = true
 license-file.workspace = true
-description = "Hybrid local/server router: the §9 session API over a local FlowCore and an injected remote backend (no network code)"
+description = "Hybrid local/server router: the §9 session API over a local MurmurCore and an injected remote backend (no network code)"
 
 [dependencies]
-flow-core = { path = "../flow-core", default-features = false }
-flow-protocol = { path = "../flow-protocol" }
+murmur-core = { path = "../murmur-core", default-features = false }
+murmur-protocol = { path = "../murmur-protocol" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

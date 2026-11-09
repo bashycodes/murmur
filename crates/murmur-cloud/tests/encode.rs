@@ -1,7 +1,7 @@
 //! Upload encodings: FLAC is lossless (bit-exact round trip) and smaller
 //! than WAV for speech-like audio.
 
-use flow_cloud::encode::{encode, to_i16, AudioFormat};
+use murmur_cloud::encode::{encode, to_i16, AudioFormat};
 
 fn speechy(ms: usize) -> Vec<f32> {
     // Two tones with a slow envelope plus a little noise.

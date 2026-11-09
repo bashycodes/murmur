@@ -1,6 +1,6 @@
-/* Murmur components: the subset of the Wispr Flow design system's
-   component styles (docs/design/app-design/ds/flow/components/bundle.css)
-   that the app uses, plus the design's Murmur additions (flow-theme.css)
+/* Murmur components: the subset of the app design system's
+   component styles (docs/design/app-design/ds/murmur/components/bundle.css)
+   that the app uses, plus the design's Murmur additions (murmur-theme.css)
    and adapters that style native form controls as those components.
    Every colour is a token from theme.css. */
 

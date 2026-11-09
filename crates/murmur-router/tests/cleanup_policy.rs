@@ -1,4 +1,4 @@
-//! D28 cloud cleanup policy (spec §2.5/§2.6) over a real `FlowCore`
+//! D28 cloud cleanup policy (spec §2.5/§2.6) over a real `MurmurCore`
 //! (MockAsr + a fake on-device LLM) and a fake OpenRouter cleaner injected
 //! as the cleanup factory: C1 for cleanup, consent re-check per call,
 //! circuit, budget, deadline, server route never cleaned in the cloud.
@@ -7,10 +7,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use flow_core::asr::{AbortFlag, MockAsr};
-use flow_core::cleanup::{CleanError, CleanPrompt, Cleaner};
-use flow_core::FlowCore;
-use flow_router::*;
+use murmur_core::asr::{AbortFlag, MockAsr};
+use murmur_core::cleanup::{CleanError, CleanPrompt, Cleaner};
+use murmur_core::MurmurCore;
+use murmur_router::*;
 
 const KEY: &str = "sk-or-LEAKCHECK-cleanup-0123456789";
 const IN: &str = "the demo is on thursday right";
@@ -26,7 +26,7 @@ impl Cleaner for Local {
     }
 }
 
-/// Fake OpenRouter cleaner (what flow-cloud's factory returns).
+/// Fake OpenRouter cleaner (what murmur-cloud's factory returns).
 struct Cloud {
     calls: AtomicUsize,
     out: Mutex<Result<String, CleanError>>,
@@ -171,7 +171,7 @@ struct Rig {
 
 fn rig_opts(c: RouterConfig, factory: bool, local_llm: bool, key: bool) -> Rig {
     let llm = Arc::new(Local(AtomicUsize::new(0)));
-    let core = FlowCore::from_engines(
+    let core = MurmurCore::from_engines(
         Arc::new(MockAsr::new(IN)),
         local_llm.then(|| llm.clone() as Arc<dyn Cleaner>),
     );
@@ -725,8 +725,8 @@ fn command(
     r: &Router,
     base: Option<Arc<dyn Cleaner>>,
     selected: Option<&str>,
-) -> Result<String, flow_core::command::CommandError> {
-    flow_core::command::run(
+) -> Result<String, murmur_core::command::CommandError> {
+    murmur_core::command::run(
         r.command_cleaner(base),
         "make it formal",
         selected,
@@ -760,7 +760,7 @@ fn command_cleaner_follows_the_cleanup_route() {
     assert!(k.router.command_cleaner(None).is_none(), "no LLM at all");
     assert_eq!(
         command(&k.router, None, None),
-        Err(flow_core::command::CommandError::NoLlm)
+        Err(murmur_core::command::CommandError::NoLlm)
     );
 
     // Local first: the loaded LLM wins; without one, the cloud.
@@ -778,7 +778,7 @@ fn command_cleaner_follows_the_cleanup_route() {
 
 #[test]
 fn command_selection_stays_on_device_unless_surrounding_text_is_allowed() {
-    use flow_core::command::CommandError;
+    use murmur_core::command::CommandError;
     let k = rig(cfg());
     let local = k.local_llm.clone() as Arc<dyn Cleaner>;
     assert_eq!(
@@ -810,7 +810,7 @@ fn command_cleaner_rechecks_consent_per_call() {
     let mut c = cfg();
     c.cloud.openrouter.cleanup.consent_at_ms = 0;
     k.router.update_config(c);
-    let r = flow_core::command::run(cl, "write hello", None, Duration::from_secs(5));
+    let r = murmur_core::command::run(cl, "write hello", None, Duration::from_secs(5));
     assert!(r.is_err(), "{r:?}");
     assert_eq!(k.cloud.calls(), 0, "consent revoked: nothing sent");
 }
@@ -819,7 +819,7 @@ fn command_cleaner_rechecks_consent_per_call() {
 
 #[test]
 fn router_command_uses_the_local_engines_llm() {
-    use flow_core::command::CommandError;
+    use murmur_core::command::CommandError;
     const T: Duration = Duration::from_secs(5);
     // Cloud cleanup off: the warm local engine's LLM, no base from the shell.
     let k = rig(RouterConfig {

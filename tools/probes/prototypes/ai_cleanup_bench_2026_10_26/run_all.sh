@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Phase 1 local runs (2026-10-26), one model loaded at a time. env: MODELS,
-# FLOW_LLM_LIB. A label whose results file exists is skipped (captures are not
-# overwritten). 7B/8B are NOT run here: they need the home flow-server stopped
+# MURMUR_LLM_LIB. A label whose results file exists is skipped (captures are not
+# overwritten). 7B/8B are NOT run here: they need the home murmur-server stopped
 # for RAM, which the orchestrator does separately.
 set -uo pipefail
 cd "$(dirname "$0")"

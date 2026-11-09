@@ -1,10 +1,10 @@
-package dev.flowclone.data
+package dev.murmur.data
 
 import org.json.JSONObject
 
 /**
  * Developer settings (docs/hybrid-architecture.md §5): the engine router's configuration.
- * Serialises to flow_router `RouterConfig` JSON — `crates/flow-router/fixtures/router_config_*.json`
+ * Serialises to murmur_router `RouterConfig` JSON — `crates/murmur-router/fixtures/router_config_*.json`
  * are the spec (RouterJsonTest). Plain JVM logic; persistence is [DevStore].
  */
 data class DevSettings(
@@ -49,7 +49,7 @@ data class DevSettings(
     /** D36: the local / server entries switched off (they keep their place). The cloud's switch is [allowCloudCleanup]. */
     val cleanupOff: Set<CleanupRoute> = emptySet(),
 ) {
-    /** `flow_router::CleanupRoute`. */
+    /** `murmur_router::CleanupRoute`. */
     enum class CleanupRoute(val wire: String) { LOCAL("local"), SERVER("server"), CLOUD("cloud") }
 
     /** D36: the entry's switch (the router may still skip it: no phone model, no server LLM, no consent / key). */
@@ -78,7 +78,7 @@ data class DevSettings(
         CLOUD("cloud", true),
     }
 
-    /** flow_router `prefer`: whichever of server / client comes first in [routeOrder]. */
+    /** murmur_router `prefer`: whichever of server / client comes first in [routeOrder]. */
     val prefer: Prefer
         get() = if (routeOrder.firstOrNull { it == Route.SERVER || it == Route.CLIENT } == Route.CLIENT) Prefer.CLIENT else Prefer.SERVER
 
@@ -293,12 +293,12 @@ data class BuildCaps(val local: Boolean, val remote: Boolean, val cloud: Boolean
         val ALL = BuildCaps(local = true, remote = true)
         val LOCAL = BuildCaps(local = true, remote = false, cloud = false)
         val REMOTE = BuildCaps(local = false, remote = true)
-        fun current() = BuildCaps(dev.flowclone.BuildConfig.CAP_LOCAL, dev.flowclone.BuildConfig.CAP_REMOTE, dev.flowclone.BuildConfig.CAP_CLOUD)
+        fun current() = BuildCaps(dev.murmur.BuildConfig.CAP_LOCAL, dev.murmur.BuildConfig.CAP_REMOTE, dev.murmur.BuildConfig.CAP_CLOUD)
     }
 }
 
 /**
- * Kotlin twin of `flow_router::net` (validate_host / classify, §2.6 + §5). The router validates
+ * Kotlin twin of `murmur_router::net` (validate_host / classify, §2.6 + §5). The router validates
  * again; this one drives inline errors and the TLS lock before anything reaches native code.
  */
 object HostRules {
@@ -549,8 +549,8 @@ class DevUnlock(private val now: () -> Long, private val taps: Int = TAPS, priva
 }
 
 /** The last commit, for the Developer page's "Active engine" row and the bubble badge. In-memory only. */
-data class LastDictation(val result: dev.flowclone.core.CommitResult, val atMs: Long) {
+data class LastDictation(val result: dev.murmur.core.CommitResult, val atMs: Long) {
     companion object {
-        fun of(r: dev.flowclone.core.CommitResult, atMs: Long) = LastDictation(r, atMs)
+        fun of(r: dev.murmur.core.CommitResult, atMs: Long) = LastDictation(r, atMs)
     }
 }

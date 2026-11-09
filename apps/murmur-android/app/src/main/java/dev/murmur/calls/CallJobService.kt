@@ -1,4 +1,4 @@
-package dev.flowclone.calls
+package dev.murmur.calls
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -13,9 +13,9 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
 import android.widget.Toast
-import dev.flowclone.FlowApp
-import dev.flowclone.R
-import dev.flowclone.ui.CallsActivity
+import dev.murmur.MurmurApp
+import dev.murmur.R
+import dev.murmur.ui.CallsActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -25,16 +25,16 @@ import kotlinx.coroutines.launch
 
 /**
  * D46: the foreground service a call transcription runs under. Its own small service (not
- * FlowService, which needs the overlay permission and hosts dictation): it starts the job in
+ * MurmurService, which needs the overlay permission and hosts dictation): it starts the job in
  * [CallJobs], shows its progress with a Cancel action, holds a partial wake lock so the
  * transcription keeps going with the screen off, and stops itself when the job ends.
  * D49: [ACTION_DRAIN] runs the auto-transcribe queue the same way, one recording after another
- * (each after any manual job); the finish notification comes from [notifyFinished] (FlowApp's
+ * (each after any manual job); the finish notification comes from [notifyFinished] (MurmurApp's
  * job hook), so a job run inside [CallRecordingJob] gets one too.
  */
 class CallJobService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val app get() = FlowApp.of(this)
+    private val app get() = MurmurApp.of(this)
     private var watch: Job? = null
     private var wake: PowerManager.WakeLock? = null
     private var lastPercent = -2
@@ -109,7 +109,7 @@ class CallJobService : Service() {
 
     private fun progressNotification(s: CallJobState.Running): Notification =
         Notification.Builder(this, CHANNEL)
-            .setSmallIcon(R.drawable.ic_flow)
+            .setSmallIcon(R.drawable.ic_murmur)
             .setContentTitle("Transcribing a call recording")
             .setContentText(CallsView.progressLabel(s.name, s.fraction, s.loading))
             .setProgress(100, ((s.fraction ?: 0f) * 100).toInt(), s.loading || s.fraction == null)
@@ -128,7 +128,7 @@ class CallJobService : Service() {
 
     private fun acquireWake() {
         if (wake?.isHeld == true) return
-        wake = getSystemService(PowerManager::class.java)?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "flowclone:call-transcribe")?.apply {
+        wake = getSystemService(PowerManager::class.java)?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "murmur:call-transcribe")?.apply {
             setReferenceCounted(false)
             acquire(WAKE_TIMEOUT_MS)
         }
@@ -144,14 +144,14 @@ class CallJobService : Service() {
     private fun createChannel() = createChannel(this)
 
     companion object {
-        const val ACTION_START = "dev.flowclone.action.CALL_TRANSCRIBE"
-        const val ACTION_CANCEL = "dev.flowclone.action.CALL_CANCEL"
-        const val ACTION_DRAIN = "dev.flowclone.action.CALL_DRAIN"
+        const val ACTION_START = "dev.murmur.action.CALL_TRANSCRIBE"
+        const val ACTION_CANCEL = "dev.murmur.action.CALL_CANCEL"
+        const val ACTION_DRAIN = "dev.murmur.action.CALL_DRAIN"
         const val EXTRA_URI = "uri"
         const val EXTRA_NAME = "name"
         const val EXTRA_RECORDED_AT = "recorded_at"
         const val EXTRA_LANGUAGE = "language"
-        private const val CHANNEL = "flow_calls"
+        private const val CHANNEL = "murmur_calls"
         private const val NOTIF_ID = 4001
         private const val NOTIF_DONE_ID = 4002
         /** A safety net only: the lock is released when the job ends. */
@@ -178,7 +178,7 @@ class CallJobService : Service() {
             }
             createChannel(ctx)
             val n = Notification.Builder(ctx, CHANNEL)
-                .setSmallIcon(R.drawable.ic_flow)
+                .setSmallIcon(R.drawable.ic_murmur)
                 .setContentTitle(title)
                 .setContentText(req.name)
                 .setAutoCancel(true)

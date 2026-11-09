@@ -1,4 +1,4 @@
-package dev.flowclone.insert
+package dev.murmur.insert
 
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy

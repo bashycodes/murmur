@@ -1,10 +1,10 @@
-package dev.flowclone.core
+package dev.murmur.core
 
-import dev.flowclone.data.BuildCaps
-import dev.flowclone.data.CloudSettings
-import dev.flowclone.data.SttSettings
-import dev.flowclone.data.CleanupSettings
-import dev.flowclone.data.DevSettings
+import dev.murmur.data.BuildCaps
+import dev.murmur.data.CloudSettings
+import dev.murmur.data.SttSettings
+import dev.murmur.data.CleanupSettings
+import dev.murmur.data.DevSettings
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -14,7 +14,7 @@ import org.junit.Test
 
 /**
  * The Kotlin mirror types parse the router's own golden fixtures
- * (crates/flow-router/fixtures, on the test classpath via sourceSets — no copies), and
+ * (crates/murmur-router/fixtures, on the test classpath via sourceSets — no copies), and
  * DevSettings serialises to exactly the `router_config_*.json` the router expects.
  */
 class RouterJsonTest {
@@ -50,7 +50,7 @@ class RouterJsonTest {
             "router_config_hybrid.json" to DevSettings.defaults(BuildCaps.ALL).copy(host = "100.64.0.10", token = token),
             "router_config_local_only.json" to DevSettings(allowServer = false, allowClient = true, routeOrder = DevSettings.orderFor(DevSettings.Prefer.CLIENT)),
             "router_config_remote_only.json" to DevSettings(
-                allowServer = true, allowClient = false, host = "flow.example.com", port = 443, tls = true,
+                allowServer = true, allowClient = false, host = "murmur.example.com", port = 443, tls = true,
                 tlsPinSha256 = "3f2a9c0b7e4d1f6a8b5c2e9d0a7f4b1c6e3d8a5f2b9c0e7d4a1f6b3c8e5d2a9f", token = token,
                 connectTimeoutMs = 1500, keepLocalWarm = false,
             ),
@@ -118,9 +118,9 @@ class RouterJsonTest {
         val line = DevText.lastDictation(c)
         assertTrue(line, line.startsWith("cloud · OpenRouter · openai/whisper-large-v3-turbo · $0.0000"))
         assertTrue(line, line.endsWith("AI cleanup: OpenRouter · llama-3.3-70b-instruct · $0.0007"))
-        val u = dev.flowclone.data.CloudUsage.decode(fixture("cloud_usage.json"))
+        val u = dev.murmur.data.CloudUsage.decode(fixture("cloud_usage.json"))
         assertEquals("2026-10", u.month)
-        assertEquals(dev.flowclone.data.CloudUsage.ProviderUsage("openrouter", 42, 312000, 0.0234, false, "stt"), u.providers[0])
+        assertEquals(dev.murmur.data.CloudUsage.ProviderUsage("openrouter", 42, 312000, 0.0234, false, "stt"), u.providers[0])
         assertEquals("cleanup", u.providers[1].purpose)
     }
 
@@ -164,11 +164,11 @@ class RouterJsonTest {
         val ok = RouterJson.decodeHealth(fixture("health_ok.json"))
         assertTrue(ok.ok)
         assertEquals(Rtt(3, 4, 6), ok.rttMs)
-        assertEquals("flow-server 0.1.0", ok.serverVersion)
+        assertEquals("murmur-server 0.1.0", ok.serverVersion)
         assertEquals("parakeet", ok.asrBackend)
         assertEquals(true, ok.postprocessMatch)
         assertEquals(1, ok.workers); assertEquals(0, ok.busy)
-        assertEquals("OK · median 4 ms (3-6) · flow-server 0.1.0 · parakeet", DevText.probe(ok))
+        assertEquals("OK · median 4 ms (3-6) · murmur-server 0.1.0 · parakeet", DevText.probe(ok))
         val bad = RouterJson.decodeHealth(fixture("health_auth_failed.json"))
         assertFalse(bad.ok)
         assertEquals("auth_failed", bad.error)
@@ -197,7 +197,7 @@ class RouterJsonTest {
         assertTrue(DevText.lastDictation(fb), DevText.lastDictation(fb).startsWith("Client (on-device) · fallback: connect_failed"))
     }
 
-    // ---- 2026-10-22 live route + hands-free endpointing (crates/flow-router/fixtures) ----
+    // ---- 2026-10-22 live route + hands-free endpointing (crates/murmur-router/fixtures) ----
 
     @Test fun decodesStartInfoAndPollFixtures() {
         assertEquals(

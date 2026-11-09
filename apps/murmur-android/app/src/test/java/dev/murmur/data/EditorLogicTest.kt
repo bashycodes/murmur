@@ -1,12 +1,12 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.core.CleanupLevel
-import dev.flowclone.core.CommitStatus
-import dev.flowclone.core.CoreException
-import dev.flowclone.core.DictEntry
-import dev.flowclone.core.FakeFlowCore
-import dev.flowclone.core.FlowCoreLoader
-import dev.flowclone.core.ModelConfig
+import dev.murmur.core.CleanupLevel
+import dev.murmur.core.CommitStatus
+import dev.murmur.core.CoreException
+import dev.murmur.core.DictEntry
+import dev.murmur.core.FakeMurmurCore
+import dev.murmur.core.MurmurCoreLoader
+import dev.murmur.core.ModelConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -131,9 +131,9 @@ class EnginePlanTest {
 
     @Test fun llmLoadFailureFallsBackToAsrOnly() {
         val tried = mutableListOf<ModelConfig>()
-        val loader = FlowCoreLoader { cfg ->
+        val loader = MurmurCoreLoader { cfg ->
             tried += cfg
-            if (cfg.llmPath != null) throw CoreException("flow-llm plugin not found") else FakeFlowCore("x")
+            if (cfg.llmPath != null) throw CoreException("murmur-llm plugin not found") else FakeMurmurCore("x")
         }
         val plan = EnginePlan.plan(Settings(llmEnabled = true), "/a.bin", "/l.gguf", exists, 4) as EnginePlan.Plan.Native
         val r = EnginePlan.load(plan, loader)
@@ -145,7 +145,7 @@ class EnginePlanTest {
 
     @Test fun llmLoadSuccess() {
         val plan = EnginePlan.plan(Settings(llmEnabled = true), "/a.bin", "/l.gguf", exists, 4) as EnginePlan.Plan.Native
-        val r = EnginePlan.load(plan) { FakeFlowCore("x") }
+        val r = EnginePlan.load(plan) { FakeMurmurCore("x") }
         assertEquals(EnginePlan.LlmStatus.Loaded("l.gguf"), r.llm)
     }
 

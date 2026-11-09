@@ -1,16 +1,16 @@
 //! Golden wire fixtures (`fixtures/*.json`): every file parses and
 //! re-serialises to the same JSON; the canonical messages built here equal
 //! the files. Regenerate after an intentional change with
-//! `FLOW_REGEN_FIXTURES=1 cargo test -p flow-protocol --test fixtures`.
+//! `MURMUR_REGEN_FIXTURES=1 cargo test -p murmur-protocol --test fixtures`.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use flow_core::asr::MockAsr;
-use flow_core::config::{AppCategory, Platform};
-use flow_core::dictionary::{DictEntry, Dictionary};
-use flow_core::{CommitResult, FlowCore};
-use flow_protocol::*;
+use murmur_core::asr::MockAsr;
+use murmur_core::config::{AppCategory, Platform};
+use murmur_core::dictionary::{DictEntry, Dictionary};
+use murmur_core::{CommitResult, MurmurCore};
+use murmur_protocol::*;
 use serde_json::Value;
 
 fn dir() -> PathBuf {
@@ -50,12 +50,15 @@ fn context() -> FieldContext {
 
 /// A real core result with deterministic timings.
 fn commit_result() -> CommitResult {
-    let core = FlowCore::from_engines(Arc::new(MockAsr::new("um ask not what zephyr can do")), None);
+    let core = MurmurCore::from_engines(
+        Arc::new(MockAsr::new("um ask not what zephyr can do")),
+        None,
+    );
     core.start_session(session_config()).unwrap();
     core.set_context(context());
     core.push_audio(&speech(1000));
     let mut r = core.commit();
-    r.timings = flow_core::Timings {
+    r.timings = murmur_core::Timings {
         audio_ms: 1000,
         asr_ms: 812,
         llm_ms: 0,
@@ -71,13 +74,13 @@ fn commit_result() -> CommitResult {
 /// A text-only cleanup request (D36), as the client's prompt builder
 /// records it.
 fn clean_request() -> CleanRequest {
-    let p = flow_core::cleanup::build_prompt_scoped(
+    let p = murmur_core::cleanup::build_prompt_scoped(
         "the demo is on thursday right",
-        flow_core::config::CleanupLevel::Light,
-        flow_core::config::Style::Default,
+        murmur_core::config::CleanupLevel::Light,
+        murmur_core::config::Style::Default,
         &context(),
         &session_config().dictionary,
-        flow_core::cleanup::PromptScope::FULL,
+        murmur_core::cleanup::PromptScope::FULL,
     )
     .with_timeout(1500);
     (*p.source.unwrap()).clone()
@@ -86,7 +89,7 @@ fn clean_request() -> CleanRequest {
 fn hello_ok() -> HelloOk {
     HelloOk {
         proto: 1,
-        server: "flow-server 0.1.0".into(),
+        server: "murmur-server 0.1.0".into(),
         core: "0.1.0".into(),
         postprocess_rev: "2026-10-21.1".into(),
         asr_backend: "parakeet".into(),
@@ -107,7 +110,7 @@ fn client_cases() -> Vec<(&'static str, ClientMsg)> {
             ClientMsg::Hello(Hello {
                 proto_min: 1,
                 proto_max: 1,
-                client: "flow-android 0.2.0".into(),
+                client: "murmur-android 0.2.0".into(),
                 core: "0.1.0".into(),
                 postprocess_rev: "2026-10-21.1".into(),
             }),
@@ -266,7 +269,7 @@ fn pretty(v: &impl serde::Serialize) -> String {
 
 fn check_or_regen(name: &str, json: String) {
     let p = dir().join(format!("{name}.json"));
-    if std::env::var_os("FLOW_REGEN_FIXTURES").is_some() {
+    if std::env::var_os("MURMUR_REGEN_FIXTURES").is_some() {
         std::fs::write(&p, &json).unwrap();
         return;
     }

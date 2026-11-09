@@ -1,16 +1,16 @@
-//! Review C4 end to end: the real flow-remote client cancels a commit that
-//! the real in-process flow-server is still decoding. Client side: `cancel()`
+//! Review C4 end to end: the real murmur-remote client cancels a commit that
+//! the real in-process murmur-server is still decoding. Client side: `cancel()`
 //! sends `cancel` and wakes the waiting `commit`. Server side: the in-flight
-//! core is cancelled and flow-core's abort flag stops the decode, so the
+//! core is cancelled and murmur-core's abort flag stops the decode, so the
 //! single worker is free long before the job would have ended.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use flow_contract_tests::*;
-use flow_core::config::SessionConfig;
-use flow_remote::RemoteBackend;
-use flow_router::Backend;
+use murmur_contract_tests::*;
+use murmur_core::config::SessionConfig;
+use murmur_remote::RemoteBackend;
+use murmur_router::Backend;
 
 const COMMIT: Duration = Duration::from_secs(4);
 

@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.app.Activity
 import android.app.AlertDialog
@@ -13,27 +13,27 @@ import android.widget.LinearLayout
 import android.widget.Toast
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
-import dev.flowclone.EngineHolder
-import dev.flowclone.FlowApp
-import dev.flowclone.R
-import dev.flowclone.core.AsrEngine
-import dev.flowclone.core.HealthReport
-import dev.flowclone.data.Backup
-import dev.flowclone.data.BackupIo
-import dev.flowclone.data.CloudUsage
-import dev.flowclone.data.DevPages
-import dev.flowclone.data.DevSettingsForm
-import dev.flowclone.data.DevUnlock
-import dev.flowclone.data.OpenRouter
-import dev.flowclone.data.LanguageDefault
-import dev.flowclone.data.Retention
-import dev.flowclone.data.RetryLogic
-import dev.flowclone.data.Settings
-import dev.flowclone.data.SettingsDraft
-import dev.flowclone.data.SettingsPages
-import dev.flowclone.data.SettingsPages.Field
-import dev.flowclone.data.SettingsPages.Page
-import dev.flowclone.data.SettingsSummary
+import dev.murmur.EngineHolder
+import dev.murmur.MurmurApp
+import dev.murmur.R
+import dev.murmur.core.AsrEngine
+import dev.murmur.core.HealthReport
+import dev.murmur.data.Backup
+import dev.murmur.data.BackupIo
+import dev.murmur.data.CloudUsage
+import dev.murmur.data.DevPages
+import dev.murmur.data.DevSettingsForm
+import dev.murmur.data.DevUnlock
+import dev.murmur.data.OpenRouter
+import dev.murmur.data.LanguageDefault
+import dev.murmur.data.Retention
+import dev.murmur.data.RetryLogic
+import dev.murmur.data.Settings
+import dev.murmur.data.SettingsDraft
+import dev.murmur.data.SettingsPages
+import dev.murmur.data.SettingsPages.Field
+import dev.murmur.data.SettingsPages.Page
+import dev.murmur.data.SettingsSummary
 import java.io.File
 import kotlin.concurrent.thread
 
@@ -61,7 +61,7 @@ import kotlin.concurrent.thread
  * Discard prompt); switches and choices apply at once. Same prefs keys and [Settings] as before.
  */
 class SettingsActivity : Activity() {
-    private val app get() = FlowApp.of(this)
+    private val app get() = MurmurApp.of(this)
     private val caps get() = app.caps
     private lateinit var ui: DevUi
     private lateinit var page: Page
@@ -317,7 +317,7 @@ class SettingsActivity : Activity() {
                 val s = app.settings.load()
                 val d = app.dev.load()
                 language.setSubtitle(SettingsSummary.language(s, app.effectiveLanguage(s)))
-                style.setSubtitle(dev.flowclone.data.WritingStyle.summary(s))
+                style.setSubtitle(dev.murmur.data.WritingStyle.summary(s))
                 bubble.setSubtitle(SettingsSummary.bubble(s))
                 apps.setSubtitle(SettingsSummary.apps(s))
                 timing.setSubtitle(SettingsSummary.timing(s))
@@ -478,7 +478,7 @@ class SettingsActivity : Activity() {
     }
 
     /** The About row: the same build label as the main screen (D26), e.g. `Version 0.2.0 (hybrid) · 1a2b3c4`. */
-    private fun versionLabel() = dev.flowclone.data.AppVersion.current.label(app.caps.flavor)
+    private fun versionLabel() = dev.murmur.data.AppVersion.current.label(app.caps.flavor)
 
     // =====================================================================================
     // Language
@@ -531,12 +531,12 @@ class SettingsActivity : Activity() {
         val s = app.settings.load()
         page {
             note("The style depends on the app you dictate into. Changes apply at once.")
-            for (b in dev.flowclone.data.WritingStyle.BUCKETS) {
+            for (b in dev.murmur.data.WritingStyle.BUCKETS) {
                 sectionLabel(b.title.uppercase())
                 card {
                     val current = b.get(s.styles)
                     choiceRows(
-                        dev.flowclone.data.WritingStyle.choicesFor(current).map { DevUi.Choice(it.style, it.name, it.description) },
+                        dev.murmur.data.WritingStyle.choicesFor(current).map { DevUi.Choice(it.style, it.name, it.description) },
                         current,
                     ) { st -> applyNow { copy(styles = b.set(styles, st)) } }
                 }
@@ -609,7 +609,7 @@ class SettingsActivity : Activity() {
                     "long, or changes too much, the formatted transcript is inserted instead. Dictionary replacements and " +
                     "snippets apply either way.",
             )
-            lateinit var strength: DevUi.ChoiceGroup<dev.flowclone.core.CleanupLevel>
+            lateinit var strength: DevUi.ChoiceGroup<dev.murmur.core.CleanupLevel>
             // D36: the engines (this phone, your server, OpenRouter) in try order, as on Speech to text.
             val engines = CleanupPage(this@SettingsActivity, ui, update = { f -> applyNow(f) })
             engines.render(this)
@@ -629,9 +629,9 @@ class SettingsActivity : Activity() {
             card {
                 strength = choiceRows(
                     listOf(
-                        DevUi.Choice(dev.flowclone.core.CleanupLevel.LIGHT, "Light", "Punctuation and fillers"),
-                        DevUi.Choice(dev.flowclone.core.CleanupLevel.MEDIUM, "Medium"),
-                        DevUi.Choice(dev.flowclone.core.CleanupLevel.HIGH, "High", "Rewrite for clarity"),
+                        DevUi.Choice(dev.murmur.core.CleanupLevel.LIGHT, "Light", "Punctuation and fillers"),
+                        DevUi.Choice(dev.murmur.core.CleanupLevel.MEDIUM, "Medium"),
+                        DevUi.Choice(dev.murmur.core.CleanupLevel.HIGH, "High", "Rewrite for clarity"),
                     ),
                     SettingsPages.shownStrength(s.cleanup),
                 ) { l -> applyNow { copy(cleanup = l) } }
@@ -692,9 +692,9 @@ class SettingsActivity : Activity() {
             card {
                 choiceRows(
                     listOf(
-                        DevUi.Choice(dev.flowclone.data.CommandButton.WITH_SELECTION, "When text is selected", "Select text, tap ✎ next to the mic and say what to do (\"make it shorter\")"),
-                        DevUi.Choice(dev.flowclone.data.CommandButton.ALWAYS, "Always", "Also without a selection: say what to write at the cursor (the bubble no longer shrinks)"),
-                        DevUi.Choice(dev.flowclone.data.CommandButton.OFF, "Off", "No ✎ button"),
+                        DevUi.Choice(dev.murmur.data.CommandButton.WITH_SELECTION, "When text is selected", "Select text, tap ✎ next to the mic and say what to do (\"make it shorter\")"),
+                        DevUi.Choice(dev.murmur.data.CommandButton.ALWAYS, "Always", "Also without a selection: say what to write at the cursor (the bubble no longer shrinks)"),
+                        DevUi.Choice(dev.murmur.data.CommandButton.OFF, "Off", "No ✎ button"),
                     ),
                     s.commandButton,
                 ) { v -> applyNow { copy(commandButton = v) } }

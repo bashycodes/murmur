@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Latency summary of live flow-server runs (run_paths.py server output).
+"""Latency summary of live murmur-server runs (run_paths.py server output).
 
   timings.py server_TAG.jsonl [...] [--rows]
 

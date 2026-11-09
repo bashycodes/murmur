@@ -1,18 +1,18 @@
-package dev.flowclone.data
+package dev.murmur.data
 
 import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
-import dev.flowclone.bubble.BubblePositioner
-import dev.flowclone.core.CleanupLevel
-import dev.flowclone.core.CoreJson
-import dev.flowclone.core.DictEntry
+import dev.murmur.bubble.BubblePositioner
+import dev.murmur.core.CleanupLevel
+import dev.murmur.core.CoreJson
+import dev.murmur.core.DictEntry
 import java.io.File
 
 /** SharedPreferences-backed [Settings] + model path + bubble position. */
 class SettingsStore(context: Context) {
-    private val sp = context.getSharedPreferences("flow_settings", Context.MODE_PRIVATE)
+    private val sp = context.getSharedPreferences("murmur_settings", Context.MODE_PRIVATE)
 
     private companion object {
         /** D22: the hands-free endpoint default moved 2000 → 1500 ms; set once that ran (or on any save). */
@@ -39,7 +39,7 @@ class SettingsStore(context: Context) {
         bubbleScale = loadBubbleScale(),
         commandButton = loadCommandButton(),
         spokenCleanup = sp.getBoolean("spoken_cleanup", true),
-        asrEngine = dev.flowclone.core.AsrEngine.entries.firstOrNull { it.wire == sp.getString("asr_engine", null) } ?: dev.flowclone.core.AsrEngine.WHISPER,
+        asrEngine = dev.murmur.core.AsrEngine.entries.firstOrNull { it.wire == sp.getString("asr_engine", null) } ?: dev.murmur.core.AsrEngine.WHISPER,
         endpointSilenceMs = loadEndpointMs(),
         decodeWhileSpeaking = sp.getBoolean("decode_while_speaking", true),
         styles = loadStyles(),
@@ -48,11 +48,11 @@ class SettingsStore(context: Context) {
         keepBothLanguages = sp.getBoolean("keep_both_languages", false),
     )
 
-    /** D27: nothing stored (every install before 0.3) = the [dev.flowclone.core.Styles] defaults. */
-    private fun loadStyles(): dev.flowclone.core.Styles {
-        val d = dev.flowclone.core.Styles()
-        fun st(k: String, def: dev.flowclone.core.Style) = dev.flowclone.core.Style.fromWire(sp.getString(k, null)) ?: def
-        return dev.flowclone.core.Styles(
+    /** D27: nothing stored (every install before 0.3) = the [dev.murmur.core.Styles] defaults. */
+    private fun loadStyles(): dev.murmur.core.Styles {
+        val d = dev.murmur.core.Styles()
+        fun st(k: String, def: dev.murmur.core.Style) = dev.murmur.core.Style.fromWire(sp.getString(k, null)) ?: def
+        return dev.murmur.core.Styles(
             personal = st("style_personal", d.personal), work = st("style_work", d.work),
             email = st("style_email", d.email), other = st("style_other", d.other),
         )
@@ -210,23 +210,23 @@ class DictionaryStore(context: Context) {
     fun exportJson(): String = CoreJson.encodeDictionary(all())
 }
 
-/** Learn-from-edits suggestions ([dev.flowclone.learn.Suggestions]): words only, `learn_suggestions.json`. */
+/** Learn-from-edits suggestions ([dev.murmur.learn.Suggestions]): words only, `learn_suggestions.json`. */
 class SuggestionStore(context: Context) {
     private val file = File(context.filesDir, "learn_suggestions.json")
-    @Volatile private var cache: dev.flowclone.learn.Suggestions? = null
+    @Volatile private var cache: dev.murmur.learn.Suggestions? = null
 
     @Synchronized
-    fun load(): dev.flowclone.learn.Suggestions = cache
-        ?: dev.flowclone.learn.Suggestions.decode(runCatching { file.takeIf { it.exists() }?.readText() }.getOrNull()).also { cache = it }
+    fun load(): dev.murmur.learn.Suggestions = cache
+        ?: dev.murmur.learn.Suggestions.decode(runCatching { file.takeIf { it.exists() }?.readText() }.getOrNull()).also { cache = it }
 
     /** Read-modify-write under the store lock; [f] returns the new value (same = no write). */
     @Synchronized
-    fun update(f: (dev.flowclone.learn.Suggestions) -> dev.flowclone.learn.Suggestions): dev.flowclone.learn.Suggestions {
+    fun update(f: (dev.murmur.learn.Suggestions) -> dev.murmur.learn.Suggestions): dev.murmur.learn.Suggestions {
         val old = load()
         val new = f(old)
         if (new != old) {
             val tmp = File(file.parentFile, "learn_suggestions.json.tmp")
-            tmp.writeText(dev.flowclone.learn.Suggestions.encode(new))
+            tmp.writeText(dev.murmur.learn.Suggestions.encode(new))
             tmp.renameTo(file)
             cache = new
         }
@@ -248,11 +248,11 @@ data class HistoryRow(
     val llmMs: Long = 0,
     val totalMs: Long = 0,
     /**
-     * v3: how the insert ended ([dev.flowclone.debug.InsertOutcome] wire values: inserted,
+     * v3: how the insert ended ([dev.murmur.debug.InsertOutcome] wire values: inserted,
      * target_changed, target_protected, paste_failed, empty, error); null = saved before v3.
      */
     val insertOutcome: String? = null,
-    /** v3: [dev.flowclone.core.RouteInfo.engine] (local / remote / cloud); null = unknown. */
+    /** v3: [dev.murmur.core.RouteInfo.engine] (local / remote / cloud); null = unknown. */
     val route: String? = null,
     /**
      * v4, Command Mode rows only ([status] = [COMMAND]): the selected text the instruction
@@ -260,7 +260,7 @@ data class HistoryRow(
      */
     val commandOriginal: String? = null,
     /**
-     * v5: the writing-style bucket ([FieldContext.appCategory][dev.flowclone.core.FieldContext.appCategory])
+     * v5: the writing-style bucket ([FieldContext.appCategory][dev.murmur.core.FieldContext.appCategory])
      * of the dictation's app, so a retry picks the same style; null = saved before v5.
      */
     val appCategory: String? = null,
@@ -268,12 +268,12 @@ data class HistoryRow(
     val isCommand: Boolean get() = status == COMMAND
 
     companion object {
-        /** [status] of a Command Mode row (not a [dev.flowclone.core.CommitStatus]). */
+        /** [status] of a Command Mode row (not a [dev.murmur.core.CommitStatus]). */
         const val COMMAND = "COMMAND"
 
-        fun ofCommand(r: dev.flowclone.command.CommandRecord, createdAt: Long) = HistoryRow(
+        fun ofCommand(r: dev.murmur.command.CommandRecord, createdAt: Long) = HistoryRow(
             0, createdAt, r.appId, COMMAND, r.instruction, r.result.orEmpty(),
-            inserted = r.outcome == dev.flowclone.debug.InsertOutcome.INSERTED, audioMs = 0,
+            inserted = r.outcome == dev.murmur.debug.InsertOutcome.INSERTED, audioMs = 0,
             insertOutcome = r.outcome, commandOriginal = r.original,
         )
     }
@@ -446,7 +446,7 @@ class HistoryStore(
      * only), the new text becomes the next version and the row's text. Returns the row as it
      * was and the new version's number, or null when the row is gone.
      */
-    fun applyRetry(id: Long, r: dev.flowclone.core.CommitResult, now: Long = System.currentTimeMillis()): Pair<HistoryRow, Int>? =
+    fun applyRetry(id: Long, r: dev.murmur.core.CommitResult, now: Long = System.currentTimeMillis()): Pair<HistoryRow, Int>? =
         addVersion(id, now) { RetryLogic.retried(it, r) }
 
     /**

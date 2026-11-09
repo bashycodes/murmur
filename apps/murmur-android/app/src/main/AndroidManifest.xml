@@ -40,20 +40,20 @@
     <uses-feature android:name="android.hardware.sensor.accelerometer" android:required="false" />
 
     <application
-        android:name=".FlowApp"
+        android:name=".MurmurApp"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@drawable/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Flow"
+        android:theme="@style/Theme.Murmur"
         android:usesCleartextTraffic="false">
 
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
-            android:theme="@style/Theme.Flow.Shell">
+            android:theme="@style/Theme.Murmur.Shell">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -62,30 +62,30 @@
             <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
         </activity>
         <!-- Drawer → Permissions (the setup checklist); draws its own top bar. -->
-        <activity android:name=".ui.PermissionsActivity" android:exported="false" android:label="Permissions" android:theme="@style/Theme.Flow.Shell" />
+        <activity android:name=".ui.PermissionsActivity" android:exported="false" android:label="Permissions" android:theme="@style/Theme.Murmur.Shell" />
         <activity android:name=".ui.ModelImportActivity" android:exported="false" android:label="@string/title_models"
-            android:theme="@style/Theme.Flow.Shell" />
+            android:theme="@style/Theme.Murmur.Shell" />
         <activity android:name=".ui.SettingsActivity" android:exported="false" android:label="@string/title_settings"
-            android:theme="@style/Theme.Flow.Shell" />
-        <activity android:name=".ui.DictionaryActivity" android:exported="false" android:label="@string/title_dictionary" android:theme="@style/Theme.Flow.Shell" />
-        <!-- History, Insights, Notes and the note editor draw the design's top bar (Theme.Flow.Shell). -->
-        <activity android:name=".ui.HistoryActivity" android:exported="false" android:label="@string/title_history" android:theme="@style/Theme.Flow.Shell" />
-        <activity android:name=".ui.InsightsActivity" android:exported="false" android:label="@string/title_insights" android:theme="@style/Theme.Flow.Shell" />
+            android:theme="@style/Theme.Murmur.Shell" />
+        <activity android:name=".ui.DictionaryActivity" android:exported="false" android:label="@string/title_dictionary" android:theme="@style/Theme.Murmur.Shell" />
+        <!-- History, Insights, Notes and the note editor draw the design's top bar (Theme.Murmur.Shell). -->
+        <activity android:name=".ui.HistoryActivity" android:exported="false" android:label="@string/title_history" android:theme="@style/Theme.Murmur.Shell" />
+        <activity android:name=".ui.InsightsActivity" android:exported="false" android:label="@string/title_insights" android:theme="@style/Theme.Murmur.Shell" />
         <!-- Notes list: no bubble here (only the editor is a dictation surface). -->
-        <activity android:name=".ui.CallsActivity" android:exported="false" android:label="Calls" android:theme="@style/Theme.Flow.Shell" />
-        <activity android:name=".ui.NotesActivity" android:exported="false" android:label="@string/title_notes" android:theme="@style/Theme.Flow.Shell" />
+        <activity android:name=".ui.CallsActivity" android:exported="false" android:label="Calls" android:theme="@style/Theme.Murmur.Shell" />
+        <activity android:name=".ui.NotesActivity" android:exported="false" android:label="@string/title_notes" android:theme="@style/Theme.Murmur.Shell" />
         <!-- Note editor (Quick note + every note): the one screen of ours the bubble dictates into (policy/OwnAppGate). -->
         <activity android:name=".ui.NoteEditorActivity" android:exported="false" android:label="@string/title_scratchpad"
-            android:theme="@style/Theme.Flow.Shell"
+            android:theme="@style/Theme.Murmur.Shell"
             android:launchMode="singleTop" android:windowSoftInputMode="adjustResize|stateVisible" />
         <activity android:name=".ui.DeveloperActivity" android:exported="false" android:label="@string/title_developer"
-            android:theme="@style/Theme.Flow.Shell" />
+            android:theme="@style/Theme.Murmur.Shell" />
         <activity android:name=".ui.OpenRouterActivity" android:exported="false" android:label="Cloud server"
-            android:theme="@style/Theme.Flow.Shell" />
+            android:theme="@style/Theme.Murmur.Shell" />
         <activity android:name=".ui.ModelPickerActivity" android:exported="false" android:label="Model"
-            android:theme="@style/Theme.Flow.Shell" />
+            android:theme="@style/Theme.Murmur.Shell" />
         <activity android:name=".ui.UsersKeysActivity" android:exported="false" android:label="Users &amp; keys"
-            android:theme="@style/Theme.Flow.Shell" />
+            android:theme="@style/Theme.Murmur.Shell" />
 
         <!-- D21: the debug log file, shared only through a user-initiated share sheet (read grant). -->
         <provider
@@ -95,7 +95,7 @@
             android:grantUriPermissions="true" />
 
         <service
-            android:name=".service.FlowService"
+            android:name=".service.MurmurService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="microphone|specialUse">
@@ -123,7 +123,7 @@
         <!-- Single process. isAccessibilityTool is kept: this
              build targets sideload / F-Droid, not Play. -->
         <service
-            android:name=".service.FlowAccessibilityService"
+            android:name=".service.MurmurAccessibilityService"
             android:enabled="true"
             android:exported="false"
             android:isAccessibilityTool="true"
@@ -138,7 +138,7 @@
         </service>
 
         <!-- USER_UNLOCKED is best effort (not every build delivers it to manifest receivers);
-             FlowService also re-checks on USER_PRESENT while it runs. -->
+             MurmurService also re-checks on USER_PRESENT while it runs. -->
         <receiver
             android:name=".receiver.BootReceiver"
             android:enabled="true"

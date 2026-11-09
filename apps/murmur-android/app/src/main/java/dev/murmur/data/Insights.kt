@@ -1,4 +1,4 @@
-package dev.flowclone.data
+package dev.murmur.data
 
 import org.json.JSONArray
 import org.json.JSONObject
@@ -6,12 +6,12 @@ import java.io.File
 import java.util.TimeZone
 
 /**
- * Insights page math: a Kotlin mirror of `crates/flow-core/src/insights.rs` (the Windows
- * Insights tab uses the Rust original). Same formulas, same JSON file shape; flow-core's golden
- * vectors (`crates/flow-core/fixtures/insights/insights_vectors.json`) are checked against both
+ * Insights page math: a Kotlin mirror of `crates/murmur-core/src/insights.rs` (the Windows
+ * Insights tab uses the Rust original). Same formulas, same JSON file shape; murmur-core's golden
+ * vectors (`crates/murmur-core/fixtures/insights/insights_vectors.json`) are checked against both
  * implementations (InsightsVectorsTest here, `tests/insights_vectors.rs` there).
  *
- * Mirrored rather than called through JNI because `libflow_ffi.so` is optional at build and run
+ * Mirrored rather than called through JNI because `libmurmur_ffi.so` is optional at build and run
  * time (built separately, missing on a fresh checkout, absent from the JVM unit tests) while
  * these stats must always work; the math is ~100 pure lines.
  *

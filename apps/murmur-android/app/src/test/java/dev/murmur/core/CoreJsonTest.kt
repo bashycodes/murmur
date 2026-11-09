@@ -1,4 +1,4 @@
-package dev.flowclone.core
+package dev.murmur.core
 
 import org.json.JSONArray
 import org.json.JSONObject
@@ -8,7 +8,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Field names must match crates/flow-core serde (config.rs / engine.rs / dictionary.rs). */
+/** Field names must match crates/murmur-core serde (config.rs / engine.rs / dictionary.rs). */
 class CoreJsonTest {
     @Test fun modelConfigUsesSnakeCaseAndWhisperBackend() {
         val j = JSONObject(CoreJson.encode(ModelConfig(asrPath = "/m/base.bin", threads = 4)))
@@ -90,7 +90,7 @@ class CoreJsonTest {
         assertTrue(j.getBoolean("llm_prefill"))
     }
 
-    /** Shape produced by flow-core core-p1 (`paste::PasteSegment` untagged, CR-2) + D17 `route`. */
+    /** Shape produced by murmur-core core-p1 (`paste::PasteSegment` untagged, CR-2) + D17 `route`. */
     @Test fun decodesSegmentsPlainTextEmptyReasonAndRoute() {
         val json = """{"status":"FORMATTED","asr_text":"x","final_text":"@foo{{TAB}} bar","language":"en",
             "timings":{"audio_ms":1,"asr_ms":1,"llm_ms":0,"postprocess_ms":0,"total_ms":2,"dropped_samples":0,"asr_audio_ms":1},
@@ -126,7 +126,7 @@ class CoreJsonTest {
 
     @Test fun loadErrorKindsAreRecoveredFromStablePrefixes() {
         assertEquals("model_not_found", CoreException.kindOf("model not found: /x/y.bin"))
-        assertEquals("llm_lib_not_found", CoreException.kindOf("llm plugin not found (libflow_llm.so)"))
+        assertEquals("llm_lib_not_found", CoreException.kindOf("llm plugin not found (libmurmur_llm.so)"))
         assertEquals("no_engine_enabled", CoreException.kindOf("no_engine_enabled: both off"))
         assertNull(CoreException.kindOf("something else"))
         assertEquals("load", CoreException.of("x", "load", "f").kind)
@@ -159,9 +159,9 @@ class CoreJsonTest {
     }
 }
 
-class FakeFlowCoreTest {
+class FakeMurmurCoreTest {
     @Test fun commitReturnsScriptedTextAfterAudio() {
-        val core = FakeFlowCore(transcript = "hi there")
+        val core = FakeMurmurCore(transcript = "hi there")
         core.startSession(SessionConfig())
         assertTrue(core.pushAudio(ShortArray(1600) { 1000 }))
         val r = core.commit()
@@ -171,28 +171,28 @@ class FakeFlowCoreTest {
     }
 
     @Test fun silenceCommitsEmpty() {
-        val core = FakeFlowCore(transcript = "hi")
+        val core = FakeMurmurCore(transcript = "hi")
         core.startSession(SessionConfig())
         core.pushAudio(ShortArray(1600))
         assertEquals(CommitStatus.EMPTY, core.commit().status)
     }
 
-    @Test fun pushWithoutSessionIsRejected() = assertFalse(FakeFlowCore().pushAudio(ShortArray(10)))
+    @Test fun pushWithoutSessionIsRejected() = assertFalse(FakeMurmurCore().pushAudio(ShortArray(10)))
 
     @Test fun cancelDiscardsSession() {
-        val core = FakeFlowCore(transcript = "hi")
+        val core = FakeMurmurCore(transcript = "hi")
         core.startSession(SessionConfig())
         core.cancel()
         assertFalse(core.pushAudio(ShortArray(10) { 500 }))
     }
 }
 
-class NativeFlowCoreTest {
+class NativeMurmurCoreTest {
     @Test fun missingLibraryIsReportedNotThrown() {
-        org.junit.Assume.assumeTrue(System.getProperty("flow.jniStub") == null)
-        val r = NativeFlowCore.loadLibrary()
-        assertTrue(r is NativeFlowCore.LibraryState.Unavailable)
-        assertTrue((r as NativeFlowCore.LibraryState.Unavailable).message.contains("flow_ffi"))
+        org.junit.Assume.assumeTrue(System.getProperty("murmur.jniStub") == null)
+        val r = NativeMurmurCore.loadLibrary()
+        assertTrue(r is NativeMurmurCore.LibraryState.Unavailable)
+        assertTrue((r as NativeMurmurCore.LibraryState.Unavailable).message.contains("murmur_ffi"))
     }
 
     @Test fun endpointSilenceOnlyForHandsFree() {

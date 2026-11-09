@@ -1,11 +1,11 @@
-//! D41 on Android: flow-ffi's JSON model-library API against a real
-//! in-process flow-server: list, verified download, resume from `.part`,
+//! D41 on Android: murmur-ffi's JSON model-library API against a real
+//! in-process murmur-server: list, verified download, resume from `.part`,
 //! a pin that differs from the server's copy, cancel, a wrong key.
 #![cfg(feature = "library")]
 
 mod support;
 
-use flow_ffi::library_api::{download, list};
+use murmur_ffi::library_api::{download, list};
 use serde_json::{json, Value};
 use support::library_server::{sha, weights, LibraryServer, TOKEN};
 

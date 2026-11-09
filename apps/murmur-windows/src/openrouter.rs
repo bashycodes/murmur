@@ -18,11 +18,11 @@
 
 use crate::credentials::KeyState;
 use crate::dev_settings::{full_cleanup_order, BuildCaps, CleanupEngine, DevSettings, Route};
-use flow_router::cloud::{
+use murmur_router::cloud::{
     normalize_custom_base_url, valid_custom_model_id, valid_model_id, CLEANUP_TIMEOUT_RANGE_MS,
     CUSTOM_CLEANUP_TIMEOUT_RANGE_MS, OPENROUTER_HOST,
 };
-use flow_router::{CleanupRoute, CleanupStatus, CloudProvider, CloudUsage, Usd};
+use murmur_router::{CleanupRoute, CleanupStatus, CloudProvider, CloudUsage, Usd};
 use serde::{Deserialize, Serialize};
 
 /// D78: why cloud speech can't be switched on while LiteLLM is the Cloud
@@ -82,7 +82,7 @@ pub struct CustomView {
     pub consent_at_ms: u64,
     /// `http://`: the key and the text cross the network unencrypted.
     pub plain_http: bool,
-    /// The optional key (`flow-clone/cloud/custom`), masked.
+    /// The optional key (`murmur/cloud/custom`), masked.
     pub key: KeyState,
 }
 
@@ -92,7 +92,7 @@ pub struct OrView {
     /// This build can reach OpenRouter (feature `cloud`).
     pub supported: bool,
     pub key: KeyState,
-    pub privacy: flow_router::cloud::Privacy,
+    pub privacy: murmur_router::cloud::Privacy,
     pub stt: SttView,
     pub cleanup: CleanupView,
     pub budget: Option<f64>,
@@ -167,7 +167,7 @@ pub fn view(dev: &DevSettings, i: ViewInputs) -> OrView {
     }
 }
 
-fn custom_view(cc: &flow_router::CustomCleanupConfig, key: KeyState) -> CustomView {
+fn custom_view(cc: &murmur_router::CustomCleanupConfig, key: KeyState) -> CustomView {
     CustomView {
         base_url: cc.base_url.clone(),
         host: cc.host(),
@@ -316,7 +316,7 @@ pub fn apply_cleanup(dev: &mut DevSettings, f: &CleanupForm, now_ms: u64) -> Res
 
 /// Consent for the selected cleanup provider's host: openrouter.ai, or
 /// the custom server's current host (D52).
-fn record_cleanup_consent(cloud: &mut flow_router::cloud::CloudConfig, now_ms: u64) {
+fn record_cleanup_consent(cloud: &mut murmur_router::cloud::CloudConfig, now_ms: u64) {
     match cloud.provider {
         CloudProvider::OpenRouter => {
             cloud.openrouter.cleanup.consent_host = OPENROUTER_HOST.into();
@@ -334,7 +334,7 @@ fn record_cleanup_consent(cloud: &mut flow_router::cloud::CloudConfig, now_ms: u
 }
 
 /// How an error names where cleanup text goes.
-fn cleanup_host_name(cloud: &flow_router::cloud::CloudConfig) -> String {
+fn cleanup_host_name(cloud: &murmur_router::cloud::CloudConfig) -> String {
     match cloud.provider {
         CloudProvider::OpenRouter => "OpenRouter".into(),
         CloudProvider::LiteLlm => match cloud.cleanup_host() {
@@ -348,7 +348,7 @@ fn cleanup_host_name(cloud: &flow_router::cloud::CloudConfig) -> String {
 /// stored as normalised), model id (free text), timeout, and consent for
 /// the typed URL's host. Custom is saved as soon as it is picked, so the
 /// selector always shows what dictation uses; until its address and model
-/// are set the router skips it ([`flow_router::cloud::CustomCleanupConfig::ready`]).
+/// are set the router skips it ([`murmur_router::cloud::CustomCleanupConfig::ready`]).
 /// While the cloud cleanup switch is on, a ready provider needs its own
 /// consent first.
 pub fn apply_custom_cleanup(
@@ -415,7 +415,7 @@ pub fn apply_custom_key_consent(
     base_url: &str,
     now_ms: u64,
 ) -> Result<(), String> {
-    let a = flow_router::cloud::custom_server_address(base_url)
+    let a = murmur_router::cloud::custom_server_address(base_url)
         .map_err(|e| format!("Base URL: {e}"))?;
     let mut next = dev.clone();
     let openrouter = next.cloud.provider.is_openrouter();
@@ -434,12 +434,12 @@ pub fn apply_custom_key_consent(
     Ok(())
 }
 
-/// D52 `dev_custom_cleanup_address`: [`flow_router::cloud::custom_server_address`]
-/// plus `model_ok`, the JSON `flow_ffi::json_api::custom_cleanup_address`
+/// D52 `dev_custom_cleanup_address`: [`murmur_router::cloud::custom_server_address`]
+/// plus `model_ok`, the JSON `murmur_ffi::json_api::custom_cleanup_address`
 /// gives Android.
 pub fn custom_address(base_url: &str, model: &str) -> serde_json::Value {
     let model_ok = valid_custom_model_id(model.trim());
-    match flow_router::cloud::custom_server_address(base_url) {
+    match murmur_router::cloud::custom_server_address(base_url) {
         Ok(a) => serde_json::json!({"url": a.url, "host": a.host, "model_ok": model_ok}),
         Err(e) => serde_json::json!({"error": "bad_base_url", "message": e, "model_ok": model_ok}),
     }
@@ -531,7 +531,7 @@ pub fn ack_notice(dev: &mut DevSettings) {
 
 /// The sentence "Test" sends for cleanup (never the user's text).
 #[cfg(feature = "cloud")]
-pub const CLEANUP_SAMPLE: &str = flow_cloud::custom::TEST_SAMPLE;
+pub const CLEANUP_SAMPLE: &str = murmur_cloud::custom::TEST_SAMPLE;
 #[cfg(not(feature = "cloud"))]
 pub const CLEANUP_SAMPLE: &str =
     "um so i think we should uh meet on tuesday no wait wednesday at three";

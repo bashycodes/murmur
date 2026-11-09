@@ -1,22 +1,22 @@
 //! OpenRouter (D18 / D28) shell helpers that need no Win32 or network:
 //! user-facing failure text, the Developer "Active engine" rows, the usage
-//! file (`%APPDATA%\FlowClone\cloud_usage.json`, never sent anywhere), the
+//! file (`%APPDATA%\Murmur\cloud_usage.json`, never sent anywhere), the
 //! model-catalogue cache path and the one-time D28 settings migration.
 //!
 //! OpenRouter is the only cloud provider (D28): no presets, no base URLs,
-//! no other host. `flow_cloud` (feature `cloud`) talks to it; this module
+//! no other host. `murmur_cloud` (feature `cloud`) talks to it; this module
 //! only formats and persists.
 
 use crate::credentials::{self, CredentialStore};
 use crate::dev_settings::DevSettings;
-use flow_router::cloud::{CUSTOM_CLEANUP_ID, PURPOSE_CLEANUP, PURPOSE_STT, REMOVED_PROVIDERS_ID};
-use flow_router::{CloudUsage, MigrationReport};
+use murmur_router::cloud::{CUSTOM_CLEANUP_ID, PURPOSE_CLEANUP, PURPOSE_STT, REMOVED_PROVIDERS_ID};
+use murmur_router::{CloudUsage, MigrationReport};
 use std::path::{Path, PathBuf};
 
 /// How the shell names the provider (pill, badge, rows).
 pub const PROVIDER_NAME: &str = "OpenRouter";
 /// The one host audio or text can go to.
-pub const PROVIDER_HOST: &str = flow_router::cloud::OPENROUTER_HOST;
+pub const PROVIDER_HOST: &str = murmur_router::cloud::OPENROUTER_HOST;
 
 /// `route.fallback` / `CleanupStatus.blocked` code → what the user is told
 /// (changelog "What W needs" + D28). `None` for codes that are not about
@@ -136,8 +136,8 @@ pub fn usage_path(appdata: Option<&str>) -> PathBuf {
     crate::prefs::Prefs::default_path(appdata).with_file_name("cloud_usage.json")
 }
 
-/// `%APPDATA%\FlowClone\cache\openrouter-catalog.json`: the trimmed model
-/// catalogue (`flow_cloud::CatalogStore`, 24 h TTL). Public data only.
+/// `%APPDATA%\Murmur\cache\openrouter-catalog.json`: the trimmed model
+/// catalogue (`murmur_cloud::CatalogStore`, 24 h TTL). Public data only.
 pub fn catalog_cache_path(appdata: Option<&str>) -> PathBuf {
     crate::prefs::Prefs::default_path(appdata)
         .with_file_name("cache")
@@ -196,7 +196,7 @@ pub const PURPOSE_CUSTOM: &str = "custom";
 /// The custom row's cost when the server sends no cost header.
 pub const NO_COST_REPORTED: &str = "no cost reported";
 
-fn purpose_of(p: &flow_router::ProviderUsage) -> &'static str {
+fn purpose_of(p: &murmur_router::ProviderUsage) -> &'static str {
     if p.provider_id == CUSTOM_CLEANUP_ID {
         // Its own row, outside OpenRouter's speech/cleanup sums and budget.
         PURPOSE_CUSTOM
@@ -229,7 +229,7 @@ pub fn usage_view(u: &CloudUsage, budget: Option<f64>) -> UsageView {
         PURPOSE_REMOVED,
         PURPOSE_CUSTOM,
     ] {
-        let of: Vec<&flow_router::ProviderUsage> = u
+        let of: Vec<&murmur_router::ProviderUsage> = u
             .providers
             .iter()
             .filter(|p| purpose_of(p) == purpose)
@@ -292,7 +292,7 @@ pub struct Migrated {
 /// 1. `DevSettings::migrate_d28` (schema 1 → 2; the notice is kept in
 ///    `cloud_notice` until the user dismisses it);
 /// 2. Credential Manager: the kept OpenRouter key moves to
-///    `flow-clone/cloud/openrouter`, every other provider's key is deleted;
+///    `murmur/cloud/openrouter`, every other provider's key is deleted;
 /// 3. `cloud_usage.json`: the kept entry's counters become `openrouter`,
 ///    removed providers collapse into one `removed` counter (the month's
 ///    total and so the budget are unchanged).
@@ -329,7 +329,7 @@ pub fn migrate_d28(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use flow_router::{ProviderUsage, Usd};
+    use murmur_router::{ProviderUsage, Usd};
 
     #[test]
     fn failure_texts_match_the_spec() {
@@ -424,13 +424,13 @@ mod tests {
 
     #[test]
     fn usage_persists_and_restores() {
-        let dir = std::env::temp_dir().join(format!("flow-cloud-usage-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("murmur-cloud-usage-{}", std::process::id()));
         let path = dir.join("cloud_usage.json");
         assert_eq!(load_usage(&path), None);
         let fixture: CloudUsage = serde_json::from_str(
             &std::fs::read_to_string(
                 Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("../../crates/flow-router/fixtures/cloud_usage.json"),
+                    .join("../../crates/murmur-router/fixtures/cloud_usage.json"),
             )
             .unwrap(),
         )
@@ -442,10 +442,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         assert!(usage_path(Some("C:/AppData")).ends_with("cloud_usage.json"));
         let c = catalog_cache_path(Some("C:/AppData"));
-        assert!(
-            c.ends_with("FlowClone/cache/openrouter-catalog.json"),
-            "{c:?}"
-        );
+        assert!(c.ends_with("Murmur/cache/openrouter-catalog.json"), "{c:?}");
     }
 
     #[test]

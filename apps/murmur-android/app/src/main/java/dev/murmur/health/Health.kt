@@ -1,4 +1,4 @@
-package dev.flowclone.health
+package dev.murmur.health
 
 /** `Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES` parsing (colon-separated flattened ComponentNames). */
 object A11ySetting {
@@ -82,13 +82,13 @@ object AccessibilityHealth {
         }
     }
 
-    /** FlowService: re-post the notification / Repair state only when the status changed. */
+    /** MurmurService: re-post the notification / Repair state only when the status changed. */
     class ChangeGate(private var last: Status = Status.OK) {
         fun changed(s: Status): Boolean = (s != last).also { last = s }
     }
 }
 
-/** `MainServiceWatchdog`: respawn FlowService on an unexpected stop, at most every 5 s. */
+/** `MainServiceWatchdog`: respawn MurmurService on an unexpected stop, at most every 5 s. */
 class ServiceWatchdog(private val minSpacingMs: Long = 5_000L) {
     private var lastRestartAt = Long.MIN_VALUE / 2
 

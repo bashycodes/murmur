@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Every LLM configuration of the 2026-10-24 eval, one model loaded at a time.
-# env: MODELS, FLOW_LLM_LIB (see run_llm.sh). Skips 3B below 4 GB available.
+# env: MODELS, MURMUR_LLM_LIB (see run_llm.sh). Skips 3B below 4 GB available.
 set -uo pipefail
 cd "$(dirname "$0")"
 Q15=qwen2.5-1.5b-instruct-q4_k_m.gguf; Q05=qwen2.5-0.5b-instruct-q4_k_m.gguf; Q3=qwen2.5-3b-instruct-q4_k_m.gguf

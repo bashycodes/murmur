@@ -1,5 +1,5 @@
 {
-  "_comment": "Mirror of crates/flow-router/tests/url_parse.rs (review S2). Checked against the Rust parser by crates/flow-ffi/tests/url_parse_fixture.rs and against the Kotlin CloudRules by apps/flow-android UrlParseFixtureTest.",
+  "_comment": "Mirror of crates/murmur-router/tests/url_parse.rs (review S2). Checked against the Rust parser by crates/murmur-ffi/tests/url_parse_fixture.rs and against the Kotlin CloudRules by apps/murmur-android UrlParseFixtureTest.",
   "rejected": [
     "http://evil.com\\.local/v1",
     "https://evil.com\\@api.groq.com/v1",

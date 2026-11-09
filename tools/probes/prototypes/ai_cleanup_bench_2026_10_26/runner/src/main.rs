@@ -1,19 +1,19 @@
 //! ai-cleanup-bench: the 2026-10-26 all-in-one AI cleanup benchmark.
 //! Derived from formatting_eval_2026_10_24/runner (same text "ASR", same
-//! prompt swap, same warm-up/prefill); flow-core is used unmodified.
+//! prompt swap, same warm-up/prefill); murmur-core is used unmodified.
 //!
 //! usage: ai-cleanup-bench --mode prod|ai|rules --cases cases.jsonl --session s.json
-//!          [--llm model.gguf --llm-lib libflow_llm.so [--threads 4]]
+//!          [--llm model.gguf --llm-lib libmurmur_llm.so [--threads 4]]
 //!          [--prompt prompt_v4.json] [--timeout-ms 8000] > out.jsonl
 //!
-//! * `prod`: `FlowCore::commit` exactly as shipped (fallback rules, then the
+//! * `prod`: `MurmurCore::commit` exactly as shipped (fallback rules, then the
 //!   product prompt v2 + guard + `llm_skip_clean`). The baseline row.
 //! * `rules`: the fallback rules alone (`spoken_cleanup` + layout + closing
 //!   period + post-processing), no LLM.
 //! * `ai`: the owner's 2026-10-26 design. The LLM gets the RAW transcript
 //!   (no fallback rules before it, no skip); its answer is checked by the
 //!   product guard (`strict`) and by the loosened guard
-//!   (`flow_core::guard::check_loose`, D30); on a reject the fallback rules produce the text.
+//!   (`murmur_core::guard::check_loose`, D30); on a reject the fallback rules produce the text.
 //!   Post-processing (dictionary, terminal punctuation, cursor context) runs after, as in the
 //!   product. One LLM call per case gives all three columns: `out_none`
 //!   (no guard), `out_strict`, `out_loose`.
@@ -29,14 +29,14 @@
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use flow_core::asr::{AsrEngine, AsrError, AsrOutput, AsrRequest};
-use flow_core::cleanup::{
+use murmur_core::asr::{AsrEngine, AsrError, AsrOutput, AsrRequest};
+use murmur_core::cleanup::{
     build_prompt, lists_to_plain, unwrap_output_for, CleanError, CleanPrompt, Cleaner, PromptVersion,
 };
-use flow_core::config::{AppCategory, CleanupLevel, FieldContext, SessionConfig};
-use flow_core::guard::Verdict;
-use flow_core::postprocess;
-use flow_core::FlowCore;
+use murmur_core::config::{AppCategory, CleanupLevel, FieldContext, SessionConfig};
+use murmur_core::guard::Verdict;
+use murmur_core::postprocess;
+use murmur_core::MurmurCore;
 use serde::Deserialize;
 
 struct TextAsr(Arc<Mutex<String>>);
@@ -82,7 +82,7 @@ impl Cleaner for Swapped {
     fn clean(&self, p: &CleanPrompt, d: Instant) -> Result<String, CleanError> {
         self.inner.clean(&self.swap(p), d)
     }
-    fn clean_cancellable(&self, p: &CleanPrompt, d: Instant, c: &flow_core::asr::AbortFlag) -> Result<String, CleanError> {
+    fn clean_cancellable(&self, p: &CleanPrompt, d: Instant, c: &murmur_core::asr::AbortFlag) -> Result<String, CleanError> {
         self.inner.clean_cancellable(&self.swap(p), d, c)
     }
     fn prefill(&self, p: &CleanPrompt) {
@@ -91,7 +91,7 @@ impl Cleaner for Swapped {
     fn cancel_prefill(&self) {
         self.inner.cancel_prefill()
     }
-    fn prompt_scope(&self) -> flow_core::cleanup::PromptScope {
+    fn prompt_scope(&self) -> murmur_core::cleanup::PromptScope {
         self.inner.prompt_scope()
     }
 }
@@ -142,7 +142,7 @@ fn judge(
     let (vs, vl) = match &out {
         Some(o) if o.is_empty() && fallback_text.is_empty() => (Verdict::Ok, Verdict::Ok),
         Some(o) if o.is_empty() => (Verdict::Dropped("empty".into()), Verdict::Dropped("empty".into())),
-        Some(o) => (flow_core::guard::check(&c.input, o), flow_core::guard::check_loose(&c.input, o)),
+        Some(o) => (murmur_core::guard::check(&c.input, o), murmur_core::guard::check_loose(&c.input, o)),
         None => (Verdict::Dropped("no answer".into()), Verdict::Dropped("no answer".into())),
     };
     let pick = |v: &Verdict| match (v, &out) {
@@ -156,16 +156,16 @@ fn judge(
         "error": err, "llm_raw": llm_raw, "llm_ms": llm_ms})
 }
 
-/// `--dump-prompt PATH`: write a flow-core prompt version in the
+/// `--dump-prompt PATH`: write a murmur-core prompt version in the
 /// prompt.json shape, so `score.py --overlap` checks its few-shots.
 fn dump_prompt(version: PromptVersion, path: &str) {
-    let p = flow_core::cleanup::build_prompt_versioned(
+    let p = murmur_core::cleanup::build_prompt_versioned(
         "",
         CleanupLevel::Light,
-        flow_core::config::Style::Default,
+        murmur_core::config::Style::Default,
         &FieldContext::default(),
-        &flow_core::dictionary::Dictionary::default(),
-        flow_core::cleanup::PromptScope::FULL,
+        &murmur_core::dictionary::Dictionary::default(),
+        murmur_core::cleanup::PromptScope::FULL,
         version,
     );
     let examples: Vec<serde_json::Value> = p
@@ -183,7 +183,7 @@ fn dump_prompt(version: PromptVersion, path: &str) {
         })
         .collect();
     let v = serde_json::json!({
-        "_note": format!("{version:?}: generated from flow-core by `ai-cleanup-bench --dump-prompt` (do not edit; the source is crates/flow-core/src/cleanup)."),
+        "_note": format!("{version:?}: generated from murmur-core by `ai-cleanup-bench --dump-prompt` (do not edit; the source is crates/murmur-core/src/cleanup)."),
         "system": p.system, "examples": examples});
     std::fs::write(path, serde_json::to_string_pretty(&v).unwrap() + "\n").unwrap();
 }
@@ -191,7 +191,7 @@ fn dump_prompt(version: PromptVersion, path: &str) {
 fn main() {
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let get = |k: &str| argv.iter().position(|a| a == k).and_then(|i| argv.get(i + 1).cloned());
-    // `--prompt-version v4c`: flow-core's built-in prompt v4c (system,
+    // `--prompt-version v4c`: murmur-core's built-in prompt v4c (system,
     // few-shots and its own casual STYLE line) instead of a --prompt file.
     let version = match get("--prompt-version").as_deref() {
         None | Some("v2") => PromptVersion::V2,
@@ -210,11 +210,11 @@ fn main() {
     // Phase 1d: `--openrouter MODEL` uses the product's OpenRouterCleaner
     // (D28 privacy defaults zdr:true + data_collection deny, sort latency).
     // The key comes only from the env (OPENROUTER_KEY) and is never printed.
-    let key = flow_router::SecretString::new(std::env::var("OPENROUTER_KEY").unwrap_or_default());
+    let key = murmur_router::SecretString::new(std::env::var("OPENROUTER_KEY").unwrap_or_default());
     let max_spend: f64 = get("--max-spend").map(|t| t.parse().unwrap()).unwrap_or(0.0);
-    let or_cleaner: Option<Arc<flow_cloud::OpenRouterCleaner>> = get("--openrouter").map(|m| {
+    let or_cleaner: Option<Arc<murmur_cloud::OpenRouterCleaner>> = get("--openrouter").map(|m| {
         assert!(!key.is_empty(), "--openrouter needs OPENROUTER_KEY in the env");
-        let settings = flow_cloud::settings::CleanupSettings {
+        let settings = murmur_cloud::settings::CleanupSettings {
             model: m.clone(),
             timeout_ms: timeout.as_millis() as u64,
             ..Default::default()
@@ -222,15 +222,15 @@ fn main() {
         // The app resolves the model from its live catalogue store; the
         // baked one lacks newer models, and without the entry no
         // `reasoning` is sent (optional-reasoning models then return empty).
-        let api = flow_cloud::api::Api::new();
-        let info = flow_cloud::catalog::refresh(&api, None)
+        let api = murmur_cloud::api::Api::new();
+        let info = murmur_cloud::catalog::refresh(&api, None)
             .ok()
             .and_then(|c| c.get(&m).cloned())
-            .or_else(|| flow_cloud::catalog::lookup_model(&api, &m).ok());
+            .or_else(|| murmur_cloud::catalog::lookup_model(&api, &m).ok());
         eprintln!("model info: {}", info.as_ref().map_or("none".into(), |i| format!("reasoning effort {:?}", i.reasoning_effort())));
-        Arc::new(flow_cloud::OpenRouterCleaner::new(settings, key.clone()).with_model_info(info))
+        Arc::new(murmur_cloud::OpenRouterCleaner::new(settings, key.clone()).with_model_info(info))
     });
-    let key_usage = || flow_cloud::keyinfo::fetch(&key).ok().and_then(|k| k.usage);
+    let key_usage = || murmur_cloud::keyinfo::fetch(&key).ok().and_then(|k| k.usage);
     let usage_start = or_cleaner.as_ref().and_then(|_| key_usage());
     if let Some(u) = usage_start {
         eprintln!("openrouter key usage at start: ${u:.4}");
@@ -240,7 +240,7 @@ fn main() {
         None => get("--llm").map(|m| {
             let t = Instant::now();
             let b: Arc<dyn Cleaner> = Arc::new(
-                flow_core::llama::LlamaCleaner::load(&m, threads, get("--llm-lib").as_deref()).expect("llm load"),
+                murmur_core::llama::LlamaCleaner::load(&m, threads, get("--llm-lib").as_deref()).expect("llm load"),
             );
             eprintln!("llm load {} ms", t.elapsed().as_millis());
             b
@@ -296,7 +296,7 @@ fn main() {
         })
         .unwrap_or_default();
     let text = Arc::new(Mutex::new(String::new()));
-    let core = FlowCore::from_engines(Arc::new(TextAsr(text.clone())), cleaner.clone());
+    let core = MurmurCore::from_engines(Arc::new(TextAsr(text.clone())), cleaner.clone());
     let mut spent = 0.0f64;
     let tone: Vec<i16> = (0..16_000).map(|i| ((i as f32 * 0.05).sin() * 8000.0) as i16).collect();
     for line in cases.lines().filter(|l| !l.trim().is_empty()) {
@@ -325,18 +325,18 @@ fn main() {
             "ai" => {
                 let cl = cleaner.as_ref().expect("--mode ai needs --llm");
                 let style = session.styles.for_category(c.app_category);
-                cl.prefill(&flow_core::cleanup::build_prompt_versioned(
+                cl.prefill(&murmur_core::cleanup::build_prompt_versioned(
                     "",
                     session.cleanup_level,
                     style,
                     &ctx,
                     &session.dictionary,
-                    flow_core::cleanup::PromptScope::FULL,
+                    murmur_core::cleanup::PromptScope::FULL,
                     version,
                 ));
                 // A cloud backend narrows the prompt (D28 minimal scope:
                 // no app id), as the engine does.
-                let prompt = flow_core::cleanup::build_prompt_versioned(
+                let prompt = murmur_core::cleanup::build_prompt_versioned(
                     &c.input,
                     CleanupLevel::Light,
                     style,
@@ -347,7 +347,7 @@ fn main() {
                 );
                 let t = Instant::now();
                 let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
-                let flag = flow_core::asr::AbortFlag(Some(cancel.clone()));
+                let flag = murmur_core::asr::AbortFlag(Some(cancel.clone()));
                 let (tx, rx) = std::sync::mpsc::channel();
                 let c2 = cl.clone();
                 let deadline = t + timeout;

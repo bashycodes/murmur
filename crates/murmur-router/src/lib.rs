@@ -1,9 +1,9 @@
-//! flow-router: one §9 session API over a local `FlowCore` and an optional
-//! remote `flow-server` backend (D17, `docs/hybrid-architecture.md` §1).
+//! murmur-router: one §9 session API over a local `MurmurCore` and an optional
+//! remote `murmur-server` backend (D17, `docs/hybrid-architecture.md` §1).
 //!
 //! Shells talk only to [`Router`]. The remote backend is injected as a
-//! [`RemoteFactory`] (from `flow-remote`) and the opt-in cloud STT backend
-//! (D18) as a [`CloudFactory`] (from `flow-cloud`), so a client-only build
+//! [`RemoteFactory`] (from `murmur-remote`) and the opt-in cloud STT backend
+//! (D18) as a [`CloudFactory`] (from `murmur-cloud`), so a client-only build
 //! links this crate without any network code.
 
 pub mod cloud;
@@ -24,12 +24,12 @@ pub use cloud::{
     CloudUsage, CustomCleanupConfig, OpenRouterConfig, Privacy, ProviderUsage, Route, SecretString,
     SttConfig, Usd,
 };
-pub use flow_core::cleanup::{CleanUsage, PromptScope};
-pub use flow_core::config::{FieldContext, SessionConfig};
-pub use flow_core::learn::Candidate;
-pub use flow_core::{CommitResult, CommitStatus, RouteInfo, SessionPoll};
 pub use local::{install_cleanup_plan, LocalLoader};
 pub use migrate::{MigrationReport, RemovedProvider};
+pub use murmur_core::cleanup::{CleanUsage, PromptScope};
+pub use murmur_core::config::{FieldContext, SessionConfig};
+pub use murmur_core::learn::Candidate;
+pub use murmur_core::{CommitResult, CommitStatus, RouteInfo, SessionPoll};
 pub use router::Router;
 pub use server_clean::Clock;
 
@@ -181,7 +181,7 @@ impl Default for ServerConfig {
     fn default() -> Self {
         Self {
             host: String::new(),
-            port: flow_protocol::DEFAULT_PORT,
+            port: murmur_protocol::DEFAULT_PORT,
             tls: false,
             tls_pin_sha256: None,
             token: String::new(),
@@ -233,10 +233,10 @@ impl ServerConfig {
                 );
             }
         }
-        if !self.token.is_empty() && self.token.len() < flow_protocol::MIN_TOKEN_LEN {
+        if !self.token.is_empty() && self.token.len() < murmur_protocol::MIN_TOKEN_LEN {
             return Err(format!(
                 "The access token must be at least {} characters.",
-                flow_protocol::MIN_TOKEN_LEN
+                murmur_protocol::MIN_TOKEN_LEN
             ));
         }
         let ranges = [
@@ -307,7 +307,7 @@ impl RouterConfig {
         }
     }
 
-    /// Validate before `Router::update_config` / `flow_open_router`.
+    /// Validate before `Router::update_config` / `murmur_open_router`.
     pub fn validate(&self) -> Result<(), RouterError> {
         self.server.validate().map_err(RouterError::BadConfig)?;
         self.validate_order()?;
@@ -601,11 +601,11 @@ pub struct HealthReport {
     /// `"host:port"` probed (remote).
     pub server: Option<String>,
     pub rtt_ms: Option<Rtt>,
-    /// e.g. `"flow-server 0.1.0"`.
+    /// e.g. `"murmur-server 0.1.0"`.
     pub server_version: Option<String>,
     pub server_core: Option<String>,
     pub postprocess_rev: Option<String>,
-    /// Server pipeline revision == this build's `flow_core::POSTPROCESS_REV`.
+    /// Server pipeline revision == this build's `murmur_core::POSTPROCESS_REV`.
     pub postprocess_match: Option<bool>,
     pub proto: Option<u32>,
     pub asr_backend: Option<String>,
@@ -723,7 +723,7 @@ pub struct CleanupStatus {
     pub timeout_ms: u64,
     /// The last cloud cleanup call (engine, model, cost, ids, TTFT).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub last: Option<flow_core::cleanup::CleanUsage>,
+    pub last: Option<murmur_core::cleanup::CleanUsage>,
     /// This month's cleanup cost (USD), both providers.
     pub month_cost_usd: Usd,
     /// D52: the part of it the custom server reported (its cost header);
@@ -761,7 +761,7 @@ impl RouterError {
     }
 }
 
-/// One engine behind the router: in-process `FlowCore` or a `flow-server`.
+/// One engine behind the router: in-process `MurmurCore` or a `murmur-server`.
 pub trait Backend: Send + Sync {
     fn kind(&self) -> EngineKind;
     /// Local: models loaded.
@@ -792,34 +792,34 @@ pub trait Backend: Send + Sync {
     /// Install (or with `None` remove) the router's cleanup plan (D28):
     /// an in-process engine calls `plan(its built-in cleaner)` and uses
     /// the returned cleaner for its next commits
-    /// (`FlowCore::set_cleaner`). Default: ignored, which is what the
+    /// (`MurmurCore::set_cleaner`). Default: ignored, which is what the
     /// server route does (its own pipeline cleans; never cloud cleanup).
     fn install_cleanup(&self, _plan: Option<CleanupPlan>) {}
-    /// The on-device LLM this engine was built with (`FlowCore::cleaner`),
+    /// The on-device LLM this engine was built with (`MurmurCore::cleaner`),
     /// for one-off requests outside a dictation (Command Mode,
     /// [`Router::command`]). Default: none (remote / cloud STT backends).
     /// Additive.
-    fn llm_cleaner(&self) -> Option<Arc<dyn flow_core::cleanup::Cleaner>> {
+    fn llm_cleaner(&self) -> Option<Arc<dyn murmur_core::cleanup::Cleaner>> {
         None
     }
     /// Load 3: hold this engine's on-device LLM for the next local load
-    /// (`FlowCore::keep_llm`); whether there was one. Default: none.
+    /// (`MurmurCore::keep_llm`); whether there was one. Default: none.
     /// Additive.
     fn keep_llm(&self) -> bool {
         false
     }
     /// D36 (remote): the server's `hello_ok` from the current or last
     /// connection, `None` before any. Default: none.
-    fn server_hello(&self) -> Option<flow_protocol::HelloOk> {
+    fn server_hello(&self) -> Option<murmur_protocol::HelloOk> {
         None
     }
     /// D36 (remote): text-only cleanup on the server (`clean` → `cleaned`),
     /// blocking until the answer or `deadline`. Default: unsupported.
     fn clean_text(
         &self,
-        _req: &flow_core::cleanup::CleanRequest,
+        _req: &murmur_core::cleanup::CleanRequest,
         _deadline: std::time::Instant,
-    ) -> Result<flow_protocol::Cleaned, BackendError> {
+    ) -> Result<murmur_protocol::Cleaned, BackendError> {
         Err(BackendError::new(
             Failure::ServerNotConfigured,
             "this backend cannot clean text",
@@ -831,8 +831,8 @@ pub trait Backend: Send + Sync {
 /// one (the on-device LLM, if loaded): `RoutedCleaner(cloud, local)` etc.
 pub type CleanupPlan = Arc<
     dyn Fn(
-            Option<Arc<dyn flow_core::cleanup::Cleaner>>,
-        ) -> Option<Arc<dyn flow_core::cleanup::Cleaner>>
+            Option<Arc<dyn murmur_core::cleanup::Cleaner>>,
+        ) -> Option<Arc<dyn murmur_core::cleanup::Cleaner>>
         + Send
         + Sync,
 >;
@@ -840,20 +840,20 @@ pub type CleanupPlan = Arc<
 pub type RemoteFactory = Box<dyn Fn(&ServerConfig) -> Arc<dyn Backend> + Send + Sync>;
 
 /// Builds the cloud STT backend for the OpenRouter config + key
-/// (`flow-cloud`). Called at most once per (privacy, stt config, key) and
+/// (`murmur-cloud`). Called at most once per (privacy, stt config, key) and
 /// cached. D28: was `&CloudProviderConfig`.
 pub type CloudFactory =
     Box<dyn Fn(&OpenRouterConfig, SecretString) -> Arc<dyn Backend> + Send + Sync>;
 
-/// Builds the OpenRouter cleaner for the config + key (`flow-cloud`'s
+/// Builds the OpenRouter cleaner for the config + key (`murmur-cloud`'s
 /// `OpenRouterCleaner`, D28). Called once per (privacy, cleanup config,
 /// key) and cached. The router wraps it with consent / circuit / budget
 /// checks; it never sees a call the gate refused.
 pub type CleanupFactory = Box<
-    dyn Fn(&OpenRouterConfig, SecretString) -> Arc<dyn flow_core::cleanup::Cleaner> + Send + Sync,
+    dyn Fn(&OpenRouterConfig, SecretString) -> Arc<dyn murmur_core::cleanup::Cleaner> + Send + Sync,
 >;
 
-/// Builds the custom-server cleaner (D52, `flow-cloud`'s `CustomCleaner`)
+/// Builds the custom-server cleaner (D52, `murmur-cloud`'s `CustomCleaner`)
 /// for the server config, the shared prompt scope and the optional key.
 /// Cached like [`CleanupFactory`] and wrapped by the same gate.
 pub type CustomCleanupFactory = Box<
@@ -861,7 +861,7 @@ pub type CustomCleanupFactory = Box<
             &crate::cloud::CustomCleanupConfig,
             PromptScope,
             Option<SecretString>,
-        ) -> Arc<dyn flow_core::cleanup::Cleaner>
+        ) -> Arc<dyn murmur_core::cleanup::Cleaner>
         + Send
         + Sync,
 >;

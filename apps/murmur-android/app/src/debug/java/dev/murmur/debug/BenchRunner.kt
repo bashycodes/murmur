@@ -1,10 +1,10 @@
-package dev.flowclone.debug
+package dev.murmur.debug
 
-import dev.flowclone.core.CommitResult
-import dev.flowclone.core.CoreJson
-import dev.flowclone.core.FieldContext
-import dev.flowclone.core.FlowCore
-import dev.flowclone.core.FlowCoreLoader
+import dev.murmur.core.CommitResult
+import dev.murmur.core.CoreJson
+import dev.murmur.core.FieldContext
+import dev.murmur.core.MurmurCore
+import dev.murmur.core.MurmurCoreLoader
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -17,8 +17,8 @@ import java.io.File
  * Output [outDir]: `stt-<model>.jsonl`, `cleanup-<llm>-<mode>.jsonl`, `meta.json`, `status.json`.
  * Raw outputs only: WER and the 88-suite score are computed on Linux (`score.py`).
  *
- * STT goes through [FlowCore] exactly as a dictation does (start_session, set_context,
- * push_audio in 100 ms frames, commit); cleanup through [clean] (NativeFlowCore.benchClean: the
+ * STT goes through [MurmurCore] exactly as a dictation does (start_session, set_context,
+ * push_audio in 100 ms frames, commit); cleanup through [clean] (NativeMurmurCore.benchClean: the
  * product's text path on the handle's on-device LLM). One model is loaded at a time.
  */
 class BenchRunner(
@@ -26,8 +26,8 @@ class BenchRunner(
     private val filesDir: File,
     private val inDir: File,
     private val outDir: File,
-    private val loader: FlowCoreLoader,
-    private val clean: (FlowCore, String) -> String,
+    private val loader: MurmurCoreLoader,
+    private val clean: (MurmurCore, String) -> String,
     private val device: JSONObject = JSONObject(),
     private val log: (String) -> Unit = {},
     private val stopped: () -> Boolean = { false },
@@ -124,7 +124,7 @@ class BenchRunner(
     }
 
     /** One dictation of [c]'s audio; (row, commit ms). */
-    private fun dictate(core: FlowCore, session: dev.flowclone.core.SessionConfig, c: Clip): Pair<JSONObject, Long> {
+    private fun dictate(core: MurmurCore, session: dev.murmur.core.SessionConfig, c: Clip): Pair<JSONObject, Long> {
         val row = JSONObject().put("set", c.set).put("id", c.id)
         val pcm = try {
             Wav.decode(File(inDir, c.wav).readBytes())
@@ -134,7 +134,7 @@ class BenchRunner(
         row.put("audio_ms", pcm.size * 1000L / 16_000)
         try {
             core.startSession(session)
-            core.setContext(FieldContext(appId = "dev.flowclone.bench", appCategory = "other"))
+            core.setContext(FieldContext(appId = "dev.murmur.bench", appCategory = "other"))
             val t0 = clockMs()
             var off = 0
             var refused = 0

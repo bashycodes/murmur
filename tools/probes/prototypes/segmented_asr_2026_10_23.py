@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Dated probe (2026-10-23) for docs/proposals/streaming-asr-latency.md.
 
-Questions it answers on this box (i7-6700, release flow-cli):
+Questions it answers on this box (i7-6700, release murmur-cli):
   A. ASR time vs clip length (whole clip), Parakeet and whisper base q5_1:
      is it linear, and where are the knees (whisper 29 s audio_ctx
      boundary, 30 s window, Parakeet attention)?
@@ -14,12 +14,12 @@ Questions it answers on this box (i7-6700, release flow-cli):
 Not promoted to a permanent tool; the consumer is the proposal doc's
 tables (copy the printed summary).  Inputs: LibriSpeech clips + refs from
 tools/probes/bench/asr_manifest_extended.json, in $AUDIO_DIR.  Outputs
-(WAVs, JSONL) go to $OUT_DIR (default ~/.cache/flow-clone/
+(WAVs, JSONL) go to $OUT_DIR (default ~/.cache/murmur/
 segmented-2026-10-23/<timestamp>/) - per-run directory, never overwritten.
 
 Usage:
   python3 -I tools/probes/prototypes/segmented_asr_2026_10_23.py \
-      --cli target/release/flow-cli --whisper ~/…/ggml-base-q5_1.bin \
+      --cli target/release/murmur-cli --whisper ~/…/ggml-base-q5_1.bin \
       --parakeet ~/…/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8 \
       [--parts A,B,C] [--threads 4]
 """
@@ -93,7 +93,7 @@ def pauses(pcm, min_pause_ms, frame_ms=20):
     return cuts
 
 
-# flow-cli pushes the whole file at once; the default 30 s ring would drop
+# murmur-cli pushes the whole file at once; the default 30 s ring would drop
 # everything past ~30 s (dropped_samples) - a CLI artefact, not a shell one.
 BIG_RING = {"ring_capacity_samples": SR * 130}
 
@@ -124,7 +124,7 @@ def main():
     ap.add_argument("--cli", required=True)
     ap.add_argument("--whisper")
     ap.add_argument("--parakeet")
-    ap.add_argument("--audio", default=os.path.expanduser("~/.cache/flow-clone/audio"))
+    ap.add_argument("--audio", default=os.path.expanduser("~/.cache/murmur/audio"))
     ap.add_argument("--manifest", default=os.path.join(HERE, "..", "bench", "asr_manifest_extended.json"))
     ap.add_argument("--out", default=None)
     ap.add_argument("--threads", type=int, default=4)
@@ -134,7 +134,7 @@ def main():
     ap.add_argument("--pause-ms", default="500,800")
     args = ap.parse_args()
     out = args.out or os.path.expanduser(
-        f"~/.cache/flow-clone/segmented-2026-10-23/{time.strftime('%Y%m%d-%H%M%S')}")
+        f"~/.cache/murmur/segmented-2026-10-23/{time.strftime('%Y%m%d-%H%M%S')}")
     os.makedirs(out, exist_ok=True)
     manifest = json.load(open(args.manifest))
     targets = [int(x) for x in args.targets.split(",")]

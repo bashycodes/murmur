@@ -5,8 +5,8 @@
 //! meeting is not one session. [`MeetingTranscriber`] streams the audio
 //! through the pause [`Segmenter`] (D22), cuts it into chunks of at most
 //! [`MeetingParams::max_ms`] at pauses, and runs each chunk as **one
-//! ordinary dictation** through a [`ChunkTranscriber`]: `FlowCore` here,
-//! `flow_router::Router` (route order + fallbacks) in flow-router. Only
+//! ordinary dictation** through a [`ChunkTranscriber`]: `MurmurCore` here,
+//! `murmur_router::Router` (route order + fallbacks) in murmur-router. Only
 //! the open chunk is buffered, so memory stays bounded however long the
 //! recording is; each finished chunk becomes a [`Segment`] (start, end,
 //! text) and is dropped.
@@ -37,7 +37,7 @@ use serde::{Deserialize, Serialize};
 use crate::config::{SessionConfig, SAMPLE_RATE};
 use crate::segment::{split_long, SegmentParams, Segmenter, RECOMMENDED_PAUSE_MS};
 use crate::vad::{self, FRAME};
-use crate::{CommitResult, CommitStatus, FlowCore};
+use crate::{CommitResult, CommitStatus, MurmurCore};
 
 /// Chunking settings. Defaults: 800 ms pauses, chunks of 8-30 s (Whisper's
 /// window is 30 s; longer chunks keep more context than dictation's 4 s).
@@ -130,7 +130,7 @@ pub enum MeetingError {
 
 /// What runs one chunk: a whole dictation (start, push, commit) on the
 /// normal route. Never fails: errors come back as an `ERROR` result, like
-/// `FlowCore::commit` / `Router::commit`.
+/// `MurmurCore::commit` / `Router::commit`.
 pub trait ChunkTranscriber {
     fn transcribe_chunk(&self, pcm: &[i16], cfg: &SessionConfig) -> CommitResult;
     /// Abort a `transcribe_chunk` running on another thread (best effort).
@@ -155,7 +155,7 @@ impl<T: ChunkTranscriber + ?Sized> ChunkTranscriber for &T {
     }
 }
 
-impl ChunkTranscriber for FlowCore {
+impl ChunkTranscriber for MurmurCore {
     fn transcribe_chunk(&self, pcm: &[i16], cfg: &SessionConfig) -> CommitResult {
         if let Err(e) = self.start_session(cfg.clone()) {
             return error_result(e.to_string());

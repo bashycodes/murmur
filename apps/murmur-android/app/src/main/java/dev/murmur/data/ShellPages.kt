@@ -1,6 +1,6 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.core.CleanupLevel
+import dev.murmur.core.CleanupLevel
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter

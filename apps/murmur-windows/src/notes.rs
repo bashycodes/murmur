@@ -1,11 +1,11 @@
 //! Plain-text notes on disk: the Notes list, and the Scratchpad (= the
 //! "Quick note", id [`SCRATCHPAD`]).
 //!
-//! [`NoteStore`] keeps one `<id>.txt` per note in `%APPDATA%\FlowClone\notes\`
+//! [`NoteStore`] keeps one `<id>.txt` per note in `%APPDATA%\Murmur\notes\`
 //! plus `index.json` (pinned, created/updated). The text files are the truth:
 //! a file without an index entry is still listed (times from the file), an
 //! index entry without a file is dropped. [`migrate_scratchpad`] moves the
-//! pre-Notes `FlowClone\scratchpad.txt` in. [`AutoSave`] sits in front of the
+//! pre-Notes `Murmur\scratchpad.txt` in. [`AutoSave`] sits in front of the
 //! store: the editor window sends every change, the latest text per note is
 //! written once the edits pause for the debounce time, and
 //! [`AutoSave::flush_all`] writes whatever is left (window closed, app quit).
@@ -21,7 +21,7 @@ use std::sync::Arc;
 pub const SCRATCHPAD: &str = "scratchpad";
 /// Write a note this long after its last edit.
 pub const SAVE_DEBOUNCE_MS: u64 = 750;
-/// Folder of the notes under `%APPDATA%\FlowClone`.
+/// Folder of the notes under `%APPDATA%\Murmur`.
 pub const NOTES_DIR: &str = "notes";
 /// Pinned + created/updated per note id.
 pub const INDEX_FILE: &str = "index.json";
@@ -36,7 +36,7 @@ pub fn valid_id(id: &str) -> bool {
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
 }
 
-/// `%APPDATA%\FlowClone` (next to `prefs.json`).
+/// `%APPDATA%\Murmur` (next to `prefs.json`).
 pub fn app_dir(appdata: Option<&str>) -> PathBuf {
     appdata
         .map(PathBuf::from)
@@ -44,7 +44,7 @@ pub fn app_dir(appdata: Option<&str>) -> PathBuf {
         .join(crate::prefs::APP_DIR)
 }
 
-/// `%APPDATA%\FlowClone\notes`.
+/// `%APPDATA%\Murmur\notes`.
 pub fn default_dir(appdata: Option<&str>) -> PathBuf {
     app_dir(appdata).join(NOTES_DIR)
 }
@@ -506,7 +506,7 @@ mod tests {
 
     fn tmp(tag: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!(
-            "flow-notes-{tag}-{}-{}",
+            "murmur-notes-{tag}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -522,8 +522,8 @@ mod tests {
         let s = NoteStore::new(default_dir(Some(r"C:\Users\u\AppData\Roaming")));
         let p = s.path(SCRATCHPAD).unwrap();
         assert!(
-            p.ends_with("FlowClone/notes/scratchpad.txt")
-                || p.ends_with(r"FlowClone\notes\scratchpad.txt"),
+            p.ends_with("Murmur/notes/scratchpad.txt")
+                || p.ends_with(r"Murmur\notes\scratchpad.txt"),
             "{}",
             p.display()
         );

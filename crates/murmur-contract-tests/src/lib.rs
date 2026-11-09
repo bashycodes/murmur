@@ -1,6 +1,6 @@
 //! Harness for the hybrid contract suites (docs/hybrid-architecture.md §4):
-//! an in-process `flow-server` on 127.0.0.1:0, local `FlowCore` backends,
-//! routers wired to the real `flow-remote` client, session fixtures and
+//! an in-process `murmur-server` on 127.0.0.1:0, local `MurmurCore` backends,
+//! routers wired to the real `murmur-remote` client, session fixtures and
 //! result normalisation.
 
 use std::net::SocketAddr;
@@ -9,23 +9,23 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
-use flow_core::config::{AsrBackend, FieldContext, ModelConfig, SessionConfig};
-use flow_core::{CommitResult, FlowCore};
-use flow_router::{
+use murmur_core::config::{AsrBackend, FieldContext, ModelConfig, SessionConfig};
+use murmur_core::{CommitResult, MurmurCore};
+use murmur_router::{
     Backend, CloudConfig, OpenRouterConfig, Route, Router, RouterConfig, SecretString, ServerConfig,
 };
 use serde::Deserialize;
 use serde_json::Value;
 
-pub use flow_server::Config as ServerFileConfig;
+pub use murmur_server::Config as ServerFileConfig;
 
 pub const TOKEN: &str = "contract-token-0123456789abcdef";
 /// 100 ms frames, like the shells.
 pub const FRAME: usize = 1600;
 
-/// An in-process flow-server with its own runtime.
+/// An in-process murmur-server with its own runtime.
 pub struct TestServer {
-    handle: flow_server::ServerHandle,
+    handle: murmur_server::ServerHandle,
     rt: Option<tokio::runtime::Runtime>,
 }
 
@@ -97,22 +97,22 @@ pub fn spawn_server(cfg: ServerFileConfig) -> TestServer {
 /// A server whose single worker's final decode takes `delay` (MockAsr).
 pub fn spawn_slow_mock_server(text: &str, delay: Duration) -> TestServer {
     let cfg = server_cfg(mock_model(text));
-    let core = FlowCore::from_engines(
-        Arc::new(flow_core::asr::MockAsr::new(text).with_delay(delay)),
+    let core = MurmurCore::from_engines(
+        Arc::new(murmur_core::asr::MockAsr::new(text).with_delay(delay)),
         None,
     );
-    let pool = flow_server::Pool::from_cores(vec![Arc::new(core)], &cfg.model, cfg.max_queue);
+    let pool = murmur_server::Pool::from_cores(vec![Arc::new(core)], &cfg.model, cfg.max_queue);
     spawn_server_with(cfg, Some(Arc::new(pool)))
 }
 
 /// A one-worker server around a caller-built core (custom test engines).
-pub fn spawn_core_server(core: FlowCore) -> TestServer {
+pub fn spawn_core_server(core: MurmurCore) -> TestServer {
     let cfg = server_cfg(mock_model("unused"));
-    let pool = flow_server::Pool::from_cores(vec![Arc::new(core)], &cfg.model, cfg.max_queue);
+    let pool = murmur_server::Pool::from_cores(vec![Arc::new(core)], &cfg.model, cfg.max_queue);
     spawn_server_with(cfg, Some(Arc::new(pool)))
 }
 
-fn spawn_server_with(cfg: ServerFileConfig, pool: Option<Arc<flow_server::Pool>>) -> TestServer {
+fn spawn_server_with(cfg: ServerFileConfig, pool: Option<Arc<murmur_server::Pool>>) -> TestServer {
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
@@ -121,8 +121,8 @@ fn spawn_server_with(cfg: ServerFileConfig, pool: Option<Arc<flow_server::Pool>>
     let handle = rt.block_on(async {
         let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         match pool {
-            Some(p) => flow_server::serve_with_pool(cfg, p, vec![l]).await,
-            None => flow_server::serve(cfg, vec![l]).await,
+            Some(p) => murmur_server::serve_with_pool(cfg, p, vec![l]).await,
+            None => murmur_server::serve(cfg, vec![l]).await,
         }
         .expect("server starts")
     });
@@ -136,8 +136,8 @@ pub fn spawn_mock_server(text: &str) -> TestServer {
     spawn_server(server_cfg(mock_model(text)))
 }
 
-pub fn local_backend(model: &ModelConfig) -> Arc<FlowCore> {
-    Arc::new(FlowCore::load_models(model).expect("local model loads"))
+pub fn local_backend(model: &ModelConfig) -> Arc<MurmurCore> {
+    Arc::new(MurmurCore::load_models(model).expect("local model loads"))
 }
 
 pub fn server_config(addr: SocketAddr, token: &str) -> ServerConfig {
@@ -158,12 +158,12 @@ pub fn router_config(addr: SocketAddr, allow_server: bool, allow_client: bool) -
     }
 }
 
-/// `Router{allow_server only}` → flow-remote → the server at `addr`.
+/// `Router{allow_server only}` → murmur-remote → the server at `addr`.
 pub fn remote_router(addr: SocketAddr) -> Router {
     Router::new(
         router_config(addr, true, false),
         None,
-        Some(flow_remote::factory("flow-contract-tests")),
+        Some(murmur_remote::factory("murmur-contract-tests")),
     )
 }
 
@@ -177,17 +177,21 @@ pub fn remote_router(addr: SocketAddr) -> Router {
 pub fn remote_router_real_model(addr: SocketAddr) -> Router {
     let mut cfg = router_config(addr, true, false);
     cfg.server.commit_timeout_base_ms = REAL_MODEL_COMMIT_TIMEOUT_MS;
-    Router::new(cfg, None, Some(flow_remote::factory("flow-contract-tests")))
+    Router::new(
+        cfg,
+        None,
+        Some(murmur_remote::factory("murmur-contract-tests")),
+    )
 }
 
 /// Commit deadline base for [`remote_router_real_model`].
 pub const REAL_MODEL_COMMIT_TIMEOUT_MS: u64 = 120_000;
 
-pub fn hybrid_router(cfg: RouterConfig, local: Option<Arc<FlowCore>>) -> Router {
+pub fn hybrid_router(cfg: RouterConfig, local: Option<Arc<MurmurCore>>) -> Router {
     Router::new(
         cfg,
         local.map(|l| l as Arc<dyn Backend>),
-        Some(flow_remote::factory("flow-contract-tests")),
+        Some(murmur_remote::factory("murmur-contract-tests")),
     )
 }
 
@@ -199,23 +203,23 @@ pub const CLOUD_KEY: &str = "sk-LEAKCHECK-7f3a9c0b1e2d4f6a8b5c";
 /// The one cloud provider entry id (D28).
 pub const CLOUD_ID: &str = "openrouter";
 
-/// A mock OpenRouter. While it lives every flow-cloud `Api` talks to it
-/// (`flow_cloud::testing::override_base_url`; serialised process-wide):
+/// A mock OpenRouter. While it lives every murmur-cloud `Api` talks to it
+/// (`murmur_cloud::testing::override_base_url`; serialised process-wide):
 /// configs stay production-shaped, the mock is never reachable via config.
 pub struct MockCloud {
-    pub srv: flow_cloud::testing::MockServer,
-    _base: flow_cloud::testing::BaseOverride,
+    pub srv: murmur_cloud::testing::MockServer,
+    _base: murmur_cloud::testing::BaseOverride,
 }
 
 impl std::ops::Deref for MockCloud {
-    type Target = flow_cloud::testing::MockServer;
+    type Target = murmur_cloud::testing::MockServer;
     fn deref(&self) -> &Self::Target {
         &self.srv
     }
 }
 
 impl MockCloud {
-    /// Send flow-cloud's requests elsewhere (e.g. a closed port).
+    /// Send murmur-cloud's requests elsewhere (e.g. a closed port).
     pub fn point_at(&self, base: &str) {
         self._base.set(base);
     }
@@ -231,17 +235,17 @@ impl MockCloud {
 }
 
 pub fn mock_cloud(
-    handler: impl Fn(&flow_cloud::testing::Recorded, usize) -> flow_cloud::testing::Reply
+    handler: impl Fn(&murmur_cloud::testing::Recorded, usize) -> murmur_cloud::testing::Reply
         + Send
         + Sync
         + 'static,
 ) -> MockCloud {
-    let srv = flow_cloud::testing::MockServer::start(handler);
-    let base = flow_cloud::testing::override_base_url(&srv.url("/api/v1"));
+    let srv = murmur_cloud::testing::MockServer::start(handler);
+    let base = murmur_cloud::testing::override_base_url(&srv.url("/api/v1"));
     MockCloud { srv, _base: base }
 }
 
-pub fn mock_cloud_fixed(reply: flow_cloud::testing::Reply) -> MockCloud {
+pub fn mock_cloud_fixed(reply: murmur_cloud::testing::Reply) -> MockCloud {
     mock_cloud(move |_, _| reply.clone())
 }
 
@@ -258,14 +262,14 @@ pub fn mock_provider(text: &str) -> MockCloud {
                     .map(str::to_string)
             })
             .unwrap_or_else(|| "en".into());
-        flow_cloud::testing::Reply::json(200, serde_json::json!({"text": text, "language": lang}))
+        murmur_cloud::testing::Reply::json(200, serde_json::json!({"text": text, "language": lang}))
     })
 }
 
 /// The OpenRouter config (schema 2), STT consented for openrouter.ai.
 pub fn cloud_provider() -> OpenRouterConfig {
     let mut o = OpenRouterConfig::default();
-    o.stt.consent_host = flow_cloud::HOST.into();
+    o.stt.consent_host = murmur_cloud::HOST.into();
     o.stt.consent_at_ms = 1_792_540_800_000;
     o
 }
@@ -285,10 +289,10 @@ pub fn with_cloud(
     cfg
 }
 
-/// Hybrid router (flow-remote) + flow-cloud attached + the sentinel key.
-pub fn cloud_router(cfg: RouterConfig, local: Option<Arc<FlowCore>>) -> Router {
+/// Hybrid router (murmur-remote) + murmur-cloud attached + the sentinel key.
+pub fn cloud_router(cfg: RouterConfig, local: Option<Arc<MurmurCore>>) -> Router {
     cfg.validate().expect("valid cloud config");
-    let r = flow_cloud::attach(hybrid_router(cfg, local), None);
+    let r = murmur_cloud::attach(hybrid_router(cfg, local), None);
     r.set_cloud_key(CLOUD_ID, Some(SecretString::new(CLOUD_KEY)));
     r
 }
@@ -327,11 +331,11 @@ pub fn noise(ms: usize, amp: i16, seed: u32) -> Vec<i16> {
         .collect()
 }
 
-/// Candidate model directories: `FLOW_MODELS_DIR`, the repo's `models/`,
+/// Candidate model directories: `MURMUR_MODELS_DIR`, the repo's `models/`,
 /// and (for git worktrees under `.claude/worktrees/`) the main checkout's.
 pub fn models_dirs() -> Vec<PathBuf> {
     let mut v = Vec::new();
-    if let Some(d) = std::env::var_os("FLOW_MODELS_DIR") {
+    if let Some(d) = std::env::var_os("MURMUR_MODELS_DIR") {
         v.push(PathBuf::from(d));
     }
     let here = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -364,7 +368,7 @@ pub fn audio(spec: &str) -> Vec<i16> {
         };
     }
     let p = find_model(spec).unwrap_or_else(|| panic!("{spec} not found"));
-    flow_core::audio::read_wav_16k_mono(&p).unwrap()
+    murmur_core::audio::read_wav_16k_mono(&p).unwrap()
 }
 
 // ---- session fixtures -----------------------------------------------------
@@ -418,7 +422,7 @@ pub fn load_case(p: &Path) -> Case {
         .unwrap_or_else(|e| panic!("{}: {e}", p.display()))
 }
 
-/// The session API common to `FlowCore` and `Router`.
+/// The session API common to `MurmurCore` and `Router`.
 pub trait Dictation {
     fn d_start(&self, cfg: SessionConfig);
     fn d_push(&self, pcm: &[i16]);
@@ -426,7 +430,7 @@ pub trait Dictation {
     fn d_commit(&self) -> CommitResult;
 }
 
-impl Dictation for FlowCore {
+impl Dictation for MurmurCore {
     fn d_start(&self, cfg: SessionConfig) {
         self.start_session(cfg).unwrap();
     }

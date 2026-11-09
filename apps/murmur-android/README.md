@@ -1,10 +1,10 @@
-# flow-android: Android shell of Murmur (self-hosted voice dictation)
+# murmur-android: Android shell of Murmur (self-hosted voice dictation)
 
-This is a Kotlin shell around the shared Rust core (`crates/flow-core` via `crates/flow-ffi`).
+This is a Kotlin shell around the shared Rust core (`crates/murmur-core` via `crates/murmur-ffi`).
 It's single-process with no AndroidX. minSdk 33 (it needs `AccessibilityService.InputMethod`),
 targetSdk 35, arm64-v8a. Three product flavours (D17): `local` (no `INTERNET`, on-device
-only), `hybrid` (own flow-server + on-device fallback), `remote` (server only, no ASR libs).
-Every session goes through the native `flow_router::Router` (`nativeOpenRouter`).
+only), `hybrid` (own murmur-server + on-device fallback), `remote` (server only, no ASR libs).
+Every session goes through the native `murmur_router::Router` (`nativeOpenRouter`).
 
 Core API: [`docs/core-architecture.md`](../../docs/core-architecture.md). The JNI surface is in
 [`JNI_CONTRACT.md`](JNI_CONTRACT.md).
@@ -12,16 +12,16 @@ Core API: [`docs/core-architecture.md`](../../docs/core-architecture.md). The JN
 ## Build
 
 ```sh
-cd apps/flow-android
+cd apps/murmur-android
 ./gradlew testDebugUnitTest assembleDebug     # all flavours; APKs: app/build/outputs/apk/<flavour>/debug/
 tools/unit.sh                                  # same tests, compact summary
-tools/probes/jni_stub/run.sh                   # link-test NativeFlowCore against a host C stub of the JNI contract
+tools/probes/jni_stub/run.sh                   # link-test NativeMurmurCore against a host C stub of the JNI contract
 tools/build-native.sh --flavor local|hybrid|remote   # arm64 native libs into app/src/<flavour>/jniLibs/ (see INSTALL.md)
 tools/probes/check_native_so.sh --flavor F [apk]  # contract symbols, 16 KB alignment, NEEDED libs, plugin exports, flavour rules (+ APK zipalign -P 16)
 tools/probes/check_native_so_test.sh [runs]    # that gate on a stub toolchain: no SIGPIPE flake, failures name their check (CI repo-checks)
 tools/dist.sh [--debug-only]                   # clean debug (+ release) APKs of all flavours into dist/ + SHA256SUMS, native gates
-tools/probes/host_native/run.sh [model.bin]    # real host flow-ffi under the real NativeFlowCore: whisper on jfk.wav, + LLM cleanup if a GGUF is in models/
-tools/probes/host_cloud/run.sh                 # D18: real host flow-ffi (jni,cloud) under the shipped Kotlin cloud path vs a JVM mock provider
+tools/probes/host_native/run.sh [model.bin]    # real host murmur-ffi under the real NativeMurmurCore: whisper on jfk.wav, + LLM cleanup if a GGUF is in models/
+tools/probes/host_cloud/run.sh                 # D18: real host murmur-ffi (jni,cloud) under the shipped Kotlin cloud path vs a JVM mock provider
 ```
 
 Install on a phone (sideload, permissions, model import, device checklist): [`INSTALL.md`](INSTALL.md).
@@ -30,10 +30,10 @@ Install on a phone (sideload, permissions, model import, device checklist): [`IN
   default `java` is a JDK-25 JRE without `javac`. Gradle picks up the JDK 21 already
   provisioned at `~/.gradle/jdks/`; on other machines the foojay resolver provisions it.
 - `local.properties` (git-ignored) holds `sdk.dir=~/Android/Sdk`.
-- Without `app/src/<flavour>/jniLibs/arm64-v8a/libflow_ffi.so` the APK still builds and runs. The
+- Without `app/src/<flavour>/jniLibs/arm64-v8a/libmurmur_ffi.so` the APK still builds and runs. The
   Permissions page then says the native engine is unavailable, and dictation shows an
   "engine unavailable" bubble error instead of crashing. **Settings → Mock engine** swaps in
-  `FakeFlowCore`, which inserts a fixed sentence, so the shell can be tested on a device
+  `FakeMurmurCore`, which inserts a fixed sentence, so the shell can be tested on a device
   without the .so or a model.
 
 ### Toolchain installed for this (2026-10-20)
@@ -44,9 +44,9 @@ Install on a phone (sideload, permissions, model import, device checklist): [`IN
 
 ## Privacy gates (per flavour)
 - D18 cloud STT (`docs/cloud-stt.md`): only the `hybrid` / `remote` libraries link the provider
-  client (flow-ffi feature `cloud`; `BuildConfig.CAP_CLOUD`); `verifyLocal<BT>NoNetworkCode` and
+  client (murmur-ffi feature `cloud`; `BuildConfig.CAP_CLOUD`); `verifyLocal<BT>NoNetworkCode` and
   `check_native_so.sh` reject it in `local`. Off by default; per-provider consent naming the host;
-  API keys only in the Keystore (`SecretVault("flow_cloud_<id>")`) and native memory.
+  API keys only in the Keystore (`SecretVault("murmur_cloud_<id>")`) and native memory.
 - `src/local/AndroidManifest.xml` strips every network permission with `tools:node="remove"`;
   `src/hybrid` / `src/remote` add `INTERNET` and strip the rest. The main manifest decides nothing.
 - `verifyLocal<BT>NoNetworkPermissions` / `verify{Hybrid,Remote}<BT>OnlyInternetPermission`
@@ -55,10 +55,10 @@ Install on a phone (sideload, permissions, model import, device checklist): [`IN
 - `ManifestPrivacyTest` checks each flavour's merged manifest from the unit suite.
 - Backups and device transfer are disabled (`allowBackup=false` plus data-extraction rules).
 
-## Layout (`app/src/main/java/dev/flowclone/`)
+## Layout (`app/src/main/java/dev/murmur/`)
 | Package | What | Tested on JVM |
 |---|---|---|
-| `core/` | `FlowCore` (mirror of the Rust core API), `CoreJson` (wire format), `RouterJson` + `DevText` (router JSON, D17), `NativeFlowCore` (JNI, core + router handles), `FakeFlowCore` | yes, plus the stub link test and `RouterJsonTest` on `crates/flow-router/fixtures` |
+| `core/` | `MurmurCore` (mirror of the Rust core API), `CoreJson` (wire format), `RouterJson` + `DevText` (router JSON, D17), `NativeMurmurCore` (JNI, core + router handles), `FakeMurmurCore` | yes, plus the stub link test and `RouterJsonTest` on `crates/murmur-router/fixtures` |
 | `insert/` | `V3Inserter`, `InsertionCoordinator` (mutex, 3500 ms budget, sensitive clipboard), `ImeKeepAlive`, `TextMatching`, `Ports` (injectable editor abstraction) | yes |
 | `policy/` | `EditorInputType`, `BubbleVisibilityPolicy` (sensitive + restricted (banking) apps + user denylist + extra hiding rules), `AppCategorizer`, `OwnAppGate` (our own screens: no bubble except the Scratchpad), `PolicyLists` (app groups and naming rules) | yes |
 | `session/` | `DictationController` (state machine, debounce, cap 239/299 s, 20 s timeout), `LevelMeter`, `AudioBatcher`, `SessionCap` | yes |
@@ -67,20 +67,20 @@ Install on a phone (sideload, permissions, model import, device checklist): [`IN
 | `notes/` | Scratchpad: `DocumentStore` (load / save by id; `FileDocumentStore` = `files/notes/<id>.txt`, atomic replace), `Autosaver` (debounced, flush on pause), `TextStats` (word count) | yes |
 | `learn/` | Learn from my edits: `EditWatch` (anchor region, end reasons, stabilise, `boundEdit`), `Suggestions` (pending / dismissed, add / accept / dismiss, JSON), `EditLearning` | yes |
 | `health/` | `A11ySetting` (enabled-services parse), `AccessibilityHealth` (ghost binding), `ServiceWatchdog` (≥ 5 s respawn), `OemGuidance` (autostart steps + deep links) | yes |
-| `service/` | `FlowAccessibilityService` (+ 15 s heartbeat / FlowService watchdog), `ShellInputMethod`/node adapters, `FlowService` (FGS, shake sensor, health tick, unlock re-check) | device only |
+| `service/` | `MurmurAccessibilityService` (+ 15 s heartbeat / MurmurService watchdog), `ShellInputMethod`/node adapters, `MurmurService` (FGS, shake sensor, health tick, unlock re-check) | device only |
 | `receiver/` | `BootReceiver` (BOOT_COMPLETED, MY_PACKAGE_REPLACED, USER_UNLOCKED → start FGS or "re-enable" notification) | device only |
 | `audio/` | `MicRecorder` (MIC 16 k mono PCM16, 100 ms frames → `push_audio`) | device only |
 | `ui/` | Main/onboarding (mic → overlay → a11y + ghost fix → battery → notifications → OEM), model import (SAF; speech ggml, Parakeet folder, LLM GGUF), settings, Developer settings (D17 §5; D18 cloud section + `CloudProviderActivity`), dictionary editor (search, tabs, edit, shared JSON import/export), history (search, copy, delete, raw vs formatted), Scratchpad (`NoteEditorActivity`: one document to dictate into, Copy all / Share / Clear) | device only |
 
-`policy/PolicyLists.kt` reads its app groups from `crates/flow-core/data/app-groups.json`
-(packed as a Java resource), the file flow-core and the Windows app use too (D81; the JSON and
+`policy/PolicyLists.kt` reads its app groups from `crates/murmur-core/data/app-groups.json`
+(packed as a Java resource), the file murmur-core and the Windows app use too (D81; the JSON and
 the PolicyLists header document the method and sources).
 
 ## Design choices
 - One insertion path (`V3Inserter`) with every step always on.
 - Single process, so no AIDL bridge and no JobScheduler recovery job. The watchdog lives in
-  the a11y service's 15 s health tick (respawns FlowService ≥ 5 s apart); `BootReceiver`
-  covers boot/update/unlock; FlowService re-checks on `USER_PRESENT`.
+  the a11y service's 15 s health tick (respawns MurmurService ≥ 5 s apart); `BootReceiver`
+  covers boot/update/unlock; MurmurService re-checks on `USER_PRESENT`.
 - Shake, snooze target and minimise have no gravity pull on the target.
   Minimise and shake are settings (default on). The accelerometer is only registered while
   the screen is on. Sounds use `ToneGenerator` beeps instead of bundled samples.
@@ -99,7 +99,7 @@ the PolicyLists header document the method and sources).
 - Command Mode is a second bubble button (✎, shown while the focused field has a selection;
   *Settings → Bubble → Command mode*), not a gesture on the mic: tap / hold / drag keep their
   meaning. The instruction is transcribed raw and rewritten by the shared Rust Command Mode
-  (`nativeCommand` → `flow_core::command`, same prompt, sanitiser and privacy gate as Windows).
+  (`nativeCommand` → `murmur_core::command`, same prompt, sanitiser and privacy gate as Windows).
   Only the captured selection is replaced (`command/SelectionSplice`: `ACTION_SET_TEXT` with the
   text around it kept, read back; else `commitText` while the same text is still selected).
 

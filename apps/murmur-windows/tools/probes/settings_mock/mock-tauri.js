@@ -6,7 +6,7 @@
   let prefs = {
     shortcuts: { ptt: "Right Alt", hands_free: "Ctrl+Win+Space", command: "Ctrl+Win+Alt", cancel: "Esc", paste_last: "Alt+Shift+Z", copy_last: "Alt+Shift+X", scratchpad: "Ctrl+Alt+N" },
     microphone: null, languages: [], keyboard_language: true, enable_sounds: true, mute_audio_while_dictating: true,
-    launch_at_login: false, show_flow_bar_always: true, use_ax_context: true,
+    launch_at_login: false, show_murmur_bar_always: true, use_ax_context: true,
     cleanup_level: "light", raw_mode: false,
     styles: { personal: "casual", work: "formal", email: "formal", other: "formal" },
     app_buckets: { "mychat.exe": "work", "mail.example.com": "email", slack: "email" },
@@ -114,7 +114,7 @@
   };
   const health = {
     ok: true, engine: "remote", error: null, message: null, server: "100.64.0.10:7313", rtt_ms: { min: 3, median: 4, max: 6 },
-    server_version: "flow-server 0.1.0", server_core: "0.1.0", postprocess_rev: "2026-10-21.1", postprocess_match: true,
+    server_version: "murmur-server 0.1.0", server_core: "0.1.0", postprocess_rev: "2026-10-21.1", postprocess_match: true,
     proto: 1, asr_backend: "parakeet", asr_model: "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8", llm: false, workers: 1, busy: 0,
   };
   const route = () => ({
@@ -202,15 +202,15 @@
   // first-run setup opens over the shell. Saving a model location
   // "loads" it: a path containing "missing" is not found, anything else is ready.
   const onboard = new URLSearchParams(location.search).get("onboard") === "1";
-  let modelStatus = { state: "ready", path: "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\models\\ggml-base.bin", load_ms: 312 };
+  let modelStatus = { state: "ready", path: "C:\\Users\\u\\AppData\\Roaming\\Murmur\\models\\ggml-base.bin", load_ms: 312 };
   if (onboard) {
     prefs.onboarded = false;
     prefs.llm_enabled = false;
     dev = { ...dev, host: "", token: "", allow_server: true };
     or.notice = null;
-    modelStatus = { state: "missing", path: "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\models\\ggml-base.bin" };
+    modelStatus = { state: "missing", path: "C:\\Users\\u\\AppData\\Roaming\\Murmur\\models\\ggml-base.bin" };
   }
-  const MODELS = "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\models\\";
+  const MODELS = "C:\\Users\\u\\AppData\\Roaming\\Murmur\\models\\";
   const hf = (repo, rev, name, size, sha256) => ({ name, url: `https://huggingface.co/${repo}/resolve/${rev}/${name}`, size, sha256 });
   const PK = ["csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8", "1ab9323565ddb038682214b292f588070a538ce2"];
   const WH = ["ggerganov/whisper.cpp", "5359861c739e955e79d9a303bcbc70fb988958b1"];
@@ -261,7 +261,7 @@
   // The Hebrew model's load state (`model:hebrew`): null = none chosen.
   const heDir = { zipformer: "zipformer-he-int8", parakeet_he: "parakeet-tdt-0.6b-v3-he-int8", ivrit_turbo: "ivrit-whisper-large-v3-turbo-q5_0" };
   // Where whisper runs (`whisper_backend`): set window.__whisperBackend before the page loads; default: a CPU-only PC.
-  const whisperBackend = () => window.__whisperBackend || { gpu: false, backend: "CPU", device: "CPU", plugin: null, error: "flow_whisper_vulkan.dll not found" };
+  const whisperBackend = () => window.__whisperBackend || { gpu: false, backend: "CPU", device: "CPU", plugin: null, error: "murmur_whisper_vulkan.dll not found" };
   let heStatus = null;
   const loadHebrew = () => {
     const c = dlCatalog.find((x) => x.id === heDir[prefs.hebrew_model]);
@@ -349,7 +349,7 @@
       ev("done", { path });
       window.__emit("llm:status", { state: "loading", path });
       const b = window.__llmBackend || { gpu: false, backend: "CPU", device: "CPU" };
-      setTimeout(() => window.__emit("llm:status", { state: "ready", path, load_ms: 700, plugin: b.gpu ? "flow_llm_vulkan.dll" : "flow_llm.dll", backend: { backend: b.backend, device: b.device } }), 150);
+      setTimeout(() => window.__emit("llm:status", { state: "ready", path, load_ms: 700, plugin: b.gpu ? "murmur_llm_vulkan.dll" : "murmur_llm.dll", backend: { backend: b.backend, device: b.device } }), 150);
       return;
     }
     prefs = c.engine === "parakeet" ? { ...prefs, asr_engine: "parakeet", parakeet_model_dir: path } : { ...prefs, asr_engine: "whisper", model_path: path };
@@ -359,7 +359,7 @@
     setTimeout(() => { modelStatus = { state: "ready", path, load_ms: 900 }; window.__emit("model:status", modelStatus); }, 150);
   };
   const modelKey = (p) => [p.asr_engine, p.model_path, p.parakeet_model_dir].join("|");
-  const debugView = () => ({ enabled: debugLog.enabled, count: debugLog.count, path: "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\debug\\dictations.jsonl", stats: { written: 0, dropped: 0, write_errors: 0 } });
+  const debugView = () => ({ enabled: debugLog.enabled, count: debugLog.count, path: "C:\\Users\\u\\AppData\\Roaming\\Murmur\\debug\\dictations.jsonl", stats: { written: 0, dropped: 0, write_errors: 0 } });
   // Notes as the app window sees them (list / create / pin / open only:
   // the text is the notes window's, mock-scratchpad.js). Opened ids land in
   // window.__opened.
@@ -467,8 +467,8 @@
       if (heChanged) setTimeout(loadHebrew, 100);
       if (reload) {
         const path = p.asr_engine === "parakeet"
-          ? p.parakeet_model_dir || "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\models\\sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8"
-          : p.model_path || "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\models\\ggml-base.bin";
+          ? p.parakeet_model_dir || "C:\\Users\\u\\AppData\\Roaming\\Murmur\\models\\sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8"
+          : p.model_path || "C:\\Users\\u\\AppData\\Roaming\\Murmur\\models\\ggml-base.bin";
         modelStatus = { state: "loading", path };
         setTimeout(() => {
           modelStatus = path.includes("missing") ? { state: "missing", path } : { state: "ready", path, load_ms: 900 };
@@ -479,9 +479,9 @@
     list_microphones: () => ["USB Mic", "Realtek"],
     get_model_status: () => ({
       status: { ...modelStatus }, hebrew: heStatus && { ...heStatus },
-      default_path: "C:\\…\\ggml-base.bin", default_parakeet_dir: "C:\\…\\sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8", models_dir: "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\models",
-      llm: { state: "plugin_missing", path: "C:\\…\\qwen.gguf", message: "llm plugin not found (C:\\Program Files\\Murmur\\flow_llm.dll: not found)" },
-      default_llm_path: "C:\\…\\qwen2.5-1.5b-instruct-q4_k_m.gguf", llm_plugin: "flow_llm.dll",
+      default_path: "C:\\…\\ggml-base.bin", default_parakeet_dir: "C:\\…\\sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8", models_dir: "C:\\Users\\u\\AppData\\Roaming\\Murmur\\models",
+      llm: { state: "plugin_missing", path: "C:\\…\\qwen.gguf", message: "llm plugin not found (C:\\Program Files\\Murmur\\murmur_llm.dll: not found)" },
+      default_llm_path: "C:\\…\\qwen2.5-1.5b-instruct-q4_k_m.gguf", llm_plugin: "murmur_llm.dll",
     }),
     transforms_reset: () => {
       const custom = prefs.transforms.items.filter((i) => !BUILTIN_TRANSFORMS.some((b) => b.transform.id === i.transform.id));
@@ -555,7 +555,7 @@
     },
     suggestion_dismiss: ({ word }) => { suggestions = suggestions.filter((s) => s.word !== word); },
     dictionary_import: ({ entries, json, replace }) => ({ entries: (replace ? [] : entries).concat(JSON.parse(json)), added: 1, updated: 0, skipped: 0 }),
-    dictionary_export: () => "C:\\Users\\u\\Downloads\\flow-dictionary.json",
+    dictionary_export: () => "C:\\Users\\u\\Downloads\\murmur-dictionary.json",
     dictionary_export_text: ({ entries }) => JSON.stringify(entries, null, 2),
     dev_get: devView,
     dev_validate: ({ form }) => devCheck(form),
@@ -573,7 +573,7 @@
     dev_or_get: orView,
     dev_or_ack_notice: () => { or.notice = null; return orView(); },
     dev_or_key_info: () => orKey
-      ? { label: "flow-clone", limit: null, limit_remaining: null, limit_reset: null, usage: 1.23, usage_daily: 0.02, usage_weekly: 0.2, usage_monthly: 0.84, is_free_tier: false, free_requests_remaining: null, checked_at_ms: Date.now(), warn_no_limit: true }
+      ? { label: "murmur", limit: null, limit_remaining: null, limit_reset: null, usage: 1.23, usage_daily: 0.02, usage_weekly: 0.2, usage_monthly: 0.84, is_free_tier: false, free_requests_remaining: null, checked_at_ms: Date.now(), warn_no_limit: true }
       : { error: "cloud_not_configured" },
     dev_or_set_privacy: ({ zdr, dataCollection }) => { or.privacy = { zdr, data_collection: dataCollection }; return orView(); },
     dev_or_set_stt: ({ form }) => {
@@ -659,7 +659,7 @@
     // Where cleanup would run (core_adapter LlmBackendView). Checks set
     // window.__llmBackend before the page loads; default: a CPU-only PC.
     whisper_backend: () => whisperBackend(),
-    llm_backend: () => window.__llmBackend || { gpu: false, backend: "CPU", device: "CPU", plugin: "C:\\Program Files\\Murmur\\flow_llm.dll" },
+    llm_backend: () => window.__llmBackend || { gpu: false, backend: "CPU", device: "CPU", plugin: "C:\\Program Files\\Murmur\\murmur_llm.dll" },
     model_download_start: ({ id }) => {
       const c = dlCatalog.find((x) => x.id === id);
       if (!c) throw new Error(`unknown model ${id}`);
@@ -774,15 +774,15 @@
       return true;
     },
   };
-  // D39 Users & keys: the server's keys as flow-server's admin API keeps
+  // D39 Users & keys: the server's keys as murmur-server's admin API keeps
   // them (server_admin.rs error texts). ?admin=0: this app's key is not an
   // admin key; ?admin=down: the server can't be reached. Invented data.
   const adminParam = new URLSearchParams(location.search).get("admin");
   const nowS = Math.floor(now / 1000);
   const srvKeys = [
-    { id: "k-0a1b2c3d4e5f6071", name: "owner", admin: true, created: nowS - 86400 * 40, last_used: nowS - 600, last_connected: nowS - 60, last_seen: nowS - 60, client: "flow-windows 0.12.0", dictations: 412, audio_ms: 3_960_000, downloads: 3, download_bytes: 1_620_000_000, current: adminParam !== "0" },
-    { id: "k-1b2c3d4e5f607182", name: "phone", admin: false, created: nowS - 86400 * 12, last_used: nowS - 3600 * 5, last_connected: nowS - 3600 * 2, last_seen: nowS - 3600 * 2, client: "flow-android 0.12.0", dictations: 87, audio_ms: 610_000, downloads: 1, download_bytes: 240_000_000, current: adminParam === "0" },
-    { id: "k-2c3d4e5f60718293", name: "old-tablet", admin: false, created: nowS - 86400 * 90, revoked: nowS - 86400 * 30, last_seen: nowS - 86400 * 31, client: "flow-android 0.9.0", dictations: 15, audio_ms: 80_000, current: false },
+    { id: "k-0a1b2c3d4e5f6071", name: "owner", admin: true, created: nowS - 86400 * 40, last_used: nowS - 600, last_connected: nowS - 60, last_seen: nowS - 60, client: "murmur-windows 0.12.0", dictations: 412, audio_ms: 3_960_000, downloads: 3, download_bytes: 1_620_000_000, current: adminParam !== "0" },
+    { id: "k-1b2c3d4e5f607182", name: "phone", admin: false, created: nowS - 86400 * 12, last_used: nowS - 3600 * 5, last_connected: nowS - 3600 * 2, last_seen: nowS - 3600 * 2, client: "murmur-android 0.12.0", dictations: 87, audio_ms: 610_000, downloads: 1, download_bytes: 240_000_000, current: adminParam === "0" },
+    { id: "k-2c3d4e5f60718293", name: "old-tablet", admin: false, created: nowS - 86400 * 90, revoked: nowS - 86400 * 30, last_seen: nowS - 86400 * 31, client: "murmur-android 0.9.0", dictations: 15, audio_ms: 80_000, current: false },
   ];
   let srvNext = 0x300;
   const me = () => srvKeys.find((k) => k.current && !k.revoked);
@@ -808,7 +808,7 @@
       if (srvKeys.some((k) => !k.revoked && k.name === name)) throw "a key with this name already exists";
       const key = { id: `k-${(srvNext++).toString(16).padStart(16, "0")}`, name, admin: !!admin, created: Math.floor(Date.now() / 1000), dictations: 0, audio_ms: 0, downloads: 0, download_bytes: 0, current: false };
       srvKeys.push(key);
-      // Invented, like flow-server's: 43 base64url characters.
+      // Invented, like murmur-server's: 43 base64url characters.
       return { key: structuredClone(key), secret: "MOCKSECRET-" + "x".repeat(32) };
     },
     admin_revoke_key: ({ id }) => {

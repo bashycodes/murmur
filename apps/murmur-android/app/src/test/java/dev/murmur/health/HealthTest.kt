@@ -1,4 +1,4 @@
-package dev.flowclone.health
+package dev.murmur.health
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -7,18 +7,18 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class A11ySettingTest {
-    private val me = "dev.flowclone/dev.flowclone.service.FlowAccessibilityService"
+    private val me = "dev.murmur/dev.murmur.service.MurmurAccessibilityService"
 
     @Test fun parsesFullAndShortComponentNames() {
-        assertTrue(A11ySetting.isEnabled("com.other/.Svc:$me", "dev.flowclone", "dev.flowclone.service.FlowAccessibilityService"))
-        assertTrue(A11ySetting.isEnabled("dev.flowclone/.service.FlowAccessibilityService", "dev.flowclone", "dev.flowclone.service.FlowAccessibilityService"))
-        assertTrue(A11ySetting.isEnabled(me.uppercase(), "dev.flowclone", "dev.flowclone.service.FlowAccessibilityService"))
+        assertTrue(A11ySetting.isEnabled("com.other/.Svc:$me", "dev.murmur", "dev.murmur.service.MurmurAccessibilityService"))
+        assertTrue(A11ySetting.isEnabled("dev.murmur/.service.MurmurAccessibilityService", "dev.murmur", "dev.murmur.service.MurmurAccessibilityService"))
+        assertTrue(A11ySetting.isEnabled(me.uppercase(), "dev.murmur", "dev.murmur.service.MurmurAccessibilityService"))
     }
 
     @Test fun absentOrEmpty() {
-        assertFalse(A11ySetting.isEnabled(null, "dev.flowclone", "dev.flowclone.service.FlowAccessibilityService"))
-        assertFalse(A11ySetting.isEnabled("", "dev.flowclone", "dev.flowclone.service.FlowAccessibilityService"))
-        assertFalse(A11ySetting.isEnabled("dev.flowclone.evil/.service.FlowAccessibilityService", "dev.flowclone", "dev.flowclone.service.FlowAccessibilityService"))
+        assertFalse(A11ySetting.isEnabled(null, "dev.murmur", "dev.murmur.service.MurmurAccessibilityService"))
+        assertFalse(A11ySetting.isEnabled("", "dev.murmur", "dev.murmur.service.MurmurAccessibilityService"))
+        assertFalse(A11ySetting.isEnabled("dev.murmur.evil/.service.MurmurAccessibilityService", "dev.murmur", "dev.murmur.service.MurmurAccessibilityService"))
     }
 }
 

@@ -15,14 +15,14 @@
 //!   ([`install_custom`]). Its `kind` + `engine` pick the slot ([`plan`]);
 //!   one the app can't load is listed with the reason and can't be chosen.
 //!
-//! The HTTP client is `flow_remote::library` (shared with Android).
+//! The HTTP client is `murmur_remote::library` (shared with Android).
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use flow_protocol::library::{LibraryFile, LibraryModel, ModelKind};
-use flow_remote::library::{ErrorKind, LibraryClient, LibraryError};
-use flow_router::ServerConfig;
+use murmur_protocol::library::{LibraryFile, LibraryModel, ModelKind};
+use murmur_remote::library::{ErrorKind, LibraryClient, LibraryError};
+use murmur_router::ServerConfig;
 use serde::Serialize;
 
 use crate::model_download::{
@@ -149,7 +149,7 @@ pub fn plan(m: &LibraryModel, engine_built: &dyn Fn(ModelEngine) -> bool) -> Res
         (_, "") => {
             return Err(format!(
                 "its tag has no engine (add engine = {} to model.toml)",
-                flow_protocol::library::engines_hint()
+                murmur_protocol::library::engines_hint()
             ))
         }
         (ModelKind::Stt, "whisper") => Slot::SttWhisper,
@@ -672,7 +672,7 @@ mod tests {
         );
         let no_engine = why(model("x", ModelKind::Stt, None, one("x.bin")));
         assert!(no_engine.contains("no engine"), "{no_engine}");
-        for e in flow_protocol::library::ENGINES {
+        for e in murmur_protocol::library::ENGINES {
             assert!(no_engine.contains(&format!("\"{e}\"")), "{no_engine}");
         }
         assert!(why(model(
@@ -761,7 +761,7 @@ mod tests {
 
     #[test]
     fn apply_points_each_slot_and_in_use_sees_it() {
-        let d = std::env::temp_dir().join("flow-srvlib-apply");
+        let d = std::env::temp_dir().join("murmur-srvlib-apply");
         for slot in [
             Slot::SttWhisper,
             Slot::SttParakeet,
@@ -787,7 +787,7 @@ mod tests {
 
     #[test]
     fn views_list_sizes_slots_and_reasons() {
-        let d = std::env::temp_dir().join("flow-srvlib-views");
+        let d = std::env::temp_dir().join("murmur-srvlib-views");
         let _ = std::fs::remove_dir_all(&d);
         let ok = model(
             "my-llm",
@@ -843,7 +843,7 @@ mod tests {
 
     #[test]
     fn catalogue_rows_download_from_the_server_when_it_is_picked() {
-        let d = std::env::temp_dir().join("flow-srvlib-catalog-for");
+        let d = std::env::temp_dir().join("murmur-srvlib-catalog-for");
         let rows = || md::catalog_view(&d, false, |e| e != ModelEngine::Llm);
         let hf = catalog_for(rows(), &Origin::HuggingFace);
         assert!(
@@ -878,7 +878,7 @@ mod tests {
             ..Default::default()
         };
         let e = md::entry("whisper-base").unwrap();
-        let d = std::env::temp_dir().join("flow-srvlib-origin");
+        let d = std::env::temp_dir().join("murmur-srvlib-origin");
         // Server picked: Hugging Face is never asked, even when the server
         // can't be reached.
         let r = download_catalogue(

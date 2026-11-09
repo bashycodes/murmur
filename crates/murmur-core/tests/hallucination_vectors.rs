@@ -1,7 +1,7 @@
 //! Vector-style table for the Whisper silence-hallucination guard.
 //! Each row: transcript, VAD speech ms, Whisper no-speech prob, suppressed?
 
-use flow_core::hallucination::{is_hallucination, Evidence};
+use murmur_core::hallucination::{is_hallucination, Evidence};
 
 const NONE: Option<f32> = None;
 

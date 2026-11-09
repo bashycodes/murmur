@@ -1,4 +1,4 @@
-package dev.flowclone.server
+package dev.murmur.server
 
 import org.json.JSONObject
 import java.io.File
@@ -8,11 +8,11 @@ import java.io.File
  * (src/server) is compiled only into the hybrid / remote flavours; the local flavour has a
  * no-op stand-in (src/noserver) and no network code at all (D9).
  *
- * The HTTP client is crates/flow-remote `library` (shared with Windows), reached through
- * flow-ffi's `library` feature ([ServerLibraryNative], JNI_CONTRACT.md "Model library").
+ * The HTTP client is crates/murmur-remote `library` (shared with Windows), reached through
+ * murmur-ffi's `library` feature ([ServerLibraryNative], JNI_CONTRACT.md "Model library").
  */
 
-/** What a library model is for (`flow_protocol::library::ModelKind`); null in [LibraryModel.kind] = a kind this build doesn't know. */
+/** What a library model is for (`murmur_protocol::library::ModelKind`); null in [LibraryModel.kind] = a kind this build doesn't know. */
 enum class ModelKind(val wire: String) {
     STT("stt"), HEBREW("hebrew"), LLM("llm"), LID("lid"), VAD("vad");
 
@@ -98,11 +98,11 @@ interface LibraryTransport {
     fun download(modelId: String, file: LibraryFile, dest: File, part: File, onProgress: (Long) -> Unit, cancelled: () -> Boolean): LibraryFailure?
 }
 
-/** flow-ffi's `library` natives with the server config JSON ([dev.flowclone.data.DevSettings.toServerConfigJson]). */
+/** murmur-ffi's `library` natives with the server config JSON ([dev.murmur.data.DevSettings.toServerConfigJson]). */
 class NativeLibraryTransport(private val serverConfigJson: String) : LibraryTransport {
-    private fun linked(): LibraryFailure? = when (val s = dev.flowclone.core.NativeFlowCore.loadLibrary()) {
-        is dev.flowclone.core.NativeFlowCore.LibraryState.Loaded -> null
-        is dev.flowclone.core.NativeFlowCore.LibraryState.Unavailable -> LibraryFailure("protocol", s.message)
+    private fun linked(): LibraryFailure? = when (val s = dev.murmur.core.NativeMurmurCore.loadLibrary()) {
+        is dev.murmur.core.NativeMurmurCore.LibraryState.Loaded -> null
+        is dev.murmur.core.NativeMurmurCore.LibraryState.Unavailable -> LibraryFailure("protocol", s.message)
     }
 
     override fun list(): ListResult {
@@ -132,7 +132,7 @@ class NativeLibraryTransport(private val serverConfigJson: String) : LibraryTran
     }
 }
 
-/** JNI_CONTRACT.md "Model library": exported by libflow_ffi.so only with cargo feature `library`. */
+/** JNI_CONTRACT.md "Model library": exported by libmurmur_ffi.so only with cargo feature `library`. */
 object ServerLibraryNative {
     /** Called on the downloading thread. */
     interface Listener {

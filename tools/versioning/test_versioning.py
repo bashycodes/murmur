@@ -47,40 +47,40 @@ def make_repo(root: Path, version: str = "0.1.0") -> None:
     lock = (
         'version = 4\n\n[[package]]\nname = "serde"\nversion = "1.0.0"\n'
         'source = "registry+https://github.com/rust-lang/crates.io-index"\n\n'
-        f'[[package]]\nname = "flow-core"\nversion = "{version}"\ndependencies = [\n "serde",\n]\n\n'
-        f'[[package]]\nname = "flow-server"\nversion = "{version}"\n'
+        f'[[package]]\nname = "murmur-core"\nversion = "{version}"\ndependencies = [\n "serde",\n]\n\n'
+        f'[[package]]\nname = "murmur-server"\nversion = "{version}"\n'
     )
     (root / "Cargo.lock").write_text(lock)
-    w = root / "apps" / "flow-windows"
+    w = root / "apps" / "murmur-windows"
     (w / "ui").mkdir(parents=True, exist_ok=True)
     (w / "Cargo.toml").write_text(
-        f'[package]\nname = "flow-windows"\nversion = "{version}"\nedition = "2021"\n\n[dependencies]\nx = {{ version = "0.1.0" }}\n'
+        f'[package]\nname = "murmur-windows"\nversion = "{version}"\nedition = "2021"\n\n[dependencies]\nx = {{ version = "0.1.0" }}\n'
     )
     (w / "Cargo.lock").write_text(
-        lock + f'\n[[package]]\nname = "flow-windows"\nversion = "{version}"\n'
+        lock + f'\n[[package]]\nname = "murmur-windows"\nversion = "{version}"\n'
         '\n[[package]]\nname = "windows-strings"\nversion = "0.1.0"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\n'
     )
-    (w / "tauri.conf.json").write_text('{\n  "productName": "Murmur",\n  "identifier": "dev.flowclone.windows"\n}\n')
+    (w / "tauri.conf.json").write_text('{\n  "productName": "Murmur",\n  "identifier": "dev.murmur.windows"\n}\n')
     (w / "ui" / "package.json").write_text(
-        json.dumps({"name": "flow-windows-ui", "private": True, "version": version}, indent=2) + "\n"
+        json.dumps({"name": "murmur-windows-ui", "private": True, "version": version}, indent=2) + "\n"
     )
     (w / "ui" / "package-lock.json").write_text(
         json.dumps(
             {
-                "name": "flow-windows-ui",
+                "name": "murmur-windows-ui",
                 "version": version,
                 "lockfileVersion": 3,
-                "packages": {"": {"name": "flow-windows-ui", "version": version}, "node_modules/typescript": {"version": "5.6.3"}},
+                "packages": {"": {"name": "murmur-windows-ui", "version": version}, "node_modules/typescript": {"version": "5.6.3"}},
             },
             indent=2,
         )
         + "\n"
     )
-    a = root / "apps" / "flow-android" / "app"
+    a = root / "apps" / "murmur-android" / "app"
     a.mkdir(parents=True, exist_ok=True)
     (a / "build.gradle.kts").write_text(
-        'val flowVersion = file("../../../VERSION").readText().trim()\n'
-        "android {\n    defaultConfig {\n        versionCode = flowVersionCode(flowVersion)\n        versionName = flowVersion\n    }\n}\n"
+        'val murmurVersion = file("../../../VERSION").readText().trim()\n'
+        "android {\n    defaultConfig {\n        versionCode = murmurVersionCode(murmurVersion)\n        versionName = murmurVersion\n    }\n}\n"
     )
     (root / "CHANGELOG.md").write_text(CHANGELOG)
 
@@ -133,25 +133,25 @@ class CheckTest(unittest.TestCase):
         for key in [
             "VERSION",
             "Cargo.toml [workspace.package]",
-            "Cargo.lock flow-core",
-            "Cargo.lock flow-server",
-            "apps/flow-windows/Cargo.toml",
-            "apps/flow-windows/Cargo.lock flow-windows",
-            "apps/flow-windows/Cargo.lock flow-core",
-            "apps/flow-windows/ui/package.json",
-            "apps/flow-windows/ui/package-lock.json",
-            "apps/flow-windows/ui/package-lock.json packages[\"\"]",
+            "Cargo.lock murmur-core",
+            "Cargo.lock murmur-server",
+            "apps/murmur-windows/Cargo.toml",
+            "apps/murmur-windows/Cargo.lock murmur-windows",
+            "apps/murmur-windows/Cargo.lock murmur-core",
+            "apps/murmur-windows/ui/package.json",
+            "apps/murmur-windows/ui/package-lock.json",
+            "apps/murmur-windows/ui/package-lock.json packages[\"\"]",
         ]:
             self.assertIn(key, found)
         # registry packages are not ours
-        self.assertNotIn("apps/flow-windows/Cargo.lock windows-strings", found)
+        self.assertNotIn("apps/murmur-windows/Cargo.lock windows-strings", found)
 
     def test_each_drifted_copy_fails(self):
         edits = [
             ("Cargo.toml", 'version = "0.1.0"\nlicense', 'version = "0.1.1"\nlicense'),
-            ("Cargo.lock", 'name = "flow-server"\nversion = "0.1.0"', 'name = "flow-server"\nversion = "0.0.1"'),
-            ("apps/flow-windows/Cargo.toml", 'name = "flow-windows"\nversion = "0.1.0"', 'name = "flow-windows"\nversion = "0.3.0"'),
-            ("apps/flow-windows/ui/package.json", '"version": "0.1.0"', '"version": "9.9.9"'),
+            ("Cargo.lock", 'name = "murmur-server"\nversion = "0.1.0"', 'name = "murmur-server"\nversion = "0.0.1"'),
+            ("apps/murmur-windows/Cargo.toml", 'name = "murmur-windows"\nversion = "0.1.0"', 'name = "murmur-windows"\nversion = "0.3.0"'),
+            ("apps/murmur-windows/ui/package.json", '"version": "0.1.0"', '"version": "9.9.9"'),
         ]
         for path, old, new in edits:
             with self.subTest(path):
@@ -166,12 +166,12 @@ class CheckTest(unittest.TestCase):
         self.assertTrue(any("VERSION" in e for e in v.check(self.root)))
 
     def test_literal_android_version_fails(self):
-        g = self.root / "apps/flow-android/app/build.gradle.kts"
-        g.write_text(g.read_text().replace("versionName = flowVersion", 'versionName = "0.1.0"'))
+        g = self.root / "apps/murmur-android/app/build.gradle.kts"
+        g.write_text(g.read_text().replace("versionName = murmurVersion", 'versionName = "0.1.0"'))
         self.assertTrue(any("build.gradle.kts" in e for e in v.check(self.root)))
 
     def test_tauri_version_must_not_be_pinned(self):
-        t = self.root / "apps/flow-windows/tauri.conf.json"
+        t = self.root / "apps/murmur-windows/tauri.conf.json"
         t.write_text('{"productName": "Murmur", "version": "0.1.0"}\n')
         self.assertTrue(any("tauri.conf.json" in e for e in v.check(self.root)))
 
@@ -194,15 +194,15 @@ class StampTest(unittest.TestCase):
         shutil.rmtree(self.root)
 
     def test_stamp_moves_every_copy_and_only_ours(self):
-        before_dep = (self.root / "apps/flow-windows/Cargo.toml").read_text().count('x = { version = "0.1.0" }')
+        before_dep = (self.root / "apps/murmur-windows/Cargo.toml").read_text().count('x = { version = "0.1.0" }')
         v.stamp(self.root, "0.2.0")
         self.assertEqual(v.check(self.root), [])
         self.assertEqual(set(dict(v.collect(self.root)).values()), {"0.2.0"})
-        lock = (self.root / "apps/flow-windows/Cargo.lock").read_text()
+        lock = (self.root / "apps/murmur-windows/Cargo.lock").read_text()
         self.assertIn('name = "windows-strings"\nversion = "0.1.0"', lock)
         self.assertIn('name = "serde"\nversion = "1.0.0"', lock)
         self.assertEqual(
-            (self.root / "apps/flow-windows/Cargo.toml").read_text().count('x = { version = "0.1.0" }'), before_dep
+            (self.root / "apps/murmur-windows/Cargo.toml").read_text().count('x = { version = "0.1.0" }'), before_dep
         )
         self.assertIn('serde = { version = "1" }', (self.root / "Cargo.toml").read_text())
 

@@ -1,4 +1,4 @@
-package dev.flowclone.server
+package dev.murmur.server
 
 import java.io.File
 import java.security.MessageDigest
@@ -20,7 +20,7 @@ internal fun f(name: String, size: Long = 10, hash: String = "a".repeat(64)) = L
 internal val SHERPA = listOf(f("encoder.int8.onnx"), f("decoder.int8.onnx"), f("joiner.int8.onnx"), f("tokens.txt"))
 
 /**
- * flow_remote::library's contract in miniature: bytes go to `part`; a cut-off keeps `part` and
+ * murmur_remote::library's contract in miniature: bytes go to `part`; a cut-off keeps `part` and
  * the next call continues from its length; a hash mismatch or a cancel deletes it; `dest`
  * appears only verified; an intact `dest` is kept without a "request".
  */

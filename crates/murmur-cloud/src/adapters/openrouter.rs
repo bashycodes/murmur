@@ -18,7 +18,7 @@ use std::sync::{Mutex, OnceLock};
 use base64::Engine;
 use serde_json::{json, Value};
 
-use flow_router::SecretString;
+use murmur_router::SecretString;
 
 use super::{secs_to_ms, CloudAdapter, CloudRequest, CloudTranscript, TermBudget};
 use crate::api::Api;

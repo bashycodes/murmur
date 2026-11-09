@@ -1,10 +1,10 @@
-package dev.flowclone.data
+package dev.murmur.data
 
 import android.content.Context
-import dev.flowclone.FlowApp
-import dev.flowclone.core.DictEntry
-import dev.flowclone.learn.Suggestion
-import dev.flowclone.learn.Suggestions
+import dev.murmur.MurmurApp
+import dev.murmur.core.DictEntry
+import dev.murmur.learn.Suggestion
+import dev.murmur.learn.Suggestions
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -17,9 +17,9 @@ import org.robolectric.annotation.Config
 
 /** Back up & restore against the app's real stores: every store out and back, secrets never out. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], application = FlowApp::class)
+@Config(sdk = [34], application = MurmurApp::class)
 class BackupIoTest {
-    private val app get() = RuntimeEnvironment.getApplication() as FlowApp
+    private val app get() = RuntimeEnvironment.getApplication() as MurmurApp
     private fun prefs(n: String) = app.getSharedPreferences(n, Context.MODE_PRIVATE)
     private val sealed = "aXZpdml2aXY=:Y2lwaGVydGV4dGNpcGhlcg=="
 

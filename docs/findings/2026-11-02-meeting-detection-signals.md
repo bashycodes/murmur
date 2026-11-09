@@ -1,7 +1,7 @@
 # Meeting detection signals on Windows (Zoom, Webex, Jabber), 2026-11-02
 
-> **Status:** desk research for D48 (`apps/flow-windows/src/meetings/detect.rs`). Built and
-> unit-tested on synthetic fixtures (`apps/flow-windows/tests/fixtures/meeting-detect/`).
+> **Status:** desk research for D48 (`apps/murmur-windows/src/meetings/detect.rs`). Built and
+> unit-tested on synthetic fixtures (`apps/murmur-windows/tests/fixtures/meeting-detect/`).
 > **Not yet checked on a real PC**: the Zoom window classes below come from community scripts,
 > not Zoom docs, and no Webex/Jabber session list has been captured. The debug log line
 > `meeting-detect: signals: …` (Developer → Debug log) prints what the probe sees, so the first

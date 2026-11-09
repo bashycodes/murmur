@@ -1,9 +1,9 @@
 //! D18/D28 end to end through the shell: controller → RouterAdapter → the
-//! real flow-cloud OpenRouter backend → flow-cloud's in-process mock
-//! OpenRouter over HTTP; the local FlowCoreAdapter (MockAsr) is the
+//! real murmur-cloud OpenRouter backend → murmur-cloud's in-process mock
+//! OpenRouter over HTTP; the local MurmurCoreAdapter (MockAsr) is the
 //! fallback. Only the OS side and OpenRouter are faked.
 //!
-//! The mock is reached only through `flow_cloud::testing::override_base_url`
+//! The mock is reached only through `murmur_cloud::testing::override_base_url`
 //! (feature `mock-server`, a dev-dependency): every config here is
 //! production-shaped (the base URL is a constant, never configurable).
 //! The key goes only through the credential store stand-in and
@@ -12,17 +12,17 @@
 
 #![cfg(feature = "cloud")]
 
-use flow_cloud::testing::{override_base_url, BaseOverride, MockServer, Reply};
-use flow_windows::context::RawSnapshot;
-use flow_windows::controller::{AudioSink, Controller, Platform};
-use flow_windows::core_adapter::{FlowCoreAdapter, ModelSpec};
-use flow_windows::core_api::PasteKey;
-use flow_windows::credentials::{self, CredentialStore, MemoryStore};
-use flow_windows::dev_settings::{BuildCaps, DevSettings, Route};
-use flow_windows::dictation::{Input, OverlayState};
-use flow_windows::hotkeys::HotkeyAction;
-use flow_windows::prefs::Prefs;
-use flow_windows::router_adapter::{router_config, RouterAdapter};
+use murmur_cloud::testing::{override_base_url, BaseOverride, MockServer, Reply};
+use murmur_windows::context::RawSnapshot;
+use murmur_windows::controller::{AudioSink, Controller, Platform};
+use murmur_windows::core_adapter::{ModelSpec, MurmurCoreAdapter};
+use murmur_windows::core_api::PasteKey;
+use murmur_windows::credentials::{self, CredentialStore, MemoryStore};
+use murmur_windows::dev_settings::{BuildCaps, DevSettings, Route};
+use murmur_windows::dictation::{Input, OverlayState};
+use murmur_windows::hotkeys::HotkeyAction;
+use murmur_windows::prefs::Prefs;
+use murmur_windows::router_adapter::{router_config, RouterAdapter};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, RwLock};
@@ -67,7 +67,7 @@ impl FakeOs {
 }
 
 impl Platform for FakeOs {
-    fn play(&self, _s: flow_windows::dictation::Sound) {}
+    fn play(&self, _s: murmur_windows::dictation::Sound) {}
     fn duck(&self) {}
     fn unduck(&self) {}
     fn snapshot_context(&self) -> Option<RawSnapshot> {
@@ -98,7 +98,7 @@ impl Platform for FakeOs {
     fn max_duration_warning(&self, _r: u64) {}
 }
 
-/// Point flow-cloud at the mock (held for the test; serialised).
+/// Point murmur-cloud at the mock (held for the test; serialised).
 fn mock(reply: Reply) -> (MockServer, BaseOverride) {
     let srv = MockServer::fixed(reply);
     let guard = override_base_url(&srv.url("/api/v1"));
@@ -128,7 +128,7 @@ struct Rig {
 }
 
 fn rig(d: &DevSettings, store: &dyn CredentialStore) -> Rig {
-    let local = FlowCoreAdapter::new();
+    let local = MurmurCoreAdapter::new();
     assert!(local
         .load_now(&ModelSpec::Mock {
             text: LOCAL_SAYS.into()
@@ -191,7 +191,7 @@ impl Rig {
             self.c.handle(i);
         }
     }
-    fn last(&self) -> flow_windows::router_adapter::LastDictation {
+    fn last(&self) -> murmur_windows::router_adapter::LastDictation {
         self.router.last().expect("a route was recorded")
     }
     /// Nothing the shell shows or emits contains the key (C3).
@@ -275,15 +275,15 @@ fn usage_survives_a_restart() {
     r.dictate();
     let before = r.router.cloud_usage();
     assert_eq!(before.providers[0].requests, 2);
-    let dir = std::env::temp_dir().join(format!("flow-win-cloud-usage-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("murmur-win-cloud-usage-{}", std::process::id()));
     let path = dir.join("cloud_usage.json");
-    flow_windows::cloud::save_usage(&path, &before).unwrap();
+    murmur_windows::cloud::save_usage(&path, &before).unwrap();
     // "Restart": a new router restores the counters from disk.
     let r2 = rig(&d, &*store);
     assert!(r2.router.cloud_usage().providers.is_empty());
     r2.router
         .router()
-        .set_cloud_usage(flow_windows::cloud::load_usage(&path).unwrap());
+        .set_cloud_usage(murmur_windows::cloud::load_usage(&path).unwrap());
     assert_eq!(r2.router.cloud_usage(), before);
     let text = std::fs::read_to_string(&path).unwrap();
     assert!(!text.contains("LEAKCHECK"));
@@ -405,7 +405,7 @@ fn test_uses_the_saved_settings_and_the_typed_key() {
     let h = r
         .router
         .router()
-        .probe_cloud(&cfg, Some(flow_router::SecretString::new(KEY)));
+        .probe_cloud(&cfg, Some(murmur_router::SecretString::new(KEY)));
     assert!(h.ok, "{h:?}");
     assert_eq!(h.transcript.as_deref(), Some(CLOUD_SAYS));
     assert_eq!(h.provider.as_deref(), Some("openrouter"));
@@ -444,10 +444,10 @@ fn no_zero_retention_route_falls_back_and_names_the_reason() {
 #[test]
 fn the_production_config_never_names_a_base_url() {
     // C8: the shell's router JSON carries no URL at all; the host is
-    // flow-cloud's constant.
+    // murmur-cloud's constant.
     let d = dev(true, true, vec![Route::Cloud, Route::Client], true);
     let j = d.router_config_json(CAPS, "").to_string();
     assert!(!j.contains("http"), "{j}");
     assert!(!j.contains("base_url"), "{j}");
-    assert_eq!(flow_cloud::BASE_URL, "https://openrouter.ai/api/v1");
+    assert_eq!(murmur_cloud::BASE_URL, "https://openrouter.ai/api/v1");
 }

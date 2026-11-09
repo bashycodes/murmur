@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Fail unless every given APK is signed by the fixed debug key (D56): its signer certificate's
-# SHA-256 must equal the one pinned in apps/flow-android/debug-cert.sha256. CI runs it on the
+# SHA-256 must equal the one pinned in apps/murmur-android/debug-cert.sha256. CI runs it on the
 # dist/ debug APKs when the ANDROID_DEBUG_KEYSTORE_B64 secret was present, so a CI APK
 # installs over a locally built one (install -r keeps the app's data).
 # Usage: tools/check-apk-cert.sh APK...   (apksigner from $APKSIGNER, PATH or the newest

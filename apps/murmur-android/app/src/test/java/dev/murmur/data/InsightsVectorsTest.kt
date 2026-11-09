@@ -1,4 +1,4 @@
-package dev.flowclone.data
+package dev.murmur.data
 
 import org.json.JSONArray
 import org.json.JSONObject
@@ -7,9 +7,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The Kotlin [Insights] mirror against flow-core's own golden vectors
- * (crates/flow-core/fixtures/insights/insights_vectors.json, on the test classpath via
- * sourceSets; the Rust test crates/flow-core/tests/insights_vectors.rs checks the same file),
+ * The Kotlin [Insights] mirror against murmur-core's own golden vectors
+ * (crates/murmur-core/fixtures/insights/insights_vectors.json, on the test classpath via
+ * sourceSets; the Rust test crates/murmur-core/tests/insights_vectors.rs checks the same file),
  * so Android and Windows can't disagree on a number unnoticed.
  */
 class InsightsVectorsTest {

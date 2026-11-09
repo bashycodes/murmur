@@ -1,6 +1,6 @@
-package dev.flowclone.calls
+package dev.murmur.calls
 
-import dev.flowclone.core.MeetingSegment
+import dev.murmur.core.MeetingSegment
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File

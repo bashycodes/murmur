@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <title>Murmur home</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="flow-theme.css">
-<link rel="stylesheet" href="ds/flow/components/bundle.css">
-<script src="ds/flow/components/bundle.js"></script>
+<link rel="stylesheet" href="murmur-theme.css">
+<link rel="stylesheet" href="ds/murmur/components/bundle.css">
+<script src="ds/murmur/components/bundle.js"></script>
 </head>
 <body>
 <x-dc>
@@ -21,11 +21,11 @@ a{color:#1a1a1a}a:hover{color:#30302f}
 
   <header style="height: 44px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 16px;">
     <div style="display: flex; align-items: center; gap: 4px;">
-      <x-import component-from-global-scope="Flow.IconButton" icon="panel" label="Collapse sidebar" variant="titlebar"></x-import>
+      <x-import component-from-global-scope="Murmur.IconButton" icon="panel" label="Collapse sidebar" variant="titlebar"></x-import>
     </div>
     <div style="display: flex; align-items: center; gap: 4px;">
-      <x-import component-from-global-scope="Flow.IconButton" icon="moon" label="Theme" variant="titlebar"></x-import>
-      <x-import component-from-global-scope="Flow.IconButton" icon="bell" label="Notifications" variant="titlebar"></x-import>
+      <x-import component-from-global-scope="Murmur.IconButton" icon="moon" label="Theme" variant="titlebar"></x-import>
+      <x-import component-from-global-scope="Murmur.IconButton" icon="bell" label="Notifications" variant="titlebar"></x-import>
       <span style="width: 132px; display: flex; justify-content: flex-end; gap: 0; color: var(--foreground-tertiary); font-size: 12px;">— ▢ ✕</span>
     </div>
   </header>
@@ -39,7 +39,7 @@ a{color:#1a1a1a}a:hover{color:#30302f}
         <section style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 24px;">
           <div style="display: flex; flex-direction: column; gap: 8px;">
             <h1 class="fl-page-title">Welcome back, Alex</h1>
-            <x-import component-from-global-scope="Flow.Kbd" keys="{{pttKeys}}">Hold to dictate in any app</x-import>
+            <x-import component-from-global-scope="Murmur.Kbd" keys="{{pttKeys}}">Hold to dictate in any app</x-import>
           </div>
 
           <div class="fl-callout fl-callout-lilac" style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 12px;">

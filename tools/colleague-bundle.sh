@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build the bundle to hand to colleagues: the hybrid Windows installer and
-# Android APK (CI builds, fixed debug key D56), flow-server for Docker
+# Android APK (CI builds, fixed debug key D56), murmur-server for Docker
 # (docker/: the server's source archive and the image built from it, D77)
 # and for Linux x86_64 without Docker (server/; built here: CI does not
 # build it), the speech models, the AI cleanup model and an install note
@@ -19,15 +19,15 @@
 #                 reused by the next run.
 # --cache DIR     look for model files here before downloading (repeatable;
 #                 any layout: files are found by name and size, then checked
-#                 against the pinned SHA-256), e.g. a flow-server library.
+#                 against the pinned SHA-256), e.g. a murmur-server library.
 # --llm WHICH     cleanup models: default (Qwen2.5 1.5B, 1.1 GB), all
 #                 (+ Llama 3.2 3B for GPUs, Qwen2.5 0.5B; 3.6 GB), none.
 # --only LIST     only these model folders (comma-separated ids), e.g. a test.
 # --android-run ID, --windows-run ID   use these CI runs instead.
 # --allow-stale   accept a CI run older than the commit even when the app's
 #                 files changed since (default: refuse).
-# --server-target DIR  a cargo release dir that already holds flow-server
-#                 (features whisper,parakeet,tls,llm) and libflow_llm.so
+# --server-target DIR  a cargo release dir that already holds murmur-server
+#                 (features whisper,parakeet,tls,llm) and libmurmur_llm.so
 #                 built from the same commit: no build.
 # --sherpa-lib DIR     libsherpa-onnx-c-api.so + libonnxruntime.so, the no-TTS
 #                 build (default $SHERPA_ONNX_LIB_DIR); needed to build and bundled.
@@ -40,11 +40,11 @@
 #
 # The server build runs `cargo --offline -j 2` in a detached worktree of the
 # commit (DIR/.src/<sha>), target $CARGO_TARGET_DIR (default
-# ~/.cache/flow-clone-bundle-target), under flock/choom/nice, and needs
+# ~/.cache/murmur-bundle-target), under flock/choom/nice, and needs
 # 4000 MB of available memory. The image is `docker build` of the bundled
 # source archive itself (needs network for crates.io and the sherpa-onnx
 # libraries), under the same lock, then `docker save`d with the tags
-# flow-server:<version> and flow-server:latest.
+# murmur-server:<version> and murmur-server:latest.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -107,8 +107,8 @@ say "source $SOURCE = $SHA7, version $VERSION, bundle $NAME"
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 g show "$COMMIT:docs/air-gapped-models.txt" > "$WORK/list.txt"
-g show "$COMMIT:apps/flow-windows/src/model_download.rs" > "$WORK/catalog.rs"
-g show "$COMMIT:apps/flow-windows/src/core_adapter.rs" > "$WORK/core_adapter.rs"
+g show "$COMMIT:apps/murmur-windows/src/model_download.rs" > "$WORK/catalog.rs"
+g show "$COMMIT:apps/murmur-windows/src/core_adapter.rs" > "$WORK/core_adapter.rs"
 python3 -I "$HERE/models_manifest.py" "$WORK/list.txt" "$WORK/catalog.rs" "$WORK/core_adapter.rs" > "$WORK/all.tsv"
 NOTETAKER=0
 grep -q $'\tdiarizer\t' "$WORK/all.tsv" && NOTETAKER=1
@@ -167,23 +167,23 @@ find_run() {
 }
 APP_PATHS=(crates Cargo.lock VERSION)
 A_RUN="$ANDROID_RUN" W_RUN="$WINDOWS_RUN"
-[ -n "$A_RUN" ] || A_RUN=$(find_run android-build apps/flow-android "${APP_PATHS[@]}") || exit 1
-[ -n "$W_RUN" ] || W_RUN=$(find_run windows-build apps/flow-windows "${APP_PATHS[@]}") || exit 1
+[ -n "$A_RUN" ] || A_RUN=$(find_run android-build apps/murmur-android "${APP_PATHS[@]}") || exit 1
+[ -n "$W_RUN" ] || W_RUN=$(find_run windows-build apps/murmur-windows "${APP_PATHS[@]}") || exit 1
 artifact() { # RUN PREFIX -> "name<TAB>bytes"
   gh api "repos/{owner}/{repo}/actions/runs/$1/artifacts" \
     -q ".artifacts[] | select(.expired | not) | select(.name | startswith(\"$2\")) | \"\(.name)\t\(.size_in_bytes)\"" | head -1
 }
-IFS=$'\t' read -r A_ART A_BYTES < <(artifact "$A_RUN" flow-clone-android-debug-apks-) || die "android run $A_RUN: no APK artifact (expired?)"
-IFS=$'\t' read -r W_ART W_BYTES < <(artifact "$W_RUN" flow-clone-windows-hybrid-) || die "windows run $W_RUN: no hybrid artifact (expired?)"
-APK="flow-clone-android-hybrid-$VERSION-debug.apk"
+IFS=$'\t' read -r A_ART A_BYTES < <(artifact "$A_RUN" murmur-android-debug-apks-) || die "android run $A_RUN: no APK artifact (expired?)"
+IFS=$'\t' read -r W_ART W_BYTES < <(artifact "$W_RUN" murmur-windows-hybrid-) || die "windows run $W_RUN: no hybrid artifact (expired?)"
+APK="murmur-android-hybrid-$VERSION-debug.apk"
 WIN_EXE="Murmur_${VERSION}_x64-setup_hybrid.exe"
 MODELS_ZIP="$NAME-speech-models.zip"
 CLEANUP_ZIP="$NAME-cleanup-model.zip"
 # Docker: the server's source (exactly the files `docker build` needs, plus
 # its docs) and the image built from it, in the bundle's docker/ folder.
-SOURCE_TGZ="flow-server-source-$VERSION.tar.gz"
-IMAGE_TAR="flow-server-image-$VERSION.tar"
-SRC_DIR="flow-server-source-$VERSION"
+SOURCE_TGZ="murmur-server-source-$VERSION.tar.gz"
+IMAGE_TAR="murmur-server-image-$VERSION.tar"
+SRC_DIR="murmur-server-source-$VERSION"
 SRC_PATHS=(Cargo.toml Cargo.lock VERSION COPYRIGHT NOTICE THIRD-PARTY-LICENSES .dockerignore crates deploy README.md
   docs/server-setup.md docs/container.md docs/server-advanced.md)
 g cat-file -e "$COMMIT:deploy/docker/Dockerfile" 2>/dev/null || die "$SHA7 has no deploy/docker/Dockerfile"
@@ -209,14 +209,14 @@ if [ "$DRY" = 1 ]; then
     printf '  %-8s %-8s %10s  %s\n' "$st" "$kind" "$(mb "$size")" "$p"
   done < "$WORK/models.tsv"
   echo "  models: $(wc -l < "$WORK/models.tsv") files, $(mb "$total") in all, $(mb "$fetch") to download"
-  say "flow-server"
+  say "murmur-server"
   if [ "$NO_SERVER" = 1 ]; then echo "  left out (--no-server)"
   elif [ -n "$SERVER_TARGET" ]; then echo "  from $SERVER_TARGET (no build)"
-  else echo "  build in $OUT/.src/$SHA7 (cargo --offline -j 2, release, features whisper,parakeet,tls,llm + flow-llm); sherpa libs: ${SHERPA_LIB:-MISSING (--sherpa-lib)}"; fi
-  say "flow-server for Docker"
+  else echo "  build in $OUT/.src/$SHA7 (cargo --offline -j 2, release, features whisper,parakeet,tls,llm + murmur-llm); sherpa libs: ${SHERPA_LIB:-MISSING (--sherpa-lib)}"; fi
+  say "murmur-server for Docker"
   echo "  docker/$SOURCE_TGZ: $SHA7:{${SRC_PATHS[*]}} ($(mb "$(g archive --format=tar "$COMMIT" -- "${SRC_PATHS[@]}" | wc -c)") uncompressed)"
   if [ "$NO_IMAGE" = 1 ]; then echo "  docker/$IMAGE_TAR: left out (--no-image)"
-  else echo "  docker/$IMAGE_TAR: docker build of that archive (CARGO_BUILD_JOBS=2, FLOW_GIT_SHA=$SHA7), docker save flow-server:$VERSION + :latest"; fi
+  else echo "  docker/$IMAGE_TAR: docker build of that archive (CARGO_BUILD_JOBS=2, MURMUR_GIT_SHA=$SHA7), docker save murmur-server:$VERSION + :latest"; fi
   echo "  notetaker speaker models: $([ "$NOTETAKER" = 1 ] && echo yes || echo "no (not in this commit's catalogue)")"
   say "would write $BUNDLE/ and $OUT/{$NAME.zip,$MODELS_ZIP$([ "$LLM" != none ] && echo ",$CLEANUP_ZIP")}"
   exit 0
@@ -234,16 +234,16 @@ done
 say "CI artifacts"
 gh run download "$A_RUN" -n "$A_ART" -D "$WORK/android"
 gh run download "$W_RUN" -n "$W_ART" -D "$WORK/windows"
-[ -f "$WORK/android/flow-clone-hybrid-debug.apk" ] || die "no flow-clone-hybrid-debug.apk in $A_ART"
+[ -f "$WORK/android/murmur-hybrid-debug.apk" ] || die "no murmur-hybrid-debug.apk in $A_ART"
 [ -f "$WORK/windows/$WIN_EXE" ] || die "no $WIN_EXE in $W_ART (version mismatch?)"
-cp "$WORK/android/flow-clone-hybrid-debug.apk" "$BUNDLE/android/$APK"
+cp "$WORK/android/murmur-hybrid-debug.apk" "$BUNDLE/android/$APK"
 cp "$WORK/windows/$WIN_EXE" "$BUNDLE/windows/$WIN_EXE"
 APKSIGNER="${APKSIGNER:-}"
 if [ -z "$APKSIGNER" ] && [ -x "${ANDROID_HOME:-$HOME/Android/Sdk}/build-tools/36.0.0/apksigner" ]; then
   APKSIGNER="${ANDROID_HOME:-$HOME/Android/Sdk}/build-tools/36.0.0/apksigner"
 fi
 if [ -n "$APKSIGNER" ] || command -v apksigner >/dev/null; then
-  APKSIGNER="$APKSIGNER" "$ROOT/apps/flow-android/tools/check-apk-cert.sh" "$BUNDLE/android/$APK" \
+  APKSIGNER="$APKSIGNER" "$ROOT/apps/murmur-android/tools/check-apk-cert.sh" "$BUNDLE/android/$APK" \
     || die "the APK is not signed with the fixed debug key (D56)"
 else
   echo "warning: apksigner not found; the APK's key (D56) is not checked here (CI checks it)" >&2
@@ -278,21 +278,21 @@ while IFS=$'\t' read -r dir kind engine file size sha url title; do
   fi
 done < "$WORK/models.tsv"
 
-# ---- flow-server smoke test -------------------------------------------------
+# ---- murmur-server smoke test -------------------------------------------------
 # smoke_server DIR: start the bundled server (DIR = the bundle's server/) on
 # a free loopback port with the bundle's config, pointed at the models
 # fetched above, and wait for "ready". Model loading dlopens
-# lib/libflow_llm.so with the cleanup model, so a broken plugin or a
+# lib/libmurmur_llm.so with the cleanup model, so a broken plugin or a
 # missing library fails here. Without the cleanup or parakeet model
 # (--llm none, --only) it only checks that the binary starts.
 smoke_server() {
   local S=$1 lib="$MODELS/library" d="$WORK/smoke" port pid ok=0 i
   local llm="$lib/qwen2.5-1.5b-instruct-q4_k_m/qwen2.5-1.5b-instruct-q4_k_m.gguf"
   mkdir -p "$d/state"
-  FLOW_SERVER_HOME="$S" "$S/flow-server.sh" gen-token --out "$d/token" >/dev/null 2>&1 ||
-    die "the bundled flow-server does not start with its libraries"
+  MURMUR_SERVER_HOME="$S" "$S/murmur-server.sh" gen-token --out "$d/token" >/dev/null 2>&1 ||
+    die "the bundled murmur-server does not start with its libraries"
   if [ ! -f "$llm" ] || [ ! -d "$lib/parakeet-tdt-0.6b-v2-int8" ]; then
-    echo "warning: no cleanup or parakeet model in this run; libflow_llm.so is not load-tested" >&2
+    echo "warning: no cleanup or parakeet model in this run; libmurmur_llm.so is not load-tested" >&2
     return 0
   fi
   port=$(python3 -I -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
@@ -301,12 +301,12 @@ smoke_server() {
   sed -e "s|^bind = .*|bind = [\"127.0.0.1:$port\"]|" \
       -e "s|^token_file = .*|token_file = \"$d/token\"|" \
       -e "s|^state_dir = .*|state_dir = \"$d/state\"|" \
-      -e "s|/var/lib/flow-server/library|$lib|g" -e "s|/opt/flow-server|$S|g" \
+      -e "s|/var/lib/murmur-server/library|$lib|g" -e "s|/opt/murmur-server|$S|g" \
       -e '/^\[library\]/,/^$/d' "$HERE/server-config.toml" > "$d/config.toml"
   [ -f "$lib/whisper-tiny-lid/ggml-tiny-q5_1.bin" ] || sed -i '/^lid_path/d' "$d/config.toml"
   [ -d "$lib/zipformer-he-int8" ] || sed -i '/^\[model.languages.he\]/,/^$/d' "$d/config.toml"
-  say "smoke test: flow-server with the cleanup model"
-  FLOW_SERVER_HOME="$S" "$S/flow-server.sh" --config "$d/config.toml" > "$d/log" 2>&1 &
+  say "smoke test: murmur-server with the cleanup model"
+  MURMUR_SERVER_HOME="$S" "$S/murmur-server.sh" --config "$d/config.toml" > "$d/log" 2>&1 &
   pid=$!
   for ((i = 0; i < 300; i++)); do
     if grep -q '"ready"\| ready' "$d/log"; then ok=1; break; fi
@@ -317,15 +317,15 @@ smoke_server() {
   wait "$pid" 2>/dev/null || true
   if [ "$ok" != 1 ] || ! grep -q 'llm warmed' "$d/log"; then
     tail -n 20 "$d/log" >&2
-    die "the bundled flow-server did not start with the cleanup model (log above)"
+    die "the bundled murmur-server did not start with the cleanup model (log above)"
   fi
-  echo "flow-server started, cleanup plugin loaded and warmed"
+  echo "murmur-server started, cleanup plugin loaded and warmed"
 }
 
-# ---- flow-server ------------------------------------------------------------
+# ---- murmur-server ------------------------------------------------------------
 SERVER_NOTE="This bundle has no server build: use Docker (above), or ask for one."
 if [ "$NO_SERVER" = 0 ]; then
-  say "flow-server"
+  say "murmur-server"
   [ -n "$SHERPA_LIB" ] || die "--sherpa-lib DIR (or SHERPA_ONNX_LIB_DIR) with libsherpa-onnx-c-api.so + libonnxruntime.so is needed"
   for l in libsherpa-onnx-c-api.so libonnxruntime.so; do [ -e "$SHERPA_LIB/$l" ] || die "$SHERPA_LIB/$l not found"; done
   "$ROOT/tools/checks/no-tts-libs.sh" "$SHERPA_LIB/libsherpa-onnx-c-api.so" "$SHERPA_LIB/libonnxruntime.so" ||
@@ -335,7 +335,7 @@ if [ "$NO_SERVER" = 0 ]; then
     [ -d "$src" ] || g worktree add -q --detach "$src" "$COMMIT"
     avail=$(awk '/MemAvailable/ { print int($2 / 1024) }' /proc/meminfo)
     [ "$avail" -ge 4000 ] || die "only $avail MB of memory available; the build needs 4000 (or pass --server-target)"
-    SERVER_TARGET="${CARGO_TARGET_DIR:-$HOME/.cache/flow-clone-bundle-target}/release"
+    SERVER_TARGET="${CARGO_TARGET_DIR:-$HOME/.cache/murmur-bundle-target}/release"
     gcc_inc="$(gcc -print-file-name=include)"
     # No build path may end up in the binaries: the cargo registry and the
     # target dir sit under $HOME, and panic messages and llama.cpp's asserts
@@ -343,36 +343,36 @@ if [ "$NO_SERVER" = 0 ]; then
     cargo_home="$(realpath -m "${CARGO_HOME:-$HOME/.cargo}")"
     remap="--remap-path-prefix=$HOME=~ --remap-path-prefix=$cargo_home=cargo --remap-path-prefix=$src=."
     cmap="-ffile-prefix-map=$HOME=~ -ffile-prefix-map=$cargo_home=cargo -ffile-prefix-map=$src=."
-    (cd "$src" && export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cache/flow-clone-bundle-target}" &&
+    (cd "$src" && export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cache/murmur-bundle-target}" &&
       export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }$remap" CFLAGS="${CFLAGS:+$CFLAGS }$cmap" \
         CXXFLAGS="${CXXFLAGS:+$CXXFLAGS }$cmap" &&
       flock "$HOME/.cache/flow-clone-build.lock" choom -n 1000 -- nice -n 10 \
-        env SHERPA_ONNX_LIB_DIR="$SHERPA_LIB" cargo build --release --offline --locked -j 2 -p flow-server \
+        env SHERPA_ONNX_LIB_DIR="$SHERPA_LIB" cargo build --release --offline --locked -j 2 -p murmur-server \
           --no-default-features --features whisper,parakeet,tls,llm &&
       flock "$HOME/.cache/flow-clone-build.lock" choom -n 1000 -- nice -n 10 \
         env BINDGEN_EXTRA_CLANG_ARGS="${BINDGEN_EXTRA_CLANG_ARGS:--I$gcc_inc}" \
-        cargo build --release --offline --locked -j 2 -p flow-llm)
+        cargo build --release --offline --locked -j 2 -p murmur-llm)
   fi
-  [ -x "$SERVER_TARGET/flow-server" ] || die "$SERVER_TARGET/flow-server not found"
-  [ -f "$SERVER_TARGET/libflow_llm.so" ] || die "$SERVER_TARGET/libflow_llm.so not found"
+  [ -x "$SERVER_TARGET/murmur-server" ] || die "$SERVER_TARGET/murmur-server not found"
+  [ -f "$SERVER_TARGET/libmurmur_llm.so" ] || die "$SERVER_TARGET/libmurmur_llm.so not found"
   S="$BUNDLE/server"
   mkdir -p "$S/bin" "$S/lib"
-  install -m 0755 "$SERVER_TARGET/flow-server" "$S/bin/flow-server"
-  install -m 0644 "$SERVER_TARGET/libflow_llm.so" "$S/lib/libflow_llm.so"
+  install -m 0755 "$SERVER_TARGET/murmur-server" "$S/bin/murmur-server"
+  install -m 0644 "$SERVER_TARGET/libmurmur_llm.so" "$S/lib/libmurmur_llm.so"
   for l in libsherpa-onnx-c-api.so libonnxruntime.so; do install -m 0644 "$(readlink -f "$SHERPA_LIB/$l")" "$S/lib/$l"; done
   gomp="$(gcc -print-file-name=libgomp.so.1 2>/dev/null || true)"
   [ -e "$gomp" ] || die "libgomp.so.1 not found (the cleanup plugin needs it)"
   install -m 0644 "$(readlink -f "$gomp")" "$S/lib/libgomp.so.1"
-  strip "$S/bin/flow-server"
-  strip --strip-unneeded "$S/lib/libflow_llm.so"
-  install -m 0755 "$HERE/flow-server.sh" "$S/flow-server.sh"
+  strip "$S/bin/murmur-server"
+  strip --strip-unneeded "$S/lib/libmurmur_llm.so"
+  install -m 0755 "$HERE/murmur-server.sh" "$S/murmur-server.sh"
   install -m 0644 "$HERE/server-config.toml" "$S/config.toml"
-  g show "$COMMIT:crates/flow-server/dist/flow-server.service" > "$S/flow-server.service"
-  g show "$COMMIT:crates/flow-server/dist/config.example.toml" > "$S/config.reference.toml"
-  # The binary must be this commit's build (flow_build_info::FULL is baked
+  g show "$COMMIT:crates/murmur-server/dist/murmur-server.service" > "$S/murmur-server.service"
+  g show "$COMMIT:crates/murmur-server/dist/config.example.toml" > "$S/config.reference.toml"
+  # The binary must be this commit's build (murmur_build_info::FULL is baked
   # in), and it must start with the bundled libraries.
-  grep -aq "$VERSION+$SHA7" "$S/bin/flow-server" ||
-    die "$S/bin/flow-server is not a clean build of $VERSION+$SHA7 (rebuild, or a --server-target from this commit)"
+  grep -aq "$VERSION+$SHA7" "$S/bin/murmur-server" ||
+    die "$S/bin/murmur-server is not a clean build of $VERSION+$SHA7 (rebuild, or a --server-target from this commit)"
   # Nothing in the bundle may name this machine's home folder or user
   # (CI-built apps aren't built here; the copied libraries are checked too).
   user="$(id -un)" leaks=()
@@ -381,41 +381,41 @@ if [ "$NO_SERVER" = 0 ]; then
   done
   [ ${#leaks[@]} = 0 ] || die "these files contain the home path or user name: ${leaks[*]}"
   smoke_server "$S"
-  SERVER_NOTE="The \`server/\` folder holds flow-server $VERSION, built on $(lsb_release -ds 2>/dev/null || uname -sr). Docker (above) is simpler where it is available."
+  SERVER_NOTE="The \`server/\` folder holds murmur-server $VERSION, built on $(lsb_release -ds 2>/dev/null || uname -sr). Docker (above) is simpler where it is available."
 fi
 
-# ---- flow-server for Docker: source archive and image -----------------------
-say "flow-server source archive"
+# ---- murmur-server for Docker: source archive and image -----------------------
+say "murmur-server source archive"
 mkdir -p "$BUNDLE/docker"
 # Tracked files of the commit only: nothing untracked or ignored can get in.
 g archive --format=tar.gz --prefix="$SRC_DIR/" -o "$BUNDLE/docker/$SOURCE_TGZ" "$COMMIT" -- "${SRC_PATHS[@]}"
 tar -tzf "$BUNDLE/docker/$SOURCE_TGZ" > "$WORK/src.list"
-for f in deploy/docker/Dockerfile deploy/docker/entrypoint.sh Cargo.lock crates/flow-server/Cargo.toml COPYRIGHT NOTICE THIRD-PARTY-LICENSES; do
+for f in deploy/docker/Dockerfile deploy/docker/entrypoint.sh Cargo.lock crates/murmur-server/Cargo.toml COPYRIGHT NOTICE THIRD-PARTY-LICENSES; do
   grep -qx "$SRC_DIR/$f" "$WORK/src.list" || die "$SOURCE_TGZ has no $f"
 done
 echo "wrote docker/$SOURCE_TGZ ($(mb "$(stat -c %s "$BUNDLE/docker/$SOURCE_TGZ")"), $(wc -l < "$WORK/src.list") entries)"
 if [ "$NO_IMAGE" = 0 ]; then
-  say "flow-server image (docker build of the source archive)"
+  say "murmur-server image (docker build of the source archive)"
   avail=$(awk '/MemAvailable/ { print int($2 / 1024) }' /proc/meminfo)
   [ "$avail" -ge 4000 ] || die "only $avail MB of memory available; the image build needs 4000 (or pass --no-image)"
   tar -xzf "$BUNDLE/docker/$SOURCE_TGZ" -C "$WORK"
-  # The builder's own flow-server:latest, if any, gets its tag back after.
-  prev_latest=$(docker image inspect -f '{{.Id}}' flow-server:latest 2>/dev/null || true)
+  # The builder's own murmur-server:latest, if any, gets its tag back after.
+  prev_latest=$(docker image inspect -f '{{.Id}}' murmur-server:latest 2>/dev/null || true)
   flock "$HOME/.cache/flow-clone-build.lock" choom -n 1000 -- nice -n 10 \
-    docker build -t "flow-server:$VERSION" -t flow-server:latest -f "$WORK/$SRC_DIR/deploy/docker/Dockerfile" \
-      --build-arg FLOW_GIT_SHA="$SHA7" --build-arg CARGO_BUILD_JOBS=2 "$WORK/$SRC_DIR"
+    docker build -t "murmur-server:$VERSION" -t murmur-server:latest -f "$WORK/$SRC_DIR/deploy/docker/Dockerfile" \
+      --build-arg MURMUR_GIT_SHA="$SHA7" --build-arg CARGO_BUILD_JOBS=2 "$WORK/$SRC_DIR"
   restore_latest() {
-    docker rmi "flow-server:$VERSION" >/dev/null 2>&1 || true
-    if [ -n "$prev_latest" ]; then docker tag "$prev_latest" flow-server:latest
-    else docker rmi flow-server:latest >/dev/null 2>&1 || true; fi
+    docker rmi "murmur-server:$VERSION" >/dev/null 2>&1 || true
+    if [ -n "$prev_latest" ]; then docker tag "$prev_latest" murmur-server:latest
+    else docker rmi murmur-server:latest >/dev/null 2>&1 || true; fi
   }
-  # This commit's build (flow_build_info::FULL is baked in), and it starts
+  # This commit's build (murmur_build_info::FULL is baked in), and it starts
   # with the image's libraries.
-  docker run --rm --entrypoint cat "flow-server:$VERSION" /opt/flow-server/bin/flow-server |
-    grep -acF "$VERSION+$SHA7" >/dev/null || { restore_latest; die "the image's flow-server is not $VERSION+$SHA7"; }
-  docker run --rm --entrypoint /opt/flow-server/bin/flow-server "flow-server:$VERSION" gen-token --out /tmp/t >/dev/null ||
-    { restore_latest; die "the image's flow-server does not start"; }
-  docker save -o "$BUNDLE/docker/$IMAGE_TAR" "flow-server:$VERSION" flow-server:latest
+  docker run --rm --entrypoint cat "murmur-server:$VERSION" /opt/murmur-server/bin/murmur-server |
+    grep -acF "$VERSION+$SHA7" >/dev/null || { restore_latest; die "the image's murmur-server is not $VERSION+$SHA7"; }
+  docker run --rm --entrypoint /opt/murmur-server/bin/murmur-server "murmur-server:$VERSION" gen-token --out /tmp/t >/dev/null ||
+    { restore_latest; die "the image's murmur-server does not start"; }
+  docker save -o "$BUNDLE/docker/$IMAGE_TAR" "murmur-server:$VERSION" murmur-server:latest
   restore_latest
   if grep -aqF -e "$HOME" -e "/$(id -un)/" "$BUNDLE/docker/$IMAGE_TAR"; then
     die "docker/$IMAGE_TAR contains this machine's home path or user name"

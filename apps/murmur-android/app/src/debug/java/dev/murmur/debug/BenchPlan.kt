@@ -1,12 +1,12 @@
-package dev.flowclone.debug
+package dev.murmur.debug
 
-import dev.flowclone.core.AsrEngine
-import dev.flowclone.core.CleanupLevel
-import dev.flowclone.core.LanguageModel
-import dev.flowclone.core.ModelConfig
-import dev.flowclone.core.ParakeetDecoding
-import dev.flowclone.core.SessionConfig
-import dev.flowclone.data.Settings
+import dev.murmur.core.AsrEngine
+import dev.murmur.core.CleanupLevel
+import dev.murmur.core.LanguageModel
+import dev.murmur.core.ModelConfig
+import dev.murmur.core.ParakeetDecoding
+import dev.murmur.core.SessionConfig
+import dev.murmur.data.Settings
 import java.io.File
 
 /**
@@ -33,7 +33,7 @@ object BenchPlan {
 
     val MODES = listOf("prod", "v4c")
 
-    /** The app's thread rule (FlowApp.load). */
+    /** The app's thread rule (MurmurApp.load). */
     fun appThreads(cores: Int = Runtime.getRuntime().availableProcessors()) = (cores / 2).coerceIn(1, 4)
 
     /**

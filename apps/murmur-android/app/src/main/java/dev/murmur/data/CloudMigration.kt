@@ -1,4 +1,4 @@
-package dev.flowclone.data
+package dev.murmur.data
 
 import org.json.JSONArray
 import org.json.JSONObject
@@ -6,9 +6,9 @@ import org.json.JSONObject
 /**
  * D28 one-time migration of the stored D18 cloud settings (schema 1: up to 8 providers) to the
  * one OpenRouter config (schema 2). The rules are the router's (`RouterConfig::migrate_d28`,
- * reached through `nativeMigrateCloud`, fixtures `crates/flow-router/fixtures/migration/`); this
+ * reached through `nativeMigrateCloud`, fixtures `crates/murmur-router/fixtures/migration/`); this
  * applies the report to what only the shell owns:
- *  1. keys: `flow_cloud_<key_from>` → `flow_cloud_openrouter`, every `delete_keys` vault destroyed;
+ *  1. keys: `murmur_cloud_<key_from>` → `murmur_cloud_openrouter`, every `delete_keys` vault destroyed;
  *  2. this month's usage: the kept entry renamed, removed providers folded into `removed`
  *     (the month's total, and so the budget, is unchanged; `CloudUsage::migrate_d28`);
  *  3. the schema-2 config persisted (which marks the migration done);

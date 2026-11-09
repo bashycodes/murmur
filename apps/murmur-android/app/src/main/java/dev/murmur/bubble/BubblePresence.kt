@@ -1,6 +1,6 @@
-package dev.flowclone.bubble
+package dev.murmur.bubble
 
-import dev.flowclone.session.DictationState
+import dev.murmur.session.DictationState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay

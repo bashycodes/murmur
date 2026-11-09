@@ -141,7 +141,7 @@ pub fn install(
     });
     let (ready_tx, ready_rx) = mpsc::channel::<Result<u32, String>>();
     let join = std::thread::Builder::new()
-        .name("flow-kbd-hook".into())
+        .name("murmur-kbd-hook".into())
         .spawn(move || unsafe { hook_thread(ready_tx) })
         .map_err(|e| e.to_string())?;
     let thread_id = ready_rx.recv().map_err(|e| e.to_string()).and_then(|r| r)?;

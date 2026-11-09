@@ -2,7 +2,7 @@
    components lack (docs/design/app-design/Settings{General,System,Privacy}.dc.html).
    Pages: ui/src/pages/settings/{general,system,privacy}.ts. */
 
-/* Flow.Select width="160" */
+/* Murmur.Select width="160" */
 .fl-row-control > .fl-select.lw-w160 {
   width: 160px;
 }

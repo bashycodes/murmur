@@ -1,4 +1,4 @@
-package dev.flowclone.core
+package dev.murmur.core
 
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executor
@@ -112,7 +112,7 @@ class HandleLease(
     companion object {
         /** One daemon thread for every `nativeUnload` (they are rare and may block). */
         val FREE_EXECUTOR: Executor = Executors.newSingleThreadExecutor { r ->
-            Thread(r, "flow-native-free").apply { isDaemon = true }
+            Thread(r, "murmur-native-free").apply { isDaemon = true }
         }
     }
 }

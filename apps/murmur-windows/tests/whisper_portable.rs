@@ -8,7 +8,7 @@
 
 #[test]
 fn whisper_build_has_no_avx512_and_keeps_avx2() {
-    let info = flow_core::whisper::build_cpu_features();
+    let info = murmur_core::whisper::build_cpu_features();
     assert!(
         !info.contains("AVX512"),
         "whisper.cpp was compiled for AVX-512 (GGML_NATIVE on an AVX-512 \

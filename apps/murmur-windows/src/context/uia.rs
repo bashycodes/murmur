@@ -40,7 +40,7 @@ const BROWSERS: &[&str] = &[
 pub fn snapshot(timeout: Duration, use_text: bool) -> Option<RawSnapshot> {
     let (tx, rx) = mpsc::channel();
     std::thread::Builder::new()
-        .name("flow-uia".into())
+        .name("murmur-uia".into())
         .spawn(move || {
             let _ = tx.send(unsafe { snapshot_blocking(use_text) });
         })
@@ -53,7 +53,7 @@ pub fn snapshot(timeout: Duration, use_text: bool) -> Option<RawSnapshot> {
 pub fn focused_is_password(timeout: Duration) -> Option<bool> {
     let (tx, rx) = mpsc::channel();
     std::thread::Builder::new()
-        .name("flow-uia-pw".into())
+        .name("murmur-uia-pw".into())
         .spawn(move || unsafe {
             let inited = CoInitializeEx(None, COINIT_MULTITHREADED).is_ok();
             let r =
@@ -189,13 +189,13 @@ unsafe fn browser_url(uia: &IUIAutomation, hwnd: HWND) -> Option<String> {
 // ------------------------------------------------------------ command mode
 
 /// Command Mode: the focused control's selected text via TextPattern
-/// (up to one character past `flow_core::command::MAX_SELECTION_CHARS`, so
+/// (up to one character past `murmur_core::command::MAX_SELECTION_CHARS`, so
 /// an oversized selection is refused rather than cut). `None` = UIA did
 /// not answer within `timeout`.
 pub fn selection(timeout: Duration) -> Option<super::UiaSelection> {
     let (tx, rx) = mpsc::channel();
     std::thread::Builder::new()
-        .name("flow-uia-sel".into())
+        .name("murmur-uia-sel".into())
         .spawn(move || unsafe {
             let inited = CoInitializeEx(None, COINIT_MULTITHREADED).is_ok();
             let r = selection_blocking();
@@ -226,7 +226,7 @@ unsafe fn selection_blocking() -> super::UiaSelection {
     let Ok(sel) = tp.GetSelection() else {
         return UiaSelection::Unsupported;
     };
-    let max = flow_core::command::MAX_SELECTION_CHARS as i32 + 1;
+    let max = murmur_core::command::MAX_SELECTION_CHARS as i32 + 1;
     let mut text = String::new();
     // Multiple ranges (multi-cursor editors) are joined in order.
     for i in 0..sel.Length().unwrap_or(0) {

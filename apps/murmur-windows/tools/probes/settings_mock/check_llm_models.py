@@ -28,7 +28,7 @@ fails = []
 Q05 = "qwen2.5-0.5b-instruct-q4_k_m"
 Q15 = "qwen2.5-1.5b-instruct-q4_k_m"
 L3B = "llama-3.2-3b-instruct-q4_k_m"
-GPU = {"gpu": True, "backend": "Vulkan", "device": "Intel(R) Arc(TM) 140V GPU", "plugin": "C:\\Program Files\\Murmur\\flow_llm_vulkan.dll"}
+GPU = {"gpu": True, "backend": "Vulkan", "device": "Intel(R) Arc(TM) 140V GPU", "plugin": "C:\\Program Files\\Murmur\\murmur_llm_vulkan.dll"}
 
 
 def check(name, cond, extra=""):

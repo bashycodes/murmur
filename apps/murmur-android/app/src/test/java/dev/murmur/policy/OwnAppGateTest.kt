@@ -1,4 +1,4 @@
-package dev.flowclone.policy
+package dev.murmur.policy
 
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -6,7 +6,7 @@ import org.junit.Test
 
 /** Our own screens stay bubble-free (settings fields) except a dictation surface like the Scratchpad. */
 class OwnAppGateTest {
-    private val own = "dev.flowclone"
+    private val own = "dev.murmur"
 
     @Test fun ownPackageIsBlockedUnlessADictationSurfaceIsInFront() {
         assertTrue(OwnAppGate.blocks(own, own, surfaceInFront = false))

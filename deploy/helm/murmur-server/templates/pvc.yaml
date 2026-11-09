@@ -4,9 +4,9 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "flow-server.fullname" $ }}-{{ $name }}
+  name: {{ include "murmur-server.fullname" $ }}-{{ $name }}
   labels:
-    {{- include "flow-server.labels" $ | nindent 4 }}
+    {{- include "murmur-server.labels" $ | nindent 4 }}
   annotations:
     # Keys and models survive `helm uninstall`; delete the PVC by hand.
     helm.sh/resource-policy: keep

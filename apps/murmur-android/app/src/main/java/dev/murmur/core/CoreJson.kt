@@ -1,11 +1,11 @@
-package dev.flowclone.core
+package dev.murmur.core
 
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 
 /**
- * JSON wire format between Kotlin and crates/flow-ffi. Field names follow the Rust serde
+ * JSON wire format between Kotlin and crates/murmur-ffi. Field names follow the Rust serde
  * definitions (snake_case; dictionary rows camelCase `isSnippet`; CommitStatus SCREAMING_SNAKE).
  * Uses the framework's org.json (no extra dependency; real impl added for JVM tests).
  */

@@ -1,7 +1,7 @@
-package dev.flowclone.learn
+package dev.murmur.learn
 
-import dev.flowclone.core.DictEntry
-import dev.flowclone.core.LearnCandidate
+import dev.murmur.core.DictEntry
+import dev.murmur.core.LearnCandidate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -25,12 +25,12 @@ class SuggestionsTest {
     }
 
     @Test fun replacementTargetsCountAsKnown() {
-        val r = Suggestions().add(listOf(cand("local whisper", "Murmur")), "a", 1, listOf(DictEntry("murmur app", "Murmur")))
+        val r = Suggestions().add(listOf(cand("mer mur", "Murmur")), "a", 1, listOf(DictEntry("mer mur app", "Murmur")))
         assertTrue(r.added.isEmpty())
     }
 
     @Test fun acceptReturnsAWordOrAReplacementAndRemovesIt() {
-        val s = Suggestions().add(listOf(cand("local whisper", "Murmur"), cand("get hub", "GitHub")), "a", 1, emptyList()).next
+        val s = Suggestions().add(listOf(cand("mer mur", "Murmur"), cand("get hub", "GitHub")), "a", 1, emptyList()).next
         val (s1, e1) = s.accept("murmur")
         assertEquals(DictEntry("Murmur"), e1)
         val (s2, e2) = s1.accept("GitHub", asReplacement = true)
@@ -49,25 +49,25 @@ class SuggestionsTest {
     }
 
     @Test fun jsonRoundTripsAndToleratesJunk() {
-        val s = Suggestions().add(listOf(cand("local whisper", "Murmur")), "com.notes", 42, emptyList()).next.dismiss("nope")
+        val s = Suggestions().add(listOf(cand("mer mur", "Murmur")), "com.notes", 42, emptyList()).next.dismiss("nope")
         assertEquals(s, Suggestions.decode(Suggestions.encode(s)))
         assertEquals(Suggestions(), Suggestions.decode(null))
         assertEquals(Suggestions(), Suggestions.decode("not json"))
     }
 
     @Test fun subtitleSaysWhatWasHeard() {
-        assertEquals("Heard “local whisper”", Suggestions.subtitle(Suggestion("Murmur", "local whisper", "a", 1)))
+        assertEquals("Heard “mer mur”", Suggestions.subtitle(Suggestion("Murmur", "mer mur", "a", 1)))
         assertEquals("Heard “x” · fixed 3 times", Suggestions.subtitle(Suggestion("X", "x", "a", 1, count = 3)))
     }
 
-    @Test fun floCloneEditBecomesAPendingSuggestion() {
-        // The watch saw "local whisper" corrected; the core's learn_edit (faked here) returns the candidate.
+    @Test fun brandNameEditBecomesAPendingSuggestion() {
+        // The watch saw "mer mur" corrected; the core's learn_edit (faked here) returns the candidate.
         var seen: Pair<String, String>? = null
         val r = EditLearning.learn(
-            "I use local whisper daily.", Outcome(EndReason.STABLE, "I use Murmur daily. Bye"), Suggestions(), emptyList(), "com.notes", 7,
-        ) { p, e -> seen = p to e; listOf(cand("local whisper", "Murmur")) }!!
-        assertEquals("text typed after the dictation is cut off", "I use local whisper daily." to "I use Murmur daily.", seen)
-        assertEquals(listOf(Suggestion("Murmur", "local whisper", "com.notes", 7)), r.next.pending)
+            "I use mer mur daily.", Outcome(EndReason.STABLE, "I use Murmur daily. Bye"), Suggestions(), emptyList(), "com.notes", 7,
+        ) { p, e -> seen = p to e; listOf(cand("mer mur", "Murmur")) }!!
+        assertEquals("text typed after the dictation is cut off", "I use mer mur daily." to "I use Murmur daily.", seen)
+        assertEquals(listOf(Suggestion("Murmur", "mer mur", "com.notes", 7)), r.next.pending)
     }
 
     @Test fun nothingIsLearnedWithoutACountedEditOrCandidates() {

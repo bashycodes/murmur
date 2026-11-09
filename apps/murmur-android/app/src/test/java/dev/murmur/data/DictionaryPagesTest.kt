@@ -1,8 +1,8 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.core.DictEntry
-import dev.flowclone.data.DictionaryDraft.Field
-import dev.flowclone.data.DictionaryPages.Kind
+import dev.murmur.core.DictEntry
+import dev.murmur.data.DictionaryDraft.Field
+import dev.murmur.data.DictionaryPages.Kind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull

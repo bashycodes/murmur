@@ -1,7 +1,7 @@
 //! D36 on Windows: a dictation transcribed on this PC is cleaned by the
 //! cleanup order (this PC → server → cloud), not only by this PC's LLM.
 //! The router's local backend is the shell's model slot
-//! (`router_adapter::LocalBackend` over `FlowCoreAdapter`, MockAsr + a fake
+//! (`router_adapter::LocalBackend` over `MurmurCoreAdapter`, MockAsr + a fake
 //! on-device LLM); a fake remote backend advertising `clean` is the server
 //! and a fake OpenRouter cleaner is the cloud. Before the fix the slot
 //! ignored the router's cleanup plan, so the server and cloud were never
@@ -11,16 +11,16 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use flow_core::asr::AbortFlag;
-use flow_core::cleanup::{CleanError, CleanPrompt, CleanRequest, CleanUsage, Cleaner};
-use flow_protocol::{Cleaned, HelloOk, FEATURE_CLEAN};
-use flow_router::{
+use murmur_core::asr::AbortFlag;
+use murmur_core::cleanup::{CleanError, CleanPrompt, CleanRequest, CleanUsage, Cleaner};
+use murmur_protocol::{Cleaned, HelloOk, FEATURE_CLEAN};
+use murmur_router::{
     Backend, BackendError, CleanupRoute, CloudConfig, CommitResult, EngineKind, Failure,
     FieldContext, HealthReport, OpenRouterConfig, Router, RouterConfig, SecretString, ServerConfig,
     SessionConfig, StartInfo,
 };
-use flow_windows::core_adapter::{FlowCoreAdapter, LlmLoaded, LlmSpec, ModelSpec};
-use flow_windows::router_adapter::LocalBackend;
+use murmur_windows::core_adapter::{LlmLoaded, LlmSpec, ModelSpec, MurmurCoreAdapter};
+use murmur_windows::router_adapter::LocalBackend;
 use CleanupRoute::{Cloud as C, Local as L, Server as S};
 
 const KEY: &str = "sk-or-LEAKCHECK-wincc-0123456789";
@@ -70,7 +70,7 @@ impl Cleaner for Fake {
     }
 }
 
-/// Fake flow-server with an LLM: advertises `clean` and answers every
+/// Fake murmur-server with an LLM: advertises `clean` and answers every
 /// text-only request. Never transcribes here (the speech route is this PC).
 #[derive(Default)]
 struct Server {
@@ -117,7 +117,7 @@ impl Backend for Server {
     fn server_hello(&self) -> Option<HelloOk> {
         Some(HelloOk {
             llm: true,
-            server: "flow-server 0.12.0".into(),
+            server: "murmur-server 0.12.0".into(),
             features: vec![FEATURE_CLEAN.into()],
             ..Default::default()
         })
@@ -163,7 +163,7 @@ fn cfg(order: &[CleanupRoute], off: &[CleanupRoute]) -> RouterConfig {
 
 struct Rig {
     router: Router,
-    slot: Arc<FlowCoreAdapter>,
+    slot: Arc<MurmurCoreAdapter>,
     pc: Arc<Fake>,
     server: Arc<Server>,
     cloud: Arc<Fake>,
@@ -175,7 +175,7 @@ impl Rig {
     fn new(c: RouterConfig, pc_llm: bool, heard: &str) -> Rig {
         let pc = Fake::new("local", PC_OUT);
         let pc2 = pc.clone();
-        let slot = FlowCoreAdapter::with_llm_loader(Arc::new(move |_s: &LlmSpec| {
+        let slot = MurmurCoreAdapter::with_llm_loader(Arc::new(move |_s: &LlmSpec| {
             Ok(LlmLoaded {
                 cleaner: pc2.clone() as Arc<dyn Cleaner>,
                 plugin: "fake-plugin".into(),

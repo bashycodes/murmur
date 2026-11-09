@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.app.Activity
 import android.content.Context
@@ -7,13 +7,13 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.widget.Toast
-import dev.flowclone.FlowApp
-import dev.flowclone.R
-import dev.flowclone.data.HebrewImport
-import dev.flowclone.data.HebrewModels
-import dev.flowclone.data.ModelFiles
-import dev.flowclone.data.ModelPages
-import dev.flowclone.server.ServerModels
+import dev.murmur.MurmurApp
+import dev.murmur.R
+import dev.murmur.data.HebrewImport
+import dev.murmur.data.HebrewModels
+import dev.murmur.data.ModelFiles
+import dev.murmur.data.ModelPages
+import dev.murmur.server.ServerModels
 import java.io.File
 import kotlin.concurrent.thread
 
@@ -30,7 +30,7 @@ import kotlin.concurrent.thread
  * downloaded from the set server's library on a tap. The local build has no such block.
  */
 class ModelImportActivity : Activity() {
-    private val app get() = FlowApp.of(this)
+    private val app get() = MurmurApp.of(this)
     private var busy = false
     private val llm get() = intent.getStringExtra(EXTRA_KIND) == KIND_LLM
     private val kind get() = if (llm) ModelFiles.Kind.LLM_GGUF else ModelFiles.Kind.ASR_GGML
@@ -80,7 +80,7 @@ class ModelImportActivity : Activity() {
     private fun render(status: String? = null, tone: Tone = Tone.NEUTRAL): Unit = with(ui) {
         val current = currentPath
         val items = if (parakeet) {
-            app.engine.parakeetDir().listFiles()?.filter { !it.name.endsWith(".part") && dev.flowclone.data.ParakeetFiles.isModelDir(it) }?.sortedBy { it.name }.orEmpty()
+            app.engine.parakeetDir().listFiles()?.filter { !it.name.endsWith(".part") && dev.murmur.data.ParakeetFiles.isModelDir(it) }?.sortedBy { it.name }.orEmpty()
         } else if (hebrew) {
             app.engine.hebrewDir().listFiles()?.filter { !it.name.endsWith(".part") && HebrewModels.installed(it) != null }?.sortedBy { it.name }.orEmpty()
         } else dir().listFiles()?.filter { it.isFile && !it.name.endsWith(".part") }?.sortedBy { it.name }.orEmpty()
@@ -328,8 +328,8 @@ class ModelImportActivity : Activity() {
     private fun importTree(tree: Uri) {
         val docId = android.provider.DocumentsContract.getTreeDocumentId(tree)
         val entries = children(tree)
-        val pick = dev.flowclone.data.ParakeetFiles.select(entries.keys)
-            ?: return render("Not a Parakeet model folder; missing ${dev.flowclone.data.ParakeetFiles.missing(entries.keys).joinToString()}.", Tone.BAD)
+        val pick = dev.murmur.data.ParakeetFiles.select(entries.keys)
+            ?: return render("Not a Parakeet model folder; missing ${dev.murmur.data.ParakeetFiles.missing(entries.keys).joinToString()}.", Tone.BAD)
         val folder = (docId.substringAfterLast('/').substringAfterLast(':').ifEmpty { "parakeet" }).replace(Regex("[^A-Za-z0-9._-]"), "_")
         val dest = File(app.engine.parakeetDir(), folder)
         val tmp = File(app.engine.parakeetDir(), "$folder.part")
@@ -366,7 +366,7 @@ class ModelImportActivity : Activity() {
     private fun activateParakeet(d: File) {
         app.settings.parakeetPath = d.absolutePath
         val s = app.settings.load()
-        if (s.asrEngine != dev.flowclone.core.AsrEngine.PARAKEET) app.settings.save(s.copy(asrEngine = dev.flowclone.core.AsrEngine.PARAKEET))
+        if (s.asrEngine != dev.murmur.core.AsrEngine.PARAKEET) app.settings.save(s.copy(asrEngine = dev.murmur.core.AsrEngine.PARAKEET))
         reloadEngine()
         Toast.makeText(this, "Using Parakeet (${d.name}).", Toast.LENGTH_LONG).show()
         render()

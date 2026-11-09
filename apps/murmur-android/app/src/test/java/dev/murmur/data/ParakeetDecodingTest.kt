@@ -1,10 +1,10 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.core.DictEntry
-import dev.flowclone.core.ParakeetDecoding
-import dev.flowclone.core.ParakeetDecoding.AUTO
-import dev.flowclone.core.ParakeetDecoding.BEAM
-import dev.flowclone.core.ParakeetDecoding.GREEDY
+import dev.murmur.core.DictEntry
+import dev.murmur.core.ParakeetDecoding
+import dev.murmur.core.ParakeetDecoding.AUTO
+import dev.murmur.core.ParakeetDecoding.BEAM
+import dev.murmur.core.ParakeetDecoding.GREEDY
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

@@ -1,25 +1,25 @@
-//! I2: a session gives the same result locally (FlowCore directly) and
-//! remotely (Router{allow_server only} → flow-remote → in-process
-//! flow-server), compared as JSON minus `timings` and `route`.
+//! I2: a session gives the same result locally (MurmurCore directly) and
+//! remotely (Router{allow_server only} → murmur-remote → in-process
+//! murmur-server), compared as JSON minus `timings` and `route`.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use flow_contract_tests::*;
-use flow_core::asr::MockAsr;
+use murmur_contract_tests::*;
+use murmur_core::asr::MockAsr;
 #[cfg(any(feature = "whisper", feature = "parakeet"))]
-use flow_core::config::FieldContext;
+use murmur_core::config::FieldContext;
 #[cfg(any(feature = "whisper", feature = "parakeet", feature = "llm"))]
-use flow_core::config::ModelConfig;
-use flow_core::config::SessionConfig;
-use flow_core::{CommitStatus, FlowCore};
+use murmur_core::config::ModelConfig;
+use murmur_core::config::SessionConfig;
+use murmur_core::{CommitStatus, MurmurCore};
 
-fn mock_core(text: &str) -> FlowCore {
-    FlowCore::from_engines(Arc::new(MockAsr::new(text)), None)
+fn mock_core(text: &str) -> MurmurCore {
+    MurmurCore::from_engines(Arc::new(MockAsr::new(text)), None)
 }
 
 /// Run `case` both ways with mock ASR; returns (local, remote).
-fn both(case: &Case) -> (flow_core::CommitResult, flow_core::CommitResult) {
+fn both(case: &Case) -> (murmur_core::CommitResult, murmur_core::CommitResult) {
     let text = case.mock_text().expect("mock case");
     let pcm = audio(&case.audio);
     let local = run_case(&mock_core(text), case, &pcm);
@@ -256,11 +256,11 @@ fn equivalence_whisper_tiny_jfk_if_present() {
 #[cfg(feature = "parakeet")]
 #[test]
 fn equivalence_parakeet_if_present() {
-    let dir = std::env::var_os("FLOW_PARAKEET_DIR")
+    let dir = std::env::var_os("MURMUR_PARAKEET_DIR")
         .map(std::path::PathBuf::from)
         .or_else(|| find_model("sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8"));
     let Some(dir) = dir.filter(|d| d.join("tokens.txt").is_file()) else {
-        eprintln!("SKIP: parakeet model not found (FLOW_PARAKEET_DIR)");
+        eprintln!("SKIP: parakeet model not found (MURMUR_PARAKEET_DIR)");
         return;
     };
     let model: ModelConfig = serde_json::from_value(serde_json::json!({
@@ -277,11 +277,11 @@ fn equivalence_llm_if_present() {
         eprintln!("SKIP: qwen2.5-0.5b gguf not found");
         return;
     };
-    if !flow_core::llama::plugin_candidates(None)
+    if !murmur_core::llama::plugin_candidates(None)
         .iter()
         .any(|p| p.is_absolute() && p.is_file())
     {
-        eprintln!("SKIP: libflow_llm plugin not built");
+        eprintln!("SKIP: libmurmur_llm plugin not built");
         return;
     }
     let model = ModelConfig {
@@ -317,7 +317,7 @@ fn equivalence_llm_if_present() {
 }
 
 /// D18 C5: every mock session fixture gives the same result through the
-/// cloud route (Router → flow-cloud → mock provider over HTTP returning the
+/// cloud route (Router → murmur-cloud → mock provider over HTTP returning the
 /// fixture's ASR text) as with that text from a local engine: the provider
 /// only replaces ASR; everything after it runs locally.
 #[test]
@@ -330,13 +330,13 @@ fn equivalence_cloud_mock_http() {
         let local = run_case(&mock_core(text), c, &pcm);
         let provider = mock_provider(text);
         let cfg = with_cloud(
-            flow_router::RouterConfig {
+            murmur_router::RouterConfig {
                 allow_server: false,
                 allow_client: false,
                 ..Default::default()
             },
             cloud_provider(),
-            &[flow_router::Route::Cloud],
+            &[murmur_router::Route::Cloud],
         );
         let router = cloud_router(cfg, None);
         let cloud = run_case(&router, c, &pcm);
@@ -357,7 +357,7 @@ fn equivalence_cloud_mock_http() {
 }
 
 /// D19: the hands-free endpoint fires at the same pushed chunk directly on
-/// `FlowCore`, through the router's local route and through its server
+/// `MurmurCore`, through the router's local route and through its server
 /// route, and the committed result is still equivalent.
 #[test]
 fn equivalence_hands_free_endpoint() {
@@ -373,10 +373,10 @@ fn equivalence_hands_free_endpoint() {
     fn drive(
         start: &dyn Fn(),
         push: &dyn Fn(&[i16]),
-        poll: &dyn Fn() -> flow_core::SessionPoll,
-        commit: &dyn Fn() -> flow_core::CommitResult,
+        poll: &dyn Fn() -> murmur_core::SessionPoll,
+        commit: &dyn Fn() -> murmur_core::CommitResult,
         pcm: &[i16],
-    ) -> (Option<usize>, flow_core::CommitResult) {
+    ) -> (Option<usize>, murmur_core::CommitResult) {
         start();
         let mut at = None;
         for (i, c) in pcm.chunks(FRAME).enumerate() {

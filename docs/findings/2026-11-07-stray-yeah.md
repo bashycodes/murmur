@@ -29,7 +29,7 @@ Cleanup only kept what the ASR gave it.
   * each click is a "speech" run of at least `MIN_RUN`;
   * real speech in the same recordings runs at −34…−38 dBFS RMS.
 
-## Feedback loop (dev box, same model, `flow-cli` with the PC's session settings)
+## Feedback loop (dev box, same model, `murmur-cli` with the PC's session settings)
 
 | input | pieces | ends with "Yeah." |
 |---|---|---|
@@ -64,7 +64,7 @@ Hypothesis 1 holds, but in a narrower form than stated: the cause is the gain, n
 silence alone. Hypotheses 2 (join/bridge) and 5 (D66 loop guard, D68 beam: the PC decodes
 with greedy search plus hotwords, and the word is in the piece itself) are not involved.
 
-## Fix (D72, `crates/flow-core`)
+## Fix (D72, `crates/murmur-core`)
 
 * `engine::piece_gain`: a piece gets its own `vad::asr_gain` only when the dictation is
   quiet, else none. Quiet means `vad::speech_level` of the dictation up to the piece's end
@@ -81,12 +81,12 @@ with greedy search plus hotwords, and the word is in the piece itself) are not i
 * `vad::asr_gain` / `vad::with_gain` split `asr_level` into "how much" and "apply". The
   `asr_level` result is unchanged.
 * There is no word list and no change to the cleanup.
-* The fix is in flow-core, so it covers the phone, the PC and flow-server, which all use
+* The fix is in murmur-core, so it covers the phone, the PC and murmur-server, which all use
   D22 segmentation.
 
 ## Tests
 
-`crates/flow-core/tests/segments.rs`, with invented audio:
+`crates/murmur-core/tests/segments.rs`, with invented audio:
 
 * `a_click_after_the_last_word_is_not_raised_into_a_word`: speech, a 1.5 s pause and an
   80 ms −50 dBFS click, over −72 dBFS hiss. The segmented text must equal the whole-clip
@@ -104,7 +104,7 @@ with greedy search plus hotwords, and the word is in the piece itself) are not i
 
 ## Parity check (before 863dffb vs after, the median version)
 
-Probe `parity_sets.sh` / `parity_ab.py` / `compare.py`; `flow-cli transcribe --level none`
+Probe `parity_sets.sh` / `parity_ab.py` / `compare.py`; `murmur-cli transcribe --level none`
 (full pipeline: VAD, guard, D22 segmentation, no LLM), Parakeet, 2 threads. PC config:
 `session-pc` + unified-en, `auto` decoding, the set's dictionary. Phone config:
 `session-phone` + unified-en, `beam` + dictionary (D68); Hebrew: the phone's Hebrew Parakeet,
@@ -162,7 +162,7 @@ Two hallucination-guard tests used a 100 ms burst as "a little speech"; they now
 (under the guard's 400 ms), since a recording with only a 100 ms burst is no speech.
 
 Parity, before (863dffb) → after with the tap rule judged on the whole recording (same sets
-and configs as above; flow-cli built from this branch after merging origin/integration):
+and configs as above; murmur-cli built from this branch after merging origin/integration):
 
 | set | config | WER | terms | clips changed |
 |---|---|---|---|---|

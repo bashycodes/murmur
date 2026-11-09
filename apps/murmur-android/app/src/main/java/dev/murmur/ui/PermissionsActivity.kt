@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.Manifest
 import android.app.Activity
@@ -18,16 +18,16 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.Toast
-import dev.flowclone.EngineHolder
-import dev.flowclone.FlowApp
-import dev.flowclone.R
-import dev.flowclone.core.NativeFlowCore
-import dev.flowclone.data.EnginePlan
-import dev.flowclone.data.SettingsPages
-import dev.flowclone.data.SetupChecklist
-import dev.flowclone.data.SetupChecklist.Item
-import dev.flowclone.data.ShellPages
-import dev.flowclone.health.OemGuidance
+import dev.murmur.EngineHolder
+import dev.murmur.MurmurApp
+import dev.murmur.R
+import dev.murmur.core.NativeMurmurCore
+import dev.murmur.data.EnginePlan
+import dev.murmur.data.SettingsPages
+import dev.murmur.data.SetupChecklist
+import dev.murmur.data.SetupChecklist.Item
+import dev.murmur.data.ShellPages
+import dev.murmur.health.OemGuidance
 
 /**
  * Permissions (drawer → Permissions; AndroidSetup.dc.html): "3 of 5 done" progress, the problem
@@ -39,7 +39,7 @@ import dev.flowclone.health.OemGuidance
  */
 class PermissionsActivity : Activity() {
     private lateinit var ui: DevUi
-    private val app get() = FlowApp.of(this)
+    private val app get() = MurmurApp.of(this)
     private val main = Handler(Looper.getMainLooper())
     private var shown: String? = null
     private var lastSetup: SetupChecklist.State? = null
@@ -106,11 +106,11 @@ class PermissionsActivity : Activity() {
         sectionLabel("STATUS")
         card {
             when (val lib = app.engine.libraryState()) {
-                is NativeFlowCore.LibraryState.Loaded -> infoRow("Native engine", lib.version).setTextColor(p.ok)
-                is NativeFlowCore.LibraryState.Unavailable -> infoRow(
+                is NativeMurmurCore.LibraryState.Loaded -> infoRow("Native engine", lib.version).setTextColor(p.ok)
+                is NativeMurmurCore.LibraryState.Unavailable -> infoRow(
                     "Native engine",
-                    "Unavailable. ${lib.message}\n\nThis build was packaged without libflow_ffi.so " +
-                        "(see apps/flow-android/README.md). Dictation needs it, or turn on the mock engine in Settings to test the shell.",
+                    "Unavailable. ${lib.message}\n\nThis build was packaged without libmurmur_ffi.so " +
+                        "(see apps/murmur-android/README.md). Dictation needs it, or turn on the mock engine in Settings to test the shell.",
                 ).setTextColor(p.danger)
             }
             val st = app.engine.state.value
@@ -124,7 +124,7 @@ class PermissionsActivity : Activity() {
                 },
             ).setTextColor(if (st is EngineHolder.State.Ready) p.ok else if (st is EngineHolder.State.Failed) p.danger else p.text)
             val settings = app.settings.load()
-            link("Language", app.resolveLanguage(settings).let { dev.flowclone.data.LanguageDefault.label(settings.language, it.language, it.source) }, SettingsPages.Page.LANGUAGE)
+            link("Language", app.resolveLanguage(settings).let { dev.murmur.data.LanguageDefault.label(settings.language, it.language, it.source) }, SettingsPages.Page.LANGUAGE)
             if (st is EngineHolder.State.Ready) {
                 val (text, bad) = when (val l = st.llm) {
                     EnginePlan.LlmStatus.Off -> (if (settings.spokenCleanup) "Off (formatting rules still run)" else "Off") to false
@@ -134,13 +134,13 @@ class PermissionsActivity : Activity() {
                 }
                 link("AI cleanup", text, SettingsPages.Page.CLEANUP, bad)
             }
-            infoRow("Version", dev.flowclone.data.AppVersion.current.label(app.caps.flavor))
+            infoRow("Version", dev.murmur.data.AppVersion.current.label(app.caps.flavor))
         }
         note(
             when (app.caps.flavor) {
                 "local" -> "On-device voice dictation. This app has no internet permission: audio, transcripts and history never leave the phone."
-                "hybrid" -> "Voice dictation on this phone or on your own flow-server (your LAN or a VPN; Developer settings). Voice never goes to a third party; history stays on the phone."
-                else -> "Voice dictation through your own flow-server (your LAN or a VPN; Developer settings). Voice never goes to a third party; history stays on the phone."
+                "hybrid" -> "Voice dictation on this phone or on your own murmur-server (your LAN or a VPN; Developer settings). Voice never goes to a third party; history stays on the phone."
+                else -> "Voice dictation through your own murmur-server (your LAN or a VPN; Developer settings). Voice never goes to a third party; history stays on the phone."
             },
         )
     }
@@ -228,7 +228,7 @@ class PermissionsActivity : Activity() {
 
         /** What the phone allows right now (Permissions page, drawer badge, Home notice). */
         internal fun setupState(c: Context): SetupChecklist.State {
-            val app = FlowApp.of(c)
+            val app = MurmurApp.of(c)
             return SetupChecklist.State(
                 mic = granted(c, Manifest.permission.RECORD_AUDIO),
                 overlay = Settings.canDrawOverlays(c),

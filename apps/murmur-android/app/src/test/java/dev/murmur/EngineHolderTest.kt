@@ -1,20 +1,20 @@
-package dev.flowclone
+package dev.murmur
 
-import dev.flowclone.core.CoreException
-import dev.flowclone.core.FakeFlowCore
-import dev.flowclone.core.FlowCore
-import dev.flowclone.core.FlowCoreLoader
-import dev.flowclone.core.ModelConfig
-import dev.flowclone.core.AsrEngine
-import dev.flowclone.core.ParakeetDecoding
-import dev.flowclone.data.LoadSet
-import dev.flowclone.data.LoadedAsr
-import dev.flowclone.core.CommitResult
-import dev.flowclone.core.FieldContext
-import dev.flowclone.core.SessionConfig
-import dev.flowclone.session.AudioSource
-import dev.flowclone.session.DictationController
-import dev.flowclone.session.FeedbackEvent
+import dev.murmur.core.CoreException
+import dev.murmur.core.FakeMurmurCore
+import dev.murmur.core.MurmurCore
+import dev.murmur.core.MurmurCoreLoader
+import dev.murmur.core.ModelConfig
+import dev.murmur.core.AsrEngine
+import dev.murmur.core.ParakeetDecoding
+import dev.murmur.data.LoadSet
+import dev.murmur.data.LoadedAsr
+import dev.murmur.core.CommitResult
+import dev.murmur.core.FieldContext
+import dev.murmur.core.SessionConfig
+import dev.murmur.session.AudioSource
+import dev.murmur.session.DictationController
+import dev.murmur.session.FeedbackEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -45,14 +45,14 @@ import java.util.concurrent.TimeUnit
  * seams (a fake core per route, each held at a latch), so the real load sequencing is exercised.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], application = FlowApp::class)
+@Config(sdk = [34], application = MurmurApp::class)
 class EngineHolderTest {
-    private val app get() = FlowApp.of(RuntimeEnvironment.getApplication())
+    private val app get() = MurmurApp.of(RuntimeEnvironment.getApplication())
 
     @Volatile private var want: LoadSet = LoadSet.Language("he")
     private val gates = ConcurrentHashMap<String, CountDownLatch>()
     private val built = CopyOnWriteArrayList<String>()
-    private val cores = ConcurrentHashMap<String, FakeFlowCore>()
+    private val cores = ConcurrentHashMap<String, FakeMurmurCore>()
     /** Per build: was every earlier engine already let go of when it started (one model in RAM)? */
     private val othersFreedAtStart = ConcurrentHashMap<String, Boolean>()
 
@@ -64,8 +64,8 @@ class EngineHolderTest {
 
     /** Load 3: `releaseKeptLlm` calls. */
     private val releases = java.util.concurrent.atomic.AtomicInteger()
-    private val loader = object : FlowCoreLoader {
-        override fun loadModels(cfg: ModelConfig): FlowCore = error("the builder seam loads")
+    private val loader = object : MurmurCoreLoader {
+        override fun loadModels(cfg: ModelConfig): MurmurCore = error("the builder seam loads")
         override fun releaseKeptLlm() { releases.incrementAndGet() }
     }
 
@@ -82,7 +82,7 @@ class EngineHolderTest {
         gates[k]?.await(5, TimeUnit.SECONDS)
         if (failing.remove(k)) EngineHolder.State.Failed("no $k model", "model_not_found")
         else {
-            val c = FakeFlowCore(k, hasLlm = true)
+            val c = FakeMurmurCore(k, hasLlm = true)
             cores[k] = c
             EngineHolder.State.Ready(c, "fake $k", asr = LoadedAsr(AsrEngine.WHISPER, "$k.bin"))
         }
@@ -271,7 +271,7 @@ class EngineHolderTest {
         assertEquals(EngineHolder.BOTH_LOADING, loadingMessage(h))
         gates["both"]!!.countDown()
         waitFor("ready") { h.state.value is EngineHolder.State.Ready }
-        h.unload() // FlowService.onTrimMemory
+        h.unload() // MurmurService.onTrimMemory
         assertTrue(cores["both"]!!.unloaded)
         h.ensureLoaded()
         waitFor("ready again") { h.state.value is EngineHolder.State.Ready }
@@ -327,7 +327,7 @@ class EngineHolderTest {
         want = LoadSet.Default
         h.ensureLanguage()
         waitFor("failed") { h.state.value is EngineHolder.State.Failed }
-        h.unload() // FlowService.onTrimMemory
+        h.unload() // MurmurService.onTrimMemory
         waitFor("released") { releases.get() == 1 }
     }
 
@@ -335,7 +335,7 @@ class EngineHolderTest {
         val h = holder()
         h.ensureLoaded()
         waitFor("ready") { h.state.value is EngineHolder.State.Ready }
-        h.unload() // FlowService.onTrimMemory
+        h.unload() // MurmurService.onTrimMemory
         h.ensureLoaded()
         waitFor("ready again") { h.state.value is EngineHolder.State.Ready }
         h.reload() // a model or developer setting changed
@@ -347,7 +347,7 @@ class EngineHolderTest {
     // ---- D55: a dictation records while the engine loads ----
 
     /** Runs [LoadWait.await] off the test thread, so the builds' latches can be released meanwhile. */
-    private fun startWaiting(w: dev.flowclone.session.LoadWait) =
+    private fun startWaiting(w: dev.murmur.session.LoadWait) =
         kotlinx.coroutines.CoroutineScope(Dispatchers.Default).async { withTimeout(5_000) { w.await() } }
 
     /** A holder whose one build returns [ready] once [gates]"x" opens. */
@@ -454,7 +454,7 @@ class EngineHolderTest {
         assumeTrue(app.caps.local)
         gates["x"] = CountDownLatch(1)
         // The router opened with the server only: the phone model the plan wanted failed to load.
-        val h = holderBuilding { EngineHolder.State.Ready(FakeFlowCore("x"), "server", clientNote = "No speech model imported.", localPlanned = true) }
+        val h = holderBuilding { EngineHolder.State.Ready(FakeMurmurCore("x"), "server", clientNote = "No speech model imported.", localPlanned = true) }
         h.ensureLoaded()
         val got = startWaiting(h.loadWait()!!)
         gates["x"]!!.countDown()
@@ -466,7 +466,7 @@ class EngineHolderTest {
         assumeTrue(app.caps.local)
         gates["x"] = CountDownLatch(1)
         // D24 keep warm off, server first: no phone model loads before the router opens.
-        val core = FakeFlowCore("x")
+        val core = FakeMurmurCore("x")
         val h = holderBuilding {
             EngineHolder.State.Ready(core, "server → phone on demand", onDemandAsr = LoadedAsr(AsrEngine.WHISPER, "he.bin"))
         }

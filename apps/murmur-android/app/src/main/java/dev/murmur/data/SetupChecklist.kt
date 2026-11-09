@@ -1,6 +1,6 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.health.AccessibilityHealth
+import dev.murmur.health.AccessibilityHealth
 
 /**
  * Permissions page (ui/PermissionsActivity; drawer → Permissions), in onboarding order:

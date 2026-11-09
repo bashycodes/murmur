@@ -1,12 +1,12 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.content.ClipboardManager
-import dev.flowclone.FlowApp
-import dev.flowclone.data.HistoryRow
-import dev.flowclone.data.Retention
-import dev.flowclone.ui.UiTestKit.idle
-import dev.flowclone.ui.UiTestKit.texts
-import dev.flowclone.ui.UiTestKit.walk
+import dev.murmur.MurmurApp
+import dev.murmur.data.HistoryRow
+import dev.murmur.data.Retention
+import dev.murmur.ui.UiTestKit.idle
+import dev.murmur.ui.UiTestKit.texts
+import dev.murmur.ui.UiTestKit.walk
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -24,10 +24,10 @@ import org.robolectric.shadows.ShadowSettings
 
 /** Home tab (AndroidHome): day-grouped dictation cards with route tag, Copy and ⋮ (details, delete), empty state, notices. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], application = FlowApp::class)
+@Config(sdk = [34], application = MurmurApp::class)
 class MainUiTest {
     private val ctx get() = RuntimeEnvironment.getApplication()
-    private val app get() = FlowApp.of(ctx)
+    private val app get() = MurmurApp.of(ctx)
 
     @After fun reset() { app.history.clear(); ShadowSettings.setCanDrawOverlays(false) }
 
@@ -36,7 +36,7 @@ class MainUiTest {
 
     private fun launch(): MainActivity {
         val a = Robolectric.buildActivity(MainActivity::class.java).setup().visible().get()
-        val home = a.tab(dev.flowclone.data.ShellPages.Tab.HOME) as HomeTab
+        val home = a.tab(dev.murmur.data.ShellPages.Tab.HOME) as HomeTab
         repeat(200) { idle(); if (home.loaded) return a; Thread.sleep(10) }
         idle(); return a
     }

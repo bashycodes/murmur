@@ -1,4 +1,4 @@
-package dev.flowclone.data
+package dev.murmur.data
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -10,7 +10,7 @@ import org.junit.Test
 
 /**
  * D28 one-time migration on the shell side, for every old preset: the router's own fixtures
- * (`crates/flow-router/fixtures/migration/<case>.{v1,v2,report}.json`) stand in for
+ * (`crates/murmur-router/fixtures/migration/<case>.{v1,v2,report}.json`) stand in for
  * `nativeMigrateCloud`; this checks what only the app owns: Keystore keys, usage, prefs, notice.
  */
 class CloudMigrationTest {
@@ -23,7 +23,7 @@ class CloudMigrationTest {
         val kv = MemKV()
         val fake = FakeVaultKeys()
         val keys = CloudKeyStore(kv) { id -> SecretVault(SecretVault.cloudAlias(id), fake) }
-        val store = DevStore(kv, BuildCaps.ALL, SecretVault("flow_dev_token", fake))
+        val store = DevStore(kv, BuildCaps.ALL, SecretVault("murmur_dev_token", fake))
     }
 
     /** What a D18 build left in the `dev` prefs for [v1]: the raw `cloud`, toggles, order, a key per provider, usage. */
@@ -72,7 +72,7 @@ class CloudMigrationTest {
                 assertFalse("$c: $id ciphertext", e.keys.has(id))
                 assertFalse("$c: $id Keystore key", SecretVault.cloudAlias(id) in e.fake.keys)
             }
-            assertEquals(c, if (r.keyFrom != null) setOf("flow_cloud_openrouter") else emptySet<String>(), e.fake.keys.keys.filter { it.startsWith("flow_cloud_") }.toSet())
+            assertEquals(c, if (r.keyFrom != null) setOf("murmur_cloud_openrouter") else emptySet<String>(), e.fake.keys.keys.filter { it.startsWith("murmur_cloud_") }.toSet())
 
             // Settings: schema 2 as the router wrote it; another active provider switches cloud STT off.
             val s = e.store.load()

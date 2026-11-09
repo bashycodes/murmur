@@ -44,7 +44,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "flow-core"
+name = "murmur-core"
 version = "1.1.2"
 dependencies = [
  "fancy-regex",
@@ -237,7 +237,7 @@ checksum = "f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5"
 name = "parity-clean"
 version = "0.0.0"
 dependencies = [
- "flow-core",
+ "murmur-core",
  "serde_json",
 ]
 

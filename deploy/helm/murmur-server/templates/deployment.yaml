@@ -4,9 +4,9 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "flow-server.fullname" . }}
+  name: {{ include "murmur-server.fullname" . }}
   labels:
-    {{- include "flow-server.labels" . | nindent 4 }}
+    {{- include "murmur-server.labels" . | nindent 4 }}
 spec:
   # One server per state volume: keys.json has a single writer, and each
   # replica would load its own models.
@@ -15,13 +15,13 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      {{- include "flow-server.selectorLabels" . | nindent 6 }}
+      {{- include "murmur-server.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "flow-server.selectorLabels" . | nindent 8 }}
+        {{- include "murmur-server.selectorLabels" . | nindent 8 }}
       annotations:
-        checksum/config: {{ include "flow-server.config" . | sha256sum }}
+        checksum/config: {{ include "murmur-server.config" . | sha256sum }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -34,40 +34,40 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
-        - name: flow-server
-          image: {{ include "flow-server.image" . | quote }}
+        - name: murmur-server
+          image: {{ include "murmur-server.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: ["serve"]
           env:
             # The chart mounts its own config (not the image's config
             # generated from /models, D77).
-            - name: FLOW_CONFIG
-              value: /etc/flow-server/config.toml
-            - name: FLOW_BIND_CONTAINER_IP
+            - name: MURMUR_CONFIG
+              value: /etc/murmur-server/config.toml
+            - name: MURMUR_BIND_CONTAINER_IP
               value: {{ ternary "1" "0" .Values.bindPodIP | quote }}
-            - name: FLOW_INSECURE_BIND_ANY
+            - name: MURMUR_INSECURE_BIND_ANY
               value: {{ ternary "1" "0" .Values.insecureBindAny | quote }}
-            - name: FLOW_START_GRACE_S
+            - name: MURMUR_START_GRACE_S
               value: {{ .Values.startGraceSeconds | quote }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
-            - name: flow
+            - name: murmur
               containerPort: 7313
               protocol: TCP
           # /v1/health needs a key, so probes are TCP-level only. Liveness
-          # (flow-healthcheck) also passes while the entrypoint waits for the
+          # (murmur-healthcheck) also passes while the entrypoint waits for the
           # first key and while the models load; readiness needs the port.
           livenessProbe:
             exec:
-              command: ["/usr/local/bin/flow-healthcheck"]
+              command: ["/usr/local/bin/murmur-healthcheck"]
             periodSeconds: 20
             timeoutSeconds: 5
             failureThreshold: 3
           readinessProbe:
             tcpSocket:
-              port: flow
+              port: murmur
             periodSeconds: 10
             timeoutSeconds: 3
           securityContext:
@@ -80,31 +80,31 @@ spec:
             {{- toYaml $res | nindent 12 }}
           volumeMounts:
             - name: config
-              mountPath: /etc/flow-server/config.toml
+              mountPath: /etc/murmur-server/config.toml
               subPath: config.toml
               readOnly: true
             - name: models
               mountPath: /models
               readOnly: true
             - name: state
-              mountPath: /var/lib/flow-server
+              mountPath: /var/lib/murmur-server
             - name: tmp
               mountPath: /tmp
             {{- if .Values.serverTls.enabled }}
             - name: tls
-              mountPath: /etc/flow-server/tls
+              mountPath: /etc/murmur-server/tls
               readOnly: true
             {{- end }}
       volumes:
         - name: config
           configMap:
-            name: {{ include "flow-server.fullname" . }}
+            name: {{ include "murmur-server.fullname" . }}
         - name: models
           persistentVolumeClaim:
-            claimName: {{ .Values.persistence.models.existingClaim | default (printf "%s-models" (include "flow-server.fullname" .)) }}
+            claimName: {{ .Values.persistence.models.existingClaim | default (printf "%s-models" (include "murmur-server.fullname" .)) }}
         - name: state
           persistentVolumeClaim:
-            claimName: {{ .Values.persistence.state.existingClaim | default (printf "%s-state" (include "flow-server.fullname" .)) }}
+            claimName: {{ .Values.persistence.state.existingClaim | default (printf "%s-state" (include "murmur-server.fullname" .)) }}
         - name: tmp
           emptyDir:
             medium: Memory

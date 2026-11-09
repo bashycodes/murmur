@@ -23,7 +23,7 @@ const NOTES_SHARED: &[&str] = &["note_list", "note_create", "note_set_pinned"];
 /// notes window navigates itself instead.
 const SETTINGS_ONLY_NOTES: &[&str] = &["note_open"];
 
-/// The Flow bar's commands: its clicks / link box, and the theme pref
+/// The Murmur bar's commands: its clicks / link box, and the theme pref
 /// (never all of `get_prefs`). No other window needs them.
 const OVERLAY_ONLY: &[&str] = &["overlay_action", "overlay_theme"];
 

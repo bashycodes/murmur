@@ -1,8 +1,8 @@
-package dev.flowclone.audio
+package dev.murmur.audio
 
-import dev.flowclone.session.AudioBatcher
-import dev.flowclone.session.AudioSource
-import dev.flowclone.session.SAMPLE_RATE
+import dev.murmur.session.AudioBatcher
+import dev.murmur.session.AudioSource
+import dev.murmur.session.SAMPLE_RATE
 
 /**
  * Debug "WAV as microphone" (debug builds only reach it: see src/debug WavMicReceiver): plays
@@ -36,7 +36,7 @@ class WavAudioSource(
     override fun start(onFrame: (ShortArray, Int) -> Unit, onError: () -> Unit): Boolean {
         if (playing) return true
         playing = true
-        thread = Thread({ feed(onFrame) }, "flow-wav").apply { start() }
+        thread = Thread({ feed(onFrame) }, "murmur-wav").apply { start() }
         return true
     }
 

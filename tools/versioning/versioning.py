@@ -37,8 +37,8 @@ MAX_VERSION_CODE = MAX_MAJOR * 10_000 + MAX_MINOR * 100 + MAX_PATCH
 
 _SEMVER = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
 
-WIN = "apps/flow-windows"
-GRADLE = "apps/flow-android/app/build.gradle.kts"
+WIN = "apps/murmur-windows"
+GRADLE = "apps/murmur-android/app/build.gradle.kts"
 
 
 def parse(version: str) -> tuple[int, int, int]:
@@ -108,16 +108,16 @@ def _set_toml_section_version(text: str, header: str, new: str) -> str:
 
 
 def _lock_blocks(text: str):
-    """(start, end, name, version_span) of each path package named flow-*."""
+    """(start, end, name, version_span) of each path package named murmur-*."""
     starts = [m.start() for m in re.finditer(r"^\[\[package\]\]", text, re.M)] + [len(text)]
     for a, b in zip(starts, starts[1:]):
         block = text[a:b]
         name = re.search(r'^name = "([^"]*)"', block, re.M)
         ver = re.search(r'^version = "([^"]*)"', block, re.M)
-        if not name or not ver or not name.group(1).startswith("flow-"):
+        if not name or not ver or not name.group(1).startswith("murmur-"):
             continue
         if re.search(r"^source = ", block, re.M):
-            continue  # a registry/git package that happens to be called flow-*
+            continue  # a registry/git package that happens to be called murmur-*
         yield name.group(1), (a + ver.start(1), a + ver.end(1))
 
 

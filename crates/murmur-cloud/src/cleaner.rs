@@ -1,5 +1,5 @@
 //! Opt-in cloud text cleanup (D28 §2.5): [`OpenRouterCleaner`] implements
-//! `flow_core::cleanup::Cleaner`, so flow-core's prompt v2, hard timeout,
+//! `murmur_core::cleanup::Cleaner`, so murmur-core's prompt v2, hard timeout,
 //! output unwrapping and deterministic fallback apply unchanged.
 //!
 //! One streamed `POST /chat/completions` per cleanup: aborting the stream
@@ -16,9 +16,9 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use serde_json::{json, Value};
 
-use flow_core::asr::AbortFlag;
-use flow_core::cleanup::{CleanError, CleanPrompt, CleanUsage, Cleaner, PromptScope};
-use flow_router::SecretString;
+use murmur_core::asr::AbortFlag;
+use murmur_core::cleanup::{CleanError, CleanPrompt, CleanUsage, Cleaner, PromptScope};
+use murmur_router::SecretString;
 
 use crate::api::Api;
 use crate::budget;
@@ -442,7 +442,7 @@ impl CleanupCall {
         CleanUsage {
             engine: Some("cloud".into()),
             model: Some(self.model.clone()),
-            cost_usd: self.cost_usd.map(flow_core::Usd),
+            cost_usd: self.cost_usd.map(murmur_core::Usd),
             cost_estimated: self.cost_estimated,
             generation_id: self.generation_id.clone(),
             ttft_ms: self.ttft_ms,

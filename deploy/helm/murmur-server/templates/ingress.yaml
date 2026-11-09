@@ -2,9 +2,9 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "flow-server.fullname" . }}
+  name: {{ include "murmur-server.fullname" . }}
   labels:
-    {{- include "flow-server.labels" . | nindent 4 }}
+    {{- include "murmur-server.labels" . | nindent 4 }}
   {{- with .Values.ingress.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -27,7 +27,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ include "flow-server.fullname" . }}
+                name: {{ include "murmur-server.fullname" . }}
                 port:
                   number: {{ .Values.service.port }}
 {{- end }}

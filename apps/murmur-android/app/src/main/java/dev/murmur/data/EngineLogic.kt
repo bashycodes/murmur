@@ -1,15 +1,15 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.core.RouterErrors
+import dev.murmur.core.RouterErrors
 
-import dev.flowclone.core.AsrEngine
-import dev.flowclone.core.CoreException
-import dev.flowclone.core.DictEntry
-import dev.flowclone.core.FlowCore
-import dev.flowclone.core.FlowCoreLoader
-import dev.flowclone.core.LanguageModel
-import dev.flowclone.core.ModelConfig
-import dev.flowclone.core.ParakeetDecoding
+import dev.murmur.core.AsrEngine
+import dev.murmur.core.CoreException
+import dev.murmur.core.DictEntry
+import dev.murmur.core.MurmurCore
+import dev.murmur.core.MurmurCoreLoader
+import dev.murmur.core.LanguageModel
+import dev.murmur.core.ModelConfig
+import dev.murmur.core.ParakeetDecoding
 
 /** Model-file sniffing for the SAF import screens (reject the wrong kind before copying 1 GB). */
 object ModelFiles {
@@ -17,7 +17,7 @@ object ModelFiles {
 
     data class Recommendation(val file: String, val sizeMb: Int, val note: String, val url: String)
 
-    /** Qwen2.5-Instruct Q4_K_M: the pair flow-core's llm_e2e measures (docs/core-architecture.md). */
+    /** Qwen2.5-Instruct Q4_K_M: the pair murmur-core's llm_e2e measures (docs/core-architecture.md). */
     val LLM_RECOMMENDATIONS = listOf(
         Recommendation(
             "qwen2.5-0.5b-instruct-q4_k_m.gguf", 490,
@@ -81,7 +81,7 @@ data class LoadedAsr(val engine: AsrEngine, val model: String)
 
 /**
  * What to load for the current settings, and loading it with an LLM fallback: if the GGUF or
- * the flow-llm plugin fails, dictation still works with ASR only and the UI says why.
+ * the murmur-llm plugin fails, dictation still works with ASR only and the UI says why.
  */
 object EnginePlan {
     sealed interface LlmStatus {
@@ -115,7 +115,7 @@ object EnginePlan {
         dictionary.any { !it.isSnippet && (it.replacement ?: it.word).isNotBlank() }
 
     /** [asr]: what loaded (null when [core] is null). */
-    data class Loaded(val core: FlowCore?, val description: String, val llm: LlmStatus, val error: String? = null, val asr: LoadedAsr? = null)
+    data class Loaded(val core: MurmurCore?, val description: String, val llm: LlmStatus, val error: String? = null, val asr: LoadedAsr? = null)
 
     /**
      * [parakeetPath]: imported sherpa-onnx model directory (`isModelDir` checks it). Parakeet is
@@ -211,7 +211,7 @@ object EnginePlan {
         }
     }.distinct()
 
-    fun load(p: Plan.Native, loader: FlowCoreLoader): Loaded {
+    fun load(p: Plan.Native, loader: MurmurCoreLoader): Loaded {
         val first = loadOne(p, loader)
         val fb = p.whisperFallback
         if (first.core != null || fb == null) return first
@@ -227,7 +227,7 @@ object EnginePlan {
     fun selectedEngine(s: Settings, local: Plan.Native?): AsrEngine =
         local?.config?.takeIf { it.loadLanguage != null }?.routed?.asrEngine ?: s.asrEngine
 
-    private fun loadOne(p: Plan.Native, loader: FlowCoreLoader): Loaded {
+    private fun loadOne(p: Plan.Native, loader: MurmurCoreLoader): Loaded {
         val asr = loadedAsrOf(p.config)
         val r = loadOneCore(p, loader, loadName(p.config, asr))
         return if (r.core != null) r.copy(asr = asr) else r
@@ -245,7 +245,7 @@ object EnginePlan {
         return prefix + asr.model + alongside
     }
 
-    private fun loadOneCore(p: Plan.Native, loader: FlowCoreLoader, name: String): Loaded {
+    private fun loadOneCore(p: Plan.Native, loader: MurmurCoreLoader, name: String): Loaded {
         if (p.config.llmPath != null) {
             try {
                 return Loaded(loader.loadModels(p.config), name, p.llm)
@@ -311,16 +311,16 @@ object ParakeetFiles {
     fun isModelDir(dir: java.io.File) = dir.isDirectory && select(dir.list()?.toList().orEmpty()) != null
 }
 
-/** `nativeOpenRouter`: wraps an optional local core in flow_router::Router (takes ownership of [local]). */
+/** `nativeOpenRouter`: wraps an optional local core in murmur_router::Router (takes ownership of [local]). */
 fun interface RouterOpener {
     /** @throws CoreException with the router's error kind (`no_engine_enabled`, `bad_config`, …). */
-    fun open(routerConfigJson: String, local: FlowCore?): FlowCore
+    fun open(routerConfigJson: String, local: MurmurCore?): MurmurCore
 }
 
 /**
  * D17 §6.2 Kotlin flow: load the local engine (EnginePlan, with its LLM / Parakeet fallbacks)
  * when this build has one and the client route needs it, then hand it to the router; every
- * session call goes to the router. The mock engine stays a direct FakeFlowCore.
+ * session call goes to the router. The mock engine stays a direct FakeMurmurCore.
  */
 object EngineRoute {
     sealed interface Plan {
@@ -342,7 +342,7 @@ object EngineRoute {
     }
 
     data class Assembled(
-        val core: FlowCore?,
+        val core: MurmurCore?,
         val description: String,
         val llm: EnginePlan.LlmStatus,
         val error: String? = null,
@@ -381,8 +381,8 @@ object EngineRoute {
         }
     }
 
-    fun assemble(p: Plan.Routed, loader: FlowCoreLoader, opener: RouterOpener): Assembled {
-        var localCore: FlowCore? = null
+    fun assemble(p: Plan.Routed, loader: MurmurCoreLoader, opener: RouterOpener): Assembled {
+        var localCore: MurmurCore? = null
         val desc = mutableListOf<String>()
         var llm: EnginePlan.LlmStatus = EnginePlan.LlmStatus.Off
         var localErr: String? = p.localNote

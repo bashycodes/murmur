@@ -1,6 +1,6 @@
-package dev.flowclone.bubble
+package dev.murmur.bubble
 
-import dev.flowclone.session.DictationState
+import dev.murmur.session.DictationState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy

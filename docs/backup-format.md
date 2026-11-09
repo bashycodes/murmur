@@ -1,4 +1,4 @@
-# Backup file format (`flow-clone-backup`, version 1)
+# Backup file format (`murmur-backup`, version 1)
 
 Settings → **Back up & restore** on Android writes every piece of user data
 into one UTF-8 JSON file, so data survives an install that wipes it
@@ -6,18 +6,18 @@ into one UTF-8 JSON file, so data survives an install that wipes it
 to read and write the same format later; sections it does not have are left
 out, and the reader leaves those stores alone.
 
-Code: `apps/flow-android/app/src/main/java/dev/flowclone/data/Backup.kt`
+Code: `apps/murmur-android/app/src/main/java/dev/murmur/data/Backup.kt`
 (format, pure) and `BackupIo.kt` (Android stores). Tests: `BackupTest`,
 `BackupIoTest`.
 
 ## File
 
-Default name `flow-clone-backup-YYYY-MM-DD.json`; the user picks where it
+Default name `murmur-backup-YYYY-MM-DD.json`; the user picks where it
 goes (Storage Access Framework, no storage permission).
 
 ```json
 {
-  "format": "flow-clone-backup",
+  "format": "murmur-backup",
   "version": 1,
   "app_version": "0.7.1",
   "platform": "android",
@@ -39,11 +39,11 @@ goes (Storage Access Framework, no storage permission).
 
 | Section | Android store | Shape |
 |---|---|---|
-| `settings` | SharedPreferences `flow_settings` | key → `{type, value}`; type is `string`, `bool`, `int`, `long`, `float` or `string_set` (value = array of strings) |
+| `settings` | SharedPreferences `murmur_settings` | key → `{type, value}`; type is `string`, `bool`, `int`, `long`, `float` or `string_set` (value = array of strings) |
 | `developer` | SharedPreferences `dev` (routing, server address, OpenRouter config, usage) | as `settings` |
 | `dictionary` | `files/dictionary.json` | the shared dictionary export `[{word, replacement?, isSnippet}]` |
 | `learn_suggestions` | `files/learn_suggestions.json` | as stored |
-| `insights` | `files/insights.json` | the Insights file shape shared with Windows (`crates/flow-core/src/insights.rs`) |
+| `insights` | `files/insights.json` | the Insights file shape shared with Windows (`crates/murmur-core/src/insights.rs`) |
 | `notes` | `files/notes/` (`<id>.txt` + `index.json`; includes the Scratchpad / Quick note, id `scratchpad`) | id (`[a-z0-9][a-z0-9_-]{0,63}`), text, pinned, created/updated epoch ms |
 | `history` | `history.db` table `history` (v4 columns), oldest first | one object per row; row ids are not kept |
 
@@ -58,7 +58,7 @@ run on restored values as on any stored ones.
   password, key_sealed, api_key or credential. They are Keystore-sealed and
   could not be opened on another install anyway. The filter runs on export
   and again on import (a hand-edited file cannot plant one).
-- Device-local `flow_settings` values: `model_path`, `parakeet_path`,
+- Device-local `murmur_settings` values: `model_path`, `parakeet_path`,
   `llm_model_path`, `service_stopped_by_user`.
 - Models (`files/models`, `files/parakeet`, `files/llm`), the debug log and
   debug audio (`files/debug/`).
@@ -68,7 +68,7 @@ re-imports models.
 
 ## Reading rules
 
-1. Refuse unless `format` is `flow-clone-backup` and `version` is an integer
+1. Refuse unless `format` is `murmur-backup` and `version` is an integer
    ≥ 1. A `version` above the reader's own is refused with "made by a newer
    version, update the app" (never half-read).
 2. Parse and validate **every** section before writing anything: a malformed

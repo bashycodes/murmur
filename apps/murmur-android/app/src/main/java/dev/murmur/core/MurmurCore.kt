@@ -1,13 +1,13 @@
-package dev.flowclone.core
+package dev.murmur.core
 
 /**
- * Kotlin mirror of the shared Rust core API (crates/flow-core,
- * docs/core-architecture.md). One loaded [FlowCore] = one core `Handle`; one active session at a time.
+ * Kotlin mirror of the shared Rust core API (crates/murmur-core,
+ * docs/core-architecture.md). One loaded [MurmurCore] = one core `Handle`; one active session at a time.
  *
- * Implementations: [NativeFlowCore] (JNI → libflow_ffi.so, see JNI_CONTRACT.md) and
- * [FakeFlowCore] (tests / "mock engine" debug setting).
+ * Implementations: [NativeMurmurCore] (JNI → libmurmur_ffi.so, see JNI_CONTRACT.md) and
+ * [FakeMurmurCore] (tests / "mock engine" debug setting).
  */
-interface FlowCore {
+interface MurmurCore {
     /** `start_session(h, SessionConfig)`. @throws CoreException */
     fun startSession(cfg: SessionConfig)
 
@@ -81,16 +81,16 @@ interface FlowCore {
 
     /**
      * Load 3 (`nativeKeepLlm`): hold this engine's own on-device LLM for the next
-     * [FlowCoreLoader.loadModels] with the same model (a language switch reloads only the speech
+     * [MurmurCoreLoader.loadModels] with the same model (a language switch reloads only the speech
      * model). Call it before [unload]. Returns whether there was one; false when unsupported.
      */
     fun keepLlm(): Boolean = false
 }
 
 /** `load_models(ModelConfig) -> Handle`. */
-fun interface FlowCoreLoader {
+fun interface MurmurCoreLoader {
     /** @throws CoreException when the model (or native library) can't be loaded. */
-    fun loadModels(cfg: ModelConfig): FlowCore
+    fun loadModels(cfg: ModelConfig): MurmurCore
 
     /**
      * Load 3 (`nativeLastLoadTimings`): per-model / per-phase timings JSON of the last successful
@@ -99,7 +99,7 @@ fun interface FlowCoreLoader {
     fun takeLoadTimings(): String? = null
 
     /**
-     * Load 3 (`nativeReleaseKeptLlm`): free an LLM [FlowCore.keepLlm] holds that no load took.
+     * Load 3 (`nativeReleaseKeptLlm`): free an LLM [MurmurCore.keepLlm] holds that no load took.
      * Blocking: may free a model.
      */
     fun releaseKeptLlm() {}
@@ -139,7 +139,7 @@ class CoreException(message: String, val kind: String? = null) : Exception(messa
     }
 }
 
-/** flow_router `RouterError` kinds (docs/hybrid-architecture.md §1.2), surfaced as last error. */
+/** murmur_router `RouterError` kinds (docs/hybrid-architecture.md §1.2), surfaced as last error. */
 object RouterErrors {
     const val NO_ENGINE_ENABLED = "no_engine_enabled"
     const val LOCAL_NOT_READY = "local_not_ready"
@@ -152,7 +152,7 @@ object RouterErrors {
     const val NEEDS_TLS = "Server needs TLS — turn on Use TLS for this server in Developer settings"
     const val CLOUD_NEEDS_TLS = "Provider needs TLS — use an https:// base URL"
 
-    /** flow-remote / flow-cloud refused cleartext to an address that is not private or a VPN address. */
+    /** murmur-remote / murmur-cloud refused cleartext to an address that is not private or a VPN address. */
     fun plaintextRefused(message: String?) = message?.contains("plaintext refused", ignoreCase = true) == true
 
     /** D24: the router names the phone-model failure after the server's (`…; phone model failed to load: why`). */
@@ -185,7 +185,7 @@ object RouterErrors {
  */
 enum class AsrEngine(val wire: String) { WHISPER("whisper"), PARAKEET("parakeet"), SHERPA_ONLINE("sherpa_online") }
 
-/** crates/flow-core `LanguageModel` (D33): one entry of [ModelConfig.languages]. */
+/** crates/murmur-core `LanguageModel` (D33): one entry of [ModelConfig.languages]. */
 data class LanguageModel(
     val asrEngine: AsrEngine,
     /** The sherpa-onnx model directory (or whisper file). */
@@ -193,14 +193,14 @@ data class LanguageModel(
     val parakeetDecoding: ParakeetDecoding = ParakeetDecoding.AUTO,
 )
 
-/** crates/flow-core `ModelConfig`. [mockText] selects the core's `Mock` ASR backend. */
+/** crates/murmur-core `ModelConfig`. [mockText] selects the core's `Mock` ASR backend. */
 data class ModelConfig(
     /** whisper: the ggml-*.bin file; parakeet: the sherpa-onnx model directory. */
     val asrPath: String,
     val llmPath: String? = null,
     val threads: Int = 4,
     val mockText: String? = null,
-    /** flow-llm plugin path; null = the core's lookup (on Android: the packaged libflow_llm.so). */
+    /** murmur-llm plugin path; null = the core's lookup (on Android: the packaged libmurmur_llm.so). */
     val llmLib: String? = null,
     val asrEngine: AsrEngine = AsrEngine.WHISPER,
     /** D22: Parakeet search mode; [ParakeetDecoding.AUTO] is omitted from the JSON. Whisper ignores it. */
@@ -208,8 +208,8 @@ data class ModelConfig(
     /** D33 per-language models keyed by ISO 639-1 code (`he`); omitted from the JSON when empty. */
     val languages: Map<String, LanguageModel> = emptyMap(),
     /**
-     * H5, shell-only (flow-ffi): load only the model this language routes to
-     * (`FlowCore::load_models_for`), so the phone keeps one ASR model in RAM. Null = load all.
+     * H5, shell-only (murmur-ffi): load only the model this language routes to
+     * (`MurmurCore::load_models_for`), so the phone keeps one ASR model in RAM. Null = load all.
      */
     val loadLanguage: String? = null,
 ) {
@@ -219,7 +219,7 @@ data class ModelConfig(
 }
 
 /**
- * crates/flow-core `ParakeetDecoding` (2026-10-23). AUTO loads a second recognizer (≈ +0.6 GB RSS)
+ * crates/murmur-core `ParakeetDecoding` (2026-10-23). AUTO loads a second recognizer (≈ +0.6 GB RSS)
  * so hotword-free decodes run greedy and an empty beam result is retried greedy; GREEDY keeps one
  * recognizer without hotword biasing; BEAM is the pre-D22 behaviour.
  */
@@ -242,7 +242,7 @@ enum class Style(val wire: String) {
 }
 
 /**
- * Per-bucket style (flow-core `Styles`). D27 layer 1: chat buckets default to CASUAL
+ * Per-bucket style (murmur-core `Styles`). D27 layer 1: chat buckets default to CASUAL
  * (no final period in chats), email and everything else FORMAL.
  */
 data class Styles(
@@ -251,7 +251,7 @@ data class Styles(
     val email: Style = Style.FORMAL,
     val other: Style = Style.FORMAL,
 ) {
-    /** flow-core `Styles::for_category` on the [FieldContext.appCategory] wire name. */
+    /** murmur-core `Styles::for_category` on the [FieldContext.appCategory] wire name. */
     fun forCategory(category: String): Style = when (category) {
         "personal_chat" -> personal
         "work_chat" -> work
@@ -264,7 +264,7 @@ data class Styles(
 data class DictEntry(val word: String, val replacement: String? = null, val isSnippet: Boolean = false)
 
 /**
- * flow_router `SessionRoute`: the route a live session is on (`nativeStartSessionInfo` /
+ * murmur_router `SessionRoute`: the route a live session is on (`nativeStartSessionInfo` /
  * `nativePoll`). [provider]/[model] only for `cloud`, [server] only for `remote`; [fallback] =
  * why the first route is not the one in use.
  */
@@ -302,7 +302,7 @@ data class CorePoll(
     val loading: Boolean = false,
 )
 
-/** flow_router `RouteDiag` (D24): how the last committed session was routed, for the D21 debug log. */
+/** murmur_router `RouteDiag` (D24): how the last committed session was routed, for the D21 debug log. */
 data class RouteDiag(
     /** Time the start spent on the server (connect + hello + start); null = not tried. */
     val connectMs: Long? = null,
@@ -341,7 +341,7 @@ data class SessionConfig(
     val segmentPauseMs: Int? = null,
 )
 
-/** crates/flow-core `FieldContext`; [before]/[after] ≤ 500 chars (shell truncates). */
+/** crates/murmur-core `FieldContext`; [before]/[after] ≤ 500 chars (shell truncates). */
 data class FieldContext(
     val appId: String = "",
     val urlHost: String = "",
@@ -374,7 +374,7 @@ data class Timings(
     val peakDbfs: Int? = null,
 )
 
-/** A key the shell sends between text runs (crates/flow-core `paste::PasteKey`). */
+/** A key the shell sends between text runs (crates/murmur-core `paste::PasteKey`). */
 enum class PasteKey(val wire: String) {
     /** Spoken "press enter"; always last. */
     ENTER("Enter"),
@@ -390,8 +390,8 @@ sealed interface PasteSegment {
 }
 
 /**
- * CommitResult.route (D17): which engine produced the result. Set by flow_router only;
- * null when the result came straight from a FlowCore handle (or an older native lib).
+ * CommitResult.route (D17): which engine produced the result. Set by murmur_router only;
+ * null when the result came straight from a MurmurCore handle (or an older native lib).
  */
 data class RouteInfo(
     /** "local" | "remote" | "cloud" (D18) */
@@ -430,7 +430,7 @@ data class RouteInfo(
     val fallbackDetail: String? = null,
 )
 
-/** D28 `CommitResult.llm` (`flow_core::CleanUsage`): the LLM step's usage; null when it did not run. */
+/** D28 `CommitResult.llm` (`murmur_core::CleanUsage`): the LLM step's usage; null when it did not run. */
 data class CleanUsage(
     val engine: String = "local",
     val model: String? = null,
@@ -473,5 +473,5 @@ data class CommitResult(
     val historyText: String get() = plainText.ifEmpty { finalText }
 }
 
-/** flow_core `learn::Candidate`; [looksLikeName]: the correction reads as a name (D68, `learn::looks_like_name`). */
+/** murmur_core `learn::Candidate`; [looksLikeName]: the correction reads as a name (D68, `learn::looks_like_name`). */
 data class LearnCandidate(val original: String, val corrected: String, val looksLikeName: Boolean = false)

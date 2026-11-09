@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use flow_router::*;
+use murmur_router::*;
 
 const KEY: &str = "sk-LEAKCHECK-policy-0123456789";
 

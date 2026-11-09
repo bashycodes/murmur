@@ -1,20 +1,20 @@
-//! Insights page store: `%APPDATA%\FlowClone\insights.json`.
+//! Insights page store: `%APPDATA%\Murmur\insights.json`.
 //!
 //! Per-local-day counts of committed dictations (words, recorded ms,
 //! dictations, words per app; never text), kept apart from
 //! `history.sqlite` so deleting History or a short retention window does
-//! not reset the stats. The math is `flow_core::insights`; this module
+//! not reset the stats. The math is `murmur_core::insights`; this module
 //! only persists it and maps timestamps to the user's local date.
 //! Nothing here leaves the machine.
 //!
 //! The desktop redesign's extra figures (where speech ran, fixes made, an
 //! 18-week heatmap) are Windows-only [`Extras`] stored in the same file
-//! next to the shared aggregate, so `flow_core::insights::Summary` (and
+//! next to the shared aggregate, so `murmur_core::insights::Summary` (and
 //! its golden vectors shared with Android) stays unchanged.
 
 use crate::core_api::DictEntry;
 use crate::history::History;
-use flow_core::insights::{Aggregates, LocalDate, Summary, DEFAULT_TYPING_WPM};
+use murmur_core::insights::{Aggregates, LocalDate, Summary, DEFAULT_TYPING_WPM};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -431,7 +431,7 @@ mod tests {
 
     #[test]
     fn persists_across_open() {
-        let d = std::env::temp_dir().join(format!("flow-insights-{}", std::process::id()));
+        let d = std::env::temp_dir().join(format!("murmur-insights-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         let p = d.join(FILE_NAME);
         let mut s = InsightsStore::open(&p);
@@ -497,7 +497,7 @@ mod tests {
 
     #[test]
     fn fixes_add_up_persist_and_reset() {
-        let d = std::env::temp_dir().join(format!("flow-insights-x-{}", std::process::id()));
+        let d = std::env::temp_dir().join(format!("murmur-insights-x-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         let p = d.join(FILE_NAME);
         // A file from before the extras.

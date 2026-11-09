@@ -1,6 +1,6 @@
-package dev.flowclone.server
+package dev.murmur.server
 
-import dev.flowclone.data.HebrewModels
+import dev.murmur.data.HebrewModels
 import org.json.JSONObject
 
 /**

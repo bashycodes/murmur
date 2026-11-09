@@ -32,7 +32,7 @@ export interface Prefs {
   enable_sounds: boolean;
   mute_audio_while_dictating: boolean;
   launch_at_login: boolean;
-  show_flow_bar_always: boolean;
+  show_murmur_bar_always: boolean;
   use_ax_context: boolean;
   cleanup_level: string;
   raw_mode: boolean;

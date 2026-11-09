@@ -1,4 +1,4 @@
-package dev.flowclone.audio
+package dev.murmur.audio
 
 import android.annotation.SuppressLint
 import android.media.AudioFormat
@@ -6,9 +6,9 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.SystemClock
 import android.util.Log
-import dev.flowclone.session.AudioBatcher
-import dev.flowclone.session.AudioSource
-import dev.flowclone.session.SAMPLE_RATE
+import dev.murmur.session.AudioBatcher
+import dev.murmur.session.AudioSource
+import dev.murmur.session.SAMPLE_RATE
 
 /**
  * Recorder config: MIC source, 16 kHz mono PCM16, buffer =
@@ -17,7 +17,7 @@ import dev.flowclone.session.SAMPLE_RATE
  */
 class MicRecorder : AudioSource {
     companion object {
-        private const val TAG = "FlowMic"
+        private const val TAG = "MurmurMic"
         private const val TAIL_DRAIN_MS = 120L
         private const val ZERO_READ_LOG_THRESHOLD = 50
     }
@@ -74,7 +74,7 @@ class MicRecorder : AudioSource {
                 batcher.feed(buf, n)
             }
             batcher.flush()
-        }, "flow-mic").apply { start() }
+        }, "murmur-mic").apply { start() }
         return true
     }
 

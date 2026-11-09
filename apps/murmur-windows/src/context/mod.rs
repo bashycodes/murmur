@@ -53,12 +53,12 @@ pub fn url_host(url: &str) -> Option<String> {
     }
 }
 
-/// App category from the Windows app groups (flow-core `app_groups`,
+/// App category from the Windows app groups (murmur-core `app_groups`,
 /// `data/app-groups.json`; exe stems exact, hosts with subdomains).
 /// Precedence: work chat > email > messaging > AI > terminal > document > other.
 pub fn app_kind(exe: &str, host: Option<&str>) -> AppKind {
     if let Some(h) = host {
-        let is = |n: &str| flow_core::app_groups::windows(n).host(h);
+        let is = |n: &str| murmur_core::app_groups::windows(n).host(h);
         return if is("work") {
             AppKind::WorkMessaging
         } else if is("email") {
@@ -75,7 +75,7 @@ pub fn app_kind(exe: &str, host: Option<&str>) -> AppKind {
     }
     let lower = exe.to_ascii_lowercase();
     let stem = lower.strip_suffix(".exe").unwrap_or(&lower);
-    let is = |n: &str| flow_core::app_groups::windows(n).app(stem);
+    let is = |n: &str| murmur_core::app_groups::windows(n).app(stem);
     if is("work") {
         AppKind::WorkMessaging
     } else if is("email") {
@@ -98,7 +98,7 @@ pub fn app_kind(exe: &str, host: Option<&str>) -> AppKind {
 /// the "Style per app" table so the user sees why an app is in a group.
 /// Host and macOS bundle-id entries are left out (anything with a dot).
 pub fn built_in_exe_buckets() -> Vec<(String, StyleBucket)> {
-    use flow_core::app_groups::windows_exact;
+    use murmur_core::app_groups::windows_exact;
     let mut stems: Vec<String> = windows_exact("work")
         .iter()
         .chain(windows_exact("email"))
@@ -133,7 +133,7 @@ pub fn bucket_of(kind: AppKind) -> StyleBucket {
     }
 }
 
-/// The bucket flow-core picks the style by for `ctx` (mirrors
+/// The bucket murmur-core picks the style by for `ctx` (mirrors
 /// `core_adapter::to_core_category`: the app kind wins, AI apps, terminals
 /// and documents use "other"). Debug log `style`.
 pub fn effective_bucket(ctx: &FieldContext) -> StyleBucket {

@@ -4,7 +4,7 @@ Owner tasks: "Transcribe phone calls" and its subtask "Reverse Android's call
 transcription feature". This is research only, with no product code.
 
 Target: the owner's Galaxy S25+ (SM-S936B), One UI 9 / Android 16, not rooted.
-Our app (`dev.flowclone`) is sideloaded and already has an enabled
+Our app (`dev.murmur`) is sideloaded and already has an enabled
 accessibility service, a `microphone|specialUse` foreground service, and
 on-device Hebrew + English STT.
 
@@ -213,11 +213,11 @@ Optional, PULL (one file): `<ADB> pull "/sdcard/Recordings/Call/<FILE>" ./call-s
 **Option C: does our a11y + foreground service survive in-call capture?** Start a call, then start dictation from our bubble during the call.
 ```
 <ADB> shell dumpsys media.audio_policy | grep -iE "Accessibility UIDs|A11y" -A3
-<ADB> shell pm list packages -U dev.flowclone
+<ADB> shell pm list packages -U dev.murmur
 <ADB> shell dumpsys audio | grep -iE "mode|RecordActivityMonitor|silenced" | head -40
 <ADB> shell dumpsys media.audio_policy | grep -iE "AudioRecordClient|silenced|source" | head -40
-<ADB> shell dumpsys activity processes dev.flowclone | grep -iE "procState|curProcState"
-<ADB> shell appops get dev.flowclone RECORD_AUDIO
+<ADB> shell dumpsys activity processes dev.murmur | grep -iE "procState|curProcState"
+<ADB> shell appops get dev.murmur RECORD_AUDIO
 ```
 Expected: our uid appears in "Accessibility UIDs", our client is not silenced,
 and our process state is TOP or FGS.

@@ -1,13 +1,13 @@
-package dev.flowclone.core
+package dev.murmur.core
 
 /**
- * JNI binding to crates/flow-ffi (`libflow_ffi.so`). Exact symbol names and signatures:
- * apps/flow-android/JNI_CONTRACT.md — keep the two in sync.
+ * JNI binding to crates/murmur-ffi (`libmurmur_ffi.so`). Exact symbol names and signatures:
+ * apps/murmur-android/JNI_CONTRACT.md — keep the two in sync.
  *
  * The library is optional at build time: [loadLibrary] reports a missing/broken .so as
  * [LibraryState.Unavailable] instead of throwing, and the UI shows that message.
  */
-class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = false) : FlowCore {
+class NativeMurmurCore private constructor(handle: Long, val isRouter: Boolean = false) : MurmurCore {
     sealed interface LibraryState {
         data class Loaded(val version: String) : LibraryState
         data class Unavailable(val message: String) : LibraryState
@@ -231,8 +231,8 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
     /** Never blocks: the native free waits for running calls and happens on a background thread. */
     override fun unload() = lease.close()
 
-    companion object : FlowCoreLoader {
-        const val LIBRARY = "flow_ffi"
+    companion object : MurmurCoreLoader {
+        const val LIBRARY = "murmur_ffi"
 
         @Volatile private var state: LibraryState? = null
 
@@ -252,12 +252,12 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
             return s
         }
 
-        const val LLM_LIBRARY = "flow_llm"
+        const val LLM_LIBRARY = "murmur_llm"
         @Volatile private var llmState: LibraryState? = null
 
         /**
-         * Load the flow-llm plugin into the app's linker namespace so the core's bare-name
-         * `dlopen("libflow_llm.so")` finds it (jniLibs are not extracted to disk on API 23+,
+         * Load the murmur-llm plugin into the app's linker namespace so the core's bare-name
+         * `dlopen("libmurmur_llm.so")` finds it (jniLibs are not extracted to disk on API 23+,
          * so there is no file path to hand the core). Idempotent; never throws.
          */
         @Synchronized
@@ -275,7 +275,7 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
             return s
         }
 
-        override fun loadModels(cfg: ModelConfig): FlowCore {
+        override fun loadModels(cfg: ModelConfig): MurmurCore {
             val s = loadLibrary()
             if (s is LibraryState.Unavailable) throw CoreException(s.message)
             if (cfg.llmPath != null && cfg.llmLib == null) {
@@ -287,7 +287,7 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
             if (h == 0L) throw lastError("load_models failed")
             // Same thread as the load: the native side keeps them per thread.
             loadTimings.set(try { nativeLastLoadTimings() } catch (e: UnsatisfiedLinkError) { null })
-            return NativeFlowCore(h)
+            return NativeMurmurCore(h)
         }
 
         private val loadTimings = java.util.concurrent.atomic.AtomicReference<String?>(null)
@@ -314,20 +314,20 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
         }
 
         /** `nativeOpenRouter`: wraps [local] (ownership moves to the router; may be null) per [routerConfigJson]. */
-        val routerOpener = dev.flowclone.data.RouterOpener { json, local ->
+        val routerOpener = dev.murmur.data.RouterOpener { json, local ->
             val s = loadLibrary()
             if (s is LibraryState.Unavailable) throw CoreException(s.message)
             val lh = when (local) {
                 null -> 0L
-                is NativeFlowCore -> local.release()
+                is NativeMurmurCore -> local.release()
                 else -> throw CoreException("router needs a native local engine, got ${local::class.simpleName}")
             }
             val h = guardLink { nativeOpenRouter(json, lh) }
             if (h == 0L) throw lastError("open_router failed")
-            NativeFlowCore(h, isRouter = true)
+            NativeMurmurCore(h, isRouter = true)
         }
 
-        /** What the loaded library was built with (`flow_router::Capabilities`); null without the library/symbol. */
+        /** What the loaded library was built with (`murmur_router::Capabilities`); null without the library/symbol. */
         fun capabilities(): Capabilities? {
             if (loadLibrary() !is LibraryState.Loaded) return null
             return runCatching { RouterJson.decodeCapabilities(nativeCapabilities()) }.getOrNull()
@@ -405,12 +405,12 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
          * D52 `nativeCustomCleanupAddress`: the router's normalised URL, canonical host and
          * model-id check (pure, not blocking). A library without it reads every address as unusable.
          */
-        fun customCleanupAddress(baseUrl: String, model: String): dev.flowclone.data.CustomAddress {
+        fun customCleanupAddress(baseUrl: String, model: String): dev.murmur.data.CustomAddress {
             if (loadLibrary() !is LibraryState.Loaded) return NO_ADDRESS
             return try { RouterJson.decodeCustomAddress(nativeCustomCleanupAddress(baseUrl, model)) } catch (e: UnsatisfiedLinkError) { NO_ADDRESS }
         }
 
-        private val NO_ADDRESS = dev.flowclone.data.CustomAddress(error = "error", message = "not in this build's native library")
+        private val NO_ADDRESS = dev.murmur.data.CustomAddress(error = "error", message = "not in this build's native library")
 
         /** A library without D52 (rebuild the native libs). */
         private val NO_CUSTOM = CustomModels(error = "error", message = "not in this build's native library")
@@ -423,7 +423,7 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
             return cloudCall { RouterJson.decodeHealth(nativeProbeCloud(0, providerJson, key)) }
         }
 
-        // ---- JNI surface (static natives on dev.flowclone.core.NativeFlowCore) ----
+        // ---- JNI surface (static natives on dev.murmur.core.NativeMurmurCore) ----
         @JvmStatic external fun nativeVersion(): String
         @JvmStatic external fun nativeLastError(): String?
         @JvmStatic external fun nativeLoadModels(modelConfigJson: String): Long

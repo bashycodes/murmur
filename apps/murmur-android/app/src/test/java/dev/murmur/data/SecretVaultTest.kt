@@ -1,4 +1,4 @@
-package dev.flowclone.data
+package dev.murmur.data
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -22,7 +22,7 @@ class SecretVaultTest {
     private val secret = "sk-LEAKCHECK-vault-0123456789"
 
     @Test fun sealsAndOpens() {
-        val v = SecretVault("flow_cloud_groq-1", keys)
+        val v = SecretVault("murmur_cloud_groq-1", keys)
         val sealed = v.seal(secret)
         assertFalse(sealed.contains("LEAKCHECK"))
         assertTrue("iv:ciphertext, base64", Regex("^[A-Za-z0-9+/=]+:[A-Za-z0-9+/=]+$").matches(sealed))
@@ -34,11 +34,11 @@ class SecretVaultTest {
         val a = SecretVault(SecretVault.cloudAlias("groq-1"), keys)
         val b = SecretVault(SecretVault.cloudAlias("openrouter-1"), keys)
         assertNull("another provider's vault cannot open it", b.open(a.seal(secret)))
-        assertEquals(setOf("flow_cloud_groq-1", "flow_cloud_openrouter-1"), keys.keys.keys)
+        assertEquals(setOf("murmur_cloud_groq-1", "murmur_cloud_openrouter-1"), keys.keys.keys)
     }
 
     @Test fun tamperedOrDestroyedReadsAsNull() {
-        val v = SecretVault("flow_cloud_x", keys)
+        val v = SecretVault("murmur_cloud_x", keys)
         val sealed = v.seal(secret)
         val ct = sealed.substringAfter(':')
         val flipped = sealed.substringBefore(':') + ":" + (if (ct[0] == 'A') 'B' else 'A') + ct.substring(1)
@@ -50,7 +50,7 @@ class SecretVaultTest {
 
     @Test fun tokenFormatIsUnchanged() {
         // The pre-generalisation TokenVault wrote android.util.Base64 NO_WRAP = standard alphabet, padded.
-        val v = SecretVault("flow_dev_token", keys)
+        val v = SecretVault("murmur_dev_token", keys)
         val sealed = v.seal("dev-token-0123456789abcdef")
         val iv = java.util.Base64.getDecoder().decode(sealed.substringBefore(':'))
         assertEquals("GCM IV", 12, iv.size)

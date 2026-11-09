@@ -1,14 +1,14 @@
 //! Router JSON fixtures shared with the shells (Android `RouterJsonTest`
 //! parses the same files; Windows prefs serialise to `router_config_*`).
 //! Every file parses into its type and re-serialises to the same JSON.
-//! Regenerate: `FLOW_REGEN_FIXTURES=1 cargo test -p flow-router --test fixtures`.
+//! Regenerate: `MURMUR_REGEN_FIXTURES=1 cargo test -p murmur-router --test fixtures`.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use flow_core::asr::MockAsr;
-use flow_core::FlowCore;
-use flow_router::*;
+use murmur_core::asr::MockAsr;
+use murmur_core::MurmurCore;
+use murmur_router::*;
 use serde_json::Value;
 
 fn dir() -> PathBuf {
@@ -39,7 +39,7 @@ fn configs() -> Vec<(&'static str, RouterConfig)> {
                 allow_client: false,
                 keep_local_warm: false,
                 server: ServerConfig {
-                    host: "flow.example.com".into(),
+                    host: "murmur.example.com".into(),
                     port: 443,
                     tls: true,
                     tls_pin_sha256: Some(
@@ -148,7 +148,7 @@ fn health_ok() -> HealthReport {
             median: 4,
             max: 6,
         }),
-        server_version: Some("flow-server 0.1.0".into()),
+        server_version: Some("murmur-server 0.1.0".into()),
         server_core: Some("0.1.0".into()),
         postprocess_rev: Some("2026-10-21.1".into()),
         postprocess_match: Some(true),
@@ -176,7 +176,7 @@ fn health_auth_failed() -> HealthReport {
 }
 
 fn result(route: RouteInfo) -> CommitResult {
-    let core = FlowCore::from_engines(
+    let core = MurmurCore::from_engines(
         Arc::new(MockAsr::new("ask not what your country can do")),
         None,
     );
@@ -186,7 +186,7 @@ fn result(route: RouteInfo) -> CommitResult {
         .collect();
     core.push_audio(&pcm);
     let mut r = core.commit();
-    r.timings = flow_core::Timings {
+    r.timings = murmur_core::Timings {
         audio_ms: 1000,
         asr_ms: 310,
         llm_ms: 0,
@@ -285,7 +285,7 @@ fn cloud_fixtures() -> Vec<(String, Value)> {
         "cloud_capabilities".into(),
         serde_json::to_value(CloudCapabilities {
             cloud: true,
-            adapters: flow_router::cloud::ADAPTERS
+            adapters: murmur_router::cloud::ADAPTERS
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
@@ -492,7 +492,7 @@ fn live_route_fixtures() -> Vec<(String, Value)> {
 fn canonical_values_equal_fixtures() {
     for (name, v) in all() {
         let p = dir().join(format!("{name}.json"));
-        if std::env::var_os("FLOW_REGEN_FIXTURES").is_some() {
+        if std::env::var_os("MURMUR_REGEN_FIXTURES").is_some() {
             std::fs::write(&p, serde_json::to_string_pretty(&v).unwrap() + "\n").unwrap();
             continue;
         }

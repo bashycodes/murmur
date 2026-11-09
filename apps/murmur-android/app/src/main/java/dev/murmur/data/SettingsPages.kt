@@ -1,7 +1,7 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.core.AsrEngine
-import dev.flowclone.core.CleanupLevel
+import dev.murmur.core.AsrEngine
+import dev.murmur.core.CleanupLevel
 
 /**
  * Main Settings is a hub with focused sub-pages (ui/SettingsActivity), like Developer settings.
@@ -286,7 +286,7 @@ object SettingsSummary {
      * "Your server" row from the router's last health probe ([h], null = none; [checking] while one runs):
      * "Connected · 41 ms" / "Not reachable" / "Not set up" / "Off".
      */
-    fun server(d: DevSettings, caps: BuildCaps, h: dev.flowclone.core.HealthReport?, checking: Boolean = false): String = when {
+    fun server(d: DevSettings, caps: BuildCaps, h: dev.murmur.core.HealthReport?, checking: Boolean = false): String = when {
         !caps.remote -> "Not in this build"
         !d.serverConfigured -> "Not set up"
         !d.allowServer -> "Off · ${d.host}"

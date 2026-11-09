@@ -3,8 +3,8 @@
 //! segment_pause_ms 800, then times commit (release -> text).
 //! usage: cliptest '<ModelConfig JSON>' '<languages JSON>' clips_dir name...
 use std::time::{Duration, Instant};
-use flow_core::config::{ModelConfig, SessionConfig};
-use flow_core::FlowCore;
+use murmur_core::config::{ModelConfig, SessionConfig};
+use murmur_core::MurmurCore;
 
 fn main() {
     let a: Vec<String> = std::env::args().collect();
@@ -12,10 +12,10 @@ fn main() {
     let langs: Vec<String> = serde_json::from_str(&a[2]).unwrap();
     let dir = std::path::PathBuf::from(&a[3]);
     let t = Instant::now();
-    let core = FlowCore::load_models(&model).expect("load");
+    let core = MurmurCore::load_models(&model).expect("load");
     eprintln!("load {} ms", t.elapsed().as_millis());
     for name in &a[4..] {
-        let pcm = flow_core::audio::read_wav_16k_mono(&dir.join(format!("{name}.wav"))).unwrap();
+        let pcm = murmur_core::audio::read_wav_16k_mono(&dir.join(format!("{name}.wav"))).unwrap();
         for (mode, seg) in [("whole", None), ("seg", Some(800u32))] {
             let mut cfg: SessionConfig = serde_json::from_value(serde_json::json!({"partial_interval_ms": 1500})).unwrap();
             cfg.languages = langs.clone();

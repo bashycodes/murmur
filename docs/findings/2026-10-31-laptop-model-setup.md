@@ -6,14 +6,14 @@
 
 ## What was done
 
-1. **Backup.** `%APPDATA%\FlowClone\prefs.json.bak-20261031-194509-pre-0.12.0` (the
+1. **Backup.** `%APPDATA%\Murmur\prefs.json.bak-20261031-194509-pre-0.12.0` (the
    0.11.1 prefs, before any change).
 2. **Install.** 0.12.0 hybrid NSIS (`Murmur_0.12.0_x64-setup_hybrid.exe`, SHA-256
    `1946f5e7…0abc73`, equal to `SHA256SUMS-windows-0.12.0.txt`). The app was closed,
    then the installer ran with `/S` (exit 0). The exe reports 0.12.0. The install
-   folder now has `flow_llm.dll` and `flow_llm_vulkan.dll` (0.11.1 had neither).
+   folder now has `murmur_llm.dll` and `murmur_llm_vulkan.dll` (0.11.1 had neither).
 3. **Models.** Fetched from the catalogue's pinned URLs (`model_download.rs`) into
-   `%APPDATA%\FlowClone\models`, the same paths the in-app downloader uses. Size and
+   `%APPDATA%\Murmur\models`, the same paths the in-app downloader uses. Size and
    SHA-256 match for every file:
    * `Llama-3.2-3B-Instruct-Q4_K_M.gguf` (2 019 377 696 B, `6c1a2b41…`)
    * `zipformer2-66m-streaming-he-int8\{encoder,decoder,joiner}.int8.onnx, tokens.txt`
@@ -26,7 +26,7 @@
    |---|---|---|
    | `llm_enabled` | false | **true** |
    | `llm_model_path` | qwen2.5-1.5b | **`models\Llama-3.2-3B-Instruct-Q4_K_M.gguf`** |
-   | `llm_lib_path` | null | null. The app's backend probe picks `flow_llm_vulkan.dll` |
+   | `llm_lib_path` | null | null. The app's backend probe picks `murmur_llm_vulkan.dll` |
    | `developer.cleanup_engines` | cloud (on), local (on), server (off) | **local (on), server (off), cloud (on)** |
    | `developer.allow_cloud` | false | false. Cloud cleanup stays off |
    | `hebrew_model` | zipformer | zipformer |
@@ -38,7 +38,7 @@
 
 ## Verification (app relaunched in the interactive session)
 
-* The process loads `flow_llm_vulkan.dll`, `vulkan-1.dll` and `igvk64.dll` (the Intel
+* The process loads `murmur_llm_vulkan.dll`, `vulkan-1.dll` and `igvk64.dll` (the Intel
   Vulkan driver).
 * stderr shows `ggml_vulkan: 0 = Intel(R) Arc(TM) 140V GPU (16GB) … matrix cores:
   KHR_coopmat`.
@@ -95,7 +95,7 @@ The app can't run it today:
   hosted q5_0 file.
 
 What it needs:
-* a Vulkan whisper build in the Windows app, the way `flow_llm_vulkan.dll` was done
+* a Vulkan whisper build in the Windows app, the way `murmur_llm_vulkan.dll` was done
   for cleanup;
 * a catalogue entry.
 

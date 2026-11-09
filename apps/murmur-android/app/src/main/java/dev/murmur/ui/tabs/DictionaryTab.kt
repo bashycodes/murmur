@@ -1,18 +1,18 @@
-package dev.flowclone.ui.tabs
+package dev.murmur.ui.tabs
 
 import android.app.Activity
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.LinearLayout
-import dev.flowclone.core.DictEntry
-import dev.flowclone.data.DictionaryPages
-import dev.flowclone.data.DictionaryPages.Kind
-import dev.flowclone.learn.Suggestion
-import dev.flowclone.learn.Suggestions
-import dev.flowclone.ui.DevUi
-import dev.flowclone.ui.SuggestionDialog
-import dev.flowclone.ui.TypeScale
+import dev.murmur.core.DictEntry
+import dev.murmur.data.DictionaryPages
+import dev.murmur.data.DictionaryPages.Kind
+import dev.murmur.learn.Suggestion
+import dev.murmur.learn.Suggestions
+import dev.murmur.ui.DevUi
+import dev.murmur.ui.SuggestionDialog
+import dev.murmur.ui.TypeScale
 
 /**
  * Dictionary tab (AndroidDictionary.dc.html): one card of words, "heard →" in grey before a word

@@ -1,7 +1,7 @@
-package dev.flowclone.server
+package dev.murmur.server
 
-import dev.flowclone.ui.ServerModelsHost
-import dev.flowclone.ui.ServerModelsSection
+import dev.murmur.ui.ServerModelsHost
+import dev.murmur.ui.ServerModelsSection
 
 /**
  * The local flavour's stand-in for src/server's `ServerModels` (D41): no server, no downloads,

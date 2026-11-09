@@ -1,5 +1,5 @@
 [package]
-name = "flow-contract-tests"
+name = "murmur-contract-tests"
 version.workspace = true
 edition.workspace = true
 license-file.workspace = true
@@ -9,17 +9,17 @@ description = "Hybrid contract suites: local vs in-process server / mock cloud e
 [features]
 default = []
 # Real-model equivalence (skips without models).
-whisper = ["flow-core/whisper", "flow-server/whisper"]
-parakeet = ["flow-core/parakeet", "flow-server/parakeet"]
-llm = ["flow-core/llm", "flow-server/llm"]
+whisper = ["murmur-core/whisper", "murmur-server/whisper"]
+parakeet = ["murmur-core/parakeet", "murmur-server/parakeet"]
+llm = ["murmur-core/llm", "murmur-server/llm"]
 
 [dependencies]
-flow-core = { path = "../flow-core", features = ["wav"] }
-flow-protocol = { path = "../flow-protocol" }
-flow-router = { path = "../flow-router" }
-flow-remote = { path = "../flow-remote", features = ["tls"] }
-flow-server = { path = "../flow-server", default-features = false, features = ["tls"] }
-flow-cloud = { path = "../flow-cloud", features = ["mock-server"] }
+murmur-core = { path = "../murmur-core", features = ["wav"] }
+murmur-protocol = { path = "../murmur-protocol" }
+murmur-router = { path = "../murmur-router" }
+murmur-remote = { path = "../murmur-remote", features = ["tls"] }
+murmur-server = { path = "../murmur-server", default-features = false, features = ["tls"] }
+murmur-cloud = { path = "../murmur-cloud", features = ["mock-server"] }
 base64 = "0.22"
 serde = { workspace = true }
 serde_json.workspace = true

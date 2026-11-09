@@ -1,4 +1,4 @@
-	Command being timed: "target/ai-bench/release/ai-cleanup-bench --mode ai --cases tools/probes/prototypes/ai_cleanup_bench_2026_10_26/results/all_cases.jsonl --session tools/probes/prototypes/ai_cleanup_bench_2026_10_26/sessions/prod.json --threads 4 --timeout-ms 8000 --llm $CACHE/models/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf --llm-lib ~/.local/lib/flow-server/libflow_llm.so --prompt tools/probes/prototypes/ai_cleanup_bench_2026_10_26/prompt_v4b.json"
+	Command being timed: "target/ai-bench/release/ai-cleanup-bench --mode ai --cases tools/probes/prototypes/ai_cleanup_bench_2026_10_26/results/all_cases.jsonl --session tools/probes/prototypes/ai_cleanup_bench_2026_10_26/sessions/prod.json --threads 4 --timeout-ms 8000 --llm $CACHE/models/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf --llm-lib ~/.local/lib/murmur-server/libmurmur_llm.so --prompt tools/probes/prototypes/ai_cleanup_bench_2026_10_26/prompt_v4b.json"
 	User time (seconds): 3649.38
 	System time (seconds): 9.43
 	Percent of CPU this job got: 367%

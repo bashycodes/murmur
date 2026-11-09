@@ -1,17 +1,17 @@
 //! D39 Users & keys end to end on the Rust side of the page:
-//! `server_admin` (what the `admin_*` commands call) → flow-remote's admin
-//! client → an in-process flow-server. Covers admin status, list, create
+//! `server_admin` (what the `admin_*` commands call) → murmur-remote's admin
+//! client → an in-process murmur-server. Covers admin status, list, create
 //! (secret once), revoke, the last-admin guard and a non-admin key.
 
 #![cfg(feature = "remote")]
 
-use flow_windows::dev_settings::{BuildCaps, DevSettings, ServerSettings};
-use flow_windows::server_admin::{self, AdminApi};
+use murmur_windows::dev_settings::{BuildCaps, DevSettings, ServerSettings};
+use murmur_windows::server_admin::{self, AdminApi};
 
 const TOKEN: &str = "test-token-0123456789abcdef";
 
 struct Server {
-    handle: flow_server::ServerHandle,
+    handle: murmur_server::ServerHandle,
     _rt: tokio::runtime::Runtime,
 }
 
@@ -22,17 +22,17 @@ fn start() -> Server {
         .build()
         .unwrap();
     let handle = rt.block_on(async {
-        let cfg = flow_server::Config {
+        let cfg = murmur_server::Config {
             bind: vec!["127.0.0.1:0".into()],
             token: Some(TOKEN.into()),
-            model: flow_core::config::ModelConfig {
-                asr_backend: flow_core::config::AsrBackend::Mock { text: "x".into() },
+            model: murmur_core::config::ModelConfig {
+                asr_backend: murmur_core::config::AsrBackend::Mock { text: "x".into() },
                 ..Default::default()
             },
             ..Default::default()
         };
         let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        flow_server::serve(cfg, vec![l]).await.unwrap()
+        murmur_server::serve(cfg, vec![l]).await.unwrap()
     });
     Server { handle, _rt: rt }
 }
@@ -46,7 +46,7 @@ fn dev(s: &Server, token: &str) -> DevSettings {
             connect_timeout_ms: 500,
             ..ServerSettings::default()
         },
-        token_dpapi: flow_windows::secrets::protect(token).unwrap(),
+        token_dpapi: murmur_windows::secrets::protect(token).unwrap(),
         ..DevSettings::for_build(BuildCaps::current())
     }
 }

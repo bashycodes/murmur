@@ -11,8 +11,8 @@
 //! silence. It latches: once reached it stays reached for the session, so a
 //! shell polling it cannot miss it or see it flicker.
 //!
-//! The detector only reads the audio the shell pushes, so `FlowCore` and
-//! `flow_router::Router` (every route: local, own server, cloud) compute
+//! The detector only reads the audio the shell pushes, so `MurmurCore` and
+//! `murmur_router::Router` (every route: local, own server, cloud) compute
 //! the same answer from the same pushes, with no protocol change.
 
 use serde::{Deserialize, Serialize};

@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.app.Activity
 import android.content.Intent
@@ -8,10 +8,10 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import dev.flowclone.FlowApp
-import dev.flowclone.data.HistoryVersion
-import dev.flowclone.data.RetryLogic
-import dev.flowclone.service.FlowService
+import dev.murmur.MurmurApp
+import dev.murmur.data.HistoryVersion
+import dev.murmur.data.RetryLogic
+import dev.murmur.service.MurmurService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -28,11 +28,11 @@ internal object RetryUi {
 
     /** Ask the service to transcribe row [id]'s recording again (never inserts). */
     fun start(activity: Activity, id: Long) {
-        if (!FlowService.running) {
+        if (!MurmurService.running) {
             Toast.makeText(activity, NEEDS_SERVICE, Toast.LENGTH_LONG).show()
             return
         }
-        activity.startService(Intent(activity, FlowService::class.java).setAction(FlowService.ACTION_RETRY).putExtra(FlowService.EXTRA_HISTORY_ID, id))
+        activity.startService(Intent(activity, MurmurService::class.java).setAction(MurmurService.ACTION_RETRY).putExtra(MurmurService.EXTRA_HISTORY_ID, id))
         Toast.makeText(activity, STARTED, Toast.LENGTH_SHORT).show()
     }
 
@@ -41,7 +41,7 @@ internal object RetryUi {
      * screen (the caller reloads its rows).
      */
     fun watch(activity: Activity, view: View, onChange: () -> Unit) {
-        val app = FlowApp.of(activity)
+        val app = MurmurApp.of(activity)
         var scope: CoroutineScope? = null
         fun begin() {
             scope?.cancel()
@@ -60,7 +60,7 @@ internal object RetryUi {
     class Watch(private val activity: Activity, private val onChange: () -> Unit) {
         private var job: Job? = null
         fun resume() {
-            val app = FlowApp.of(activity)
+            val app = MurmurApp.of(activity)
             job?.cancel()
             job = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).launch {
                 combine(app.retrying, app.historyRevision) { a, b -> a to b }.drop(1).collect { onChange() }

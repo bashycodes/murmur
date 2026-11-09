@@ -7,7 +7,7 @@
     "commit_timeout_base_ms": 3000,
     "connect_timeout_ms": 1500,
     "health_ttl_s": 30,
-    "host": "flow.example.com",
+    "host": "murmur.example.com",
     "port": 443,
     "tls": true,
     "tls_pin_sha256": "3f2a9c0b7e4d1f6a8b5c2e9d0a7f4b1c6e3d8a5f2b9c0e7d4a1f6b3c8e5d2a9f",

@@ -68,7 +68,7 @@ ${group(
         ["0", "Never"],
       ]),
     ) +
-    row("Live preview", "Show words in the Flow bar while you speak.", toggle("live_preview", "Live preview", `data-save="prefs"`)) +
+    row("Live preview", "Show words in the Murmur bar while you speak.", toggle("live_preview", "Live preview", `data-save="prefs"`)) +
     row(
       "Learn from my corrections",
       "After a paste the field is re-read for about 45 s. Words you fix show up in Dictionary as suggestions; nothing is added without your OK.",

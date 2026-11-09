@@ -30,9 +30,9 @@ The runner is `../dictionary_2026_11_07/runner/` unchanged (`--override`,
     python3 gen_cases.py
     CARGO_TARGET_DIR=... cargo build --release --offline -j 2 --manifest-path ../dictionary_2026_11_07/runner/Cargo.toml
     parity-clean --mode local|server|cloud --cases cases.jsonl --session SESSION.json \
-        --llm MODEL.gguf --llm-lib libflow_llm.so [--timeout-ms MS] [--override V.json] > out.jsonl
+        --llm MODEL.gguf --llm-lib libmurmur_llm.so [--timeout-ms MS] [--override V.json] > out.jsonl
     python3 score_cases.py out.jsonl --fails
 
 "Before" rows come from the same runner built against the base commit's
-flow-core. Real-speech sets stay outside the repo; pass their case and
+murmur-core. Real-speech sets stay outside the repo; pass their case and
 reference files as arguments.

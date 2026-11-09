@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <title>Settings: AI cleanup</title>
 <script src="./support.js"></script>
-<link rel="stylesheet" href="flow-theme.css">
-<link rel="stylesheet" href="ds/flow/components/bundle.css">
-<script src="ds/flow/components/bundle.js"></script>
+<link rel="stylesheet" href="murmur-theme.css">
+<link rel="stylesheet" href="ds/murmur/components/bundle.css">
+<script src="ds/murmur/components/bundle.js"></script>
 </head>
 <body>
 <x-dc>
@@ -78,7 +78,7 @@ a{color:#1a1a1a}a:hover{color:#30302f}
             <button type="button" class="fl-iconbtn is-toolbar" aria-label="Move up" disabled="disabled" style="height: 18px; opacity: .3;"><svg class="fl-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 15l6-6 6 6"></path></svg></button>
             <button type="button" class="fl-iconbtn is-toolbar" aria-label="Move down" style="height: 18px;"><svg class="fl-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
           </span>
-          <x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Use the cloud for cleanup"></x-import>
+          <x-import component-from-global-scope="Murmur.Toggle" default-checked="{{yes}}" label="Use the cloud for cleanup"></x-import>
         </div>
         <div class="fl-row">
           <span class="lw-rank">2</span>
@@ -89,7 +89,7 @@ a{color:#1a1a1a}a:hover{color:#30302f}
             <button type="button" class="fl-iconbtn is-toolbar" aria-label="Move up" style="height: 18px;"><svg class="fl-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 15l6-6 6 6"></path></svg></button>
             <button type="button" class="fl-iconbtn is-toolbar" aria-label="Move down" disabled="disabled" style="height: 18px; opacity: .3;"><svg class="fl-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
           </span>
-          <x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Use this PC for cleanup"></x-import>
+          <x-import component-from-global-scope="Murmur.Toggle" default-checked="{{yes}}" label="Use this PC for cleanup"></x-import>
         </div>
         <div class="fl-row" style="padding: 12px 0;">
           <div class="fl-row-desc" style="font-size: 13px;">If both fail or run out of time, the built-in formatting rules finish the job. Dictations sent to your server are cleaned up there.</div>
@@ -104,18 +104,18 @@ a{color:#1a1a1a}a:hover{color:#30302f}
         </div>
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Prefer providers that are</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Select" options="{{sortOpts}}" default-value="latency" width="{{w160}}"></x-import></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Select" options="{{sortOpts}}" default-value="latency" width="{{w160}}"></x-import></div>
         </div>
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Give up after</div><div class="fl-row-desc">Then this PC takes over.</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Select" options="{{cloudTimeOpts}}" default-value="2500" width="{{w160}}"></x-import></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Select" options="{{cloudTimeOpts}}" default-value="2500" width="{{w160}}"></x-import></div>
         </div>
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Also send</div><div class="fl-row-desc">Your words, the app type and your dictionary are always sent. More context gives better results.</div></div>
           <div class="fl-row-control" style="display: flex; flex-direction: column; align-items: flex-start; gap: 10px;">
-            <span style="display: flex; align-items: center; gap: 10px; font: 400 14px/20px var(--font-sans);"><x-import component-from-global-scope="Flow.Toggle" size="small" label="Text around the cursor"></x-import>Text around the cursor</span>
-            <span style="display: flex; align-items: center; gap: 10px; font: 400 14px/20px var(--font-sans);"><x-import component-from-global-scope="Flow.Toggle" size="small" label="Words on screen"></x-import>Words on screen</span>
-            <span style="display: flex; align-items: center; gap: 10px; font: 400 14px/20px var(--font-sans);"><x-import component-from-global-scope="Flow.Toggle" size="small" label="App name"></x-import>App name</span>
+            <span style="display: flex; align-items: center; gap: 10px; font: 400 14px/20px var(--font-sans);"><x-import component-from-global-scope="Murmur.Toggle" size="small" label="Text around the cursor"></x-import>Text around the cursor</span>
+            <span style="display: flex; align-items: center; gap: 10px; font: 400 14px/20px var(--font-sans);"><x-import component-from-global-scope="Murmur.Toggle" size="small" label="Words on screen"></x-import>Words on screen</span>
+            <span style="display: flex; align-items: center; gap: 10px; font: 400 14px/20px var(--font-sans);"><x-import component-from-global-scope="Murmur.Toggle" size="small" label="App name"></x-import>App name</span>
           </div>
         </div>
       </div>
@@ -124,15 +124,15 @@ a{color:#1a1a1a}a:hover{color:#30302f}
       <div class="fl-group">
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Model file</div><div class="fl-row-desc lw-mono">qwen2.5-1.5b-instruct-q4_k_m.gguf</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Button" variant="secondary">Change</x-import></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Button" variant="secondary">Change</x-import></div>
         </div>
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Give up after</div><div class="fl-row-desc">Then the formatting rules take over.</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Select" options="{{localTimeOpts}}" default-value="3000" width="{{w160}}"></x-import></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Select" options="{{localTimeOpts}}" default-value="3000" width="{{w160}}"></x-import></div>
         </div>
         <div class="fl-row">
           <div class="fl-row-text"><div class="fl-row-title">Use what's on screen</div><div class="fl-row-desc">Reads nearby text in the app to match names and context. Stays on this PC.</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Use what's on screen"></x-import></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Murmur.Toggle" default-checked="{{yes}}" label="Use what's on screen"></x-import></div>
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.BuildConfig
+import dev.murmur.BuildConfig
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -52,7 +52,7 @@ class AppVersionTest {
 
     /** build.gradle.kts duplicates the formula (it cannot see app code); this pins the two together. */
     @Test fun buildConfigIsDerivedFromTheVersionFile() {
-        val file = File(requireNotNull(System.getProperty("flow.versionFile")) { "flow.versionFile not set by build.gradle.kts" })
+        val file = File(requireNotNull(System.getProperty("murmur.versionFile")) { "murmur.versionFile not set by build.gradle.kts" })
         assertEquals(file.readText().trim(), BuildConfig.VERSION_NAME)
         assertEquals(AppVersion.code(BuildConfig.VERSION_NAME), BuildConfig.VERSION_CODE)
         assertEquals(AppVersion.describe(BuildConfig.VERSION_NAME, BuildConfig.GIT_SHA, BuildConfig.GIT_DIRTY).first, BuildConfig.BUILD)

@@ -1,24 +1,24 @@
-package dev.flowclone.debug
+package dev.murmur.debug
 
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
-import dev.flowclone.FlowApp
-import dev.flowclone.calls.CallRequest
-import dev.flowclone.calls.Decoders
-import dev.flowclone.calls.To16kMono
+import dev.murmur.MurmurApp
+import dev.murmur.calls.CallRequest
+import dev.murmur.calls.Decoders
+import dev.murmur.calls.To16kMono
 import kotlin.concurrent.thread
 import kotlin.math.sqrt
 
 /**
  * Debug builds only (src/debug), D46 Calls device check. The host broadcasts
- * `dev.flowclone.debug.DECODE_CALL --es path files/debug/calls-in/x.m4a [--ez transcribe true --es lang en]`
+ * `dev.murmur.debug.DECODE_CALL --es path files/debug/calls-in/x.m4a [--ez transcribe true --es lang en]`
  * (tools/phone/call-decode.sh). The file is decoded with the Calls decoder (MediaCodec for
  * m4a) to 16 kHz mono and the result data says what came out: input format, output samples,
  * length and level. With `transcribe`, the same file then goes through the Calls job (its own
- * engine); the transcript lands on the Calls page, progress in logcat (tag FlowCallDecode).
+ * engine); the transcript lands on the Calls page, progress in logcat (tag MurmurCallDecode).
  * Guarded by android.permission.DUMP in the manifest (shell only).
  */
 class CallDecodeReceiver : BroadcastReceiver() {
@@ -37,7 +37,7 @@ class CallDecodeReceiver : BroadcastReceiver() {
             }
             var out = msg
             if (transcribe && msg.startsWith("ok")) {
-                val app = FlowApp.of(context)
+                val app = MurmurApp.of(context)
                 val started = app.calls.start(CallRequest(Uri.fromFile(file).toString(), file.name, file.lastModified(), lang))
                 out += if (started) "; transcription started (see the Calls page)" else "; a transcription is already running"
                 if (started) thread(name = "call-decode-watch") {
@@ -78,6 +78,6 @@ class CallDecodeReceiver : BroadcastReceiver() {
     }
 
     private companion object {
-        const val TAG = "FlowCallDecode"
+        const val TAG = "MurmurCallDecode"
     }
 }

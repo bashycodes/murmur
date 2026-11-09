@@ -6,7 +6,7 @@ fn main() {
         let pkg = std::env::var("CARGO_PKG_VERSION").unwrap();
         if v.trim() != pkg {
             panic!(
-                "VERSION says {} but apps/flow-windows/Cargo.toml says {pkg}: run tools/release.sh",
+                "VERSION says {} but apps/murmur-windows/Cargo.toml says {pkg}: run tools/release.sh",
                 v.trim()
             );
         }

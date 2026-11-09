@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.content.ClipDescription
 import android.content.ClipboardManager
@@ -7,18 +7,18 @@ import android.content.Intent
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.TextView
-import dev.flowclone.FlowApp
-import dev.flowclone.admin.AdminApi
-import dev.flowclone.admin.AdminCode
-import dev.flowclone.admin.AdminResult
-import dev.flowclone.admin.CreatedKey
-import dev.flowclone.admin.KeyView
-import dev.flowclone.admin.UsersKeys
-import dev.flowclone.admin.WhoAmI
-import dev.flowclone.data.DevPages.Page
-import dev.flowclone.ui.UiTestKit.idle
-import dev.flowclone.ui.UiTestKit.texts
-import dev.flowclone.ui.UiTestKit.walk
+import dev.murmur.MurmurApp
+import dev.murmur.admin.AdminApi
+import dev.murmur.admin.AdminCode
+import dev.murmur.admin.AdminResult
+import dev.murmur.admin.CreatedKey
+import dev.murmur.admin.KeyView
+import dev.murmur.admin.UsersKeys
+import dev.murmur.admin.WhoAmI
+import dev.murmur.data.DevPages.Page
+import dev.murmur.ui.UiTestKit.idle
+import dev.murmur.ui.UiTestKit.texts
+import dev.murmur.ui.UiTestKit.walk
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -40,7 +40,7 @@ import java.util.concurrent.CopyOnWriteArrayList
  * revokes after a confirm, and closes on 403.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], application = FlowApp::class)
+@Config(sdk = [34], application = MurmurApp::class)
 class UsersKeysUiTest {
     private val ctx get() = RuntimeEnvironment.getApplication()
     private val secret = "SECRET-ui-0123456789abcdefghijklmnopqrstuvw"
@@ -48,7 +48,7 @@ class UsersKeysUiTest {
 
     private class Fake(var me: AdminResult<WhoAmI> = AdminResult.Ok(WhoAmI("k-1", "owner", true))) : AdminApi {
         val keys = CopyOnWriteArrayList(listOf(
-            KeyView("k-1", "owner", admin = true, created = 1_700_000_000, lastUsed = 1_700_000_050, lastConnected = 1_700_000_100, client = "flow-android 1.0.0",
+            KeyView("k-1", "owner", admin = true, created = 1_700_000_000, lastUsed = 1_700_000_050, lastConnected = 1_700_000_100, client = "murmur-android 1.0.0",
                 dictations = 12, audioMs = 120_000, downloads = 3, downloadBytes = 4_200_000, current = true),
             KeyView("k-2", "laptop", created = 1_700_000_000),
         ))

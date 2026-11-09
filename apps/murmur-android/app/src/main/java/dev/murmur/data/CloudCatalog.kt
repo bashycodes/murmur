@@ -1,10 +1,10 @@
-package dev.flowclone.data
+package dev.murmur.data
 
 import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * D28 model picker data: the rows `nativeCloudCatalog` returns (flow-cloud `PickerRow`: a
+ * D28 model picker data: the rows `nativeCloudCatalog` returns (murmur-cloud `PickerRow`: a
  * trimmed `ModelInfo` + `recommended`, `price_label`, `badges`) and the `nativeRefreshCloudCatalog`
  * status. Rust owns the catalogue (Windows shows the same list); this only decodes and words it.
  */

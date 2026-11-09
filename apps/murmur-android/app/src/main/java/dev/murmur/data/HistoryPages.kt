@@ -1,4 +1,4 @@
-package dev.flowclone.data
+package dev.murmur.data
 
 import java.time.Instant
 import java.time.LocalDate
@@ -85,17 +85,17 @@ object HistoryPages {
      * [reason] says why from [HistoryRow.insertOutcome].
      */
     fun notInserted(r: HistoryRow) = !r.inserted && hasText(r) &&
-        runCatching { dev.flowclone.core.CommitStatus.valueOf(r.status) }.getOrNull().let {
-            it == dev.flowclone.core.CommitStatus.FORMATTED || it == dev.flowclone.core.CommitStatus.RAW_TRANSCRIPT
+        runCatching { dev.murmur.core.CommitStatus.valueOf(r.status) }.getOrNull().let {
+            it == dev.murmur.core.CommitStatus.FORMATTED || it == dev.murmur.core.CommitStatus.RAW_TRANSCRIPT
         }
 
     fun flag(r: HistoryRow): String? = if (notInserted(r)) "Not inserted — tap to copy" else null
 
     /** Why it was not inserted ([HistoryRow.insertOutcome]); null when inserted or unknown. */
     fun reason(r: HistoryRow): String? = if (r.inserted) null else when (r.insertOutcome) {
-        dev.flowclone.debug.InsertOutcome.TARGET_CHANGED -> "You switched apps"
-        dev.flowclone.debug.InsertOutcome.TARGET_PROTECTED -> "Protected field"
-        dev.flowclone.debug.InsertOutcome.PASTE_FAILED -> "Couldn't paste"
+        dev.murmur.debug.InsertOutcome.TARGET_CHANGED -> "You switched apps"
+        dev.murmur.debug.InsertOutcome.TARGET_PROTECTED -> "Protected field"
+        dev.murmur.debug.InsertOutcome.PASTE_FAILED -> "Couldn't paste"
         else -> null
     }
 

@@ -1,7 +1,7 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.policy.AppCategorizer
-import dev.flowclone.policy.AppCategorizer.Category
+import dev.murmur.policy.AppCategorizer
+import dev.murmur.policy.AppCategorizer.Category
 
 /**
  * Settings → Writing style → Style per app: the per-app bucket overrides ([Settings.appBuckets])

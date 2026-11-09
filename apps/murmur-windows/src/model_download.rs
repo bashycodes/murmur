@@ -36,7 +36,7 @@ pub enum ModelEngine {
     /// sherpa-onnx online transducer (the Hebrew zipformer, D33/H2).
     #[serde(rename = "sherpa_online")]
     SherpaOnline,
-    /// A GGUF instruct model for local AI cleanup (llama.cpp, `flow_llm`).
+    /// A GGUF instruct model for local AI cleanup (llama.cpp, `murmur_llm`).
     Llm,
 }
 
@@ -146,7 +146,7 @@ macro_rules! whisper_base {
 /// Hugging Face LFS ids at those commits). Added 2026-11-03 from the HF API's
 /// LFS ids (no download): the whisper q5_1 files Android recommends, and
 /// Parakeet-unified-en, whose ids also equal the SHA-256 of the copy the
-/// server runs. The ids are `flow_protocol::library::CATALOGUE`'s (tested).
+/// server runs. The ids are `murmur_protocol::library::CATALOGUE`'s (tested).
 /// The Hebrew ones:
 /// docs/findings/2026-10-30-hebrew-model-pins.md). The cleanup models (engine
 /// `Llm`) are pinned from the HF API: docs/findings/2026-10-30-cleanup-model-pins.md.
@@ -313,7 +313,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         ],
     },
     // The most accurate Hebrew model when whisper runs on a GPU
-    // (flow_whisper_vulkan.dll): 20.5 % WER vs the zipformer's 27.2 % on 49
+    // (murmur_whisper_vulkan.dll): 20.5 % WER vs the zipformer's 27.2 % on 49
     // FLEURS clips, mean 0.97 s on the laptop's Arc 140V; about 13 s on a
     // laptop CPU (docs/findings/2026-10-31-laptop-model-setup.md).
     CatalogEntry {
@@ -389,7 +389,14 @@ pub const LLAMA32_3B_ID: &str = "llama-3.2-3b-instruct-q4_k_m";
 pub fn recommended_llm(gpu: bool) -> &'static CatalogEntry {
     CATALOG
         .iter()
-        .find(|e| e.is_llm() && if gpu { e.recommended_gpu } else { e.recommended })
+        .find(|e| {
+            e.is_llm()
+                && if gpu {
+                    e.recommended_gpu
+                } else {
+                    e.recommended
+                }
+        })
         .expect("the catalogue has a CPU and a GPU cleanup pick")
 }
 
@@ -412,7 +419,14 @@ pub const IVRIT_TURBO_ID: &str = "ivrit-whisper-large-v3-turbo-q5_0";
 pub fn recommended_hebrew(gpu: bool) -> &'static CatalogEntry {
     CATALOG
         .iter()
-        .find(|e| e.language.is_some() && if gpu { e.recommended_gpu } else { e.recommended })
+        .find(|e| {
+            e.language.is_some()
+                && if gpu {
+                    e.recommended_gpu
+                } else {
+                    e.recommended
+                }
+        })
         .expect("the catalogue has a CPU and a GPU Hebrew pick")
 }
 
@@ -429,25 +443,36 @@ impl CatalogEntry {
     /// The model's files, then the extras (`true` = saved in the models
     /// folder itself).
     pub(crate) fn all_files(&self) -> impl Iterator<Item = (&'static ModelFile, bool)> {
-        self.files.iter().map(|f| (f, false)).chain(self.extras.iter().map(|f| (f, true)))
+        self.files
+            .iter()
+            .map(|f| (f, false))
+            .chain(self.extras.iter().map(|f| (f, true)))
     }
 
     fn present(&self, models_dir: &Path, f: &ModelFile, extra: bool) -> bool {
-        std::fs::metadata(self.file_path(models_dir, f, extra)).is_ok_and(|m| m.is_file() && m.len() == f.size)
+        std::fs::metadata(self.file_path(models_dir, f, extra))
+            .is_ok_and(|m| m.is_file() && m.len() == f.size)
     }
 
     /// The model and its extras are all there.
     pub fn complete(&self, models_dir: &Path) -> bool {
-        self.all_files().all(|(f, x)| self.present(models_dir, f, x))
+        self.all_files()
+            .all(|(f, x)| self.present(models_dir, f, x))
     }
 
     /// Bytes a download would still fetch.
     pub fn missing(&self, models_dir: &Path) -> u64 {
-        self.all_files().filter(|(f, x)| !self.present(models_dir, f, *x)).map(|(f, _)| f.size).sum()
+        self.all_files()
+            .filter(|(f, x)| !self.present(models_dir, f, *x))
+            .map(|(f, _)| f.size)
+            .sum()
     }
 
     pub(crate) fn is_dir(&self) -> bool {
-        matches!(self.engine, ModelEngine::Parakeet | ModelEngine::SherpaOnline)
+        matches!(
+            self.engine,
+            ModelEngine::Parakeet | ModelEngine::SherpaOnline
+        )
     }
 
     /// An AI cleanup model (Settings → AI cleanup), not a speech model.
@@ -474,7 +499,9 @@ impl CatalogEntry {
     /// checked when it was downloaded). Extras don't count: the model works
     /// without them ([`CatalogEntry::complete`]).
     pub fn installed(&self, models_dir: &Path) -> bool {
-        self.files.iter().all(|f| self.present(models_dir, f, false))
+        self.files
+            .iter()
+            .all(|f| self.present(models_dir, f, false))
     }
 
     /// Point the local engine at the downloaded model; a language model
@@ -818,7 +845,9 @@ pub fn run_from(
             }
         }
         let part = part_path(&target, f);
-        src.fetch(f, &target, &part, cancel, &mut |n| report(done + n, State::Downloading))?;
+        src.fetch(f, &target, &part, cancel, &mut |n| {
+            report(done + n, State::Downloading)
+        })?;
         report(done + f.size, State::Verifying);
         done += f.size;
     }
@@ -865,7 +894,8 @@ pub(crate) fn copy_verified(
     cancel: &AtomicBool,
     tick: &mut dyn FnMut(u64),
 ) -> Result<String, Stop> {
-    let mut out = std::fs::File::create(part).map_err(|e| Stop::Failed(format!("could not write {}: {e}", f.name)))?;
+    let mut out = std::fs::File::create(part)
+        .map_err(|e| Stop::Failed(format!("could not write {}: {e}", f.name)))?;
     let mut h = Sha256::new();
     let mut buf = vec![0u8; 256 << 10];
     let mut n: u64 = 0;
@@ -946,7 +976,11 @@ impl Downloads {
     }
 
     pub fn running(&self) -> Option<String> {
-        self.active.lock().unwrap().as_ref().map(|(id, _)| id.clone())
+        self.active
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|(id, _)| id.clone())
     }
 }
 
@@ -961,7 +995,8 @@ pub struct HttpFetch {
 impl HttpFetch {
     pub fn new() -> Result<Self, String> {
         let policy = reqwest::redirect::Policy::custom(|a| {
-            let ok = a.url().scheme() == "https" && a.url().host_str().is_some_and(redirect_host_ok);
+            let ok =
+                a.url().scheme() == "https" && a.url().host_str().is_some_and(redirect_host_ok);
             if a.previous().len() >= 8 {
                 a.error("too many redirects")
             } else if ok {
@@ -1007,7 +1042,7 @@ pub fn engine_built(e: ModelEngine) -> bool {
     match e {
         ModelEngine::Whisper => cfg!(feature = "whisper"),
         ModelEngine::Parakeet | ModelEngine::SherpaOnline => cfg!(feature = "parakeet"),
-        // llama.cpp is a plugin (flow_llm.dll) loaded by the local engine.
+        // llama.cpp is a plugin (murmur_llm.dll) loaded by the local engine.
         ModelEngine::Llm => cfg!(feature = "local-engine"),
     }
 }
@@ -1028,8 +1063,19 @@ mod tests {
             for (f, _) in e.all_files() {
                 check_download_url(f.url).unwrap();
                 // .../resolve/<40-hex commit>/<name>: never a moving branch.
-                let rev = f.url.split("/resolve/").nth(1).unwrap().split('/').next().unwrap();
-                assert!(rev.len() == 40 && rev.chars().all(|c| c.is_ascii_hexdigit()), "{}", f.url);
+                let rev = f
+                    .url
+                    .split("/resolve/")
+                    .nth(1)
+                    .unwrap()
+                    .split('/')
+                    .next()
+                    .unwrap();
+                assert!(
+                    rev.len() == 40 && rev.chars().all(|c| c.is_ascii_hexdigit()),
+                    "{}",
+                    f.url
+                );
                 assert!(f.url.ends_with(&format!("/{}", f.name)));
                 assert_eq!(f.sha256.len(), 64);
                 assert!(f.sha256.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f')));
@@ -1037,47 +1083,80 @@ mod tests {
             }
         }
         // The defaults the engine looks for without a configured path.
-        assert_eq!(entry("whisper-base").unwrap().dest, crate::core_adapter::DEFAULT_MODEL_FILE);
-        assert_eq!(entry("parakeet-tdt-0.6b-v2-int8").unwrap().dest, crate::core_adapter::DEFAULT_PARAKEET_DIR);
+        assert_eq!(
+            entry("whisper-base").unwrap().dest,
+            crate::core_adapter::DEFAULT_MODEL_FILE
+        );
+        assert_eq!(
+            entry("parakeet-tdt-0.6b-v2-int8").unwrap().dest,
+            crate::core_adapter::DEFAULT_PARAKEET_DIR
+        );
         // The sherpa loaders need encoder, decoder, joiner and tokens.txt.
-        for id in ["parakeet-tdt-0.6b-v2-int8", "parakeet-unified-en-0.6b-int8", ZIPFORMER_HE_ID, PARAKEET_HE_ID] {
+        for id in [
+            "parakeet-tdt-0.6b-v2-int8",
+            "parakeet-unified-en-0.6b-int8",
+            ZIPFORMER_HE_ID,
+            PARAKEET_HE_ID,
+        ] {
             let pk: Vec<_> = entry(id).unwrap().files.iter().map(|f| f.name).collect();
             for want in ["encoder", "decoder", "joiner", "tokens.txt"] {
                 assert!(pk.iter().any(|n| n.starts_with(want)), "{id}: {want}");
             }
         }
         // Hebrew models: the folders the Hebrew route loads, CC-BY credit.
-        assert_eq!(entry(ZIPFORMER_HE_ID).unwrap().dest, crate::core_adapter::ZIPFORMER_HE_DIR);
-        assert_eq!(entry(PARAKEET_HE_ID).unwrap().dest, crate::core_adapter::PARAKEET_HE_DIR);
-        assert_eq!(entry(IVRIT_TURBO_ID).unwrap().dest, crate::core_adapter::IVRIT_TURBO_FILE);
+        assert_eq!(
+            entry(ZIPFORMER_HE_ID).unwrap().dest,
+            crate::core_adapter::ZIPFORMER_HE_DIR
+        );
+        assert_eq!(
+            entry(PARAKEET_HE_ID).unwrap().dest,
+            crate::core_adapter::PARAKEET_HE_DIR
+        );
+        assert_eq!(
+            entry(IVRIT_TURBO_ID).unwrap().dest,
+            crate::core_adapter::IVRIT_TURBO_FILE
+        );
         for e in CATALOG {
             // D80: every model names its licence (from its model card), as NOTICE does.
             let l = e.license.unwrap_or_else(|| panic!("{}: no licence", e.id));
             if e.language.is_some() {
-                assert!(l.starts_with("CC-BY-4.0") || l.starts_with("Apache-2.0 · ivrit.ai"), "{}", e.id);
+                assert!(
+                    l.starts_with("CC-BY-4.0") || l.starts_with("Apache-2.0 · ivrit.ai"),
+                    "{}",
+                    e.id
+                );
             }
         }
         // The NVIDIA Open Model License asks for this notice with every copy.
-        assert!(entry("parakeet-unified-en-0.6b-int8").unwrap().license.unwrap()
+        assert!(entry("parakeet-unified-en-0.6b-int8")
+            .unwrap()
+            .license
+            .unwrap()
             .contains("Licensed by NVIDIA Corporation under the NVIDIA Open Model License"));
         // Llama's licence asks for "Built with Llama" where it is offered.
-        assert!(entry(LLAMA32_3B_ID).unwrap().license.unwrap().contains("Built with Llama"));
+        assert!(entry(LLAMA32_3B_ID)
+            .unwrap()
+            .license
+            .unwrap()
+            .contains("Built with Llama"));
     }
 
     /// One list of catalogue ids for the server, Windows and Android:
-    /// `flow_protocol::library::CATALOGUE` (the server infers a tag's engine
+    /// `murmur_protocol::library::CATALOGUE` (the server infers a tag's engine
     /// from it) names exactly these ids, with the same engine and kind.
     #[test]
     fn catalogue_ids_are_the_protocol_list() {
-        use flow_protocol::library::{ModelKind, CATALOGUE};
+        use murmur_protocol::library::{ModelKind, CATALOGUE};
         let mine: Vec<_> = CATALOG.iter().map(|e| e.id).collect();
         let shared: Vec<_> = CATALOGUE.iter().map(|c| c.id).collect();
         assert_eq!(
-            mine.iter().copied().collect::<std::collections::BTreeSet<_>>(),
+            mine.iter()
+                .copied()
+                .collect::<std::collections::BTreeSet<_>>(),
             shared.iter().copied().collect(),
         );
         for e in CATALOG {
-            let c = flow_protocol::library::catalogue(e.id).unwrap();
+            let c = murmur_protocol::library::catalogue(e.id).unwrap();
             let engine = match e.engine {
                 ModelEngine::Whisper => "whisper",
                 ModelEngine::Parakeet => "parakeet",
@@ -1126,12 +1205,18 @@ mod tests {
         Box::leak(hex(&Sha256::digest(b)).into_boxed_str())
     }
 
-    fn entry_of(engine: ModelEngine, files: Vec<(&'static str, &'static [u8])>) -> (CatalogEntry, Mem) {
+    fn entry_of(
+        engine: ModelEngine,
+        files: Vec<(&'static str, &'static [u8])>,
+    ) -> (CatalogEntry, Mem) {
         let mut map = HashMap::new();
         let fs: Vec<ModelFile> = files
             .into_iter()
             .map(|(name, b)| {
-                let url: &'static str = Box::leak(format!("https://huggingface.co/r/resolve/{}/{name}", "a".repeat(40)).into_boxed_str());
+                let url: &'static str = Box::leak(
+                    format!("https://huggingface.co/r/resolve/{}/{name}", "a".repeat(40))
+                        .into_boxed_str(),
+                );
                 map.insert(url, b.to_vec());
                 ModelFile {
                     name,
@@ -1170,15 +1255,23 @@ mod tests {
     }
 
     fn tmp(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("flow-dl-{name}-{}", std::process::id()));
+        let d = std::env::temp_dir().join(format!("murmur-dl-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         d
     }
 
     fn files_in(d: &Path) -> Vec<String> {
         // '/'-separated on every OS so the expectations hold on Windows too.
-        let mut v: Vec<String> =
-            walk(d).into_iter().map(|p| p.strip_prefix(d).unwrap().display().to_string().replace('\\', "/")).collect();
+        let mut v: Vec<String> = walk(d)
+            .into_iter()
+            .map(|p| {
+                p.strip_prefix(d)
+                    .unwrap()
+                    .display()
+                    .to_string()
+                    .replace('\\', "/")
+            })
+            .collect();
         v.sort();
         v
     }
@@ -1200,7 +1293,10 @@ mod tests {
         let (e, mem) = entry_of(ModelEngine::Whisper, vec![("m.bin", b"ggml model bytes")]);
         let d = tmp("single");
         let mut seen = vec![];
-        let p = run(&e, &d, &mem, &AtomicBool::new(false), &mut |p| seen.push(p.state)).unwrap();
+        let p = run(&e, &d, &mem, &AtomicBool::new(false), &mut |p| {
+            seen.push(p.state)
+        })
+        .unwrap();
         assert_eq!(p, d.join("m.bin"));
         assert_eq!(std::fs::read(&p).unwrap(), b"ggml model bytes");
         assert_eq!(files_in(&d), vec!["m.bin"]);
@@ -1213,11 +1309,21 @@ mod tests {
     #[test]
     fn a_wrong_hash_deletes_the_file() {
         let (mut e, mem) = entry_of(ModelEngine::Whisper, vec![("m.bin", b"tampered bytes!!")]);
-        let mut fs: Vec<ModelFile> = e.files.iter().map(|f| ModelFile { sha256: sha(b"the real bytes!!"), ..*f }).collect();
+        let mut fs: Vec<ModelFile> = e
+            .files
+            .iter()
+            .map(|f| ModelFile {
+                sha256: sha(b"the real bytes!!"),
+                ..*f
+            })
+            .collect();
         e.files = Box::leak(std::mem::take(&mut fs).into_boxed_slice());
         let d = tmp("badhash");
         let r = run(&e, &d, &mem, &AtomicBool::new(false), &mut |_| {});
-        assert!(matches!(&r, Err(Stop::Failed(m)) if m.contains("fingerprint")), "{r:?}");
+        assert!(
+            matches!(&r, Err(Stop::Failed(m)) if m.contains("fingerprint")),
+            "{r:?}"
+        );
         assert!(files_in(&d).is_empty(), "{:?}", files_in(&d));
         assert!(!e.installed(&d));
         let _ = std::fs::remove_dir_all(&d);
@@ -1231,7 +1337,10 @@ mod tests {
             mem.files.insert(url, body.to_vec());
             e.files = Box::leak(vec![ModelFile { ..e.files[0] }].into_boxed_slice());
             let d = tmp("size");
-            assert!(matches!(run(&e, &d, &mem, &AtomicBool::new(false), &mut |_| {}), Err(Stop::Failed(_))));
+            assert!(matches!(
+                run(&e, &d, &mem, &AtomicBool::new(false), &mut |_| {}),
+                Err(Stop::Failed(_))
+            ));
             assert!(files_in(&d).is_empty());
             let _ = std::fs::remove_dir_all(&d);
         }
@@ -1241,13 +1350,20 @@ mod tests {
     fn parakeet_fills_its_folder_and_a_retry_skips_verified_files() {
         let (e, mut mem) = entry_of(
             ModelEngine::Parakeet,
-            vec![("encoder.int8.onnx", b"enc"), ("decoder.int8.onnx", b"dec"), ("tokens.txt", b"tok")],
+            vec![
+                ("encoder.int8.onnx", b"enc"),
+                ("decoder.int8.onnx", b"dec"),
+                ("tokens.txt", b"tok"),
+            ],
         );
         let d = tmp("parakeet");
         // First try: the last file is missing upstream.
         let tok = mem.files.remove(e.files[2].url).unwrap();
         assert!(run(&e, &d, &mem, &AtomicBool::new(false), &mut |_| {}).is_err());
-        assert_eq!(files_in(&d), vec!["pk-dir/decoder.int8.onnx", "pk-dir/encoder.int8.onnx"]);
+        assert_eq!(
+            files_in(&d),
+            vec!["pk-dir/decoder.int8.onnx", "pk-dir/encoder.int8.onnx"]
+        );
         assert!(!e.installed(&d));
         // Retry: only tokens.txt is fetched.
         mem.files.insert(e.files[2].url, tok);
@@ -1259,21 +1375,44 @@ mod tests {
         let mut prefs = Prefs::default();
         e.apply_to(&mut prefs, &d);
         assert_eq!(prefs.asr_engine, AsrEngineChoice::Parakeet);
-        assert_eq!(prefs.parakeet_model_dir.as_deref(), Some(d.join("pk-dir").display().to_string().as_str()));
+        assert_eq!(
+            prefs.parakeet_model_dir.as_deref(),
+            Some(d.join("pk-dir").display().to_string().as_str())
+        );
         let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
     fn extras_land_in_the_models_folder_and_are_shared() {
-        let (mut e, mut mem) = entry_of(ModelEngine::SherpaOnline, vec![("encoder.int8.onnx", b"enc"), ("tokens.txt", b"tok")]);
+        let (mut e, mut mem) = entry_of(
+            ModelEngine::SherpaOnline,
+            vec![("encoder.int8.onnx", b"enc"), ("tokens.txt", b"tok")],
+        );
         let lid: &[u8] = b"tiny lid model";
-        let url: &'static str = Box::leak(format!("https://huggingface.co/w/resolve/{}/lid.bin", "b".repeat(40)).into_boxed_str());
+        let url: &'static str = Box::leak(
+            format!(
+                "https://huggingface.co/w/resolve/{}/lid.bin",
+                "b".repeat(40)
+            )
+            .into_boxed_str(),
+        );
         mem.files.insert(url, lid.to_vec());
-        e.extras = Box::leak(vec![ModelFile { name: "lid.bin", url, size: lid.len() as u64, sha256: sha(lid) }].into_boxed_slice());
+        e.extras = Box::leak(
+            vec![ModelFile {
+                name: "lid.bin",
+                url,
+                size: lid.len() as u64,
+                sha256: sha(lid),
+            }]
+            .into_boxed_slice(),
+        );
         let d = tmp("extras");
         assert_eq!(e.missing(&d), 3 + 3 + lid.len() as u64);
         run(&e, &d, &mem, &AtomicBool::new(false), &mut |_| {}).unwrap();
-        assert_eq!(files_in(&d), vec!["lid.bin", "pk-dir/encoder.int8.onnx", "pk-dir/tokens.txt"]);
+        assert_eq!(
+            files_in(&d),
+            vec!["lid.bin", "pk-dir/encoder.int8.onnx", "pk-dir/tokens.txt"]
+        );
         assert!(e.installed(&d) && e.complete(&d) && e.missing(&d) == 0);
         // A model installed before extras existed: installed, not complete;
         // the download fetches only the extra.
@@ -1307,7 +1446,16 @@ mod tests {
         };
         e.apply_to(&mut prefs, Path::new("/m"));
         assert_eq!(prefs.asr_engine, AsrEngineChoice::Whisper);
-        assert_eq!(prefs.model_path.as_deref(), Some(Path::new("/m").join("ggml-small-q5_1.bin").display().to_string().as_str()));
+        assert_eq!(
+            prefs.model_path.as_deref(),
+            Some(
+                Path::new("/m")
+                    .join("ggml-small-q5_1.bin")
+                    .display()
+                    .to_string()
+                    .as_str()
+            )
+        );
     }
 
     #[test]
@@ -1316,7 +1464,10 @@ mod tests {
         let zip = entry(ZIPFORMER_HE_ID).unwrap();
         // Model + the 32 MB language-ID model (H6).
         assert_eq!(zip.size(), 72_316_960 + 32_152_673);
-        assert_eq!(entry(PARAKEET_HE_ID).unwrap().size(), 672_825_290 + 32_152_673);
+        assert_eq!(
+            entry(PARAKEET_HE_ID).unwrap().size(),
+            672_825_290 + 32_152_673
+        );
         assert_eq!(zip.extras[0].name, crate::core_adapter::LID_FILE);
         let mut prefs = Prefs {
             asr_engine: AsrEngineChoice::Parakeet,
@@ -1338,15 +1489,35 @@ mod tests {
         let ivrit = entry(IVRIT_TURBO_ID).unwrap();
         assert_eq!(ivrit.size(), 574_041_195 + 32_152_673);
         assert!(!ivrit.is_dir());
-        assert_eq!(ivrit.dest_path(d), d.join("ggml-ivrit-large-v3-turbo-q5_0.bin"));
+        assert_eq!(
+            ivrit.dest_path(d),
+            d.join("ggml-ivrit-large-v3-turbo-q5_0.bin")
+        );
         assert_eq!(ivrit.files[0].name, ivrit.dest);
-        assert!(ivrit.files[0].url.contains("/resolve/540d7736f31952a65efbdff0dc41e2b4b086a197/"), "{}", ivrit.files[0].url);
+        assert!(
+            ivrit.files[0]
+                .url
+                .contains("/resolve/540d7736f31952a65efbdff0dc41e2b4b086a197/"),
+            "{}",
+            ivrit.files[0].url
+        );
         prefs.hebrew_model_dir = Some("/srv/custom".into());
         ivrit.apply_to(&mut prefs, d);
         assert_eq!(prefs.hebrew_model, HebrewModel::IvritTurbo);
-        assert_eq!(prefs.hebrew_model_dir, None, "a catalogue pick clears a server folder");
-        assert_eq!(prefs.asr_engine, AsrEngineChoice::Parakeet, "the default model stays");
-        assert_eq!(prefs.resolved_hebrew_dir(Some("/ad")).unwrap(), crate::core_adapter::models_dir(Some("/ad")).join(crate::core_adapter::IVRIT_TURBO_FILE));
+        assert_eq!(
+            prefs.hebrew_model_dir, None,
+            "a catalogue pick clears a server folder"
+        );
+        assert_eq!(
+            prefs.asr_engine,
+            AsrEngineChoice::Parakeet,
+            "the default model stays"
+        );
+        assert_eq!(
+            prefs.resolved_hebrew_dir(Some("/ad")).unwrap(),
+            crate::core_adapter::models_dir(Some("/ad"))
+                .join(crate::core_adapter::IVRIT_TURBO_FILE)
+        );
     }
 
     #[test]
@@ -1360,7 +1531,11 @@ mod tests {
         let llm: Vec<_> = CATALOG.iter().filter(|e| e.is_llm()).collect();
         assert_eq!(
             llm.iter().map(|e| e.id).collect::<Vec<_>>(),
-            ["qwen2.5-0.5b-instruct-q4_k_m", "qwen2.5-1.5b-instruct-q4_k_m", LLAMA32_3B_ID]
+            [
+                "qwen2.5-0.5b-instruct-q4_k_m",
+                "qwen2.5-1.5b-instruct-q4_k_m",
+                LLAMA32_3B_ID
+            ]
         );
         for e in &llm {
             // One GGUF saved as itself in the models folder, from Qwen's repo.
@@ -1370,7 +1545,9 @@ mod tests {
             assert!(e.dest.ends_with(".gguf"));
             assert!(
                 e.files[0].url.starts_with("https://huggingface.co/Qwen/")
-                    || e.files[0].url.starts_with("https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/"),
+                    || e.files[0].url.starts_with(
+                        "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/"
+                    ),
                 "{}",
                 e.files[0].url
             );
@@ -1384,13 +1561,22 @@ mod tests {
         assert_eq!(llm[1].size(), 1_117_320_736);
         // docs/findings/2026-10-30-laptop-model-benchmark.md § Catalogue entries.
         assert_eq!(llm[2].size(), 2_019_377_696);
-        assert_eq!(llm[2].files[0].sha256, "6c1a2b41161032677be168d354123594c0e6e67d2b9227c84f296ad037c728ff");
-        assert!(llm[2].files[0].url.contains("/resolve/5ab33fa94d1d04e903623ae72c95d1696f09f9e8/"));
+        assert_eq!(
+            llm[2].files[0].sha256,
+            "6c1a2b41161032677be168d354123594c0e6e67d2b9227c84f296ad037c728ff"
+        );
+        assert!(llm[2].files[0]
+            .url
+            .contains("/resolve/5ab33fa94d1d04e903623ae72c95d1696f09f9e8/"));
         // Exactly one pick each for a CPU-only PC and for a GPU.
         assert_eq!(llm.iter().filter(|e| e.recommended).count(), 1);
         assert_eq!(llm.iter().filter(|e| e.recommended_gpu).count(), 1);
         // Of the speech models only the Hebrew GPU pick carries the flag.
-        let gpu_speech: Vec<_> = CATALOG.iter().filter(|e| !e.is_llm() && e.recommended_gpu).map(|e| e.id).collect();
+        let gpu_speech: Vec<_> = CATALOG
+            .iter()
+            .filter(|e| !e.is_llm() && e.recommended_gpu)
+            .map(|e| e.id)
+            .collect();
         assert_eq!(gpu_speech, [IVRIT_TURBO_ID]);
     }
 
@@ -1400,9 +1586,17 @@ mod tests {
         assert_eq!(recommended_llm(false).id, "qwen2.5-1.5b-instruct-q4_k_m");
         // The CPU pick is also the default file the app loads without a
         // configured path (D11).
-        assert_eq!(recommended_llm(false).dest, crate::core_adapter::DEFAULT_LLM_FILE);
+        assert_eq!(
+            recommended_llm(false).dest,
+            crate::core_adapter::DEFAULT_LLM_FILE
+        );
         let v = catalog_view(&tmp("rec"), true, |_| true);
-        let r = |id: &str| v.iter().find(|r| r.id == id).map(|r| (r.recommended, r.recommended_gpu)).unwrap();
+        let r = |id: &str| {
+            v.iter()
+                .find(|r| r.id == id)
+                .map(|r| (r.recommended, r.recommended_gpu))
+                .unwrap()
+        };
         assert_eq!(r(LLAMA32_3B_ID), (false, true));
         assert_eq!(r("qwen2.5-1.5b-instruct-q4_k_m"), (true, false));
         assert_eq!(r("qwen2.5-0.5b-instruct-q4_k_m"), (false, false));
@@ -1421,11 +1615,24 @@ mod tests {
         e.apply_to(&mut prefs, d);
         assert!(prefs.llm_enabled);
         let want = d.join("qwen2.5-1.5b-instruct-q4_k_m.gguf");
-        assert_eq!(prefs.llm_model_path.as_deref(), Some(want.display().to_string().as_str()));
+        assert_eq!(
+            prefs.llm_model_path.as_deref(),
+            Some(want.display().to_string().as_str())
+        );
         assert_eq!(prefs.resolved_llm_path(None), want);
         assert_eq!(
-            (prefs.asr_engine, &prefs.model_path, &prefs.parakeet_model_dir, prefs.hebrew_model),
-            (before.asr_engine, &before.model_path, &before.parakeet_model_dir, before.hebrew_model)
+            (
+                prefs.asr_engine,
+                &prefs.model_path,
+                &prefs.parakeet_model_dir,
+                prefs.hebrew_model
+            ),
+            (
+                before.asr_engine,
+                &before.model_path,
+                &before.parakeet_model_dir,
+                before.hebrew_model
+            )
         );
         // The engine loads it: the cleanup spec changed.
         assert!(crate::core_adapter::needs_llm_reload(&before, &prefs));
@@ -1457,7 +1664,7 @@ mod tests {
         assert!(files_in(&d).is_empty(), "{:?}", files_in(&d));
         assert!(!e.installed(&d));
         e.delete(&d).unwrap(); // already gone: fine
-        // Speech models are never deleted from here.
+                               // Speech models are never deleted from here.
         assert!(entry("whisper-base").unwrap().delete(&d).is_err());
         let _ = std::fs::remove_dir_all(&d);
     }
@@ -1481,13 +1688,23 @@ mod tests {
         let d = tmp("view");
         let v = catalog_view(&d, true, |e| e == ModelEngine::Whisper);
         assert_eq!(v.len(), CATALOG.len());
-        let pk = v.iter().find(|r| r.id == "parakeet-tdt-0.6b-v2-int8").unwrap();
+        let pk = v
+            .iter()
+            .find(|r| r.id == "parakeet-tdt-0.6b-v2-int8")
+            .unwrap();
         assert!(!pk.available && !pk.installed);
         assert_eq!(pk.size, 661_190_513);
-        assert!(v.iter().filter(|r| r.engine == ModelEngine::Whisper).all(|r| r.available));
-        assert!(catalog_view(&d, false, |_| true).iter().all(|r| !r.available));
+        assert!(v
+            .iter()
+            .filter(|r| r.engine == ModelEngine::Whisper)
+            .all(|r| r.available));
+        assert!(catalog_view(&d, false, |_| true)
+            .iter()
+            .all(|r| !r.available));
         // No downloader (client-only build): every model can still be imported.
-        assert!(catalog_view(&d, false, |_| true).iter().all(|r| r.importable));
+        assert!(catalog_view(&d, false, |_| true)
+            .iter()
+            .all(|r| r.importable));
         assert!(!pk.importable);
         let he = serde_json::to_value(v.iter().find(|r| r.id == ZIPFORMER_HE_ID).unwrap()).unwrap();
         assert_eq!(he["language"], "he");
@@ -1495,11 +1712,19 @@ mod tests {
         assert!(he["license"].as_str().unwrap().contains("ivrit.ai"));
         assert_eq!(he["files"][4]["extra"], true);
         assert!(he["files"][0].get("extra").is_none());
-        let q = serde_json::to_value(v.iter().find(|r| r.id == "qwen2.5-0.5b-instruct-q4_k_m").unwrap()).unwrap();
+        let q = serde_json::to_value(
+            v.iter()
+                .find(|r| r.id == "qwen2.5-0.5b-instruct-q4_k_m")
+                .unwrap(),
+        )
+        .unwrap();
         assert_eq!(q["engine"], "llm");
         let en = serde_json::to_value(pk).unwrap();
         assert!(en.get("language").is_none());
-        assert!(en["license"].as_str().unwrap().starts_with("CC-BY-4.0 · NVIDIA"));
+        assert!(en["license"]
+            .as_str()
+            .unwrap()
+            .starts_with("CC-BY-4.0 · NVIDIA"));
         let j = serde_json::to_value(Progress {
             id: "whisper-base".into(),
             received: 1,
@@ -1509,6 +1734,9 @@ mod tests {
             path: None,
         })
         .unwrap();
-        assert_eq!(j, serde_json::json!({"id": "whisper-base", "received": 1, "total": 2, "state": "downloading"}));
+        assert_eq!(
+            j,
+            serde_json::json!({"id": "whisper-base", "received": 1, "total": 2, "state": "downloading"})
+        );
     }
 }

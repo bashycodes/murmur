@@ -1,11 +1,11 @@
-package dev.flowclone.core
+package dev.murmur.core
 
 /**
  * In-process stand-in for the Rust core: returns [transcript] for any session that
  * received non-silent audio. Used by unit tests and by the "mock engine" debug setting
- * so the shell (bubble → insertion) can be exercised on a device without libflow_ffi.so.
+ * so the shell (bubble → insertion) can be exercised on a device without libmurmur_ffi.so.
  */
-class FakeFlowCore(@Volatile var transcript: String = "", private val hasLlm: Boolean = false) : FlowCore {
+class FakeMurmurCore(@Volatile var transcript: String = "", private val hasLlm: Boolean = false) : MurmurCore {
     @Volatile private var active = false
     @Volatile private var heardSignal = false
     @Volatile var samplesPushed = 0; private set

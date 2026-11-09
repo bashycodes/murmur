@@ -1,18 +1,18 @@
 //! D18 C3/C4: a sentinel API key never appears in any output: router config
 //! JSON and Debug, route status, health reports, capabilities, usage, commit
 //! results and error strings of every failure path, the provider call
-//! metadata, and the flow-protocol frames a session sends to flow-server.
+//! metadata, and the murmur-protocol frames a session sends to murmur-server.
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use flow_cloud::testing::Reply;
-use flow_contract_tests::*;
-use flow_core::config::{FieldContext, SessionConfig};
-use flow_core::dictionary::{DictEntry, Dictionary};
-use flow_router::{Route, Router, RouterConfig};
+use murmur_cloud::testing::Reply;
+use murmur_contract_tests::*;
+use murmur_core::config::{FieldContext, SessionConfig};
+use murmur_core::dictionary::{DictEntry, Dictionary};
+use murmur_router::{Route, Router, RouterConfig};
 
 const NEEDLES: [&str; 2] = [CLOUD_KEY, "LEAKCHECK"];
 
@@ -32,7 +32,7 @@ fn session() -> SessionConfig {
     }
 }
 
-fn dictate(r: &Router) -> flow_core::CommitResult {
+fn dictate(r: &Router) -> murmur_core::CommitResult {
     let _ = r.start_session(session());
     for c in speech(1500).chunks(FRAME) {
         r.push_audio(c);
@@ -139,9 +139,13 @@ fn key_absent_from_every_failure_path() {
         let mut cfg = r.config();
         cfg.cloud.openrouter.stt.timeout_base_ms = 1000;
         r.update_config(cfg);
-        r.set_cloud_key(CLOUD_ID, Some(flow_router::SecretString::new(CLOUD_KEY)));
+        r.set_cloud_key(CLOUD_ID, Some(murmur_router::SecretString::new(CLOUD_KEY)));
         let res = dictate(&r);
-        assert_eq!(res.status, flow_core::CommitStatus::Error, "HTTP {status}");
+        assert_eq!(
+            res.status,
+            murmur_core::CommitStatus::Error,
+            "HTTP {status}"
+        );
         let what = format!("HTTP {status}");
         assert_clean(&what, &serde_json::to_string(&res).unwrap());
         assert_clean(&what, res.error.as_deref().unwrap_or(""));
@@ -171,20 +175,20 @@ fn key_absent_from_every_failure_path() {
 fn provider_call_metadata_has_no_key_or_text() {
     let provider = mock_cloud_fixed(Reply::json(401, serde_json::json!({})));
     let _ = &provider;
-    let b = flow_cloud::CloudBackend::new(
-        flow_cloud::SttSettings::default(),
-        flow_router::SecretString::new(CLOUD_KEY),
+    let b = murmur_cloud::CloudBackend::new(
+        murmur_cloud::SttSettings::default(),
+        murmur_router::SecretString::new(CLOUD_KEY),
         None,
     );
-    let h = flow_router::Backend::probe(&b);
+    let h = murmur_router::Backend::probe(&b);
     assert_clean("probe", &serde_json::to_string(&h).unwrap());
     let info = format!("{:?}", b.last_call());
     assert_clean("last_call", &info);
 }
 
-// ---- C4: nothing cloud-related reaches flow-server ----------------------------
+// ---- C4: nothing cloud-related reaches murmur-server ----------------------------
 
-/// TCP proxy in front of flow-server recording client → server bytes.
+/// TCP proxy in front of murmur-server recording client → server bytes.
 fn recording_proxy(target: std::net::SocketAddr) -> (std::net::SocketAddr, Arc<Mutex<Vec<u8>>>) {
     let l = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = l.local_addr().unwrap();
@@ -321,7 +325,7 @@ fn openrouter_sends_the_key_only_in_authorization() {
     );
     let r = cloud_router(cfg, None);
     let res = dictate(&r);
-    assert_eq!(res.status, flow_core::CommitStatus::Error);
+    assert_eq!(res.status, murmur_core::CommitStatus::Error);
     assert_clean("openrouter", &serde_json::to_string(&res).unwrap());
     for (w, s) in router_outputs(&r) {
         assert_clean(&format!("openrouter {w}"), &s);
@@ -333,7 +337,7 @@ fn openrouter_sends_the_key_only_in_authorization() {
     }
 }
 
-fn assert_key_only_in_auth(req: &flow_cloud::testing::Recorded) {
+fn assert_key_only_in_auth(req: &murmur_cloud::testing::Recorded) {
     let mut seen = false;
     for (k, v) in &req.headers {
         if v.contains(CLOUD_KEY) {
@@ -370,25 +374,26 @@ fn cleaner_catalogue_and_key_info_never_leak_the_key() {
             serde_json::json!({"error": {"code": 503, "message": format!("routing requirements {CLOUD_KEY}")}}),
         ),
     });
-    let key = flow_router::SecretString::new(CLOUD_KEY);
+    let key = murmur_router::SecretString::new(CLOUD_KEY);
     // Cleaner: error path + info + last call.
-    let c = flow_cloud::OpenRouterCleaner::new(flow_cloud::CleanupSettings::default(), key.clone());
-    let p = flow_core::cleanup::warm_prompt();
-    let e = flow_core::cleanup::Cleaner::clean(&c, &p, Instant::now() + Duration::from_secs(3))
+    let c =
+        murmur_cloud::OpenRouterCleaner::new(murmur_cloud::CleanupSettings::default(), key.clone());
+    let p = murmur_core::cleanup::warm_prompt();
+    let e = murmur_core::cleanup::Cleaner::clean(&c, &p, Instant::now() + Duration::from_secs(3))
         .unwrap_err();
     assert_clean("cleanup error", &e.to_string());
     assert_eq!(e.to_string(), "no_private_route");
     assert_clean(
         "cleaner info",
-        &flow_core::cleanup::Cleaner::info_json(&c).unwrap(),
+        &murmur_core::cleanup::Cleaner::info_json(&c).unwrap(),
     );
     assert_clean("cleaner last_call", &format!("{:?}", c.last_call()));
     assert_clean("cleaner debug", &format!("{c:?}"));
     // Catalogue with a key (the account list fails and echoes the key).
-    let cat = flow_cloud::catalog::refresh(&flow_cloud::Api::new(), Some(&key)).unwrap();
+    let cat = murmur_cloud::catalog::refresh(&murmur_cloud::Api::new(), Some(&key)).unwrap();
     assert_clean("catalogue", &cat.to_json());
     // Key info.
-    let k = flow_cloud::keyinfo::fetch(&key).unwrap();
+    let k = murmur_cloud::keyinfo::fetch(&key).unwrap();
     assert_clean("key info", &serde_json::to_string(&k).unwrap());
     assert_clean("key info debug", &format!("{k:?}"));
     for req in provider.requests() {

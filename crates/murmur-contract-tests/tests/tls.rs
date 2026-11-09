@@ -1,8 +1,8 @@
 //! wss:// with a self-signed, pinned certificate (LAN without a VPN).
 
-use flow_contract_tests::*;
-use flow_core::config::SessionConfig;
-use flow_router::{Router, RouterConfig};
+use murmur_contract_tests::*;
+use murmur_core::config::SessionConfig;
+use murmur_router::{Router, RouterConfig};
 use sha2::{Digest, Sha256};
 
 struct Tls {
@@ -24,7 +24,7 @@ fn tls_server() -> Tls {
         .map(|b| format!("{b:02x}"))
         .collect::<String>();
     let mut cfg = server_cfg(mock_model("over tls"));
-    cfg.tls = Some(flow_server::config::TlsConfig { cert, key });
+    cfg.tls = Some(murmur_server::config::TlsConfig { cert, key });
     Tls {
         _dir: dir,
         server: spawn_server(cfg),
@@ -39,7 +39,7 @@ fn router(t: &Tls, pin: Option<String>) -> Router {
     hybrid_router(c, None)
 }
 
-fn dictate(r: &Router) -> flow_core::CommitResult {
+fn dictate(r: &Router) -> murmur_core::CommitResult {
     let _ = r.start_session(SessionConfig::default());
     for c in speech(1000).chunks(FRAME) {
         r.push_audio(c);

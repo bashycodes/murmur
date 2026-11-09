@@ -1,7 +1,7 @@
 //! VAD / hallucination-guard measurement on real whisper.cpp (ignored by
 //! default; it takes a minute). Run:
-//!   cargo test --release -p flow-core --features whisper,wav --test vad_bench -- --ignored --nocapture
-//! Env: FLOW_BENCH_MODELS="ggml-tiny.en.bin,ggml-base.en.bin", FLOW_BENCH_REPS=2.
+//!   cargo test --release -p murmur-core --features whisper,wav --test vad_bench -- --ignored --nocapture
+//! Env: MURMUR_BENCH_MODELS="ggml-tiny.en.bin,ggml-base.en.bin", MURMUR_BENCH_REPS=2.
 //!
 //! Cases: jfk.wav as is; jfk padded with 3 s of room noise each side; 3 s
 //! of room noise alone (RMS ≈ 0.005, above the old whole-buffer gate).
@@ -9,11 +9,11 @@
 
 use std::path::PathBuf;
 
-use flow_core::config::{AsrBackend, ModelConfig, SessionConfig};
-use flow_core::{audio, FlowCore};
+use murmur_core::config::{AsrBackend, ModelConfig, SessionConfig};
+use murmur_core::{audio, MurmurCore};
 
 fn models_dir() -> PathBuf {
-    std::env::var_os("FLOW_MODELS_DIR")
+    std::env::var_os("MURMUR_MODELS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../models"))
 }
@@ -38,11 +38,11 @@ fn vad_saves_asr_time() {
         eprintln!("SKIP: no jfk.wav");
         return;
     };
-    let reps: usize = std::env::var("FLOW_BENCH_REPS")
+    let reps: usize = std::env::var("MURMUR_BENCH_REPS")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(2);
-    let models = std::env::var("FLOW_BENCH_MODELS")
+    let models = std::env::var("MURMUR_BENCH_MODELS")
         .unwrap_or_else(|_| "ggml-tiny.en.bin,ggml-base.en.bin".into());
     let pad = noise(48_000, 0.004, 1);
     let padded = [pad.clone(), jfk.clone(), noise(48_000, 0.004, 2)].concat();
@@ -58,7 +58,7 @@ fn vad_saves_asr_time() {
             eprintln!("SKIP: {}", path.display());
             continue;
         }
-        let core = FlowCore::load_models(&ModelConfig {
+        let core = MurmurCore::load_models(&ModelConfig {
             asr_backend: AsrBackend::Whisper,
             asr_path: path.to_string_lossy().into(),
             ..Default::default()

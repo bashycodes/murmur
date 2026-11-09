@@ -4,7 +4,7 @@
 //! the JNI wire shape and the pill texts can't drift from the Kotlin side
 //! unnoticed. Every `CommandError` kind is covered.
 
-use flow_core::command::{result_json, CommandError};
+use murmur_core::command::{result_json, CommandError};
 use serde_json::Value;
 
 fn fixture() -> Value {
@@ -59,5 +59,5 @@ fn the_max_selection_vector_is_the_real_limit() {
         .iter()
         .find_map(|c| c["input"].get("max").and_then(Value::as_u64))
         .unwrap();
-    assert_eq!(max as usize, flow_core::command::MAX_SELECTION_CHARS);
+    assert_eq!(max as usize, murmur_core::command::MAX_SELECTION_CHARS);
 }

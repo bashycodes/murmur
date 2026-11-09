@@ -1,12 +1,12 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.core.CommitResult
-import dev.flowclone.core.CommitStatus
-import dev.flowclone.core.RouteInfo
-import dev.flowclone.core.Timings
-import dev.flowclone.data.DevPages.Page
-import dev.flowclone.data.DevSettings.Route
-import dev.flowclone.data.DevSettingsForm.Field
+import dev.murmur.core.CommitResult
+import dev.murmur.core.CommitStatus
+import dev.murmur.core.RouteInfo
+import dev.murmur.core.Timings
+import dev.murmur.data.DevPages.Page
+import dev.murmur.data.DevSettings.Route
+import dev.murmur.data.DevSettingsForm.Field
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull

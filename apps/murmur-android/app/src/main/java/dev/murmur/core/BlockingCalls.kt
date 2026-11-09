@@ -1,9 +1,9 @@
-package dev.flowclone.core
+package dev.murmur.core
 
 /**
  * StrictMode-style guard for review C2: native calls that can block (model load, session start
- * on the server route, commit, probes) must never run on the main thread. [NativeFlowCore] and
- * [FakeFlowCore] call [check] on entry; the app wires [isMainThread] to the main Looper and
+ * on the server route, commit, probes) must never run on the main thread. [NativeMurmurCore] and
+ * [FakeMurmurCore] call [check] on entry; the app wires [isMainThread] to the main Looper and
  * [onViolation] to a loud log line, tests wire both to assertions.
  */
 object BlockingCalls {

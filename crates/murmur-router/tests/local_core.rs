@@ -1,13 +1,13 @@
-//! The router over a real `FlowCore` (MockAsr): the local path behaves like
-//! FlowCore itself, and a fallback replay loses no samples.
+//! The router over a real `MurmurCore` (MockAsr): the local path behaves like
+//! MurmurCore itself, and a fallback replay loses no samples.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
-use flow_core::asr::MockAsr;
-use flow_core::FlowCore;
-use flow_router::*;
+use murmur_core::asr::MockAsr;
+use murmur_core::MurmurCore;
+use murmur_router::*;
 
 fn speech(ms: usize) -> Vec<i16> {
     (0..ms * 16)
@@ -32,13 +32,13 @@ fn session() -> SessionConfig {
 #[test]
 fn local_route_equals_flowcore_directly() {
     let asr_text = "um so zephyr is great press enter";
-    let direct = FlowCore::from_engines(Arc::new(MockAsr::new(asr_text)), None);
+    let direct = MurmurCore::from_engines(Arc::new(MockAsr::new(asr_text)), None);
     direct.start_session(session()).unwrap();
     direct.set_context(FieldContext::default());
     direct.push_audio(&speech(1000));
     let want = direct.commit();
 
-    let core = Arc::new(FlowCore::from_engines(
+    let core = Arc::new(MurmurCore::from_engines(
         Arc::new(MockAsr::new(asr_text)),
         None,
     ));
@@ -97,11 +97,11 @@ impl Backend for DyingRemote {
 #[test]
 fn fallback_replay_of_a_long_buffer_drops_nothing() {
     let asr = Arc::new(MockAsr::new("hello"));
-    let core = Arc::new(FlowCore::from_engines(asr.clone(), None));
+    let core = Arc::new(MurmurCore::from_engines(asr.clone(), None));
     let factory: RemoteFactory = Box::new(|_| {
         Arc::new(DyingRemote {
             got: AtomicU64::new(0),
-            // Dies after 50 s: longer than FlowCore's default 30 s ring.
+            // Dies after 50 s: longer than MurmurCore's default 30 s ring.
             die_at: 16_000 * 50,
         }) as Arc<dyn Backend>
     });

@@ -1,5 +1,5 @@
-// Flow bar pill, styled after the design artboard
-// docs/design/app-design/FlowBar.dc.html. The window
+// Murmur bar pill, styled after the design artboard
+// docs/design/app-design/MurmurBar.dc.html. The window
 // is a fixed 512x614 transparent canvas; states are pure CSS on
 // #pill[data-state] (+ data-done while the engine badge shows).
 // Backend events: `dictation:status` ({state, message?}), `audio:level`
@@ -100,7 +100,7 @@ function apply(s: OverlayState): void {
   syncDone();
 }
 
-// Settings pages the Flow bar may open (src/app.rs OVERLAY_SETTINGS_PAGES).
+// Settings pages the Murmur bar may open (src/app.rs OVERLAY_SETTINGS_PAGES).
 type FixPage = "settings-speech" | "settings-cleanup" | "settings-openrouter" | "settings-server";
 interface Fix {
   page: FixPage;

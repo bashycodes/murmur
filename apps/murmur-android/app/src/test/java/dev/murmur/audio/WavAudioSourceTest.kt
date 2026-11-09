@@ -1,8 +1,8 @@
-package dev.flowclone.audio
+package dev.murmur.audio
 
-import dev.flowclone.debug.Wav
-import dev.flowclone.session.AudioBatcher
-import dev.flowclone.session.AudioSource
+import dev.murmur.debug.Wav
+import dev.murmur.session.AudioBatcher
+import dev.murmur.session.AudioSource
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

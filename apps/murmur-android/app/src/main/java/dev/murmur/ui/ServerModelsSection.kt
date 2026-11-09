@@ -1,13 +1,13 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.app.Activity
 import android.widget.LinearLayout
-import dev.flowclone.data.ModelPages
+import dev.murmur.data.ModelPages
 import java.io.File
 
 /**
  * D41: the "From your server" block of a model screen ([ModelImportActivity]). Only the hybrid /
- * remote flavours have one (`dev.flowclone.server.ServerModels`, src/server); the local
+ * remote flavours have one (`dev.murmur.server.ServerModels`, src/server); the local
  * flavour's stand-in (src/noserver) returns none, so it stays import-only with no network code.
  */
 internal interface ServerModelsSection {

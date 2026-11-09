@@ -1,10 +1,10 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.core.CleanupLevel
-import dev.flowclone.data.DevSettings.CleanupRoute
-import dev.flowclone.data.DevSettings.CleanupRoute.CLOUD
-import dev.flowclone.data.DevSettings.CleanupRoute.LOCAL
-import dev.flowclone.data.DevSettings.CleanupRoute.SERVER
+import dev.murmur.core.CleanupLevel
+import dev.murmur.data.DevSettings.CleanupRoute
+import dev.murmur.data.DevSettings.CleanupRoute.CLOUD
+import dev.murmur.data.DevSettings.CleanupRoute.LOCAL
+import dev.murmur.data.DevSettings.CleanupRoute.SERVER
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

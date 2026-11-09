@@ -1,4 +1,4 @@
-//! Local transcript history: `%APPDATA%\FlowClone\history.sqlite`.
+//! Local transcript history: `%APPDATA%\Murmur\history.sqlite`.
 //!
 //! Schema:
 //! `history(id, ts, app, url, raw, formatted, pasted, edited, duration, words, lang)`,
@@ -714,7 +714,7 @@ mod tests {
     #[test]
     fn deleted_transcripts_leave_no_trace_on_disk() {
         // review S17: secure_delete + WAL truncate.
-        let dir = std::env::temp_dir().join(format!("flow-hist-scrub-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("murmur-hist-scrub-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let path = dir.join("history.sqlite");
         let h = History::open(&path).unwrap();
@@ -829,7 +829,7 @@ mod tests {
 
     #[test]
     fn a_database_from_before_command_mode_gains_its_columns() {
-        let dir = std::env::temp_dir().join(format!("flow-hist-mig-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("murmur-hist-mig-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         let path = dir.join("history.sqlite");
         let _ = std::fs::remove_file(&path);
@@ -1103,7 +1103,7 @@ mod tests {
 
     #[test]
     fn deleted_audio_leaves_no_trace_on_disk() {
-        let dir = std::env::temp_dir().join(format!("flow-hist-audio-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("murmur-hist-audio-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let path = dir.join("history.sqlite");
         let h = History::open(&path).unwrap();
@@ -1207,7 +1207,8 @@ mod tests {
 
     #[test]
     fn a_database_from_before_retry_gains_its_tables() {
-        let dir = std::env::temp_dir().join(format!("flow-hist-mig-retry-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("murmur-hist-mig-retry-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let _ = std::fs::create_dir_all(&dir);
         let path = dir.join("history.sqlite");
@@ -1270,7 +1271,7 @@ mod tests {
 
     #[test]
     fn file_db_persists_across_open() {
-        let d = std::env::temp_dir().join(format!("flow-hist-{}", std::process::id()));
+        let d = std::env::temp_dir().join(format!("murmur-hist-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         let p = d.join(FILE_NAME);
         History::open(&p)

@@ -34,7 +34,7 @@ fn jvm_round_trip() {
             "build",
             "-q",
             "-p",
-            "flow-ffi",
+            "murmur-ffi",
             "--features",
             &features,
             "--lib",
@@ -46,13 +46,13 @@ fn jvm_round_trip() {
     let exe = std::env::current_exe().unwrap();
     let lib_dir = exe.parent().unwrap().parent().unwrap().to_path_buf();
     assert!(
-        lib_dir.join("libflow_ffi.so").exists(),
+        lib_dir.join("libmurmur_ffi.so").exists(),
         "build the cdylib: {}",
         lib_dir.display()
     );
-    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/java/dev/flowclone/core/JniSmoke.java");
-    // With `remote`: an in-process flow-server (mock ASR) the JVM routes to.
+    let src =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/java/dev/murmur/core/JniSmoke.java");
+    // With `remote`: an in-process murmur-server (mock ASR) the JVM routes to.
     #[cfg(feature = "remote")]
     let server = InProcessServer::start("hello btw");
     #[cfg(feature = "remote")]
@@ -75,7 +75,7 @@ fn jvm_round_trip() {
     let mut lines = stdout.lines();
     assert_eq!(
         lines.next().unwrap(),
-        format!("flow-ffi {}", flow_build_info::FULL)
+        format!("murmur-ffi {}", murmur_build_info::FULL)
     );
     assert_eq!(lines.next().unwrap(), "null", "no partials configured");
     let commit: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
@@ -157,20 +157,20 @@ const TOKEN: &str = "jni-smoke-token-0123456789abcdef";
 #[cfg(feature = "remote")]
 struct InProcessServer {
     addr: String,
-    _handle: flow_server::ServerHandle,
+    _handle: murmur_server::ServerHandle,
     _rt: tokio::runtime::Runtime,
 }
 
 #[cfg(feature = "remote")]
 impl InProcessServer {
     fn start(text: &str) -> Self {
-        use flow_core::config::{AsrBackend, ModelConfig};
+        use murmur_core::config::{AsrBackend, ModelConfig};
         let rt = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .enable_all()
             .build()
             .unwrap();
-        let cfg = flow_server::config::Config {
+        let cfg = murmur_server::config::Config {
             bind: vec!["127.0.0.1:0".into()],
             token: Some(TOKEN.into()),
             model: ModelConfig {
@@ -181,7 +181,7 @@ impl InProcessServer {
         };
         let handle = rt.block_on(async {
             let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-            flow_server::serve(cfg, vec![l])
+            murmur_server::serve(cfg, vec![l])
                 .await
                 .expect("server starts")
         });
@@ -194,18 +194,18 @@ impl InProcessServer {
 }
 
 /// Every symbol in JNI_CONTRACT.md is exported by the cdylib, and no stale
-/// `com.flowclone` names remain.
+/// `com.murmur` names remain.
 #[test]
 fn contract_symbols_exported() {
     let contract = std::fs::read_to_string(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../apps/flow-android/JNI_CONTRACT.md"),
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../apps/murmur-android/JNI_CONTRACT.md"),
     )
     .unwrap();
     let want: std::collections::BTreeSet<&str> = contract
         .split('`')
         .filter(|w| {
-            w.starts_with("Java_dev_flowclone_core_NativeFlowCore_native")
-                || w.starts_with("Java_dev_flowclone_server_ServerLibraryNative_native")
+            w.starts_with("Java_dev_murmur_core_NativeMurmurCore_native")
+                || w.starts_with("Java_dev_murmur_server_ServerLibraryNative_native")
         })
         .collect();
     // D28: +10 OpenRouter natives; +1 Command Mode; +1 nativeBenchClean; D41: +2 model library (feature `library`);

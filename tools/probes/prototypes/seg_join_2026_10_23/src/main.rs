@@ -1,10 +1,10 @@
 //! Probe (2026-10-23, fix/seg-polish): print each D22 piece, each bridge
 //! decode and the splice result for a clip, offline (no session, no
-//! pacing), mirroring `FlowCore::commit_segmented`'s piece/bridge ranges.
+//! pacing), mirroring `MurmurCore::commit_segmented`'s piece/bridge ranges.
 //! usage: seg-join-probe parakeet|whisper <model> <wav> [pause_ms]
-use flow_core::asr::{AsrEngine, AsrRequest};
-use flow_core::segment::{self, SegmentParams, Segmenter};
-use flow_core::vad;
+use murmur_core::asr::{AsrEngine, AsrRequest};
+use murmur_core::segment::{self, SegmentParams, Segmenter};
+use murmur_core::vad;
 
 fn dec(asr: &dyn AsrEngine, pcm: &[f32]) -> String {
     let Some(sp) = vad::detect(pcm) else { return String::new() };
@@ -15,10 +15,10 @@ fn dec(asr: &dyn AsrEngine, pcm: &[f32]) -> String {
 fn main() {
     let a: Vec<String> = std::env::args().collect();
     let asr: Box<dyn AsrEngine> = match a[1].as_str() {
-        "parakeet" => Box::new(flow_core::parakeet::ParakeetAsr::load(&a[2], 4).unwrap()),
-        _ => Box::new(flow_core::whisper::WhisperEngine::load(&a[2], 4).unwrap()),
+        "parakeet" => Box::new(murmur_core::parakeet::ParakeetAsr::load(&a[2], 4).unwrap()),
+        _ => Box::new(murmur_core::whisper::WhisperEngine::load(&a[2], 4).unwrap()),
     };
-    let pcm: Vec<f32> = flow_core::audio::read_wav_16k_mono(std::path::Path::new(&a[3])).unwrap().iter().map(|&s| s as f32 / 32768.0).collect();
+    let pcm: Vec<f32> = murmur_core::audio::read_wav_16k_mono(std::path::Path::new(&a[3])).unwrap().iter().map(|&s| s as f32 / 32768.0).collect();
     let pause = a.get(4).map_or(800, |p| p.parse().unwrap());
     let mut sg = Segmenter::new(SegmentParams { pause_ms: pause, min_ms: 4000, soft_max_ms: 20000 });
     for c in pcm.chunks(1600) { sg.push(c); }

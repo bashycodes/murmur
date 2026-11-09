@@ -2,19 +2,19 @@
 //! server (plain http on loopback, no base-URL override needed: the URL is
 //! user-typed): streamed plain chat completions with no OpenRouter fields,
 //! optional key, `/models` list, optional LiteLLM cost header, and a
-//! router-level dictation through `flow_cloud::attach`.
+//! router-level dictation through `murmur_cloud::attach`.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use flow_cloud::custom::{self, CustomCleaner, COST_HEADER, COST_HEADER_ORIGINAL};
-use flow_cloud::testing::{MockServer, Reply};
-use flow_cloud::CloudError;
-use flow_core::cleanup::{build_prompt, CleanPrompt, Cleaner, PromptScope};
-use flow_core::config::{CleanupLevel, FieldContext, Style};
-use flow_core::dictionary::Dictionary;
-use flow_router::cloud::CustomCleanupConfig;
-use flow_router::SecretString;
+use murmur_cloud::custom::{self, CustomCleaner, COST_HEADER, COST_HEADER_ORIGINAL};
+use murmur_cloud::testing::{MockServer, Reply};
+use murmur_cloud::CloudError;
+use murmur_core::cleanup::{build_prompt, CleanPrompt, Cleaner, PromptScope};
+use murmur_core::config::{CleanupLevel, FieldContext, Style};
+use murmur_core::dictionary::Dictionary;
+use murmur_router::cloud::CustomCleanupConfig;
+use murmur_router::SecretString;
 
 const KEY: &str = "sk-litellm-LEAKCHECK-contract-0001";
 const MODEL: &str = "Qwen/Qwen2.5-7B-Instruct";
@@ -162,7 +162,10 @@ fn errors_map_to_codes_and_redirects_are_not_followed() {
     let c = CustomCleaner::new(&cfg(&srv.url("")), PromptScope::MINIMAL, None);
     let e = c.clean(&prompt(), deadline()).unwrap_err();
     assert_eq!(e.to_string(), "auth_failed");
-    assert!(matches!(e, flow_core::cleanup::CleanError::Unavailable(_)));
+    assert!(matches!(
+        e,
+        murmur_core::cleanup::CleanError::Unavailable(_)
+    ));
 
     let srv = MockServer::fixed(Reply::raw(307, "").header("Location", "http://127.0.0.1:9/x"));
     let c = CustomCleaner::new(&cfg(&srv.url("")), PromptScope::MINIMAL, None);
@@ -174,7 +177,7 @@ fn errors_map_to_codes_and_redirects_are_not_followed() {
     let dead = CustomCleaner::new(&cfg("http://127.0.0.1:9"), PromptScope::MINIMAL, None);
     let e = dead.clean(&prompt(), deadline()).unwrap_err();
     assert!(
-        matches!(e, flow_core::cleanup::CleanError::Unavailable(_)),
+        matches!(e, murmur_core::cleanup::CleanError::Unavailable(_)),
         "{e:?}"
     );
 
@@ -217,9 +220,11 @@ fn models_list_parses_ids() {
 
 #[test]
 fn router_dictation_uses_the_custom_server() {
-    use flow_core::asr::MockAsr;
-    use flow_core::FlowCore;
-    use flow_router::{Backend, CleanupRoute, CloudProvider, Router, RouterConfig, SessionConfig};
+    use murmur_core::asr::MockAsr;
+    use murmur_core::MurmurCore;
+    use murmur_router::{
+        Backend, CleanupRoute, CloudProvider, Router, RouterConfig, SessionConfig,
+    };
 
     let srv = MockServer::fixed(sse_ok());
     let mut c = RouterConfig {
@@ -233,8 +238,8 @@ fn router_dictation_uses_the_custom_server() {
     c.cloud.custom_cleanup.consent_host = "127.0.0.1".into();
     c.cloud.custom_cleanup.consent_at_ms = 1;
     c.validate().unwrap();
-    let core = FlowCore::from_engines(Arc::new(MockAsr::new("lets meet at noon")), None);
-    let router = flow_cloud::attach(
+    let core = MurmurCore::from_engines(Arc::new(MockAsr::new("lets meet at noon")), None);
+    let router = murmur_cloud::attach(
         Router::new(c, Some(Arc::new(core) as Arc<dyn Backend>), None),
         None,
     );

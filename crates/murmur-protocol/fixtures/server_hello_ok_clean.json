@@ -1,7 +1,7 @@
 {
   "t": "hello_ok",
   "proto": 1,
-  "server": "flow-server 0.1.0",
+  "server": "murmur-server 0.1.0",
   "core": "0.1.0",
   "postprocess_rev": "2026-10-21.1",
   "asr_backend": "parakeet",

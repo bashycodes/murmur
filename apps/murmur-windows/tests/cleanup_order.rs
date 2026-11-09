@@ -4,10 +4,10 @@
 //! migrated on load; the router always gets the whole order with the
 //! switched-off entries in `cleanup_off`.
 
-use flow_router::{CleanupRoute, RouterConfig};
-use flow_windows::dev_settings::{BuildCaps, CleanupEngine, DevSettings};
-use flow_windows::openrouter::{self, CleanupForm};
-use flow_windows::prefs::Prefs;
+use murmur_router::{CleanupRoute, RouterConfig};
+use murmur_windows::dev_settings::{BuildCaps, CleanupEngine, DevSettings};
+use murmur_windows::openrouter::{self, CleanupForm};
+use murmur_windows::prefs::Prefs;
 use std::path::PathBuf;
 use CleanupRoute::{Cloud, Local, Server};
 
@@ -23,7 +23,7 @@ fn e(route: CleanupRoute, enabled: bool) -> CleanupEngine {
 
 fn tmp(tag: &str) -> PathBuf {
     std::env::temp_dir().join(format!(
-        "flow-win-d36-{tag}-{}-{:?}",
+        "murmur-win-d36-{tag}-{}-{:?}",
         std::process::id(),
         std::thread::current().id()
     ))

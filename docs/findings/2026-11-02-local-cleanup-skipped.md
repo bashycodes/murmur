@@ -62,7 +62,7 @@ language gate. A Hebrew dictation runs the LLM with a language line; only the En
 is skipped (D33). Gate 5 is the one most likely to hide misheard terms: a mis-transcribed but
 grammatical sentence looks "clean".
 
-## Fix 1: cloud-first in practice (`crates/flow-core/src/cleanup.rs`, `crates/flow-router/src/server_clean.rs`)
+## Fix 1: cloud-first in practice (`crates/murmur-core/src/cleanup.rs`, `crates/murmur-router/src/server_clean.rs`)
 
 * `Cleaner::ready()` (new, default = `available()`): "would a call be tried now rather than
   refused up front". `ServerClean` overrides it with its existing `ready()`: circuit closed
@@ -72,21 +72,21 @@ grammatical sentence looks "clean".
   raw transcript, v4c, loose guard, no skip, with the hops after it as the fallback. An
   on-device hop is never passed over, and a cloud hop is never passed over (its refusals keep
   showing as `cloud_fallback`).
-* Tests: `flow-core/tests/d36_server_cleanup.rs::{ai_parts_skips_leading_hops_that_would_refuse,
+* Tests: `murmur-core/tests/d36_server_cleanup.rs::{ai_parts_skips_leading_hops_that_would_refuse,
   an_unreachable_server_before_the_cloud_does_not_skip_ai_cleanup}` (both red before) and
-  `flow-router/tests/d36_cleanup_order.rs::unreachable_server_before_the_cloud_leaves_the_cloud_first`
+  `murmur-router/tests/d36_cleanup_order.rs::unreachable_server_before_the_cloud_leaves_the_cloud_first`
   (real router: phone AI off, order L/S/C, server disconnected).
 
 **Limit (removed by D43).** Until the server hop has failed once, its circuit is closed and it
 counts as ready, so the *first* tidy dictation after the server dropped was still skipped
 (`llm_skipped_clean`). Since D43 the skip is only evaluated when the on-device model would clean
 first, so that dictation goes to the server, which fails, and then to the cloud. Pinned by
-`flow-router/tests/d36_cleanup_order.rs::unreachable_server_before_the_cloud_leaves_the_cloud_first`
-and `flow-core/tests/d36_server_cleanup.rs::tidy_text_after_a_server_drop_goes_to_the_cloud_not_the_local_model`.
+`murmur-router/tests/d36_cleanup_order.rs::unreachable_server_before_the_cloud_leaves_the_cloud_first`
+and `murmur-core/tests/d36_server_cleanup.rs::tidy_text_after_a_server_drop_goes_to_the_cloud_not_the_local_model`.
 
 ## Fix 2: `llm_off` on the debug line (Android)
 
-`LlmOutcome.offReason` (pure function) and `FlowService.llmOffReason` add `llm_off` to a
+`LlmOutcome.offReason` (pure function) and `MurmurService.llmOffReason` add `llm_off` to a
 dictation line that has a transcript, no AI step (`llm: null`) and is not Command Mode.
 Values: `ai_cleanup_off` (no engine on), `no_phone_model`, `phone_model_failed`,
 `no_engine_available` (an engine is on but none could run: terminal app, snippet, server without

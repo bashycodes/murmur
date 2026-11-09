@@ -1,4 +1,4 @@
-package dev.flowclone.core;
+package dev.murmur.core;
 
 // Single-file source launch: `java -Djava.library.path=DIR JniMeeting.java`.
 // JNI_CONTRACT.md "Meeting transcription": a long recording through nativeMeeting* on a mock core.
@@ -22,41 +22,41 @@ public class JniMeeting {
     }
 
     public static void main(String[] args) {
-        System.loadLibrary("flow_ffi");
+        System.loadLibrary("murmur_ffi");
         // 12 s speech, 2 s silence, 12 s speech: two chunks.
-        long m = NativeFlowCore.nativeMeetingOpen(NativeFlowCore.nativeLoadModels(CORE), SESSION, null);
-        check(m != 0, "open: " + NativeFlowCore.nativeLastError());
-        NativeFlowCore.nativeMeetingSetTotal(m, 26 * 16000);
+        long m = NativeMurmurCore.nativeMeetingOpen(NativeMurmurCore.nativeLoadModels(CORE), SESSION, null);
+        check(m != 0, "open: " + NativeMurmurCore.nativeLastError());
+        NativeMurmurCore.nativeMeetingSetTotal(m, 26 * 16000);
         StringBuilder segs = new StringBuilder();
         for (int s = 0; s < 26; s++) {
             boolean voiced = s < 12 || s >= 14;
-            String r = NativeFlowCore.nativeMeetingPush(m, block(s * 16000, 16000, voiced), 16000);
-            check(r != null, "push: " + NativeFlowCore.nativeLastError());
+            String r = NativeMurmurCore.nativeMeetingPush(m, block(s * 16000, 16000, voiced), 16000);
+            check(r != null, "push: " + NativeMurmurCore.nativeLastError());
             if (!r.equals("[]")) segs.append(r).append('\n');
         }
-        String f = NativeFlowCore.nativeMeetingFinish(m);
-        check(f != null, "finish: " + NativeFlowCore.nativeLastError());
+        String f = NativeMurmurCore.nativeMeetingFinish(m);
+        check(f != null, "finish: " + NativeMurmurCore.nativeLastError());
         segs.append(f);
         System.out.println(segs.toString().replace("\n", " "));
-        System.out.println(NativeFlowCore.nativeMeetingProgress(m));
-        NativeFlowCore.nativeMeetingClose(m);
-        NativeFlowCore.nativeMeetingClose(0);
+        System.out.println(NativeMurmurCore.nativeMeetingProgress(m));
+        NativeMurmurCore.nativeMeetingClose(m);
+        NativeMurmurCore.nativeMeetingClose(0);
         // Cancel from "another thread" (here: between pushes): the next push fails with kind cancelled.
-        long c = NativeFlowCore.nativeMeetingOpen(NativeFlowCore.nativeLoadModels(CORE), SESSION, "{}");
-        check(NativeFlowCore.nativeMeetingPush(c, block(0, 16000, true), 16000) != null, "push before cancel");
-        NativeFlowCore.nativeMeetingCancel(c);
-        check(NativeFlowCore.nativeMeetingPush(c, block(0, 16000, true), 16000) == null, "push after cancel");
-        System.out.println("KIND " + NativeFlowCore.nativeLastErrorKind());
-        NativeFlowCore.nativeMeetingClose(c);
+        long c = NativeMurmurCore.nativeMeetingOpen(NativeMurmurCore.nativeLoadModels(CORE), SESSION, "{}");
+        check(NativeMurmurCore.nativeMeetingPush(c, block(0, 16000, true), 16000) != null, "push before cancel");
+        NativeMurmurCore.nativeMeetingCancel(c);
+        check(NativeMurmurCore.nativeMeetingPush(c, block(0, 16000, true), 16000) == null, "push after cancel");
+        System.out.println("KIND " + NativeMurmurCore.nativeLastErrorKind());
+        NativeMurmurCore.nativeMeetingClose(c);
         // No engine / bad config: 0 + bad_config; the handle is taken over either way.
-        check(NativeFlowCore.nativeMeetingOpen(0, SESSION, null) == 0, "no engine");
-        check(NativeFlowCore.nativeMeetingOpen(NativeFlowCore.nativeLoadModels(CORE), "[", null) == 0, "bad session");
-        System.out.println("KIND " + NativeFlowCore.nativeLastErrorKind());
-        System.out.println(NativeFlowCore.nativeMeetingProgress(0));
+        check(NativeMurmurCore.nativeMeetingOpen(0, SESSION, null) == 0, "no engine");
+        check(NativeMurmurCore.nativeMeetingOpen(NativeMurmurCore.nativeLoadModels(CORE), "[", null) == 0, "bad session");
+        System.out.println("KIND " + NativeMurmurCore.nativeLastErrorKind());
+        System.out.println(NativeMurmurCore.nativeMeetingProgress(0));
     }
 }
 
-class NativeFlowCore {
+class NativeMurmurCore {
     static native String nativeLastError();
     static native String nativeLastErrorKind();
     static native long nativeLoadModels(String cfg);

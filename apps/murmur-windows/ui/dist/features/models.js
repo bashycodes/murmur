@@ -49,7 +49,7 @@ export function progressLine(p, entry) {
     return `${got} of ${mb(p.total)}${left}${host ? ` · from ${host}` : ""}`;
 }
 // ------------------------------------------------------------ pickers + links
-/** Where "Set up a server" points (flow-server's instructions). */
+/** Where "Set up a server" points (murmur-server's instructions). */
 export const SERVER_HELP = "https://github.com/bashycodes/murmur/blob/integration/docs/server-setup.md";
 export async function pickPath(kind, title, filters) {
     return invoke("pick_path", { kind, title, filters: filters ?? null });
@@ -575,7 +575,7 @@ export const HEBREW_IDS = {
 let heStatus = null;
 /** Where whisper would run on this PC (`whisper_backend`); undefined = not asked, null = asking. */
 let whisperBackend;
-/** Ask once (the backend loads the GPU whisper plugin, flow_whisper_vulkan.dll, to list the GPUs). */
+/** Ask once (the backend loads the GPU whisper plugin, murmur_whisper_vulkan.dll, to list the GPUs). */
 function askWhisperBackend() {
     if (whisperBackend !== undefined)
         return;

@@ -1,6 +1,6 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.core.RouteInfo
+import dev.murmur.core.RouteInfo
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -114,15 +114,15 @@ class CloudSettingsTest {
         // The page header: OpenRouter only, against the budget.
         assertEquals(listOf("\$0.50" to "this month of \$1.00", "\$0.50" to "speech", "\$0" to "cleanup"),
             CloudText.usageStats(u, CloudSettings(monthlyBudgetUsd = 1.0)))
-        val st = dev.flowclone.core.RouterJson.decodeCleanupStatus(
+        val st = dev.murmur.core.RouterJson.decodeCleanupStatus(
             """{"supported":true,"enabled":true,"provider":"custom","host":"10.0.0.5","model":"m","month_cost_usd":4.0,"custom_month_cost_usd":4.0}""")
         assertEquals(4.0, st.customMonthCostUsd, 1e-9)
-        val line = dev.flowclone.core.DevText.cleanupStatus(st)
+        val line = dev.murmur.core.DevText.cleanupStatus(st)
         assertEquals("On · Custom server (10.0.0.5) · m · \$4.00 on your server this month (not in budget)", line)
         // Both providers this month: OpenRouter's part and the server's, never added together.
-        val both = dev.flowclone.core.DevText.cleanupStatus(st.copy(monthCostUsd = 4.5))
+        val both = dev.murmur.core.DevText.cleanupStatus(st.copy(monthCostUsd = 4.5))
         assertEquals("On · Custom server (10.0.0.5) · m · OpenRouter this month \$0.50 · \$4.00 on your server this month (not in budget)", both)
-        val or = dev.flowclone.core.DevText.cleanupStatus(st.copy(provider = "openrouter", host = "", monthCostUsd = 4.5))
+        val or = dev.murmur.core.DevText.cleanupStatus(st.copy(provider = "openrouter", host = "", monthCostUsd = 4.5))
         assertEquals("On · m · this month \$0.50 · \$4.00 on your server this month (not in budget)", or)
     }
 
@@ -169,7 +169,7 @@ class CloudSettingsTest {
         val kv = MemKV()
         val fake = FakeVaultKeys()
         val keys = CloudKeyStore(kv) { id -> SecretVault(SecretVault.cloudAlias(id), fake) }
-        val store = DevStore(kv, BuildCaps.ALL, SecretVault("flow_dev_token", fake))
+        val store = DevStore(kv, BuildCaps.ALL, SecretVault("murmur_dev_token", fake))
         val s = OpenRouterPage.enableCleanup(OpenRouterPage.enableStt(DevSettings.defaults(BuildCaps.ALL), now), now)
             .let { it.copy(cloud = it.cloud.copy(monthlyBudgetUsd = 3.0)) }
         store.save(s)
@@ -180,9 +180,9 @@ class CloudSettingsTest {
         assertFalse(kv.m.values.any { it.toString().contains("LEAKCHECK") })
         assertFalse(s.toRouterConfigJson().toString().contains("LEAKCHECK"))
         assertFalse(s.toString().contains("LEAKCHECK"))
-        assertEquals(setOf("flow_cloud_openrouter"), fake.keys.keys.filter { it.startsWith("flow_cloud_") }.toSet())
+        assertEquals(setOf("murmur_cloud_openrouter"), fake.keys.keys.filter { it.startsWith("murmur_cloud_") }.toSet())
         keys.set(OpenRouter.ID, "")
-        assertNull(keys.get(OpenRouter.ID)); assertFalse("flow_cloud_openrouter" in fake.keys)
+        assertNull(keys.get(OpenRouter.ID)); assertFalse("murmur_cloud_openrouter" in fake.keys)
     }
 
     @Test fun moveReSealsUnderTheNewVaultAndDestroysTheOld() {
@@ -191,7 +191,7 @@ class CloudSettingsTest {
         keys.set("openrouter-1", key)
         keys.move("openrouter-1", OpenRouter.ID)
         assertEquals(key, keys.get(OpenRouter.ID))
-        assertFalse(keys.has("openrouter-1")); assertFalse("flow_cloud_openrouter-1" in fake.keys)
+        assertFalse(keys.has("openrouter-1")); assertFalse("murmur_cloud_openrouter-1" in fake.keys)
         keys.move("openrouter-1", OpenRouter.ID) // idempotent
         assertEquals(key, keys.get(OpenRouter.ID))
     }
@@ -289,7 +289,7 @@ class CloudSettingsTest {
 
     @Test fun aLibraryWithoutTheAddressCallReadsAsNotSetUp() {
         // No native library in JVM tests: the real reader says "unusable", never a guess.
-        CustomServer.check = CustomAddressCheck { u, m -> dev.flowclone.core.NativeFlowCore.customCleanupAddress(u, m) }
+        CustomServer.check = CustomAddressCheck { u, m -> dev.murmur.core.NativeMurmurCore.customCleanupAddress(u, m) }
         try {
             assertNull(CustomServer.normalizeBaseUrl("http://10.0.0.5:4000"))
             val c = CloudSettings(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = custom.withConsent(now))
@@ -299,11 +299,11 @@ class CloudSettingsTest {
     }
 
     @Test fun decodesTheAddressJson() {
-        val ok = dev.flowclone.core.RouterJson.decodeCustomAddress("""{"url":"http://h:4000/v1","host":"h","model_ok":true}""")
+        val ok = dev.murmur.core.RouterJson.decodeCustomAddress("""{"url":"http://h:4000/v1","host":"h","model_ok":true}""")
         assertEquals(CustomAddress("http://h:4000/v1", "h", true), ok); assertFalse(ok.https)
-        val bad = dev.flowclone.core.RouterJson.decodeCustomAddress("""{"error":"bad_base_url","message":"no","model_ok":false}""")
+        val bad = dev.murmur.core.RouterJson.decodeCustomAddress("""{"error":"bad_base_url","message":"no","model_ok":false}""")
         assertNull(bad.url); assertEquals("", bad.host); assertEquals("bad_base_url", bad.error)
-        assertEquals("error", dev.flowclone.core.RouterJson.decodeCustomAddress("nope").error)
+        assertEquals("error", dev.murmur.core.RouterJson.decodeCustomAddress("nope").error)
     }
 
     @Test fun modelsCallsPassOnlyATypedKey() {
@@ -346,8 +346,8 @@ class CloudSettingsTest {
         assertEquals("Custom server (10.0.0.5)", c.cleanupProviderName)
         assertEquals(CustomServer.NOT_SET_UP, CloudSettings(cleanupProvider = CleanupProvider.CUSTOM).cleanupProviderName)
         assertEquals("OpenRouter", CloudSettings().cleanupProviderName)
-        assertEquals("Connected: 2 models", CloudText.customModelsLine(dev.flowclone.core.CustomModels(listOf("a", "b"))))
-        assertEquals("Failed: key rejected (Authentication Error)", CloudText.customModelsLine(dev.flowclone.core.CustomModels(error = "auth_failed", message = "Authentication Error")))
-        assertEquals("Failed: server not reachable", CloudText.customModelsLine(dev.flowclone.core.CustomModels(error = "connect_failed")))
+        assertEquals("Connected: 2 models", CloudText.customModelsLine(dev.murmur.core.CustomModels(listOf("a", "b"))))
+        assertEquals("Failed: key rejected (Authentication Error)", CloudText.customModelsLine(dev.murmur.core.CustomModels(error = "auth_failed", message = "Authentication Error")))
+        assertEquals("Failed: server not reachable", CloudText.customModelsLine(dev.murmur.core.CustomModels(error = "connect_failed")))
     }
 }

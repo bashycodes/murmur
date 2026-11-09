@@ -133,7 +133,7 @@ pub fn clean_text(s: &str) -> String {
 }
 
 /// Where whisper.cpp runs a model. Only a GPU build of whisper.cpp (the
-/// Windows `flow_whisper_vulkan.dll` plugin, crate `flow-whisper`) has a GPU
+/// Windows `murmur_whisper_vulkan.dll` plugin, crate `murmur-whisper`) has a GPU
 /// to use; in a CPU build `Gpu` loads on the CPU, as whisper.cpp finds no
 /// GPU device.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -199,7 +199,7 @@ impl WhisperEngine {
 
     /// Enable whisper.cpp's built-in Silero VAD (model file such as
     /// `ggml-silero-v5.1.2.bin`): whisper then decodes only the speech
-    /// segments it finds. Runs in addition to flow-core's energy VAD.
+    /// segments it finds. Runs in addition to murmur-core's energy VAD.
     pub fn with_silero_vad(mut self, model_path: &str) -> Self {
         self.silero = Some(model_path.to_string());
         self
@@ -223,7 +223,7 @@ impl WhisperEngine {
 
     /// [`AsrEngine::transcribe`] with the stop flag passed as a plain
     /// reference instead of `req.abort` (which is ignored): the
-    /// `flow-whisper` plugin gets its flag as a pointer from the host.
+    /// `murmur-whisper` plugin gets its flag as a pointer from the host.
     pub fn transcribe_abortable(
         &self,
         pcm: &[f32],

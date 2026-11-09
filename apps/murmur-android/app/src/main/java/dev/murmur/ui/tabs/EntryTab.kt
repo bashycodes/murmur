@@ -1,4 +1,4 @@
-package dev.flowclone.ui.tabs
+package dev.murmur.ui.tabs
 
 import android.app.Activity
 import android.app.AlertDialog
@@ -8,15 +8,15 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
-import dev.flowclone.FlowApp
-import dev.flowclone.R
-import dev.flowclone.core.DictEntry
-import dev.flowclone.data.DictionaryPages
-import dev.flowclone.data.DictionaryPages.Kind
-import dev.flowclone.data.ShellPages
-import dev.flowclone.ui.DevUi
-import dev.flowclone.ui.DictionaryActivity
-import dev.flowclone.ui.ShellTab
+import dev.murmur.MurmurApp
+import dev.murmur.R
+import dev.murmur.core.DictEntry
+import dev.murmur.data.DictionaryPages
+import dev.murmur.data.DictionaryPages.Kind
+import dev.murmur.data.ShellPages
+import dev.murmur.ui.DevUi
+import dev.murmur.ui.DictionaryActivity
+import dev.murmur.ui.ShellTab
 
 /**
  * Shared body of the Dictionary and Snippets tabs (AndroidDictionary / AndroidSnippets.dc.html):
@@ -27,7 +27,7 @@ import dev.flowclone.ui.ShellTab
  * (the edit page and import return here).
  */
 internal abstract class EntryTab(protected val activity: Activity, protected val ui: DevUi, val kind: Kind) : ShellTab {
-    protected val app get() = FlowApp.of(activity)
+    protected val app get() = MurmurApp.of(activity)
     override val title = ShellPages.APP_NAME
 
     private var view: View? = null

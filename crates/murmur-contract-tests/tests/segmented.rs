@@ -7,11 +7,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use flow_contract_tests::*;
-use flow_core::asr::{AsrEngine, AsrError, AsrOutput, AsrRequest, BurstEchoAsr, MockAsr};
-use flow_core::config::SessionConfig;
-use flow_core::{CommitResult, CommitStatus, FlowCore};
-use flow_router::RouterConfig;
+use murmur_contract_tests::*;
+use murmur_core::asr::{AsrEngine, AsrError, AsrOutput, AsrRequest, BurstEchoAsr, MockAsr};
+use murmur_core::config::SessionConfig;
+use murmur_core::{CommitResult, CommitStatus, MurmurCore};
+use murmur_router::RouterConfig;
 
 const S: usize = 16_000;
 
@@ -36,8 +36,8 @@ fn seg_cfg() -> SessionConfig {
     }
 }
 
-fn burst_core() -> FlowCore {
-    FlowCore::from_engines(Arc::new(BurstEchoAsr::new()), None)
+fn burst_core() -> MurmurCore {
+    MurmurCore::from_engines(Arc::new(BurstEchoAsr::new()), None)
 }
 
 /// Start, push in 100 ms frames (calling `at(pushed_ms)` before each),
@@ -86,7 +86,7 @@ fn equivalence_session_fixtures_with_segmentation() {
         let text = c.mock_text().unwrap();
         let pcm = audio(&c.audio);
         let local = run_case(
-            &FlowCore::from_engines(Arc::new(MockAsr::new(text)), None),
+            &MurmurCore::from_engines(Arc::new(MockAsr::new(text)), None),
             &c,
             &pcm,
         );
@@ -145,7 +145,7 @@ impl AsrEngine for OldServerAsr {
 #[test]
 fn old_server_ignoring_the_field_still_gives_the_full_text() {
     let (pcm, words) = long_dictation(6);
-    let server = spawn_core_server(FlowCore::from_engines(Arc::new(OldServerAsr), None));
+    let server = spawn_core_server(MurmurCore::from_engines(Arc::new(OldServerAsr), None));
     let remote = dictate(&remote_router(server.addr()), seg_cfg(), &pcm, |_| {});
     assert_eq!(remote.status, CommitStatus::RawTranscript, "{remote:?}");
     assert_eq!(remote.asr_text, words);
@@ -175,7 +175,7 @@ fn cloud_route_with_segmentation_uploads_once_at_commit() {
             ..Default::default()
         },
         cloud_provider(),
-        &[flow_router::Route::Cloud],
+        &[murmur_router::Route::Cloud],
     );
     let router = cloud_router(cfg, None);
     let mut seen_before_commit = 0;

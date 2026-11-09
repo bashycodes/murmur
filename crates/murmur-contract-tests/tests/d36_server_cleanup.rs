@@ -1,17 +1,17 @@
-//! D36 end to end: the real flow-remote client asks the real in-process
-//! flow-server to clean text (`clean` / `cleaned`), and the router uses it
+//! D36 end to end: the real murmur-remote client asks the real in-process
+//! murmur-server to clean text (`clean` / `cleaned`), and the router uses it
 //! as a step of the cleanup order whatever route transcribed.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use flow_contract_tests::*;
-use flow_core::cleanup::{CleanError, CleanPrompt, CleanRequest, Cleaner};
-use flow_core::config::{CleanupLevel, FieldContext, SessionConfig};
-use flow_core::FlowCore;
-use flow_remote::RemoteBackend;
-use flow_router::{Backend, CleanupRoute, RouterConfig};
+use murmur_contract_tests::*;
+use murmur_core::cleanup::{CleanError, CleanPrompt, CleanRequest, Cleaner};
+use murmur_core::config::{CleanupLevel, FieldContext, SessionConfig};
+use murmur_core::MurmurCore;
+use murmur_remote::RemoteBackend;
+use murmur_router::{Backend, CleanupRoute, RouterConfig};
 
 const TEXT: &str = "the demo is on thursday right";
 const SERVER_OUT: &str = "The demo is on Thursday, right.";
@@ -28,16 +28,16 @@ impl Cleaner for Fixed {
 
 fn llm_server() -> (TestServer, Arc<AtomicUsize>) {
     let n = Arc::new(AtomicUsize::new(0));
-    let core = FlowCore::from_engines(
-        Arc::new(flow_core::asr::MockAsr::new(TEXT)),
+    let core = MurmurCore::from_engines(
+        Arc::new(murmur_core::asr::MockAsr::new(TEXT)),
         Some(Arc::new(Fixed(SERVER_OUT, n.clone())) as Arc<dyn Cleaner>),
     );
     (spawn_core_server(core), n)
 }
 
-fn local_core(llm: Option<Arc<AtomicUsize>>) -> Arc<FlowCore> {
-    Arc::new(FlowCore::from_engines(
-        Arc::new(flow_core::asr::MockAsr::new(TEXT)),
+fn local_core(llm: Option<Arc<AtomicUsize>>) -> Arc<MurmurCore> {
+    Arc::new(MurmurCore::from_engines(
+        Arc::new(murmur_core::asr::MockAsr::new(TEXT)),
         llm.map(|n| Arc::new(Fixed(LOCAL_OUT, n)) as Arc<dyn Cleaner>),
     ))
 }
@@ -50,7 +50,7 @@ fn session() -> SessionConfig {
     }
 }
 
-fn dictate(r: &flow_router::Router) -> flow_core::CommitResult {
+fn dictate(r: &murmur_router::Router) -> murmur_core::CommitResult {
     r.start_session(session()).unwrap();
     r.set_context(FieldContext::default());
     for f in speech(500).chunks(FRAME) {
@@ -76,7 +76,10 @@ fn remote_backend_cleans_text_on_the_server() {
     assert_eq!(c.text.as_deref(), Some(SERVER_OUT));
     assert_eq!(n.load(Ordering::SeqCst), 1);
     let h = b.server_hello().unwrap();
-    assert!(h.features.iter().any(|f| f == flow_protocol::FEATURE_CLEAN));
+    assert!(h
+        .features
+        .iter()
+        .any(|f| f == murmur_protocol::FEATURE_CLEAN));
     // Sessions and cleans share the warm connection. (A clean waits for a
     // worker like a session: on this one-worker server, not while a
     // session holds it.)
@@ -111,7 +114,7 @@ fn server_without_llm_answers_no_llm() {
 fn cfg(srv: &TestServer, server_stt: bool, order: &[CleanupRoute]) -> RouterConfig {
     let mut c = router_config(srv.addr(), server_stt, true);
     if server_stt {
-        c.order = vec![flow_router::Route::Server, flow_router::Route::Client];
+        c.order = vec![murmur_router::Route::Server, murmur_router::Route::Client];
     }
     c.cleanup_order = order.to_vec();
     c

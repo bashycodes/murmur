@@ -1,4 +1,4 @@
-package dev.flowclone.notes
+package dev.murmur.notes
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceTimeBy

@@ -7,8 +7,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 H="$ROOT/tools/bundle"
 LIST="$ROOT/docs/air-gapped-models.txt"
-RS="$ROOT/apps/flow-windows/src/model_download.rs"
-CA="$ROOT/apps/flow-windows/src/core_adapter.rs"
+RS="$ROOT/apps/murmur-windows/src/model_download.rs"
+CA="$ROOT/apps/murmur-windows/src/core_adapter.rs"
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
@@ -45,18 +45,18 @@ if python3 -I "$H/models_manifest.py" "$T/bad.txt" "$RS" "$CA" > /dev/null 2>&1;
 render() { # NOTETAKER IMAGE
   NOTETAKER=$1 IMAGE=$2 NOIMAGE=$((1 - $2)) VERSION=9.9.9 COMMIT=abc1234 VARIANT=v WIN_EXE=w.exe \
     APK=a.apk MODELS_ZIP=m.zip CLEANUP_ZIP=c.zip GLIBC="glibc 2.39" DIARIZER_LIST="" SERVER_NOTE="note" \
-    SOURCE_TGZ=flow-server-source-9.9.9.tar.gz IMAGE_TAR=flow-server-image-9.9.9.tar \
+    SOURCE_TGZ=murmur-server-source-9.9.9.tar.gz IMAGE_TAR=murmur-server-image-9.9.9.tar \
     python3 -I "$H/render_install.py" "$ROOT/docs/colleague-install.md"
 }
 render 0 1 > "$T/i0.md"; render 1 1 > "$T/i1.md"; render 0 0 > "$T/n0.md"
 for f in "$T/i0.md" "$T/i1.md" "$T/n0.md"; do
   ! grep -q '{{\|<!--' "$f" || fail "placeholder or marker left in $(basename "$f")"
-  grep -q 'tar -xzf docker/flow-server-source-9.9.9.tar.gz' "$f" || fail "source build missing in $(basename "$f")"
+  grep -q 'tar -xzf docker/murmur-server-source-9.9.9.tar.gz' "$f" || fail "source build missing in $(basename "$f")"
 done
 ! grep -qi 'notetaker' "$T/i0.md" || fail "notetaker text in the integration note"
 grep -q 'Speaker separation' "$T/i1.md" || fail "notetaker block missing"
-grep -q 'docker load -i docker/flow-server-image-9.9.9.tar' "$T/i0.md" || fail "docker load missing"
-! grep -q 'flow-server-image\|docker load' "$T/n0.md" || fail "image text without an image"
+grep -q 'docker load -i docker/murmur-server-image-9.9.9.tar' "$T/i0.md" || fail "docker load missing"
+! grep -q 'murmur-server-image\|docker load' "$T/n0.md" || fail "image text without an image"
 grep -q 'no prebuilt image' "$T/n0.md" || fail "no-image note missing"
 if NOTETAKER=0 python3 -I "$H/render_install.py" "$ROOT/docs/colleague-install.md" > /dev/null 2>&1; then
   fail "missing values accepted"
@@ -81,7 +81,7 @@ python3 -I -c 'import json, sys
 r = json.load(open(sys.argv[1]))["bundle"]["resources"]
 for f in ("COPYRIGHT", "NOTICE", "THIRD-PARTY-LICENSES"):
     assert r.get("../../" + f) == f + ".txt", (f, r)' \
-  "$ROOT/apps/flow-windows/tauri.conf.json" || fail "Windows installer resources lack a notice"
+  "$ROOT/apps/murmur-windows/tauri.conf.json" || fail "Windows installer resources lack a notice"
 # The source archive the bundle makes (git archive of SRC_PATHS) holds them:
 # the archive of HEAD's tracked files, as the bundle builds it.
 if git -C "$ROOT" cat-file -e HEAD:THIRD-PARTY-LICENSES 2>/dev/null; then
@@ -99,7 +99,7 @@ if command -v docker > /dev/null && docker info > /dev/null 2>&1; then
   done
   echo "docker context: COPYRIGHT NOTICE THIRD-PARTY-LICENSES ok"
 fi
-[ "$(grep -c '^COPY COPYRIGHT NOTICE THIRD-PARTY-LICENSES /opt/flow-server/$' "$ROOT/deploy/docker/Dockerfile")" = 2 ] ||
+[ "$(grep -c '^COPY COPYRIGHT NOTICE THIRD-PARTY-LICENSES /opt/murmur-server/$' "$ROOT/deploy/docker/Dockerfile")" = 2 ] ||
   fail "an image stage leaves a notice out"
 
 # third_party/licenses/ is what its SHA256SUMS says (tools/notice/fetch-texts.sh).

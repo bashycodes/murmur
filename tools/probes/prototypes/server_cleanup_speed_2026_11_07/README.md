@@ -9,9 +9,9 @@ permanent tool path.
   (prompt, prefill and generated tokens, prefill and generation ms) per case.
   Build: `cargo build --release --offline -j 2 --manifest-path runner/Cargo.toml`.
 - `run.sh` replays one case file in `server` mode; `matrix.sh` runs several
-  variants for R interleaved rounds (`'TAG|FLOW_LLM_DRAFT=4|'`); env from a
+  variants for R interleaved rounds (`'TAG|MURMUR_LLM_DRAFT=4|'`); env from a
   copy of `env.example.sh`.
-- `live.sh` starts a local flow-server build on its own port, state dir and
+- `live.sh` starts a local murmur-server build on its own port, state dir and
   token, sends every clip through the parity eval's `run_paths.py server`,
   and stops it.
 - `summary.py` (runner rows), `timings.py` (live rows), `rows.py` (either
@@ -19,4 +19,4 @@ permanent tool path.
 
 Cases, sessions, clips and every output stay in `eval-private/`.
 
-The cache default is `~/.cache/flow-clone`; set CACHE=<dir> to reuse an existing cache.
+The cache default is `~/.cache/murmur`; set CACHE=<dir> to reuse an existing cache.

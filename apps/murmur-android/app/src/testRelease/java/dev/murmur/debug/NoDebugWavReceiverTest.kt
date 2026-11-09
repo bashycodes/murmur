@@ -1,6 +1,6 @@
-package dev.flowclone.debug
+package dev.murmur.debug
 
-import dev.flowclone.BuildConfig
+import dev.murmur.BuildConfig
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -19,7 +19,7 @@ class NoDebugWavReceiverTest {
 
     @Test fun receiverClassIsNotInRelease() {
         try {
-            Class.forName("dev.flowclone.debug.WavMicReceiver")
+            Class.forName("dev.murmur.debug.WavMicReceiver")
             fail("WavMicReceiver is on the $variant classpath")
         } catch (_: ClassNotFoundException) {
         }
@@ -27,7 +27,7 @@ class NoDebugWavReceiverTest {
 
     @Test fun benchActivityIsNotInRelease() {
         try {
-            Class.forName("dev.flowclone.debug.BenchActivity")
+            Class.forName("dev.murmur.debug.BenchActivity")
             fail("BenchActivity is on the $variant classpath")
         } catch (_: ClassNotFoundException) {
         }
@@ -35,7 +35,7 @@ class NoDebugWavReceiverTest {
 
     @Test fun callDecodeReceiverIsNotInRelease() {
         try {
-            Class.forName("dev.flowclone.debug.CallDecodeReceiver")
+            Class.forName("dev.murmur.debug.CallDecodeReceiver")
             fail("CallDecodeReceiver is on the $variant classpath")
         } catch (_: ClassNotFoundException) {
         }

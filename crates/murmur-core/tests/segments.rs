@@ -1,4 +1,4 @@
-//! D22 pause-segmented incremental decoding through `FlowCore`, against
+//! D22 pause-segmented incremental decoding through `MurmurCore`, against
 //! `BurstEchoAsr` (text = one word per sound burst, a pure function of the
 //! audio): no model needed. Spec: docs/proposals/streaming-asr-latency.md §5.
 
@@ -6,9 +6,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use flow_core::asr::{AsrEngine, AsrError, AsrOutput, AsrPurpose, AsrRequest, BurstEchoAsr};
-use flow_core::config::{FieldContext, SessionConfig};
-use flow_core::{CommitStatus, FlowCore};
+use murmur_core::asr::{AsrEngine, AsrError, AsrOutput, AsrPurpose, AsrRequest, BurstEchoAsr};
+use murmur_core::config::{FieldContext, SessionConfig};
+use murmur_core::{CommitStatus, MurmurCore};
 
 const S: usize = 16_000;
 
@@ -47,18 +47,18 @@ fn seg_cfg() -> SessionConfig {
     }
 }
 
-fn core_with(asr: Arc<dyn AsrEngine>) -> FlowCore {
-    FlowCore::from_engines(asr, None)
+fn core_with(asr: Arc<dyn AsrEngine>) -> MurmurCore {
+    MurmurCore::from_engines(asr, None)
 }
 
-fn push_chunks(core: &FlowCore, pcm: &[i16], chunk: usize) {
+fn push_chunks(core: &MurmurCore, pcm: &[i16], chunk: usize) {
     for c in pcm.chunks(chunk) {
         assert!(core.push_audio(c));
     }
 }
 
 /// Push at `speed`× real time in 40 ms chunks.
-fn push_paced(core: &FlowCore, pcm: &[i16], speed: f32) {
+fn push_paced(core: &MurmurCore, pcm: &[i16], speed: f32) {
     let t0 = Instant::now();
     for (i, c) in pcm.chunks(640).enumerate() {
         assert!(core.push_audio(c));
@@ -81,11 +81,11 @@ fn wait_until(secs: u64, mut f: impl FnMut() -> bool) -> bool {
 }
 
 fn dictate(
-    core: &FlowCore,
+    core: &MurmurCore,
     cfg: SessionConfig,
     pcm: &[i16],
     chunk: usize,
-) -> flow_core::CommitResult {
+) -> murmur_core::CommitResult {
     core.start_session(cfg).unwrap();
     push_chunks(core, pcm, chunk);
     core.commit()
@@ -119,7 +119,7 @@ fn segmented_text_equals_whole_decode_and_off_is_unchanged() {
     assert_eq!(on.segments, off.segments);
     assert!(on.timings.segments >= 3, "{:?}", on.timings);
     // Same JSON apart from timings.
-    let strip = |r: &flow_core::CommitResult| {
+    let strip = |r: &murmur_core::CommitResult| {
         let mut v = serde_json::to_value(r).unwrap();
         v.as_object_mut().unwrap().remove("timings");
         v

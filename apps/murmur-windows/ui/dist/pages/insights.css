@@ -1,6 +1,6 @@
 /* Insights (ui/src/pages/insights.ts), after PageInsights.dc.html. The
    usage-bar, split and heatmap rules are the design system's
-   (docs/design/app-design/ds/flow/components/bundle.css), copied as is;
+   (docs/design/app-design/ds/murmur/components/bundle.css), copied as is;
    lw-ins-* are this page's layout. Colours are theme.css tokens. */
 
 .lw-ins { display: flex; flex-direction: column; gap: 16px; max-width: 980px; margin: 0 auto; }

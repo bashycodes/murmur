@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.app.Activity
 import android.content.Context
@@ -11,21 +11,21 @@ import android.view.ViewGroup
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.Toast
-import dev.flowclone.EngineHolder
-import dev.flowclone.FlowApp
-import dev.flowclone.R
-import dev.flowclone.data.HistoryPages
-import dev.flowclone.data.HistoryRow
-import dev.flowclone.data.HistoryVersion
-import dev.flowclone.data.RetryLogic
-import dev.flowclone.ui.RetryUi.versionPills
-import dev.flowclone.data.HistoryView
-import dev.flowclone.data.Retention
-import dev.flowclone.data.SettingsPages
-import dev.flowclone.data.SettingsSummary
-import dev.flowclone.data.ShellPages
-import dev.flowclone.learn.HistoryCorrection
-import dev.flowclone.learn.Suggestion
+import dev.murmur.EngineHolder
+import dev.murmur.MurmurApp
+import dev.murmur.R
+import dev.murmur.data.HistoryPages
+import dev.murmur.data.HistoryRow
+import dev.murmur.data.HistoryVersion
+import dev.murmur.data.RetryLogic
+import dev.murmur.ui.RetryUi.versionPills
+import dev.murmur.data.HistoryView
+import dev.murmur.data.Retention
+import dev.murmur.data.SettingsPages
+import dev.murmur.data.SettingsSummary
+import dev.murmur.data.ShellPages
+import dev.murmur.learn.HistoryCorrection
+import dev.murmur.learn.Suggestion
 import java.util.Date
 import kotlin.concurrent.thread
 
@@ -41,10 +41,10 @@ import kotlin.concurrent.thread
  *   detail  full text (+ raw transcript when it differs), when / app / result / per-stage
  *           timings (the device latency checklist in INSTALL.md reads them), Copy, Retry, earlier
  *           versions, Delete
- * Same [dev.flowclone.data.HistoryStore] calls as before (purge on open, recent, delete, clear).
+ * Same [dev.murmur.data.HistoryStore] calls as before (purge on open, recent, delete, clear).
  */
 class HistoryActivity : Activity() {
-    private val app get() = FlowApp.of(this)
+    private val app get() = MurmurApp.of(this)
     private lateinit var ui: DevUi
     private var rows: List<HistoryRow> = emptyList()
     private var loaded = false
@@ -261,7 +261,7 @@ class HistoryActivity : Activity() {
             card {
                 infoRow("When", DateFormat.getLongDateFormat(this@HistoryActivity).format(Date(r.createdAt)) + ", " + time(r))
                 infoRow("App", HistoryPages.app(r))
-                infoRow("Result", listOfNotNull(HistoryPages.badge(r), dev.flowclone.data.LlmOutcome.label(r.fallbackReason)).joinToString(" · "))
+                infoRow("Result", listOfNotNull(HistoryPages.badge(r), dev.murmur.data.LlmOutcome.label(r.fallbackReason)).joinToString(" · "))
                 infoRow("Inserted", if (r.inserted) "Yes" else "No")
                 HistoryPages.timings(r).takeIf { it.isNotEmpty() }?.let { infoRow("Timings", it) }
             }
@@ -338,14 +338,14 @@ class HistoryActivity : Activity() {
      * taps the field and then ✓. Needs the running service (the bubble lives there).
      */
     private fun offerInsert(r: HistoryRow) {
-        if (!dev.flowclone.service.FlowService.running) {
+        if (!dev.murmur.service.MurmurService.running) {
             Toast.makeText(this, REINSERT_NEEDS_SERVICE, Toast.LENGTH_LONG).show()
             return
         }
         startService(
-            Intent(this, dev.flowclone.service.FlowService::class.java)
-                .setAction(dev.flowclone.service.FlowService.ACTION_OFFER_INSERT)
-                .putExtra(dev.flowclone.service.FlowService.EXTRA_HISTORY_ID, r.id),
+            Intent(this, dev.murmur.service.MurmurService::class.java)
+                .setAction(dev.murmur.service.MurmurService.ACTION_OFFER_INSERT)
+                .putExtra(dev.murmur.service.MurmurService.EXTRA_HISTORY_ID, r.id),
         )
     }
 

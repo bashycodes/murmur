@@ -123,7 +123,7 @@ fn default_output() -> Result<cpal::Device, String> {
 impl Capture {
     /// Start capturing from `device` (by name; `None` = system default).
     pub fn start(device: Option<String>, sink: Sink, on_error: OnError) -> Result<Capture, String> {
-        Self::spawn("flow-audio", sink, on_error, move || {
+        Self::spawn("murmur-audio", sink, on_error, move || {
             pick_device(device.as_deref()).map(|d| (d, Side::Input))
         })
     }
@@ -131,7 +131,7 @@ impl Capture {
     /// Capture what the default playback device plays (WASAPI loopback):
     /// the other side of a call, for the Notetaker (D45).
     pub fn start_loopback(sink: Sink, on_error: OnError) -> Result<Capture, String> {
-        Self::spawn("flow-loopback", sink, on_error, || {
+        Self::spawn("murmur-loopback", sink, on_error, || {
             default_output().map(|d| (d, Side::Loopback))
         })
     }

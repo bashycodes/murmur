@@ -1,11 +1,11 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.core.AsrEngine
-import dev.flowclone.core.CleanupLevel
-import dev.flowclone.core.HealthReport
-import dev.flowclone.core.Rtt
-import dev.flowclone.data.SettingsPages.Field
-import dev.flowclone.data.SettingsPages.Page
+import dev.murmur.core.AsrEngine
+import dev.murmur.core.CleanupLevel
+import dev.murmur.core.HealthReport
+import dev.murmur.core.Rtt
+import dev.murmur.data.SettingsPages.Field
+import dev.murmur.data.SettingsPages.Page
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull

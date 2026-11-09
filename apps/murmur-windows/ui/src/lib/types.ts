@@ -217,7 +217,7 @@ export interface CleanupStatus {
 /** D52: OpenRouter, or the user's own OpenAI-compatible server. */
 export type CloudProvider = "openrouter" | "custom";
 
-/** D52: the custom cleanup server (`flow-clone/cloud/custom` key, masked). */
+/** D52: the custom cleanup server (`murmur/cloud/custom` key, masked). */
 export interface CustomCleanupView {
   /** As saved: normalised (`/v1` added when typed without a path). */
   base_url: string;
@@ -296,7 +296,7 @@ export interface AdminStatus {
   code?: string;
 }
 
-/** flow_protocol::admin::KeyView. Times are Unix seconds. */
+/** murmur_protocol::admin::KeyView. Times are Unix seconds. */
 export interface KeyView {
   id: string;
   name: string;

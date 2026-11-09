@@ -1,11 +1,11 @@
-package dev.flowclone.session
+package dev.murmur.session
 
-import dev.flowclone.core.CommitResult
-import dev.flowclone.core.FakeFlowCore
-import dev.flowclone.core.FieldContext
-import dev.flowclone.core.FlowCore
-import dev.flowclone.core.SessionConfig
-import dev.flowclone.session.DictationState.ErrorKind
+import dev.murmur.core.CommitResult
+import dev.murmur.core.FakeMurmurCore
+import dev.murmur.core.FieldContext
+import dev.murmur.core.MurmurCore
+import dev.murmur.core.SessionConfig
+import dev.murmur.session.DictationState.ErrorKind
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -52,8 +52,8 @@ class DictationControllerTest {
         var recordingActive = mutableListOf<Boolean>()
         override fun feedback(e: FeedbackEvent) { events += e }
         override suspend fun insert(text: String): Boolean { insertGate?.await(); inserted += text; return insertOk }
-        val keys = mutableListOf<dev.flowclone.core.PasteKey>()
-        override suspend fun sendKey(key: dev.flowclone.core.PasteKey): Boolean { keys += key; inserted += "<${key.wire}>"; return true }
+        val keys = mutableListOf<dev.murmur.core.PasteKey>()
+        override suspend fun sendKey(key: dev.murmur.core.PasteKey): Boolean { keys += key; inserted += "<${key.wire}>"; return true }
         val outcomes = mutableListOf<String?>()
         override fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?, outcome: String?) { history += result to inserted; outcomes += outcome }
         var keepRetry = false
@@ -76,8 +76,8 @@ class DictationControllerTest {
         override fun insertTarget(explicit: Boolean) = if (explicit) explicitTarget else target
         val notInserted = mutableListOf<Pair<String, String>>()
         override fun onNotInserted(text: String, outcome: String) { notInserted += text to outcome }
-        val traces = mutableListOf<dev.flowclone.debug.DictationTrace>()
-        override fun onDictationTrace(trace: dev.flowclone.debug.DictationTrace) { traces += trace }
+        val traces = mutableListOf<dev.murmur.debug.DictationTrace>()
+        override fun onDictationTrace(trace: dev.murmur.debug.DictationTrace) { traces += trace }
         val insertedFor = mutableListOf<Triple<String, FieldContext?, Boolean>>()
         override fun onInserted(pasted: String, context: FieldContext?, sentKey: Boolean) { insertedFor += Triple(pasted, context, sentKey) }
         val loadingNotices = mutableListOf<String>()
@@ -95,17 +95,17 @@ class DictationControllerTest {
 
     private val audio = FakeAudio()
     private val host = Recorder()
-    private val core = FakeFlowCore(transcript = "hello world")
+    private val core = FakeMurmurCore(transcript = "hello world")
 
     private fun TestScope.controller(
-        c: FlowCore? = core,
+        c: MurmurCore? = core,
         err: String = "no engine",
         dispatcher: kotlinx.coroutines.CoroutineDispatcher? = null,
     ): DictationController {
         val d = dispatcher ?: StandardTestDispatcher(testScheduler)
         return DictationController(
             scope = backgroundScope, audio = audio, host = host,
-            core = { c ?: throw dev.flowclone.core.CoreException(err) },
+            core = { c ?: throw dev.murmur.core.CoreException(err) },
             commitDispatcher = d, now = { currentTime },
         ).also { it.onFieldFocusChanged(true) }
     }
@@ -193,7 +193,7 @@ class DictationControllerTest {
     }
 
     /** A core whose re-run session (the [hookAt]-th start) calls [onPush] at its first chunk. */
-    private class Hooked(val inner: FakeFlowCore, val hookAt: Int) : FlowCore by inner {
+    private class Hooked(val inner: FakeMurmurCore, val hookAt: Int) : MurmurCore by inner {
         @Volatile var starts = 0
         @Volatile var pushesToHooked = 0
         @Volatile var commitsToHooked = 0
@@ -202,7 +202,7 @@ class DictationControllerTest {
         var onCommit: (() -> Unit)? = null
         val lateText = "a late sentence"
         override fun startSession(cfg: SessionConfig) { starts++; inner.startSession(cfg) }
-        override fun startSessionInfo(cfg: SessionConfig): dev.flowclone.core.StartInfo { startSession(cfg); return dev.flowclone.core.StartInfo() }
+        override fun startSessionInfo(cfg: SessionConfig): dev.murmur.core.StartInfo { startSession(cfg); return dev.murmur.core.StartInfo() }
         override fun startSessionLocal(cfg: SessionConfig) = startSessionInfo(cfg)
         override fun pushAudio(pcm: ShortArray, length: Int): Boolean {
             if (starts == hookAt) { pushesToHooked++; if (pushesToHooked == 1) onPush() }
@@ -214,8 +214,8 @@ class DictationControllerTest {
             val hook = onCommit ?: return inner.commit()
             hook()
             return CommitResult(
-                dev.flowclone.core.CommitStatus.RAW_TRANSCRIPT, asrText = lateText, finalText = lateText,
-                segments = listOf(dev.flowclone.core.PasteSegment.Text(lateText)), plainText = lateText,
+                dev.murmur.core.CommitStatus.RAW_TRANSCRIPT, asrText = lateText, finalText = lateText,
+                segments = listOf(dev.murmur.core.PasteSegment.Text(lateText)), plainText = lateText,
             )
         }
     }
@@ -336,7 +336,7 @@ class DictationControllerTest {
             assertEquals(DictationState.Error(ErrorKind.FailedToTranscribe), c.state.value)
             assertEquals("no re-run session", 1, starts)
             val t = host.traces.single()
-            assertEquals(dev.flowclone.debug.InsertOutcome.TIMEOUT, t.insert.outcome)
+            assertEquals(dev.murmur.debug.InsertOutcome.TIMEOUT, t.insert.outcome)
             assertEquals("no result after ${DictationController.RERUN_TIMEOUT_MS} ms", t.error)
         } finally { pool.shutdownNow() }
     }
@@ -509,9 +509,9 @@ class DictationControllerTest {
     }
 
     @Test fun engineUnavailableIsAnErrorStateNotACrash() = runTest {
-        val c = controller(c = null, err = "libflow_ffi.so missing")
+        val c = controller(c = null, err = "libmurmur_ffi.so missing")
         c.toggle(false)
-        assertEquals(DictationState.Error(ErrorKind.EngineUnavailable("libflow_ffi.so missing")), c.state.value)
+        assertEquals(DictationState.Error(ErrorKind.EngineUnavailable("libmurmur_ffi.so missing")), c.state.value)
         assertEquals(0, audio.starts)
     }
 
@@ -519,7 +519,7 @@ class DictationControllerTest {
     private fun TestScope.loadingController(state: () -> Boolean): DictationController =
         DictationController(
             backgroundScope, audio, host,
-            { if (state()) throw dev.flowclone.core.CoreException("Loading the synthetic model…", dev.flowclone.core.CoreException.KIND_LOADING) else core },
+            { if (state()) throw dev.murmur.core.CoreException("Loading the synthetic model…", dev.murmur.core.CoreException.KIND_LOADING) else core },
             StandardTestDispatcher(testScheduler),
         ) { currentTime }.also { it.onFieldFocusChanged(true) }
 
@@ -702,11 +702,11 @@ class DictationControllerTest {
 
     @Test fun pastesSegmentsInOrderWithKeysAndBreakPause() = runTest {
         val r = CommitResult(
-            dev.flowclone.core.CommitStatus.FORMATTED, finalText = "@foo{{TAB}} bar", pressEnter = true, plainText = "@foo bar",
+            dev.murmur.core.CommitStatus.FORMATTED, finalText = "@foo{{TAB}} bar", pressEnter = true, plainText = "@foo bar",
             segments = listOf(
-                dev.flowclone.core.PasteSegment.Text("@foo"), dev.flowclone.core.PasteSegment.Key(dev.flowclone.core.PasteKey.TAB),
-                dev.flowclone.core.PasteSegment.Text(" bar"), dev.flowclone.core.PasteSegment.Key(dev.flowclone.core.PasteKey.BREAK),
-                dev.flowclone.core.PasteSegment.Key(dev.flowclone.core.PasteKey.ENTER),
+                dev.murmur.core.PasteSegment.Text("@foo"), dev.murmur.core.PasteSegment.Key(dev.murmur.core.PasteKey.TAB),
+                dev.murmur.core.PasteSegment.Text(" bar"), dev.murmur.core.PasteSegment.Key(dev.murmur.core.PasteKey.BREAK),
+                dev.murmur.core.PasteSegment.Key(dev.murmur.core.PasteKey.ENTER),
             ),
         )
         val c = dictate(r)
@@ -719,29 +719,29 @@ class DictationControllerTest {
     @Test fun failedRunReportsTheRemainingText() = runTest {
         host.insertOk = false
         val r = CommitResult(
-            dev.flowclone.core.CommitStatus.RAW_TRANSCRIPT, finalText = "a{{BREAK}}b",
-            segments = listOf(dev.flowclone.core.PasteSegment.Text("a"), dev.flowclone.core.PasteSegment.Key(dev.flowclone.core.PasteKey.BREAK), dev.flowclone.core.PasteSegment.Text("b")),
+            dev.murmur.core.CommitStatus.RAW_TRANSCRIPT, finalText = "a{{BREAK}}b",
+            segments = listOf(dev.murmur.core.PasteSegment.Text("a"), dev.murmur.core.PasteSegment.Key(dev.murmur.core.PasteKey.BREAK), dev.murmur.core.PasteSegment.Text("b")),
         )
         val c = dictate(r)
         assertEquals(DictationState.Error(ErrorKind.FailedToPaste("ab")), c.state.value)
     }
 
     @Test fun onlyFillerShowsItsOwnHint() = runTest {
-        val c = dictate(CommitResult(dev.flowclone.core.CommitStatus.EMPTY, emptyReason = "only_filler"))
+        val c = dictate(CommitResult(dev.murmur.core.CommitStatus.EMPTY, emptyReason = "only_filler"))
         assertEquals(DictationHint.OnlyFiller, c.hint.value)
         assertTrue(host.inserted.isEmpty())
     }
 
     @Test fun serverOnlyFailureSaysServerUnreachable() = runTest {
-        val c = dictate(CommitResult(dev.flowclone.core.CommitStatus.ERROR, error = "server_unavailable: connect_failed"))
+        val c = dictate(CommitResult(dev.murmur.core.CommitStatus.ERROR, error = "server_unavailable: connect_failed"))
         val s = c.state.value as DictationState.Error
         assertEquals(ErrorKind.EngineUnavailable("Server unreachable (connect_failed)"), s.kind)
     }
 
     @Test fun bothTogglesOffIsAClearErrorAtStart() = runTest {
-        val refusing = object : FlowCore by core {
-            override fun startSession(cfg: SessionConfig) = throw dev.flowclone.core.CoreException("no_engine_enabled: both off", "no_engine_enabled")
-            override fun startSessionInfo(cfg: SessionConfig) = startSession(cfg).let { dev.flowclone.core.StartInfo() }
+        val refusing = object : MurmurCore by core {
+            override fun startSession(cfg: SessionConfig) = throw dev.murmur.core.CoreException("no_engine_enabled: both off", "no_engine_enabled")
+            override fun startSessionInfo(cfg: SessionConfig) = startSession(cfg).let { dev.murmur.core.StartInfo() }
         }
         val c = controller(refusing)
         c.toggle(false)
@@ -791,14 +791,14 @@ class DictationControllerTest {
     }
 
     @Test fun liveRouteShownAtStartAndUpdatedOnFailover() = runTest {
-        core.route = dev.flowclone.core.SessionRoute("remote", server = "100.64.0.10:7313")
+        core.route = dev.murmur.core.SessionRoute("remote", server = "100.64.0.10:7313")
         val c = controller()
         c.toggle(false)
         assertEquals("start route before the first poll", "remote", c.route.value!!.engine)
         audio.speak(300)
-        core.route = dev.flowclone.core.SessionRoute("local", fallback = "disconnected")
+        core.route = dev.murmur.core.SessionRoute("local", fallback = "disconnected")
         advanceTimeBy(DictationController.PARTIAL_POLL_MS + 1); runCurrent()
-        assertEquals(dev.flowclone.core.SessionRoute("local", fallback = "disconnected"), c.route.value)
+        assertEquals(dev.murmur.core.SessionRoute("local", fallback = "disconnected"), c.route.value)
         core.route = null // dead session mid-recording: keep the last label
         advanceTimeBy(DictationController.PARTIAL_POLL_MS + 1); runCurrent()
         assertEquals("local", c.route.value!!.engine)
@@ -807,9 +807,9 @@ class DictationControllerTest {
     }
 
     @Test fun cancelledCommitInsertsNothingAndLeavesNoHistory() = runTest {
-        val cancelled = object : FlowCore by core {
+        val cancelled = object : MurmurCore by core {
             override fun startSessionInfo(cfg: SessionConfig) = core.startSessionInfo(cfg)
-            override fun commit() = CommitResult(dev.flowclone.core.CommitStatus.ERROR, error = "cancelled")
+            override fun commit() = CommitResult(dev.murmur.core.CommitStatus.ERROR, error = "cancelled")
         }
         val c = controller(cancelled)
         c.toggle(false); audio.speak(); advanceTimeBy(600); c.toggle(false); settle()
@@ -847,8 +847,8 @@ class DictationControllerTest {
     @Test fun blockingCallGuardFlagsAStartOnTheCallerThread() = runTest {
         val caller = Thread.currentThread()
         val violations = java.util.Collections.synchronizedList(mutableListOf<String>())
-        dev.flowclone.core.BlockingCalls.isMainThread = { Thread.currentThread() === caller }
-        dev.flowclone.core.BlockingCalls.onViolation = { violations += it }
+        dev.murmur.core.BlockingCalls.isMainThread = { Thread.currentThread() === caller }
+        dev.murmur.core.BlockingCalls.onViolation = { violations += it }
         val pool = java.util.concurrent.Executors.newSingleThreadExecutor()
         try {
             controller().toggle(false) // Unconfined start = on the caller thread
@@ -868,8 +868,8 @@ class DictationControllerTest {
             assertTrue(violations.toList().toString(), violations.isEmpty())
         } finally {
             pool.shutdownNow()
-            dev.flowclone.core.BlockingCalls.isMainThread = { false }
-            dev.flowclone.core.BlockingCalls.onViolation = {}
+            dev.murmur.core.BlockingCalls.isMainThread = { false }
+            dev.murmur.core.BlockingCalls.onViolation = {}
         }
     }
 
@@ -983,18 +983,18 @@ class DictationControllerTest {
 
     @Test fun retryWaitsItsTurnAndSaysWhy() = runTest {
         val c = controller()
-        assertEquals(RetryOutcome.Failed(dev.flowclone.data.RetryLogic.EMPTY), c.retry(ShortArray(16_000), null))
-        assertEquals(RetryOutcome.Failed(dev.flowclone.data.RetryLogic.GONE), c.retry(ShortArray(0), null))
+        assertEquals(RetryOutcome.Failed(dev.murmur.data.RetryLogic.EMPTY), c.retry(ShortArray(16_000), null))
+        assertEquals(RetryOutcome.Failed(dev.murmur.data.RetryLogic.GONE), c.retry(ShortArray(0), null))
         c.toggle(false)
-        assertEquals(RetryOutcome.Failed(dev.flowclone.data.RetryLogic.BUSY), c.retry(ShortArray(16_000) { 3000 }, null))
+        assertEquals(RetryOutcome.Failed(dev.murmur.data.RetryLogic.BUSY), c.retry(ShortArray(16_000) { 3000 }, null))
         c.cancel()
     }
 
     /** blank_asr diagnostics: the core's VAD speech + peak level reach the D21 trace. */
     @Test fun traceCarriesSpeechAndPeakFromTheResult() = runTest {
         val r = CommitResult(
-            dev.flowclone.core.CommitStatus.EMPTY, emptyReason = "blank_asr",
-            timings = dev.flowclone.core.Timings(audioMs = 3800, speechMs = 1200, peakDbfs = -31),
+            dev.murmur.core.CommitStatus.EMPTY, emptyReason = "blank_asr",
+            timings = dev.murmur.core.Timings(audioMs = 3800, speechMs = 1200, peakDbfs = -31),
         )
         val c = controller(ScriptedCore(core, r))
         c.toggle(false); audio.speak(); advanceTimeBy(600); c.toggle(false); settle()
@@ -1030,8 +1030,8 @@ class DictationControllerTest {
     @Test fun notInsertedTextIsTheHistoryText() = runTest {
         host.target = InsertTarget.CHANGED
         val r = CommitResult(
-            dev.flowclone.core.CommitStatus.FORMATTED, finalText = "1. eggs{{BREAK}}2. milk", plainText = "1. eggs\n2. milk",
-            segments = listOf(dev.flowclone.core.PasteSegment.Text("1. eggs"), dev.flowclone.core.PasteSegment.Key(dev.flowclone.core.PasteKey.BREAK), dev.flowclone.core.PasteSegment.Text("2. milk")),
+            dev.murmur.core.CommitStatus.FORMATTED, finalText = "1. eggs{{BREAK}}2. milk", plainText = "1. eggs\n2. milk",
+            segments = listOf(dev.murmur.core.PasteSegment.Text("1. eggs"), dev.murmur.core.PasteSegment.Key(dev.murmur.core.PasteKey.BREAK), dev.murmur.core.PasteSegment.Text("2. milk")),
         )
         dictate(r)
         assertEquals(listOf("1. eggs\n2. milk" to "target_changed"), host.notInserted)
@@ -1094,7 +1094,7 @@ class DictationControllerTest {
 }
 
 /** A core whose commit blocks until [release] — simulates a hung ASR worker. */
-class HangingCore(private val inner: FakeFlowCore) : FlowCore by inner {
+class HangingCore(private val inner: FakeMurmurCore) : MurmurCore by inner {
     val release = CompletableDeferred<Unit>()
     @Volatile var cancelled = false
     override fun commit(): CommitResult {
@@ -1105,7 +1105,7 @@ class HangingCore(private val inner: FakeFlowCore) : FlowCore by inner {
 }
 
 /** Returns [result] from commit (after the inner fake has seen the audio). */
-class ScriptedCore(private val inner: FakeFlowCore, private val result: CommitResult) : FlowCore by inner {
+class ScriptedCore(private val inner: FakeMurmurCore, private val result: CommitResult) : MurmurCore by inner {
     override fun commit(): CommitResult { inner.commit(); return result }
 }
 

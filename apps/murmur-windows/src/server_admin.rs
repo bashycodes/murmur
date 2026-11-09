@@ -1,13 +1,13 @@
 //! Settings → Your server → Users & keys (D39): the owner manages the
 //! server's named keys (D38) from here when the saved server token is an
-//! admin key. Thin over `flow_remote::admin::AdminClient` (shared with
-//! Android through flow-ffi); this module only builds the client from the
+//! admin key. Thin over `murmur_remote::admin::AdminClient` (shared with
+//! Android through murmur-ffi); this module only builds the client from the
 //! saved settings and turns errors into page text.
 //!
 //! Privacy: a created key's secret goes back to the page once, in the
 //! command's answer. It is never logged and never stored by the app.
 
-use flow_protocol::admin::{code, AdminError, CreatedKey, KeyList, RevokedKey};
+use murmur_protocol::admin::{code, AdminError, CreatedKey, KeyList, RevokedKey};
 use serde::Serialize;
 
 use crate::dev_settings::DevSettings;
@@ -36,7 +36,7 @@ pub fn error_text(e: &AdminError) -> String {
         code::UNAUTHORIZED => "the server no longer accepts this app's key",
         code::LAST_ADMIN => "this is the last admin key: create another admin key first",
         code::NAME_TAKEN => "a key with this name already exists",
-        code::UNSUPPORTED => "this server is too old for key management: update flow-server",
+        code::UNSUPPORTED => "this server is too old for key management: update murmur-server",
         code::AUTH_OFF => "this server runs without keys",
         code::CONNECT_FAILED => "can't reach the server",
         _ => "",
@@ -65,9 +65,9 @@ pub fn for_settings(dev: &DevSettings) -> Result<Box<dyn AdminApi + Send>, Strin
             return Err("save a server address and token first".into());
         }
         let cfg = crate::router_adapter::server_config(dev, &token)?;
-        Ok(Box::new(Remote(flow_remote::admin::AdminClient::new(
+        Ok(Box::new(Remote(murmur_remote::admin::AdminClient::new(
             cfg,
-            &format!("flow-windows {}", flow_build_info::FULL),
+            &format!("murmur-windows {}", murmur_build_info::FULL),
         ))))
     }
     #[cfg(not(feature = "remote"))]
@@ -89,7 +89,7 @@ pub fn status(dev: &DevSettings) -> AdminStatus {
 }
 
 #[cfg(feature = "remote")]
-struct Remote(flow_remote::admin::AdminClient);
+struct Remote(murmur_remote::admin::AdminClient);
 
 #[cfg(feature = "remote")]
 impl AdminApi for Remote {

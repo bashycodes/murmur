@@ -1,4 +1,4 @@
-package dev.flowclone.ui
+package dev.murmur.ui
 
 import android.app.Activity
 import android.view.Gravity
@@ -9,17 +9,17 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.Switch
 import android.widget.TextView
-import dev.flowclone.EngineHolder
-import dev.flowclone.FlowApp
-import dev.flowclone.R
-import dev.flowclone.data.EnginePlan
-import dev.flowclone.data.CleanupEngines
-import dev.flowclone.data.CloudText
-import dev.flowclone.data.DevSettings
-import dev.flowclone.data.DevSettings.CleanupRoute
-import dev.flowclone.data.OpenRouter
-import dev.flowclone.data.OpenRouterPage
-import dev.flowclone.data.Settings
+import dev.murmur.EngineHolder
+import dev.murmur.MurmurApp
+import dev.murmur.R
+import dev.murmur.data.EnginePlan
+import dev.murmur.data.CleanupEngines
+import dev.murmur.data.CloudText
+import dev.murmur.data.DevSettings
+import dev.murmur.data.DevSettings.CleanupRoute
+import dev.murmur.data.OpenRouter
+import dev.murmur.data.OpenRouterPage
+import dev.murmur.data.Settings
 
 /**
  * Settings → AI cleanup's "Engines" card (D36): this build's cleanup engines in the stored order,
@@ -34,7 +34,7 @@ internal class CleanupPage(
     /** SettingsActivity.applyNow: writes [Settings] and runs its effects. */
     private val update: (Settings.() -> Settings) -> Unit,
 ) {
-    private val app get() = FlowApp.of(activity)
+    private val app get() = MurmurApp.of(activity)
     private val caps get() = app.caps
     private lateinit var engineBox: LinearLayout
     private var orderRow: View? = null

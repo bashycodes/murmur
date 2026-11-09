@@ -1,7 +1,7 @@
-package dev.flowclone.calls
+package dev.murmur.calls
 
-import dev.flowclone.core.MeetingJson
-import dev.flowclone.core.MeetingSegment
+import dev.murmur.core.MeetingJson
+import dev.murmur.core.MeetingSegment
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

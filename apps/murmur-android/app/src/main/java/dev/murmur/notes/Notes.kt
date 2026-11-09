@@ -1,4 +1,4 @@
-package dev.flowclone.notes
+package dev.murmur.notes
 
 import org.json.JSONObject
 import java.io.File
@@ -15,7 +15,7 @@ data class Note(val id: String, val text: String, val pinned: Boolean, val creat
  *  - an index entry without a file is ignored and dropped on the next index write
  *  - a broken index reads as empty (only pins and times are lost, never text)
  * Ids are [DocumentStore.isValidId] (checked on every call), so nothing leaves [dir].
- * Every call holds the store lock; the app also runs them all on [dev.flowclone.FlowApp.documentsIo].
+ * Every call holds the store lock; the app also runs them all on [dev.murmur.MurmurApp.documentsIo].
  */
 class NotesStore(private val dir: File, private val clock: () -> Long = System::currentTimeMillis) : DocumentStore {
     private val files = FileDocumentStore(dir)

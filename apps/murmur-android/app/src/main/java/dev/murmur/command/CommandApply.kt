@@ -1,7 +1,7 @@
-package dev.flowclone.command
+package dev.murmur.command
 
-import dev.flowclone.debug.DebugRedact
-import dev.flowclone.policy.EditorInputType
+import dev.murmur.debug.DebugRedact
+import dev.murmur.policy.EditorInputType
 
 /**
  * Command Mode's field policy: which fields a command may read (and send to the AI). Stricter

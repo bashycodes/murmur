@@ -2,7 +2,7 @@
 # Tests for pull-debug.sh. Never touches a phone: a stub platform tool on PATH
 # (same name as the real one) serves the app's data dir from
 # tools/phone/fixtures/phone/ (copied, so a test can change it) and logs every
-# call. FLOW_PHONE is a fake serial, so even a real tool would find no device.
+# call. MURMUR_PHONE is a fake serial, so even a real tool would find no device.
 #
 #   tools/phone/test-pull-debug.sh
 set -euo pipefail
@@ -26,7 +26,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 [ "${1:-}" = exec-out ] && [ "${2:-}" = run-as ] || { echo "fake: unsupported: $*" >&2; exit 2; }
-[ "$3" = dev.flowclone ] || { echo "run-as: unknown package: $3" >&2; exit 1; }
+[ "$3" = dev.murmur ] || { echo "run-as: unknown package: $3" >&2; exit 1; }
 cmd="$4"; shift 4
 cd "$FAKE_PHONE"
 case "$cmd" in
@@ -39,8 +39,8 @@ case "$cmd" in
 esac
 EOF
 chmod +x "$T/bin/$TOOLNAME"
-export PATH="$T/bin:$PATH" FAKE_PHONE="$T/phone" FAKE_CALLS="$T/calls" FLOW_PHONE="-s fake-serial-0"
-unset FLOW_PLATFORM_TOOL
+export PATH="$T/bin:$PATH" FAKE_PHONE="$T/phone" FAKE_CALLS="$T/calls" MURMUR_PHONE="-s fake-serial-0"
+unset MURMUR_PLATFORM_TOOL
 [ "$(command -v "$TOOLNAME")" = "$T/bin/$TOOLNAME" ] || { echo "stub not first on PATH; refusing to run"; exit 1; }
 
 fails=0
@@ -60,12 +60,12 @@ out="$(run --out "$O")"
 check "first pull exits 0" "$out" "rc=0"
 check "summary: 3 lines, 2 new wavs" "$out" "3 lines, 2 wavs (2 new, 0 already here)"
 check "summary: bytes from phone" "$out" "[0-9]\+ bytes from phone"
-check "transport passed to the tool" "$(cat "$T/calls")" "^-s fake-serial-0 exec-out run-as dev.flowclone"
+check "transport passed to the tool" "$(cat "$T/calls")" "^-s fake-serial-0 exec-out run-as dev.murmur"
 cmp -s "$O/dictations.jsonl" /dev/null && bad "jsonl pulled" || ok "jsonl pulled"
 for w in 2026-10-27T09-00-00.000Z.wav 2026-10-27T11-00-00.000Z.wav; do
     cmp -s "$O/audio/$w" "$T/phone/files/debug/audio/$w" && ok "wav $w identical" || bad "wav $w identical"
 done
-[ -f "$O/prefs/dev.xml" ] && [ -f "$O/prefs/flow_settings.xml" ] && ok "prefs pulled" || bad "prefs pulled"
+[ -f "$O/prefs/dev.xml" ] && [ -f "$O/prefs/murmur_settings.xml" ] && ok "prefs pulled" || bad "prefs pulled"
 
 # --- redaction ---
 all="$(cat "$O"/prefs/*.xml "$O/dictations.jsonl"; printf '%s' "$out")"
@@ -79,7 +79,7 @@ check "nested JSON key redacted, model kept" "$dev" 'llama-3.3-70b'
 check "non-secret string kept" "$dev" 'name="server.host">192.0.2.10<'
 check "non-secret bool kept" "$dev" 'name="debug_keep_audio" value="true"'
 check "keep_local_warm not mistaken for a key" "$dev" 'name="keep_local_warm" value="false"'
-fs="$(cat "$O/prefs/flow_settings.xml")"
+fs="$(cat "$O/prefs/murmur_settings.xml")"
 check "set of tokens emptied" "$fs" 'FAKE-SET-TOKEN' "!"
 check "denylist set kept" "$fs" 'com.example.bank'
 check "leaked key in log line redacted" "$(cat "$O/dictations.jsonl")" '"text":"second <redacted>"'
@@ -117,12 +117,12 @@ out="$(run --out "$REPO/tools/phone/should-not-exist")"
 check "out dir inside repo refused" "$out" "rc=2"
 [ ! -e "$REPO/tools/phone/should-not-exist" ] && ok "nothing written in repo" || { bad "nothing written in repo"; rm -rf "$REPO/tools/phone/should-not-exist"; }
 : >"$T/calls"
-FLOW_PHONE="-t 60" run --out "$T/out4" >/dev/null
-check "FLOW_PHONE=-t 60 passed" "$(head -1 "$T/calls")" "^-t 60 exec-out"
+MURMUR_PHONE="-t 60" run --out "$T/out4" >/dev/null
+check "MURMUR_PHONE=-t 60 passed" "$(head -1 "$T/calls")" "^-t 60 exec-out"
 : >"$T/calls"
-FLOW_PHONE="emulator-5554" run --out "$T/out5" >/dev/null
+MURMUR_PHONE="emulator-5554" run --out "$T/out5" >/dev/null
 check "bare serial becomes -s" "$(head -1 "$T/calls")" "^-s emulator-5554 exec-out"
-out="$(FLOW_PKG=dev.other run --out "$T/out6")"
+out="$(MURMUR_PKG=dev.other run --out "$T/out6")"
 check "run-as failure exits 1" "$out" "rc=1"
 check "run-as failure explained" "$out" "debug build"
 out="$(run --bogus)"

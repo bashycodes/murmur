@@ -1,6 +1,6 @@
-package dev.flowclone.policy
+package dev.murmur.policy
 
-import dev.flowclone.session.InsertTarget
+import dev.murmur.session.InsertTarget
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

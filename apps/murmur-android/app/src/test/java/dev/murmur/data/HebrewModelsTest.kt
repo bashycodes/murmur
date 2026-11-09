@@ -1,12 +1,12 @@
-package dev.flowclone.data
+package dev.murmur.data
 
-import dev.flowclone.core.AsrEngine
-import dev.flowclone.core.CoreException
-import dev.flowclone.core.CoreJson
-import dev.flowclone.core.FakeFlowCore
-import dev.flowclone.core.LanguageModel
-import dev.flowclone.core.ModelConfig
-import dev.flowclone.core.ParakeetDecoding
+import dev.murmur.core.AsrEngine
+import dev.murmur.core.CoreException
+import dev.murmur.core.CoreJson
+import dev.murmur.core.FakeMurmurCore
+import dev.murmur.core.LanguageModel
+import dev.murmur.core.ModelConfig
+import dev.murmur.core.ParakeetDecoding
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -172,12 +172,12 @@ class HebrewRoutingTest {
 
     @Test fun hebrewFailureFallsBackToWhisperAndSaysWhy() {
         val p = EnginePlan.plan(Settings(language = "he"), "/m/base.bin", null, exists, 4, language = "he", hebrew = he) as EnginePlan.Plan.Native
-        val r = EnginePlan.load(p) { cfg -> if (cfg.loadLanguage != null) throw CoreException("model load failed: oom") else FakeFlowCore("x") }
+        val r = EnginePlan.load(p) { cfg -> if (cfg.loadLanguage != null) throw CoreException("model load failed: oom") else FakeMurmurCore("x") }
         assertEquals(LoadedAsr(AsrEngine.WHISPER, "base.bin"), r.asr)
         assertTrue(r.description, r.description.contains("(Hebrew model failed: model load failed: oom)"))
         val m = EngineMismatch.message(EnginePlan.selectedEngine(Settings(language = "he"), p), p, r.asr, r.description)
         assertEquals("selected sherpa_online, loaded whisper base.bin: model load failed: oom", m)
-        val ok = EnginePlan.load(p) { FakeFlowCore("x") }
+        val ok = EnginePlan.load(p) { FakeMurmurCore("x") }
         assertEquals("Hebrew zipformer-he", ok.description)
         assertNull(EngineMismatch.message(EnginePlan.selectedEngine(Settings(), p), p, ok.asr, ok.description))
     }

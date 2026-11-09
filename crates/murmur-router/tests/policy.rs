@@ -4,8 +4,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use flow_core::dictionary::{DictEntry, Dictionary};
-use flow_router::*;
+use murmur_core::dictionary::{DictEntry, Dictionary};
+use murmur_router::*;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum StartMode {
@@ -706,11 +706,11 @@ fn learn_edit_uses_the_last_session_dictionary() {
         })
         .unwrap();
     dictate(&k.router);
-    let pasted = "I use whisper flow and kubernetes daily";
+    let pasted = "I use mer mur and kubernetes daily";
     let edited = "I use Zephyr Cloud and Kubernetes daily";
     assert_eq!(
         k.router.learn_edit(pasted, edited),
-        flow_core::learn::learn_edit(pasted, edited, &dict)
+        murmur_core::learn::learn_edit(pasted, edited, &dict)
     );
 }
 
@@ -720,7 +720,7 @@ fn capabilities_reflect_build_and_hints() {
     let c = k.router.capabilities();
     assert!(c.local && c.remote);
     assert_eq!(c.proto, 1);
-    assert_eq!(c.core_version, flow_core::VERSION);
+    assert_eq!(c.core_version, murmur_core::VERSION);
     let r = Router::new(RouterConfig::default(), None, None)
         .with_local_capability(true)
         .with_local_info(vec!["whisper".into(), "parakeet".into()], true);
@@ -956,7 +956,7 @@ fn router_poll_json_is_session_poll_plus_optional_route() {
     let idle = serde_json::to_string(&RouterPoll::default()).unwrap();
     assert_eq!(
         idle,
-        serde_json::to_string(&flow_core::SessionPoll::default()).unwrap()
+        serde_json::to_string(&murmur_core::SessionPoll::default()).unwrap()
     );
     let p: RouterPoll = serde_json::from_str(
         r#"{"partial":"hi","endpoint_reached":true,"speech_ms":5,"trailing_silence_ms":7,
@@ -965,7 +965,7 @@ fn router_poll_json_is_session_poll_plus_optional_route() {
     .unwrap();
     assert!(p.endpoint_reached);
     assert_eq!(p.route.as_ref().unwrap().engine, EngineKind::Remote);
-    let core: flow_core::SessionPoll = p.clone().into();
+    let core: murmur_core::SessionPoll = p.clone().into();
     assert_eq!(core.speech_ms, 5);
     // StartInfo: `route` omitted while None.
     assert_eq!(

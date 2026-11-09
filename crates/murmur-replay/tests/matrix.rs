@@ -8,14 +8,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use flow_core::asr::{AbortFlag, MockAsr};
-use flow_core::cleanup::{
+use murmur_core::asr::{AbortFlag, MockAsr};
+use murmur_core::cleanup::{
     build_prompt_versioned, CleanError, CleanPrompt, CleanUsage, Cleaner, PromptScope,
     PromptVersion,
 };
-use flow_core::config::{CleanupLevel, FieldContext, Style};
-use flow_core::Usd;
-use flow_replay::{phone_session, AsrSlot, CleanupSlot, Matrix, Recording, Row};
+use murmur_core::config::{CleanupLevel, FieldContext, Style};
+use murmur_core::Usd;
+use murmur_replay::{phone_session, AsrSlot, CleanupSlot, Matrix, Recording, Row};
 
 /// Answers `out`; engine `cloud` or `local`; records system prompts.
 struct Fake {
@@ -102,7 +102,7 @@ fn tone() -> Vec<i16> {
 
 /// The phone's session without VAD / segmentation (a sine tone is not
 /// speech to the VAD).
-fn session() -> flow_core::config::SessionConfig {
+fn session() -> murmur_core::config::SessionConfig {
     let mut s = phone_session();
     s.vad = false;
     s.segment_pause_ms = None;
@@ -286,13 +286,13 @@ fn spend_cap_stops_cloud_calls_and_is_reported() {
 #[test]
 fn paid_asr_cost_counts_and_failed_asr_skips_cleanup() {
     struct Failing;
-    impl flow_core::asr::AsrEngine for Failing {
+    impl murmur_core::asr::AsrEngine for Failing {
         fn transcribe(
             &self,
             _: &[f32],
-            _: &flow_core::asr::AsrRequest,
-        ) -> Result<flow_core::asr::AsrOutput, flow_core::asr::AsrError> {
-            Err(flow_core::asr::AsrError::Transcribe("boom".into()))
+            _: &murmur_core::asr::AsrRequest,
+        ) -> Result<murmur_core::asr::AsrOutput, murmur_core::asr::AsrError> {
+            Err(murmur_core::asr::AsrError::Transcribe("boom".into()))
         }
     }
     let cloud = Fake::new("cloud", "x");

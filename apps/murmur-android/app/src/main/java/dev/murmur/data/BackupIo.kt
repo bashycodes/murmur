@@ -1,18 +1,18 @@
-package dev.flowclone.data
+package dev.murmur.data
 
 import android.content.Context
 import android.content.SharedPreferences
-import dev.flowclone.FlowApp
+import dev.murmur.MurmurApp
 
 /**
  * Reads every user-data store into a [Backup.Data] and writes one back (Settings → Back up &
  * restore). Stores (all app-private):
- *  - `flow_settings` prefs ([SettingsStore]) minus [Backup.DEVICE_LOCAL]
+ *  - `murmur_settings` prefs ([SettingsStore]) minus [Backup.DEVICE_LOCAL]
  *  - `dev` prefs ([DevStore]) minus every secret ([Backup.isSecret]: server token, cloud keys)
  *  - `files/dictionary.json` ([DictionaryStore]: words and snippets)
  *  - `files/learn_suggestions.json` ([SuggestionStore])
  *  - `files/insights.json` ([InsightsStore])
- *  - `files/notes/` ([dev.flowclone.notes.NotesStore]: Notes and the Scratchpad / Quick note)
+ *  - `files/notes/` ([dev.murmur.notes.NotesStore]: Notes and the Scratchpad / Quick note)
  *  - `history.db` ([HistoryStore])
  * Not backed up: models (`files/models`, `files/parakeet`, `files/llm`), the debug log and debug
  * audio (`files/debug/`), Keystore keys.
@@ -20,7 +20,7 @@ import dev.flowclone.FlowApp
  * A restore replaces each section the file has; secrets and device-local values already on this
  * install are kept (so a restore over a working setup does not lose its keys).
  */
-class BackupIo(private val app: FlowApp) {
+class BackupIo(private val app: MurmurApp) {
     private fun prefs(name: String): SharedPreferences = app.getSharedPreferences(name, Context.MODE_PRIVATE)
 
     fun collect(): Backup.Data = Backup.Data(
@@ -29,7 +29,7 @@ class BackupIo(private val app: FlowApp) {
         dictionary = app.dictionary.all(),
         suggestions = app.suggestions.load(),
         insights = app.insights.load(),
-        notes = app.documentsIo.submit<List<dev.flowclone.notes.Note>> { app.documents.list() }.get(),
+        notes = app.documentsIo.submit<List<dev.murmur.notes.Note>> { app.documents.list() }.get(),
         history = app.history.all(),
     )
 

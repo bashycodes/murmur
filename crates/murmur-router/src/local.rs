@@ -1,52 +1,52 @@
-//! `impl Backend for FlowCore`: the in-process engine.
+//! `impl Backend for MurmurCore`: the in-process engine.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use flow_core::config::{FieldContext, SessionConfig};
-use flow_core::{CommitResult, FlowCore};
+use murmur_core::config::{FieldContext, SessionConfig};
+use murmur_core::{CommitResult, MurmurCore};
 
 use crate::{
     now_unix_ms, Backend, BackendError, CleanupPlan, EngineKind, Failure, HealthReport, StartInfo,
 };
 
-impl Backend for FlowCore {
+impl Backend for MurmurCore {
     fn kind(&self) -> EngineKind {
         EngineKind::Local
     }
 
-    /// A `FlowCore` exists only with its models loaded.
+    /// A `MurmurCore` exists only with its models loaded.
     fn ready(&self) -> bool {
         true
     }
 
     fn start_session(&self, cfg: &SessionConfig) -> Result<StartInfo, BackendError> {
-        FlowCore::start_session(self, cfg.clone())
+        MurmurCore::start_session(self, cfg.clone())
             .map(|_| StartInfo::default())
             .map_err(|e| BackendError::new(Failure::Error, e.to_string()))
     }
 
     fn push_audio(&self, pcm: &[i16]) -> bool {
-        FlowCore::push_audio(self, pcm)
+        MurmurCore::push_audio(self, pcm)
     }
 
     fn set_context(&self, ctx: &FieldContext) {
-        FlowCore::set_context(self, ctx.clone())
+        MurmurCore::set_context(self, ctx.clone())
     }
 
     fn partial(&self) -> Option<String> {
-        FlowCore::partial(self)
+        MurmurCore::partial(self)
     }
 
     /// In-process commit cannot be abandoned half way; the deadline is the
     /// remote backend's concern.
     fn commit(&self, _deadline: Instant) -> Result<CommitResult, BackendError> {
-        Ok(FlowCore::commit(self))
+        Ok(MurmurCore::commit(self))
     }
 
     fn cancel(&self) {
-        FlowCore::cancel(self)
+        MurmurCore::cancel(self)
     }
 
     /// D28: `plan(built-in LLM)` becomes the cleaner for later commits.
@@ -54,19 +54,19 @@ impl Backend for FlowCore {
         install_cleanup_plan(self, plan.as_ref());
     }
 
-    fn llm_cleaner(&self) -> Option<Arc<dyn flow_core::cleanup::Cleaner>> {
+    fn llm_cleaner(&self) -> Option<Arc<dyn murmur_core::cleanup::Cleaner>> {
         self.cleaner()
     }
 
     fn keep_llm(&self) -> bool {
-        FlowCore::keep_llm(self)
+        MurmurCore::keep_llm(self)
     }
 
     fn probe(&self) -> HealthReport {
         HealthReport {
             ok: true,
             engine: EngineKind::Local,
-            postprocess_rev: Some(flow_core::POSTPROCESS_REV.into()),
+            postprocess_rev: Some(murmur_core::POSTPROCESS_REV.into()),
             postprocess_match: Some(true),
             checked_at_ms: now_unix_ms(),
             ..Default::default()
@@ -76,10 +76,10 @@ impl Backend for FlowCore {
 
 /// Install the router's cleanup plan on `core` (D28/D36): `plan(its
 /// built-in LLM)` cleans its next commits; `None` restores the built-in
-/// one. Shells that wrap `FlowCore`s in their own backend (Windows' model
+/// one. Shells that wrap `MurmurCore`s in their own backend (Windows' model
 /// slot) call this on every core they build, so a model reload keeps the
 /// server and cloud hops of the cleanup order.
-pub fn install_cleanup_plan(core: &FlowCore, plan: Option<&CleanupPlan>) {
+pub fn install_cleanup_plan(core: &MurmurCore, plan: Option<&CleanupPlan>) {
     core.set_cleaner(plan.and_then(|p| p(core.cleaner())));
 }
 
@@ -216,7 +216,7 @@ impl Backend for LazyLocal {
         }
     }
 
-    fn llm_cleaner(&self) -> Option<Arc<dyn flow_core::cleanup::Cleaner>> {
+    fn llm_cleaner(&self) -> Option<Arc<dyn murmur_core::cleanup::Cleaner>> {
         self.loaded()?.llm_cleaner()
     }
 

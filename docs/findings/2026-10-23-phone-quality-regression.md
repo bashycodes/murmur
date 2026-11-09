@@ -17,7 +17,7 @@ but cosmetic defect: `endpoint_wait_ms` is always 0 on real mics (debug metric o
 
 ### 1. Native libs: bit-identical to the good build
 
-| APK | libflow_ffi.so (hybrid, sha256) | libflow_llm.so | others |
+| APK | libmurmur_ffi.so (hybrid, sha256) | libmurmur_llm.so | others |
 |---|---|---|---|
 | 728851be hybrid-debug (`integration/app/build/outputs/apk/hybrid/debug/app-hybrid-debug.apk`, 2026-10-22 22:18, still on disk) | `cf4586b73bf3…` | `f16fff37af46…` | same |
 | f97ef200 hybrid-release (same dist run) | `cf4586b73bf3…` | `f16fff37af46…` | same |
@@ -29,11 +29,11 @@ The "copied" jniLibs (built 2026-10-22 21:57 after merge 49e1e54, `tools/build-n
 --flavor …`) are the exact libs the 728851be APK shipped. Provenance is therefore not a variable
 between "good" and "bad". (CI vs local differ only by rustc build; same crate versions, same
 whisper-rs 0.16.0.) Core is unchanged in the range (`git log 32982a1..c038c90 -- crates/` empty
-for flow-core/flow-ffi).
+for murmur-core/murmur-ffi).
 
 ### 2. Kotlin diff 32982a1..c038c90: nothing on the audio/ASR path
 
-`git diff 32982a1 c038c90 -- apps/flow-android` (19 files): debug log (D21), a11y health
+`git diff 32982a1 c038c90 -- apps/murmur-android` (19 files): debug log (D21), a11y health
 debounce/probe (9d81923), model import fix (a7bcfba). Checked one by one:
 
 * `MicRecorder` (source `MIC`, 16 kHz mono PCM16): unchanged.
@@ -48,7 +48,7 @@ debounce/probe (9d81923), model import fix (a7bcfba). Checked one by one:
 
 ### 3. Host repro: base-q5_1 + auto does not mis-detect clean English, even 2 s / 5 dB SNR
 
-`tools/probes/prototypes/lang_auto_short_clips_2026_10_23.py` (flow-cli = same core, fit_ctx on,
+`tools/probes/prototypes/lang_auto_short_clips_2026_10_23.py` (murmur-cli = same core, fit_ctx on,
 `--platform android --threads 4`), bench core set (jfk + 12 LibriSpeech), full / first 3 s /
 first 2 s, clean / white noise 15 dB and 5 dB SNR:
 
@@ -107,7 +107,7 @@ max(3 × floor, −48 dBFS) and < 0.3 × the speech peak; keep the absolute bar 
 2. In each `files/debug/dictations.jsonl` line: `route`, `fallback`, `mode`, `audio_ms`.
    Compare with the always-on logcat `commit … route=…` lines in the history window.
 3. A/B on the device without changing builds: History screen (or `history.db`, table
-   `history`, `asr_text`, `audio_ms`, `created_at` via the app's `run-as dev.flowclone`) rows
+   `history`, `asr_text`, `audio_ms`, `created_at` via the app's `run-as dev.murmur`) rows
    from **before** the debug-log install vs after: same model + settings? If old local rows are
    just as bad, nothing regressed.
 4. Settings → Language `en` (no rebuild), dictate the same 5 sentences (one ~2 s, four 5-10 s)
@@ -115,4 +115,4 @@ max(3 × floor, −48 dBFS) and < 0.3 × the speech peak; keep the absolute bar 
    If `en` / base.en fixes it, ship a default of `en` for English-locale phones or warn when a
    multilingual base/tiny model runs with `auto`.
 5. To make future reports falsifiable: a Developer "save last dictation audio" option (WAV in
-   app-private storage, off by default) so a bad line can be replayed on the host with flow-cli.
+   app-private storage, off by default) so a bad line can be replayed on the host with murmur-cli.

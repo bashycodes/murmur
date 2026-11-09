@@ -1,10 +1,10 @@
 //! End-to-end: the real streaming zipformer (ivrit-ai/zipformer2-66m-
-//! streaming-he int8, `asr_backend: "sherpa_online"`) through FlowCore.
+//! streaming-he int8, `asr_backend: "sherpa_online"`) through MurmurCore.
 //! Skips (passes with a note) unless both exist:
-//! FLOW_ZIPFORMER_HE_DIR (default models/zipformer2-66m-streaming-he-int8,
-//! then ~/.cache/flow-clone-models/zipformer2-66m-streaming-he-int8) and
-//! FLOW_HE_WAV (default models/he.wav, then the FLEURS he dev clip
-//! 10012360550181770926.wav under ~/.cache/flow-clone-models/
+//! MURMUR_ZIPFORMER_HE_DIR (default models/zipformer2-66m-streaming-he-int8,
+//! then ~/.cache/murmur-models/zipformer2-66m-streaming-he-int8) and
+//! MURMUR_HE_WAV (default models/he.wav, then the FLEURS he dev clip
+//! 10012360550181770926.wav under ~/.cache/murmur-models/
 //! fleurs-he-sample/raw/). The hotword case expects that clip's
 //! "הארכיפלג" (greedy writes "הארכי פלג"). Model pin:
 //! docs/findings/2026-10-30-hebrew-model-pins.md.
@@ -13,20 +13,20 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use flow_core::config::{AsrBackend, LanguageModel, ModelConfig, SessionConfig};
-use flow_core::dictionary::{DictEntry, Dictionary};
-use flow_core::{audio, CommitResult, CommitStatus, FlowCore};
+use murmur_core::config::{AsrBackend, LanguageModel, ModelConfig, SessionConfig};
+use murmur_core::dictionary::{DictEntry, Dictionary};
+use murmur_core::{audio, CommitResult, CommitStatus, MurmurCore};
 
 const HOTWORD: &str = "הארכיפלג";
 
 fn models() -> PathBuf {
-    std::env::var_os("FLOW_MODELS_DIR")
+    std::env::var_os("MURMUR_MODELS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../models"))
 }
 
 fn cache() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache/flow-clone-models"))
+    std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache/murmur-models"))
 }
 
 /// The env var, else the first candidate that exists.
@@ -40,7 +40,7 @@ fn pick(var: &str, candidates: Vec<PathBuf>, ok: impl Fn(&Path) -> bool) -> Opti
 fn inputs() -> Option<(PathBuf, PathBuf)> {
     let zip = "zipformer2-66m-streaming-he-int8";
     let dir = pick(
-        "FLOW_ZIPFORMER_HE_DIR",
+        "MURMUR_ZIPFORMER_HE_DIR",
         [Some(models().join(zip)), cache().map(|c| c.join(zip))]
             .into_iter()
             .flatten()
@@ -48,7 +48,7 @@ fn inputs() -> Option<(PathBuf, PathBuf)> {
         |p| p.join("tokens.txt").is_file(),
     );
     let wav = pick(
-        "FLOW_HE_WAV",
+        "MURMUR_HE_WAV",
         [
             Some(models().join("he.wav")),
             cache().map(|c| c.join("fleurs-he-sample/raw/10012360550181770926.wav")),
@@ -82,7 +82,7 @@ fn clip(wav: &Path) -> Vec<i16> {
         .collect()
 }
 
-fn dictate(core: &FlowCore, pcm: &[i16], cfg: SessionConfig) -> CommitResult {
+fn dictate(core: &MurmurCore, pcm: &[i16], cfg: SessionConfig) -> CommitResult {
     core.start_session(cfg).unwrap();
     for c in pcm.chunks(640) {
         assert!(core.push_audio(c));
@@ -115,7 +115,7 @@ fn assert_hebrew(text: &str) {
 }
 
 #[test]
-fn zipformer_he_route_through_flow_core() {
+fn zipformer_he_route_through_murmur_core() {
     let Some((dir, wav)) = inputs() else { return };
     // English default (mock) + the zipformer as the Hebrew route.
     let cfg: ModelConfig = serde_json::from_value(serde_json::json!({
@@ -126,7 +126,7 @@ fn zipformer_he_route_through_flow_core() {
     .unwrap();
     assert_eq!(cfg.languages["he"].asr_backend, AsrBackend::SherpaOnline);
     let t = Instant::now();
-    let core = FlowCore::load_models(&cfg).expect("load zipformer");
+    let core = MurmurCore::load_models(&cfg).expect("load zipformer");
     eprintln!("load_models: {} ms", t.elapsed().as_millis());
     let pcm = clip(&wav);
 
@@ -171,7 +171,7 @@ fn zipformer_he_route_through_flow_core() {
 /// docs/findings/2026-10-31-zipformer-first-words.md.
 fn kruger_clip() -> Option<PathBuf> {
     pick(
-        "FLOW_HE_KRUGER_WAV",
+        "MURMUR_HE_KRUGER_WAV",
         cache()
             .map(|c| c.join("fleurs-he-sample/raw/10043827527204102024.wav"))
             .into_iter()
@@ -190,7 +190,7 @@ fn zipformer_keeps_every_spoken_word_of_the_kruger_clip() {
     let pcm = clip(&wav);
     // VAD keeps the lead-in: the trimmed span starts before the first word.
     let f: Vec<f32> = pcm.iter().map(|s| *s as f32 / 32768.0).collect();
-    let sp = flow_core::vad::detect(&f).expect("speech");
+    let sp = murmur_core::vad::detect(&f).expect("speech");
     assert!(sp.start <= 16_000, "VAD start {} samples", sp.start);
 
     let cfg = ModelConfig {
@@ -199,7 +199,7 @@ fn zipformer_keeps_every_spoken_word_of_the_kruger_clip() {
         threads: 4,
         ..Default::default()
     };
-    let core = FlowCore::load_models(&cfg).expect("load zipformer");
+    let core = MurmurCore::load_models(&cfg).expect("load zipformer");
     let r = dictate(&core, &pcm, hebrew("he", &[]));
     let t = &r.asr_text;
     // Spoken order: "נמצא בחלק ..." first, "... הלאומי קרוגר קרוקודייל" last.
@@ -225,7 +225,7 @@ fn zipformer_as_the_default_model_reports_the_forced_language() {
         threads: 4,
         ..Default::default()
     };
-    let core = FlowCore::load_models(&cfg).expect("load zipformer");
+    let core = MurmurCore::load_models(&cfg).expect("load zipformer");
     let r = dictate(&core, &clip(&wav), hebrew("iw", &[]));
     assert_eq!(r.language.as_deref(), Some("he"));
     assert_hebrew(&r.asr_text);
@@ -245,8 +245,8 @@ fn sherpa_online_bad_dir_fails_load() {
         )]),
         ..Default::default()
     };
-    match FlowCore::load_models(&cfg) {
-        Err(flow_core::CoreError::ModelNotFound { path }) => {
+    match MurmurCore::load_models(&cfg) {
+        Err(murmur_core::CoreError::ModelNotFound { path }) => {
             assert_eq!(path, "/nonexistent/zipformer")
         }
         Err(e) => panic!("wrong error: {e:?}"),

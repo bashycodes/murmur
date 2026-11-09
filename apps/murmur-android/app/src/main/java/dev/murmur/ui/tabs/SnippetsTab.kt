@@ -1,14 +1,14 @@
-package dev.flowclone.ui.tabs
+package dev.murmur.ui.tabs
 
 import android.app.Activity
 import android.text.TextUtils
 import android.view.ViewGroup
 import android.widget.LinearLayout
-import dev.flowclone.core.DictEntry
-import dev.flowclone.data.DictionaryPages
-import dev.flowclone.data.DictionaryPages.Kind
-import dev.flowclone.ui.DevUi
-import dev.flowclone.ui.TypeScale
+import dev.murmur.core.DictEntry
+import dev.murmur.data.DictionaryPages
+import dev.murmur.data.DictionaryPages.Kind
+import dev.murmur.ui.DevUi
+import dev.murmur.ui.TypeScale
 
 /** Snippets tab (AndroidSnippets.dc.html): one card per snippet, what you say over the text it inserts (one line). */
 internal class SnippetsTab(activity: Activity, ui: DevUi) : EntryTab(activity, ui, Kind.SNIPPETS) {
