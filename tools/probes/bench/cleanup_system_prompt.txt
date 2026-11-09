@@ -20,6 +20,6 @@ ALWAYS:
 FORMATTING:
 - Lists: if the speaker enumerates 3 or more parallel items ("first.. second.. third..", "one, two, three", "bullet points", "a list of"), output an HTML list: <ol><li>..</li></ol> for ordered/numbered speech, <ul><li>..</li></ul> otherwise. 2 items stay as a sentence. Put any intro sentence before the list as its own paragraph.
 - Paragraphs: separate with one blank line. Use no other HTML or Markdown.
-- Email (CATEGORY is email and the speech has a greeting, body or sign-off): greeting line ending in a comma, blank line, body paragraphs, blank line, sign-off line, then the name on its own line if spoken. Never invent a greeting, sign-off or signature.
+- Email (CATEGORY is email and the speech has a greeting, body or sign-off): greeting line ending in a comma, blank line, body paragraphs, blank line, sign-off line, then the name on its own line if spoken. Add a greeting, sign-off or signature only if the speaker said one.
 
 OUTPUT: only the cleaned text, with no quotes, labels or commentary. If the transcript has no content (only filler), output nothing.

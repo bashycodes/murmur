@@ -1,0 +1,29 @@
+# `<path or dir/> <good-from commit>`: a blob the path had in a commit that
+# does not descend from good-from is stripped (the file is absent from that
+# commit), unless the same blob is the path's content in a descendant, or
+# is in the integration HEAD tree. prepare.py turns this into
+# --strip-blobs-with-ids.
+
+# D82 clean-room rewrite (48e2a55): older revisions were the port.
+crates/flow-core/src/postprocess/apps.rs 48e2a55
+crates/flow-core/src/postprocess/mod.rs 48e2a55
+crates/flow-core/src/learn.rs 48e2a55
+# D81/A3 (9d98254): older PolicyLists.kt was generated from the copied lists.
+apps/flow-android/app/src/main/java/dev/flowclone/policy/PolicyLists.kt 9d98254
+# A4 (edb0393): older revisions held the other app's A/B outputs.
+tools/probes/bench/cleanup_cases.json edb0393
+tools/probes/bench/llm_judgements.json edb0393
+tools/probes/bench/cleanup_system_prompt.txt edb0393
+crates/flow-core/tests/fixtures/bench_cleanup_cases.json edb0393
+crates/flow-core/tests/fixtures/bench_llm_outputs.json edb0393
+tools/probes/prototypes/ai_cleanup_bench_2026_10_26/results/ edb0393
+tools/probes/prototypes/laptop_bench_2026_10_30/results/ edb0393
+tools/probes/prototypes/formatting_eval_2026_10_24/cases.jsonl edb0393
+# A4 (7024ae9): older design-system export copied the other app's assets.
+docs/design/app-design/ds/ 7024ae9
+# Imported RE-repo histories (roots before the product root cc767404): their
+# root-level context files and tools were the other app's research.
+PROJECT_CONTEXT.md cc767404
+CLAUDE.md cc767404
+.gitignore cc767404
+tools/ cc767404

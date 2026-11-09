@@ -29,12 +29,12 @@ Redact rather than drop:
 - `crates/flow-core/src/postprocess/spoken.rs`: older revisions quoted the
   other product's prompt.
 - `crates/flow-core/src/postprocess/terminal.rs` (pre-D82): the module
-  comment described the other product's client functions (the client post-processing)
+  comment described the other product's client post-processing functions
   and its ground-truth vectors.
 - `apps/flow-windows/src/learn.rs` and
   `apps/flow-android/app/src/main/java/dev/flowclone/learn/EditWatch.kt`:
   older revisions said the end reasons mirror the other product's
-  end reason.
+  end-reason field.
 - `apps/flow-android/app/src/main/java/dev/flowclone/learn/Suggestions.kt`:
   older revisions described how the other product adds learned words.
 - `apps/flow-windows/src/context/mod.rs` and `context/uia.rs`: older
