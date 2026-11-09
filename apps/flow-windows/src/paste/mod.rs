@@ -185,9 +185,10 @@ pub fn unicode_text_bytes(text: &str) -> Vec<u8> {
         .collect()
 }
 
-/// Paste-layer markers flow-core emits for Cursor/Windsurf "@file"
-/// tagging (`postprocess::cursor_tag`): `{{BREAK}}` = split the insertion
-/// (let the mention popup open), `{{TAB}}` = press Tab (accept it).
+/// Paste-layer markers: `{{BREAK}}` = split the insertion (let a mention
+/// popup open), `{{TAB}}` = press Tab (accept it). flow-core no longer
+/// produces them (D82); they act only when the text carries them, e.g. a
+/// snippet body.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Segment<'a> {
     Text(&'a str),

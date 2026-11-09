@@ -656,3 +656,1304 @@
 {"id":"lower_casual","r":{"enter":false,"out":"see you soon "}}
 {"id":"sig2_olk.exe","r":{"enter":false,"out":"Hi Tom, the report is attached and ready for your review today. "}}
 {"id":"sig2_WINWORD.EXE","r":{"enter":false,"out":"Hi Tom, the report is attached and ready for your review today. "}}
+{"id":"r3_chat_b_ok","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3_achat_b_ok","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3_chat_b_ok_nosp","r":{"enter":false,"out":" See you soon. "}}
+{"id":"r3_achat_b_ok_nosp","r":{"enter":false,"out":" See you soon. "}}
+{"id":"r3_chat_b_lower","r":{"enter":false,"out":"see you soon "}}
+{"id":"r3_achat_b_lower","r":{"enter":false,"out":"see you soon "}}
+{"id":"r3_chat_b_prev_line","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3_achat_b_prev_line","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3_chat_b_prev_line_word","r":{"enter":false,"out":"see you soon "}}
+{"id":"r3_achat_b_prev_line_word","r":{"enter":false,"out":"see you soon "}}
+{"id":"r3_chat_b_q","r":{"enter":false,"out":"see you soon. "}}
+{"id":"r3_achat_b_q","r":{"enter":false,"out":"see you soon. "}}
+{"id":"r3_chat_b_bang","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3_achat_b_bang","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3_chat_b_ell","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3_achat_b_ell","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3_chat_a_ok","r":{"enter":false,"out":"See you soon."}}
+{"id":"r3_achat_a_ok","r":{"enter":false,"out":"See you soon."}}
+{"id":"r3_chat_a_word","r":{"enter":false,"out":"See you soon"}}
+{"id":"r3_achat_a_word","r":{"enter":false,"out":"See you soon"}}
+{"id":"r3_chat_a_next_line","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3_achat_a_next_line","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3_chat_a_line_end","r":{"enter":false,"out":"See you soon"}}
+{"id":"r3_achat_a_line_end","r":{"enter":false,"out":"See you soon"}}
+{"id":"r3_chat_sel_period","r":{"enter":false,"out":"See you soon."}}
+{"id":"r3_achat_sel_period","r":{"enter":false,"out":"See you soon."}}
+{"id":"r3_chat_sel_plain","r":{"enter":false,"out":"see you soon"}}
+{"id":"r3_achat_sel_plain","r":{"enter":false,"out":"see you soon"}}
+{"id":"r3_chat_b_comma","r":{"enter":false,"out":"see you soon "}}
+{"id":"r3_achat_b_comma","r":{"enter":false,"out":"see you soon "}}
+{"id":"r3_chat_b_mid_sent","r":{"enter":false,"out":"see you soon. "}}
+{"id":"r3_achat_b_mid_sent","r":{"enter":false,"out":"see you soon. "}}
+{"id":"r3_casual_9","r":{"enter":false,"out":"Line 0 here. Line 1 here. Line 2 here. Line 3 here. Line 4 here. Line 5 here. Line 6 here. Line 7 here. Line 8 here "}}
+{"id":"r3_vcasual_9","r":{"enter":false,"out":"Line 0 here. Line 1 here. Line 2 here. Line 3 here. Line 4 here. Line 5 here. Line 6 here. Line 7 here. Line 8 here "}}
+{"id":"r3_default_chat_9","r":{"enter":false,"out":"Line 0 here. Line 1 here. Line 2 here. Line 3 here. Line 4 here. Line 5 here. Line 6 here. Line 7 here. Line 8 here. "}}
+{"id":"r3_casual_10","r":{"enter":false,"out":"Line 0 here. Line 1 here. Line 2 here. Line 3 here. Line 4 here. Line 5 here. Line 6 here. Line 7 here. Line 8 here. Line 9 here "}}
+{"id":"r3_vcasual_10","r":{"enter":false,"out":"Line 0 here. Line 1 here. Line 2 here. Line 3 here. Line 4 here. Line 5 here. Line 6 here. Line 7 here. Line 8 here. Line 9 here "}}
+{"id":"r3_default_chat_10","r":{"enter":false,"out":"Line 0 here. Line 1 here. Line 2 here. Line 3 here. Line 4 here. Line 5 here. Line 6 here. Line 7 here. Line 8 here. Line 9 here. "}}
+{"id":"r3_casual_11","r":{"enter":false,"out":"Line 0 here. Line 1 here. Line 2 here. Line 3 here. Line 4 here. Line 5 here. Line 6 here. Line 7 here. Line 8 here. Line 9 here. Line 10 here. "}}
+{"id":"r3_vcasual_11","r":{"enter":false,"out":"Line 0 here. Line 1 here. Line 2 here. Line 3 here. Line 4 here. Line 5 here. Line 6 here. Line 7 here. Line 8 here. Line 9 here. Line 10 here "}}
+{"id":"r3_default_chat_11","r":{"enter":false,"out":"Line 0 here. Line 1 here. Line 2 here. Line 3 here. Line 4 here. Line 5 here. Line 6 here. Line 7 here. Line 8 here. Line 9 here. Line 10 here. "}}
+{"id":"r3_casual_14","r":{"enter":false,"out":"Line 0 here. Line 1 here. Line 2 here. Line 3 here. Line 4 here. Line 5 here. Line 6 here. Line 7 here. Line 8 here. Line 9 here. Line 10 here. Line 11 here. Line 12 here. Line 13 here. "}}
+{"id":"r3_vcasual_14","r":{"enter":false,"out":"Line 0 here. Line 1 here. Line 2 here. Line 3 here. Line 4 here. Line 5 here. Line 6 here. Line 7 here. Line 8 here. Line 9 here. Line 10 here. Line 11 here. Line 12 here. Line 13 here "}}
+{"id":"r3_default_chat_14","r":{"enter":false,"out":"Line 0 here. Line 1 here. Line 2 here. Line 3 here. Line 4 here. Line 5 here. Line 6 here. Line 7 here. Line 8 here. Line 9 here. Line 10 here. Line 11 here. Line 12 here. Line 13 here. "}}
+{"id":"r3_notion_app_empty","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_notion_app_b1","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_notion_app_b2","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_notion_app_b3","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_notion_app_b5","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_notion_app_bell","r":{"enter":false,"out":" The parcel arrived early. "}}
+{"id":"r3_notion_app_b1_after","r":{"enter":false,"out":"the parcel arrived early "}}
+{"id":"r3_notion_app_b5_after","r":{"enter":false,"out":"the parcel arrived early"}}
+{"id":"r3_notion_app_b2_nosp","r":{"enter":false,"out":" the parcel arrived early. "}}
+{"id":"r3_notion_app_bell_sp","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_notion_host_empty","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_notion_host_b1","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3_notion_host_b2","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_notion_host_b3","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_notion_host_b5","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_notion_host_bell","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3_notion_host_b1_after","r":{"enter":false,"out":"the parcel arrived early "}}
+{"id":"r3_notion_host_b5_after","r":{"enter":false,"out":"the parcel arrived early"}}
+{"id":"r3_notion_host_b2_nosp","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3_notion_host_bell_sp","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_notion_www_empty","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_notion_www_b1","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_notion_www_b2","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_notion_www_b3","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_notion_www_b5","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_notion_www_bell","r":{"enter":false,"out":" The parcel arrived early. "}}
+{"id":"r3_notion_www_b1_after","r":{"enter":false,"out":"the parcel arrived early "}}
+{"id":"r3_notion_www_b5_after","r":{"enter":false,"out":"the parcel arrived early"}}
+{"id":"r3_notion_www_b2_nosp","r":{"enter":false,"out":" the parcel arrived early. "}}
+{"id":"r3_notion_www_bell_sp","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_notion_site_empty","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_notion_site_b1","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_notion_site_b2","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_notion_site_b3","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_notion_site_b5","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_notion_site_bell","r":{"enter":false,"out":" The parcel arrived early. "}}
+{"id":"r3_notion_site_b1_after","r":{"enter":false,"out":"the parcel arrived early "}}
+{"id":"r3_notion_site_b5_after","r":{"enter":false,"out":"the parcel arrived early"}}
+{"id":"r3_notion_site_b2_nosp","r":{"enter":false,"out":" the parcel arrived early. "}}
+{"id":"r3_notion_site_bell_sp","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_notion_own_empty","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_notion_own_b1","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_notion_own_b2","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_notion_own_b3","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_notion_own_b5","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_notion_own_bell","r":{"enter":false,"out":" The parcel arrived early. "}}
+{"id":"r3_notion_own_b1_after","r":{"enter":false,"out":"the parcel arrived early "}}
+{"id":"r3_notion_own_b5_after","r":{"enter":false,"out":"the parcel arrived early"}}
+{"id":"r3_notion_own_b2_nosp","r":{"enter":false,"out":" the parcel arrived early. "}}
+{"id":"r3_notion_own_bell_sp","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_nl_list3","r":{"enter":false,"out":"Milk.\nEggs.\nBread. "}}
+{"id":"r3_nl_list3_nop","r":{"enter":false,"out":"Milk\nEggs\nBread "}}
+{"id":"r3_nl_two_lines_3s","r":{"enter":false,"out":"One. Two.\nThree. "}}
+{"id":"r3_nl_blank","r":{"enter":false,"out":"Milk.\n\nEggs.\n\nBread. "}}
+{"id":"r3_nl_casual_list","r":{"enter":false,"out":"Item 0.\nItem 1.\nItem 2.\nItem 3.\nItem 4.\nItem 5.\nItem 6.\nItem 7.\nItem 8.\nItem 9.\nItem 10.\nItem 11. "}}
+{"id":"r3_cur_paren_open","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_cur_paren_open_sp","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_cur_paren_close","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_cur_paren_close_nosp","r":{"enter":false,"out":" the parcel arrived early. "}}
+{"id":"r3_cur_emdash","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_cur_emdash_nosp","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_cur_endash","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_cur_emoji","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_cur_emoji_nosp","r":{"enter":false,"out":" the parcel arrived early. "}}
+{"id":"r3_cur_rdquo","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_cur_rsquo","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_cur_dquote_close","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_cur_squote","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_cur_a_dash","r":{"enter":false,"out":" the parcel arrived early. "}}
+{"id":"r3_cur_a_dash_sp","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_cur_dollar","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_cur_dollar_sp","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_cur_hash","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_cur_hash_sp","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_cur_under","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_cur_star","r":{"enter":false,"out":" The parcel arrived early. "}}
+{"id":"r3_cur_star_sp","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_cur_eq","r":{"enter":false,"out":" The parcel arrived early. "}}
+{"id":"r3_cur_eq_sp","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_cur_tilde","r":{"enter":false,"out":" The parcel arrived early. "}}
+{"id":"r3_cur_tilde_sp","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_cur_bracket_close","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_cur_brace_close","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_cur_pct","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_cur_amp","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_cur_plus","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_cur_lt","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_cur_gt","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_cur_pipe","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_cur_backslash","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_cur_caret","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_cur_bullet","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_cur_guill_close","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_cur_ellipsis_char","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_cur_colon_nosp","r":{"enter":false,"out":" the parcel arrived early. "}}
+{"id":"r3_cur_semi","r":{"enter":false,"out":" the parcel arrived early. "}}
+{"id":"r3_cur_digit","r":{"enter":false,"out":" the parcel arrived early. "}}
+{"id":"r3_cur_hebrew","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_cur_cyr","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3_after_emdash_and","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"r3_after_emdash_and_sp","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"r3_after_endash_and","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3_after_hyphen_and","r":{"enter":false,"out":"The parcel arrived early "}}
+{"id":"r3_after_hyphen_and_sp","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"r3_after_emdash_alone","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3_after_paren_close","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3_after_rdquo","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3_after_colon","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"r3_after_upper","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_after_digit","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3_after_emoji","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3_after_ellipsis","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3_after_dollar","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3_snip_sig_outlook.exe","r":{"enter":false,"out":"Thanks for the update, talk soon."}}
+{"id":"r3_snip_sig_greet_outlook.exe","r":{"enter":false,"out":"Hi Tom, my address is 12 Elm Road.\n\n— Ann"}}
+{"id":"r3_snip_nosig_outlook.exe","r":{"enter":false,"out":"Hi Tom, my address is 12 Elm Road."}}
+{"id":"r3_snip_sig_chrome.exe","r":{"enter":false,"out":"Thanks for the update, talk soon."}}
+{"id":"r3_snip_sig_greet_chrome.exe","r":{"enter":false,"out":"Hi Tom, my address is 12 Elm Road.\n\n— Ann"}}
+{"id":"r3_snip_nosig_chrome.exe","r":{"enter":false,"out":"Hi Tom, my address is 12 Elm Road."}}
+{"id":"r3_sig_empty_text","r":{"enter":false,"out":""}}
+{"id":"r3_sig_space_text","r":{"enter":false,"out":" "}}
+{"id":"r3_sig_empty_raw","r":{"enter":false,"out":"Hi Tom, the report is attached and ready for your review today. \n\n— Ann"}}
+{"id":"r3_snip_android","r":{"enter":false,"out":"Hi Tom, my address is 12 Elm Road. "}}
+{"id":"r3_snip_android_sig","r":{"enter":false,"out":"Hi Tom, my address is 12 Elm Road. "}}
+{"id":"r3_learn_long_corr","r":{"out":[]}}
+{"id":"r3_learn_corr5","r":{"out":[]}}
+{"id":"r3_learn_corr4","r":{"out":[{"corrected":"Ab Cd Ef Gh","looks_like_name":true,"original":"lumo"}]}}
+{"id":"r3_learn_corr5_names","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_um","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"um"}]}}
+{"id":"r3_learn_stop_corr_um","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_uh","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"uh"}]}}
+{"id":"r3_learn_stop_corr_uh","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_like","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"like"}]}}
+{"id":"r3_learn_stop_corr_like","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_okay","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"okay"}]}}
+{"id":"r3_learn_stop_corr_okay","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_ok","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"ok"}]}}
+{"id":"r3_learn_stop_corr_ok","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_yes","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"yes"}]}}
+{"id":"r3_learn_stop_corr_yes","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_no","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"no"}]}}
+{"id":"r3_learn_stop_corr_no","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_yeah","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"yeah"}]}}
+{"id":"r3_learn_stop_corr_yeah","r":{"out":[{"corrected":"yeah","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_just","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"just"}]}}
+{"id":"r3_learn_stop_corr_just","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_very","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"very"}]}}
+{"id":"r3_learn_stop_corr_very","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_really","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"really"}]}}
+{"id":"r3_learn_stop_corr_really","r":{"out":[{"corrected":"really","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_there","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"there"}]}}
+{"id":"r3_learn_stop_corr_there","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_here","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"here"}]}}
+{"id":"r3_learn_stop_corr_here","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_so","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"so"}]}}
+{"id":"r3_learn_stop_corr_so","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_well","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"well"}]}}
+{"id":"r3_learn_stop_corr_well","r":{"out":[{"corrected":"well","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_oh","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"oh"}]}}
+{"id":"r3_learn_stop_corr_oh","r":{"out":[{"corrected":"oh","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_hmm","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"hmm"}]}}
+{"id":"r3_learn_stop_corr_hmm","r":{"out":[{"corrected":"hmm","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_right","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"right"}]}}
+{"id":"r3_learn_stop_corr_right","r":{"out":[{"corrected":"right","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_actually","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"actually"}]}}
+{"id":"r3_learn_stop_corr_actually","r":{"out":[{"corrected":"actually","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_basically","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"basically"}]}}
+{"id":"r3_learn_stop_corr_basically","r":{"out":[{"corrected":"basically","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_literally","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"literally"}]}}
+{"id":"r3_learn_stop_corr_literally","r":{"out":[{"corrected":"literally","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_then","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"then"}]}}
+{"id":"r3_learn_stop_corr_then","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_now","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"now"}]}}
+{"id":"r3_learn_stop_corr_now","r":{"out":[{"corrected":"now","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_also","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"also"}]}}
+{"id":"r3_learn_stop_corr_also","r":{"out":[{"corrected":"also","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_too","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"too"}]}}
+{"id":"r3_learn_stop_corr_too","r":{"out":[{"corrected":"too","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_not","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"not"}]}}
+{"id":"r3_learn_stop_corr_not","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_the","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"the"}]}}
+{"id":"r3_learn_stop_corr_the","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_a","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"a"}]}}
+{"id":"r3_learn_stop_corr_a","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_an","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"an"}]}}
+{"id":"r3_learn_stop_corr_an","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_and","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"and"}]}}
+{"id":"r3_learn_stop_corr_and","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_or","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"or"}]}}
+{"id":"r3_learn_stop_corr_or","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_but","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"but"}]}}
+{"id":"r3_learn_stop_corr_but","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_to","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"to"}]}}
+{"id":"r3_learn_stop_corr_to","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_of","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"of"}]}}
+{"id":"r3_learn_stop_corr_of","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_in","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"in"}]}}
+{"id":"r3_learn_stop_corr_in","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_on","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"on"}]}}
+{"id":"r3_learn_stop_corr_on","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_at","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"at"}]}}
+{"id":"r3_learn_stop_corr_at","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_for","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"for"}]}}
+{"id":"r3_learn_stop_corr_for","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_with","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"with"}]}}
+{"id":"r3_learn_stop_corr_with","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_is","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"is"}]}}
+{"id":"r3_learn_stop_corr_is","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_it","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"it"}]}}
+{"id":"r3_learn_stop_corr_it","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_this","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"this"}]}}
+{"id":"r3_learn_stop_corr_this","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_that","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"that"}]}}
+{"id":"r3_learn_stop_corr_that","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_i","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"i"}]}}
+{"id":"r3_learn_stop_corr_i","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_you","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"you"}]}}
+{"id":"r3_learn_stop_corr_you","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_we","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"we"}]}}
+{"id":"r3_learn_stop_corr_we","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_they","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"they"}]}}
+{"id":"r3_learn_stop_corr_they","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_he","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"he"}]}}
+{"id":"r3_learn_stop_corr_he","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_she","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"she"}]}}
+{"id":"r3_learn_stop_corr_she","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_my","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"my"}]}}
+{"id":"r3_learn_stop_corr_my","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_your","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"your"}]}}
+{"id":"r3_learn_stop_corr_your","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_be","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"be"}]}}
+{"id":"r3_learn_stop_corr_be","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_have","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"have"}]}}
+{"id":"r3_learn_stop_corr_have","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_do","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"do"}]}}
+{"id":"r3_learn_stop_corr_do","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_was","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"was"}]}}
+{"id":"r3_learn_stop_corr_was","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_are","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"are"}]}}
+{"id":"r3_learn_stop_corr_are","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_will","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"will"}]}}
+{"id":"r3_learn_stop_corr_will","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_can","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"can"}]}}
+{"id":"r3_learn_stop_corr_can","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_would","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"would"}]}}
+{"id":"r3_learn_stop_corr_would","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_should","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"should"}]}}
+{"id":"r3_learn_stop_corr_should","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_if","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"if"}]}}
+{"id":"r3_learn_stop_corr_if","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_what","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"what"}]}}
+{"id":"r3_learn_stop_corr_what","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_who","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"who"}]}}
+{"id":"r3_learn_stop_corr_who","r":{"out":[]}}
+{"id":"r3_learn_stop_orig_how","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"how"}]}}
+{"id":"r3_learn_stop_corr_how","r":{"out":[{"corrected":"how","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_when","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"when"}]}}
+{"id":"r3_learn_stop_corr_when","r":{"out":[{"corrected":"when","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_where","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"where"}]}}
+{"id":"r3_learn_stop_corr_where","r":{"out":[{"corrected":"where","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_why","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"why"}]}}
+{"id":"r3_learn_stop_corr_why","r":{"out":[{"corrected":"why","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_all","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"all"}]}}
+{"id":"r3_learn_stop_corr_all","r":{"out":[{"corrected":"all","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_some","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"some"}]}}
+{"id":"r3_learn_stop_corr_some","r":{"out":[{"corrected":"some","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_any","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"any"}]}}
+{"id":"r3_learn_stop_corr_any","r":{"out":[{"corrected":"any","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_one","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"one"}]}}
+{"id":"r3_learn_stop_corr_one","r":{"out":[{"corrected":"one","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_two","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"two"}]}}
+{"id":"r3_learn_stop_corr_two","r":{"out":[{"corrected":"two","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_more","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"more"}]}}
+{"id":"r3_learn_stop_corr_more","r":{"out":[{"corrected":"more","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_much","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"much"}]}}
+{"id":"r3_learn_stop_corr_much","r":{"out":[{"corrected":"much","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_many","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"many"}]}}
+{"id":"r3_learn_stop_corr_many","r":{"out":[{"corrected":"many","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_up","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"up"}]}}
+{"id":"r3_learn_stop_corr_up","r":{"out":[{"corrected":"up","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_out","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"out"}]}}
+{"id":"r3_learn_stop_corr_out","r":{"out":[{"corrected":"out","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_about","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"about"}]}}
+{"id":"r3_learn_stop_corr_about","r":{"out":[{"corrected":"about","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_hi","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"hi"}]}}
+{"id":"r3_learn_stop_corr_hi","r":{"out":[{"corrected":"hi","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_hello","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"hello"}]}}
+{"id":"r3_learn_stop_corr_hello","r":{"out":[{"corrected":"hello","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_thanks","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"thanks"}]}}
+{"id":"r3_learn_stop_corr_thanks","r":{"out":[{"corrected":"thanks","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_please","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"please"}]}}
+{"id":"r3_learn_stop_corr_please","r":{"out":[{"corrected":"please","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_sure","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"sure"}]}}
+{"id":"r3_learn_stop_corr_sure","r":{"out":[{"corrected":"sure","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_maybe","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"maybe"}]}}
+{"id":"r3_learn_stop_corr_maybe","r":{"out":[{"corrected":"maybe","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_kind","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"kind"}]}}
+{"id":"r3_learn_stop_corr_kind","r":{"out":[{"corrected":"kind","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_sort","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"sort"}]}}
+{"id":"r3_learn_stop_corr_sort","r":{"out":[{"corrected":"sort","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_mean","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"mean"}]}}
+{"id":"r3_learn_stop_corr_mean","r":{"out":[{"corrected":"mean","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_know","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"know"}]}}
+{"id":"r3_learn_stop_corr_know","r":{"out":[{"corrected":"know","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_guess","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"guess"}]}}
+{"id":"r3_learn_stop_corr_guess","r":{"out":[{"corrected":"guess","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_anyway","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"anyway"}]}}
+{"id":"r3_learn_stop_corr_anyway","r":{"out":[{"corrected":"anyway","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_stuff","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"stuff"}]}}
+{"id":"r3_learn_stop_corr_stuff","r":{"out":[{"corrected":"stuff","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_thing","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"thing"}]}}
+{"id":"r3_learn_stop_corr_thing","r":{"out":[{"corrected":"thing","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_things","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"things"}]}}
+{"id":"r3_learn_stop_corr_things","r":{"out":[{"corrected":"things","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_gonna","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"gonna"}]}}
+{"id":"r3_learn_stop_corr_gonna","r":{"out":[{"corrected":"gonna","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_wanna","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"wanna"}]}}
+{"id":"r3_learn_stop_corr_wanna","r":{"out":[{"corrected":"wanna","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_lot","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"lot"}]}}
+{"id":"r3_learn_stop_corr_lot","r":{"out":[{"corrected":"lot","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_bit","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"bit"}]}}
+{"id":"r3_learn_stop_corr_bit","r":{"out":[{"corrected":"bit","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_pretty","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"pretty"}]}}
+{"id":"r3_learn_stop_corr_pretty","r":{"out":[{"corrected":"pretty","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_quite","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"quite"}]}}
+{"id":"r3_learn_stop_corr_quite","r":{"out":[{"corrected":"quite","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_even","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"even"}]}}
+{"id":"r3_learn_stop_corr_even","r":{"out":[{"corrected":"even","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_still","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"still"}]}}
+{"id":"r3_learn_stop_corr_still","r":{"out":[{"corrected":"still","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_only","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"only"}]}}
+{"id":"r3_learn_stop_corr_only","r":{"out":[{"corrected":"only","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_again","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"again"}]}}
+{"id":"r3_learn_stop_corr_again","r":{"out":[{"corrected":"again","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_stop_orig_back","r":{"out":[{"corrected":"Zentra","looks_like_name":true,"original":"back"}]}}
+{"id":"r3_learn_stop_corr_back","r":{"out":[{"corrected":"back","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3_learn_contr_dont","r":{"out":[]}}
+{"id":"r3_learn_contr_dont_rev","r":{"out":[]}}
+{"id":"r3_learn_contr_its","r":{"out":[]}}
+{"id":"r3_learn_contr_its_rev","r":{"out":[]}}
+{"id":"r3_learn_contr_orig_contr","r":{"out":[]}}
+{"id":"r3_learn_contr_orig_contr2","r":{"out":[]}}
+{"id":"r3_learn_contr_orig_contr3","r":{"out":[]}}
+{"id":"r3_learn_contr_orig_poss","r":{"out":[]}}
+{"id":"r3_learn_contr_orig_poss2","r":{"out":[]}}
+{"id":"r3_learn_case_start","r":{"out":[]}}
+{"id":"r3_learn_case_after_period","r":{"out":[]}}
+{"id":"r3_learn_case_after_q","r":{"out":[]}}
+{"id":"r3_learn_case_mid","r":{"out":[{"corrected":"Lumo","looks_like_name":true,"original":"lumo"}]}}
+{"id":"r3_learn_case_start_two","r":{"out":[]}}
+{"id":"r3_learn_case_start_diff","r":{"out":[{"corrected":"Lumio","looks_like_name":false,"original":"lumo"}]}}
+{"id":"r3_learn_case_lower_start","r":{"out":[]}}
+{"id":"r3_learn_case_lower_mid","r":{"out":[{"corrected":"lumo","looks_like_name":false,"original":"Lumo"}]}}
+{"id":"r3_learn_key_orig","r":{"out":[{"corrected":"Lumia","looks_like_name":true,"original":"lumo"}]}}
+{"id":"r3_learn_key_corr","r":{"out":[]}}
+{"id":"r3_learn_word_corr","r":{"out":[]}}
+{"id":"r3_learn_word_orig","r":{"out":[{"corrected":"Lumia","looks_like_name":true,"original":"Lumio"}]}}
+{"id":"r3_case_NASA called.","r":{"enter":false,"out":"nASA called. "}}
+{"id":"r3_case_IPhone works.","r":{"enter":false,"out":"iPhone works. "}}
+{"id":"r3_case_IPad works.","r":{"enter":false,"out":"iPad works. "}}
+{"id":"r3_case_McKay called.","r":{"enter":false,"out":"mcKay called. "}}
+{"id":"r3_case_USA's team won.","r":{"enter":false,"out":"uSA's team won. "}}
+{"id":"r3_case_OK then.","r":{"enter":false,"out":"oK then. "}}
+{"id":"r3_case_A plan works.","r":{"enter":false,"out":"a plan works. "}}
+{"id":"r3_case_AI works.","r":{"enter":false,"out":"aI works. "}}
+{"id":"r3_case_I.B.M. works.","r":{"enter":false,"out":"i.B.M. works. "}}
+{"id":"r3_case_EBay works.","r":{"enter":false,"out":"eBay works. "}}
+{"id":"r3_case_JavaScript works.","r":{"enter":false,"out":"javaScript works. "}}
+{"id":"r3_case_MacBook works.","r":{"enter":false,"out":"macBook works. "}}
+{"id":"r3_case_PhD done.","r":{"enter":false,"out":"phD done. "}}
+{"id":"r3_case_X is fine.","r":{"enter":false,"out":"x is fine. "}}
+{"id":"r3_case_NASA's plan works.","r":{"enter":false,"out":"nASA's plan works. "}}
+{"id":"r3_case_U.S. troops.","r":{"enter":false,"out":"u.S. troops. "}}
+{"id":"r3_case_CEO called.","r":{"enter":false,"out":"cEO called. "}}
+{"id":"r3_case_TV is on.","r":{"enter":false,"out":"tV is on. "}}
+{"id":"r3b_cur_0","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_0","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_1","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_1","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_2","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3b_cur_pron_2","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_3","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_3","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_4","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3b_cur_pron_4","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_5","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_5","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_6","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_6","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_7","r":{"enter":false,"out":" The parcel arrived early. "}}
+{"id":"r3b_cur_pron_7","r":{"enter":false,"out":" I left. "}}
+{"id":"r3b_cur_8","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_8","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_9","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_9","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_10","r":{"enter":false,"out":" The parcel arrived early. "}}
+{"id":"r3b_cur_pron_10","r":{"enter":false,"out":" I left. "}}
+{"id":"r3b_cur_11","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_11","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_12","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_12","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_13","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_13","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_14","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_14","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_15","r":{"enter":false,"out":" the parcel arrived early. "}}
+{"id":"r3b_cur_pron_15","r":{"enter":false,"out":" I left. "}}
+{"id":"r3b_cur_16","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3b_cur_pron_16","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_17","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_17","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_18","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3b_cur_pron_18","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_19","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_19","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_20","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3b_cur_pron_20","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_21","r":{"enter":false,"out":" the parcel arrived early. "}}
+{"id":"r3b_cur_pron_21","r":{"enter":false,"out":" I left. "}}
+{"id":"r3b_cur_22","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3b_cur_pron_22","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_23","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_23","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_24","r":{"enter":false,"out":" the parcel arrived early. "}}
+{"id":"r3b_cur_pron_24","r":{"enter":false,"out":" I left. "}}
+{"id":"r3b_cur_25","r":{"enter":false,"out":" the parcel arrived early. "}}
+{"id":"r3b_cur_pron_25","r":{"enter":false,"out":" I left. "}}
+{"id":"r3b_cur_26","r":{"enter":false,"out":" the parcel arrived early. "}}
+{"id":"r3b_cur_pron_26","r":{"enter":false,"out":" I left. "}}
+{"id":"r3b_cur_27","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3b_cur_pron_27","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_28","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_28","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_29","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_29","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_30","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3b_cur_pron_30","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_31","r":{"enter":false,"out":" the parcel arrived early. "}}
+{"id":"r3b_cur_pron_31","r":{"enter":false,"out":" I left. "}}
+{"id":"r3b_cur_32","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3b_cur_pron_32","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_33","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3b_cur_pron_33","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_34","r":{"enter":false,"out":" The parcel arrived early. "}}
+{"id":"r3b_cur_pron_34","r":{"enter":false,"out":" I left. "}}
+{"id":"r3b_cur_35","r":{"enter":false,"out":" The parcel arrived early. "}}
+{"id":"r3b_cur_pron_35","r":{"enter":false,"out":" I left. "}}
+{"id":"r3b_cur_36","r":{"enter":false,"out":" The parcel arrived early. "}}
+{"id":"r3b_cur_pron_36","r":{"enter":false,"out":" I left. "}}
+{"id":"r3b_cur_37","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_37","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_38","r":{"enter":false,"out":" The parcel arrived early. "}}
+{"id":"r3b_cur_pron_38","r":{"enter":false,"out":" I left. "}}
+{"id":"r3b_cur_39","r":{"enter":false,"out":" The parcel arrived early. "}}
+{"id":"r3b_cur_pron_39","r":{"enter":false,"out":" I left. "}}
+{"id":"r3b_cur_40","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_40","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_41","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_41","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_42","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_42","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_43","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_43","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_44","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3b_cur_pron_44","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_45","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3b_cur_pron_45","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_46","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3b_cur_pron_46","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_47","r":{"enter":false,"out":" the parcel arrived early. "}}
+{"id":"r3b_cur_pron_47","r":{"enter":false,"out":" I left. "}}
+{"id":"r3b_cur_48","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3b_cur_pron_48","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_49","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3b_cur_pron_49","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_50","r":{"enter":false,"out":" The parcel arrived early. "}}
+{"id":"r3b_cur_pron_50","r":{"enter":false,"out":" I left. "}}
+{"id":"r3b_cur_51","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_51","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_52","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_52","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_53","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_53","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_54","r":{"enter":false,"out":" The parcel arrived early. "}}
+{"id":"r3b_cur_pron_54","r":{"enter":false,"out":" I left. "}}
+{"id":"r3b_cur_55","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_55","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_56","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3b_cur_pron_56","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_57","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3b_cur_pron_57","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_58","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3b_cur_pron_58","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_59","r":{"enter":false,"out":" the parcel arrived early. "}}
+{"id":"r3b_cur_pron_59","r":{"enter":false,"out":" I left. "}}
+{"id":"r3b_cur_60","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3b_cur_pron_60","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_61","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_61","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_62","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_62","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_63","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_63","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_64","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_64","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_65","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_65","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_66","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_66","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_67","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_67","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_68","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_68","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_69","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_69","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_70","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_70","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_71","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3b_cur_pron_71","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_72","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3b_cur_pron_72","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_73","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_73","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_74","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_74","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_75","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_75","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_76","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_76","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_77","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3b_cur_pron_77","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_78","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_78","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_79","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_79","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_80","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3b_cur_pron_80","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_81","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3b_cur_pron_81","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_82","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3b_cur_pron_82","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_83","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3b_cur_pron_83","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_84","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_84","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_cur_85","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_cur_pron_85","r":{"enter":false,"out":"I left. "}}
+{"id":"r3b_after_0","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"r3b_after_1","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"r3b_after_2","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_after_3","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3b_after_4","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3b_after_5","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3b_after_6","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3b_after_7","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3b_after_8","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3b_after_9","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3b_after_10","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"r3b_after_11","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"r3b_after_12","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"r3b_after_13","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"r3b_after_14","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3b_after_15","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"r3b_after_16","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"r3b_after_17","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"r3b_after_18","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3b_after_19","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3b_after_20","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3b_after_21","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3b_after_22","r":{"enter":false,"out":"The parcel arrived early "}}
+{"id":"r3b_after_23","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_after_24","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3b_after_25","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3b_after_26","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3b_after_27","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3b_after_28","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3b_after_29","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"r3b_after_30","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3b_after_31","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3b_after_32","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3b_after_33","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3b_after_34","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3b_after_35","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3b_after_36","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"r3b_after_37","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3b_after_38","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"r3b_stop_um","r":{"out":[]}}
+{"id":"r3b_stopcap_um","r":{"out":[]}}
+{"id":"r3b_stop_uh","r":{"out":[]}}
+{"id":"r3b_stopcap_uh","r":{"out":[]}}
+{"id":"r3b_stop_er","r":{"out":[{"corrected":"er","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_er","r":{"out":[{"corrected":"Er","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_erm","r":{"out":[{"corrected":"erm","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_erm","r":{"out":[{"corrected":"Erm","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_ah","r":{"out":[{"corrected":"ah","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_ah","r":{"out":[{"corrected":"Ah","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_eh","r":{"out":[{"corrected":"eh","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_eh","r":{"out":[{"corrected":"Eh","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_hm","r":{"out":[{"corrected":"hm","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_hm","r":{"out":[{"corrected":"Hm","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_mm","r":{"out":[{"corrected":"mm","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_mm","r":{"out":[{"corrected":"Mm","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_huh","r":{"out":[{"corrected":"huh","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_huh","r":{"out":[{"corrected":"Huh","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_yep","r":{"out":[{"corrected":"yep","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_yep","r":{"out":[{"corrected":"Yep","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_yup","r":{"out":[{"corrected":"yup","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_yup","r":{"out":[{"corrected":"Yup","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_nope","r":{"out":[{"corrected":"nope","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_nope","r":{"out":[{"corrected":"Nope","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_nah","r":{"out":[{"corrected":"nah","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_nah","r":{"out":[{"corrected":"Nah","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_yea","r":{"out":[{"corrected":"yea","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_yea","r":{"out":[{"corrected":"Yea","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_alright","r":{"out":[{"corrected":"alright","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_alright","r":{"out":[{"corrected":"Alright","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_k","r":{"out":[{"corrected":"k","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_k","r":{"out":[{"corrected":"K","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stop_okey","r":{"out":[{"corrected":"okey","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_okey","r":{"out":[{"corrected":"Okey","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_me","r":{"out":[]}}
+{"id":"r3b_stopcap_me","r":{"out":[]}}
+{"id":"r3b_stop_us","r":{"out":[]}}
+{"id":"r3b_stopcap_us","r":{"out":[]}}
+{"id":"r3b_stop_him","r":{"out":[]}}
+{"id":"r3b_stopcap_him","r":{"out":[]}}
+{"id":"r3b_stop_her","r":{"out":[]}}
+{"id":"r3b_stopcap_her","r":{"out":[]}}
+{"id":"r3b_stop_them","r":{"out":[]}}
+{"id":"r3b_stopcap_them","r":{"out":[]}}
+{"id":"r3b_stop_his","r":{"out":[{"corrected":"his","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_his","r":{"out":[{"corrected":"His","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_hers","r":{"out":[{"corrected":"hers","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_hers","r":{"out":[{"corrected":"Hers","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_its","r":{"out":[]}}
+{"id":"r3b_stopcap_its","r":{"out":[]}}
+{"id":"r3b_stop_our","r":{"out":[]}}
+{"id":"r3b_stopcap_our","r":{"out":[]}}
+{"id":"r3b_stop_ours","r":{"out":[{"corrected":"ours","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_ours","r":{"out":[{"corrected":"Ours","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_their","r":{"out":[]}}
+{"id":"r3b_stopcap_their","r":{"out":[]}}
+{"id":"r3b_stop_theirs","r":{"out":[{"corrected":"theirs","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_theirs","r":{"out":[{"corrected":"Theirs","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_mine","r":{"out":[{"corrected":"mine","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_mine","r":{"out":[{"corrected":"Mine","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_yours","r":{"out":[{"corrected":"yours","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_yours","r":{"out":[{"corrected":"Yours","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_myself","r":{"out":[{"corrected":"myself","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_myself","r":{"out":[{"corrected":"Myself","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_these","r":{"out":[]}}
+{"id":"r3b_stopcap_these","r":{"out":[]}}
+{"id":"r3b_stop_those","r":{"out":[]}}
+{"id":"r3b_stopcap_those","r":{"out":[]}}
+{"id":"r3b_stop_who","r":{"out":[]}}
+{"id":"r3b_stopcap_who","r":{"out":[]}}
+{"id":"r3b_stop_whom","r":{"out":[{"corrected":"whom","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_whom","r":{"out":[{"corrected":"Whom","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_whose","r":{"out":[{"corrected":"whose","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_whose","r":{"out":[{"corrected":"Whose","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_which","r":{"out":[]}}
+{"id":"r3b_stopcap_which","r":{"out":[]}}
+{"id":"r3b_stop_what","r":{"out":[]}}
+{"id":"r3b_stopcap_what","r":{"out":[]}}
+{"id":"r3b_stop_where","r":{"out":[{"corrected":"where","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_where","r":{"out":[{"corrected":"Where","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_there","r":{"out":[]}}
+{"id":"r3b_stopcap_there","r":{"out":[]}}
+{"id":"r3b_stop_here","r":{"out":[]}}
+{"id":"r3b_stopcap_here","r":{"out":[]}}
+{"id":"r3b_stop_then","r":{"out":[]}}
+{"id":"r3b_stopcap_then","r":{"out":[]}}
+{"id":"r3b_stop_than","r":{"out":[{"corrected":"than","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_than","r":{"out":[{"corrected":"Than","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_as","r":{"out":[]}}
+{"id":"r3b_stopcap_as","r":{"out":[]}}
+{"id":"r3b_stop_by","r":{"out":[]}}
+{"id":"r3b_stopcap_by","r":{"out":[]}}
+{"id":"r3b_stop_from","r":{"out":[]}}
+{"id":"r3b_stopcap_from","r":{"out":[]}}
+{"id":"r3b_stop_into","r":{"out":[{"corrected":"into","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_into","r":{"out":[{"corrected":"Into","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_onto","r":{"out":[{"corrected":"onto","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_onto","r":{"out":[{"corrected":"Onto","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_upon","r":{"out":[{"corrected":"upon","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_upon","r":{"out":[{"corrected":"Upon","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_over","r":{"out":[{"corrected":"over","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_over","r":{"out":[{"corrected":"Over","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_under","r":{"out":[{"corrected":"under","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_under","r":{"out":[{"corrected":"Under","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_off","r":{"out":[{"corrected":"off","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_off","r":{"out":[{"corrected":"Off","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_down","r":{"out":[{"corrected":"down","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_down","r":{"out":[{"corrected":"Down","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_via","r":{"out":[{"corrected":"via","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_via","r":{"out":[{"corrected":"Via","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_per","r":{"out":[{"corrected":"per","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_per","r":{"out":[{"corrected":"Per","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_nor","r":{"out":[{"corrected":"nor","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_nor","r":{"out":[{"corrected":"Nor","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_yet","r":{"out":[{"corrected":"yet","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_yet","r":{"out":[{"corrected":"Yet","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_because","r":{"out":[{"corrected":"because","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_because","r":{"out":[{"corrected":"Because","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_since","r":{"out":[{"corrected":"since","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_since","r":{"out":[{"corrected":"Since","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_while","r":{"out":[{"corrected":"while","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_while","r":{"out":[{"corrected":"While","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_though","r":{"out":[{"corrected":"though","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_though","r":{"out":[{"corrected":"Though","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_although","r":{"out":[{"corrected":"although","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_although","r":{"out":[{"corrected":"Although","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_unless","r":{"out":[{"corrected":"unless","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_unless","r":{"out":[{"corrected":"Unless","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_until","r":{"out":[{"corrected":"until","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_until","r":{"out":[{"corrected":"Until","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_till","r":{"out":[{"corrected":"till","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_till","r":{"out":[{"corrected":"Till","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_am","r":{"out":[{"corrected":"am","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_am","r":{"out":[{"corrected":"Am","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_were","r":{"out":[]}}
+{"id":"r3b_stopcap_were","r":{"out":[]}}
+{"id":"r3b_stop_been","r":{"out":[]}}
+{"id":"r3b_stopcap_been","r":{"out":[]}}
+{"id":"r3b_stop_being","r":{"out":[{"corrected":"being","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_being","r":{"out":[{"corrected":"Being","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_has","r":{"out":[]}}
+{"id":"r3b_stopcap_has","r":{"out":[]}}
+{"id":"r3b_stop_had","r":{"out":[]}}
+{"id":"r3b_stopcap_had","r":{"out":[]}}
+{"id":"r3b_stop_having","r":{"out":[{"corrected":"having","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_having","r":{"out":[{"corrected":"Having","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_does","r":{"out":[]}}
+{"id":"r3b_stopcap_does","r":{"out":[]}}
+{"id":"r3b_stop_did","r":{"out":[]}}
+{"id":"r3b_stopcap_did","r":{"out":[]}}
+{"id":"r3b_stop_doing","r":{"out":[{"corrected":"doing","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_doing","r":{"out":[{"corrected":"Doing","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_done","r":{"out":[{"corrected":"done","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_done","r":{"out":[{"corrected":"Done","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_could","r":{"out":[]}}
+{"id":"r3b_stopcap_could","r":{"out":[]}}
+{"id":"r3b_stop_may","r":{"out":[{"corrected":"may","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_may","r":{"out":[{"corrected":"May","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_might","r":{"out":[{"corrected":"might","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_might","r":{"out":[{"corrected":"Might","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_must","r":{"out":[{"corrected":"must","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_must","r":{"out":[{"corrected":"Must","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_shall","r":{"out":[{"corrected":"shall","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_shall","r":{"out":[{"corrected":"Shall","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_ought","r":{"out":[{"corrected":"ought","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_ought","r":{"out":[{"corrected":"Ought","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_got","r":{"out":[{"corrected":"got","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_got","r":{"out":[{"corrected":"Got","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_get","r":{"out":[{"corrected":"get","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_get","r":{"out":[{"corrected":"Get","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_go","r":{"out":[{"corrected":"go","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_go","r":{"out":[{"corrected":"Go","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_went","r":{"out":[{"corrected":"went","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_went","r":{"out":[{"corrected":"Went","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_say","r":{"out":[{"corrected":"say","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_say","r":{"out":[{"corrected":"Say","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_said","r":{"out":[{"corrected":"said","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_said","r":{"out":[{"corrected":"Said","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_see","r":{"out":[{"corrected":"see","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_see","r":{"out":[{"corrected":"See","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_let","r":{"out":[{"corrected":"let","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_let","r":{"out":[{"corrected":"Let","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_make","r":{"out":[{"corrected":"make","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_make","r":{"out":[{"corrected":"Make","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_take","r":{"out":[{"corrected":"take","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_take","r":{"out":[{"corrected":"Take","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_way","r":{"out":[{"corrected":"way","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_way","r":{"out":[{"corrected":"Way","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_very","r":{"out":[]}}
+{"id":"r3b_stopcap_very","r":{"out":[]}}
+{"id":"r3b_stop_too","r":{"out":[{"corrected":"too","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_too","r":{"out":[{"corrected":"Too","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_so","r":{"out":[]}}
+{"id":"r3b_stopcap_so","r":{"out":[]}}
+{"id":"r3b_stop_such","r":{"out":[{"corrected":"such","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_such","r":{"out":[{"corrected":"Such","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_just","r":{"out":[]}}
+{"id":"r3b_stopcap_just","r":{"out":[]}}
+{"id":"r3b_stop_only","r":{"out":[{"corrected":"only","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_only","r":{"out":[{"corrected":"Only","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_own","r":{"out":[{"corrected":"own","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_own","r":{"out":[{"corrected":"Own","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_same","r":{"out":[{"corrected":"same","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_same","r":{"out":[{"corrected":"Same","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_other","r":{"out":[{"corrected":"other","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_other","r":{"out":[{"corrected":"Other","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_each","r":{"out":[{"corrected":"each","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_each","r":{"out":[{"corrected":"Each","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_every","r":{"out":[{"corrected":"every","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_every","r":{"out":[{"corrected":"Every","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_both","r":{"out":[{"corrected":"both","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_both","r":{"out":[{"corrected":"Both","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_few","r":{"out":[{"corrected":"few","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_few","r":{"out":[{"corrected":"Few","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_most","r":{"out":[{"corrected":"most","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_most","r":{"out":[{"corrected":"Most","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_no","r":{"out":[]}}
+{"id":"r3b_stopcap_no","r":{"out":[]}}
+{"id":"r3b_stop_not","r":{"out":[]}}
+{"id":"r3b_stopcap_not","r":{"out":[]}}
+{"id":"r3b_stop_yes","r":{"out":[]}}
+{"id":"r3b_stopcap_yes","r":{"out":[]}}
+{"id":"r3b_stop_ok","r":{"out":[]}}
+{"id":"r3b_stopcap_ok","r":{"out":[]}}
+{"id":"r3b_stop_okay","r":{"out":[]}}
+{"id":"r3b_stopcap_okay","r":{"out":[]}}
+{"id":"r3b_stop_like","r":{"out":[]}}
+{"id":"r3b_stopcap_like","r":{"out":[]}}
+{"id":"r3b_stop_oh","r":{"out":[{"corrected":"oh","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_oh","r":{"out":[{"corrected":"Oh","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_well","r":{"out":[{"corrected":"well","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_well","r":{"out":[{"corrected":"Well","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_now","r":{"out":[{"corrected":"now","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_now","r":{"out":[{"corrected":"Now","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_how","r":{"out":[{"corrected":"how","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_how","r":{"out":[{"corrected":"How","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_why","r":{"out":[{"corrected":"why","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_why","r":{"out":[{"corrected":"Why","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_when","r":{"out":[{"corrected":"when","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_when","r":{"out":[{"corrected":"When","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_all","r":{"out":[{"corrected":"all","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_all","r":{"out":[{"corrected":"All","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_any","r":{"out":[{"corrected":"any","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_any","r":{"out":[{"corrected":"Any","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_some","r":{"out":[{"corrected":"some","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_some","r":{"out":[{"corrected":"Some","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_more","r":{"out":[{"corrected":"more","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_more","r":{"out":[{"corrected":"More","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_less","r":{"out":[{"corrected":"less","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_less","r":{"out":[{"corrected":"Less","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_s","r":{"out":[{"corrected":"s","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_s","r":{"out":[{"corrected":"S","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stop_t","r":{"out":[{"corrected":"t","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_t","r":{"out":[{"corrected":"T","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stop_d","r":{"out":[{"corrected":"d","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_d","r":{"out":[{"corrected":"D","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stop_ll","r":{"out":[{"corrected":"ll","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_ll","r":{"out":[{"corrected":"Ll","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_re","r":{"out":[{"corrected":"re","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_re","r":{"out":[{"corrected":"Re","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_ve","r":{"out":[{"corrected":"ve","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_ve","r":{"out":[{"corrected":"Ve","looks_like_name":true,"original":"zentra"}]}}
+{"id":"r3b_stop_m","r":{"out":[{"corrected":"m","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_m","r":{"out":[{"corrected":"M","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stop_o","r":{"out":[{"corrected":"o","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_o","r":{"out":[{"corrected":"O","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stop_y","r":{"out":[{"corrected":"y","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_y","r":{"out":[{"corrected":"Y","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stop_x","r":{"out":[{"corrected":"x","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_x","r":{"out":[{"corrected":"X","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stop_b","r":{"out":[{"corrected":"b","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_b","r":{"out":[{"corrected":"B","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stop_c","r":{"out":[{"corrected":"c","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_c","r":{"out":[{"corrected":"C","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stop_e","r":{"out":[{"corrected":"e","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_e","r":{"out":[{"corrected":"E","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stop_f","r":{"out":[{"corrected":"f","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_f","r":{"out":[{"corrected":"F","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stop_g","r":{"out":[{"corrected":"g","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_g","r":{"out":[{"corrected":"G","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stop_h","r":{"out":[{"corrected":"h","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_h","r":{"out":[{"corrected":"H","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stop_j","r":{"out":[{"corrected":"j","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_j","r":{"out":[{"corrected":"J","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stop_l","r":{"out":[{"corrected":"l","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_l","r":{"out":[{"corrected":"L","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stop_n","r":{"out":[{"corrected":"n","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_n","r":{"out":[{"corrected":"N","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stop_p","r":{"out":[{"corrected":"p","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_p","r":{"out":[{"corrected":"P","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stop_q","r":{"out":[{"corrected":"q","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_q","r":{"out":[{"corrected":"Q","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stop_r","r":{"out":[{"corrected":"r","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_r","r":{"out":[{"corrected":"R","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stop_u","r":{"out":[{"corrected":"u","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_u","r":{"out":[{"corrected":"U","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stop_v","r":{"out":[{"corrected":"v","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_v","r":{"out":[{"corrected":"V","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stop_w","r":{"out":[{"corrected":"w","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_w","r":{"out":[{"corrected":"W","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stop_z","r":{"out":[{"corrected":"z","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stopcap_z","r":{"out":[{"corrected":"Z","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stop_a","r":{"out":[]}}
+{"id":"r3b_stopcap_a","r":{"out":[]}}
+{"id":"r3b_stop_i","r":{"out":[]}}
+{"id":"r3b_stopcap_i","r":{"out":[]}}
+{"id":"r3b_stop_an","r":{"out":[]}}
+{"id":"r3b_stopcap_an","r":{"out":[]}}
+{"id":"r3b_stop_the","r":{"out":[]}}
+{"id":"r3b_stopcap_the","r":{"out":[]}}
+{"id":"r3b_stop_two","r":{"out":[]}}
+{"id":"r3b_stop_mixed","r":{"out":[{"corrected":"the Lumio","looks_like_name":false,"original":"zentra"}]}}
+{"id":"r3b_stop_orig_two","r":{"out":[{"corrected":"Lumio","looks_like_name":true,"original":"the um"}]}}
+{"id":"r3c_casual_wa_b_ok","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3c_casual_other_b_ok","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3c_casual_wa_a_ok","r":{"enter":false,"out":"See you soon."}}
+{"id":"r3c_casual_other_a_ok","r":{"enter":false,"out":"See you soon."}}
+{"id":"r3c_casual_wa_sel","r":{"enter":false,"out":"See you soon."}}
+{"id":"r3c_casual_other_sel","r":{"enter":false,"out":"See you soon."}}
+{"id":"r3c_casual_wa_none","r":{"enter":false,"out":"see you soon "}}
+{"id":"r3c_casual_other_none","r":{"enter":false,"out":"see you soon "}}
+{"id":"r3c_very_casual_wa_b_ok","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3c_very_casual_other_b_ok","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3c_very_casual_wa_a_ok","r":{"enter":false,"out":"See you soon."}}
+{"id":"r3c_very_casual_other_a_ok","r":{"enter":false,"out":"See you soon."}}
+{"id":"r3c_very_casual_wa_sel","r":{"enter":false,"out":"See you soon."}}
+{"id":"r3c_very_casual_other_sel","r":{"enter":false,"out":"See you soon."}}
+{"id":"r3c_very_casual_wa_none","r":{"enter":false,"out":"see you soon "}}
+{"id":"r3c_very_casual_other_none","r":{"enter":false,"out":"see you soon "}}
+{"id":"r3c_excited_wa_b_ok","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3c_excited_other_b_ok","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3c_excited_wa_a_ok","r":{"enter":false,"out":"See you soon."}}
+{"id":"r3c_excited_other_a_ok","r":{"enter":false,"out":"See you soon."}}
+{"id":"r3c_excited_wa_sel","r":{"enter":false,"out":"See you soon."}}
+{"id":"r3c_excited_other_sel","r":{"enter":false,"out":"See you soon."}}
+{"id":"r3c_excited_wa_none","r":{"enter":false,"out":"see you soon "}}
+{"id":"r3c_excited_other_none","r":{"enter":false,"out":"see you soon. "}}
+{"id":"r3c_formal_wa_b_ok","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3c_formal_other_b_ok","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3c_formal_wa_a_ok","r":{"enter":false,"out":"See you soon."}}
+{"id":"r3c_formal_other_a_ok","r":{"enter":false,"out":"See you soon."}}
+{"id":"r3c_formal_wa_sel","r":{"enter":false,"out":"See you soon."}}
+{"id":"r3c_formal_other_sel","r":{"enter":false,"out":"See you soon."}}
+{"id":"r3c_formal_wa_none","r":{"enter":false,"out":"see you soon. "}}
+{"id":"r3c_formal_other_none","r":{"enter":false,"out":"see you soon. "}}
+{"id":"r3c_casual_nl_10","r":{"enter":false,"out":"Item 0\nItem 1\nItem 2\nItem 3\nItem 4\nItem 5\nItem 6\nItem 7\nItem 8\nLast one "}}
+{"id":"r3c_casual_q_10","r":{"enter":false,"out":"Is 0 ok? Is 1 ok? Is 2 ok? Is 3 ok? Is 4 ok? Is 5 ok? Is 6 ok? Is 7 ok? Is 8 ok? Last one "}}
+{"id":"r3c_casual_nl_11","r":{"enter":false,"out":"Item 0\nItem 1\nItem 2\nItem 3\nItem 4\nItem 5\nItem 6\nItem 7\nItem 8\nItem 9\nLast one "}}
+{"id":"r3c_casual_q_11","r":{"enter":false,"out":"Is 0 ok? Is 1 ok? Is 2 ok? Is 3 ok? Is 4 ok? Is 5 ok? Is 6 ok? Is 7 ok? Is 8 ok? Is 9 ok? Last one. "}}
+{"id":"r3c_chat_q3","r":{"enter":false,"out":"Is it? Are you? Fine. "}}
+{"id":"r3c_chat_ell","r":{"enter":false,"out":"Wait... then go "}}
+{"id":"r3c_chat_b_unknown","r":{"enter":false,"out":"See you soon."}}
+{"id":"r3c_cur_0","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3c_cur_1","r":{"enter":false,"out":" The parcel arrived early. "}}
+{"id":"r3c_cur_2","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3c_cur_3","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3c_cur_4","r":{"enter":false,"out":" The parcel arrived early. "}}
+{"id":"r3c_cur_5","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3c_cur_6","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3c_cur_7","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3c_cur_8","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3c_cur_9","r":{"enter":false,"out":" the parcel arrived early. "}}
+{"id":"r3c_cur_10","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3c_cur_11","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3c_cur_12","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3c_cur_13","r":{"enter":false,"out":" the parcel arrived early. "}}
+{"id":"r3c_cur_14","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3c_cur_15","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3c_cur_16","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3c_cur_17","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3c_cur_18","r":{"enter":false,"out":" the parcel arrived early. "}}
+{"id":"r3c_cur_19","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3c_cur_20","r":{"enter":false,"out":" the parcel arrived early. "}}
+{"id":"r3c_cur_21","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3c_cur_22","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3c_cur_23","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3c_cur_24","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3c_cur_25","r":{"enter":false,"out":"The parcel arrived early. "}}
+{"id":"r3c_cur_26","r":{"enter":false,"out":"the parcel arrived early. "}}
+{"id":"r3c_after_0","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"r3c_after_1","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"r3c_after_2","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"r3c_after_3","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"r3c_after_4","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"r3c_after_5","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"r3c_after_6","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3c_after_7","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3c_after_8","r":{"enter":false,"out":"The parcel arrived early "}}
+{"id":"r3c_after_9","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"r3c_after_10","r":{"enter":false,"out":"The parcel arrived early"}}
+{"id":"r3c_after_11","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3c_after_12","r":{"enter":false,"out":"The parcel arrived early."}}
+{"id":"r3c_learn_curly","r":{"out":[]}}
+{"id":"r3c_learn_curly_orig","r":{"out":[]}}
+{"id":"r3c_learn_start_three","r":{"out":[]}}
+{"id":"r3c_learn_after_nl","r":{"out":[{"corrected":"Lumo","looks_like_name":true,"original":"lumo"}]}}
+{"id":"r3c_learn_after_excl","r":{"out":[]}}
+{"id":"r3c_learn_after_colon","r":{"out":[{"corrected":"Lumo","looks_like_name":true,"original":"lumo"}]}}
+{"id":"r3c_learn_orig5","r":{"out":[]}}
+{"id":"r3c_learn_orig4","r":{"out":[{"corrected":"Lumio","looks_like_name":true,"original":"a b c d"}]}}
+{"id":"r3d_unk_android_empty","r":{"enter":false,"out":"See you soon"}}
+{"id":"r3d_unkcas_android_empty","r":{"enter":false,"out":"See you soon"}}
+{"id":"r3d_unk_android_ok","r":{"enter":false,"out":"See you soon."}}
+{"id":"r3d_unkcas_android_ok","r":{"enter":false,"out":"See you soon."}}
+{"id":"r3d_unk_android_lower","r":{"enter":false,"out":"see you soon"}}
+{"id":"r3d_unkcas_android_lower","r":{"enter":false,"out":"see you soon"}}
+{"id":"r3d_unk_android_after","r":{"enter":false,"out":"See you soon."}}
+{"id":"r3d_unkcas_android_after","r":{"enter":false,"out":"See you soon."}}
+{"id":"r3d_unk_windows_empty","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3d_unkcas_windows_empty","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3d_unk_windows_ok","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3d_unkcas_windows_ok","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3d_unk_windows_lower","r":{"enter":false,"out":"see you soon "}}
+{"id":"r3d_unkcas_windows_lower","r":{"enter":false,"out":"see you soon "}}
+{"id":"r3d_unk_windows_after","r":{"enter":false,"out":"See you soon."}}
+{"id":"r3d_unkcas_windows_after","r":{"enter":false,"out":"See you soon."}}
+{"id":"r3d_chat_uell","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3d_chat_nbsp","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3d_chat_cjk","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3d_chat_tab","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3d_chat_cr","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3d_chat_colon","r":{"enter":false,"out":"see you soon "}}
+{"id":"r3e_chat_host_wa","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_chat_host_slack","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_chat_host_discord","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_chat_signal","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_chat_teams_w","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_chat_a_teams","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_chat_a_discord","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_chat_a_signal","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_chat_a_msgs","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_chat_a_insta","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_chat_a_orca","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_chat_a_host_wa","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_chat_wa_cat_other","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_chat_wa_cat_email","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_chat_np_cat_pc","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_sig_outlook_live","r":{"enter":false,"out":"Hi Tom, thanks. \n\n— Ann"}}
+{"id":"r3e_sig_outlook_cat_wc","r":{"enter":false,"out":"Hi Tom, thanks. \n\n— Ann"}}
+{"id":"r3e_sig_np_cat_email","r":{"enter":false,"out":"Hi Tom, thanks. "}}
+{"id":"r3e_sig_hxoutlook","r":{"enter":false,"out":"Hi Tom, thanks. "}}
+{"id":"r3e_sig_mailbird","r":{"enter":false,"out":"Hi Tom, thanks. \n\n— Ann"}}
+{"id":"r3e_cat_w_outlook","r":{"out":"email"}}
+{"id":"r3e_chatw_outlook","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_olk","r":{"out":"other"}}
+{"id":"r3e_chatw_olk","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_thunderbird","r":{"out":"email"}}
+{"id":"r3e_chatw_thunderbird","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_betterbird","r":{"out":"other"}}
+{"id":"r3e_chatw_betterbird","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_mailbird","r":{"out":"email"}}
+{"id":"r3e_chatw_mailbird","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_mailspring","r":{"out":"email"}}
+{"id":"r3e_chatw_mailspring","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_hxoutlook","r":{"out":"other"}}
+{"id":"r3e_chatw_hxoutlook","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_slack","r":{"out":"work_chat"}}
+{"id":"r3e_chatw_slack","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_cat_w_ms-teams","r":{"out":"other"}}
+{"id":"r3e_chatw_ms-teams","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_teams","r":{"out":"other"}}
+{"id":"r3e_chatw_teams","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_zoom","r":{"out":"other"}}
+{"id":"r3e_chatw_zoom","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_mattermost","r":{"out":"other"}}
+{"id":"r3e_chatw_mattermost","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_whatsapp","r":{"out":"personal_chat"}}
+{"id":"r3e_chatw_whatsapp","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_cat_w_whatsapp.root","r":{"out":"personal_chat"}}
+{"id":"r3e_chatw_whatsapp.root","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_cat_w_telegram","r":{"out":"personal_chat"}}
+{"id":"r3e_chatw_telegram","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_cat_w_discord","r":{"out":"personal_chat"}}
+{"id":"r3e_chatw_discord","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_cat_w_signal","r":{"out":"personal_chat"}}
+{"id":"r3e_chatw_signal","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_cat_w_messenger","r":{"out":"personal_chat"}}
+{"id":"r3e_chatw_messenger","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_cat_w_viber","r":{"out":"other"}}
+{"id":"r3e_chatw_viber","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_line","r":{"out":"other"}}
+{"id":"r3e_chatw_line","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_skype","r":{"out":"other"}}
+{"id":"r3e_chatw_skype","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_element","r":{"out":"other"}}
+{"id":"r3e_chatw_element","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_chatgpt","r":{"out":"ai_prompt"}}
+{"id":"r3e_chatw_chatgpt","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_claude","r":{"out":"ai_prompt"}}
+{"id":"r3e_chatw_claude","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_perplexity","r":{"out":"other"}}
+{"id":"r3e_chatw_perplexity","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_cursor","r":{"out":"ai_prompt"}}
+{"id":"r3e_chatw_cursor","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_windsurf","r":{"out":"ai_prompt"}}
+{"id":"r3e_chatw_windsurf","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_code","r":{"out":"ai_prompt"}}
+{"id":"r3e_chatw_code","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_windowsterminal","r":{"out":"terminal"}}
+{"id":"r3e_chatw_windowsterminal","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_wt","r":{"out":"other"}}
+{"id":"r3e_chatw_wt","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_cmd","r":{"out":"terminal"}}
+{"id":"r3e_chatw_cmd","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_powershell","r":{"out":"terminal"}}
+{"id":"r3e_chatw_powershell","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_pwsh","r":{"out":"terminal"}}
+{"id":"r3e_chatw_pwsh","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_conhost","r":{"out":"other"}}
+{"id":"r3e_chatw_conhost","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_alacritty","r":{"out":"terminal"}}
+{"id":"r3e_chatw_alacritty","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_wezterm-gui","r":{"out":"terminal"}}
+{"id":"r3e_chatw_wezterm-gui","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_mintty","r":{"out":"other"}}
+{"id":"r3e_chatw_mintty","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_putty","r":{"out":"other"}}
+{"id":"r3e_chatw_putty","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_winword","r":{"out":"other"}}
+{"id":"r3e_chatw_winword","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_notion","r":{"out":"other"}}
+{"id":"r3e_chatw_notion","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_obsidian","r":{"out":"other"}}
+{"id":"r3e_chatw_obsidian","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_onenote","r":{"out":"other"}}
+{"id":"r3e_chatw_onenote","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_soffice","r":{"out":"other"}}
+{"id":"r3e_chatw_soffice","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_w_swriter","r":{"out":"other"}}
+{"id":"r3e_chatw_swriter","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_a_com.google.android.gm","r":{"out":"email"}}
+{"id":"r3e_chata_com.google.android.gm","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_a_com.microsoft.office.outlook","r":{"out":"email"}}
+{"id":"r3e_chata_com.microsoft.office.outlook","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_a_ch.protonmail.android","r":{"out":"email"}}
+{"id":"r3e_chata_ch.protonmail.android","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_a_com.samsung.android.email.provider","r":{"out":"email"}}
+{"id":"r3e_chata_com.samsung.android.email.provider","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_a_com.fsck.k9","r":{"out":"email"}}
+{"id":"r3e_chata_com.fsck.k9","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_a_net.thunderbird.android","r":{"out":"email"}}
+{"id":"r3e_chata_net.thunderbird.android","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_a_com.yahoo.mobile.client.android.mail","r":{"out":"email"}}
+{"id":"r3e_chata_com.yahoo.mobile.client.android.mail","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_a_com.slack","r":{"out":"other"}}
+{"id":"r3e_chata_com.slack","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_a_com.microsoft.teams","r":{"out":"work_chat"}}
+{"id":"r3e_chata_com.microsoft.teams","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_cat_a_us.zoom.videomeetings","r":{"out":"other"}}
+{"id":"r3e_chata_us.zoom.videomeetings","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_a_com.mattermost.rn","r":{"out":"work_chat"}}
+{"id":"r3e_chata_com.mattermost.rn","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_cat_a_com.whatsapp","r":{"out":"personal_chat"}}
+{"id":"r3e_chata_com.whatsapp","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_cat_a_com.whatsapp.w4b","r":{"out":"personal_chat"}}
+{"id":"r3e_chata_com.whatsapp.w4b","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_cat_a_org.telegram.messenger","r":{"out":"personal_chat"}}
+{"id":"r3e_chata_org.telegram.messenger","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_cat_a_org.thoughtcrime.securesms","r":{"out":"personal_chat"}}
+{"id":"r3e_chata_org.thoughtcrime.securesms","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_cat_a_com.discord","r":{"out":"personal_chat"}}
+{"id":"r3e_chata_com.discord","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_cat_a_com.facebook.orca","r":{"out":"personal_chat"}}
+{"id":"r3e_chata_com.facebook.orca","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_cat_a_com.instagram.android","r":{"out":"personal_chat"}}
+{"id":"r3e_chata_com.instagram.android","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_cat_a_com.viber.voip","r":{"out":"personal_chat"}}
+{"id":"r3e_chata_com.viber.voip","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_cat_a_jp.naver.line.android","r":{"out":"personal_chat"}}
+{"id":"r3e_chata_jp.naver.line.android","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_cat_a_com.google.android.apps.messaging","r":{"out":"personal_chat"}}
+{"id":"r3e_chata_com.google.android.apps.messaging","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_cat_a_com.samsung.android.messaging","r":{"out":"personal_chat"}}
+{"id":"r3e_chata_com.samsung.android.messaging","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_cat_a_im.vector.app","r":{"out":"other"}}
+{"id":"r3e_chata_im.vector.app","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_a_com.openai.chatgpt","r":{"out":"ai_prompt"}}
+{"id":"r3e_chata_com.openai.chatgpt","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_a_com.anthropic.claude","r":{"out":"ai_prompt"}}
+{"id":"r3e_chata_com.anthropic.claude","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_a_ai.perplexity.app.android","r":{"out":"other"}}
+{"id":"r3e_chata_ai.perplexity.app.android","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_a_com.google.android.apps.bard","r":{"out":"ai_prompt"}}
+{"id":"r3e_chata_com.google.android.apps.bard","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_a_com.termux","r":{"out":"terminal"}}
+{"id":"r3e_chata_com.termux","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_a_org.connectbot","r":{"out":"other"}}
+{"id":"r3e_chata_org.connectbot","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_a_com.server.auditor.ssh.client","r":{"out":"other"}}
+{"id":"r3e_chata_com.server.auditor.ssh.client","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_cat_wh_mail.google.com","r":{"out":"email"}}
+{"id":"r3e_cat_ah_mail.google.com","r":{"out":"email"}}
+{"id":"r3e_chath_mail.google.com","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_sigh_mail.google.com","r":{"enter":false,"out":"Hi Tom, thanks. \n\n— Ann"}}
+{"id":"r3e_cat_wh_outlook.live.com","r":{"out":"email"}}
+{"id":"r3e_cat_ah_outlook.live.com","r":{"out":"email"}}
+{"id":"r3e_chath_outlook.live.com","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_sigh_outlook.live.com","r":{"enter":false,"out":"Hi Tom, thanks. \n\n— Ann"}}
+{"id":"r3e_cat_wh_outlook.office.com","r":{"out":"email"}}
+{"id":"r3e_cat_ah_outlook.office.com","r":{"out":"email"}}
+{"id":"r3e_chath_outlook.office.com","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_sigh_outlook.office.com","r":{"enter":false,"out":"Hi Tom, thanks. \n\n— Ann"}}
+{"id":"r3e_cat_wh_outlook.office365.com","r":{"out":"email"}}
+{"id":"r3e_cat_ah_outlook.office365.com","r":{"out":"email"}}
+{"id":"r3e_chath_outlook.office365.com","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_sigh_outlook.office365.com","r":{"enter":false,"out":"Hi Tom, thanks. \n\n— Ann"}}
+{"id":"r3e_cat_wh_mail.proton.me","r":{"out":"email"}}
+{"id":"r3e_cat_ah_mail.proton.me","r":{"out":"email"}}
+{"id":"r3e_chath_mail.proton.me","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_sigh_mail.proton.me","r":{"enter":false,"out":"Hi Tom, thanks. \n\n— Ann"}}
+{"id":"r3e_cat_wh_mail.yahoo.com","r":{"out":"email"}}
+{"id":"r3e_cat_ah_mail.yahoo.com","r":{"out":"email"}}
+{"id":"r3e_chath_mail.yahoo.com","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_sigh_mail.yahoo.com","r":{"enter":false,"out":"Hi Tom, thanks. \n\n— Ann"}}
+{"id":"r3e_cat_wh_app.slack.com","r":{"out":"work_chat"}}
+{"id":"r3e_cat_ah_app.slack.com","r":{"out":"work_chat"}}
+{"id":"r3e_chath_app.slack.com","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_sigh_app.slack.com","r":{"enter":false,"out":"Hi Tom, thanks "}}
+{"id":"r3e_cat_wh_teams.microsoft.com","r":{"out":"work_chat"}}
+{"id":"r3e_cat_ah_teams.microsoft.com","r":{"out":"work_chat"}}
+{"id":"r3e_chath_teams.microsoft.com","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_sigh_teams.microsoft.com","r":{"enter":false,"out":"Hi Tom, thanks "}}
+{"id":"r3e_cat_wh_teams.live.com","r":{"out":"other"}}
+{"id":"r3e_cat_ah_teams.live.com","r":{"out":"work_chat"}}
+{"id":"r3e_chath_teams.live.com","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_sigh_teams.live.com","r":{"enter":false,"out":"Hi Tom, thanks. "}}
+{"id":"r3e_cat_wh_web.whatsapp.com","r":{"out":"personal_chat"}}
+{"id":"r3e_cat_ah_web.whatsapp.com","r":{"out":"personal_chat"}}
+{"id":"r3e_chath_web.whatsapp.com","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_sigh_web.whatsapp.com","r":{"enter":false,"out":"Hi Tom, thanks "}}
+{"id":"r3e_cat_wh_web.telegram.org","r":{"out":"personal_chat"}}
+{"id":"r3e_cat_ah_web.telegram.org","r":{"out":"personal_chat"}}
+{"id":"r3e_chath_web.telegram.org","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_sigh_web.telegram.org","r":{"enter":false,"out":"Hi Tom, thanks "}}
+{"id":"r3e_cat_wh_discord.com","r":{"out":"personal_chat"}}
+{"id":"r3e_cat_ah_discord.com","r":{"out":"personal_chat"}}
+{"id":"r3e_chath_discord.com","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_sigh_discord.com","r":{"enter":false,"out":"Hi Tom, thanks "}}
+{"id":"r3e_cat_wh_messenger.com","r":{"out":"personal_chat"}}
+{"id":"r3e_cat_ah_messenger.com","r":{"out":"personal_chat"}}
+{"id":"r3e_chath_messenger.com","r":{"enter":false,"out":"See you soon "}}
+{"id":"r3e_sigh_messenger.com","r":{"enter":false,"out":"Hi Tom, thanks "}}
+{"id":"r3e_cat_wh_chatgpt.com","r":{"out":"ai_prompt"}}
+{"id":"r3e_cat_ah_chatgpt.com","r":{"out":"ai_prompt"}}
+{"id":"r3e_chath_chatgpt.com","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_sigh_chatgpt.com","r":{"enter":false,"out":"Hi Tom, thanks. "}}
+{"id":"r3e_cat_wh_chat.openai.com","r":{"out":"ai_prompt"}}
+{"id":"r3e_cat_ah_chat.openai.com","r":{"out":"ai_prompt"}}
+{"id":"r3e_chath_chat.openai.com","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_sigh_chat.openai.com","r":{"enter":false,"out":"Hi Tom, thanks. "}}
+{"id":"r3e_cat_wh_claude.ai","r":{"out":"ai_prompt"}}
+{"id":"r3e_cat_ah_claude.ai","r":{"out":"ai_prompt"}}
+{"id":"r3e_chath_claude.ai","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_sigh_claude.ai","r":{"enter":false,"out":"Hi Tom, thanks. "}}
+{"id":"r3e_cat_wh_gemini.google.com","r":{"out":"ai_prompt"}}
+{"id":"r3e_cat_ah_gemini.google.com","r":{"out":"ai_prompt"}}
+{"id":"r3e_chath_gemini.google.com","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_sigh_gemini.google.com","r":{"enter":false,"out":"Hi Tom, thanks. "}}
+{"id":"r3e_cat_wh_perplexity.ai","r":{"out":"other"}}
+{"id":"r3e_cat_ah_perplexity.ai","r":{"out":"ai_prompt"}}
+{"id":"r3e_chath_perplexity.ai","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_sigh_perplexity.ai","r":{"enter":false,"out":"Hi Tom, thanks. "}}
+{"id":"r3e_cat_wh_x.slack.com","r":{"out":"other"}}
+{"id":"r3e_cat_ah_x.slack.com","r":{"out":"work_chat"}}
+{"id":"r3e_chath_x.slack.com","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_sigh_x.slack.com","r":{"enter":false,"out":"Hi Tom, thanks. "}}
+{"id":"r3e_cat_wh_www.messenger.com","r":{"out":"other"}}
+{"id":"r3e_cat_ah_www.messenger.com","r":{"out":"personal_chat"}}
+{"id":"r3e_chath_www.messenger.com","r":{"enter":false,"out":"See you soon. "}}
+{"id":"r3e_sigh_www.messenger.com","r":{"enter":false,"out":"Hi Tom, thanks. "}}
+{"id":"r3e_snip_sig_empty_text","r":{"enter":false,"out":""}}

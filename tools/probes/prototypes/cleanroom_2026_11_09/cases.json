@@ -8829,5 +8829,11472 @@
 "cfg": {
 "email_signature": "— Ann"
 }
+},
+{
+"id": "r3_chat_b_ok",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"before": "Ok. "
+},
+"cfg": {}
+},
+{
+"id": "r3_achat_b_ok",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.whatsapp",
+"before": "Ok. "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3_chat_b_ok_nosp",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"before": "Ok."
+},
+"cfg": {}
+},
+{
+"id": "r3_achat_b_ok_nosp",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.whatsapp",
+"before": "Ok."
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3_chat_b_lower",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"before": "ok "
+},
+"cfg": {}
+},
+{
+"id": "r3_achat_b_lower",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.whatsapp",
+"before": "ok "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3_chat_b_prev_line",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"before": "Done.\n"
+},
+"cfg": {}
+},
+{
+"id": "r3_achat_b_prev_line",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.whatsapp",
+"before": "Done.\n"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3_chat_b_prev_line_word",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"before": "Done.\nso "
+},
+"cfg": {}
+},
+{
+"id": "r3_achat_b_prev_line_word",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.whatsapp",
+"before": "Done.\nso "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3_chat_b_q",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"before": "what? so "
+},
+"cfg": {}
+},
+{
+"id": "r3_achat_b_q",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.whatsapp",
+"before": "what? so "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3_chat_b_bang",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"before": "Wow! "
+},
+"cfg": {}
+},
+{
+"id": "r3_achat_b_bang",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.whatsapp",
+"before": "Wow! "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3_chat_b_ell",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"before": "hmm... "
+},
+"cfg": {}
+},
+{
+"id": "r3_achat_b_ell",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.whatsapp",
+"before": "hmm... "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3_chat_a_ok",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"after": " Ok."
+},
+"cfg": {}
+},
+{
+"id": "r3_achat_a_ok",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.whatsapp",
+"after": " Ok."
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3_chat_a_word",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"after": " later"
+},
+"cfg": {}
+},
+{
+"id": "r3_achat_a_word",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.whatsapp",
+"after": " later"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3_chat_a_next_line",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"after": "\nDone."
+},
+"cfg": {}
+},
+{
+"id": "r3_achat_a_next_line",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.whatsapp",
+"after": "\nDone."
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3_chat_a_line_end",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"after": " then.\nmore"
+},
+"cfg": {}
+},
+{
+"id": "r3_achat_a_line_end",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.whatsapp",
+"after": " then.\nmore"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3_chat_sel_period",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"selected": "Fine."
+},
+"cfg": {}
+},
+{
+"id": "r3_achat_sel_period",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.whatsapp",
+"selected": "Fine."
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3_chat_sel_plain",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"selected": "fine"
+},
+"cfg": {}
+},
+{
+"id": "r3_achat_sel_plain",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.whatsapp",
+"selected": "fine"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3_chat_b_comma",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"before": "Sure, "
+},
+"cfg": {}
+},
+{
+"id": "r3_achat_b_comma",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.whatsapp",
+"before": "Sure, "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3_chat_b_mid_sent",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"before": "Hi. I think "
+},
+"cfg": {}
+},
+{
+"id": "r3_achat_b_mid_sent",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.whatsapp",
+"before": "Hi. I think "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3_casual_9",
+"kind": "apply",
+"text": "Line 0 here. Line 1 here. Line 2 here. Line 3 here. Line 4 here. Line 5 here. Line 6 here. Line 7 here. Line 8 here.",
+"ctx": {},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r3_vcasual_9",
+"kind": "apply",
+"text": "Line 0 here. Line 1 here. Line 2 here. Line 3 here. Line 4 here. Line 5 here. Line 6 here. Line 7 here. Line 8 here.",
+"ctx": {},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "r3_default_chat_9",
+"kind": "apply",
+"text": "Line 0 here. Line 1 here. Line 2 here. Line 3 here. Line 4 here. Line 5 here. Line 6 here. Line 7 here. Line 8 here.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3_casual_10",
+"kind": "apply",
+"text": "Line 0 here. Line 1 here. Line 2 here. Line 3 here. Line 4 here. Line 5 here. Line 6 here. Line 7 here. Line 8 here. Line 9 here.",
+"ctx": {},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r3_vcasual_10",
+"kind": "apply",
+"text": "Line 0 here. Line 1 here. Line 2 here. Line 3 here. Line 4 here. Line 5 here. Line 6 here. Line 7 here. Line 8 here. Line 9 here.",
+"ctx": {},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "r3_default_chat_10",
+"kind": "apply",
+"text": "Line 0 here. Line 1 here. Line 2 here. Line 3 here. Line 4 here. Line 5 here. Line 6 here. Line 7 here. Line 8 here. Line 9 here.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3_casual_11",
+"kind": "apply",
+"text": "Line 0 here. Line 1 here. Line 2 here. Line 3 here. Line 4 here. Line 5 here. Line 6 here. Line 7 here. Line 8 here. Line 9 here. Line 10 here.",
+"ctx": {},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r3_vcasual_11",
+"kind": "apply",
+"text": "Line 0 here. Line 1 here. Line 2 here. Line 3 here. Line 4 here. Line 5 here. Line 6 here. Line 7 here. Line 8 here. Line 9 here. Line 10 here.",
+"ctx": {},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "r3_default_chat_11",
+"kind": "apply",
+"text": "Line 0 here. Line 1 here. Line 2 here. Line 3 here. Line 4 here. Line 5 here. Line 6 here. Line 7 here. Line 8 here. Line 9 here. Line 10 here.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3_casual_14",
+"kind": "apply",
+"text": "Line 0 here. Line 1 here. Line 2 here. Line 3 here. Line 4 here. Line 5 here. Line 6 here. Line 7 here. Line 8 here. Line 9 here. Line 10 here. Line 11 here. Line 12 here. Line 13 here.",
+"ctx": {},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r3_vcasual_14",
+"kind": "apply",
+"text": "Line 0 here. Line 1 here. Line 2 here. Line 3 here. Line 4 here. Line 5 here. Line 6 here. Line 7 here. Line 8 here. Line 9 here. Line 10 here. Line 11 here. Line 12 here. Line 13 here.",
+"ctx": {},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "r3_default_chat_14",
+"kind": "apply",
+"text": "Line 0 here. Line 1 here. Line 2 here. Line 3 here. Line 4 here. Line 5 here. Line 6 here. Line 7 here. Line 8 here. Line 9 here. Line 10 here. Line 11 here. Line 12 here. Line 13 here.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_app_empty",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Notion.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_app_b1",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Notion.exe",
+"before": "so "
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_app_b2",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Notion.exe",
+"before": "so then "
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_app_b3",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Notion.exe",
+"before": "one two three "
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_app_b5",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Notion.exe",
+"before": "we went to the shop "
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_app_bell",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Notion.exe",
+"before": "we went to the shop..."
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_app_b1_after",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Notion.exe",
+"before": "so ",
+"after": "x"
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_app_b5_after",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Notion.exe",
+"before": "we went to the shop ",
+"after": " more"
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_app_b2_nosp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Notion.exe",
+"before": "so then"
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_app_bell_sp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "Notion.exe",
+"before": "we went to the shop... "
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_host_empty",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "notion.so"
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_host_b1",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "notion.so",
+"before": "so "
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_host_b2",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "notion.so",
+"before": "so then "
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_host_b3",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "notion.so",
+"before": "one two three "
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_host_b5",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "notion.so",
+"before": "we went to the shop "
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_host_bell",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "notion.so",
+"before": "we went to the shop..."
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_host_b1_after",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "notion.so",
+"before": "so ",
+"after": "x"
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_host_b5_after",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "notion.so",
+"before": "we went to the shop ",
+"after": " more"
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_host_b2_nosp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "notion.so",
+"before": "so then"
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_host_bell_sp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "notion.so",
+"before": "we went to the shop... "
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_www_empty",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "www.notion.so"
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_www_b1",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "www.notion.so",
+"before": "so "
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_www_b2",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "www.notion.so",
+"before": "so then "
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_www_b3",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "www.notion.so",
+"before": "one two three "
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_www_b5",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "www.notion.so",
+"before": "we went to the shop "
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_www_bell",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "www.notion.so",
+"before": "we went to the shop..."
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_www_b1_after",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "www.notion.so",
+"before": "so ",
+"after": "x"
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_www_b5_after",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "www.notion.so",
+"before": "we went to the shop ",
+"after": " more"
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_www_b2_nosp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "www.notion.so",
+"before": "so then"
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_www_bell_sp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "www.notion.so",
+"before": "we went to the shop... "
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_site_empty",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "x.notion.site"
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_site_b1",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "x.notion.site",
+"before": "so "
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_site_b2",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "x.notion.site",
+"before": "so then "
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_site_b3",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "x.notion.site",
+"before": "one two three "
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_site_b5",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "x.notion.site",
+"before": "we went to the shop "
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_site_bell",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "x.notion.site",
+"before": "we went to the shop..."
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_site_b1_after",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "x.notion.site",
+"before": "so ",
+"after": "x"
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_site_b5_after",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "x.notion.site",
+"before": "we went to the shop ",
+"after": " more"
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_site_b2_nosp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "x.notion.site",
+"before": "so then"
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_site_bell_sp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "x.notion.site",
+"before": "we went to the shop... "
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_own_empty",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_own_b1",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "so "
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_own_b2",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "so then "
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_own_b3",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "one two three "
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_own_b5",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "we went to the shop "
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_own_bell",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "we went to the shop..."
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_own_b1_after",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "so ",
+"after": "x"
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_own_b5_after",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "we went to the shop ",
+"after": " more"
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_own_b2_nosp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "so then"
+},
+"cfg": {}
+},
+{
+"id": "r3_notion_own_bell_sp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"app_id": "flow-windows.exe",
+"before": "we went to the shop... "
+},
+"cfg": {}
+},
+{
+"id": "r3_nl_list3",
+"kind": "apply",
+"text": "Milk.\nEggs.\nBread.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3_nl_list3_nop",
+"kind": "apply",
+"text": "Milk\nEggs\nBread.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3_nl_two_lines_3s",
+"kind": "apply",
+"text": "One. Two.\nThree.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3_nl_blank",
+"kind": "apply",
+"text": "Milk.\n\nEggs.\n\nBread.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3_nl_casual_list",
+"kind": "apply",
+"text": "Item 0.\nItem 1.\nItem 2.\nItem 3.\nItem 4.\nItem 5.\nItem 6.\nItem 7.\nItem 8.\nItem 9.\nItem 10.\nItem 11.",
+"ctx": {},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r3_cur_paren_open",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "see ("
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_paren_open_sp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "see ( "
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_paren_close",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "done) "
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_paren_close_nosp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "done)"
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_emdash",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "wait — "
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_emdash_nosp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "wait —"
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_endash",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "wait – "
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_emoji",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "great 😀 "
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_emoji_nosp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "great 😀"
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_rdquo",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "he said” "
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_rsquo",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "the ’ "
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_dquote_close",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "\"ok\" "
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_squote",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "'ok' "
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_a_dash",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "a -"
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_a_dash_sp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "a - "
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_dollar",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "$"
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_dollar_sp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "$ "
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_hash",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "#"
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_hash_sp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "# "
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_under",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "_"
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_star",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "*"
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_star_sp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "* "
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_eq",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "="
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_eq_sp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "= "
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_tilde",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "~"
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_tilde_sp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "~ "
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_bracket_close",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "done] "
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_brace_close",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "done} "
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_pct",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "50% "
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_amp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "Tom & "
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_plus",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "1 + "
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_lt",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "a < "
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_gt",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "a > "
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_pipe",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "a | "
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_backslash",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "a\\"
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_caret",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "^ "
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_bullet",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "• "
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_guill_close",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "dit» "
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_ellipsis_char",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "wait… "
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_colon_nosp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "Note:"
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_semi",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "ok;"
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_digit",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "room 4"
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_hebrew",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "שלום "
+},
+"cfg": {}
+},
+{
+"id": "r3_cur_cyr",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "привет "
+},
+"cfg": {}
+},
+{
+"id": "r3_after_emdash_and",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "— and"
+},
+"cfg": {}
+},
+{
+"id": "r3_after_emdash_and_sp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": " — and"
+},
+"cfg": {}
+},
+{
+"id": "r3_after_endash_and",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "– and"
+},
+"cfg": {}
+},
+{
+"id": "r3_after_hyphen_and",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "- and"
+},
+"cfg": {}
+},
+{
+"id": "r3_after_hyphen_and_sp",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": " - and"
+},
+"cfg": {}
+},
+{
+"id": "r3_after_emdash_alone",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "—"
+},
+"cfg": {}
+},
+{
+"id": "r3_after_paren_close",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": ")"
+},
+"cfg": {}
+},
+{
+"id": "r3_after_rdquo",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "”"
+},
+"cfg": {}
+},
+{
+"id": "r3_after_colon",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": ": x"
+},
+"cfg": {}
+},
+{
+"id": "r3_after_upper",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "Then"
+},
+"cfg": {}
+},
+{
+"id": "r3_after_digit",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "42"
+},
+"cfg": {}
+},
+{
+"id": "r3_after_emoji",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "😀"
+},
+"cfg": {}
+},
+{
+"id": "r3_after_ellipsis",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "…"
+},
+"cfg": {}
+},
+{
+"id": "r3_after_dollar",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "$5"
+},
+"cfg": {}
+},
+{
+"id": "r3_snip_sig_outlook.exe",
+"kind": "apply",
+"text": "Sign off.",
+"ctx": {
+"app_id": "outlook.exe",
+"url_host": ""
+},
+"cfg": {
+"dictionary": [
+{
+"word": "sign off",
+"replacement": "Thanks for the update, talk soon.",
+"isSnippet": true
+}
+],
+"email_signature": "— Ann"
+},
+"raw": "sign off"
+},
+{
+"id": "r3_snip_sig_greet_outlook.exe",
+"kind": "apply",
+"text": "My address.",
+"ctx": {
+"app_id": "outlook.exe",
+"url_host": ""
+},
+"cfg": {
+"dictionary": [
+{
+"word": "my address",
+"replacement": "Hi Tom, my address is 12 Elm Road.",
+"isSnippet": true
+}
+],
+"email_signature": "— Ann"
+},
+"raw": "my address"
+},
+{
+"id": "r3_snip_nosig_outlook.exe",
+"kind": "apply",
+"text": "My address.",
+"ctx": {
+"app_id": "outlook.exe",
+"url_host": ""
+},
+"cfg": {
+"dictionary": [
+{
+"word": "my address",
+"replacement": "Hi Tom, my address is 12 Elm Road.",
+"isSnippet": true
+}
+]
+},
+"raw": "my address"
+},
+{
+"id": "r3_snip_sig_chrome.exe",
+"kind": "apply",
+"text": "Sign off.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "mail.google.com"
+},
+"cfg": {
+"dictionary": [
+{
+"word": "sign off",
+"replacement": "Thanks for the update, talk soon.",
+"isSnippet": true
+}
+],
+"email_signature": "— Ann"
+},
+"raw": "sign off"
+},
+{
+"id": "r3_snip_sig_greet_chrome.exe",
+"kind": "apply",
+"text": "My address.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "mail.google.com"
+},
+"cfg": {
+"dictionary": [
+{
+"word": "my address",
+"replacement": "Hi Tom, my address is 12 Elm Road.",
+"isSnippet": true
+}
+],
+"email_signature": "— Ann"
+},
+"raw": "my address"
+},
+{
+"id": "r3_snip_nosig_chrome.exe",
+"kind": "apply",
+"text": "My address.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "mail.google.com"
+},
+"cfg": {
+"dictionary": [
+{
+"word": "my address",
+"replacement": "Hi Tom, my address is 12 Elm Road.",
+"isSnippet": true
+}
+]
+},
+"raw": "my address"
+},
+{
+"id": "r3_sig_empty_text",
+"kind": "apply",
+"text": "",
+"ctx": {
+"app_id": "outlook.exe"
+},
+"cfg": {
+"email_signature": "— Ann"
+},
+"raw": "hi tom"
+},
+{
+"id": "r3_sig_space_text",
+"kind": "apply",
+"text": "  ",
+"ctx": {
+"app_id": "outlook.exe"
+},
+"cfg": {
+"email_signature": "— Ann"
+},
+"raw": "hi tom"
+},
+{
+"id": "r3_sig_empty_raw",
+"kind": "apply",
+"text": "Hi Tom, the report is attached and ready for your review today.",
+"ctx": {
+"app_id": "outlook.exe"
+},
+"cfg": {
+"email_signature": "— Ann"
+},
+"raw": ""
+},
+{
+"id": "r3_snip_android",
+"kind": "apply",
+"text": "My address.",
+"ctx": {},
+"cfg": {
+"dictionary": [
+{
+"word": "my address",
+"replacement": "Hi Tom, my address is 12 Elm Road.",
+"isSnippet": true
+}
+],
+"platform": "android"
+},
+"raw": "my address"
+},
+{
+"id": "r3_snip_android_sig",
+"kind": "apply",
+"text": "My address.",
+"ctx": {
+"app_id": "com.google.android.gm"
+},
+"cfg": {
+"dictionary": [
+{
+"word": "my address",
+"replacement": "Hi Tom, my address is 12 Elm Road.",
+"isSnippet": true
+}
+],
+"email_signature": "— Ann",
+"platform": "android"
+},
+"raw": "my address"
+},
+{
+"id": "r3_learn_long_corr",
+"kind": "learn",
+"pasted": "go lumo now",
+"edited": "go one two three four five six now",
+"dict": []
+},
+{
+"id": "r3_learn_corr5",
+"kind": "learn",
+"pasted": "go lumo now",
+"edited": "go a b c d e now",
+"dict": []
+},
+{
+"id": "r3_learn_corr4",
+"kind": "learn",
+"pasted": "go lumo now",
+"edited": "go Ab Cd Ef Gh now",
+"dict": []
+},
+{
+"id": "r3_learn_corr5_names",
+"kind": "learn",
+"pasted": "go lumo now",
+"edited": "go Ab Cd Ef Gh Ij now",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_um",
+"kind": "learn",
+"pasted": "we um fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_um",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we um fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_uh",
+"kind": "learn",
+"pasted": "we uh fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_uh",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we uh fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_like",
+"kind": "learn",
+"pasted": "we like fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_like",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we like fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_okay",
+"kind": "learn",
+"pasted": "we okay fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_okay",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we okay fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_ok",
+"kind": "learn",
+"pasted": "we ok fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_ok",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we ok fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_yes",
+"kind": "learn",
+"pasted": "we yes fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_yes",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we yes fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_no",
+"kind": "learn",
+"pasted": "we no fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_no",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we no fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_yeah",
+"kind": "learn",
+"pasted": "we yeah fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_yeah",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we yeah fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_just",
+"kind": "learn",
+"pasted": "we just fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_just",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we just fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_very",
+"kind": "learn",
+"pasted": "we very fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_very",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we very fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_really",
+"kind": "learn",
+"pasted": "we really fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_really",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we really fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_there",
+"kind": "learn",
+"pasted": "we there fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_there",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we there fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_here",
+"kind": "learn",
+"pasted": "we here fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_here",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we here fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_so",
+"kind": "learn",
+"pasted": "we so fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_so",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we so fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_well",
+"kind": "learn",
+"pasted": "we well fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_well",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we well fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_oh",
+"kind": "learn",
+"pasted": "we oh fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_oh",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we oh fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_hmm",
+"kind": "learn",
+"pasted": "we hmm fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_hmm",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we hmm fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_right",
+"kind": "learn",
+"pasted": "we right fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_right",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we right fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_actually",
+"kind": "learn",
+"pasted": "we actually fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_actually",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we actually fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_basically",
+"kind": "learn",
+"pasted": "we basically fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_basically",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we basically fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_literally",
+"kind": "learn",
+"pasted": "we literally fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_literally",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we literally fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_then",
+"kind": "learn",
+"pasted": "we then fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_then",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we then fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_now",
+"kind": "learn",
+"pasted": "we now fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_now",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we now fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_also",
+"kind": "learn",
+"pasted": "we also fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_also",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we also fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_too",
+"kind": "learn",
+"pasted": "we too fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_too",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we too fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_not",
+"kind": "learn",
+"pasted": "we not fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_not",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we not fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_the",
+"kind": "learn",
+"pasted": "we the fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_the",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we the fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_a",
+"kind": "learn",
+"pasted": "we a fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_a",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we a fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_an",
+"kind": "learn",
+"pasted": "we an fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_an",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we an fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_and",
+"kind": "learn",
+"pasted": "we and fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_and",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we and fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_or",
+"kind": "learn",
+"pasted": "we or fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_or",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we or fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_but",
+"kind": "learn",
+"pasted": "we but fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_but",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we but fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_to",
+"kind": "learn",
+"pasted": "we to fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_to",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we to fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_of",
+"kind": "learn",
+"pasted": "we of fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_of",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we of fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_in",
+"kind": "learn",
+"pasted": "we in fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_in",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we in fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_on",
+"kind": "learn",
+"pasted": "we on fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_on",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we on fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_at",
+"kind": "learn",
+"pasted": "we at fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_at",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we at fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_for",
+"kind": "learn",
+"pasted": "we for fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_for",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we for fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_with",
+"kind": "learn",
+"pasted": "we with fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_with",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we with fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_is",
+"kind": "learn",
+"pasted": "we is fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_is",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we is fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_it",
+"kind": "learn",
+"pasted": "we it fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_it",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we it fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_this",
+"kind": "learn",
+"pasted": "we this fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_this",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we this fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_that",
+"kind": "learn",
+"pasted": "we that fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_that",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we that fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_i",
+"kind": "learn",
+"pasted": "we i fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_i",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we i fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_you",
+"kind": "learn",
+"pasted": "we you fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_you",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we you fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_we",
+"kind": "learn",
+"pasted": "we we fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_we",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we we fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_they",
+"kind": "learn",
+"pasted": "we they fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_they",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we they fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_he",
+"kind": "learn",
+"pasted": "we he fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_he",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we he fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_she",
+"kind": "learn",
+"pasted": "we she fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_she",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we she fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_my",
+"kind": "learn",
+"pasted": "we my fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_my",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we my fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_your",
+"kind": "learn",
+"pasted": "we your fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_your",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we your fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_be",
+"kind": "learn",
+"pasted": "we be fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_be",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we be fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_have",
+"kind": "learn",
+"pasted": "we have fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_have",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we have fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_do",
+"kind": "learn",
+"pasted": "we do fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_do",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we do fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_was",
+"kind": "learn",
+"pasted": "we was fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_was",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we was fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_are",
+"kind": "learn",
+"pasted": "we are fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_are",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we are fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_will",
+"kind": "learn",
+"pasted": "we will fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_will",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we will fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_can",
+"kind": "learn",
+"pasted": "we can fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_can",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we can fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_would",
+"kind": "learn",
+"pasted": "we would fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_would",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we would fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_should",
+"kind": "learn",
+"pasted": "we should fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_should",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we should fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_if",
+"kind": "learn",
+"pasted": "we if fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_if",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we if fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_what",
+"kind": "learn",
+"pasted": "we what fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_what",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we what fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_who",
+"kind": "learn",
+"pasted": "we who fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_who",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we who fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_how",
+"kind": "learn",
+"pasted": "we how fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_how",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we how fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_when",
+"kind": "learn",
+"pasted": "we when fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_when",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we when fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_where",
+"kind": "learn",
+"pasted": "we where fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_where",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we where fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_why",
+"kind": "learn",
+"pasted": "we why fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_why",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we why fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_all",
+"kind": "learn",
+"pasted": "we all fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_all",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we all fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_some",
+"kind": "learn",
+"pasted": "we some fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_some",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we some fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_any",
+"kind": "learn",
+"pasted": "we any fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_any",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we any fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_one",
+"kind": "learn",
+"pasted": "we one fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_one",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we one fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_two",
+"kind": "learn",
+"pasted": "we two fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_two",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we two fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_more",
+"kind": "learn",
+"pasted": "we more fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_more",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we more fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_much",
+"kind": "learn",
+"pasted": "we much fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_much",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we much fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_many",
+"kind": "learn",
+"pasted": "we many fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_many",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we many fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_up",
+"kind": "learn",
+"pasted": "we up fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_up",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we up fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_out",
+"kind": "learn",
+"pasted": "we out fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_out",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we out fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_about",
+"kind": "learn",
+"pasted": "we about fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_about",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we about fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_hi",
+"kind": "learn",
+"pasted": "we hi fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_hi",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we hi fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_hello",
+"kind": "learn",
+"pasted": "we hello fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_hello",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we hello fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_thanks",
+"kind": "learn",
+"pasted": "we thanks fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_thanks",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we thanks fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_please",
+"kind": "learn",
+"pasted": "we please fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_please",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we please fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_sure",
+"kind": "learn",
+"pasted": "we sure fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_sure",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we sure fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_maybe",
+"kind": "learn",
+"pasted": "we maybe fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_maybe",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we maybe fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_kind",
+"kind": "learn",
+"pasted": "we kind fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_kind",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we kind fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_sort",
+"kind": "learn",
+"pasted": "we sort fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_sort",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we sort fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_mean",
+"kind": "learn",
+"pasted": "we mean fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_mean",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we mean fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_know",
+"kind": "learn",
+"pasted": "we know fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_know",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we know fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_guess",
+"kind": "learn",
+"pasted": "we guess fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_guess",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we guess fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_anyway",
+"kind": "learn",
+"pasted": "we anyway fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_anyway",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we anyway fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_stuff",
+"kind": "learn",
+"pasted": "we stuff fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_stuff",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we stuff fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_thing",
+"kind": "learn",
+"pasted": "we thing fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_thing",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we thing fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_things",
+"kind": "learn",
+"pasted": "we things fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_things",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we things fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_gonna",
+"kind": "learn",
+"pasted": "we gonna fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_gonna",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we gonna fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_wanna",
+"kind": "learn",
+"pasted": "we wanna fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_wanna",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we wanna fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_lot",
+"kind": "learn",
+"pasted": "we lot fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_lot",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we lot fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_bit",
+"kind": "learn",
+"pasted": "we bit fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_bit",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we bit fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_pretty",
+"kind": "learn",
+"pasted": "we pretty fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_pretty",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we pretty fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_quite",
+"kind": "learn",
+"pasted": "we quite fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_quite",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we quite fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_even",
+"kind": "learn",
+"pasted": "we even fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_even",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we even fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_still",
+"kind": "learn",
+"pasted": "we still fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_still",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we still fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_only",
+"kind": "learn",
+"pasted": "we only fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_only",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we only fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_again",
+"kind": "learn",
+"pasted": "we again fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_again",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we again fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_orig_back",
+"kind": "learn",
+"pasted": "we back fine",
+"edited": "we Zentra fine",
+"dict": []
+},
+{
+"id": "r3_learn_stop_corr_back",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we back fine",
+"dict": []
+},
+{
+"id": "r3_learn_contr_dont",
+"kind": "learn",
+"pasted": "i dont go",
+"edited": "i don't go",
+"dict": []
+},
+{
+"id": "r3_learn_contr_dont_rev",
+"kind": "learn",
+"pasted": "i don't go",
+"edited": "i dont go",
+"dict": []
+},
+{
+"id": "r3_learn_contr_its",
+"kind": "learn",
+"pasted": "its lumo",
+"edited": "it's Lumio",
+"dict": []
+},
+{
+"id": "r3_learn_contr_its_rev",
+"kind": "learn",
+"pasted": "it's lumo here",
+"edited": "its Lumio here",
+"dict": []
+},
+{
+"id": "r3_learn_contr_orig_contr",
+"kind": "learn",
+"pasted": "we can't zentra",
+"edited": "we cannot Zentra",
+"dict": []
+},
+{
+"id": "r3_learn_contr_orig_contr2",
+"kind": "learn",
+"pasted": "we'll go",
+"edited": "Lumio go",
+"dict": []
+},
+{
+"id": "r3_learn_contr_orig_contr3",
+"kind": "learn",
+"pasted": "so we're lumo",
+"edited": "so we Lumio",
+"dict": []
+},
+{
+"id": "r3_learn_contr_orig_poss",
+"kind": "learn",
+"pasted": "the lumo's car",
+"edited": "the Lumio's car",
+"dict": []
+},
+{
+"id": "r3_learn_contr_orig_poss2",
+"kind": "learn",
+"pasted": "the lumo's car",
+"edited": "the Lumio car",
+"dict": []
+},
+{
+"id": "r3_learn_case_start",
+"kind": "learn",
+"pasted": "lumo is here",
+"edited": "Lumo is here",
+"dict": []
+},
+{
+"id": "r3_learn_case_after_period",
+"kind": "learn",
+"pasted": "ok. lumo is here",
+"edited": "ok. Lumo is here",
+"dict": []
+},
+{
+"id": "r3_learn_case_after_q",
+"kind": "learn",
+"pasted": "ok? lumo is here",
+"edited": "ok? Lumo is here",
+"dict": []
+},
+{
+"id": "r3_learn_case_mid",
+"kind": "learn",
+"pasted": "ok lumo is here",
+"edited": "ok Lumo is here",
+"dict": []
+},
+{
+"id": "r3_learn_case_start_two",
+"kind": "learn",
+"pasted": "lumo hub is here",
+"edited": "Lumo Hub is here",
+"dict": []
+},
+{
+"id": "r3_learn_case_start_diff",
+"kind": "learn",
+"pasted": "lumo is here",
+"edited": "Lumio is here",
+"dict": []
+},
+{
+"id": "r3_learn_case_lower_start",
+"kind": "learn",
+"pasted": "Lumo is here",
+"edited": "lumo is here",
+"dict": []
+},
+{
+"id": "r3_learn_case_lower_mid",
+"kind": "learn",
+"pasted": "ok Lumo is here",
+"edited": "ok lumo is here",
+"dict": []
+},
+{
+"id": "r3_learn_key_orig",
+"kind": "learn",
+"pasted": "see lumo now",
+"edited": "see Lumia now",
+"dict": [
+{
+"word": "lumo",
+"replacement": "Lumio"
+}
+]
+},
+{
+"id": "r3_learn_key_corr",
+"kind": "learn",
+"pasted": "see lumi now",
+"edited": "see Lumio now",
+"dict": [
+{
+"word": "lumo",
+"replacement": "Lumio"
+}
+]
+},
+{
+"id": "r3_learn_word_corr",
+"kind": "learn",
+"pasted": "see lumi now",
+"edited": "see Lumio now",
+"dict": [
+{
+"word": "Lumio"
+}
+]
+},
+{
+"id": "r3_learn_word_orig",
+"kind": "learn",
+"pasted": "see Lumio now",
+"edited": "see Lumia now",
+"dict": [
+{
+"word": "Lumio"
+}
+]
+},
+{
+"id": "r3_case_NASA called.",
+"kind": "apply",
+"text": "NASA called.",
+"ctx": {
+"before": "and "
+},
+"cfg": {}
+},
+{
+"id": "r3_case_IPhone works.",
+"kind": "apply",
+"text": "IPhone works.",
+"ctx": {
+"before": "and "
+},
+"cfg": {}
+},
+{
+"id": "r3_case_IPad works.",
+"kind": "apply",
+"text": "IPad works.",
+"ctx": {
+"before": "and "
+},
+"cfg": {}
+},
+{
+"id": "r3_case_McKay called.",
+"kind": "apply",
+"text": "McKay called.",
+"ctx": {
+"before": "and "
+},
+"cfg": {}
+},
+{
+"id": "r3_case_USA's team won.",
+"kind": "apply",
+"text": "USA's team won.",
+"ctx": {
+"before": "and "
+},
+"cfg": {}
+},
+{
+"id": "r3_case_OK then.",
+"kind": "apply",
+"text": "OK then.",
+"ctx": {
+"before": "and "
+},
+"cfg": {}
+},
+{
+"id": "r3_case_A plan works.",
+"kind": "apply",
+"text": "A plan works.",
+"ctx": {
+"before": "and "
+},
+"cfg": {}
+},
+{
+"id": "r3_case_AI works.",
+"kind": "apply",
+"text": "AI works.",
+"ctx": {
+"before": "and "
+},
+"cfg": {}
+},
+{
+"id": "r3_case_I.B.M. works.",
+"kind": "apply",
+"text": "I.B.M. works.",
+"ctx": {
+"before": "and "
+},
+"cfg": {}
+},
+{
+"id": "r3_case_EBay works.",
+"kind": "apply",
+"text": "EBay works.",
+"ctx": {
+"before": "and "
+},
+"cfg": {}
+},
+{
+"id": "r3_case_JavaScript works.",
+"kind": "apply",
+"text": "JavaScript works.",
+"ctx": {
+"before": "and "
+},
+"cfg": {}
+},
+{
+"id": "r3_case_MacBook works.",
+"kind": "apply",
+"text": "MacBook works.",
+"ctx": {
+"before": "and "
+},
+"cfg": {}
+},
+{
+"id": "r3_case_PhD done.",
+"kind": "apply",
+"text": "PhD done.",
+"ctx": {
+"before": "and "
+},
+"cfg": {}
+},
+{
+"id": "r3_case_X is fine.",
+"kind": "apply",
+"text": "X is fine.",
+"ctx": {
+"before": "and "
+},
+"cfg": {}
+},
+{
+"id": "r3_case_NASA's plan works.",
+"kind": "apply",
+"text": "NASA's plan works.",
+"ctx": {
+"before": "and "
+},
+"cfg": {}
+},
+{
+"id": "r3_case_U.S. troops.",
+"kind": "apply",
+"text": "U.S. troops.",
+"ctx": {
+"before": "and "
+},
+"cfg": {}
+},
+{
+"id": "r3_case_CEO called.",
+"kind": "apply",
+"text": "CEO called.",
+"ctx": {
+"before": "and "
+},
+"cfg": {}
+},
+{
+"id": "r3_case_TV is on.",
+"kind": "apply",
+"text": "TV is on.",
+"ctx": {
+"before": "and "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_0",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "Done. ("
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_0",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "Done. ("
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_1",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "! ("
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_1",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "! ("
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_2",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "42 ("
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_2",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "42 ("
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_3",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "( ("
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_3",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "( ("
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_4",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x("
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_4",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "x("
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_5",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "Done. 😀 "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_5",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "Done. 😀 "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_6",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "😀 "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_6",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "😀 "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_7",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "😀"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_7",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "😀"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_8",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "Done.) "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_8",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "Done.) "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_9",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": ") "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_9",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": ") "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_10",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": ")"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_10",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": ")"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_11",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "— "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_11",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "— "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_12",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "—"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_12",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "—"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_13",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "Done. — "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_13",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "Done. — "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_14",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "\""
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_14",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "\""
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_15",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x\""
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_15",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "x\""
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_16",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x\" "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_16",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "x\" "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_17",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "\" "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_17",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "\" "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_18",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x' "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_18",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "x' "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_19",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "' "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_19",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "' "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_20",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x’ "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_20",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "x’ "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_21",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x’"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_21",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "x’"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_22",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "“x” "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_22",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "“x” "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_23",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "«x» "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_23",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "«x» "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_24",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x]"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_24",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "x]"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_25",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x}"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_25",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "x}"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_26",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x'"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_26",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "x'"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_27",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "wait—"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_27",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "wait—"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_28",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "wait– "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_28",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "wait– "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_29",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "a –"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_29",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "a –"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_30",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "a —"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_30",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "a —"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_31",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x -"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_31",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "x -"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_32",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x - "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_32",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "x - "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_33",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x —"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_33",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "x —"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_34",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "50%"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_34",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "50%"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_35",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "Tom &"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_35",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "Tom &"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_36",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "1 +"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_36",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "1 +"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_37",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "a <"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_37",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "a <"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_38",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "a >"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_38",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "a >"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_39",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "a |"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_39",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "a |"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_40",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "^"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_40",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "^"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_41",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "•"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_41",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "•"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_42",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "dit»"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_42",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "dit»"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_43",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "wait…"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_43",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "wait…"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_44",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "great 🎉 "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_44",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "great 🎉 "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_45",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "great ❤️ "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_45",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "great ❤️ "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_46",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "great 👍🏽 "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_46",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "great 👍🏽 "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_47",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "great 🎉"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_47",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "great 🎉"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_48",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x ) "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_48",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "x ) "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_49",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x ( "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_49",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "x ( "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_50",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "Done.\""
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_50",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "Done.\""
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_51",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "Done.\" "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_51",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "Done.\" "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_52",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "Done.’ "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_52",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "Done.’ "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_53",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "Done.” "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_53",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "Done.” "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_54",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "Done.)"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_54",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "Done.)"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_55",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "Done!) "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_55",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "Done!) "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_56",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "so, ("
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_56",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "so, ("
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_57",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "so: ("
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_57",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "so: ("
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_58",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "so — ("
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_58",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "so — ("
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_59",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x)]"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_59",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "x)]"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_60",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x;) "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_60",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "x;) "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_61",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "a ‘"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_61",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "a ‘"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_62",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "a ’"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_62",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "a ’"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_63",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "a “"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_63",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "a “"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_64",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "a ”"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_64",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "a ”"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_65",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "a \""
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_65",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "a \""
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_66",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "a '"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_66",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "a '"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_67",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x»"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_67",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "x»"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_68",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x« "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_68",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "x« "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_69",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x‘ "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_69",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "x‘ "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_70",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x“ "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_70",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "x“ "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_71",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x ["
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_71",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "x ["
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_72",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x {"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_72",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "x {"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_73",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x <"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_73",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "x <"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_74",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x ¿"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_74",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "x ¿"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_75",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x ¡"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_75",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "x ¡"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_76",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x ¿ "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_76",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "x ¿ "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_77",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "a/ "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_77",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "a/ "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_78",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "a@ "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_78",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "a@ "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_79",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "a@"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_79",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "a@"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_80",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "a- "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_80",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "a- "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_81",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "a-"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_81",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "a-"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_82",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "a—"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_82",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "a—"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_83",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "a— "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_83",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "a— "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_84",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "a–"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_84",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "a–"
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_85",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "a– "
+},
+"cfg": {}
+},
+{
+"id": "r3b_cur_pron_85",
+"kind": "apply",
+"text": "I left.",
+"ctx": {
+"before": "a– "
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_0",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "-and"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_1",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "—and"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_2",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "- And"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_3",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "— And"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_4",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "-"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_5",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": " -"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_6",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "-5"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_7",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "— 5"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_8",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "– and"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_9",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": " – and"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_10",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "—  and"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_11",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "-- and"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_12",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "— (and)"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_13",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "— ,"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_14",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "…and"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_15",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "... and"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_16",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "(and"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_17",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": ") and"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_18",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "\" and"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_19",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "” and"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_20",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "’ and"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_21",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "😀 and"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_22",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "x"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_23",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "X"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_24",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "5"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_25",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "_x"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_26",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "#x"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_27",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "$x"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_28",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "@x"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_29",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "/x"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_30",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "&x"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_31",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "*x"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_32",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "'x"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_33",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "‘x"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_34",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "“x"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_35",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "«x"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_36",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "[x"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_37",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "\tand"
+},
+"cfg": {}
+},
+{
+"id": "r3b_after_38",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": " and"
+},
+"cfg": {}
+},
+{
+"id": "r3b_stop_um",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we um fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_um",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Um fine",
+"dict": []
+},
+{
+"id": "r3b_stop_uh",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we uh fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_uh",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Uh fine",
+"dict": []
+},
+{
+"id": "r3b_stop_er",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we er fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_er",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Er fine",
+"dict": []
+},
+{
+"id": "r3b_stop_erm",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we erm fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_erm",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Erm fine",
+"dict": []
+},
+{
+"id": "r3b_stop_ah",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we ah fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_ah",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Ah fine",
+"dict": []
+},
+{
+"id": "r3b_stop_eh",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we eh fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_eh",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Eh fine",
+"dict": []
+},
+{
+"id": "r3b_stop_hm",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we hm fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_hm",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Hm fine",
+"dict": []
+},
+{
+"id": "r3b_stop_mm",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we mm fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_mm",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Mm fine",
+"dict": []
+},
+{
+"id": "r3b_stop_huh",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we huh fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_huh",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Huh fine",
+"dict": []
+},
+{
+"id": "r3b_stop_yep",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we yep fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_yep",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Yep fine",
+"dict": []
+},
+{
+"id": "r3b_stop_yup",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we yup fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_yup",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Yup fine",
+"dict": []
+},
+{
+"id": "r3b_stop_nope",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we nope fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_nope",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Nope fine",
+"dict": []
+},
+{
+"id": "r3b_stop_nah",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we nah fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_nah",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Nah fine",
+"dict": []
+},
+{
+"id": "r3b_stop_yea",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we yea fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_yea",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Yea fine",
+"dict": []
+},
+{
+"id": "r3b_stop_alright",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we alright fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_alright",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Alright fine",
+"dict": []
+},
+{
+"id": "r3b_stop_k",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we k fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_k",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we K fine",
+"dict": []
+},
+{
+"id": "r3b_stop_okey",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we okey fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_okey",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Okey fine",
+"dict": []
+},
+{
+"id": "r3b_stop_me",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we me fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_me",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Me fine",
+"dict": []
+},
+{
+"id": "r3b_stop_us",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we us fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_us",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Us fine",
+"dict": []
+},
+{
+"id": "r3b_stop_him",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we him fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_him",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Him fine",
+"dict": []
+},
+{
+"id": "r3b_stop_her",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we her fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_her",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Her fine",
+"dict": []
+},
+{
+"id": "r3b_stop_them",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we them fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_them",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Them fine",
+"dict": []
+},
+{
+"id": "r3b_stop_his",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we his fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_his",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we His fine",
+"dict": []
+},
+{
+"id": "r3b_stop_hers",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we hers fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_hers",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Hers fine",
+"dict": []
+},
+{
+"id": "r3b_stop_its",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we its fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_its",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Its fine",
+"dict": []
+},
+{
+"id": "r3b_stop_our",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we our fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_our",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Our fine",
+"dict": []
+},
+{
+"id": "r3b_stop_ours",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we ours fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_ours",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Ours fine",
+"dict": []
+},
+{
+"id": "r3b_stop_their",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we their fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_their",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Their fine",
+"dict": []
+},
+{
+"id": "r3b_stop_theirs",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we theirs fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_theirs",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Theirs fine",
+"dict": []
+},
+{
+"id": "r3b_stop_mine",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we mine fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_mine",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Mine fine",
+"dict": []
+},
+{
+"id": "r3b_stop_yours",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we yours fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_yours",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Yours fine",
+"dict": []
+},
+{
+"id": "r3b_stop_myself",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we myself fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_myself",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Myself fine",
+"dict": []
+},
+{
+"id": "r3b_stop_these",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we these fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_these",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we These fine",
+"dict": []
+},
+{
+"id": "r3b_stop_those",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we those fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_those",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Those fine",
+"dict": []
+},
+{
+"id": "r3b_stop_who",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we who fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_who",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Who fine",
+"dict": []
+},
+{
+"id": "r3b_stop_whom",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we whom fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_whom",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Whom fine",
+"dict": []
+},
+{
+"id": "r3b_stop_whose",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we whose fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_whose",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Whose fine",
+"dict": []
+},
+{
+"id": "r3b_stop_which",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we which fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_which",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Which fine",
+"dict": []
+},
+{
+"id": "r3b_stop_what",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we what fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_what",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we What fine",
+"dict": []
+},
+{
+"id": "r3b_stop_where",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we where fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_where",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Where fine",
+"dict": []
+},
+{
+"id": "r3b_stop_there",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we there fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_there",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we There fine",
+"dict": []
+},
+{
+"id": "r3b_stop_here",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we here fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_here",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Here fine",
+"dict": []
+},
+{
+"id": "r3b_stop_then",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we then fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_then",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Then fine",
+"dict": []
+},
+{
+"id": "r3b_stop_than",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we than fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_than",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Than fine",
+"dict": []
+},
+{
+"id": "r3b_stop_as",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we as fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_as",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we As fine",
+"dict": []
+},
+{
+"id": "r3b_stop_by",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we by fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_by",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we By fine",
+"dict": []
+},
+{
+"id": "r3b_stop_from",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we from fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_from",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we From fine",
+"dict": []
+},
+{
+"id": "r3b_stop_into",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we into fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_into",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Into fine",
+"dict": []
+},
+{
+"id": "r3b_stop_onto",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we onto fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_onto",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Onto fine",
+"dict": []
+},
+{
+"id": "r3b_stop_upon",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we upon fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_upon",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Upon fine",
+"dict": []
+},
+{
+"id": "r3b_stop_over",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we over fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_over",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Over fine",
+"dict": []
+},
+{
+"id": "r3b_stop_under",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we under fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_under",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Under fine",
+"dict": []
+},
+{
+"id": "r3b_stop_off",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we off fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_off",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Off fine",
+"dict": []
+},
+{
+"id": "r3b_stop_down",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we down fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_down",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Down fine",
+"dict": []
+},
+{
+"id": "r3b_stop_via",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we via fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_via",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Via fine",
+"dict": []
+},
+{
+"id": "r3b_stop_per",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we per fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_per",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Per fine",
+"dict": []
+},
+{
+"id": "r3b_stop_nor",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we nor fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_nor",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Nor fine",
+"dict": []
+},
+{
+"id": "r3b_stop_yet",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we yet fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_yet",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Yet fine",
+"dict": []
+},
+{
+"id": "r3b_stop_because",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we because fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_because",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Because fine",
+"dict": []
+},
+{
+"id": "r3b_stop_since",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we since fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_since",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Since fine",
+"dict": []
+},
+{
+"id": "r3b_stop_while",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we while fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_while",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we While fine",
+"dict": []
+},
+{
+"id": "r3b_stop_though",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we though fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_though",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Though fine",
+"dict": []
+},
+{
+"id": "r3b_stop_although",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we although fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_although",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Although fine",
+"dict": []
+},
+{
+"id": "r3b_stop_unless",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we unless fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_unless",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Unless fine",
+"dict": []
+},
+{
+"id": "r3b_stop_until",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we until fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_until",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Until fine",
+"dict": []
+},
+{
+"id": "r3b_stop_till",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we till fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_till",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Till fine",
+"dict": []
+},
+{
+"id": "r3b_stop_am",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we am fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_am",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Am fine",
+"dict": []
+},
+{
+"id": "r3b_stop_were",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we were fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_were",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Were fine",
+"dict": []
+},
+{
+"id": "r3b_stop_been",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we been fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_been",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Been fine",
+"dict": []
+},
+{
+"id": "r3b_stop_being",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we being fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_being",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Being fine",
+"dict": []
+},
+{
+"id": "r3b_stop_has",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we has fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_has",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Has fine",
+"dict": []
+},
+{
+"id": "r3b_stop_had",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we had fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_had",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Had fine",
+"dict": []
+},
+{
+"id": "r3b_stop_having",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we having fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_having",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Having fine",
+"dict": []
+},
+{
+"id": "r3b_stop_does",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we does fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_does",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Does fine",
+"dict": []
+},
+{
+"id": "r3b_stop_did",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we did fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_did",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Did fine",
+"dict": []
+},
+{
+"id": "r3b_stop_doing",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we doing fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_doing",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Doing fine",
+"dict": []
+},
+{
+"id": "r3b_stop_done",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we done fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_done",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Done fine",
+"dict": []
+},
+{
+"id": "r3b_stop_could",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we could fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_could",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Could fine",
+"dict": []
+},
+{
+"id": "r3b_stop_may",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we may fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_may",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we May fine",
+"dict": []
+},
+{
+"id": "r3b_stop_might",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we might fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_might",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Might fine",
+"dict": []
+},
+{
+"id": "r3b_stop_must",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we must fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_must",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Must fine",
+"dict": []
+},
+{
+"id": "r3b_stop_shall",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we shall fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_shall",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Shall fine",
+"dict": []
+},
+{
+"id": "r3b_stop_ought",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we ought fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_ought",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Ought fine",
+"dict": []
+},
+{
+"id": "r3b_stop_got",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we got fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_got",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Got fine",
+"dict": []
+},
+{
+"id": "r3b_stop_get",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we get fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_get",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Get fine",
+"dict": []
+},
+{
+"id": "r3b_stop_go",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we go fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_go",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Go fine",
+"dict": []
+},
+{
+"id": "r3b_stop_went",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we went fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_went",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Went fine",
+"dict": []
+},
+{
+"id": "r3b_stop_say",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we say fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_say",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Say fine",
+"dict": []
+},
+{
+"id": "r3b_stop_said",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we said fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_said",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Said fine",
+"dict": []
+},
+{
+"id": "r3b_stop_see",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we see fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_see",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we See fine",
+"dict": []
+},
+{
+"id": "r3b_stop_let",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we let fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_let",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Let fine",
+"dict": []
+},
+{
+"id": "r3b_stop_make",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we make fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_make",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Make fine",
+"dict": []
+},
+{
+"id": "r3b_stop_take",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we take fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_take",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Take fine",
+"dict": []
+},
+{
+"id": "r3b_stop_way",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we way fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_way",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Way fine",
+"dict": []
+},
+{
+"id": "r3b_stop_very",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we very fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_very",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Very fine",
+"dict": []
+},
+{
+"id": "r3b_stop_too",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we too fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_too",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Too fine",
+"dict": []
+},
+{
+"id": "r3b_stop_so",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we so fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_so",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we So fine",
+"dict": []
+},
+{
+"id": "r3b_stop_such",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we such fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_such",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Such fine",
+"dict": []
+},
+{
+"id": "r3b_stop_just",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we just fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_just",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Just fine",
+"dict": []
+},
+{
+"id": "r3b_stop_only",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we only fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_only",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Only fine",
+"dict": []
+},
+{
+"id": "r3b_stop_own",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we own fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_own",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Own fine",
+"dict": []
+},
+{
+"id": "r3b_stop_same",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we same fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_same",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Same fine",
+"dict": []
+},
+{
+"id": "r3b_stop_other",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we other fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_other",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Other fine",
+"dict": []
+},
+{
+"id": "r3b_stop_each",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we each fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_each",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Each fine",
+"dict": []
+},
+{
+"id": "r3b_stop_every",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we every fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_every",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Every fine",
+"dict": []
+},
+{
+"id": "r3b_stop_both",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we both fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_both",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Both fine",
+"dict": []
+},
+{
+"id": "r3b_stop_few",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we few fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_few",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Few fine",
+"dict": []
+},
+{
+"id": "r3b_stop_most",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we most fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_most",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Most fine",
+"dict": []
+},
+{
+"id": "r3b_stop_no",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we no fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_no",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we No fine",
+"dict": []
+},
+{
+"id": "r3b_stop_not",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we not fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_not",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Not fine",
+"dict": []
+},
+{
+"id": "r3b_stop_yes",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we yes fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_yes",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Yes fine",
+"dict": []
+},
+{
+"id": "r3b_stop_ok",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we ok fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_ok",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Ok fine",
+"dict": []
+},
+{
+"id": "r3b_stop_okay",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we okay fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_okay",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Okay fine",
+"dict": []
+},
+{
+"id": "r3b_stop_like",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we like fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_like",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Like fine",
+"dict": []
+},
+{
+"id": "r3b_stop_oh",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we oh fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_oh",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Oh fine",
+"dict": []
+},
+{
+"id": "r3b_stop_well",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we well fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_well",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Well fine",
+"dict": []
+},
+{
+"id": "r3b_stop_now",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we now fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_now",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Now fine",
+"dict": []
+},
+{
+"id": "r3b_stop_how",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we how fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_how",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we How fine",
+"dict": []
+},
+{
+"id": "r3b_stop_why",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we why fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_why",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Why fine",
+"dict": []
+},
+{
+"id": "r3b_stop_when",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we when fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_when",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we When fine",
+"dict": []
+},
+{
+"id": "r3b_stop_all",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we all fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_all",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we All fine",
+"dict": []
+},
+{
+"id": "r3b_stop_any",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we any fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_any",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Any fine",
+"dict": []
+},
+{
+"id": "r3b_stop_some",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we some fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_some",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Some fine",
+"dict": []
+},
+{
+"id": "r3b_stop_more",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we more fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_more",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we More fine",
+"dict": []
+},
+{
+"id": "r3b_stop_less",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we less fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_less",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Less fine",
+"dict": []
+},
+{
+"id": "r3b_stop_s",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we s fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_s",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we S fine",
+"dict": []
+},
+{
+"id": "r3b_stop_t",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we t fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_t",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we T fine",
+"dict": []
+},
+{
+"id": "r3b_stop_d",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we d fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_d",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we D fine",
+"dict": []
+},
+{
+"id": "r3b_stop_ll",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we ll fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_ll",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Ll fine",
+"dict": []
+},
+{
+"id": "r3b_stop_re",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we re fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_re",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Re fine",
+"dict": []
+},
+{
+"id": "r3b_stop_ve",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we ve fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_ve",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Ve fine",
+"dict": []
+},
+{
+"id": "r3b_stop_m",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we m fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_m",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we M fine",
+"dict": []
+},
+{
+"id": "r3b_stop_o",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we o fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_o",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we O fine",
+"dict": []
+},
+{
+"id": "r3b_stop_y",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we y fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_y",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Y fine",
+"dict": []
+},
+{
+"id": "r3b_stop_x",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we x fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_x",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we X fine",
+"dict": []
+},
+{
+"id": "r3b_stop_b",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we b fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_b",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we B fine",
+"dict": []
+},
+{
+"id": "r3b_stop_c",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we c fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_c",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we C fine",
+"dict": []
+},
+{
+"id": "r3b_stop_e",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we e fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_e",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we E fine",
+"dict": []
+},
+{
+"id": "r3b_stop_f",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we f fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_f",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we F fine",
+"dict": []
+},
+{
+"id": "r3b_stop_g",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we g fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_g",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we G fine",
+"dict": []
+},
+{
+"id": "r3b_stop_h",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we h fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_h",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we H fine",
+"dict": []
+},
+{
+"id": "r3b_stop_j",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we j fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_j",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we J fine",
+"dict": []
+},
+{
+"id": "r3b_stop_l",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we l fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_l",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we L fine",
+"dict": []
+},
+{
+"id": "r3b_stop_n",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we n fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_n",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we N fine",
+"dict": []
+},
+{
+"id": "r3b_stop_p",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we p fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_p",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we P fine",
+"dict": []
+},
+{
+"id": "r3b_stop_q",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we q fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_q",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Q fine",
+"dict": []
+},
+{
+"id": "r3b_stop_r",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we r fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_r",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we R fine",
+"dict": []
+},
+{
+"id": "r3b_stop_u",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we u fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_u",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we U fine",
+"dict": []
+},
+{
+"id": "r3b_stop_v",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we v fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_v",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we V fine",
+"dict": []
+},
+{
+"id": "r3b_stop_w",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we w fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_w",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we W fine",
+"dict": []
+},
+{
+"id": "r3b_stop_z",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we z fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_z",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we Z fine",
+"dict": []
+},
+{
+"id": "r3b_stop_a",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we a fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_a",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we A fine",
+"dict": []
+},
+{
+"id": "r3b_stop_i",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we i fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_i",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we I fine",
+"dict": []
+},
+{
+"id": "r3b_stop_an",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we an fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_an",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we An fine",
+"dict": []
+},
+{
+"id": "r3b_stop_the",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we the fine",
+"dict": []
+},
+{
+"id": "r3b_stopcap_the",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we The fine",
+"dict": []
+},
+{
+"id": "r3b_stop_two",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we the um fine",
+"dict": []
+},
+{
+"id": "r3b_stop_mixed",
+"kind": "learn",
+"pasted": "we zentra fine",
+"edited": "we the Lumio fine",
+"dict": []
+},
+{
+"id": "r3b_stop_orig_two",
+"kind": "learn",
+"pasted": "we the um fine",
+"edited": "we Lumio fine",
+"dict": []
+},
+{
+"id": "r3c_casual_wa_b_ok",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"before": "Ok. "
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r3c_casual_other_b_ok",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"before": "Ok. "
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r3c_casual_wa_a_ok",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"after": " Ok."
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r3c_casual_other_a_ok",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"after": " Ok."
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r3c_casual_wa_sel",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"selected": "Fine."
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r3c_casual_other_sel",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"selected": "Fine."
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r3c_casual_wa_none",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"before": "ok "
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r3c_casual_other_none",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"before": "ok "
+},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r3c_very_casual_wa_b_ok",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"before": "Ok. "
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "r3c_very_casual_other_b_ok",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"before": "Ok. "
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "r3c_very_casual_wa_a_ok",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"after": " Ok."
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "r3c_very_casual_other_a_ok",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"after": " Ok."
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "r3c_very_casual_wa_sel",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"selected": "Fine."
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "r3c_very_casual_other_sel",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"selected": "Fine."
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "r3c_very_casual_wa_none",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"before": "ok "
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "r3c_very_casual_other_none",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"before": "ok "
+},
+"cfg": {
+"styles": {
+"personal": "very_casual",
+"work": "very_casual",
+"email": "very_casual",
+"other": "very_casual"
+}
+}
+},
+{
+"id": "r3c_excited_wa_b_ok",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"before": "Ok. "
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "r3c_excited_other_b_ok",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"before": "Ok. "
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "r3c_excited_wa_a_ok",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"after": " Ok."
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "r3c_excited_other_a_ok",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"after": " Ok."
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "r3c_excited_wa_sel",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"selected": "Fine."
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "r3c_excited_other_sel",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"selected": "Fine."
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "r3c_excited_wa_none",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"before": "ok "
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "r3c_excited_other_none",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"before": "ok "
+},
+"cfg": {
+"styles": {
+"personal": "excited",
+"work": "excited",
+"email": "excited",
+"other": "excited"
+}
+}
+},
+{
+"id": "r3c_formal_wa_b_ok",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"before": "Ok. "
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "r3c_formal_other_b_ok",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"before": "Ok. "
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "r3c_formal_wa_a_ok",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"after": " Ok."
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "r3c_formal_other_a_ok",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"after": " Ok."
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "r3c_formal_wa_sel",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"selected": "Fine."
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "r3c_formal_other_sel",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"selected": "Fine."
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "r3c_formal_wa_none",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"before": "ok "
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "r3c_formal_other_none",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"before": "ok "
+},
+"cfg": {
+"styles": {
+"personal": "formal",
+"work": "formal",
+"email": "formal",
+"other": "formal"
+}
+}
+},
+{
+"id": "r3c_casual_nl_10",
+"kind": "apply",
+"text": "Item 0\nItem 1\nItem 2\nItem 3\nItem 4\nItem 5\nItem 6\nItem 7\nItem 8\nLast one.",
+"ctx": {},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r3c_casual_q_10",
+"kind": "apply",
+"text": "Is 0 ok? Is 1 ok? Is 2 ok? Is 3 ok? Is 4 ok? Is 5 ok? Is 6 ok? Is 7 ok? Is 8 ok? Last one.",
+"ctx": {},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r3c_casual_nl_11",
+"kind": "apply",
+"text": "Item 0\nItem 1\nItem 2\nItem 3\nItem 4\nItem 5\nItem 6\nItem 7\nItem 8\nItem 9\nLast one.",
+"ctx": {},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r3c_casual_q_11",
+"kind": "apply",
+"text": "Is 0 ok? Is 1 ok? Is 2 ok? Is 3 ok? Is 4 ok? Is 5 ok? Is 6 ok? Is 7 ok? Is 8 ok? Is 9 ok? Last one.",
+"ctx": {},
+"cfg": {
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r3c_chat_q3",
+"kind": "apply",
+"text": "Is it? Are you? Fine.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3c_chat_ell",
+"kind": "apply",
+"text": "Wait... then go.",
+"ctx": {
+"app_id": "WhatsApp.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3c_chat_b_unknown",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.whatsapp",
+"before": "Ok. ",
+"context_known": false
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3c_cur_0",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "- "
+},
+"cfg": {}
+},
+{
+"id": "r3c_cur_1",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "-"
+},
+"cfg": {}
+},
+{
+"id": "r3c_cur_2",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "Done. - "
+},
+"cfg": {}
+},
+{
+"id": "r3c_cur_3",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": ", "
+},
+"cfg": {}
+},
+{
+"id": "r3c_cur_4",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": ","
+},
+"cfg": {}
+},
+{
+"id": "r3c_cur_5",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": ": "
+},
+"cfg": {}
+},
+{
+"id": "r3c_cur_6",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "; "
+},
+"cfg": {}
+},
+{
+"id": "r3c_cur_7",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "/ "
+},
+"cfg": {}
+},
+{
+"id": "r3c_cur_8",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "Done. ( "
+},
+"cfg": {}
+},
+{
+"id": "r3c_cur_9",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x ]"
+},
+"cfg": {}
+},
+{
+"id": "r3c_cur_10",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x } "
+},
+"cfg": {}
+},
+{
+"id": "r3c_cur_11",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x "
+},
+"cfg": {}
+},
+{
+"id": "r3c_cur_12",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x ("
+},
+"cfg": {}
+},
+{
+"id": "r3c_cur_13",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x ) )"
+},
+"cfg": {}
+},
+{
+"id": "r3c_cur_14",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "Done.\n("
+},
+"cfg": {}
+},
+{
+"id": "r3c_cur_15",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x\n) "
+},
+"cfg": {}
+},
+{
+"id": "r3c_cur_16",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x ’ "
+},
+"cfg": {}
+},
+{
+"id": "r3c_cur_17",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x” "
+},
+"cfg": {}
+},
+{
+"id": "r3c_cur_18",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x”"
+},
+"cfg": {}
+},
+{
+"id": "r3c_cur_19",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "😀😀 "
+},
+"cfg": {}
+},
+{
+"id": "r3c_cur_20",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x 😀😀"
+},
+"cfg": {}
+},
+{
+"id": "r3c_cur_21",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x 🇮🇱 "
+},
+"cfg": {}
+},
+{
+"id": "r3c_cur_22",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x ✅ "
+},
+"cfg": {}
+},
+{
+"id": "r3c_cur_23",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x ★ "
+},
+"cfg": {}
+},
+{
+"id": "r3c_cur_24",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x © "
+},
+"cfg": {}
+},
+{
+"id": "r3c_cur_25",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x ° "
+},
+"cfg": {}
+},
+{
+"id": "r3c_cur_26",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"before": "x ™ "
+},
+"cfg": {}
+},
+{
+"id": "r3c_after_0",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "{x"
+},
+"cfg": {}
+},
+{
+"id": "r3c_after_1",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "]x"
+},
+"cfg": {}
+},
+{
+"id": "r3c_after_2",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "}x"
+},
+"cfg": {}
+},
+{
+"id": "r3c_after_3",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": " (and"
+},
+"cfg": {}
+},
+{
+"id": "r3c_after_4",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "( and"
+},
+"cfg": {}
+},
+{
+"id": "r3c_after_5",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "-(and"
+},
+"cfg": {}
+},
+{
+"id": "r3c_after_6",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "—"
+},
+"cfg": {}
+},
+{
+"id": "r3c_after_7",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "— "
+},
+"cfg": {}
+},
+{
+"id": "r3c_after_8",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "-  and"
+},
+"cfg": {}
+},
+{
+"id": "r3c_after_9",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": " -and"
+},
+"cfg": {}
+},
+{
+"id": "r3c_after_10",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": " — and"
+},
+"cfg": {}
+},
+{
+"id": "r3c_after_11",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "—\tand"
+},
+"cfg": {}
+},
+{
+"id": "r3c_after_12",
+"kind": "apply",
+"text": "The parcel arrived early.",
+"ctx": {
+"after": "-\nand"
+},
+"cfg": {}
+},
+{
+"id": "r3c_learn_curly",
+"kind": "learn",
+"pasted": "i dont go",
+"edited": "i don’t go",
+"dict": []
+},
+{
+"id": "r3c_learn_curly_orig",
+"kind": "learn",
+"pasted": "the lumo’s car",
+"edited": "the Lumio car",
+"dict": []
+},
+{
+"id": "r3c_learn_start_three",
+"kind": "learn",
+"pasted": "lumo hub one is here",
+"edited": "Lumo Hub One is here",
+"dict": []
+},
+{
+"id": "r3c_learn_after_nl",
+"kind": "learn",
+"pasted": "ok\nlumo is here",
+"edited": "ok\nLumo is here",
+"dict": []
+},
+{
+"id": "r3c_learn_after_excl",
+"kind": "learn",
+"pasted": "ok! lumo is here",
+"edited": "ok! Lumo is here",
+"dict": []
+},
+{
+"id": "r3c_learn_after_colon",
+"kind": "learn",
+"pasted": "ok: lumo is here",
+"edited": "ok: Lumo is here",
+"dict": []
+},
+{
+"id": "r3c_learn_orig5",
+"kind": "learn",
+"pasted": "go a b c d e now",
+"edited": "go Lumio now",
+"dict": []
+},
+{
+"id": "r3c_learn_orig4",
+"kind": "learn",
+"pasted": "go a b c d now",
+"edited": "go Lumio now",
+"dict": []
+},
+{
+"id": "r3d_unk_android_empty",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.whatsapp",
+"context_known": false
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3d_unkcas_android_empty",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.whatsapp",
+"context_known": false
+},
+"cfg": {
+"platform": "android",
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r3d_unk_android_ok",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.whatsapp",
+"context_known": false,
+"before": "Ok. "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3d_unkcas_android_ok",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.whatsapp",
+"context_known": false,
+"before": "Ok. "
+},
+"cfg": {
+"platform": "android",
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r3d_unk_android_lower",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.whatsapp",
+"context_known": false,
+"before": "ok "
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3d_unkcas_android_lower",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.whatsapp",
+"context_known": false,
+"before": "ok "
+},
+"cfg": {
+"platform": "android",
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r3d_unk_android_after",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.whatsapp",
+"context_known": false,
+"after": " Ok."
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3d_unkcas_android_after",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.whatsapp",
+"context_known": false,
+"after": " Ok."
+},
+"cfg": {
+"platform": "android",
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r3d_unk_windows_empty",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"context_known": false
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r3d_unkcas_windows_empty",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"context_known": false
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r3d_unk_windows_ok",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"context_known": false,
+"before": "Ok. "
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r3d_unkcas_windows_ok",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"context_known": false,
+"before": "Ok. "
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r3d_unk_windows_lower",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"context_known": false,
+"before": "ok "
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r3d_unkcas_windows_lower",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"context_known": false,
+"before": "ok "
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r3d_unk_windows_after",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"context_known": false,
+"after": " Ok."
+},
+"cfg": {
+"platform": "windows"
+}
+},
+{
+"id": "r3d_unkcas_windows_after",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"context_known": false,
+"after": " Ok."
+},
+"cfg": {
+"platform": "windows",
+"styles": {
+"personal": "casual",
+"work": "casual",
+"email": "casual",
+"other": "casual"
+}
+}
+},
+{
+"id": "r3d_chat_uell",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"before": "wait… "
+},
+"cfg": {}
+},
+{
+"id": "r3d_chat_nbsp",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"before": "Ok. "
+},
+"cfg": {}
+},
+{
+"id": "r3d_chat_cjk",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"before": "好。"
+},
+"cfg": {}
+},
+{
+"id": "r3d_chat_tab",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"before": "Ok.\t"
+},
+"cfg": {}
+},
+{
+"id": "r3d_chat_cr",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"before": "Ok.\r\n"
+},
+"cfg": {}
+},
+{
+"id": "r3d_chat_colon",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"before": "Note: "
+},
+"cfg": {}
+},
+{
+"id": "r3e_chat_host_wa",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "web.whatsapp.com"
+},
+"cfg": {}
+},
+{
+"id": "r3e_chat_host_slack",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "app.slack.com"
+},
+"cfg": {}
+},
+{
+"id": "r3e_chat_host_discord",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "discord.com"
+},
+"cfg": {}
+},
+{
+"id": "r3e_chat_signal",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "signal.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_chat_teams_w",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "ms-teams.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_chat_a_teams",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.microsoft.teams"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_chat_a_discord",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.discord"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_chat_a_signal",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "org.thoughtcrime.securesms"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_chat_a_msgs",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.google.android.apps.messaging"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_chat_a_insta",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.instagram.android"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_chat_a_orca",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.facebook.orca"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_chat_a_host_wa",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "web.whatsapp.com"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_chat_wa_cat_other",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"app_category": "other"
+},
+"cfg": {}
+},
+{
+"id": "r3e_chat_wa_cat_email",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "WhatsApp.exe",
+"app_category": "email"
+},
+"cfg": {}
+},
+{
+"id": "r3e_chat_np_cat_pc",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "notepad.exe",
+"app_category": "personal_chat"
+},
+"cfg": {}
+},
+{
+"id": "r3e_sig_outlook_live",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "outlook.live.com"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r3e_sig_outlook_cat_wc",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "outlook.exe",
+"app_category": "work_chat"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r3e_sig_np_cat_email",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "notepad.exe",
+"app_category": "email"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r3e_sig_hxoutlook",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "hxoutlook.exe"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r3e_sig_mailbird",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "mailbird.exe"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r3e_cat_w_outlook",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "outlook.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_outlook",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "outlook.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_olk",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "olk.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_olk",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "olk.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_thunderbird",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "thunderbird.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_thunderbird",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "thunderbird.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_betterbird",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "betterbird.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_betterbird",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "betterbird.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_mailbird",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "mailbird.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_mailbird",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "mailbird.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_mailspring",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "mailspring.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_mailspring",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "mailspring.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_hxoutlook",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "hxoutlook.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_hxoutlook",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "hxoutlook.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_slack",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "slack.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_slack",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "slack.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_ms-teams",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "ms-teams.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_ms-teams",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "ms-teams.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_teams",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "teams.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_teams",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "teams.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_zoom",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "zoom.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_zoom",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "zoom.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_mattermost",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "mattermost.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_mattermost",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "mattermost.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_whatsapp",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "whatsapp.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_whatsapp",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "whatsapp.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_whatsapp.root",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "whatsapp.root.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_whatsapp.root",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "whatsapp.root.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_telegram",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "telegram.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_telegram",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "telegram.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_discord",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "discord.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_discord",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "discord.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_signal",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "signal.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_signal",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "signal.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_messenger",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "messenger.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_messenger",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "messenger.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_viber",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "viber.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_viber",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "viber.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_line",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "line.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_line",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "line.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_skype",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "skype.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_skype",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "skype.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_element",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "element.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_element",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "element.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_chatgpt",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chatgpt.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_chatgpt",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "chatgpt.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_claude",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "claude.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_claude",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "claude.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_perplexity",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "perplexity.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_perplexity",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "perplexity.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_cursor",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "cursor.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_cursor",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "cursor.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_windsurf",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "windsurf.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_windsurf",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "windsurf.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_code",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "code.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_code",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "code.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_windowsterminal",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "windowsterminal.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_windowsterminal",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "windowsterminal.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_wt",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "wt.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_wt",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "wt.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_cmd",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "cmd.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_cmd",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "cmd.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_powershell",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "powershell.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_powershell",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "powershell.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_pwsh",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "pwsh.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_pwsh",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "pwsh.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_conhost",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "conhost.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_conhost",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "conhost.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_alacritty",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "alacritty.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_alacritty",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "alacritty.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_wezterm-gui",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "wezterm-gui.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_wezterm-gui",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "wezterm-gui.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_mintty",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "mintty.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_mintty",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "mintty.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_putty",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "putty.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_putty",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "putty.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_winword",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "winword.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_winword",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "winword.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_notion",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "notion.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_notion",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "notion.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_obsidian",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "obsidian.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_obsidian",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "obsidian.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_onenote",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "onenote.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_onenote",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "onenote.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_soffice",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "soffice.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_soffice",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "soffice.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_w_swriter",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "swriter.exe",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chatw_swriter",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "swriter.exe"
+},
+"cfg": {}
+},
+{
+"id": "r3e_cat_a_com.google.android.gm",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.google.android.gm",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_com.google.android.gm",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.google.android.gm"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_a_com.microsoft.office.outlook",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.microsoft.office.outlook",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_com.microsoft.office.outlook",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.microsoft.office.outlook"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_a_ch.protonmail.android",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "ch.protonmail.android",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_ch.protonmail.android",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "ch.protonmail.android"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_a_com.samsung.android.email.provider",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.samsung.android.email.provider",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_com.samsung.android.email.provider",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.samsung.android.email.provider"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_a_com.fsck.k9",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.fsck.k9",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_com.fsck.k9",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.fsck.k9"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_a_net.thunderbird.android",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "net.thunderbird.android",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_net.thunderbird.android",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "net.thunderbird.android"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_a_com.yahoo.mobile.client.android.mail",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.yahoo.mobile.client.android.mail",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_com.yahoo.mobile.client.android.mail",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.yahoo.mobile.client.android.mail"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_a_com.slack",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.slack",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_com.slack",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.slack"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_a_com.microsoft.teams",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.microsoft.teams",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_com.microsoft.teams",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.microsoft.teams"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_a_us.zoom.videomeetings",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "us.zoom.videomeetings",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_us.zoom.videomeetings",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "us.zoom.videomeetings"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_a_com.mattermost.rn",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.mattermost.rn",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_com.mattermost.rn",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.mattermost.rn"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_a_com.whatsapp",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.whatsapp",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_com.whatsapp",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.whatsapp"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_a_com.whatsapp.w4b",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.whatsapp.w4b",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_com.whatsapp.w4b",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.whatsapp.w4b"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_a_org.telegram.messenger",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "org.telegram.messenger",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_org.telegram.messenger",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "org.telegram.messenger"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_a_org.thoughtcrime.securesms",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "org.thoughtcrime.securesms",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_org.thoughtcrime.securesms",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "org.thoughtcrime.securesms"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_a_com.discord",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.discord",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_com.discord",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.discord"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_a_com.facebook.orca",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.facebook.orca",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_com.facebook.orca",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.facebook.orca"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_a_com.instagram.android",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.instagram.android",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_com.instagram.android",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.instagram.android"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_a_com.viber.voip",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.viber.voip",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_com.viber.voip",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.viber.voip"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_a_jp.naver.line.android",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "jp.naver.line.android",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_jp.naver.line.android",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "jp.naver.line.android"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_a_com.google.android.apps.messaging",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.google.android.apps.messaging",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_com.google.android.apps.messaging",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.google.android.apps.messaging"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_a_com.samsung.android.messaging",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.samsung.android.messaging",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_com.samsung.android.messaging",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.samsung.android.messaging"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_a_im.vector.app",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "im.vector.app",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_im.vector.app",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "im.vector.app"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_a_com.openai.chatgpt",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.openai.chatgpt",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_com.openai.chatgpt",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.openai.chatgpt"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_a_com.anthropic.claude",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.anthropic.claude",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_com.anthropic.claude",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.anthropic.claude"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_a_ai.perplexity.app.android",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "ai.perplexity.app.android",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_ai.perplexity.app.android",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "ai.perplexity.app.android"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_a_com.google.android.apps.bard",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.google.android.apps.bard",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_com.google.android.apps.bard",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.google.android.apps.bard"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_a_com.termux",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.termux",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_com.termux",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.termux"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_a_org.connectbot",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "org.connectbot",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_org.connectbot",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "org.connectbot"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_a_com.server.auditor.ssh.client",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.server.auditor.ssh.client",
+"url_host": ""
+}
+},
+{
+"id": "r3e_chata_com.server.auditor.ssh.client",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "com.server.auditor.ssh.client"
+},
+"cfg": {
+"platform": "android"
+}
+},
+{
+"id": "r3e_cat_wh_mail.google.com",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "mail.google.com"
+}
+},
+{
+"id": "r3e_cat_ah_mail.google.com",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "mail.google.com"
+}
+},
+{
+"id": "r3e_chath_mail.google.com",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "mail.google.com"
+},
+"cfg": {}
+},
+{
+"id": "r3e_sigh_mail.google.com",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "mail.google.com"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r3e_cat_wh_outlook.live.com",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "outlook.live.com"
+}
+},
+{
+"id": "r3e_cat_ah_outlook.live.com",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "outlook.live.com"
+}
+},
+{
+"id": "r3e_chath_outlook.live.com",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "outlook.live.com"
+},
+"cfg": {}
+},
+{
+"id": "r3e_sigh_outlook.live.com",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "outlook.live.com"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r3e_cat_wh_outlook.office.com",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "outlook.office.com"
+}
+},
+{
+"id": "r3e_cat_ah_outlook.office.com",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "outlook.office.com"
+}
+},
+{
+"id": "r3e_chath_outlook.office.com",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "outlook.office.com"
+},
+"cfg": {}
+},
+{
+"id": "r3e_sigh_outlook.office.com",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "outlook.office.com"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r3e_cat_wh_outlook.office365.com",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "outlook.office365.com"
+}
+},
+{
+"id": "r3e_cat_ah_outlook.office365.com",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "outlook.office365.com"
+}
+},
+{
+"id": "r3e_chath_outlook.office365.com",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "outlook.office365.com"
+},
+"cfg": {}
+},
+{
+"id": "r3e_sigh_outlook.office365.com",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "outlook.office365.com"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r3e_cat_wh_mail.proton.me",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "mail.proton.me"
+}
+},
+{
+"id": "r3e_cat_ah_mail.proton.me",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "mail.proton.me"
+}
+},
+{
+"id": "r3e_chath_mail.proton.me",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "mail.proton.me"
+},
+"cfg": {}
+},
+{
+"id": "r3e_sigh_mail.proton.me",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "mail.proton.me"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r3e_cat_wh_mail.yahoo.com",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "mail.yahoo.com"
+}
+},
+{
+"id": "r3e_cat_ah_mail.yahoo.com",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "mail.yahoo.com"
+}
+},
+{
+"id": "r3e_chath_mail.yahoo.com",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "mail.yahoo.com"
+},
+"cfg": {}
+},
+{
+"id": "r3e_sigh_mail.yahoo.com",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "mail.yahoo.com"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r3e_cat_wh_app.slack.com",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "app.slack.com"
+}
+},
+{
+"id": "r3e_cat_ah_app.slack.com",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "app.slack.com"
+}
+},
+{
+"id": "r3e_chath_app.slack.com",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "app.slack.com"
+},
+"cfg": {}
+},
+{
+"id": "r3e_sigh_app.slack.com",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "app.slack.com"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r3e_cat_wh_teams.microsoft.com",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "teams.microsoft.com"
+}
+},
+{
+"id": "r3e_cat_ah_teams.microsoft.com",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "teams.microsoft.com"
+}
+},
+{
+"id": "r3e_chath_teams.microsoft.com",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "teams.microsoft.com"
+},
+"cfg": {}
+},
+{
+"id": "r3e_sigh_teams.microsoft.com",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "teams.microsoft.com"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r3e_cat_wh_teams.live.com",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "teams.live.com"
+}
+},
+{
+"id": "r3e_cat_ah_teams.live.com",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "teams.live.com"
+}
+},
+{
+"id": "r3e_chath_teams.live.com",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "teams.live.com"
+},
+"cfg": {}
+},
+{
+"id": "r3e_sigh_teams.live.com",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "teams.live.com"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r3e_cat_wh_web.whatsapp.com",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "web.whatsapp.com"
+}
+},
+{
+"id": "r3e_cat_ah_web.whatsapp.com",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "web.whatsapp.com"
+}
+},
+{
+"id": "r3e_chath_web.whatsapp.com",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "web.whatsapp.com"
+},
+"cfg": {}
+},
+{
+"id": "r3e_sigh_web.whatsapp.com",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "web.whatsapp.com"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r3e_cat_wh_web.telegram.org",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "web.telegram.org"
+}
+},
+{
+"id": "r3e_cat_ah_web.telegram.org",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "web.telegram.org"
+}
+},
+{
+"id": "r3e_chath_web.telegram.org",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "web.telegram.org"
+},
+"cfg": {}
+},
+{
+"id": "r3e_sigh_web.telegram.org",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "web.telegram.org"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r3e_cat_wh_discord.com",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "discord.com"
+}
+},
+{
+"id": "r3e_cat_ah_discord.com",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "discord.com"
+}
+},
+{
+"id": "r3e_chath_discord.com",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "discord.com"
+},
+"cfg": {}
+},
+{
+"id": "r3e_sigh_discord.com",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "discord.com"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r3e_cat_wh_messenger.com",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "messenger.com"
+}
+},
+{
+"id": "r3e_cat_ah_messenger.com",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "messenger.com"
+}
+},
+{
+"id": "r3e_chath_messenger.com",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "messenger.com"
+},
+"cfg": {}
+},
+{
+"id": "r3e_sigh_messenger.com",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "messenger.com"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r3e_cat_wh_chatgpt.com",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "chatgpt.com"
+}
+},
+{
+"id": "r3e_cat_ah_chatgpt.com",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "chatgpt.com"
+}
+},
+{
+"id": "r3e_chath_chatgpt.com",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "chatgpt.com"
+},
+"cfg": {}
+},
+{
+"id": "r3e_sigh_chatgpt.com",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "chatgpt.com"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r3e_cat_wh_chat.openai.com",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "chat.openai.com"
+}
+},
+{
+"id": "r3e_cat_ah_chat.openai.com",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "chat.openai.com"
+}
+},
+{
+"id": "r3e_chath_chat.openai.com",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "chat.openai.com"
+},
+"cfg": {}
+},
+{
+"id": "r3e_sigh_chat.openai.com",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "chat.openai.com"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r3e_cat_wh_claude.ai",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "claude.ai"
+}
+},
+{
+"id": "r3e_cat_ah_claude.ai",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "claude.ai"
+}
+},
+{
+"id": "r3e_chath_claude.ai",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "claude.ai"
+},
+"cfg": {}
+},
+{
+"id": "r3e_sigh_claude.ai",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "claude.ai"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r3e_cat_wh_gemini.google.com",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "gemini.google.com"
+}
+},
+{
+"id": "r3e_cat_ah_gemini.google.com",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "gemini.google.com"
+}
+},
+{
+"id": "r3e_chath_gemini.google.com",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "gemini.google.com"
+},
+"cfg": {}
+},
+{
+"id": "r3e_sigh_gemini.google.com",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "gemini.google.com"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r3e_cat_wh_perplexity.ai",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "perplexity.ai"
+}
+},
+{
+"id": "r3e_cat_ah_perplexity.ai",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "perplexity.ai"
+}
+},
+{
+"id": "r3e_chath_perplexity.ai",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "perplexity.ai"
+},
+"cfg": {}
+},
+{
+"id": "r3e_sigh_perplexity.ai",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "perplexity.ai"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r3e_cat_wh_x.slack.com",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "x.slack.com"
+}
+},
+{
+"id": "r3e_cat_ah_x.slack.com",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "x.slack.com"
+}
+},
+{
+"id": "r3e_chath_x.slack.com",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "x.slack.com"
+},
+"cfg": {}
+},
+{
+"id": "r3e_sigh_x.slack.com",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "x.slack.com"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r3e_cat_wh_www.messenger.com",
+"kind": "category",
+"platform": "windows",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "www.messenger.com"
+}
+},
+{
+"id": "r3e_cat_ah_www.messenger.com",
+"kind": "category",
+"platform": "android",
+"ctx": {
+"app_id": "com.android.chrome",
+"url_host": "www.messenger.com"
+}
+},
+{
+"id": "r3e_chath_www.messenger.com",
+"kind": "apply",
+"text": "See you soon.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "www.messenger.com"
+},
+"cfg": {}
+},
+{
+"id": "r3e_sigh_www.messenger.com",
+"kind": "apply",
+"text": "Hi Tom, thanks.",
+"ctx": {
+"app_id": "chrome.exe",
+"url_host": "www.messenger.com"
+},
+"cfg": {
+"email_signature": "— Ann"
+}
+},
+{
+"id": "r3e_snip_sig_empty_text",
+"kind": "apply",
+"text": "",
+"ctx": {
+"app_id": "outlook.exe"
+},
+"cfg": {
+"dictionary": [
+{
+"word": "my address",
+"replacement": "Hi Tom, my address is 12 Elm Road.",
+"isSnippet": true
+}
+],
+"email_signature": "— Ann"
+},
+"raw": "my address"
 }
 ]

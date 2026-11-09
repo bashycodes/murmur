@@ -312,6 +312,214 @@ ap("lower_casual", "See You Soon.", {"app_category": "personal_chat"}, {**sty("c
 for app in ["olk.exe", "WINWORD.EXE"]:
     ap(f"sig2_{app}", LONG, {"app_id": app}, SIG)
 
+# --- round 3 (review of the rewrite): contexts the first rounds missed ---
+WA = {"app_id": "WhatsApp.exe"}
+AWA = {"app_id": "com.whatsapp"}
+AND = {"platform": "android"}
+SEE = "See you soon."
+# 1. chat period vs. sentence ends around the cursor
+for n, c in [("b_ok", {"before": "Ok. "}), ("b_ok_nosp", {"before": "Ok."}), ("b_lower", {"before": "ok "}),
+             ("b_prev_line", {"before": "Done.\n"}), ("b_prev_line_word", {"before": "Done.\nso "}),
+             ("b_q", {"before": "what? so "}), ("b_bang", {"before": "Wow! "}), ("b_ell", {"before": "hmm... "}),
+             ("a_ok", {"after": " Ok."}), ("a_word", {"after": " later"}), ("a_next_line", {"after": "\nDone."}),
+             ("a_line_end", {"after": " then.\nmore"}), ("sel_period", {"selected": "Fine."}), ("sel_plain", {"selected": "fine"}),
+             ("b_comma", {"before": "Sure, "}), ("b_mid_sent", {"before": "Hi. I think "})]:
+    ap(f"r3_chat_{n}", SEE, {**WA, **c})
+    ap(f"r3_achat_{n}", SEE, {**AWA, **c}, AND)
+# 2. casual / very casual sentence limit
+for k in [9, 10, 11, 14]:
+    t = " ".join(f"Line {i} here." for i in range(k))
+    ap(f"r3_casual_{k}", t, {}, sty("casual"))
+    ap(f"r3_vcasual_{k}", t, {}, sty("very_casual"))
+    ap(f"r3_default_chat_{k}", t, WA)
+# 3. Notion skip conditions
+for host_app, nm in [({"app_id": "Notion.exe"}, "app"), ({"app_id": "chrome.exe", "url_host": "notion.so"}, "host"),
+                     ({"app_id": "chrome.exe", "url_host": "www.notion.so"}, "www"), ({"app_id": "chrome.exe", "url_host": "x.notion.site"}, "site"),
+                     ({"app_id": "flow-windows.exe"}, "own")]:
+    for n, c in [("empty", {}), ("b1", {"before": "so "}), ("b2", {"before": "so then "}), ("b3", {"before": "one two three "}),
+                 ("b5", {"before": "we went to the shop "}), ("bell", {"before": "we went to the shop..."}),
+                 ("b1_after", {"before": "so ", "after": "x"}), ("b5_after", {"before": "we went to the shop ", "after": " more"}),
+                 ("b2_nosp", {"before": "so then"}), ("bell_sp", {"before": "we went to the shop... "})]:
+        ap(f"r3_notion_{nm}_{n}", T, {**host_app, **c})
+# 4. sentence count with newlines
+ap("r3_nl_list3", "Milk.\nEggs.\nBread.", WA)
+ap("r3_nl_list3_nop", "Milk\nEggs\nBread.", WA)
+ap("r3_nl_two_lines_3s", "One. Two.\nThree.", WA)
+ap("r3_nl_blank", "Milk.\n\nEggs.\n\nBread.", WA)
+ap("r3_nl_casual_list", "\n".join(f"Item {i}." for i in range(12)), {}, sty("casual"))
+# 5. cursor characters
+for n, b in [("paren_open", "see ("), ("paren_open_sp", "see ( "), ("paren_close", "done) "), ("paren_close_nosp", "done)"),
+             ("emdash", "wait — "), ("emdash_nosp", "wait —"), ("endash", "wait – "), ("emoji", "great 😀 "), ("emoji_nosp", "great 😀"),
+             ("rdquo", "he said” "), ("rsquo", "the ’ "), ("dquote_close", "\"ok\" "), ("squote", "'ok' "),
+             ("a_dash", "a -"), ("a_dash_sp", "a - "), ("dollar", "$"), ("dollar_sp", "$ "), ("hash", "#"), ("hash_sp", "# "),
+             ("under", "_"), ("star", "*"), ("star_sp", "* "), ("eq", "="), ("eq_sp", "= "), ("tilde", "~"), ("tilde_sp", "~ "),
+             ("bracket_close", "done] "), ("brace_close", "done} "), ("pct", "50% "), ("amp", "Tom & "), ("plus", "1 + "),
+             ("lt", "a < "), ("gt", "a > "), ("pipe", "a | "), ("backslash", "a\\"), ("caret", "^ "), ("bullet", "• "),
+             ("guill_close", "dit» "), ("ellipsis_char", "wait… "), ("colon_nosp", "Note:"), ("semi", "ok;"), ("digit", "room 4"),
+             ("hebrew", "שלום "), ("cyr", "привет ")]:
+    ap(f"r3_cur_{n}", T, {"before": b})
+for n, a in [("emdash_and", "— and"), ("emdash_and_sp", " — and"), ("endash_and", "– and"), ("hyphen_and", "- and"),
+             ("hyphen_and_sp", " - and"), ("emdash_alone", "—"), ("paren_close", ")"), ("rdquo", "”"), ("colon", ": x"),
+             ("upper", "Then"), ("digit", "42"), ("emoji", "😀"), ("ellipsis", "…"), ("dollar", "$5")]:
+    ap(f"r3_after_{n}", T, {"after": a})
+# 6. snippet + signature, empty cleaned text
+SN = {"word": "sign off", "replacement": "Thanks for the update, talk soon.", "isSnippet": True}
+SN2 = {"word": "my address", "replacement": "Hi Tom, my address is 12 Elm Road.", "isSnippet": True}
+for app in ["outlook.exe", "chrome.exe"]:
+    ctx = {"app_id": app, "url_host": "mail.google.com" if app == "chrome.exe" else ""}
+    ap(f"r3_snip_sig_{app}", "Sign off.", ctx, {**D(SN), **SIG}, raw="sign off")
+    ap(f"r3_snip_sig_greet_{app}", "My address.", ctx, {**D(SN2), **SIG}, raw="my address")
+    ap(f"r3_snip_nosig_{app}", "My address.", ctx, D(SN2), raw="my address")
+ap("r3_sig_empty_text", "", {"app_id": "outlook.exe"}, SIG, raw="hi tom")
+ap("r3_sig_space_text", "  ", {"app_id": "outlook.exe"}, SIG, raw="hi tom")
+ap("r3_sig_empty_raw", LONG, {"app_id": "outlook.exe"}, SIG, raw="")
+ap("r3_snip_android", "My address.", {}, {**D(SN2), "platform": "android"}, raw="my address")
+ap("r3_snip_android_sig", "My address.", {"app_id": "com.google.android.gm"}, {**D(SN2), **SIG, "platform": "android"}, raw="my address")
+# 7. learn
+L("r3_learn_long_corr", "go lumo now", "go one two three four five six now")
+L("r3_learn_corr5", "go lumo now", "go a b c d e now")
+L("r3_learn_corr4", "go lumo now", "go Ab Cd Ef Gh now")
+L("r3_learn_corr5_names", "go lumo now", "go Ab Cd Ef Gh Ij now")
+for w in ["um", "uh", "like", "okay", "ok", "yes", "no", "yeah", "just", "very", "really", "there", "here", "so", "well", "oh",
+          "hmm", "right", "actually", "basically", "literally", "then", "now", "also", "too", "not", "the", "a", "an", "and",
+          "or", "but", "to", "of", "in", "on", "at", "for", "with", "is", "it", "this", "that", "i", "you", "we", "they", "he",
+          "she", "my", "your", "be", "have", "do", "was", "are", "will", "can", "would", "should", "if", "what", "who",
+          "how", "when", "where", "why", "all", "some", "any", "one", "two", "more", "much", "many", "up", "out", "about",
+          "hi", "hello", "thanks", "please", "sure", "maybe", "kind", "sort", "mean", "know", "guess", "anyway", "stuff",
+          "thing", "things", "gonna", "wanna", "lot", "bit", "pretty", "quite", "even", "still", "only", "again", "back"]:
+    L(f"r3_learn_stop_orig_{w}", f"we {w} fine", "we Zentra fine")
+    L(f"r3_learn_stop_corr_{w}", "we zentra fine", f"we {w} fine")
+for n, p_, e_ in [("dont", "i dont go", "i don't go"), ("dont_rev", "i don't go", "i dont go"), ("its", "its lumo", "it's Lumio"),
+                  ("its_rev", "it's lumo here", "its Lumio here"), ("orig_contr", "we can't zentra", "we cannot Zentra"),
+                  ("orig_contr2", "we'll go", "Lumio go"), ("orig_contr3", "so we're lumo", "so we Lumio"),
+                  ("orig_poss", "the lumo's car", "the Lumio's car"), ("orig_poss2", "the lumo's car", "the Lumio car")]:
+    L(f"r3_learn_contr_{n}", p_, e_)
+for n, p_, e_ in [("start", "lumo is here", "Lumo is here"), ("after_period", "ok. lumo is here", "ok. Lumo is here"),
+                  ("after_q", "ok? lumo is here", "ok? Lumo is here"), ("mid", "ok lumo is here", "ok Lumo is here"),
+                  ("start_two", "lumo hub is here", "Lumo Hub is here"), ("start_diff", "lumo is here", "Lumio is here"),
+                  ("lower_start", "Lumo is here", "lumo is here"), ("lower_mid", "ok Lumo is here", "ok lumo is here")]:
+    L(f"r3_learn_case_{n}", p_, e_)
+RK = [{"word": "lumo", "replacement": "Lumio"}]
+L("r3_learn_key_orig", "see lumo now", "see Lumia now", RK)
+L("r3_learn_key_corr", "see lumi now", "see Lumio now", RK)
+L("r3_learn_word_corr", "see lumi now", "see Lumio now", [{"word": "Lumio"}])
+L("r3_learn_word_orig", "see Lumio now", "see Lumia now", [{"word": "Lumio"}])
+# 8. acronyms and mixed case mid-sentence
+for w in ["NASA called.", "IPhone works.", "IPad works.", "McKay called.", "USA's team won.", "OK then.", "A plan works.",
+          "AI works.", "I.B.M. works.", "EBay works.", "JavaScript works.", "MacBook works.", "PhD done.", "X is fine.",
+          "NASA's plan works.", "U.S. troops.", "CEO called.", "TV is on."]:
+    ap(f"r3_case_{w}", w, {"before": "and "})
+
+# --- round 3b: settle the cursor-character and stopword rules ---
+for i, b in enumerate(["Done. (", "! (", "42 (", "( (", "x(", "Done. 😀 ", "😀 ", "😀", "Done.) ", ") ", ")", "— ", "—", "Done. — ",
+          "\"", "x\"", "x\" ", "\" ", "x' ", "' ", "x’ ", "x’", "“x” ", "«x» ", "x]", "x}", "x'", "wait—", "wait– ", "a –", "a —",
+          "x -", "x - ", "x —", "50%", "Tom &", "1 +", "a <", "a >", "a |", "^", "•", "dit»", "wait…", "great 🎉 ", "great ❤️ ",
+          "great 👍🏽 ", "great 🎉", "x ) ", "x ( ", "Done.\"", "Done.\" ", "Done.’ ", "Done.” ", "Done.)", "Done!) ",
+          "so, (", "so: (", "so — (", "x)]", "x;) ", "a ‘", "a ’", "a “", "a ”", "a \"", "a '", "x»", "x« ", "x‘ ", "x“ ",
+          "x [", "x {", "x <", "x ¿", "x ¡", "x ¿ ", "a/ ", "a@ ", "a@", "a- ", "a-", "a—", "a— ", "a–", "a– "]):
+    ap(f"r3b_cur_{i}", T, {"before": b})
+    ap(f"r3b_cur_pron_{i}", "I left.", {"before": b})
+for i, a in enumerate(["-and", "—and", "- And", "— And", "-", " -", "-5", "— 5", "– and", " – and", "—  and", "-- and", "— (and)",
+          "— ,", "…and", "... and", "(and", ") and", "\" and", "” and", "’ and", "😀 and", "x", "X", "5", "_x", "#x", "$x",
+          "@x", "/x", "&x", "*x", "'x", "‘x", "“x", "«x", "[x", "\tand", " and"]):
+    ap(f"r3b_after_{i}", T, {"after": a})
+for w in ["um", "uh", "er", "erm", "ah", "eh", "hm", "mm", "huh", "yep", "yup", "nope", "nah", "yea", "alright", "k", "okey",
+          "me", "us", "him", "her", "them", "his", "hers", "its", "our", "ours", "their", "theirs", "mine", "yours", "myself",
+          "these", "those", "who", "whom", "whose", "which", "what", "where", "there", "here", "then", "than", "as", "by",
+          "from", "into", "onto", "upon", "over", "under", "off", "down", "via", "per", "nor", "yet", "because", "since",
+          "while", "though", "although", "unless", "until", "till", "am", "were", "been", "being", "has", "had", "having",
+          "does", "did", "doing", "done", "could", "may", "might", "must", "shall", "ought", "got", "get", "go", "went",
+          "say", "said", "see", "let", "make", "take", "way", "very", "too", "so", "such", "just", "only", "own", "same",
+          "other", "each", "every", "both", "few", "most", "no", "not", "yes", "ok", "okay", "like", "oh", "well", "now",
+          "how", "why", "when", "all", "any", "some", "more", "less", "s", "t", "d", "ll", "re", "ve", "m", "o", "y",
+          "x", "b", "c", "e", "f", "g", "h", "j", "l", "n", "p", "q", "r", "u", "v", "w", "z", "a", "i", "an", "the"]:
+    L(f"r3b_stop_{w}", "we zentra fine", f"we {w} fine")
+    L(f"r3b_stopcap_{w}", "we zentra fine", f"we {w.capitalize()} fine")
+L("r3b_stop_two", "we zentra fine", "we the um fine")
+L("r3b_stop_mixed", "we zentra fine", "we the Lumio fine")
+L("r3b_stop_orig_two", "we the um fine", "we Lumio fine")
+
+# --- round 3c: style vs. context, remaining characters ---
+for st in ["casual", "very_casual", "excited", "formal"]:
+    for n, c in [("b_ok", {"before": "Ok. "}), ("a_ok", {"after": " Ok."}), ("sel", {"selected": "Fine."}), ("none", {"before": "ok "})]:
+        ap(f"r3c_{st}_wa_{n}", SEE, {**WA, **c}, sty(st))
+        ap(f"r3c_{st}_other_{n}", SEE, c, sty(st))
+for k in [10, 11]:
+    ap(f"r3c_casual_nl_{k}", "\n".join(f"Item {i}" for i in range(k - 1)) + "\nLast one.", {}, sty("casual"))
+    ap(f"r3c_casual_q_{k}", " ".join(f"Is {i} ok?" for i in range(k - 1)) + " Last one.", {}, sty("casual"))
+ap("r3c_chat_q3", "Is it? Are you? Fine.", WA)
+ap("r3c_chat_ell", "Wait... then go.", WA)
+ap("r3c_chat_b_unknown", SEE, {**AWA, "before": "Ok. ", "context_known": False}, AND)
+for i, b in enumerate(["- ", "-", "Done. - ", ", ", ",", ": ", "; ", "/ ", "Done. ( ", "x ]", "x } ", "x ", "x (", "x ) )",
+                       "Done.\n(", "x\n) ", "x ’ ", "x” ", "x”", "😀😀 ", "x 😀😀", "x 🇮🇱 ", "x ✅ ", "x ★ ", "x © ", "x ° ", "x ™ "]):
+    ap(f"r3c_cur_{i}", T, {"before": b})
+for i, a in enumerate(["{x", "]x", "}x", " (and", "( and", "-(and", "—", "— ", "-  and", " -and", " — and", "—\tand", "-\nand"]):
+    ap(f"r3c_after_{i}", T, {"after": a})
+L("r3c_learn_curly", "i dont go", "i don’t go")
+L("r3c_learn_curly_orig", "the lumo’s car", "the Lumio car")
+L("r3c_learn_start_three", "lumo hub one is here", "Lumo Hub One is here")
+L("r3c_learn_after_nl", "ok\nlumo is here", "ok\nLumo is here")
+L("r3c_learn_after_excl", "ok! lumo is here", "ok! Lumo is here")
+L("r3c_learn_after_colon", "ok: lumo is here", "ok: Lumo is here")
+L("r3c_learn_orig5", "go a b c d e now", "go Lumio now")
+L("r3c_learn_orig4", "go a b c d now", "go Lumio now")
+
+# --- round 3d: unknown context and the chat rule ---
+for plat, app in [("android", "com.whatsapp"), ("windows", "WhatsApp.exe")]:
+    for n, c in [("empty", {}), ("ok", {"before": "Ok. "}), ("lower", {"before": "ok "}), ("after", {"after": " Ok."})]:
+        ap(f"r3d_unk_{plat}_{n}", SEE, {"app_id": app, "context_known": False, **c}, {"platform": plat})
+        ap(f"r3d_unkcas_{plat}_{n}", SEE, {"app_id": app, "context_known": False, **c}, {"platform": plat, **sty("casual")})
+for n, b in [("uell", "wait… "), ("nbsp", "Ok. "), ("cjk", "好。"), ("tab", "Ok.\t"), ("cr", "Ok.\r\n"), ("colon", "Note: ")]:
+    ap(f"r3d_chat_{n}", SEE, {**WA, "before": b})
+
+# --- round 3e: which apps count as chat / email for the style and signature steps ---
+for n, ctx, cfg in [("host_wa", {"app_id": "chrome.exe", "url_host": "web.whatsapp.com"}, {}),
+                    ("host_slack", {"app_id": "chrome.exe", "url_host": "app.slack.com"}, {}),
+                    ("host_discord", {"app_id": "chrome.exe", "url_host": "discord.com"}, {}),
+                    ("signal", {"app_id": "signal.exe"}, {}), ("teams_w", {"app_id": "ms-teams.exe"}, {}),
+                    ("a_teams", {"app_id": "com.microsoft.teams"}, AND), ("a_discord", {"app_id": "com.discord"}, AND),
+                    ("a_signal", {"app_id": "org.thoughtcrime.securesms"}, AND), ("a_msgs", {"app_id": "com.google.android.apps.messaging"}, AND),
+                    ("a_insta", {"app_id": "com.instagram.android"}, AND), ("a_orca", {"app_id": "com.facebook.orca"}, AND),
+                    ("a_host_wa", {"app_id": "com.android.chrome", "url_host": "web.whatsapp.com"}, AND),
+                    ("wa_cat_other", {"app_id": "WhatsApp.exe", "app_category": "other"}, {}),
+                    ("wa_cat_email", {"app_id": "WhatsApp.exe", "app_category": "email"}, {}),
+                    ("np_cat_pc", {"app_id": "notepad.exe", "app_category": "personal_chat"}, {})]:
+    ap(f"r3e_chat_{n}", SEE, ctx, cfg)
+for n, ctx in [("outlook_live", {"app_id": "chrome.exe", "url_host": "outlook.live.com"}),
+               ("outlook_cat_wc", {"app_id": "outlook.exe", "app_category": "work_chat"}),
+               ("np_cat_email", {"app_id": "notepad.exe", "app_category": "email"}),
+               ("hxoutlook", {"app_id": "hxoutlook.exe"}), ("mailbird", {"app_id": "mailbird.exe"})]:
+    ap(f"r3e_sig_{n}", "Hi Tom, thanks.", ctx, SIG)
+WIN_IDS = ["outlook", "olk", "thunderbird", "betterbird", "mailbird", "mailspring", "hxoutlook", "slack", "ms-teams",
+           "teams", "zoom", "mattermost", "whatsapp", "whatsapp.root", "telegram", "discord", "signal", "messenger", "viber",
+           "line", "skype", "element", "chatgpt", "claude", "perplexity", "cursor", "windsurf", "code", "windowsterminal",
+           "wt", "cmd", "powershell", "pwsh", "conhost", "alacritty", "wezterm-gui", "mintty", "putty", "winword", "notion",
+           "obsidian", "onenote", "soffice", "swriter"]
+AND_IDS = ["com.google.android.gm", "com.microsoft.office.outlook", "ch.protonmail.android",
+           "com.samsung.android.email.provider", "com.fsck.k9", "net.thunderbird.android",
+           "com.yahoo.mobile.client.android.mail", "com.slack", "com.microsoft.teams", "us.zoom.videomeetings",
+           "com.mattermost.rn", "com.whatsapp", "com.whatsapp.w4b", "org.telegram.messenger", "org.thoughtcrime.securesms",
+           "com.discord", "com.facebook.orca", "com.instagram.android", "com.viber.voip", "jp.naver.line.android",
+           "com.google.android.apps.messaging", "com.samsung.android.messaging", "im.vector.app", "com.openai.chatgpt",
+           "com.anthropic.claude", "ai.perplexity.app.android", "com.google.android.apps.bard", "com.termux",
+           "org.connectbot", "com.server.auditor.ssh.client"]
+HOSTS = ["mail.google.com", "outlook.live.com", "outlook.office.com", "outlook.office365.com", "mail.proton.me",
+         "mail.yahoo.com", "app.slack.com", "teams.microsoft.com", "teams.live.com", "web.whatsapp.com",
+         "web.telegram.org", "discord.com", "messenger.com", "chatgpt.com", "chat.openai.com", "claude.ai",
+         "gemini.google.com", "perplexity.ai", "x.slack.com", "www.messenger.com"]
+for i in WIN_IDS:
+    C.append({"id": f"r3e_cat_w_{i}", "kind": "category", "platform": "windows", "ctx": {"app_id": i + ".exe", "url_host": ""}})
+    ap(f"r3e_chatw_{i}", SEE, {"app_id": i + ".exe"})
+for i in AND_IDS:
+    C.append({"id": f"r3e_cat_a_{i}", "kind": "category", "platform": "android", "ctx": {"app_id": i, "url_host": ""}})
+    ap(f"r3e_chata_{i}", SEE, {"app_id": i}, AND)
+for h in HOSTS:
+    for plat, app in [("windows", "chrome.exe"), ("android", "com.android.chrome")]:
+        C.append({"id": f"r3e_cat_{plat[0]}h_{h}", "kind": "category", "platform": plat, "ctx": {"app_id": app, "url_host": h}})
+    ap(f"r3e_chath_{h}", SEE, {"app_id": "chrome.exe", "url_host": h})
+    ap(f"r3e_sigh_{h}", "Hi Tom, thanks.", {"app_id": "chrome.exe", "url_host": h}, SIG)
+ap("r3e_snip_sig_empty_text", "", {"app_id": "outlook.exe"}, {**D(SN2), **SIG}, raw="my address")
+
 out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cases.json")
 with open(out, "w") as f:
     json.dump(C, f, ensure_ascii=False, indent=0)

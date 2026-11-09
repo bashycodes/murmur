@@ -35,7 +35,7 @@ pub mod terminal;    // unchanged
 pub use DictMatcher; // see §4
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct PostOutput { pub text: String, pub press_enter: bool, pub showed_prompt: bool }
+pub struct PostOutput { pub text: String, pub press_enter: bool }
 
 pub fn apply(text: &str, raw_asr: &str, cfg: &SessionConfig, ctx: &FieldContext) -> PostOutput;
 pub fn apply_with(text: &str, raw_asr: &str, cfg: &SessionConfig, ctx: &FieldContext,
@@ -69,8 +69,8 @@ Callers: `engine.rs` (`apply_with`, `effective_category`,
 `original`, `corrected`, `looks_like_name` (the Kotlin decoder treats a
 missing `looks_like_name` as false).
 
-`showed_prompt` stays in `PostOutput` for source compatibility and is
-always false. Everything else in the old `postprocess` module tree
+`PostOutput.showed_prompt` (always false, never read) is removed.
+Everything else in the old `postprocess` module tree
 (`PostInput`, `process`, `process_with`, the `android`, `apps`, `context`,
 `cursor_tag`, `press_enter`, `slack`, `stacked` modules and their
 functions) had no caller outside the module and its ground-truth harness,
@@ -82,15 +82,22 @@ Inputs used: `cfg.platform`, `cfg.dictionary`, `cfg.user_names`,
 `cfg.styles`, `cfg.all_lowercase`, `cfg.press_enter_enabled`,
 `cfg.email_signature`; `ctx.app_id`, `ctx.url_host`, `ctx.app_category`,
 `ctx.before`, `ctx.selected`, `ctx.after`, `ctx.screen_words`,
-`ctx.context_known`. (`ctx.file_names` is no longer read, see §10.)
+`ctx.context_known`. (`ctx.file_names` is not read, see §10.)
 
 Steps, in order:
 
+0. **Empty text.** When `text` is empty, return `""` (`press_enter`
+   false), even when `raw_asr` is a snippet key. Observed, kept.
 1. **Category and style.** `category = effective_category(platform, ctx)`;
-   `style = cfg.styles.for_category(category)`.
+   `style = cfg.styles.for_category(category)`. Separately,
+   `listed = listed_category(platform, ctx)` (§9): the category from the
+   app lists alone, ignoring `ctx.app_category`. `listed` decides "chat"
+   for §6 and "email" for §7.
 2. **Whole-utterance snippet** (§4.3, Windows only): when
-   `m.whole_snippet(raw_asr)` is `Some(body)`, return `body` exactly as
-   stored (no other step, no trailing space, `press_enter` false).
+   `m.whole_snippet(raw_asr)` is `Some(body)`, the text becomes `body`
+   exactly as stored and steps 3–8 are skipped (no case, space or
+   punctuation change, no trailing space, `press_enter` false). Step 9
+   (signature) still runs on it.
 3. **Press Enter** (§8, Windows only): remove a trailing spoken "press
    enter" and remember it.
 4. **All-lowercase** (`cfg.all_lowercase`): the whole text is lowercased
@@ -98,10 +105,11 @@ Steps, in order:
    a capitalised selection, so the output stays lowercase except for
    text a dictionary replacement inserts.
 5. **Dictionary replacements** (§4): `m.find_and_replace(text)`.
-6. **Fit to the cursor** (§5), skipped for the apps in §5.7: leading
-   space, case, final punctuation.
+6. **Fit to the cursor** (§5): leading space, case, final punctuation;
+   or the Notion skip (§5.7).
 7. **Style punctuation** (§6).
-8. **Trailing space** (§5.4), not when Press Enter fired.
+8. **Trailing space** (§5.4), not when Press Enter fired, not after the
+   Notion skip.
 9. **Email signature** (§7, Windows only).
 
 The result text may be empty (a dictation that was only "press enter").
@@ -171,12 +179,12 @@ Observed, kept: with snippet "my address" → "12 Elm Road", each of
 "say my address" and "my addresses" return `None`; a non-snippet
 replacement key returns `None`.
 
-In `apply_with` (§3 step 6) the snippet is looked up on the **raw
+In `apply_with` (§3 step 2) the snippet is looked up on the **raw
 transcript**, on Windows only. The engine also uses `whole_snippet` to
 skip spoken cleanup and the LLM for a snippet dictation.
 
 Observed, kept: raw "my address" → output "12 Elm Road" (no trailing
-space, whatever the cursor context); a body with a newline is inserted as
+space, whatever the cursor context; §7 may append the signature); a body with a newline is inserted as
 is. On Android the snippet is not taken whole; the text goes through the
 normal steps (the inline replacement still turns "My address." into
 "12 Elm Road" plus a trailing space).
@@ -187,56 +195,94 @@ The text was dictated into a field that may already hold text around the
 cursor: `before` (text before the cursor, up to 500 chars), `selected`
 (the selection the text replaces) and `after`. This step makes the
 dictation read as part of that text. Let `t` be the text with leading and
-trailing whitespace trimmed (an all-whitespace text becomes empty and the
-step returns it unchanged, empty). **Change**: the old code returned a
-single space for an all-whitespace text after "x "; it now returns "".
+trailing whitespace trimmed. An all-whitespace text becomes `""` and the
+whole of §5–§7 is skipped. **Change**: the old code returned a single
+space for an all-whitespace text; it now returns `""` (no stray space).
+
+The context is used as the shell sent it, also when `ctx.context_known`
+is false (§5.5 only changes the trailing space).
 
 Definitions:
 
-* *sentence end*: `.`, `!`, `?`, `…`, and the CJK marks `。！？`.
+* *space*: U+0020 only. *nbsp*: U+00A0. Tabs and newlines are neither.
 * *CJK*: Han, Hiragana, Katakana, Hangul and the CJK punctuation block
   plus full-width forms.
-* *opening mark*: `(`, `[`, `{`, `"`, `'`, `“`, `‘`, `«`, `¿`, `¡`.
-* `b` = `before` with trailing spaces and tabs removed; `b_last` its last
-  character. `a` = `after` with leading spaces and tabs removed;
-  `a_first` its first character.
+* *emoji*: a character with the Unicode `Extended_Pictographic` property
+  (this includes ©, ™, ★, ✅, ❤ but not °), a variation selector U+FE0F,
+  a skin-tone modifier U+1F3FB–U+1F3FF, or a regional indicator
+  U+1F1E6–U+1F1FF (flags).
+* *closing quote*: `"`, `'`, `’`, `”`.
 
 ### 5.1 Leading space
 
-Prepend one space when `before` is not empty and its last character is
-not whitespace, not an opening mark, not `-`/`/`/`@`, and neither it nor
-the first character of `t` is CJK.
+Only when `selected` is empty, `before` is not empty and `t` is not
+empty. Let `c` be the last character of `before` (not trimmed). Prepend
+one space when the first character of `t` is not CJK and `c` is one of:
+
+* a letter or digit that is not CJK;
+* `,` `.` `;` `:` `!` `?` `)` `]` `}` `%` `&` `+` `>` `|` `*` `=` `~`;
+* a closing quote, when the character before it exists and is not
+  whitespace ("x\"" yes; "\"", "a \"", "He said \"" no);
+* an emoji;
+* `-`, when it is the whole of `before` or the character before it is
+  whitespace ("-", "x -" yes; "a-", "well-" no).
+
+Anything else gets no space: whitespace (space, nbsp, tab, newline),
+`(` `[` `{` `<` `«` `»` `¿` `¡` `‘` `“`, `—` and `–` (anywhere),
+`^` `•` `…` (the single ellipsis character; "..." ends in `.` and gets
+the space), `$` `#` `_` `@` `/`, an attached `-`, and CJK.
 
 Observed, kept: "I think" → " the parcel…"; "Well," → " the parcel…";
 "Done." → " The parcel…"; "42" → " items."; "wait..." / "wow!" → a space
-and the capital kept; "I think " → no space; "(" / "“" / "He said \"" →
-no space; "well-" / "a/" / "mail@" → no space; "你好" + "Hello there." →
-no space.
+and the capital kept; "x)" / "x]" / "x\"" / "x😀" / "50%" → a space;
+"I think " → none; "(" / "“" / "He said \"" → none; "well-" / "a/" /
+"mail@" / "x—" / "x…" / "$" → none; "你好" + "Hello there." → none.
 
 ### 5.2 Lower-case start (mid-sentence)
 
-Let `b` = `before` with trailing spaces (U+0020) and non-breaking spaces
-removed (not tabs or newlines). Lower-case the first letter of `t` when
-`b` is not empty and its last character is a letter or digit (any
-script, CJK included), or one of `, ; : - – — /`. So "Note: " and
-"so - " and "a " lower the text; a sentence end ("Done. ",
-"Really? ", "Wait... "), a newline, a tab, an opening mark ("(", "\""),
-`@` or an empty `before` leave it. The first word is left alone when:
+Only when `selected` is empty. Decide from `before`:
+
+1. Remove trailing spaces and nbsp from `before`.
+2. Then repeatedly remove from the end any run of these *transparent*
+   characters: space (not nbsp, tab or newline), `,` `;` `:` `-` `—`
+   `/` `(` `)` `[` `]` `{` `}`, emoji, and a closing quote that is
+   immediately preceded by a non-whitespace character (`x”` → `x`,
+   `a ”` stays).
+3. Lower-case when what remains is not empty and its last character is a
+   letter or digit (any script, CJK included).
+
+So the text is lowered after "Note: ", "Well, ", "so - ", "x - ",
+"a- ", "a/ ", "wait — ", "a—", "see (", "x(", "x ( ", "done) ",
+"x;) ", "x)]", "x [", "x {", "great 😀 ", "x©", "x\" ", "x’",
+"“x” ", "x "; and left after a sentence end ("Done. ", "Done. (",
+"Done.) ", "Done. - ", "Done. — ", "! ("), after only transparent
+characters ("(", "( (", "- ", ", ", ": ", "— ", "😀 ", "\" "), after a
+newline or tab ("Done.\n(", "x\n) ", "Line one\n", "a\t"), after a quote
+that follows whitespace or opens ("a ’", "a \"", "x‘ ", "x“ ", "He said
+\"", "“"), after `«` `»`, the en dash `–` ("a –", "a–"), `$ # _ * = ~ %
+& + < > | ^ • … @ ¿ ¡ °`, and after "x (" (nbsp is only stripped
+in step 1).
+
+Lowering changes only the first character of `t`, and only when it is an
+upper-case letter. The first word is left alone when:
 
 * `starts_with_proper_noun` (§5.3) is true, or
-* it is not a plain capitalised word: it has another upper-case letter
-  after the first ("NASA", "IPhone", "McKay"), or starts with a
-  non-letter ("42 people came." stays).
+* it is an all-caps word: ignoring a trailing possessive `'s` / `’s`, it
+  has at least two letters and every letter in it is upper-case ("NASA",
+  "OK", "AI", "CEO", "TV", "U.S.", "I.B.M.", "NASA's", "USA's").
+
+Every other capitalised first word gets only its first letter lowered,
+also when later letters are upper-case: "IPhone" → "iPhone", "EBay" →
+"eBay", "McKay" → "mcKay", "JavaScript" → "javaScript", "PhD" → "phD";
+single letters too: "A plan" → "a plan", "X is" → "x is".
+
+**Change**: the old code also lowered all-caps words ("NASA called."
+after "and " became "nASA called."); they now keep their case.
 
 Only the first letter of the text changes; later sentences keep their
-case ("Done. Next step." after "ok " → "done. Next step. ").
-
-**Change**: the old code lowered the first letter of all-caps and
-mixed-case words ("NASA called." after "and " became "nASA called.",
-"IPhone" became "iPhone"); such words now stay as they are.
-
-This step never upper-cases: "the parcel arrived early." after "Done. "
-stays lower-case.
+case ("Done. Next step." after "ok " → "done. Next step. "). This step
+never upper-cases: "the parcel arrived early." after "Done. " stays
+lower-case.
 
 ### 5.3 `starts_with_proper_noun(text, proper, dict)`
 
@@ -258,61 +304,70 @@ called."; screen word "Quillon" keeps "Quillon is down."; vocabulary word
 
 ### 5.4 Final punctuation and trailing space
 
-Let `continues` = `a` is not empty and `a_first` is a lower-case letter
-or one of `, ; : . ? !`. When `continues`, remove the final run of
-sentence-end characters from `t` ("Is it ready?" before " now" →
-"is it ready"; "The parcel arrived early." before ", then" → "…early").
+Only when `selected` is empty.
 
-Trailing space: append one space when the field is otherwise ready for
-more typing:
+*Continues*: remove leading spaces and nbsp from `after` (not tabs), then
+skip a run of spaces, `-`, `—`, `(` `)` `[` `]` `{` `}` and `/`. The
+dictation *continues* into `after` when the next character is a
+lower-case letter or one of `, ; : . ? !`. When it continues, remove the
+final run of `.`, `!`, `?` and `…` from `t` (not the CJK `。！？`).
+
+Continues: "and then", " and then", " later", "— and", " — and",
+"—and", "-and", "- and", "-- and", "—  and", "— (and)", "— ,", "(and",
+"( and", ") and", ") more", "{x", "]x", "[x", "/x", ": x", "; more",
+"... and", ".", ",", "?", " and". Does not: "– and" (en dash),
+"— And", "- And", "Then", "— 5", "-5", "-", "—", "— ", "…and",
+"\" and", "’ and", "😀 and", "$5", "_x", "@x", "\tand", "—\tand",
+"-\nand", "\nNext line", " Next".
+
+*Trailing space*: append one space when
 
 * `after` is empty, or
-* `after` starts directly (no whitespace) with a letter or digit,
+* the first character of `after` is a letter or digit, or
+* `after` starts with `-` followed directly by a space ("- and",
+  "- And", "-  and"),
 
-and `t` does not end with a CJK character or CJK sentence end, and the
-context is known or the platform is Windows (§5.5).
-
-No space when `after` starts with whitespace (including a newline) or
-with punctuation, a closing mark or a quote.
+and `t` does not end with a CJK character, Press Enter did not fire
+(§8), and the context is known or the platform is Windows (§5.5).
 
 Observed, kept: empty field → "The parcel arrived early. "; after
 "and then" → "The parcel arrived early " (period dropped, space added);
 after " and then" → "The parcel arrived early"; after "Then we left." →
-"The parcel arrived early. "; after "42" → "The parcel arrived early. ";
-after "." / "," / ";" / "?" → "The parcel arrived early"; after ")" or
-"\"" → "The parcel arrived early."; after " " → "The parcel arrived
-early."; CJK "世界很好。" → no space.
+"The parcel arrived early. "; after "42" → "…early. "; after "." / "," /
+";" / "?" / "— and" → "…early"; after ")" / "\"" / "—" / "😀" / "…" /
+"$5" / "\tand" → "…early."; after " " → "…early."; after "- And" →
+"…early. "; after "- and" → "…early "; CJK "世界很好。" before "再见"
+→ "世界很好。"; "好的。" before "x" → "好的。".
 
 **Change**: after "\nNext line" the old code added a space before the
-newline; no space now (a newline is whitespace). After ") more" the old
-code dropped the period; now a closing mark keeps it. The CJK marks
-`。！？` are sentence ends here too: "好的。" before "x" → "好的" (the old
-code kept "。").
+newline ("…early. \nNext line"); now no space is added before a newline
+("…early."), since the space would end a line.
 
 The trailing space is intended: the next dictation into the same field
 must not run into this one. `plain_text` keeps it; shells insert it.
 
-### 5.5 Unknown context, Android
+### 5.5 Unknown context
 
-When `ctx.context_known` is false (the shell could not read the field)
-and the platform is Android, no trailing space is added (the field may
-already have one). On Windows an unknown context is treated as an empty
-field. Observed, kept: Windows "The parcel arrived early. ", Android
-"The parcel arrived early.".
+When `ctx.context_known` is false (the shell could not read the field),
+`before`, `selected` and `after` are still used as sent (§5.1–§5.4, §6).
+On Android no trailing space is added (the field may already have one);
+on Windows the trailing space rule is unchanged. Observed, kept: empty
+context, Windows "The parcel arrived early. ", Android "The parcel
+arrived early."; Android with `before` "ok " lowers the first letter; Android chat with `before` "Ok. " keeps the period.
 
 ### 5.6 Selection
 
 When `selected` is not empty the text replaces it, and takes the
-selection's shape instead of following `before`/`after` (§5.1–§5.5 do
+selection's shape instead of following `before`/`after` (§5.1–§5.4 do
 not apply):
 
 * Start: when the trimmed selection starts with a lower-case letter, the
   first letter of `t` is lowered (same exceptions as §5.2); when it
   starts with an upper-case letter, the first letter of `t` is
   upper-cased; otherwise unchanged.
-* End: when the trimmed selection does not end in a sentence end, the
-  final run of sentence-end characters of `t` is removed; when it does,
-  `t` keeps its own ending.
+* End: when the trimmed selection does not end in `.`, `!`, `?`, `…` or
+  one of `。！？`, the final run of those characters is removed from `t`;
+  when it does, `t` keeps its own ending.
 * The selection's own leading and trailing whitespace is put around the
   text; no other space is added.
 * §6 style punctuation is not applied (the selection's shape wins).
@@ -325,34 +380,51 @@ selection " bad words " → " new words ".
 **Change**: over " Bad words. " the old code returned " New words "
 (it looked at the untrimmed end); now " New words. ".
 
-### 5.7 Apps that manage their own spacing
+### 5.7 Notion skip
 
-Cursor fitting (§3 step 6) and the trailing space (step 8) are skipped,
-so the trimmed text is inserted without case, space or punctuation
-changes from the context (style punctuation still applies), for:
+On the exact URL host `notion.so` (not `www.notion.so`, not
+`*.notion.site`, not the Notion desktop app), when `before` is not
+empty, `after` is empty, and either `before` ends with "..." or
+`before.split(' ')` has at most 2 pieces (empty pieces count: "so " is
+2 pieces, "so then " is 3, "so then" is 2), §5.1–§5.4 are skipped: `t`
+is used as is and no trailing space is added. Style punctuation (§6)
+still applies.
 
-* Notion: Windows app id `notion.exe`, Android package `notion.id`, or a
-  browser on host `notion.so` / any `*.notion.so` / `notion.site`;
-* this app's own windows: Windows app ids `flow-windows.exe`,
-  `murmur.exe`, `murmur.exe`; Android package `dev.flowclone` and
-  its flavour suffixes (`dev.flowclone.*`).
-
-**Change**: the old skip fired only on the exact host `notion.so`; it now
-covers the Notion desktop app, `www.notion.so` and this app's own fields.
+Observed, kept: "so " → "The parcel arrived early."; "so then" → same;
+"we went to the shop..." → same; "so then " → "the parcel arrived
+early. "; "we went to the shop... " → "The parcel arrived early. ";
+"so " with `after` "x" → "the parcel arrived early "; empty `before` →
+"The parcel arrived early. "; `www.notion.so` with "so " → "the parcel
+arrived early. ".
 
 ## 6. Style punctuation
 
-`style` is the per-category style (§3 step 1):
+`style` is the per-category style (§3 step 1). Only the final `.` of the
+text can be dropped (never `?`, `!`, `…` or `...`).
 
-| Style | Effect |
+| Style | Drops the final `.` when |
 |---|---|
-| `formal` | none |
-| `casual`, `very_casual` | drop the final `.` of the text, any category (not `?`, `!`, `…` or `...`) |
-| `default`, `excited` | in a chat category (`AppCategory::is_chat`), drop the final `.` when the text has at most 2 sentences |
+| `formal` | never |
+| `casual` | the text has at most 10 sentences |
+| `very_casual` | always |
+| `default`, `excited` | the app is a chat app and the text has at most 2 sentences |
 
-A sentence, for the count, ends at `.`, `!`, `?` or a newline followed by
-more text; the count is of non-empty sentences ("Are you there? Call
-me." = 2; "See you soon.\nBring the map." = 2).
+*Chat app*: `listed` (§3 step 1) is `WorkChat` or `PersonalChat`. The
+category the shell sent (`ctx.app_category`) does not make an app a chat
+app and does not stop one being one: Notepad with a personal-chat bucket
+keeps the period; WhatsApp with an email bucket drops it.
+
+*Sentence count*: split the text at every `.`, `!` and `?` and count
+the pieces that are not empty after trimming. A newline is not a break:
+"See you soon.\nBring the map." = 2, ten lines without a mark = 1;
+"Are you there? Call me." = 2; "Wait... then go." = 2.
+
+*Suppressed*: no rule drops the period when the current line of
+`before` (the text after its last `\n`), the current line of `after`
+(the text up to its first `\n`) or `selected` contains `.`, `!` or `?`.
+"Ok. " / "Ok. " / "Ok.\t" before, or " Ok." after, keep the period;
+"wait… " (the ellipsis character), "好。", "Note: " and "Ok.\r\n" (the
+line after the newline is empty) do not.
 
 Applied to the text after cursor fitting, before the trailing space: the
 space stays ("See you soon "). Text ending in "..." keeps it; text ending
@@ -360,24 +432,21 @@ in a URL loses only the sentence period ("Visit example.com." → "Visit
 example.com"). Not applied over a selection (§5.6).
 
 Observed, kept: casual "See you soon. Bring the map. Call Mara first."
-→ "…Call Mara first " in every category; default in WhatsApp "See you
-soon. Bring the map." → "See you soon. Bring the map ", 3 sentences keep
-the period, "Are you there? Call me." → "Are you there? Call me ";
+→ "…Call Mara first " in every app; casual with 11 sentences keeps the
+period; default in WhatsApp "See you soon. Bring the map." → "See you
+soon. Bring the map ", 3 sentences keep the period, "Are you there? Call
+me." → "Are you there? Call me "; default in Android Slack (`com.slack`,
+not a listed chat app) keeps the period even with a work-chat bucket;
 formal keeps every period; "Are you coming?" and "That is great!" keep
 their mark in every style.
 
-**Change**: the old code decided "chat" for `default`/`excited` by its
-own app-id lists and ignored the category the shell sent, so a
-personal-chat bucket with an unlisted app id kept the period while the
-same app id with another bucket lost it. The category now decides, so
-the user's per-app buckets apply.
-
 ## 7. Email signature (Windows)
 
-When `cfg.email_signature` is a non-empty string `sig`, the category is
-`Email`, the context is known, and the dictation reads like an email
-body, append `"\n\n" + sig` to the text, after removing the trailing
-space.
+When `cfg.email_signature` is a non-empty string `sig`, `listed` (§3
+step 1) is `Email`, the context is known, and the text reads like an
+email body, remove one trailing space from the text and append
+`"\n\n" + sig`. The text here is the output of step 8, or the snippet
+body from step 2.
 
 * Reads like an email body: it starts with a greeting ("hi", "hello",
   "hey", "dear", case-insensitive, followed by a space, comma or "!"), or
@@ -386,15 +455,17 @@ space.
   em dashes and spaces removed, lowercased, occurs in `before`,
   `selected`, `after` or the text (lowercased, with non-breaking spaces
   and `&nbsp;` read as spaces).
+* The shell's `ctx.app_category` does not count: Notepad with an email
+  bucket gets no signature, Outlook with a work-chat bucket gets it.
 
-Observed, kept (with trailing-space change): "Hi Tom, thanks." in Outlook
-with signature "— Ann" → "Hi Tom, thanks.\n\n— Ann"; "Thanks for that."
-gets no signature; 10 words get it, 9 do not.
+Observed, kept: "Hi Tom, thanks." in Outlook with signature "— Ann" →
+"Hi Tom, thanks.\n\n— Ann"; "Thanks for the update." gets no signature;
+10 words get it, 9 do not; a whole-utterance snippet whose body starts
+"Hi Tom, …" gets it, a short non-greeting snippet body does not; empty
+text → "" (no signature).
 
-**Change**: (1) the category, not an app-id list, decides "email" (the
-old code missed the new Outlook `olk.exe` and ignored a shell-set Email
-category); (2) the old output kept the trailing space before the
-newlines ("thanks. \n\n— Ann").
+**Change**: the old output kept the trailing space before the newlines
+("thanks. \n\n— Ann"); it is removed now, since it would end a line.
 
 ## 8. Press Enter (Windows)
 
@@ -422,41 +493,53 @@ text, so "Send it press enter." after " more" → "Send it", and casual
 "Send it press enter." → "Send it" (both with `press_enter`);
 "Send it.\nPress enter." → "Send it.".
 
-## 9. App category (`effective_category`)
+## 9. App category
 
-`ctx.app_category` wins when it is not `Other`. Otherwise the app id
-(Windows process name, case-insensitive, with or without `.exe`; Android
-package name, exact) and the URL host (for browsers; a host matches
-itself and its subdomains) map to a category from this module's own
-lists, written for this project:
+`effective_category(platform, ctx)`: `ctx.app_category` when it is not
+`Other`, else `listed_category(platform, ctx)`.
 
-| Category | Windows app ids | Android packages | Hosts |
-|---|---|---|---|
-| Email | outlook, olk, thunderbird, betterbird, mailbird, mailspring, hxoutlook | com.google.android.gm, com.microsoft.office.outlook, ch.protonmail.android, com.samsung.android.email.provider, com.fsck.k9, net.thunderbird.android, com.yahoo.mobile.client.android.mail | mail.google.com, outlook.live.com, outlook.office.com, outlook.office365.com, mail.proton.me, mail.yahoo.com |
-| WorkChat | slack, ms-teams, teams, zoom, mattermost | com.slack, com.microsoft.teams, us.zoom.videomeetings, com.mattermost.rn | app.slack.com, teams.microsoft.com, teams.live.com |
-| PersonalChat | whatsapp, whatsapp.root, telegram, discord, signal, messenger, viber, line, skype, element | com.whatsapp, com.whatsapp.w4b, org.telegram.messenger, org.thoughtcrime.securesms, com.discord, com.facebook.orca, com.instagram.android, com.viber.voip, jp.naver.line.android, com.google.android.apps.messaging, com.samsung.android.messaging, im.vector.app | web.whatsapp.com, web.telegram.org, discord.com, messenger.com |
-| AiPrompt | chatgpt, claude, perplexity, cursor, windsurf, code | com.openai.chatgpt, com.anthropic.claude, ai.perplexity.app.android, com.google.android.apps.bard | chatgpt.com, chat.openai.com, claude.ai, gemini.google.com, perplexity.ai |
-| Terminal | windowsterminal, wt, cmd, powershell, pwsh, conhost, alacritty, wezterm-gui, mintty, putty | com.termux, org.connectbot, com.server.auditor.ssh.client | — |
-| Document | winword, notion, obsidian, onenote, soffice, swriter | com.google.android.apps.docs.editors.docs, com.microsoft.office.word, notion.id, md.obsidian | docs.google.com, notion.so, notion.site |
+`listed_category(platform, ctx)` (internal): the category of the app id
+or URL host in the app lists. An app id is looked up only on its own
+platform (a Windows process name on Windows, case-insensitive, with or
+without `.exe`; an Android package on Android, exact). Unknown → `Other`.
 
-A Windows app id is looked up only on Windows, an Android package only on
-Android; hosts on both. Unknown → `Other`.
+The lists are the shared app groups (`crates/flow-core/data/app-groups.json`
+through the `app_groups` module) once those are merged; until then a
+table in code with exactly this membership (the old membership, kept):
 
-Observed, kept: Slack/Outlook/Thunderbird/WhatsApp/Telegram/Discord/
-Signal/terminals/ChatGPT/Claude/Cursor/VS Code and the Android packages
-probed map as before. **Change**: `olk.exe`, `ms-teams.exe`/`Teams.exe`
-(new Outlook, Teams), `com.slack` (Android Slack) were `Other` and now
-have their category; Word, Notion and Google Docs are `Document` (were
-`Other`); LinkedIn and Instagram: Instagram stays personal chat,
-LinkedIn stays `Other`.
+| Category | Windows app ids | Android packages |
+|---|---|---|
+| Email | outlook, thunderbird, mailbird, mailspring | com.google.android.gm, com.microsoft.office.outlook, ch.protonmail.android, com.samsung.android.email.provider, com.fsck.k9, net.thunderbird.android, com.yahoo.mobile.client.android.mail |
+| WorkChat | slack | com.microsoft.teams, com.mattermost.rn |
+| PersonalChat | whatsapp, whatsapp.root, telegram, discord, signal, messenger | com.whatsapp, com.whatsapp.w4b, org.telegram.messenger, org.thoughtcrime.securesms, com.discord, com.facebook.orca, com.instagram.android, com.viber.voip, jp.naver.line.android, com.google.android.apps.messaging, com.samsung.android.messaging |
+| AiPrompt | chatgpt, claude, cursor, windsurf, code | com.openai.chatgpt, com.anthropic.claude, com.google.android.apps.bard |
+| Terminal | windowsterminal, cmd, powershell, pwsh, alacritty, wezterm-gui | com.termux |
+
+Hosts (when the app id is not listed):
+
+| Category | Windows: exact host | Android: host or a subdomain of it |
+|---|---|---|
+| Email | mail.google.com, outlook.live.com, outlook.office.com, outlook.office365.com, mail.proton.me, mail.yahoo.com | same |
+| WorkChat | app.slack.com, teams.microsoft.com | slack.com, teams.microsoft.com, teams.live.com |
+| PersonalChat | web.whatsapp.com, web.telegram.org, discord.com, messenger.com | same |
+| AiPrompt | chatgpt.com, chat.openai.com, claude.ai, gemini.google.com | same plus perplexity.ai |
+
+Everything else is `Other`, including (observed) new Outlook `olk`,
+`ms-teams`, `teams`, `zoom`, Word, Notion, Obsidian, Notepad, Chrome
+without a listed host, `docs.google.com`, Android `com.slack`,
+`us.zoom.videomeetings`, `im.vector.app`, `com.linkedin.android`, and on
+Windows `www.messenger.com` and `x.slack.com`.
 
 ## 10. Removed behaviour
 
 * **IDE `@file` tagging** (Cursor/Windsurf: a spoken file name became
   "@file" with paste markers). It needs `ctx.file_names`, which no shell
   fills (Windows sends an empty list, Android has none), so it never ran
-  in the product. `paste.rs` keeps its `{{BREAK}}`/`{{TAB}}` marker
-  support.
+  in the product. `ctx.file_names` stays in `FieldContext` because it is
+  part of the client/server wire format. `paste.rs` keeps its
+  `{{BREAK}}`/`{{TAB}}` marker splitting, which now has no producer in
+  flow-core (the markers only pass through when they are in the text,
+  e.g. a snippet body).
 * **Slack "at Name" → "@Name"** tagging: gated on macOS app ids that no
   supported platform reports, and off on the engine path, so it never ran.
 * **Stacked-message splitting** for personal chats: never changed any
@@ -464,8 +547,7 @@ LinkedIn stays `Other`.
 * **Android shell helpers** (`postprocess::android`: compose decision,
   placeholder detection, bubble policy, excluded fields): no caller; the
   Android app implements its own in Kotlin.
-* The JSON app lists in `crates/flow-core/data/` are replaced by the
-  tables in §9.
+* `PostOutput.showed_prompt`: always false, no reader; removed.
 
 ## 11. Edit learning (`learn_edit`)
 
@@ -477,28 +559,45 @@ dictionary candidates, in text order.
    edit distance; words compare exactly, after trimming surrounding
    punctuation, so a case change is a substitution).
 2. Group consecutive substitutions into runs (a run ends at a kept word,
-   an insertion or a deletion). A run whose original side has more than
-   `MAX_RUN_WORDS` words is a rewrite, not vocabulary: dropped.
-   Insertions and deletions alone produce nothing.
+   an insertion or a deletion). Insertions and deletions alone produce
+   nothing.
 3. A run becomes `Candidate{original, corrected}` = the run's original
    and edited words joined by one space, each word with surrounding
    punctuation trimmed. It is dropped when:
-   * original and corrected are equal ignoring case and the run is one
-     word at the start of a sentence (sentence case, not a correction:
-     "zentrix is down" → "Zentrix is down" gives nothing; mid-sentence
-     "the zentrix" → "the Zentrix" gives a candidate);
-   * every corrected word is a stopword (articles, pronouns, common
-     prepositions, conjunctions, auxiliaries: "the" → "a");
-   * corrected contains an apostrophe contraction ("do not" → "don't") or
-     original/corrected differ only in punctuation;
-   * corrected (case-insensitive) is already a dictionary word or
-     replacement target, or original is already a replacement key;
-   * **Change**: corrected has no letter ("42" → "43" was a candidate).
+   * either side has more than `MAX_RUN_WORDS` words (a rewrite, not
+     vocabulary): "lumo" → "one two three four five" and "a b c d e" →
+     "Lumio" give nothing, 4 words give a candidate;
+   * original and corrected are equal ignoring case and the run starts
+     a sentence: the run is the first word of the text, or the word
+     before it ends in `.`, `!` or `?` (a newline or colon does not
+     count). This holds for any run length and either direction
+     ("lumo hub one is here" → "Lumo Hub One is here" and "Lumo is
+     here" → "lumo is here" give nothing; "ok lumo" → "ok Lumo",
+     "ok\nlumo" → "ok\nLumo" and "ok: lumo" → "ok: Lumo" give one);
+   * every corrected word is a stopword, compared case-insensitively.
+     The stopwords are exactly: um uh like okay ok yes no just very
+     there here so then not the a an and or but to of in on at for with
+     is it this that i you we they he she my your be have do was are
+     will can would should if what who me us him her them its our their
+     these those which as by from were been has had does did could.
+     ("his", "yeah", "well", "oh", "now", "really", "where", "am",
+     "may", "er" are not stopwords.) Only the corrected side is checked:
+     "we um fine" → "we Zentra fine" gives ("um", "Zentra");
+   * either side contains an apostrophe (`'` or `’`): "dont" → "don’t",
+     "lumo’s" → "Lumio" give nothing;
+   * corrected (case-insensitive) is already a dictionary word or a
+     replacement target. (An original that is already a replacement key
+     is kept: with "lumo" → "Lumio" in the dictionary, "lumo" → "Lumia"
+     gives a candidate.)
+   * **Change**: corrected has no letter ("42" → "43" was a candidate;
+     a number edit is not vocabulary).
 4. `looks_like_name` = `looks_like_name(corrected, sentence_initial)`,
-   where `sentence_initial` = the run starts the text or follows a word
-   ending in a sentence end.
+   where `sentence_initial` = the run starts a sentence as defined in
+   step 3.
 5. **Change**: duplicates (same original and corrected) are merged into
-   the first, with `looks_like_name` true if any occurrence had it.
+   the first, with `looks_like_name` true if any occurrence had it (the
+   old code returned each occurrence, filling the four slots with
+   repeats).
 6. At most `MAX_CANDIDATES`, the first ones in text order.
 
 `looks_like_name(corrected, sentence_initial)`: every word starts with an
@@ -517,27 +616,42 @@ gives nothing; "hello world" → "Hello, world." gives nothing.
 
 Observed, kept: "ask gina about lumo" → "ask Jenna about Lumio" gives
 two name candidates; "go to the lumo" → "go to a Lumio" gives ("the
-lumo", "a Lumio", not a name); "see you at lumo" → "see you at Lumio
-tomorrow then bye" gives ("lumo", "Lumio tomorrow then bye") — the
-Windows shell bounds the edit first (`learn::bound_edit` in the app), so
-the core does not guess where the dictation ended.
+lumo", "a Lumio", not a name); "we zentra fine" → "we the Lumio fine"
+gives ("zentra", "the Lumio"); "lumo is here" → "Lumio is here" gives
+("lumo", "Lumio", not a name: sentence-initial single word); "see you
+at lumo" → "see you at Lumio tomorrow then bye" gives ("lumo", "Lumio
+tomorrow then bye")
+— the Windows shell bounds the edit first (`learn::bound_edit` in the
+app), so the core does not guess where the dictation ended.
 
 ## 12. Tests
 
 * Unit tests next to the new code cover every "Observed, kept" and
-  "Change" example in this spec, with made-up text only.
+  "Change" example in this spec, with made-up text only. They include
+  "IPhone" → "iPhone" and "NASA" kept mid-sentence.
 * `crates/flow-core/tests/vectors.rs` and `tests/vectors/*.json` are
   removed: their expectations were produced by another product's code,
   not by this project's decisions.
 * `learn.rs`'s own tests stay (they are this project's), with the
   example brand name replaced by an invented one.
 * The engine-level tests (`tests/session.rs`, `tests/d*_*.rs`,
-  `tests/spoken_bench.rs`, `flow-router` and `flow-windows` tests) must
-  pass unchanged, except where a test asserts a behaviour this spec
-  marks **Change**; such an edit is listed in the commit. Edited:
-  `tests/api_additions.rs` (IDE tagging test → "file names are not
-  tagged", §10) and the `flow-protocol` fixtures `server_result*.json`
-  (Android Slack, work-chat category: the period now drops, §6).
+  `tests/spoken_bench.rs`, `flow-router`, `flow-protocol` and
+  `flow-windows` tests and fixtures) must pass unchanged, except where a
+  test asserts a behaviour this spec marks **Change**; such an edit is
+  listed in the commit. Edited: `tests/api_additions.rs` (IDE tagging
+  test → "file names are not tagged", §10).
 * Parity check: `tools/probes/prototypes/cleanroom_2026_11_09/` runs the
   probe cases and the deterministic formatting eval on the old and the
   new code; every difference must be a **Change** row.
+
+## Change rows (summary)
+
+1. All-whitespace text → `""` (§5).
+2. All-caps first words keep their case mid-sentence (§5.2).
+3. No trailing space before a newline in `after` (§5.4).
+4. Selection end read from the trimmed selection (§5.6).
+5. No space between the text and the signature's newlines (§7).
+6. No trailing space when Press Enter fired from the raw transcript (§8).
+7. Dictionary keys with spaces match any whitespace run (§4.2).
+8. Learning: a letterless correction is no candidate; duplicates merge
+   (§11).
