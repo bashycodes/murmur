@@ -716,7 +716,7 @@ latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CO
 **Robustness (P1)**
 - [ ] Drag the Ready bubble: the zZ target appears at the bottom after ~¼ s and grows when
       the bubble is near; drop → toast "Snoozed for 10 min", bubble gone, notification
-      "bubble hidden". Tap the notification → it is back. Snooze again; shake twice → it is
+      "Dictation bubble snoozed". Tap the notification → it is back. Snooze again; shake twice → it is
       back with a click haptic. On the lock screen a shake does nothing.
 - [ ] With no text field focused, shake → the bubble appears for 10 s, then hides.
 - [ ] Ready bubble shrinks to a dot after 5 s; tap → full size and dictation starts.
@@ -741,8 +741,8 @@ latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CO
       "No speech detected. Nothing was inserted." and nothing is typed.
 
 **Dictionary & history**
-- [ ] *Dictionary* tab → **+**: "wisper" → "Wispr" (*Save* enables only once valid;
-      a duplicate word shows its error under the field), dictate "wisper flow" → "Wispr flow". Edit it, delete it.
+- [ ] *Dictionary* tab → **+**: "jason" → "JSON" (*Save* enables only once valid;
+      a duplicate word shows its error under the field), dictate "jason file" → "JSON file". Edit it, delete it.
 - [ ] *Snippets* tab → **+**: "my address" → multi-line text; say only "my address" → the text.
 - [ ] Learn from my edits (real engine; the mock engine suggests nothing): dictate "local whisper" into
       Notes, change it to "Murmur" within 45 s and leave it → toast "Dictionary suggestion: Flow

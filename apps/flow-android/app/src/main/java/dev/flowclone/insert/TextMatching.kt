@@ -3,9 +3,9 @@ package dev.flowclone.insert
 import dev.flowclone.policy.PolicyLists
 import java.text.Normalizer
 
-/** Verification / node-write matching rules (spec 06 §4). Pure functions. */
+/** Verification / node-write matching rules. Pure functions. */
 object TextMatching {
-    /** IAS:1893 — field contains trim(text); >500 chars also accepts first/last 400. Case-sensitive. */
+    /** Field contains trim(text); >500 chars also accepts first/last 400. Case-sensitive. */
     fun containsCommittedText(field: String, text: String): Boolean {
         val t = text.trim()
         if (field.contains(t)) return true
@@ -56,9 +56,9 @@ object TextMatching {
         val noEditorHint = editorHint.isNullOrBlank()
         if (!noEditorHint && fuzzy(s, editorHint)) return true
         if (noEditorHint && matchesKnown(s, known)) return true
-        // Review P3: Wispr also read text equal to the contentDescription (≤ 48 chars) as a
-        // placeholder, but apps that mirror the field's text into its description then had
-        // ACTION_SET_TEXT overwrite real user text. Not a placeholder: the node tier refuses and
+        // Review P3: text equal to the contentDescription (≤ 48 chars) is not a placeholder:
+        // apps that mirror the field's text into its description would have ACTION_SET_TEXT
+        // overwrite real user text. The node tier refuses and
         // the text goes to the (sensitive, self-clearing) clipboard instead.
         return false
     }

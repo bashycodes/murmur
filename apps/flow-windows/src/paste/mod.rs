@@ -1,4 +1,4 @@
-//! Text insertion (spec §4.6): clipboard + synthetic Ctrl+V with full
+//! Text insertion: clipboard + synthetic Ctrl+V with full
 //! clipboard save/restore, KEYEVENTF_UNICODE typing as fallback.
 //!
 //! Decisions are pure (strategy choice, restore guard, which formats can be
@@ -38,7 +38,7 @@ impl PasteOptions {
 }
 
 /// Wait between the paste chord and restoring the user's clipboard, keyed
-/// on the foreground exe (Wispr helper 0x1403188a0, 02 §REA note 12): slow
+/// on the foreground exe: slow
 /// readers (Office, WhatsApp) and remote viewers fetch the clipboard late.
 pub fn restore_delay_ms(exe: &str) -> u64 {
     const REMOTE_VIEWERS: &[&str] = &[

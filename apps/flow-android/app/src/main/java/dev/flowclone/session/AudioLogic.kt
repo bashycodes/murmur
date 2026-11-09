@@ -6,7 +6,7 @@ import kotlin.math.sqrt
 const val SAMPLE_RATE = 16_000
 
 /**
- * Wispr `VoiceRecorder` meter (07 §7): dBFS with an adaptive floor that only moves down
+ * Level meter: dBFS with an adaptive floor that only moves down
  * (starts at 0 dB, never below −50), mapped over a 30 dB range to 0..1.
  */
 class LevelMeter {
@@ -52,8 +52,8 @@ class AudioBatcher(private val frameSamples: Int = SAMPLE_RATE / 10, private val
 }
 
 /**
- * Session length policy (shell-owned per §9): Wispr warns at 239 s and stops at 299 s
- * of a 5-minute cap, i.e. 61 s / 1 s before the cap. Configurable cap.
+ * Session length policy (shell-owned): warn 61 s and stop 1 s before the cap
+ * (239 s / 299 s of the default 5-minute cap). Configurable cap.
  */
 data class SessionCap(val capMs: Long = 300_000) {
     val warnAtMs: Long get() = capMs - 61_000
@@ -63,7 +63,7 @@ data class SessionCap(val capMs: Long = 300_000) {
 }
 
 /**
- * Wispr `HeadSilenceTracker` (07 §7): a frame is signal when mean(s²) > 33856 (RMS ≈ 184,
+ * Leading-silence tracker: a frame is signal when mean(s²) > 33856 (RMS ≈ 184,
  * ≈ −45 dBFS). Tracks the leading silence so the shell can say "can't hear you".
  *
  * The trailing silence (D21 `endpoint_wait_ms`) uses a different, adaptive bar: a phone mic's

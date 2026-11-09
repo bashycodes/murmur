@@ -68,7 +68,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Foreground service hosting the bubble, recorder and warm engine (07 §6).
+ * Foreground service hosting the bubble, recorder and warm engine.
  * Starts as `specialUse`; re-promotes to `microphone|specialUse` on the bubble touch that
  * starts recording (an overlay touch is a while-in-use exemption on Android 14+).
  */
@@ -428,7 +428,7 @@ class FlowService : Service() {
         shakeRegistered = false
     }
 
-    /** Screen on/off gate the shake sensor; unlock re-checks the overlay and accessibility health (07 §6 Recovery). */
+    /** Screen on/off gate the shake sensor; unlock re-checks the overlay and accessibility health. */
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
             when (i.action) {

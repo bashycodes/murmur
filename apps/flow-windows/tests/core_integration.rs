@@ -705,7 +705,7 @@ fn copy_last_puts_the_transcript_on_the_clipboard() {
 #[test]
 fn user_correction_becomes_a_suggestion_not_an_entry() {
     let os = FakeOs {
-        edit: Some(("whisper flow".into(), "Wispr Flow".into())),
+        edit: Some(("cora note".into(), "Korra Note".into())),
         ..FakeOs::new("slack.exe")
     };
     let prefs = Prefs {
@@ -715,7 +715,7 @@ fn user_correction_becomes_a_suggestion_not_an_entry() {
     };
     let store = Arc::new(Mutex::new(SuggestionStore::in_memory()));
     let mut r = rig_with(
-        mock_core("i use whisper flow every day"),
+        mock_core("i use cora note every day"),
         os,
         prefs,
         Some(store.clone()),
@@ -726,8 +726,8 @@ fn user_correction_becomes_a_suggestion_not_an_entry() {
     });
     let s = store.lock().unwrap().data.pending.clone();
     assert_eq!(s.len(), 1, "{s:?}");
-    assert_eq!(s[0].word, "Wispr Flow");
-    assert_eq!(s[0].heard, "whisper flow");
+    assert_eq!(s[0].word, "Korra Note");
+    assert_eq!(s[0].heard, "cora note");
     assert_eq!(s[0].app, "slack.exe");
     wait_for("edited column", || {
         r.history
@@ -746,22 +746,22 @@ fn user_correction_becomes_a_suggestion_not_an_entry() {
         .latest(Retention::Keep, i64::MAX / 2)
         .unwrap()
         .unwrap();
-    assert!(e.edited.unwrap().contains("Wispr Flow"));
+    assert!(e.edited.unwrap().contains("Korra Note"));
     // Never auto-added: prefs' dictionary is untouched (the controller only
     // reads it), and accepting is a separate, explicit step.
     let accepted = store
         .lock()
         .unwrap()
         .data
-        .accept("Wispr Flow", false)
+        .accept("Korra Note", false)
         .unwrap();
-    assert_eq!(accepted.word, "Wispr Flow");
+    assert_eq!(accepted.word, "Korra Note");
 }
 
 #[test]
 fn learning_off_or_untouched_paste_suggests_nothing() {
     for (learn, edit) in [
-        (false, Some(("whisper".to_string(), "Wispr".to_string()))),
+        (false, Some(("cora".to_string(), "Korra".to_string()))),
         (true, None),
     ] {
         let os = FakeOs {

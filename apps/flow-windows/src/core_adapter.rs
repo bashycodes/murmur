@@ -13,7 +13,7 @@
 //!   the cleaner. An LLM failure never blocks dictation: it is reported as
 //!   [`LlmStatus`] and the shell keeps pasting deterministic output.
 //!   Toggling the LLM never reloads whisper.
-//! * The shell's §9 types are mapped onto flow-core's here (pure functions,
+//! * The shell's API types are mapped onto flow-core's here (pure functions,
 //!   unit-tested), so the rest of the shell never names a flow-core type.
 //! * Default models: `%APPDATA%\FlowClone\models\ggml-base.bin` (D4 CPU
 //!   tier) and, when cleanup is on, `qwen2.5-1.5b-instruct-q4_k_m.gguf`

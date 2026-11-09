@@ -354,7 +354,7 @@ fn session() -> SessionConfig {
     SessionConfig {
         llm_skip_clean: false,
         dictionary: serde_json::from_value(serde_json::json!([
-            {"word": "wispr", "replacement": "Wispr"}
+            {"word": "zephyr", "replacement": "Zephyr"}
         ]))
         .unwrap(),
         ..Default::default()

@@ -17,10 +17,10 @@ import dev.flowclone.service.FlowService
 import dev.flowclone.ui.MainActivity
 
 /**
- * Boot / update / unlock recovery (07 §6 Recovery, Wispr `BootCompletedReceiver`):
+ * Boot / update / unlock recovery:
  * accessibility enabled → start FlowService (the system rebinds the a11y service itself,
  * which also starts it; doing both covers OEMs that delay the rebind); otherwise post a
- * "turn Murmur back on" notification (Wispr id 901). FlowService starts as
+ * "turn Murmur back on" notification (id 901). FlowService starts as
  * `specialUse`, which Android 14/15 still allow from BOOT_COMPLETED (microphone isn't).
  */
 class BootReceiver : BroadcastReceiver() {

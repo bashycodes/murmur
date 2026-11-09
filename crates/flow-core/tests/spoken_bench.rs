@@ -1,4 +1,4 @@
-//! The 20-case cleanup benchmark set (docs/model-benchmarks.md, copied from
+//! The cleanup benchmark set (docs/model-benchmarks.md, copied from
 //! tools/probes/bench/cleanup_cases.json on the benchmark branch) run
 //! through the deterministic spoken-cleanup pass, with no LLM.
 //!

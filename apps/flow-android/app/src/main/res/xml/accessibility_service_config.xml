@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Spec 07 §2: Wispr's config minus key filtering and gestures (no consumer in Wispr either).
+<!-- No key filtering and no gestures: nothing consumes them.
      typeWindowsChanged = IME window appear/disappear is the trigger; focus is read on demand.
      flagRetrieveInteractiveWindows makes getWindows() include the IME window.
      flagInputMethodEditor + onCreateInputMethod() (API 33) give us commitText.

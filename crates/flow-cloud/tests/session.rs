@@ -57,11 +57,11 @@ fn silence_makes_no_request() {
 
 #[test]
 fn provider_text_goes_through_the_local_pipeline() {
-    let srv = mock_fixed(reply("um so i use wispr every day"));
+    let srv = mock_fixed(reply("um so i use zephyr every day"));
     let b = backend(&srv);
     let cfg = SessionConfig {
         dictionary: Dictionary {
-            entries: vec![DictEntry::replacement("wispr", "Wispr")],
+            entries: vec![DictEntry::replacement("zephyr", "Zephyr")],
         },
         ..Default::default()
     };
@@ -69,10 +69,10 @@ fn provider_text_goes_through_the_local_pipeline() {
     say(&b, &speech_i16(1500));
     let r = b.commit(Instant::now() + Duration::from_secs(5)).unwrap();
     assert_eq!(r.status, CommitStatus::RawTranscript);
-    assert_eq!(r.asr_text, "um so i use wispr every day");
+    assert_eq!(r.asr_text, "um so i use zephyr every day");
     // Same as a local engine returning that text.
     let local = flow_core::FlowCore::from_engines(
-        Arc::new(flow_core::asr::MockAsr::new("um so i use wispr every day")),
+        Arc::new(flow_core::asr::MockAsr::new("um so i use zephyr every day")),
         None,
     );
     local.start_session(cfg).unwrap();
@@ -81,7 +81,7 @@ fn provider_text_goes_through_the_local_pipeline() {
     }
     let want = local.commit();
     assert_eq!(r.final_text, want.final_text);
-    assert!(r.final_text.contains("Wispr"), "{}", r.final_text);
+    assert!(r.final_text.contains("Zephyr"), "{}", r.final_text);
     let route = r.route.unwrap();
     assert_eq!(route.provider.as_deref(), Some("openrouter"));
     assert_eq!(
@@ -95,7 +95,7 @@ fn provider_text_goes_through_the_local_pipeline() {
     // The dictionary went to Groq whisper as vocabulary.
     assert_eq!(
         srv.requests()[0].json()["provider"]["options"]["groq"]["prompt"],
-        "Vocabulary: Wispr."
+        "Vocabulary: Zephyr."
     );
 }
 

@@ -11,7 +11,7 @@ import dev.flowclone.session.AudioSource
 import dev.flowclone.session.SAMPLE_RATE
 
 /**
- * Wispr `VoiceRecorder` config (07 §7): MIC source, 16 kHz mono PCM16, buffer =
+ * Recorder config: MIC source, 16 kHz mono PCM16, buffer =
  * getMinBufferSize (no multiplier), plain thread with blocking reads, regrouped into
  * 100 ms frames that go straight to `push_audio`. No WAV, no effects, no VAD.
  */

@@ -97,10 +97,10 @@ fn learn_edit_returns_json_candidates() {
         let j = take(flow_learn_edit(
             h,
             c("ask whisper now").as_ptr(),
-            c("ask Wispr now").as_ptr(),
+            c("ask Zephyr now").as_ptr(),
         ));
         let v: serde_json::Value = serde_json::from_str(&j).unwrap();
-        assert_eq!(v[0]["corrected"], "Wispr");
+        assert_eq!(v[0]["corrected"], "Zephyr");
         flow_unload(h);
     }
 }

@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 
-/** Editor bound to the user's real keyboard, from `onStartInput` (07 §2.1). */
+/** Editor bound to the user's real keyboard, from `onStartInput`. */
 data class FocusedEditor(
     val packageName: String?,
     val inputType: Int,
@@ -60,7 +60,7 @@ class ShellInputMethod(service: AccessibilityService, private val onStarted: () 
             runCatching(onStarted)
             starts.value++
         } catch (e: NullPointerException) {
-            // Framework NPE seen in Wispr's crash guard: don't count this start.
+            // Known framework NPE here: don't count this start.
         }
     }
 
@@ -146,7 +146,7 @@ class NodeAdapter(val node: AccessibilityNodeInfo) : EditableNode {
     )
 }
 
-/** `FocusedNodeFinder` (07 §3.2) + dictation-start node identity. */
+/** Focused-node lookup + dictation-start node identity. */
 object FocusedNodeFinder {
     private const val MAX_DEPTH = 30
     private const val WALK_BUDGET_MS = 2000L

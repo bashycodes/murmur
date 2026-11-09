@@ -283,8 +283,7 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
         if kb.dwExtraInfo == PROBE_TAG {
             return LRESULT(1); // watchdog probe: seen, never delivered
         }
-        // Skip only *our own* injections (tagged dwExtraInfo, like Wispr's
-        // "WFMK"); other injected input (RDP, on-screen keyboard, AHK) is
+        // Skip only *our own* injections (tagged dwExtraInfo); other injected input (RDP, on-screen keyboard, AHK) is
         // matched normally.
         if kb.dwExtraInfo != input::EXTRA_INFO_TAG {
             let msg = wparam.0 as u32;

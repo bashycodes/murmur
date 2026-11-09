@@ -1794,8 +1794,8 @@ mod tests {
         let r = rig(&dev(true, true));
         let cands = r
             .router
-            .learn_edit("I use whisper flow", "I use Wispr Flow");
-        assert!(cands.iter().any(|c| c.word.contains("Wispr")), "{cands:?}");
+            .learn_edit("I use cora note", "I use Korra Note");
+        assert!(cands.iter().any(|c| c.word.contains("Korra")), "{cands:?}");
     }
 
     #[test]

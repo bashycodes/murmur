@@ -191,7 +191,7 @@ impl Line {
     }
 }
 
-/// Wispr's head-silence rule (shared with Android): a chunk is speech when
+/// Head-silence rule (shared with Android): a chunk is speech when
 /// mean(s²) > 33856 (RMS ≈ 184, ≈ −45 dBFS). Tracks the silence since the
 /// last speech for `endpoint_wait_ms`. Lock-free; fed from the mic thread.
 #[derive(Debug, Default)]

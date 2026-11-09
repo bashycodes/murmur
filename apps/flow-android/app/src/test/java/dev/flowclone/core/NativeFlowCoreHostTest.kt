@@ -34,7 +34,7 @@ class NativeFlowCoreHostTest {
         assertEquals(r.toString(), CommitStatus.RAW_TRANSCRIPT, r.status)
         assertTrue(r.finalText, r.finalText.contains("by the way"))
         assertEquals(1000L, r.timings.audioMs)
-        assertEquals(listOf(LearnCandidate("whisper", "Wispr")), core.learnEdit("ask whisper now", "ask Wispr now"))
+        assertEquals(listOf(LearnCandidate("tailskale", "Tailscale")), core.learnEdit("ask tailskale now", "ask Tailscale now"))
         // Bad session JSON can't happen from CoreJson, but a core-side rejection must surface as CoreException.
         core.cancel()
         assertFalse(core.pushAudio(ShortArray(10), 10))

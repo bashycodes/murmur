@@ -26,7 +26,7 @@ side (also typed `LCtrl`, `RAlt`, `right-alt`; `AltGr` = `Right Alt`).
 Settings shows them as `Right Alt` etc. A key can't be named with and
 without its side in one shortcut (`Alt+Right Alt`).
 
-Push-to-talk is **Right Alt alone** by default (D57; Wispr's Ctrl+Win
+Push-to-talk is **Right Alt alone** by default (D57; Ctrl+Win
 through 1.1.2: an install that still had Ctrl+Win moves to Right Alt once at
 the first start, a shortcut you picked stays). It starts at key-down like
 any push-to-talk key; Left Alt and Alt+Tab don't start dictation. While
@@ -347,7 +347,7 @@ Settings → AI cleanup:
   (`prefs_rev` 3): a stored None becomes Verbatim (what it did before); the
   old "Raw mode" box, which only ever skipped the LLM, becomes No AI and is
   gone from the UI.
-* **Writing style** per bucket (Personal messages / Work messages / Email /
+* **Writing style** per bucket (Personal chats / Work chats / Email /
   Everything else: Formal, Casual, Very casual, Excited, each with an example
   line). Defaults: chats casual (no final period), email and everything else
   formal; an untouched all-formal set moves to these once. **Style per app**:
@@ -365,7 +365,7 @@ Settings → AI cleanup:
 
 ## Command Mode
 
-Select text, **hold Ctrl+Win+Alt** (Wispr's default; Settings → General →
+Select text, **hold Ctrl+Win+Alt** (the default; Settings → General →
 Shortcuts → *Command Mode*), say what to do ("make this more formal",
 "translate to Spanish", "turn this into bullet points") and release. The
 pill turns orange while it listens and while the AI works; the answer
@@ -400,19 +400,19 @@ before the paste.
 |---|---|
 | `src/hotkeys/chord.rs` | Pure chord matcher: PTT / hands-free / Command Mode / cancel, Win/Alt release masking, foreign-key abort, either-side vs side-specific keys, AltGr fake-Ctrl filter |
 | `src/hotkeys/win.rs` | `WH_KEYBOARD_LL` hook thread. It skips our own `dwExtraInfo`-tagged input, does masked Win/Alt releases (`[LCtrl↓, key↑, LCtrl↑]`) and runs a 1 s stale-key probe |
-| `src/dictation.rs` | Pure state machine `idle → listening(ptt\|locked) → processing → pasted\|error → idle`. Wispr's timings: 500 ms tap / double-tap lock / triple-press, warning at 19 min, hard stop at 20 min, 35 s processing timeout, 500 ms error |
+| `src/dictation.rs` | Pure state machine `idle → listening(ptt\|locked) → processing → pasted\|error → idle`. Timings: 500 ms tap / double-tap lock / triple-press, warning at 19 min, hard stop at 20 min, 35 s processing timeout, 500 ms error |
 | `src/controller.rs` | Runs the machine's effects against a `Platform` trait plus `CoreApi`; integration-tested with fakes. Command Mode: selection capture after the chord is up, `CoreApi::command`, history row |
-| `src/audio/` | Resampler to 16 kHz mono i16 and a Wispr-style level meter (pure); `capture.rs` = cpal/WASAPI |
+| `src/audio/` | Resampler to 16 kHz mono i16 and an adaptive-floor level meter (pure); `capture.rs` = cpal/WASAPI |
 | `src/paste/` | Pure strategy, restore guard and per-app restore delay; `win.rs` = clipboard snapshot → CF_UNICODETEXT plus history/monitor opt-outs → masked Alt/Win release → `[Ctrl↓,V↓]` 50 ms `[V↑,Ctrl↑]` → restore if the sequence number is unchanged. Falls back to KEYEVENTF_UNICODE |
 | `src/context/` | Truncation, password suppression, app kind and style bucket from `data/app-lists.json` (pure); `uia.rs` = UI Automation snapshot with a 300 ms timeout, and `UiaFieldReader` (re-reads the pasted-into control, `CompareElements` for focus) |
 | `src/ducking/` | Mute plan and restore rule (pure); `win.rs` = WASAPI sessions on an MTA thread |
 | `src/sounds.rs` | Synthesised cue WAVs (pure), optional user overrides from `%APPDATA%\FlowClone\sounds`, played with `PlaySoundW(SND_MEMORY)` |
 | `src/prefs.rs` | `%APPDATA%\FlowClone\prefs.json`: tolerant load, atomic save, validation, `prefs_rev` migration (rev 1, D22: a stored hands-free auto-stop of exactly 2000 ms, the old default, becomes 1500 once; rev 3, D27: LLM budget 1500 → 3000, all-formal styles → chats casual, None → Verbatim, raw mode → No AI; later saves keep any value) |
-| `src/core_api.rs` | §9 API seam (shell types) plus `StubCore` for tests |
+| `src/core_api.rs` | Core API seam (shell types) plus `StubCore` for tests |
 | `src/core_adapter.rs` | `CoreApi` on `flow_core::FlowCore`: two-phase background load (whisper engine, then the optional `flow_llm` cleaner, composed with `FlowCore::from_engines`), `ModelStatus` / `LlmStatus`, shell→core type mapping |
 | `src/history.rs` | Local SQLite history (`history.sqlite`, no audio), keep / 24 h / never retention; list/search/get/delete/clear/set_edited for the History tab |
 | `src/insights.rs` | Insights tab store (`insights.json`: per-local-day words / audio ms / dictations / words per app, no text), separate from History so deleting it keeps the stats; one-time backfill from History; the math is `flow_core::insights` |
-| `src/learn.rs` | Learn-from-edits (03 §3), pure: anchor-bounded region, Wispr end reasons, watch state machine in injected time, semi-global trim of text typed after the dictation |
+| `src/learn.rs` | Learn-from-edits, pure: anchor-bounded region, end reasons, watch state machine in injected time, semi-global trim of text typed after the dictation |
 | `src/recent_apps.rs` | Exe names recently dictated into (`recent_apps.json`, names only) and the picker's built-in exe → group rows |
 | `src/suggestions.rs` | Learned words waiting for an explicit accept (`suggestions.json`); dismissed words are never re-suggested |
 | `src/meetings/` | Notetaker (D45): `record.rs` two-stream WAV recorder on one clock, `transcript.rs` D44 per track + Me/Others merge, `store.rs` meetings dir + keep-3 audio, `mod.rs` the service (start/stop, job queue, yield to dictation, recover); `detect.rs` meeting detection (D48: Zoom/Webex/Jabber signals → ask or auto-record, stop at call end; `detect/win.rs` the Win32/WASAPI probe, fixtures in `tests/fixtures/meeting-detect/`) |
@@ -608,7 +608,7 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - [ ] Insights tab: after a dictation the numbers and today's bar update without reopening; Delete all in History leaves them; Reset stats (confirm) zeroes them; a first start with existing History shows its totals.
 - [ ] History tab: search filters, Copy, Re-paste (Settings hides, text lands in the previously focused app), Delete, Delete all (second click), retention change prunes.
 - [ ] Undo AI edit: the diff shows removed/added words; "Re-paste original" inserts the raw ASR text.
-- [ ] Learn from edits: dictate "I use whisper flow daily" into Notepad, fix it to "Wispr Flow" within ~45 s, click elsewhere → tray "1 dictionary suggestion…"; Dictionary tab lists it; nothing was added until "Add word". Same in Chrome (textarea), Word and Slack.
+- [ ] Learn from edits: dictate "I use cora note daily" into Notepad, fix it to "Korra Note" within ~45 s, click elsewhere → tray "1 dictionary suggestion…"; Dictionary tab lists it; nothing was added until "Add word". Same in Chrome (textarea), Word and Slack.
 - [ ] Scratchpad: tray → Scratchpad… (and a set *Open Scratchpad* shortcut) opens it focused; Right Alt dictation lands at the caret; editing it adds no dictionary suggestion and Settings → AI cleanup → *Add* doesn't list Murmur; Quit, start again, reopen → text is there (`%APPDATA%\FlowClone\notes\scratchpad.txt`; an old `FlowClone\scratchpad.txt` from before Notes was moved there); Copy all → Ctrl+V in Notepad gives the full text; Clear → Undo clear restores it.
 - [ ] Notes: tray → Notes… lists the Quick note; New note ×3 with text, Quit, start again → all 4 there with content (`%APPDATA%\FlowClone\notes\*.txt`); search finds a word from a body line; Pin moves a note to the top and survives a restart; Export… .md lands in Downloads (a second export is `(2)`); Delete twice removes the `.txt`; a set *New note + dictate* shortcut from Notepad opens a new note in front and the hands-free dictation lands in it (not in Notepad); a `.txt` copied into `notes\` by hand is listed.
 - [ ] Learn from edits ignores password fields, and a chat message sent with "press enter".
@@ -662,21 +662,21 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - Clipboard privacy formats (S14) are honoured by Windows' own history/cloud sync; third-party clipboard managers that ignore `ExcludeClipboardContentFromMonitorProcessing` still see the text.
 
 - Hands-free ✕/✓ use a 30 ms cursor poll that toggles click-through over the pill (not `setShape`). A click in the first ~30 ms after the cursor arrives can fall through.
-- There is no delayed clipboard rendering (`WM_RENDERFORMAT`). The immediate path is used with a sequence-number guard, as the RE checklist recommends.
-- RTF and file-drop clipboard contents **are** preserved, unlike Wispr, on purpose: the RE checklist calls Wispr's behaviour lossy.
+- There is no delayed clipboard rendering (`WM_RENDERFORMAT`). The immediate path is used with a sequence-number guard.
+- RTF and file-drop clipboard contents **are** preserved on purpose: dropping them would lose what the user had copied.
 - The UIPI pre-check compares token integrity levels only. UIAccess targets and protected processes (level unreadable) fall through to the normal paste.
 - The hook watchdog probes only while the user is active and at most every 5 s, so a dead hook is noticed after the next input, not instantly.
 - There is no mouse-button shortcut (`WH_MOUSE_LL`) and no Caps Lock single-key shortcut.
-- Learn-from-edits polls (default every 1 s for 45 s) instead of subscribing to UIA `TextChanged` events, and uses no local LLM to vet candidates ("is this a proper noun?", 03 §6): flow-core's alignment filters plus the user's explicit accept do that job. Controls without TextPattern/ValuePattern (some Electron/canvas editors) are not watched.
+- Learn-from-edits polls (default every 1 s for 45 s) instead of subscribing to UIA `TextChanged` events, and uses no local LLM to vet candidates ("is this a proper noun?"): flow-core's alignment filters plus the user's explicit accept do that job. Controls without TextPattern/ValuePattern (some Electron/canvas editors) are not watched.
 - LLM cleanup load is 10-50 s on CPU and quality with the default 1.5B model is 8/8 on the core's messy-dictation set (74 % on the 88-suite; the old 0.5B default: 4/8, 43 %, ~2x faster); see `docs/core-architecture.md`.
 - "Re-paste" from the History tab hides Settings and pastes into whatever window Windows activates next (normally the one used before Settings).
-- Cue sounds are synthesised tones, not Wispr's WAVs (those are not redistributable); see [Custom sounds](#custom-sounds) to use your own.
+- Cue sounds are synthesised tones; see [Custom sounds](#custom-sounds) to use your own.
 
 ## flow-core integration
 
 `Cargo.toml` takes `flow-core = { path = "../../crates/flow-core" }`; the crate
 stays a standalone workspace (Tauri/Win32 deps stay out of the core lockfile).
-`src/core_adapter.rs` maps the shell's §9 types onto flow-core's:
+`src/core_adapter.rs` maps the shell's API types onto flow-core's:
 
 * `SessionConfig`: the ordered `[{word, replacement, isSnippet}]` list, languages, styles (strings → `Style`), cleanup level, raw mode, `max_samples` from the 20-min policy, `platform: windows`, `partial_interval_ms` from the live-preview pref.
 * `FieldContext`: exe stem as `app_id`, URL host, `AppKind`/`StyleBucket` → `AppCategory`, before/selected/after.

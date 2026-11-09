@@ -242,8 +242,8 @@ enum class Style(val wire: String) {
 }
 
 /**
- * Per-bucket style (flow-core `Styles`). D27 layer 1: chat buckets default to CASUAL (Wispr
- * Android's own personal default; no final period in chats), email and everything else FORMAL.
+ * Per-bucket style (flow-core `Styles`). D27 layer 1: chat buckets default to CASUAL
+ * (no final period in chats), email and everything else FORMAL.
  */
 data class Styles(
     val personal: Style = Style.CASUAL,
@@ -260,7 +260,7 @@ data class Styles(
     }
 }
 
-/** Shared dictionary/snippet export row `{word, replacement, isSnippet}` (§9). */
+/** Shared dictionary/snippet export row `{word, replacement, isSnippet}`. */
 data class DictEntry(val word: String, val replacement: String? = null, val isSnippet: Boolean = false)
 
 /**

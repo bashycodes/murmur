@@ -291,7 +291,7 @@ impl DevSettings {
         self.cloud_notice = saved.cloud_notice.clone();
     }
 
-    /// One-time D28 migration of a D18 provider list (spec §2.1, rules in
+    /// One-time D28 migration of a D18 provider list (openrouter-only-cloud.md §2.1, rules in
     /// `flow_router::migrate`). Idempotent: a schema-2 config returns an
     /// empty report. The caller applies the key moves / deletions
     /// ([`crate::credentials::apply_migration`]) and persists. When the

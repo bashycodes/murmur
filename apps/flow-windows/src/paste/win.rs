@@ -45,7 +45,7 @@ struct ClipGuard;
 impl ClipGuard {
     /// OpenClipboard with retries: another process (clipboard managers, RDP)
     /// commonly holds it for a few ms.
-    /// Backoff 5, 10, 20, 40, 80, then the rest of a 250 ms budget (Wispr).
+    /// Backoff 5, 10, 20, 40, 80, then the rest of a 250 ms budget.
     fn open() -> Option<ClipGuard> {
         let mut waited = 0u64;
         let mut step = 5u64;
@@ -132,7 +132,7 @@ unsafe fn set_text_excluded_from_history(text: &str) -> bool {
 }
 
 /// Keep dictated text out of Win+V history, the cloud clipboard and
-/// clipboard monitors (the opt-outs Wispr's helper sets, 02 §3; S14).
+/// clipboard monitors (the standard opt-out formats; S14).
 /// Call with the clipboard open, after `EmptyClipboard`.
 unsafe fn set_privacy_formats() {
     let zero = 0u32.to_le_bytes();
@@ -212,7 +212,7 @@ fn type_segments(text: &str) -> Result<(), String> {
 }
 
 /// `[downs]` → hold 50 ms → `[ups]`; a short up batch is retried once so a
-/// modifier is never left stuck down (Wispr 0x1403231ca).
+/// modifier is never left stuck down.
 fn send_chord(shift_insert: bool) -> Result<(), String> {
     let (downs, ups) = input::paste_chord(shift_insert);
     let sent = send_all(&downs);
@@ -379,7 +379,7 @@ pub fn paste(text: &str, opts: &PasteOptions) -> Result<(), String> {
         sent = chord;
     }
     std::thread::sleep(Duration::from_millis(delay));
-    // Unlike Wispr's immediate path we also check the sequence number, so a
+    // Before restoring we check the clipboard sequence number, so a
     // copy made by the user/target meanwhile is never clobbered.
     let now_seq = unsafe { GetClipboardSequenceNumber() };
     if should_restore(opts.restore_clipboard, our_seq, now_seq) {

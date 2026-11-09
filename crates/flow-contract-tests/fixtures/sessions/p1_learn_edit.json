@@ -1,12 +1,12 @@
 {
  "asr": {
-  "mock": "I use whisper flow daily"
+  "mock": "I use zefir cloud daily"
  },
  "audio": "speech:1000",
  "contexts": [],
  "learn": {
-  "edited": "I use Wispr Flow daily",
-  "pasted": "I use whisper flow daily"
+  "edited": "I use Zephyr Cloud daily",
+  "pasted": "I use zefir cloud daily"
  },
  "name": "p1_learn_edit",
  "session_config": {

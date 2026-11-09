@@ -379,7 +379,7 @@ fn sim(a: &str, b: &str) -> f64 {
     1.0 - prev[b.len()] as f64 / n as f64
 }
 
-/// The benchmark's 20 cases through the full engine (spoken cleanup → LLM
+/// The benchmark cases through the full engine (spoken cleanup → LLM
 /// → guard → post-processing). Opt-in (`FLOW_LLM_BENCH=1`; ~2-5 min); a
 /// report, not a gate: prints status and similarity per case and the mean.
 /// Budget: `FLOW_LLM_QUALITY_BUDGET_MS` (default 30 s).
@@ -387,7 +387,7 @@ fn sim(a: &str, b: &str) -> f64 {
 fn bench_cases_through_the_engine() {
     let _g = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     if std::env::var_os("FLOW_LLM_BENCH").is_none() {
-        eprintln!("SKIP: set FLOW_LLM_BENCH=1 (and FLOW_LLM_MODEL) to run the 20-case report");
+        eprintln!("SKIP: set FLOW_LLM_BENCH=1 (and FLOW_LLM_MODEL) to run the bench-case report");
         return;
     }
     let Some(model) = model_path() else {
