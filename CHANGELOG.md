@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Murmur (Windows app, Android app, flow-server and
+All notable changes to Murmur (Windows app, Android app, murmur-server and
 the shared Rust crates) are recorded here. One product version covers the
 whole repo; see `docs/versioning.md` (decision D26). The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
@@ -18,12 +18,12 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
-- **Copyright and third-party notices ship with every build** (D80). The Windows installer (`COPYRIGHT.txt`, `NOTICE.txt` next to the app), the Android APK (`assets/licenses/`), the flow-server container image (`/opt/flow-server/`) and the colleague bundle (its root and the server source archive) now carry `COPYRIGHT` (all rights reserved, no open-source licence), `NOTICE` (the licences of the libraries, fonts and models used, with copyleft and restricted ones marked) and `THIRD-PARTY-LICENSES` (their full texts). Each model zip of the colleague bundle carries `MODEL-LICENSES.txt`, and the model list shows each model's licence.
-- **No text-to-speech code (espeak-ng, GPL-3.0) in the speech engine** (D80): Windows, the server and its image use sherpa-onnx's no-TTS libraries, and Android builds it from source with TTS off (`apps/flow-android/tools/build-sherpa-android.sh`). Builds refuse a library that has it.
+- **Copyright and third-party notices ship with every build** (D80). The Windows installer (`COPYRIGHT.txt`, `NOTICE.txt` next to the app), the Android APK (`assets/licenses/`), the murmur-server container image (`/opt/murmur-server/`) and the colleague bundle (its root and the server source archive) now carry `COPYRIGHT` (all rights reserved, no open-source licence), `NOTICE` (the licences of the libraries, fonts and models used, with copyleft and restricted ones marked) and `THIRD-PARTY-LICENSES` (their full texts). Each model zip of the colleague bundle carries `MODEL-LICENSES.txt`, and the model list shows each model's licence.
+- **No text-to-speech code (espeak-ng, GPL-3.0) in the speech engine** (D80): Windows, the server and its image use sherpa-onnx's no-TTS libraries, and Android builds it from source with TTS off (`apps/murmur-android/tools/build-sherpa-android.sh`). Builds refuse a library that has it.
 
 - **Windows: download models from your server or Hugging Face** (D79). Setup's speech-model and cleanup steps and Settings → Speech to text → Download models from offer "Your server" (the default once a server is set, works with no internet) or "Hugging Face"; picking Your server in setup without one asks for its address right there; models your server doesn't have say "Not on your server". Downloads from the server are checked against the same fingerprints and resume like Hugging Face ones. When speech runs on your server, setup's model step can be skipped ("Skip — use my server only").
 
-- **AI cleanup spells your dictionary words right** (every cleanup path: phone, PC, flow-server and AI cleanup; D64). When a dictation holds something close to a dictionary entry ("quill mate" for Quillmate, "Marbelford" for Marbleford), the cleanup is told that entry and writes its spelling when the word is meant as that name; ordinary words that only look alike stay. Only the entries close to what you said are sent, at most 20, so a large dictionary no longer makes the AI cleanup fail or slow down (with about 200 entries the whole list used to overflow the 1.5B model's prompt). A repeated word that is an entry ("bop bop" for BopBop) is no longer shortened as a stutter. On the phone, a tidy dictation with such a word now runs the on-device model instead of skipping it. Known limits: the 1.5B model often keeps a sound-alike that is itself a real word; the 3B can respell a look-alike name inside an ordinary phrase.
+- **AI cleanup spells your dictionary words right** (every cleanup path: phone, PC, murmur-server and AI cleanup; D64). When a dictation holds something close to a dictionary entry ("quill mate" for Quillmate, "Marbelford" for Marbleford), the cleanup is told that entry and writes its spelling when the word is meant as that name; ordinary words that only look alike stay. Only the entries close to what you said are sent, at most 20, so a large dictionary no longer makes the AI cleanup fail or slow down (with about 200 entries the whole list used to overflow the 1.5B model's prompt). A repeated word that is an entry ("bop bop" for BopBop) is no longer shortened as a stutter. On the phone, a tidy dictation with such a word now runs the on-device model instead of skipping it. Known limits: the 1.5B model often keeps a sound-alike that is itself a real word; the 3B can respell a look-alike name inside an ordinary phrase.
 
 - **Android: speech recognition listens for your dictionary words** (D68). With at least one dictionary word, the phone's on-device English recognizer now listens for those words, as the PC does (parity English set: 27 → 30 of 37 terms right). It costs about 0.15–0.2 s per dictation, and adding the first word (or removing the last) reloads the speech model once, never in the middle of a dictation. With an empty dictionary nothing changes. Unlike the PC, the phone does not keep a second recognizer to retry a dictation that comes back empty (it would take about 0.7 GB more memory). Hebrew dictation and call transcription are unchanged.
 
@@ -33,38 +33,39 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Changed
 
-- **Text fitting at the cursor rewritten** (phone, PC and flow-server; D82). It behaves as before, with a few fixes. Acronyms keep their case when you dictate mid-sentence ("and NASA called" no longer becomes "and nASA called"; "iPhone" still works). No stray space is added before a line break that follows the cursor, before your email signature, or after a "press enter" the cleanup had already removed, and a dictation of only spaces inserts nothing. Replacing a selection that has spaces around it keeps your final period. Dictionary replacements now also match when you leave extra spaces between the words ("zen  trix" → your "Zentrix" entry). Dictionary suggestions from your edits no longer repeat a word or suggest bare numbers. Unused helpers that never ran in the apps (IDE file tagging, Slack name tagging) are gone. Upgrade flow-server together with the apps: with an older server the app shows the pipeline warning and the text may come out slightly different.
+- **Renamed to Murmur** (everything; D83). The Android app is a new app (`dev.murmur`): export a backup in the old app, install Murmur, Restore (old backups are accepted), then enter the server token and API keys again and turn Accessibility on for Murmur (`apps/murmur-android/INSTALL.md`). The Windows app copies its old data folder (settings, history, dictionary, notes, models) on first start, once; saved keys and the server token carry over. murmur-server still reads the old `flow-server` config and state, the old `FLOW_*` environment variables and the old `flow.v1` protocol name for now, each with a notice; `tools/server/install.sh` copies the old config and token and warns about the old service, which it leaves running. The "Flow bar" is the "Murmur bar".
+- **Text fitting at the cursor rewritten** (phone, PC and murmur-server; D82). It behaves as before, with a few fixes. Acronyms keep their case when you dictate mid-sentence ("and NASA called" no longer becomes "and nASA called"; "iPhone" still works). No stray space is added before a line break that follows the cursor, before your email signature, or after a "press enter" the cleanup had already removed, and a dictation of only spaces inserts nothing. Replacing a selection that has spaces around it keeps your final period. Dictionary replacements now also match when you leave extra spaces between the words ("zen  trix" → your "Zentrix" entry). Dictionary suggestions from your edits no longer repeat a word or suggest bare numbers. Unused helpers that never ran in the apps (IDE file tagging, Slack name tagging) are gone. Upgrade murmur-server together with the apps: with an older server the app shows the pipeline warning and the text may come out slightly different.
 - **PC: app-specific text rules follow the shared app list** (D81, D82). The email signature (Outlook, including the new Outlook, and other email apps), the dropped final period for short messages in chat apps (Slack, Teams, WhatsApp, …) and the plain insert in this app's own windows now use the shared app list, with app names matched with or without ".exe". Before this fix the list's names never matched on the PC, so none of the three applied.
 - **Our own list of special apps, one list for the phone and the PC** (D81). The apps where the phone's bubble stays hidden (banking and payment), the browsers, the chat apps that get extra insert checks and the email / work / personal style buckets on both apps now come from one file of naming rules plus lists of well-known apps. Any app whose package name says bank (or a big bank's name) stays hidden. Fewer niche apps get a style group by default; pick one per app in Style. On the PC, app names now match exactly rather than by the start of the name, with common variants (such as VS Code Insiders) listed; Copilot, Ollama, LM Studio, Mailspring, kitty, WezTerm and other popular apps are new.
 - **"OpenRouter" is now "Cloud", with OpenRouter or LiteLLM as its provider** (PC; D78). The Settings tab, engine rows and switches say Cloud. On the Cloud page you pick one provider: OpenRouter (key, privacy, budget, as before) or your LiteLLM proxy (address, optional key, Test connection with model count and latency; the AI cleanup page offers the proxy's model list). LiteLLM does AI cleanup only, so picking it turns cloud speech off and the Speech page says why. LiteLLM errors read in plain words ("the server rejected the key, or needs one", "the server has no model by that name"). Setup's AI cleanup step offers Cloud with the same OpenRouter | LiteLLM switch. LiteLLM's cost is read from its `-original` cost header when the main one is missing. Saved settings and keys carry over unchanged. Android is unchanged (its custom server and OpenRouter speech still work together); its Cloud page comes later.
 - **Windows setup recommends your server for speech** (D73). On a clean install the "Where should your voice become text?" step now has Your server selected and marked Recommended, with the server address, access token and Test right below; without a server, pick This PC in one click (the help line under the server fields says so). If you already use a server or OpenRouter, or you finished setup with This PC before, setup keeps that choice. Builds without the server engine still recommend This PC.
-- **Windows: the Flow bar is hidden when idle on a new install.** "Show Flow bar at all times" (Settings → System) is now Off by default, so the bar appears only while you dictate (or record a meeting). Existing installs keep their saved setting.
-- **flow-server: faster AI cleanup on long dictations** (D69). The server's cleanup now copies the unchanged stretches of your dictation several words at a time instead of word by word, and gets a head start on what you said while you are still talking. On the parity set the cleanup's typical time drops from about 4 s to about 2.6 s; on that set the text is identical on 12 of 13 dictations and the quality scores are unchanged. Set `[model] llm_draft = 0` to turn it off. The phone and PC are unchanged.
-- **flow-server: setup is now a Docker build and one `docker run`** (D77). From the source: `docker build -t flow-server -f deploy/docker/Dockerfile .`, then `docker run` with your models folder mounted read-only at `/models` (one folder per model with its `model.toml`, e.g. a bundle's unzipped `library/`) and one volume for keys. The config is derived from the models in the folder on every start; nothing is downloaded. The admin key is written to the volume and never logged: `docker exec flow-server cat /data/admin.token` shows it. The setup guide (`docs/server-setup.md`) is a short quick start; the install without Docker, TLS, GPU and tuning moved to `docs/server-advanced.md` and `docs/container.md`. CI builds the image and checks it starts (nothing is published). The colleague install note puts Docker first.
-- **AI cleanup recognises dictionary words with a number in them when you say the number** (every cleanup path: phone, PC, flow-server and AI cleanup; D67). A dictionary entry such as "Velk42" is now passed to the cleanup when you say "velk forty two", so it is spelled as in your dictionary; a different number ("velk forty three") does not count. Known limit: an entry made of an ordinary word and a number can be passed for everyday speech that happens to contain both ("win ten dollars" next to an entry Win10), as it already was when the speech model wrote the digits; the cleanup still keeps words used in their ordinary sense.
-- **On-device AI cleanup writes spoken numbers, times and dates as digits** (phone and PC local model, English only, D63; the changed prompt v2 is also what flow-server's cleanup and the Windows cloud-cleanup test send). A short, tidy dictation such as "Let's meet at eleven forty on the twelfth" used to skip the model as "already clean" and kept the words. Now the model runs and writes "11:40 on the 12th", and a code read digit by digit becomes one number. "One of those", "a second ago" and "the fourth floor" stay words. Such dictations take about a second longer on the phone. Hebrew dictations are still never woken up for numbers, but the shared v2 prompt prefix changed the wording of some cleaned Hebrew dictations (accepted; Hebrew cleanup quality is tracked separately). Known regressions on the on-device 1.5B: "Don't forget that we have dinner at eight" now loses "that", and the 113-case cleanup suite goes from 91 % to 90 %.
-- **AI cleanup turns dictated lists into lists and keeps only the correction** (cloud and custom-server AI cleanup, prompt v5, D60). "A few things for the trip: tent, stove, maps" becomes a bulleted list, and counted items become a numbered one, with the lead-in kept. "At 5, no, 6" becomes "at 6". An ordinary "No problem" stays; the smaller models still sometimes drop a contrast such as "Friday, not Monday". This change left the on-device and flow-server cleanup prompt (v2) as it was (D63 later changed v2 for spoken numbers). Known issue: with v5, spoken "new line" / "new paragraph" and spoken punctuation ("comma", "period") come out worse on smaller models (on the 3B, a "new paragraph" followed by "A or B" can become a bulleted list).
-- **A dictated "Here's a list...:" lead-in is kept** (every cleanup path: on-device on the phone and the PC, flow-server and AI cleanup). It used to be stripped as a model preamble.
+- **Windows: the Murmur bar is hidden when idle on a new install.** "Show Murmur bar at all times" (Settings → System) is now Off by default, so the bar appears only while you dictate (or record a meeting). Existing installs keep their saved setting.
+- **murmur-server: faster AI cleanup on long dictations** (D69). The server's cleanup now copies the unchanged stretches of your dictation several words at a time instead of word by word, and gets a head start on what you said while you are still talking. On the parity set the cleanup's typical time drops from about 4 s to about 2.6 s; on that set the text is identical on 12 of 13 dictations and the quality scores are unchanged. Set `[model] llm_draft = 0` to turn it off. The phone and PC are unchanged.
+- **murmur-server: setup is now a Docker build and one `docker run`** (D77). From the source: `docker build -t murmur-server -f deploy/docker/Dockerfile .`, then `docker run` with your models folder mounted read-only at `/models` (one folder per model with its `model.toml`, e.g. a bundle's unzipped `library/`) and one volume for keys. The config is derived from the models in the folder on every start; nothing is downloaded. The admin key is written to the volume and never logged: `docker exec murmur-server cat /data/admin.token` shows it. The setup guide (`docs/server-setup.md`) is a short quick start; the install without Docker, TLS, GPU and tuning moved to `docs/server-advanced.md` and `docs/container.md`. CI builds the image and checks it starts (nothing is published). The colleague install note puts Docker first.
+- **AI cleanup recognises dictionary words with a number in them when you say the number** (every cleanup path: phone, PC, murmur-server and AI cleanup; D67). A dictionary entry such as "Velk42" is now passed to the cleanup when you say "velk forty two", so it is spelled as in your dictionary; a different number ("velk forty three") does not count. Known limit: an entry made of an ordinary word and a number can be passed for everyday speech that happens to contain both ("win ten dollars" next to an entry Win10), as it already was when the speech model wrote the digits; the cleanup still keeps words used in their ordinary sense.
+- **On-device AI cleanup writes spoken numbers, times and dates as digits** (phone and PC local model, English only, D63; the changed prompt v2 is also what murmur-server's cleanup and the Windows cloud-cleanup test send). A short, tidy dictation such as "Let's meet at eleven forty on the twelfth" used to skip the model as "already clean" and kept the words. Now the model runs and writes "11:40 on the 12th", and a code read digit by digit becomes one number. "One of those", "a second ago" and "the fourth floor" stay words. Such dictations take about a second longer on the phone. Hebrew dictations are still never woken up for numbers, but the shared v2 prompt prefix changed the wording of some cleaned Hebrew dictations (accepted; Hebrew cleanup quality is tracked separately). Known regressions on the on-device 1.5B: "Don't forget that we have dinner at eight" now loses "that", and the 113-case cleanup suite goes from 91 % to 90 %.
+- **AI cleanup turns dictated lists into lists and keeps only the correction** (cloud and custom-server AI cleanup, prompt v5, D60). "A few things for the trip: tent, stove, maps" becomes a bulleted list, and counted items become a numbered one, with the lead-in kept. "At 5, no, 6" becomes "at 6". An ordinary "No problem" stays; the smaller models still sometimes drop a contrast such as "Friday, not Monday". This change left the on-device and murmur-server cleanup prompt (v2) as it was (D63 later changed v2 for spoken numbers). Known issue: with v5, spoken "new line" / "new paragraph" and spoken punctuation ("comma", "period") come out worse on smaller models (on the 3B, a "new paragraph" followed by "A or B" can become a bulleted list).
+- **A dictated "Here's a list...:" lead-in is kept** (every cleanup path: on-device on the phone and the PC, murmur-server and AI cleanup). It used to be stripped as a model preamble.
 - **The keyboard active when you stop dictating decides the language** (Android and Windows, with the language following the keyboard). Switch from English to Hebrew mid-dictation and the whole recording is transcribed in Hebrew; on the phone the other speech model loads first if it isn't loaded (the bubble says so), and with *Keep both languages loaded* nothing loads. The same keyboard throughout works as before. The debug log line gains `start_language` and `stop_language` (D58).
 - **Windows: hold Right Alt to dictate.** Right Alt is the new push-to-talk key instead of Ctrl+Win, and it starts at once like any push-to-talk key; if you never changed Ctrl+Win, it moves to Right Alt on the next start, so Ctrl+Win alone no longer dictates (set it back in Settings → General → Shortcuts if you prefer it; a shortcut you picked stays). While Right Alt is your push-to-talk key, no app sees it: it never opens a menu bar, and on keyboards where Right Alt is AltGr (Hebrew, many European layouts) it no longer types AltGr letters; type them with Left Ctrl+Left Alt instead. The tray tooltip names your push-to-talk key. Hands-free (Ctrl+Win+Space) and Command Mode (Ctrl+Win+Alt) are unchanged (D57).
-- **AI cleanup keeps what you dictated in parentheses, quotes and formulas.** The safety check that threw away the AI's cleaned text, and pasted the uncleaned text instead, whenever the result had words or marks it could not trace back to your speech is gone on every path (phone, PC, flow-server, cloud). It rejected correct parentheses, quotes and math. The uncleaned text is still used when the AI is too slow, fails or answers with nothing. The debug log no longer has a `rejected_text` field. Upgrade flow-server too: dictations it cleans (server route or server cleanup) run its own core, and an older server still applies the check (D59).
+- **AI cleanup keeps what you dictated in parentheses, quotes and formulas.** The safety check that threw away the AI's cleaned text, and pasted the uncleaned text instead, whenever the result had words or marks it could not trace back to your speech is gone on every path (phone, PC, murmur-server, cloud). It rejected correct parentheses, quotes and math. The uncleaned text is still used when the AI is too slow, fails or answers with nothing. The debug log no longer has a `rejected_text` field. Upgrade murmur-server too: dictations it cleans (server route or server cleanup) run its own core, and an older server still applies the check (D59).
 - **AI cleanup: the cloud section is titled "Cloud server".** On Windows its title no longer switches between "OpenRouter" and "Custom server" as you pick the provider: the "Send text to" list names it. On Android the cloud page is titled "Cloud server" and its cleanup switch reads "Clean up text with the cloud server" whichever provider is picked.
 
 ### Fixed
 
 - **Setup no longer stops on `bad_config: invalid custom cleanup model id ""`** (PC and phone; D76). Settings kept across an uninstall with "Cloud server" picked for AI cleanup and no model named yet made 1.1.2 refuse every save, so setup's "Where should your voice become text?" step could not continue. An empty model means the cloud server is not set up yet, and nothing is refused. Every refused setting now reads as a sentence without the `bad_config:` code, for example "The AI cleanup server's model name "two words" is not valid: …" or "The server port must be 1-65535.".
-- **Cleanup no longer repeats text that is already in the field** (every cleanup path: phone, PC, flow-server and AI cleanup; D71). The cleanup sees the text around the cursor and sometimes copied it into its answer. With "Gate code: " already typed and only the number dictated, the field read "Gate code: Gate code: 4719". Words at the start of the answer that repeat the text before the cursor, or at the end that repeat the text after it, are now dropped, unless you plausibly said them yourself: a spoken number the cleanup wrote as digits, a name it corrected, or words with an "um" between them all stay.
-- **No more stray "Yeah." at the end of a dictation** (PC, phone and flow-server, with "Decode while speaking"; D72). In a quiet room, the click of the key that stops a dictation could end up alone in the last piece. That piece was then made up to 100 times louder on its own, and the speech model wrote a word for it, usually "Yeah.". A piece is now only made louder when the dictation's typical speech is quiet, so a click after normal speech stays quiet; a dictation that is quiet all the way through is still raised, even with one cough or desk bump in it. A recording with nothing in it but the taps that start and stop it is now empty instead of "Yeah.".
-- **No more stray capitals mid-sentence after a pause** (PC, phone and flow-server, any speech model, with "Decode while speaking" on; D70). Pausing in the middle of a sentence could leave the next word capitalised ("we should look at Options for the room", "it went fine, The next part"), mostly when AI cleanup did not run. The words around each pause now take their case and punctuation from the decode that heard both sides; names stay capitalised.
+- **Cleanup no longer repeats text that is already in the field** (every cleanup path: phone, PC, murmur-server and AI cleanup; D71). The cleanup sees the text around the cursor and sometimes copied it into its answer. With "Gate code: " already typed and only the number dictated, the field read "Gate code: Gate code: 4719". Words at the start of the answer that repeat the text before the cursor, or at the end that repeat the text after it, are now dropped, unless you plausibly said them yourself: a spoken number the cleanup wrote as digits, a name it corrected, or words with an "um" between them all stay.
+- **No more stray "Yeah." at the end of a dictation** (PC, phone and murmur-server, with "Decode while speaking"; D72). In a quiet room, the click of the key that stops a dictation could end up alone in the last piece. That piece was then made up to 100 times louder on its own, and the speech model wrote a word for it, usually "Yeah.". A piece is now only made louder when the dictation's typical speech is quiet, so a click after normal speech stays quiet; a dictation that is quiet all the way through is still raised, even with one cough or desk bump in it. A recording with nothing in it but the taps that start and stop it is now empty instead of "Yeah.".
+- **No more stray capitals mid-sentence after a pause** (PC, phone and murmur-server, any speech model, with "Decode while speaking" on; D70). Pausing in the middle of a sentence could leave the next word capitalised ("we should look at Options for the room", "it went fine, The next part"), mostly when AI cleanup did not run. The words around each pause now take their case and punctuation from the decode that heard both sides; names stay capitalised.
 - **Windows setup: "Now try it" says why it can't work instead of doing nothing** (D75). On a clean install with no speech model on this PC and no server address, holding Right Alt in the last setup step showed nothing in the step (the reason only reached the pill). The step now checks before you talk and says what is missing in plain words for the engine you chose (no speech model yet, no server address, your server can't be reached), clears that once it is ready, and while you hold the shortcut it shows listening, working, and any error from the pill.
 
-- **Whisper no longer repeats a stretch of text when "Decode while speaking" is on** (PC and phone whisper models, flow-server whisper; D66). A short piece decoded with the trimmed encoder window could loop a long phrase with a few words between the copies; that now counts as degenerate and is decoded again with the full window. Parity set, whisper small: segmented WER 20.9% → 18.3% (unsegmented 16.8%).
+- **Whisper no longer repeats a stretch of text when "Decode while speaking" is on** (PC and phone whisper models, murmur-server whisper; D66). A short piece decoded with the trimmed encoder window could loop a long phrase with a few words between the copies; that now counts as degenerate and is decoded again with the full window. Parity set, whisper small: segmented WER 20.9% → 18.3% (unsegmented 16.8%).
 - **Windows: with cloud cleanup switched off in Cleanup order, the "Try it" row says so.** With a key saved but OpenRouter (or your custom server) switched off in Cleanup order, it showed "cloud_cleanup_not_configured — … save a key". It now says cloud cleanup is off in Cleanup order and has a "Turn on in Cleanup order" button.
 - **Windows: the "Try it" row words every other cause too, without backend codes.** It tells apart a missing key, missing consent and a custom server without its address or model, and a failed Test names the cause in words.
-- **Hebrew dictations stay Hebrew after AI cleanup** (phone and PC local model, and flow-server cleanup). The on-device model used to turn long Hebrew dictations into English. Its prompt now shows it a Hebrew example when you dictate in Hebrew (by the speech model's language, or by the letters when it gives none), and an AI answer that comes back in another alphabet than your dictation (Hebrew, Arabic, Cyrillic, Greek) is not used: the text is pasted without AI cleanup instead (`llm_language_changed` in the debug log; every cleanup path, D65). English dictations are unchanged. A long Hebrew dictation can take the local model longer than its time limit, and then it is also pasted without AI cleanup. Upgrade flow-server too: it builds the prompt for the dictations it cleans. Measured with the 1.5B local model and a 20 s time limit on a PC; not yet measured on the phone (3 s limit), with flow-server's model, or for cloud AI cleanup.
+- **Hebrew dictations stay Hebrew after AI cleanup** (phone and PC local model, and murmur-server cleanup). The on-device model used to turn long Hebrew dictations into English. Its prompt now shows it a Hebrew example when you dictate in Hebrew (by the speech model's language, or by the letters when it gives none), and an AI answer that comes back in another alphabet than your dictation (Hebrew, Arabic, Cyrillic, Greek) is not used: the text is pasted without AI cleanup instead (`llm_language_changed` in the debug log; every cleanup path, D65). English dictations are unchanged. A long Hebrew dictation can take the local model longer than its time limit, and then it is also pasted without AI cleanup. Upgrade murmur-server too: it builds the prompt for the dictations it cleans. Measured with the 1.5B local model and a 20 s time limit on a PC; not yet measured on the phone (3 s limit), with murmur-server's model, or for cloud AI cleanup.
 - **Windows: picking "Custom server" is saved at once.** It used to be saved only once both the server address and the model were filled in, so saving the key in between reloaded the settings, set the list back to OpenRouter and emptied the address (dictation kept using OpenRouter). Now the list always shows what dictation uses; until the address and model are set, cleanup skips your server and the next engine in the cleanup order cleans, and while cloud cleanup is on, its row in the cleanup order shows "Enter the address" or "Pick a model".
 - **Windows: "Load models" / "Test connection" with a saved custom-server key no longer fail with a bare 401.** The saved key only goes to a server you agreed to send text to; for a server not agreed to yet the page now asks first and remembers the answer, instead of calling it without the key.
-- **`flow-cli transcribe` keeps the whole clip.** A WAV longer than 30 s lost everything past the first 30 s (counted as `dropped_samples`), because the replay fills the session's audio buffer faster than the core empties it. The buffer is now sized to the clip. Live dictation is unchanged.
+- **`murmur-cli transcribe` keeps the whole clip.** A WAV longer than 30 s lost everything past the first 30 s (counted as `dropped_samples`), because the replay fills the session's audio buffer faster than the core empties it. The buffer is now sized to the clip. Live dictation is unchanged.
 
 ## [1.1.2] - 2026-11-05
 
@@ -72,7 +73,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 - **Android: record while the speech model loads.** Right after the app starts, or after switching the keyboard between English and Hebrew, the bubble starts recording at once instead of saying the model is still loading. It shows which model is loading, and your words are transcribed on the phone as soon as it is ready, never sent to your server for this (X still discards it). If the model takes more than 2.5 minutes or fails to load, the recording stops, the bubble shows why, and the recording waits in History for "Retry with current settings".
 - **Android: "Keep both languages loaded" (Settings → Speech to text, off by default).** With the Hebrew model and a default model installed, both stay in memory (up to about 1.1 GB, depending on the models) so switching the keyboard between English and Hebrew never waits for a model to load; takes effect at the next dictation.
-- **Windows: AI summary and action items for a meeting (Notetaker, still hidden).** Made after the transcript on your AI cleanup order (this PC, your server, OpenRouter with consent), in the meeting's language, long meetings in chunks; a Regenerate button on the meeting's page. flow-server advertises the `summary` feature; older servers are skipped (D53).
+- **Windows: AI summary and action items for a meeting (Notetaker, still hidden).** Made after the transcript on your AI cleanup order (this PC, your server, OpenRouter with consent), in the meeting's language, long meetings in chunks; a Regenerate button on the meeting's page. murmur-server advertises the `summary` feature; older servers are skipped (D53).
 - **AI cleanup through your own server (LiteLLM / OpenAI-compatible).** Windows and Android (hybrid) can send AI cleanup to a server you run instead of OpenRouter: base URL (http or https), optional key, model from its list or typed; cloud speech-to-text stays on OpenRouter; its cleanups and any reported cost show on their own "Custom server" usage line, outside OpenRouter's spend and budget (D52).
 
 ### Changed
@@ -114,7 +115,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   small.en q5_1 (the files Android recommends), each pinned to its SHA-256,
   so a server library copy tagged with these ids is checked against the
   built-in fingerprints. One shared list of catalogue ids
-  (`flow_protocol::library::CATALOGUE`) is tested against both apps.
+  (`murmur_protocol::library::CATALOGUE`) is tested against both apps.
 
 - **Android (hybrid debug builds only): English speech probe.** Developer
   settings → Diagnostics → **English speech probe** compares Google's
@@ -123,7 +124,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   or a synthetic TTS / picked WAV clip, and shows status, download,
   partials, latency and every error code. An overlay runs the same
   engines over another app, to learn whether Gemini Nano refuses when
-  Flow Clone is not on top (`BACKGROUND_USE_BLOCKED`). Each run is one
+  Murmur is not on top (`BACKGROUND_USE_BLOCKED`). Each run is one
   line in `files/probe-english.jsonl`. Dictation is unchanged
   (`docs/findings/2026-11-02-pixel-offline-dictation.md`, PQ-a / PQ-d).
 
@@ -161,7 +162,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 - **Windows: Notetaker notices Zoom, Webex and Jabber calls.** On the
   Meetings page, choose what happens when a call starts: **Ask me** (a
   small "Record this meeting?" box in the corner) or **Start recording
-  automatically** (the recording chip shows on the Flow bar). The
+  automatically** (the recording chip shows on the Murmur bar). The
   recording stops by itself about 12 s after the call ends; a recording
   you started yourself is never stopped by it. Off until you turn it on;
   while on it looks every 3 s at which of these apps shows a meeting
@@ -170,7 +171,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 - **Windows: Notetaker records meetings (Meetings page).** Start and stop
   a recording from the tray, the Meetings page or an optional shortcut
   (Settings › General). Your microphone and what the PC plays are
-  recorded as two separate tracks; a blinking chip on the Flow bar shows
+  recorded as two separate tracks; a blinking chip on the Murmur bar shows
   the recording. When you stop, the meeting is transcribed into turns
   labelled **Me** (mic) and **Others** (PC sound) in time order, on its
   own engine and only between dictations, so dictating during a long
@@ -185,12 +186,12 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   chunk is held in memory, silence is skipped without being transcribed,
   and progress and cancellation are exposed. Hebrew and English follow the
   dictation language setting. This is the shared engine for the coming
-  Windows Notetaker and Android call transcription: `flow_core::meeting`,
-  with `flow_router::meeting` for the router (D44). `flow-cli meeting
+  Windows Notetaker and Android call transcription: `murmur_core::meeting`,
+  with `murmur_router::meeting` for the router (D44). `murmur-cli meeting
   file.wav` prints the timestamped transcript of a long WAV and streams it
   from disk (`--json`, `--progress`; `--router` with the `remote` feature
   adds a server route).
-- `flow_core::audio::WavBlocks` / `Resampler`: read a WAV of any length
+- `murmur_core::audio::WavBlocks` / `Resampler`: read a WAV of any length
   block by block as 16 kHz mono.
 - **Android: Calls.** A new page in the drawer (on-device builds: local
   and hybrid) transcribes a call recording you pick: Samsung's m4a call
@@ -208,13 +209,13 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   counts only dictations, text-only cleanups and model downloads; last
   connected is any request, so opening Users & keys or a connection check
   no longer looks like use. Shown in the Windows and Android Users & keys
-  pages and `flow-server keys list`. An older `key-usage.json` loads as is: its last seen becomes last
+  pages and `murmur-server keys list`. An older `key-usage.json` loads as is: its last seen becomes last
   connected, and last used shows "unknown" (app) / "-" (CLI) until the key
   is next used. The admin API still sends `last_seen` for older apps (D50).
 - **AI cleanup always runs on your server or OpenRouter.** The "already
   clean" skip ("AI not needed") now applies only when the phone's or PC's
   own small model would clean first, since that model damages tidy text.
-  A tidy dictation whose first cleaner is flow-server or the cloud is
+  A tidy dictation whose first cleaner is murmur-server or the cloud is
   cleaned, including the first one after the server drops (the cloud next
   in line takes it); it never falls through to the on-device model. The
   server cleaning its own sessions no longer skips either. Phone AI stays
@@ -265,7 +266,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   phone's own output.
 - Windows: CI builds no longer call themselves "-dirty" (1.0.0's installers
   reported e.g. `a24090a-dirty`). The installer step's `tauri build`
-  rewrote `apps/flow-windows/Cargo.toml` (it adds `features = []` to a
+  rewrote `apps/murmur-windows/Cargo.toml` (it adds `features = []` to a
   `tauri-build` entry without one) just before building the shipped exe;
   the entry now has it. CI also checks the tree after the installers.
 - Windows: with meeting detection off, the app now does no detection work
@@ -276,13 +277,13 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 - Android: the floating bubble no longer gets stuck on a red error while the speech model loads. A tap during the load now shows a pulsing "…" (still loading, with a toast naming the model) instead of the error "!", and the bubble goes back to normal by itself once the model is ready, or shows the real error if the load fails. Each tap checks again: ready starts dictating, still loading says so again, and only a real engine error opens the app. Before, the error stayed for good and every tap opened the app.
 - Android: switching the keyboard language while the Hebrew model loads (D37) now loads the model the new language needs. The running load can't be interrupted, so its model is dropped when it finishes, freed before the next load (still one model in memory), and never becomes the active engine. A dictation meanwhile says which model it waits for ("Loading the default speech model…"), not the Hebrew one. Switching back from a loaded Hebrew model now names the default model too, instead of a generic "still loading".
 - Android: Settings ▸ Accessibility now lists the service as "Murmur" (it showed "Effortless on-device voice dictation", so it was hard to find). The hybrid and remote builds no longer claim "no internet permission" in the accessibility description.
-- flow-server `install.sh`: an upgrade with `--sherpa-lib` pointing at the install's own lib dir no longer stops halfway with "are the same file" (libs that are already the installed files are kept), and without `--sherpa-lib` an upgrade now uses the installed libs. The binary and libraries are staged first and renamed into place together, the binary last, so a failed copy leaves the previous binary and libraries in place instead of a new binary next to old libs.
-- Quiet speech (around -60 to -50 dBFS, e.g. a soft voice or a low-gain mic) is no longer dropped as "no speech" or returned blank, on every platform (shared `flow-core`). The speech detector now measures speech against the recording's own noise floor when that floor is very low, and quiet speech it accepts is raised in level before the speech model, whose own silence check used to blank it. Silence and noise alone are still skipped. On the 49 Hebrew FLEURS bench clips, the 15 that came back empty on the phone now reach the model (21 % WER on them in a host-side check).
+- murmur-server `install.sh`: an upgrade with `--sherpa-lib` pointing at the install's own lib dir no longer stops halfway with "are the same file" (libs that are already the installed files are kept), and without `--sherpa-lib` an upgrade now uses the installed libs. The binary and libraries are staged first and renamed into place together, the binary last, so a failed copy leaves the previous binary and libraries in place instead of a new binary next to old libs.
+- Quiet speech (around -60 to -50 dBFS, e.g. a soft voice or a low-gain mic) is no longer dropped as "no speech" or returned blank, on every platform (shared `murmur-core`). The speech detector now measures speech against the recording's own noise floor when that floor is very low, and quiet speech it accepts is raised in level before the speech model, whose own silence check used to blank it. Silence and noise alone are still skipped. On the 49 Hebrew FLEURS bench clips, the 15 that came back empty on the phone now reach the model (21 % WER on them in a host-side check).
 - Command Mode and transforms (Android and Windows) keep Hebrew text in Hebrew. Before, an instruction such as "make it more formal" on selected Hebrew text usually came back as an English rewrite on the on-device model (9 of 10 synthetic cases on Qwen2.5-1.5B; now 0 of 10). The prompt now tells the model to answer in Hebrew and shows a Hebrew example. If the answer still comes back in another script, the app asks once more, and if that answer is also in another script it leaves the selection unchanged with "AI changed the text's language". Asking to translate ("translate this to English", "תתרגם לאנגלית") still changes the language. The same lock applies to Arabic, Cyrillic and Greek text.
-- OpenRouter cleanup is no longer skipped as "AI not needed (already clean)" when your server comes before it in the AI cleanup order but cannot clean (unreachable, or no AI model). Since 0.11.0 the default order (phone → server → cloud) with the phone AI off made the server the first engine. A tidy-looking dictation then hit the phone's "already clean" check, and nothing cleaned it. OpenRouter also got the formatted text with the older prompt instead of the raw transcript. When the server's circuit is open or it has no AI model, OpenRouter now counts as first: it gets the raw transcript with no skip, as when it is first in the order. (Shared `flow-core`/`flow-router`, so Windows too.) Finding: `docs/findings/2026-11-02-local-cleanup-skipped.md`.
+- OpenRouter cleanup is no longer skipped as "AI not needed (already clean)" when your server comes before it in the AI cleanup order but cannot clean (unreachable, or no AI model). Since 0.11.0 the default order (phone → server → cloud) with the phone AI off made the server the first engine. A tidy-looking dictation then hit the phone's "already clean" check, and nothing cleaned it. OpenRouter also got the formatted text with the older prompt instead of the raw transcript. When the server's circuit is open or it has no AI model, OpenRouter now counts as first: it gets the raw transcript with no skip, as when it is first in the order. (Shared `murmur-core`/`murmur-router`, so Windows too.) Finding: `docs/findings/2026-11-02-local-cleanup-skipped.md`.
 - Windows: whisper on the CPU is built optimised again. Through 1.0.0 the CI built whisper.cpp without optimisation (MSVC `/Od`), so on the CPU it was 6–18× slower than whisper.cpp's own build: about 4.5 min for a 10 s Hebrew clip with ivrit turbo, and 10.6 s instead of 1.6 s with the base model. This hit the app's built-in whisper (English on every PC without a GPU, and Hebrew whisper without a Vulkan driver) and the GPU plugin's CPU fallback. The cause was the Rust `cmake` crate, which drops CMake's Release flags with the Visual Studio generator. CI now passes `/O2 /Ob2 /DNDEBUG` itself and fails the build if a whisper.cpp project is not compiled with `/O2`. On the test laptop, a 10 s Hebrew clip on the CPU now takes 18 s instead of 267 s (whisper-cli: 15 s), and with the base model 1.1 s instead of 10.6 s. The portable AVX2 baseline is unchanged. Finding: `docs/findings/2026-11-02-win-cpu-whisper-speed.md`.
 - Android debug log: a dictation that got no AI cleanup at all now says why in a new `llm_off` field (`ai_cleanup_off`, `no_phone_model`, `phone_model_failed` or `no_engine_available`), shown in the in-app viewer as "no AI cleanup (…)". Before, the line only had `llm: null`.
-- Windows: Settings → Speech to text says why a whisper Hebrew model runs on the CPU, instead of "no graphics chip found" on PCs that have one. The reasons are: the CPU is forced (`FLOW_WHISPER_DEVICE=cpu`), the graphics chip plugin (`flow_whisper_vulkan.dll`) is missing, no Vulkan graphics chip was found, or the graphics chip failed (with the short error). The not-yet-downloaded hint uses the same reasons. The CPU line now says "expect slow dictations" instead of "several seconds". Finding: `docs/findings/2026-11-02-vulkan-he-laptop-check.md` (bug 2).
+- Windows: Settings → Speech to text says why a whisper Hebrew model runs on the CPU, instead of "no graphics chip found" on PCs that have one. The reasons are: the CPU is forced (`MURMUR_WHISPER_DEVICE=cpu`), the graphics chip plugin (`murmur_whisper_vulkan.dll`) is missing, no Vulkan graphics chip was found, or the graphics chip failed (with the short error). The not-yet-downloaded hint uses the same reasons. The CPU line now says "expect slow dictations" instead of "several seconds". Finding: `docs/findings/2026-11-02-vulkan-he-laptop-check.md` (bug 2).
 
 ## [1.0.0] - 2026-11-01
 
@@ -292,7 +293,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   Settings → Speech to text → Hebrew model offers ivrit.ai Whisper turbo
   (574 MB, Apache-2.0), the most accurate Hebrew model (about 20 % word
   errors against Zipformer's 27 %). Whisper now runs on the GPU through
-  Vulkan (new `flow_whisper_vulkan.dll` in the installers, D42): about 1 s
+  Vulkan (new `murmur_whisper_vulkan.dll` in the installers, D42): about 1 s
   per dictation on a laptop's integrated GPU. Without a usable GPU or
   Vulkan driver the app falls back to its CPU whisper, where this model is
   slow (about 13 s), so Settings recommends it only when it finds a GPU
@@ -300,9 +301,9 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   name, or the CPU and why. It downloads from Hugging Face, from your
   server's library, or imports from a file like the other models; the
   default whisper model also uses the GPU when there is one.
-  `FLOW_WHISPER_DEVICE=cpu` forces the CPU.
+  `MURMUR_WHISPER_DEVICE=cpu` forces the CPU.
 
-- **Guide: running Flow Clone with no internet (`docs/air-gapped.md`).**
+- **Guide: running Murmur with no internet (`docs/air-gapped.md`).**
   One short owner page for a closed network: install the server (host
   build or the Docker image moved with `docker save` / `docker load`),
   copy and tag models into its library, create the admin key on the
@@ -312,7 +313,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   Android app. Linked from the README, the Android install guide and the
   server setup guide.
 - **Air-gapped end-to-end check (`tools/e2e/airgap/run.sh`).** Builds
-  flow-server from the checkout and runs it on loopback with a temp state
+  murmur-server from the checkout and runs it on loopback with a temp state
   dir and model library, then drives it with the apps' own client code: an
   admin key from the CLI, a user key from the admin API, a library model
   downloaded and its SHA-256 checked, one dictation (public clip), the
@@ -320,13 +321,13 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   the key refused on every route. Both processes run under strace and the
   check fails on any connection to a non-loopback address (in a loopback-only
   network namespace too, where the system allows unprivileged ones).
-- **Server: Docker image, Compose file and Helm chart.** Run flow-server
+- **Server: Docker image, Compose file and Helm chart.** Run murmur-server
   in a container with your own models: a locally built CPU image (with
   Parakeet, whisper, TLS and LLM cleanup) and an NVIDIA CUDA variant that
   runs LLM cleanup on the GPU. Models, keys and config are volumes, so
   nothing is baked in and keys survive restarts and rebuilds. On first
   start the server waits until you add the admin key (`docker compose exec
-  flow-server flow-server keys add owner --admin`, or `kubectl exec` with
+  murmur-server murmur-server keys add owner --admin`, or `kubectl exec` with
   the chart). It runs as a non-root user on a read-only filesystem and
   keeps the server's LAN/VPN-only rules: it binds the container's own
   address instead of `0.0.0.0`. The image can be built offline from host
@@ -355,7 +356,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   too. Import .zip / Import from file stay. Nothing ever comes from the
   internet, and the local build has no download code or network permission
   at all (D9 amended).
-- **flow-remote: model library client (D41)** shared by the apps: list the
+- **murmur-remote: model library client (D41)** shared by the apps: list the
   server's models and download a file resumably (HTTP Range) with its
   SHA-256 checked, over the same TLS pin and key as dictation.
 
@@ -366,7 +367,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   the server lists tagged models with each file's size and SHA-256 at
   `GET /v1/models` and serves the files, with resume (HTTP Range), on the
   same port and TLS as dictation, to any valid key. New and changed folders
-  are picked up without a restart; `flow-server library list` shows what is
+  are picked up without a restart; `murmur-server library list` shows what is
   served and why a folder was skipped. Downloads count toward the key
   (`keys list` → DOWNLOADS). The Windows and Android apps download from it (D41).
 - **Android (debug builds): on-device benchmark.** A shell-only
@@ -393,12 +394,12 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 - **Server: admin API (D39).** `GET /v1/whoami`, `GET`/`POST
   /v1/admin/keys` and `DELETE /v1/admin/keys/{id}` on the usual port, with
   the usual key; non-admin keys get 403. The server refuses to revoke the
-  last admin key, from the API and from `flow-server keys revoke` (which
+  last admin key, from the API and from `murmur-server keys revoke` (which
   gets `--force` to override). The CLI and the running server can now both
   change keys at once safely (a lock file). The client is in the shared
-  `flow-remote` crate, ready for Android.
+  `murmur-remote` crate, ready for Android.
 - **Server: one key per device instead of one shared token (D38).** On the
-  server, `flow-server keys add <name> [--admin]` creates a key and prints
+  server, `murmur-server keys add <name> [--admin]` creates a key and prints
   its secret once, `keys list` shows each key's last use, app version,
   dictation count and audio minutes, and `keys revoke <name>` locks out one
   device at its next connection without touching the others or open
@@ -482,11 +483,11 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   import was only reachable through the model row; it now has its own row
   on that page.
 - **Windows: AI cleanup on the graphics chip.** The installers now ship the
-  AI cleanup engine twice: `flow_llm_vulkan.dll` (GPU through Vulkan) and
-  `flow_llm.dll` (CPU). The app loads the Vulkan one first. On a PC without
+  AI cleanup engine twice: `murmur_llm_vulkan.dll` (GPU through Vulkan) and
+  `murmur_llm.dll` (CPU). The app loads the Vulkan one first. On a PC without
   a Vulkan driver it loads the CPU one instead. With no usable GPU, or a GPU
   that fails to load the model, the Vulkan one runs on the CPU.
-  `FLOW_LLM_DEVICE=cpu` forces the CPU. Settings and the tray say where
+  `MURMUR_LLM_DEVICE=cpu` forces the CPU. Settings and the tray say where
   cleanup runs. Both builds keep the portable AVX2 baseline (`GGML_NATIVE=OFF`).
 - **Windows: Llama 3.2 3B Instruct for AI cleanup.** Settings → AI cleanup →
   On this PC can download Llama 3.2 3B Instruct Q4_K_M (2.0 GB, pinned
@@ -557,9 +558,9 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   default one. Dictionary words are passed as hotwords, which fix the spelling
   of words the model already hears. Builds without the `parakeet` feature
   report a load error for it, as they do for Parakeet.
-- **Server: Hebrew.** flow-server can load a Hebrew model next to English
+- **Server: Hebrew.** murmur-server can load a Hebrew model next to English
   Parakeet: `[model.languages.he]` in its config (example in
-  `crates/flow-server/dist/config.example.toml`, guide in
+  `crates/murmur-server/dist/config.example.toml`, guide in
   `docs/server-setup.md`). Sessions whose language is set to Hebrew decode on
   it and return `"language":"he"`; everything else, auto-detect included,
   stays on the default model. `hello_ok` / `/v1/health` list the server's
@@ -567,7 +568,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   log line and debug capture record the language and the model that decoded.
 - **`tools/fetch-models.sh --hebrew`** downloads the 69 MiB Hebrew zipformer
   (pinned revision, SHA-256 checked, already-verified files skipped);
-  `--hebrew-parakeet` the 642 MiB Parakeet-he alternative. `FLOW_MODELS_DIR`
+  `--hebrew-parakeet` the 642 MiB Parakeet-he alternative. `MURMUR_MODELS_DIR`
   picks the destination.
 - **Core: Hebrew auto-detect (H6, D34).** Set `ModelConfig.lid_path` to a
   multilingual whisper model (`ggml-tiny-q5_1.bin`) next to a `languages`
@@ -581,8 +582,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   Hebrew (or a Hebrew phone language), the phone loads only that model, so
   one model stays in RAM; switching language reloads the engine (a few
   seconds, "Loading the Hebrew speech model…"). If it fails to load,
-  whisper is used. flow-ffi accepts `load_language` in the model config for
-  this (`FlowCore::load_models_for`).
+  whisper is used. murmur-ffi accepts `load_language` in the model config for
+  this (`MurmurCore::load_models_for`).
 - **Windows: Hebrew dictation.** Settings → General → Languages is now a
   picker (Detect automatically, English, Hebrew, or Other… for typed codes).
   Settings → Speech to text has a **Hebrew model** choice: Zipformer
@@ -605,7 +606,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 - **Windows: Launch at login after a reinstall.** With Launch at login on,
   the app now re-points its startup entry at its own exe each time it starts.
   Before, the entry was written only when settings were saved, so after
-  reinstalling to a new folder (the "Flow Clone" → "Murmur" rename) it
+  reinstalling to a new folder (the earlier product rename) it
   pointed at a deleted exe and the app no longer started at login.
 - **Windows: opening the app twice.** Starting Murmur while it already
   runs no longer adds a second tray icon (and a second keyboard hook): the
@@ -650,10 +651,10 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   are **off until you turn on *Opt in***, so an upgrade never takes your
   Win+Alt+digit keys. *Auto Apply After Dictation* runs a chosen transform on
   every dictation; if it fails or takes longer than 8 s, your words are pasted
-  as dictated and the Flow bar says "Transform skipped", so nothing is lost.
+  as dictated and the Murmur bar says "Transform skipped", so nothing is lost.
   Win+Alt+O opens Home on the latest transform's before / after. Transforms
   use the same AI cleanup engines (OpenRouter, then this PC) and the same
-  privacy check as Command Mode; with nothing selected the Flow bar says
+  privacy check as Command Mode; with nothing selected the Murmur bar says
   "Select text to transform". Decision D32.
 - **Windows: download a speech model in the app.** First-run setup and
   Settings → Speech to text offer *Download* for Parakeet TDT 0.6B v2 (661 MB),
@@ -680,13 +681,13 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   Scratchpad shortcut. The notes window itself matches the new look, light
   and dark. *Notetaker* has a "Later" page; nothing behind it yet.
 - **Windows: Light / Dark / System theme.** Settings → General → *Theme*. The
-  app window, the notes window and the Flow bar all follow it; *System*
+  app window, the notes window and the Murmur bar all follow it; *System*
   follows Windows as before.
-- **Windows: Fix links on the Flow bar.** When a dictation falls back or
+- **Windows: Fix links on the Murmur bar.** When a dictation falls back or
   can't run, the bubble has a link to the settings page that fixes it ("Fix
   →", or "Choose a model →" when a model is missing): Speech to text, AI
   cleanup, Your server or OpenRouter. The link is clickable; the rest of the
-  Flow bar still lets clicks through to the app underneath.
+  Murmur bar still lets clicks through to the app underneath.
 - **Windows: shorter history retention.** Settings → Data and privacy → keep
   history *Forever*, *30 days*, *7 days* or *Don't keep* (an old "24 hours"
   choice keeps working).
@@ -751,7 +752,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   month's cost against a budget meter. The model picker has filter chips,
   badges and prices, and says how many models the zero-retention filter
   hides.
-- **Windows: Flow bar.** Restyled for every state (idle, hold to talk,
+- **Windows: Murmur bar.** Restyled for every state (idle, hold to talk,
   hands-free with cancel / stop-and-paste, working, done with the engine
   letter, fell back, can't dictate), in light and dark.
 - **Android: new app shell.** The main screen is now a top bar with the menu,
@@ -794,7 +795,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 ### Fixed
 
 - **Windows: the "max recording" countdown shows.** The warning before a
-  dictation hits its length limit was sent but never drawn; the Flow bar now
+  dictation hits its length limit was sent but never drawn; the Murmur bar now
   shows a countdown chip.
 
 ## [0.8.0] - 2026-10-29
@@ -802,7 +803,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 ### Added
 
 - **Android: back up and restore all your data.** Settings → *Back up &
-  restore* → *Export all data* saves one file (`flow-clone-backup-<date>.json`)
+  restore* → *Export all data* saves one file (`murmur-backup-<date>.json`)
   wherever you pick: Notes and the Quick note, History, Dictionary and
   snippets, learned-word suggestions, Insights and all settings. *Restore
   from a backup* checks the whole file first, shows what it holds and, once
@@ -814,16 +815,16 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Changed
 
-- **Renamed to Murmur.** Every "Flow Clone" the apps show (Windows
+- **Renamed (interim product name).** Every name the apps show (Windows
   window titles, tray, Settings About row, installer and exe name; Android
   app name, notifications, accessibility notice, setup and battery help) and
-  the release titles now say "Murmur". Data and settings are unaffected:
-  the Windows data folder (`%APPDATA%\FlowClone`), the stored keys, the
-  launch-at-login entry and the Android package (`dev.flowclone`) keep their
-  old internal names, so Android updates in place. On Windows the installer
-  is now `Murmur_<version>_…` and installs to a new "Murmur"
-  folder: uninstall "Flow Clone" afterwards (settings carry over), and turn
+  the release titles changed to the interim name. Data and settings were
+  unaffected: the Windows data folder, the stored keys, the launch-at-login
+  entry and the Android package kept their old internal names, so Android
+  updated in place. On Windows the installer installed to a new folder:
+  uninstall the older app afterwards (settings carry over), and turn
   "Launch app at login" off and on once so it points at the new exe.
+  (Superseded by the Murmur rename, D83.)
 - Product text no longer names a specific VPN. App strings (Android main
   screen and Developer settings, Windows settings), server messages, the
   example config, the systemd unit and the docs now say "your LAN or a VPN".
@@ -832,7 +833,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 - `tools/server/install.sh` without `--bind` now picks the server's first
   100.64.0.0/10 IPv4 from `ip -4 addr` (any mesh VPN) instead of asking one
   VPN's CLI; on such a machine it binds the same address as before.
-- The packaged `flow-server.service` no longer orders itself after one VPN's
+- The packaged `murmur-server.service` no longer orders itself after one VPN's
   daemon; a bind to a VPN address that is not up yet still retries every 3 s.
 
 ### Fixed
@@ -889,7 +890,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   General → Shortcuts → Open Scratchpad* (none by default). Dictation types
   into it like any other app (style *Other*); its edits are not used to
   learn dictionary words and it is not listed under *Style per app*. The
-  text is saved to `%APPDATA%\FlowClone\notes\scratchpad.txt` shortly after
+  text is saved to `%APPDATA%\Murmur\notes\scratchpad.txt` shortly after
   you stop typing, when the window closes and when you quit, and is there
   again next time. *Copy all*, *Clear* (with *Undo clear*) and a word count.
 - **Windows: Notes.** Tray → *Notes…* lists your saved notes (the
@@ -901,20 +902,20 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   same way. Optional shortcut *Settings → General → Shortcuts → New note +
   dictate* (none by default) creates a note, opens it and starts hands-free
   dictation into it. Each note is a plain `.txt` in
-  `%APPDATA%\FlowClone\notes\` (plus a small `index.json` for pins and
+  `%APPDATA%\Murmur\notes\` (plus a small `index.json` for pins and
   times; `.txt` files copied in by hand show up too). An existing
   `scratchpad.txt` is moved there on first start.
 - **Android: Scratchpad.** *Main screen → More → Scratchpad* (or long-press
   the app icon → *Scratchpad*) opens one big text field to dictate into,
   edit and copy out: tap it, tap the bubble and talk, like in any other app.
-  It is the only screen of Flow Clone's own where the bubble appears. The
+  It is the only screen of Murmur's own where the bubble appears. The
   text saves itself as you go (and when you leave the screen) and is there
   again after the app is closed or the phone restarts; it stays on the phone.
   *Copy all* (removed from the clipboard after a minute, like every copied
   transcript), *Share*, *Clear* (asks first) and a word count.
 - **Android: Notes.** *Main screen → More → Notes* keeps as many dictated
   notes as you like, in the same editor as the Scratchpad (the bubble works
-  in every note, and still nowhere else in Flow Clone). The list shows each
+  in every note, and still nowhere else in Murmur). The list shows each
   note's first line and when it last changed, pinned notes first; search
   finds words anywhere in a note; *New note*, and per note *Pin*, *Share* and
   *Delete* (asks first). Long-press the app icon → *New note* opens a fresh
@@ -928,12 +929,12 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   minute of recording), current and longest daily streak, an estimate of
   time saved versus typing (assumes 40 wpm, shown on the page), the number
   of dictations, your top apps by words, and a 7-day words-per-day chart.
-  Everything is counted on the PC in `%APPDATA%\FlowClone\insights.json`
+  Everything is counted on the PC in `%APPDATA%\Murmur\insights.json`
   (words, recording length and app per local day; no text) and never leaves
   it. The counts are kept apart from History, so deleting History or a
   short retention setting doesn't reset them; on first start they are
   filled in once from the History you already have. *Reset stats* (with a
-  confirmation) clears them. The stats math lives in `flow-core` so Android
+  confirmation) clears them. The stats math lives in `murmur-core` so Android
   can reuse it.
 - **Android: Insights page.** *Main screen → More → Insights* shows the same
   stats as the Windows Insights tab: total words dictated, words in the last 7
@@ -945,11 +946,11 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   length and app per day; no text), so clearing History or setting it to
   *Never* keeps them; the first time, the History you already have is counted
   in once. *Reset stats* (asks first) clears them. The math mirrors
-  `flow-core`'s, checked against the same test vectors.
+  `murmur-core`'s, checked against the same test vectors.
 - **Android: learn dictionary words from your edits.** After a dictation is
   typed in, the app re-reads that same field (about once a second, for up
   to 45 s, or until your edit has stopped changing for 8 s). If you corrected
-  a word, say "flo clone" → "Flow Clone", it shows up under *Dictionary →
+  a word, say "flo clone" → "Murmur", it shows up under *Dictionary →
   Suggestions* with *Add* (or *Add as fix*, which replaces "flo clone" from
   then on) and *Dismiss*; a dismissed word is never suggested again, and
   nothing is added without your tap. Watching stops when you move to another
@@ -958,7 +959,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   *Settings → Privacy → Learn from my edits* (on by default, like Windows)
   turns it off; then the field is not read again after inserting.
 - **Windows: custom cue sounds.** Put `start.wav`, `stop.wav`, `lock.wav`,
-  `paste.wav` or `error.wav` in `%APPDATA%\FlowClone\sounds\` to replace
+  `paste.wav` or `error.wav` in `%APPDATA%\Murmur\sounds\` to replace
   that cue's built-in tone (read at the first cue, so restart after changing
   them). A file that isn't a RIFF/WAVE or is over 2 MB is ignored with a
   `[sounds]` log line; the Sounds setting still turns every cue off.
@@ -977,7 +978,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   mark kind, the dropped clause or word count, the timeout or the error).
   The Android log viewer shows them as "AI answer not used". Both follow the
   `text` rules: only with the debug log on, and `<redacted>` for password
-  fields, banking and denylisted apps. flow-core's `CommitResult` and
+  fields, banking and denylisted apps. murmur-core's `CommitResult` and
   `RouteInfo` carry them as additive optional fields, set only next to
   `cloud_fallback`, so results without cloud cleanup are unchanged.
 - **Debug: replay harness.** `tools/replay/run.sh --in DIR` re-runs the
@@ -1001,7 +1002,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   log line says `"source":"wav"` (`"mic"` otherwise). Protected fields are
   refused; only the platform tools' shell can trigger it, and release builds
   do not contain it. See INSTALL.md, "Feed a WAV file as the microphone".
-- **flow-server debug capture (beta, off by default).** A new `[debug]`
+- **murmur-server debug capture (beta, off by default).** A new `[debug]`
   config section (`capture = true`, `max_files = 30`, `max_age_h = 72`)
   makes the server keep each session's received audio as a WAV plus one
   JSON line (transcript, cleaned text, timings, route) in its state
@@ -1043,7 +1044,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
-- **AI cleanup prompt v4c.** flow-core has a second cleanup prompt, v4c,
+- **AI cleanup prompt v4c.** murmur-core has a second cleanup prompt, v4c,
   for AI cleanup, which formats the raw transcript in one pass. In chat apps it keeps capitals and words like
   "Okay," and only relaxes punctuation, and it puts a blank line before a
   list. On Llama-3.3-70B through OpenRouter it passes 90 % of the
@@ -1151,7 +1152,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Fixed
 
-- flow-server's result log line printed `speech_ms=Some(7200)
+- murmur-server's result log line printed `speech_ms=Some(7200)
   peak_dbfs=Some(-2)`; it now prints plain numbers and leaves out unknown
   values.
 
@@ -1178,8 +1179,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   *Insert with the bubble*: go back to the app, tap the field and press ✓ on
   the bubble. Each row also names where it was transcribed ("Server · AI
   cleaned"). Shown for dictations saved from this version on.
-- flow-core: `timings.speech_ms` and `timings.peak_dbfs` in every commit
-  result (additive). flow-server logs them, plus `start_to_commit_ms`, on
+- murmur-core: `timings.speech_ms` and `timings.peak_dbfs` in every commit
+  result (additive). murmur-server logs them, plus `start_to_commit_ms`, on
   each result line.
 
 ### Changed
@@ -1251,7 +1252,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   already clean, so most short dictations commit with no AI wait (48 of 88
   test cases; commit p50 0 ms, p90 2.1 s with the 1.5B model). Its output
   is rejected when it invents a number you did not say.
-- flow-server and the apps take ~15 s longer to load the AI model (its
+- murmur-server and the apps take ~15 s longer to load the AI model (its
   instructions are prepared at load so the first dictation is not slower).
 - AI cleanup notes mention the slightly longer model load (prompt v2
   instructions are prepared at load).
@@ -1278,27 +1279,27 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   derived by every crate, the Tauri installer and the Android
   versionName/versionCode (`MAJOR*10000 + MINOR*100 + PATCH`); git commit +
   dirty flag shown on the Android main screen and Developer → Build, the
-  Windows About row and Developer build line, flow-server's `ready` log line
+  Windows About row and Developer build line, murmur-server's `ready` log line
   and `hello_ok.server`, and as `app_version` / `build` on every D21 debug-log
   line. `tools/check-version.sh` (CI + `tools/check-build-matrix.sh`),
   `tools/release.sh` (local commit + annotated `vX.Y.Z` tag), tag-triggered CI
   builds with versioned artifacts and a GitHub release.
-- Shared Rust core `flow-core` (D2): the v2 session API (start / push /
+- Shared Rust core `murmur-core` (D2): the v2 session API (start / push /
   late context / partials / commit / cancel), whisper.cpp ASR (D3/D4),
   Parakeet-TDT via sherpa-onnx in the same binary (D12), energy+ZCR VAD and the
   silence-hallucination guard (D16), the whisper encoder window fitted to the
   clip (D20), deterministic post-processing (checked against 108 Windows + 58
   Android test vectors), deterministic spoken cleanup (D15), opt-in local LLM
-  cleanup through the `flow-llm` llama.cpp plugin with the support/coverage
+  cleanup through the `murmur-llm` llama.cpp plugin with the support/coverage
   guard and the short few-shot prompt (D5, D10, D11, D13, D14), C ABI and JNI
-  bindings (`flow-ffi`), `flow-cli` dev harness.
-- Hybrid local/server dictation (D17): `flow-router` (one session API over local,
-  server and cloud routes, buffered replay, circuit breaker), `flow-remote`
-  WebSocket client, self-hosted `flow-server` (LAN/Tailscale only, bearer
+  bindings (`murmur-ffi`), `murmur-cli` dev harness.
+- Hybrid local/server dictation (D17): `murmur-router` (one session API over local,
+  server and cloud routes, buffered replay, circuit breaker), `murmur-remote`
+  WebSocket client, self-hosted `murmur-server` (LAN/Tailscale only, bearer
   token, stores no audio or text, systemd unit, `tools/server/install.sh`),
-  wire protocol v1 (`flow-protocol`), equivalence / toggle-matrix / build-matrix
+  wire protocol v1 (`murmur-protocol`), equivalence / toggle-matrix / build-matrix
   contract tests.
-- Opt-in third-party cloud STT (D18): `flow-cloud` with OpenAI-compatible,
+- Opt-in third-party cloud STT (D18): `murmur-cloud` with OpenAI-compatible,
   OpenRouter, ElevenLabs, Deepgram and AssemblyAI adapters, per-provider
   consent, keys in OS secure storage, never in client-only builds.
 - Hands-free endpointing (D19) and pause-segmented incremental decoding for
@@ -1313,8 +1314,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   gates (D7, D17), on-device whisper / Parakeet, Developer settings hub,
   model import, debug APKs built in CI.
 - Opt-in local transcript debug log on both platforms (D21).
-- `tools/server/install.sh --llm` / `--llm-model FILE`: builds flow-server
-  with the `llm` feature, installs the `libflow_llm.so` plugin and (for a new
+- `tools/server/install.sh --llm` / `--llm-model FILE`: builds murmur-server
+  with the `llm` feature, installs the `libmurmur_llm.so` plugin and (for a new
   config) writes `llm_path` / `llm_lib`; an existing config with `llm_path`
   turns `--llm` on by itself (before, re-running the installer on such a box
   installed a server that refused to start).
