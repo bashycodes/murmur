@@ -80,3 +80,7 @@ EXTRA_EXPORT=Java_dev_flowclone_core_NativeFlowCore_nativeMadeUp READELF_FAIL=1 
 unreadable="$tmp/unreadable"; cp -r "$libs" "$unreadable"; rm "$unreadable/libflow_ffi.so"; mkdir "$unreadable/libflow_ffi.so"
 LIBS="$unreadable" expect_fail "an unreadable libflow_ffi.so" \
   '^FAIL \[local-network\]: grep exited 2' '^FAIL \[local-cloud\]: grep exited 2'
+# D80: a sherpa-onnx build with TTS (espeak-ng code in the .so) fails the gate.
+tts="$tmp/tts"; cp -r "$libs" "$tts"; printf 'x\0Wrong version of espeak-ng-data\0' > "$tts/libsherpa-onnx-c-api.so"
+LIBS="$tts" expect_fail "a sherpa-onnx build with TTS" \
+  '^FAIL \[no-tts\]: libsherpa-onnx-c-api.so: 1 espeak-ng/piper markers' 'failed checks: no-tts $'

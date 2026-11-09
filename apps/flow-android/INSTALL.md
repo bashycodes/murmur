@@ -254,7 +254,8 @@ workflow never signs release builds (no secrets in the repo or in Actions).
 
 ```sh
 cd apps/flow-android
-export SHERPA_ANDROID_LIBS=<sherpa-onnx-v1.13.8-android>/jniLibs/arm64-v8a   # Parakeet runtime (local/hybrid)
+tools/build-sherpa-android.sh ~/.cache/sherpa-android-no-tts               # once: Parakeet runtime, no TTS (D80)
+export SHERPA_ANDROID_LIBS=~/.cache/sherpa-android-no-tts                    # Parakeet runtime (local/hybrid)
 export BINDGEN_EXTRA_CLANG_ARGS="-I/usr/lib/gcc/x86_64-linux-gnu/13/include"  # this box's libclang
 tools/build-native.sh --flavor local     # -> app/src/local/jniLibs/arm64-v8a/
 tools/build-native.sh --flavor hybrid    # -> app/src/hybrid/jniLibs/arm64-v8a/ (+ OpenRouter client)

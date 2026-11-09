@@ -2,7 +2,7 @@
 name = "flow-cloud"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license-file.workspace = true
 description = "Opt-in third-party cloud STT backend (D18): provider adapters over HTTPS, feature-gated out of client-only builds"
 
 [features]
