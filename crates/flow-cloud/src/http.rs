@@ -206,6 +206,9 @@ pub fn send(rb: RequestBuilder, deadline: Instant) -> Result<Response, CloudErro
     Err(map_status(status, retry_after_ms, &body))
 }
 
+/// `BadRequest` code of a request for a model the server does not serve.
+pub const UNKNOWN_MODEL: &str = "unknown_model";
+
 /// OpenRouter's error table (D28 §1.5, §2.7) → [`CloudError`]. The body is
 /// inspected here and dropped: only a sanitised code survives.
 pub fn map_status(status: u16, retry_after_ms: Option<u64>, body: &[u8]) -> CloudError {
@@ -280,6 +283,22 @@ pub fn map_status(status: u16, retry_after_ms: Option<u64>, body: &[u8]) -> Clou
             CloudError::NoPrivateRoute
         }
         500..=599 => CloudError::Server(status),
+        // LiteLLM without a key database: only its master key is accepted.
+        400 if lc("/error/type") == "no_db_connection" => CloudError::Auth,
+        // A model the server does not serve (LiteLLM: "Invalid model name
+        // passed in model=…"; OpenAI-style servers: "model … not found" /
+        // "does not exist"): a plain code, never the echoed name.
+        400 | 404
+            if message.contains("invalid model name")
+                || code_lc == "model_not_found"
+                || (message.contains("model")
+                    && (message.contains("not found") || message.contains("does not exist"))) =>
+        {
+            CloudError::BadRequest {
+                status,
+                code: Some(UNKNOWN_MODEL.into()),
+            }
+        }
         _ if quota_word(&code_lc) => CloudError::Quota,
         _ => CloudError::BadRequest { status, code },
     }
@@ -405,6 +424,31 @@ mod tests {
         // Free text is never taken as a code.
         assert_eq!(error_code(br#"{"error":"Your key sk-abc is bad"}"#), None);
         assert_eq!(error_code(b"<html>"), None);
+    }
+
+    /// LiteLLM's own error bodies (captured from LiteLLM 1.106, D78).
+    #[test]
+    fn litellm_errors_map_to_plain_codes() {
+        let unknown = br#"{"error":{"message":"/chat/completions: Invalid model name passed in model=nope. Call `/v1/models` to view available models for your key.","type":"invalid_request_error","param":null,"code":"400"}}"#;
+        assert_eq!(
+            map_status(400, None, unknown),
+            CloudError::BadRequest {
+                status: 400,
+                code: Some(UNKNOWN_MODEL.into())
+            }
+        );
+        let openai = br#"{"error":{"message":"The model `x` does not exist","type":"invalid_request_error","code":"model_not_found"}}"#;
+        assert_eq!(
+            map_status(404, None, openai),
+            CloudError::BadRequest {
+                status: 404,
+                code: Some(UNKNOWN_MODEL.into())
+            }
+        );
+        let no_db = br#"{"error":{"message":"No connected db.","type":"no_db_connection","param":null,"code":"400"}}"#;
+        assert_eq!(map_status(400, None, no_db), CloudError::Auth);
+        let auth = br#"{"error":{"message":"Authentication Error, Invalid proxy server token passed.","type":"auth_error","param":"None","code":"401"}}"#;
+        assert_eq!(map_status(401, None, auth), CloudError::Auth);
     }
 
     #[test]

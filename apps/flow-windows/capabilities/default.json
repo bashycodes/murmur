@@ -54,6 +54,7 @@
     "allow-dev-set",
     "allow-dev-test-connection",
     "allow-dev-test-session",
+    "allow-setup-readiness",
     "allow-admin-status",
     "allow-admin-list-keys",
     "allow-admin-create-key",

@@ -26,15 +26,28 @@ a{color:#1a1a1a}a:hover{color:#30302f}
 
     <div style="flex: 1; display: flex; gap: 64px; align-items: center;">
       <div style="flex: 0 0 400px; display: flex; flex-direction: column; gap: 16px;">
-        <h1 class="fl-serif" style="margin: 0; font-size: 36px; line-height: 40px; font-weight: 400;">Add a speech model</h1>
-        <p style="margin: 0; font: 400 16px/24px var(--font-sans); color: var(--neutral-600);">The model is the part that listens. We can download it for you once, from where its makers publish it, or you can add the file yourself.</p>
+        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+          <h1 class="fl-serif" style="margin: 0; font-size: 36px; line-height: 40px; font-weight: 400;">Add a speech model</h1>
+          <span class="fl-badge fl-badge-light">Optional</span>
+        </div>
+        <p style="margin: 0; font: 400 16px/24px var(--font-sans); color: var(--neutral-600);">The model is the part that listens. This PC uses it whenever your server can't be reached. We download it once, from your server or from Hugging Face, or you can add the file yourself.</p>
         <div style="display: flex; gap: 12px; padding: 14px 16px; border-radius: 12px; background: var(--background-tertiary);">
           <svg class="lw-ico" viewBox="0 0 24 24" aria-hidden="true" style="flex: none; color: var(--fathom-800);"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9c-4-1.5-7-4.5-7-9V6zM9 12l2 2 4-4"></path></svg>
-          <span style="font: 400 14px/20px var(--font-sans); color: var(--neutral-600);">A download only fetches the file. Nothing about you or your voice is sent, and the file is checked against a fingerprint built into the app before it's used.</span>
+          <span style="font: 400 14px/20px var(--font-sans); color: var(--neutral-600);">A download only fetches the file. Nothing about you or your voice is sent. Every file is checked against its SHA-256 fingerprint before it's used, wherever it came from.</span>
         </div>
       </div>
 
       <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px;">
+        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+          <span class="fl-row-title" id="src-label">Download from</span>
+          <div class="lw-seg" role="radiogroup" aria-labelledby="src-label">
+            <sc-for list="{{sources}}" as="o" hint-placeholder-count="2">
+              <button type="button" role="radio" class="{{o.cls}}" aria-checked="{{o.on}}" onClick="{{o.pick}}">{{o.label}}</button>
+            </sc-for>
+          </div>
+          <span style="font: 400 13px/20px var(--font-sans); color: var(--foreground-tertiary);">{{srcHint}}</span>
+        </div>
+
         <div class="fl-group">
           <div class="fl-row" style="flex-wrap: wrap;">
             <span class="lw-tile"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="{{pkIcon}}"></path></svg></span>
@@ -45,25 +58,26 @@ a{color:#1a1a1a}a:hover{color:#30302f}
                 <a href="OnboardDownloadConfirm.dc.html" class="fl-btn fl-btn-primary fl-btn-sm" style="text-decoration: none;">Download</a>
               </span>
             </sc-if>
-            <sc-if value="{{isDownloading}}" hint-placeholder-val="{{false}}">
+            <sc-if value="{{isBusy}}" hint-placeholder-val="{{false}}">
               <x-import component-from-global-scope="Flow.Button" variant="secondary" size="sm">Cancel</x-import>
             </sc-if>
             <sc-if value="{{isReady}}" hint-placeholder-val="{{false}}">
               <span class="fl-badge fl-badge-success">Ready</span>
             </sc-if>
-            <sc-if value="{{isDownloading}}" hint-placeholder-val="{{false}}">
+            <sc-if value="{{isBusy}}" hint-placeholder-val="{{false}}">
               <div style="flex: 1 0 100%; display: flex; flex-direction: column; gap: 6px; padding-left: 48px;">
-                <div role="progressbar" aria-label="Downloading Parakeet" aria-valuemin="0" aria-valuemax="100" aria-valuenow="49" style="height: 6px; border-radius: 3px; background: var(--background-secondary); overflow: hidden;"><div style="width: 49%; height: 100%; background: var(--fathom-900);"></div></div>
-                <span style="font: 400 13px/20px var(--font-sans); color: var(--foreground-tertiary);">312 of 640 MB · about 20 seconds left · from github.com/k2-fsa</span>
+                <div role="progressbar" aria-label="Downloading Parakeet" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{pctNum}}" style="height: 6px; border-radius: 3px; background: var(--background-secondary); overflow: hidden;"><div style="width: {{pct}}; height: 100%; background: var(--fathom-900);"></div></div>
+                <span style="font: 400 13px/20px var(--font-sans); color: var(--foreground-tertiary);">{{progress}}</span>
               </div>
             </sc-if>
           </div>
           <div class="fl-row">
             <span class="lw-tile" style="color: var(--foreground-tertiary);"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6zM14 3v4h4"></path></svg></span>
-            <div class="fl-row-text"><div class="fl-row-title">Whisper base</div><div class="fl-row-desc">Many languages · 148 MB · optional</div></div>
+            <div class="fl-row-text"><div class="fl-row-title">Whisper base</div><div class="fl-row-desc">{{whDesc}}</div></div>
             <span style="display: flex; gap: 8px;">
               <x-import component-from-global-scope="Flow.Button" variant="ghost" size="sm">Choose file</x-import>
-              <x-import component-from-global-scope="Flow.Button" variant="secondary" size="sm">Download</x-import>
+              <sc-if value="{{whAvail}}" hint-placeholder-val="{{false}}"><x-import component-from-global-scope="Flow.Button" variant="secondary" size="sm">Download</x-import></sc-if>
+              <sc-if value="{{whMissing}}" hint-placeholder-val="{{true}}"><span class="fl-badge fl-badge-light">Not on your server</span></sc-if>
             </span>
           </div>
         </div>
@@ -71,7 +85,6 @@ a{color:#1a1a1a}a:hover{color:#30302f}
         <div style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 12px; border: 1.5px dashed var(--sand-700); color: var(--neutral-600);">
           <svg class="lw-ico" viewBox="0 0 24 24" aria-hidden="true" style="flex: none;"><path d="M12 15V4M8 8l4-4 4 4M5 13v7h14v-7"></path></svg>
           <span style="flex: 1; font: 400 14px/20px var(--font-sans);">Already have the files? Drop them here, or put them in <span class="lw-mono" style="font-size: 12px;">%APPDATA%\Murmur\models</span></span>
-          <a class="lw-link" href="https://github.com/k2-fsa/sherpa-onnx/releases" style="font-size: 14px; white-space: nowrap;">Download links →</a>
         </div>
       </div>
     </div>
@@ -79,6 +92,12 @@ a{color:#1a1a1a}a:hover{color:#30302f}
     <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
       <a href="OnboardEngine.dc.html" class="fl-btn fl-btn-ghost" style="text-decoration: none;">Back</a>
       <span style="flex: 1; text-align: right; font: 400 14px/20px var(--font-sans); color: var(--foreground-tertiary);">{{continueHint}}</span>
+      <sc-if value="{{canSkip}}" hint-placeholder-val="{{true}}">
+        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+          <a href="OnboardCleanup.dc.html" class="fl-btn fl-btn-ghost" style="text-decoration: none;">Skip — use my server only</a>
+          <span style="font: 400 13px/20px var(--font-sans); color: var(--foreground-tertiary);">You can add a local model later in Settings · Speech.</span>
+        </div>
+      </sc-if>
       <sc-if value="{{canContinue}}" hint-placeholder-val="{{true}}">
         <a href="OnboardCleanup.dc.html" class="fl-btn fl-btn-primary" style="text-decoration: none;">Continue</a>
       </sc-if>
@@ -89,28 +108,59 @@ a{color:#1a1a1a}a:hover{color:#30302f}
   </main>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"state":{"editor":"enum","options":["idle","downloading","ready"],"default":"idle"},"$preview":{"width":1280,"height":800}}'>
+<script type="text/x-dc" data-dc-script data-props='{"state":{"editor":"enum","options":["idle","downloading","checking","ready"],"default":"idle"},"source":{"editor":"enum","options":["server","huggingface"],"default":"server"},"hasServer":{"editor":"boolean","default":true},"$preview":{"width":1280,"height":800}}'>
 class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { source: null };
+  }
   renderVals() {
     const s = this.props.state ?? 'idle';
+    const hasServer = this.props.hasServer ?? true;
+    let src = this.state.source ?? this.props.source ?? (hasServer ? 'server' : 'huggingface');
+    if (!hasServer) src = 'huggingface';
+    const fromServer = src === 'server';
+    const where = fromServer ? 'from your server' : 'from Hugging Face';
     const desc = {
       idle: 'English · fastest · 640 MB. Not on this PC yet.',
       downloading: 'English · fastest · 640 MB',
-      ready: 'English · fastest · downloaded and checked. Loaded in 3 seconds.'
+      checking: 'English · fastest · 640 MB',
+      ready: 'English · fastest · downloaded, fingerprint matches. Loaded in 3 seconds.'
+    };
+    const progress = {
+      downloading: '312 of 640 MB · about 20 seconds left · ' + where,
+      checking: 'Checking the fingerprint (SHA-256)…'
     };
     const hint = {
-      idle: 'Add a speech model to continue',
+      idle: hasServer ? '' : 'Add a speech model to continue',
       downloading: 'You can carry on. It finishes in the background.',
+      checking: 'You can carry on. It finishes in the background.',
       ready: ''
     };
     return {
+      sources: [['server', 'Your server'], ['huggingface', 'Hugging Face']].filter(([id]) => hasServer || id !== 'server').map(([id, label]) => ({
+        label,
+        on: id === src ? 'true' : 'false',
+        cls: id === src ? 'is-on' : '',
+        pick: () => this.setState({ source: id })
+      })),
+      srcHint: !hasServer ? 'No server set up, so models come from huggingface.co' : (fromServer ? 'box.tailnet.ts.net · no internet needed' : 'huggingface.co · needs the internet'),
       isIdle: s === 'idle',
-      isDownloading: s === 'downloading',
+      isBusy: s === 'downloading' || s === 'checking',
       isReady: s === 'ready',
       canContinue: s !== 'idle',
+      canSkip: hasServer && s !== 'ready',
       pkDesc: desc[s],
+      progress: progress[s] ?? '',
+      pct: s === 'checking' ? '100%' : '49%',
+      pctNum: s === 'checking' ? '100' : '49',
       continueHint: hint[s],
-      pkIcon: s === 'ready' ? 'M5 12.5l4.5 4.5L19 7' : 'M12 4v11M8 11l4 4 4-4M5 20h14'
+      pkIcon: s === 'ready' ? 'M5 12.5l4.5 4.5L19 7' : 'M12 4v11M8 11l4 4 4-4M5 20h14',
+      whAvail: !fromServer,
+      whMissing: fromServer,
+      whDesc: fromServer
+        ? 'Many languages · 148 MB. Your server doesn’t have this one. Ask whoever runs it to add it, or switch to Hugging Face.'
+        : 'Many languages · 148 MB · optional'
     };
   }
 }

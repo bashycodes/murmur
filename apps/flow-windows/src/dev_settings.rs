@@ -182,6 +182,10 @@ impl Default for ServerSettings {
     }
 }
 
+/// D78: shown once when [`DevSettings::one_cloud_provider`] turns cloud
+/// speech off.
+pub const LITELLM_STT_OFF_NOTICE: &str = "Speech to text in the cloud is now off: your Cloud provider is LiteLLM, which this app uses for AI cleanup only. Speech stays on this PC and your server.";
+
 /// `prefs.json` → `"developer"`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -199,7 +203,8 @@ pub struct DevSettings {
     /// Overlay pill shows S/L (+ red dot on fallback). UI only. The cloud
     /// badge `C` shows regardless (C7).
     pub show_engine_badge: bool,
-    /// Opt-in OpenRouter speech-to-text (D18 C1). Off by default.
+    /// Opt-in OpenRouter speech-to-text (D18 C1). Off by default; always
+    /// off while LiteLLM is the Cloud provider (D78).
     pub allow_cloud: bool,
     /// OpenRouter settings, schema 2, without the key (router
     /// `RouterConfig.cloud`). A schema-1 (D18 provider list) value is
@@ -322,6 +327,19 @@ impl DevSettings {
             self.cloud_notice = rep.notice.clone();
         }
         rep
+    }
+
+    /// D78: one Cloud provider at a time. LiteLLM does cleanup only, so a
+    /// saved file with LiteLLM as the provider and cloud speech on (made
+    /// before D78) has that switch turned off, with a one-time notice.
+    /// `true` when something changed (the caller saves prefs.json).
+    pub fn one_cloud_provider(&mut self) -> bool {
+        if self.cloud.provider.offers_stt() || !self.allow_cloud {
+            return false;
+        }
+        self.allow_cloud = false;
+        self.cloud_notice = Some(LITELLM_STT_OFF_NOTICE.into());
+        true
     }
 
     /// The cleanup order, always all three engines once (D36). A file from
@@ -655,7 +673,7 @@ impl DevSettings {
                 }
             }
         }
-        let custom = !self.cloud.cleanup_provider.is_openrouter();
+        let custom = !self.cloud.provider.is_openrouter();
         if self.cleanup_effective(caps) && custom {
             // D52: the user's own server; its key is optional.
             let cc = &self.cloud.custom_cleanup;
@@ -706,9 +724,9 @@ pub const CUSTOM_PLAIN_HTTP_MSG: &str =
 /// How the page names the one cloud host.
 pub const OPENROUTER_NAME: &str = "OpenRouter (openrouter.ai)";
 
-/// Turning OpenRouter on for meetings before its audio consent (D47).
+/// Turning the cloud on for meetings before its audio consent (D47).
 pub const MEETING_CLOUD_CONSENT_MSG: &str =
-    "Accept sending audio to OpenRouter first: turn OpenRouter on under Engines above";
+    "Accept sending audio to OpenRouter first: turn Cloud on under Engines above";
 
 /// A meeting job when no route is on for meetings (D47).
 pub const NO_MEETING_ROUTE_MSG: &str =

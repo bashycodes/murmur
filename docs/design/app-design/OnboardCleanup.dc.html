@@ -56,11 +56,30 @@ a{color:#1a1a1a}a:hover{color:#30302f}
           </div>
         </sc-if>
         <sc-if value="{{showCloud}}" hint-placeholder-val="{{false}}">
-          <div class="fl-group">
-            <div class="fl-row">
-              <div class="fl-row-text"><label class="fl-row-title" for="or-key">OpenRouter API key</label><div class="fl-row-desc">Your words are sent as text, to zero-retention providers only.</div></div>
-              <div class="fl-row-control"><input id="or-key" class="fl-input" type="password" placeholder="sk-or-…" style="width: 220px;"></div>
+          <div class="fl-group" style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <div class="lw-seg" role="radiogroup" aria-label="Cloud provider">
+                <sc-for list="{{providers}}" as="p" hint-placeholder-count="2">
+                  <button type="button" role="radio" class="{{p.cls}}" aria-checked="{{p.on}}" onClick="{{p.pick}}">{{p.label}}</button>
+                </sc-for>
+              </div>
+              <span style="font: 400 13px/20px var(--font-sans); color: var(--foreground-tertiary);">{{provHint}}</span>
             </div>
+            <sc-if value="{{isOR}}" hint-placeholder-val="{{true}}">
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <label class="fl-row-title" for="or-key">OpenRouter API key</label>
+                <input id="or-key" class="fl-input" type="password" placeholder="sk-or-…">
+              </div>
+            </sc-if>
+            <sc-if value="{{isLL}}" hint-placeholder-val="{{false}}">
+              <div style="display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 12px;">
+                <div style="display: flex; flex-direction: column; gap: 6px;"><label class="fl-row-title" for="ll-url">Address</label><input id="ll-url" class="fl-input lw-mono" type="url" value="https://llm.home.lan:4000"></div>
+                <div style="display: flex; flex-direction: column; gap: 6px;"><label class="fl-row-title" for="ll-key">API key (optional)</label><input id="ll-key" class="fl-input" type="password" placeholder="sk-…"></div>
+                <div style="display: flex; flex-direction: column; gap: 6px;"><label class="fl-row-title" for="ll-model">Model</label><input id="ll-model" class="fl-input lw-mono" type="text" value="qwen2.5-32b"></div>
+                <div style="display: flex; flex-direction: column; gap: 6px; justify-content: flex-end;"><span style="display: flex; align-items: center; gap: 8px;"><x-import component-from-global-scope="Flow.Button" variant="secondary" size="sm">Test connection</x-import><span class="fl-badge fl-badge-success">6 models</span></span></div>
+              </div>
+            </sc-if>
+            <span style="font: 400 13px/20px var(--font-sans); color: var(--neutral-600);">{{consent}}</span>
           </div>
         </sc-if>
       </div>
@@ -73,23 +92,36 @@ a{color:#1a1a1a}a:hover{color:#30302f}
   </main>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+<script type="text/x-dc" data-dc-script data-props='{"picked":{"editor":"enum","options":["rules","pc","cloud"],"default":"pc"},"provider":{"editor":"enum","options":["openrouter","litellm"],"default":"openrouter"},"$preview":{"width":1280,"height":800}}'>
 class Component extends DCLogic {
   constructor(props) {
     super(props);
-    this.state = { picked: 'pc' };
+    this.state = { picked: null, provider: null };
   }
   renderVals() {
     const defs = [
       { id: 'rules', title: 'Rules only', rec: false, desc: 'Instant. Punctuation, numbers and "scratch that" by fixed rules. No model needed.', sample: 'So lunch is Thursday.' },
       { id: 'pc', title: 'On this PC', rec: true, desc: 'A small model on this PC. Private, adds about a second. Needs a 1 GB file.', sample: 'Lunch is on Thursday.' },
-      { id: 'cloud', title: 'OpenRouter', rec: false, desc: 'A large cloud model. Best quality, costs a few cents a month. Sends text, never audio.', sample: 'Lunch is on Thursday.' }
+      { id: 'cloud', title: 'Cloud', rec: false, desc: 'A large model from OpenRouter or your own LiteLLM proxy. Best quality. Sends text, never audio.', sample: 'Lunch is on Thursday.' }
     ];
-    const cur = this.state.picked;
+    const cur = this.state.picked ?? this.props.picked ?? 'pc';
+    const prov = this.state.provider ?? this.props.provider ?? 'openrouter';
+    const or = prov === 'openrouter';
     return {
       sample: defs.find((d) => d.id === cur).sample,
       showLocal: cur === 'pc',
       showCloud: cur === 'cloud',
+      isOR: or,
+      isLL: !or,
+      provHint: or ? 'Pay per use with your key' : 'Your own OpenAI-compatible proxy',
+      consent: or ? 'Your words go to openrouter.ai as text, to zero-retention providers only. You confirm before the first one is sent.'
+                  : 'Your words go to llm.home.lan as text. You confirm once for this address; a new address asks again.',
+      providers: [['openrouter', 'OpenRouter'], ['litellm', 'LiteLLM']].map(([id, label]) => ({
+        label,
+        on: id === prov ? 'true' : 'false',
+        cls: id === prov ? 'is-on' : '',
+        pick: () => this.setState({ provider: id })
+      })),
       options: defs.map((d) => {
         const on = d.id === cur;
         return Object.assign({}, d, {

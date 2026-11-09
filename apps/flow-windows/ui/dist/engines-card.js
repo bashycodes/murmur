@@ -45,12 +45,12 @@ function routeLabel(r) {
         const engine = prefsStore.get()?.asr_engine === "parakeet" ? "Parakeet" : "Whisper";
         return [`This PC · ${engine}`, DOT[model.state] ?? DOT.off];
     }
-    return [`OpenRouter · ${shortModel(views.or?.stt.model ?? "")}`, "var(--glow-300)"];
+    return [`Cloud · ${shortModel(views.or?.stt.model ?? "")}`, "var(--glow-300)"];
 }
 const FALLBACK = {
     server: "Falls back to your server",
     client: "Falls back to this PC",
-    cloud: "Falls back to OpenRouter",
+    cloud: "Falls back to the cloud",
 };
 /**
  * The cloud cleanup engine's label when the router can use it: consent
@@ -61,8 +61,8 @@ const FALLBACK = {
 function cloudCleanup(or) {
     const c = or.cleanup;
     if (c.provider === "custom")
-        return c.custom.consent && c.custom.model ? `Custom server · ${cleanupTarget(or)}` : null;
-    return c.consent ? `OpenRouter · ${shortModel(c.model)}` : null;
+        return c.custom.consent && c.custom.model ? `Cloud · ${cleanupTarget(or)}` : null;
+    return c.consent ? `Cloud · ${shortModel(c.model)}` : null;
 }
 function cleanupLabel() {
     const p = prefsStore.get();

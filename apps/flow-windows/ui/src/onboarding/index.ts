@@ -22,7 +22,8 @@ import { invoke, onEvent } from "../lib/ipc.js";
 import { captureChord, stopCapture } from "../lib/keycapture.js";
 import { modelStepFoot, sourceHint, sourceView, type ModelSource, type SourceView } from "../lib/model-source.js";
 import { prefsStore, type Prefs } from "../lib/prefs-store.js";
-import type { DevForm, DevView, FieldError, Health, KeyState, OrView, Route, RouteView } from "../lib/types.js";
+import { pillLine, readinessErrorLine, readinessLine, RECHECK_MS, type PillState, type Readiness, type TryLine, type TryLineSource } from "../lib/setup-try.js";
+import type { CloudProvider, DevForm, DevView, FieldError, Health, KeyState, OrView, Route, RouteView } from "../lib/types.js";
 import { initialEngine, recommendedEngine } from "../lib/setup-engine.js";
 import { views } from "../lib/views.js";
 import { TEMPLATE } from "./templates.js";
@@ -67,9 +68,15 @@ const st = {
   step: "welcome" as Step,
   engine: "pc" as Engine,
   cleanup: "rules" as Cleanup,
+  /** D78: which Cloud provider cleans up (speech is always OpenRouter). */
+  prov: "openrouter" as CloudProvider,
   model: null as ModelStatus | null,
   info: null as ModelInfo | null,
   openedAt: 0,
+  /** Who set the try step's line (setup-try.ts). */
+  line: "none" as TryLineSource,
+  /** When a finished dictation's result was last shown (ms). */
+  resultAt: 0,
   busy: false,
   /** "Download from" as picked on this run (null = as the backend has it). */
   pick: null as ModelSource | null,
@@ -487,12 +494,18 @@ function renderCleanup(): void {
   $<HTMLElement>("ob_sample").textContent = SAMPLE[st.cleanup];
   $<HTMLElement>("ob_llm_detail").hidden = st.cleanup !== "pc";
   $<HTMLElement>("ob_or_detail").hidden = st.cleanup !== "cloud";
+  renderCloudProvider();
+  status("ob_cleanup_status", "");
+  renderLlmModel();
+}
+
+/** The cleanup model's file field, its status and the Download row (redrawn as downloads and prefs change). */
+function renderLlmModel(): void {
   const p = prefsStore.get();
   const path = $<HTMLInputElement>("ob_llm_path");
   if (p && document.activeElement !== path) path.value = p.llm_model_path ?? "";
   if (st.info) path.placeholder = st.info.default_llm_path;
   $<HTMLElement>("ob_llm_status").textContent = llmLine(st.info?.llm);
-  status("ob_cleanup_status", "");
   renderLlmDownload();
 }
 
@@ -527,8 +540,151 @@ function renderLlmDownload(): void {
 /** Re-draw the open step after the server, the catalogue or a download changed. */
 function rerender(): void {
   if (st.step === "model") renderModel();
-  else if (st.step === "cleanup") renderCleanup();
+  else if (st.step === "cleanup") renderLlmModel();
   else if (st.step === "engine") placeServerForm();
+}
+
+/** D78: the OpenRouter | LiteLLM switch of the Cloud cleanup option. */
+function renderCloudProvider(): void {
+  const custom = st.prov === "custom";
+  for (const b of document.querySelectorAll<HTMLButtonElement>("#ob_cloud_prov_seg [data-ob-cloud-provider]")) {
+    const on = b.dataset.obCloudProvider === st.prov;
+    b.setAttribute("aria-checked", String(on));
+    b.classList.toggle("is-on", on);
+  }
+  $<HTMLElement>("ob_cloud_prov_hint").textContent = custom ? "Your own OpenAI-compatible proxy" : "Pay per use with your key";
+  $<HTMLElement>("ob_or_key_row").hidden = custom;
+  $<HTMLElement>("ob_ll_rows").hidden = !custom;
+  $<HTMLElement>("ob_clean_consent_title").textContent = custom
+    ? "Send my dictated text to my proxy"
+    : "Send my dictated text to OpenRouter";
+  $<HTMLElement>("ob_clean_consent_desc").textContent = custom
+    ? `Your words go to ${llHost() || "your proxy"} as text. You confirm once for this address; a new address asks again.`
+    : "Your words go to openrouter.ai as text, to zero-retention providers only. Your voice is not sent unless Cloud speech to text is also on.";
+}
+
+/** The host typed in the LiteLLM address field ("" when none). */
+function llHost(): string {
+  try {
+    return new URL($<HTMLInputElement>("ob_ll_url").value.trim()).host;
+  } catch {
+    return "";
+  }
+}
+
+function pickCloudProvider(p: CloudProvider): void {
+  if (p === st.prov) return;
+  st.prov = p;
+  // Consent names a host: switching provider asks again.
+  $<HTMLInputElement>("ob_clean_consent").checked = consentFor(p);
+  renderCloudProvider();
+  status("ob_cleanup_status", "");
+}
+
+function consentFor(p: CloudProvider): boolean {
+  const c = views.or?.cleanup;
+  if (!c) return false;
+  if (p === "custom") return c.provider === "custom" && c.custom.consent;
+  return c.provider === "openrouter" && c.consent;
+}
+
+interface CustomModels {
+  models?: string[];
+  error?: string;
+  message?: string;
+}
+
+/** "Test connection": the proxy's model list (typed key, else the saved one). */
+async function testProxy(): Promise<void> {
+  const out = $<HTMLElement>("ob_ll_test_out");
+  const baseUrl = $<HTMLInputElement>("ob_ll_url").value.trim();
+  if (!baseUrl) {
+    out.textContent = "Enter your proxy's address first.";
+    return;
+  }
+  out.textContent = `Asking ${llHost() || "your proxy"} for its models…`;
+  const typed = $<HTMLInputElement>("ob_ll_key").value.trim();
+  const args = { baseUrl, key: typed === "" ? null : typed };
+  try {
+    let t0 = performance.now();
+    let r = await invoke<CustomModels>("dev_or_custom_models", { ...args, consent: false });
+    // A saved key goes only to a host the user agreed to (D52): the tick is that agreement.
+    if (r.error === "consent_needed") {
+      if (!$<HTMLInputElement>("ob_clean_consent").checked) {
+        out.textContent = "Not sent: tick “Send my dictated text to my proxy” below first, or paste the key here.";
+        return;
+      }
+      t0 = performance.now();
+      r = await invoke<CustomModels>("dev_or_custom_models", { ...args, consent: true });
+      views.setOr(await invoke<OrView>("dev_or_get"));
+    }
+    const ms = Math.round(performance.now() - t0);
+    if (r.models) {
+      $<HTMLDataListElement>("ob_ll_models").replaceChildren(
+        ...r.models.map((id) => Object.assign(document.createElement("option"), { value: id })),
+      );
+      const model = $<HTMLInputElement>("ob_ll_model");
+      if (!model.value && r.models.length === 1) model.value = r.models[0] ?? "";
+      const n = r.models.length;
+      out.textContent = `Connected · ${n} model${n === 1 ? "" : "s"} · ${ms} ms${n ? ": pick one in the Model field" : ""}`;
+    } else {
+      out.textContent = r.message ?? r.error ?? "No answer";
+    }
+  } catch (e) {
+    out.textContent = errText(e);
+  }
+}
+
+/** Save the LiteLLM address, model and (typed) key as the Cloud provider. */
+async function applyProxy(): Promise<boolean> {
+  const baseUrl = $<HTMLInputElement>("ob_ll_url").value.trim();
+  const model = $<HTMLInputElement>("ob_ll_model").value.trim();
+  if (!baseUrl) {
+    status("ob_cleanup_status", "Enter your proxy's address.", false);
+    return false;
+  }
+  if (!model) {
+    status("ob_cleanup_status", "Pick a model: Test connection lists them.", false);
+    return false;
+  }
+  // D78: one Cloud provider at a time on Windows, and LiteLLM has no speech.
+  if (st.engine === "cloud") {
+    status(
+      "ob_cleanup_status",
+      "A LiteLLM proxy can't do speech to text, and Cloud is your speech engine: pick OpenRouter here, or go back and pick another engine.",
+      false,
+    );
+    return false;
+  }
+  const typed = $<HTMLInputElement>("ob_ll_key").value.trim();
+  if (typed) {
+    await invoke<KeyState>("dev_cloud_set_custom_key", { key: typed });
+    $<HTMLInputElement>("ob_ll_key").value = "";
+  }
+  const c = views.or?.cleanup.custom;
+  views.setOr(
+    await invoke<OrView>("dev_or_set_custom_cleanup", {
+      form: { provider: "custom", base_url: baseUrl, model, timeout_ms: c?.timeout_ms ?? 4000, consent: true },
+    }),
+  );
+  return true;
+}
+
+/** Back to OpenRouter when the saved provider is LiteLLM (its fields are kept). */
+async function useOpenRouter(): Promise<void> {
+  const c = views.or?.cleanup;
+  if (!c || c.provider === "openrouter") return;
+  views.setOr(
+    await invoke<OrView>("dev_or_set_custom_cleanup", {
+      form: {
+        provider: "openrouter",
+        base_url: c.custom.base_url,
+        model: c.custom.model,
+        timeout_ms: c.custom.timeout_ms,
+        consent: false,
+      },
+    }),
+  );
 }
 
 function cleanupForm(allow: boolean, consent: boolean): Record<string, unknown> {
@@ -536,7 +692,7 @@ function cleanupForm(allow: boolean, consent: boolean): Record<string, unknown> 
   return {
     allow,
     consent,
-    // Choosing OpenRouter here makes it the first cleaner (D36); otherwise
+    // Choosing Cloud here makes it the first cleaner (D36); otherwise
     // the cleanup order is kept (undefined = keep).
     order: allow ? ["cloud", "local", "server"] : undefined,
     sort: c?.sort ?? "latency",
@@ -553,16 +709,21 @@ async function applyCleanup(): Promise<boolean> {
   const level = p.cleanup_level === "none" ? "light" : p.cleanup_level;
   try {
     if (st.cleanup === "cloud") {
-      if (!(await saveKey("ob_clean_key", "ob_cleanup_status"))) return false;
       if (!$<HTMLInputElement>("ob_clean_consent").checked) {
-        status("ob_cleanup_status", "Tick “Send my dictated text to OpenRouter” to use it.", false);
+        status("ob_cleanup_status", `Tick “${$<HTMLElement>("ob_clean_consent_title").textContent ?? ""}” to use it.`, false);
         return false;
+      }
+      if (st.prov === "custom") {
+        if (!(await applyProxy())) return false;
+      } else {
+        if (!(await saveKey("ob_clean_key", "ob_cleanup_status"))) return false;
+        await useOpenRouter();
       }
       views.setOr(await invoke<OrView>("dev_or_set_cleanup", { form: cleanupForm(true, true) }));
       await prefsStore.save({ cleanup_level: level, spoken_cleanup: true, raw_mode: false });
       return true;
     }
-    // Rules or this PC: OpenRouter cleanup off if it was on.
+    // Rules or this PC: Cloud cleanup off if it was on.
     if (views.or?.supported && views.or.cleanup.allow) {
       views.setOr(await invoke<OrView>("dev_or_set_cleanup", { form: cleanupForm(false, false) }));
     }
@@ -644,21 +805,71 @@ const WHERE: Record<string, string> = {
   client: "on this PC",
   remote: "by your server",
   server: "by your server",
-  cloud: "by OpenRouter",
+  cloud: "in the cloud",
 };
+
+function setResult(line: TryLine): void {
+  const r = $<HTMLElement>("ob_result");
+  r.hidden = false;
+  r.classList.toggle("is-bad", line.bad);
+  $<HTMLElement>("ob_result_text").textContent = line.text;
+}
+
+function tryOpen(): boolean {
+  return st.step === "try" && !$<HTMLElement>("onboarding").hidden;
+}
 
 function showResult(v: RouteView): void {
   const last = v.last;
-  if (!last || last.at_ms < st.openedAt || st.step !== "try") return;
-  const r = $<HTMLElement>("ob_result");
-  r.hidden = false;
+  if (!last || last.at_ms < st.openedAt || !tryOpen()) return;
+  st.resultAt = Date.now();
   const good = last.status === "FORMATTED" || last.status === "RAW_TRANSCRIPT";
-  r.classList.toggle("is-bad", !good);
   const where = WHERE[last.engine ?? ""] ?? (last.engine ? `by ${last.engine}` : "");
   const secs = (ms: number): string => `${(ms / 1000).toFixed(1)} s`;
-  $<HTMLElement>("ob_result_text").textContent = good
-    ? `It works. Heard ${where} in ${secs(last.asr_ms)}${last.total_ms > last.asr_ms ? `, ready in ${secs(last.total_ms)}` : ""}.`
-    : `That didn't work: ${last.notice ?? last.empty_reason ?? last.status}. Try again, or check Settings → Speech to text after setup.`;
+  pressLine({
+    bad: !good,
+    text: good
+      ? `It works. Heard ${where} in ${secs(last.asr_ms)}${last.total_ms > last.asr_ms ? `, ready in ${secs(last.total_ms)}` : ""}.`
+      : `That didn't work: ${last.notice ?? last.empty_reason ?? last.status}. Try again, or check Settings → Speech to text after setup.`,
+  });
+}
+
+let recheckTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** D75: say up front when a press cannot work (no model, no server) instead
+ *  of leaving the step silent. A press that already reached the pill wins.
+ *  While the line is shown it is checked again every RECHECK_MS, so a server
+ *  that comes up or a model that finishes clears it. */
+async function checkReady(): Promise<void> {
+  clearTimeout(recheckTimer);
+  const opened = st.openedAt;
+  let line: TryLine | null;
+  try {
+    line = readinessLine(await invoke<Readiness>("setup_readiness"), models.busy());
+  } catch (e) {
+    line = readinessErrorLine(e);
+  }
+  if (!tryOpen() || st.openedAt !== opened || st.line === "press") return;
+  if (line) {
+    setResult(line);
+    st.line = "check";
+    recheckTimer = setTimeout(recheckReady, RECHECK_MS);
+  } else {
+    if (st.line === "check") $<HTMLElement>("ob_result").hidden = true; // ready now
+    st.line = "none";
+  }
+}
+
+/** Check again while the "can't work yet" line is up (timer, model events). */
+function recheckReady(): void {
+  if (tryOpen() && st.line === "check") void checkReady();
+}
+
+/** A press reached the pill or a dictation finished: it owns the line now. */
+function pressLine(line: TryLine): void {
+  clearTimeout(recheckTimer);
+  st.line = "press";
+  setResult(line);
 }
 
 // ------------------------------------------------------------ navigation
@@ -683,7 +894,9 @@ function show(s: Step): void {
   if (s === "try") {
     renderTry();
     st.openedAt = Date.now();
+    st.line = "none";
     $<HTMLElement>("ob_result").hidden = true;
+    void checkReady();
     $<HTMLTextAreaElement>("ob_try_box").focus();
   }
   panel(s).querySelector<HTMLElement>('[data-ob="next"]')?.focus({ preventScroll: true });
@@ -762,7 +975,14 @@ function initialChoices(): void {
   $<HTMLInputElement>("ob_host").value = dev?.host ?? "";
   $<HTMLInputElement>("ob_token").placeholder = dev?.token_saved ? "saved (hidden), leave empty to keep" : "from flow-server gen-token";
   $<HTMLInputElement>("ob_stt_consent").checked = !!or?.stt.consent;
-  $<HTMLInputElement>("ob_clean_consent").checked = !!or?.cleanup.consent;
+  st.prov = or?.cleanup.provider ?? "openrouter";
+  $<HTMLInputElement>("ob_clean_consent").checked = consentFor(st.prov);
+  $<HTMLInputElement>("ob_ll_url").value = or?.cleanup.custom.base_url ?? "";
+  $<HTMLInputElement>("ob_ll_model").value = or?.cleanup.custom.model ?? "";
+  if (or?.cleanup.custom.key.set) {
+    $<HTMLInputElement>("ob_ll_key").placeholder = `saved ${or.cleanup.custom.key.masked ?? ""}`;
+    $<HTMLElement>("ob_ll_key_desc").textContent = "A key is saved. Paste a new one only to replace it.";
+  }
   showKeyRows();
 }
 
@@ -804,6 +1024,11 @@ export const onboarding = {
     }
     $<HTMLInputElement>("ob_stt_consent").addEventListener("change", () => status("ob_cloud_status", ""));
     $<HTMLInputElement>("ob_clean_consent").addEventListener("change", () => status("ob_cleanup_status", ""));
+    for (const b of document.querySelectorAll<HTMLButtonElement>("#ob_cloud_prov_seg [data-ob-cloud-provider]")) {
+      b.addEventListener("click", () => pickCloudProvider((b.dataset.obCloudProvider ?? "openrouter") as CloudProvider));
+    }
+    $<HTMLButtonElement>("ob_ll_test").addEventListener("click", () => void testProxy());
+    $<HTMLInputElement>("ob_ll_url").addEventListener("input", renderCloudProvider);
     $<HTMLButtonElement>("ob_test_conn").addEventListener("click", () => void (st.step === "engine" ? testServer() : connectServer()));
     $<HTMLButtonElement>("ob_llm_dl_start").addEventListener("click", () => {
       const e = llmEntry();
@@ -842,24 +1067,35 @@ export const onboarding = {
         st.info = i;
         st.model = i.status;
         if (st.step === "model") renderModel();
+        recheckReady();
       });
     });
     void onEvent<ModelStatus>("model:status", (e) => {
       st.model = e.payload;
       if (st.step === "model") renderModel();
+      recheckReady();
     });
     void onEvent<LlmStatus>("llm:status", (e) => {
       if (st.info) st.info.llm = e.payload;
       if (st.step === "cleanup") $<HTMLElement>("ob_llm_status").textContent = llmLine(e.payload);
     });
     void onEvent<RouteView>("dev:route", (e) => showResult(e.payload));
+    // D75: the pill's state, so a press shows here too: listening, working,
+    // and why it failed (no model, server unreachable) instead of nothing.
+    void onEvent<PillState>("dictation:status", (e) => {
+      if (!tryOpen()) return;
+      const line = pillLine(e.payload);
+      if (line) pressLine(line);
+    });
     void onEvent<null>("history:changed", () => {
-      if (st.step !== "try" || !$<HTMLElement>("ob_result").hidden) return;
+      if (!tryOpen()) return;
       // Builds whose dictations bypass the router still say it arrived.
+      // A route result just before or just after this one wins.
+      const at = Date.now();
       setTimeout(() => {
-        if (!$<HTMLElement>("ob_result").hidden) return;
-        $<HTMLElement>("ob_result").hidden = false;
-        $<HTMLElement>("ob_result_text").textContent = "It works. Your dictation arrived.";
+        if (st.resultAt >= at - 2000 || !tryOpen()) return;
+        st.resultAt = Date.now();
+        pressLine({ text: "It works. Your dictation arrived.", bad: false });
       }, 300);
     });
   },

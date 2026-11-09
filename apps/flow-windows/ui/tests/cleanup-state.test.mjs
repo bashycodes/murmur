@@ -47,13 +47,13 @@ test("on but no consent: asks for the consent", () => {
   assert.match(l.text, /consent/);
 });
 
-test("custom server without an address: asks for it, not for consent or a key", () => {
+test("LiteLLM proxy without an address: asks for it, not for consent or a key", () => {
   // The backend reports no consent while there is no host to consent to.
   const l = cleanupBlockedLine(
     status({ provider: "custom", host: "", consent: false, blocked: "cloud_cleanup_not_configured" }),
     view({ keySet: false }),
   );
-  assert.equal(l.text, "Not used: enter the server address.");
+  assert.equal(l.text, "Not used: enter your proxy's address on the Cloud page.");
 });
 
 test("custom server without a model: asks for one", () => {

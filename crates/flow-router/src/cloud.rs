@@ -156,12 +156,18 @@ pub struct CloudConfig {
     /// Stop using the cloud (STT and cleanup) for the month once this much
     /// was spent.
     pub monthly_budget_usd: Option<Usd>,
-    /// D52: which service the `cloud` entry of the cleanup order calls.
-    /// Cloud speech-to-text always uses OpenRouter. Omitted while OpenRouter.
-    #[serde(skip_serializing_if = "CleanupProvider::is_openrouter")]
-    pub cleanup_provider: CleanupProvider,
-    /// D52: the user's own OpenAI-compatible server (LiteLLM, …) for
-    /// cleanup. Omitted while default.
+    /// D78: the one Cloud provider, OpenRouter or LiteLLM, that every cloud
+    /// use goes to. Cleanup calls it; cloud speech-to-text runs only while
+    /// it is OpenRouter (no LiteLLM speech path yet). Stored under its D52
+    /// name `cleanup_provider`, so saved settings read unchanged; omitted
+    /// while OpenRouter.
+    #[serde(
+        rename = "cleanup_provider",
+        skip_serializing_if = "CloudProvider::is_openrouter"
+    )]
+    pub provider: CloudProvider,
+    /// D52/D78: the LiteLLM proxy (or any OpenAI-compatible server) used
+    /// while [`Self::provider`] is LiteLLM. Omitted while default.
     #[serde(skip_serializing_if = "CustomCleanupConfig::is_default")]
     pub custom_cleanup: CustomCleanupConfig,
     /// Legacy (schema 1): active provider id. Read by the migration only.
@@ -182,7 +188,7 @@ impl Default for CloudConfig {
             schema: CLOUD_SCHEMA,
             openrouter: OpenRouterConfig::default(),
             monthly_budget_usd: None,
-            cleanup_provider: CleanupProvider::OpenRouter,
+            provider: CloudProvider::OpenRouter,
             custom_cleanup: CustomCleanupConfig::default(),
             active: String::new(),
             providers: Vec::new(),
@@ -212,7 +218,7 @@ impl CloudConfig {
             ));
         }
         self.openrouter.validate()?;
-        if self.cleanup_provider == CleanupProvider::Custom {
+        if self.provider == CloudProvider::LiteLlm {
             self.custom_cleanup.validate()?;
         }
         if let Some(b) = self.monthly_budget_usd {
@@ -226,25 +232,25 @@ impl CloudConfig {
     /// The cleanup consent for the selected provider: openrouter.ai, or
     /// the host of the custom server's current base URL (D52).
     pub fn cleanup_consent_ok(&self) -> bool {
-        match self.cleanup_provider {
-            CleanupProvider::OpenRouter => self.openrouter.cleanup.consent_ok(),
-            CleanupProvider::Custom => self.custom_cleanup.consent_ok(),
+        match self.provider {
+            CloudProvider::OpenRouter => self.openrouter.cleanup.consent_ok(),
+            CloudProvider::LiteLlm => self.custom_cleanup.consent_ok(),
         }
     }
 
     /// Model id the selected cleanup provider is asked for.
     pub fn cleanup_model(&self) -> &str {
-        match self.cleanup_provider {
-            CleanupProvider::OpenRouter => &self.openrouter.cleanup.model,
-            CleanupProvider::Custom => &self.custom_cleanup.model,
+        match self.provider {
+            CloudProvider::OpenRouter => &self.openrouter.cleanup.model,
+            CloudProvider::LiteLlm => &self.custom_cleanup.model,
         }
     }
 
     /// Hard cleanup timeout of the selected provider (ms).
     pub fn cleanup_timeout_ms(&self) -> u64 {
-        match self.cleanup_provider {
-            CleanupProvider::OpenRouter => self.openrouter.cleanup.timeout_ms,
-            CleanupProvider::Custom => self.custom_cleanup.timeout_ms,
+        match self.provider {
+            CloudProvider::OpenRouter => self.openrouter.cleanup.timeout_ms,
+            CloudProvider::LiteLlm => self.custom_cleanup.timeout_ms,
         }
     }
 
@@ -256,9 +262,9 @@ impl CloudConfig {
 
     /// The secure-storage / `set_cloud_key` id of the cleanup provider's key.
     pub fn cleanup_key_id(&self) -> &'static str {
-        match self.cleanup_provider {
-            CleanupProvider::OpenRouter => OPENROUTER_ID,
-            CleanupProvider::Custom => CUSTOM_CLEANUP_ID,
+        match self.provider {
+            CloudProvider::OpenRouter => OPENROUTER_ID,
+            CloudProvider::LiteLlm => CUSTOM_CLEANUP_ID,
         }
     }
 
@@ -266,29 +272,29 @@ impl CloudConfig {
     /// key: always for OpenRouter, address and model for a custom server
     /// (D52: Custom is saved when picked, before they are set).
     pub fn cleanup_ready(&self) -> bool {
-        match self.cleanup_provider {
-            CleanupProvider::OpenRouter => true,
-            CleanupProvider::Custom => self.custom_cleanup.ready(),
+        match self.provider {
+            CloudProvider::OpenRouter => true,
+            CloudProvider::LiteLlm => self.custom_cleanup.ready(),
         }
     }
 
     /// OpenRouter needs a key; a custom server may run without one (D52).
     pub fn cleanup_needs_key(&self) -> bool {
-        self.cleanup_provider.is_openrouter()
+        self.provider.is_openrouter()
     }
 
     /// The monthly budget gates OpenRouter cleanup only; the custom server
     /// is the owner's own (D52).
     pub fn cleanup_budgeted(&self) -> bool {
-        self.cleanup_provider.is_openrouter()
+        self.provider.is_openrouter()
     }
 
     /// The custom server's host when it is the cleanup provider, else `""`
     /// (the status page names the server it sends text to).
     pub fn cleanup_host(&self) -> String {
-        match self.cleanup_provider {
-            CleanupProvider::OpenRouter => String::new(),
-            CleanupProvider::Custom => self.custom_cleanup.host(),
+        match self.provider {
+            CloudProvider::OpenRouter => String::new(),
+            CloudProvider::LiteLlm => self.custom_cleanup.host(),
         }
     }
 
@@ -296,7 +302,7 @@ impl CloudConfig {
     /// its circuit and rebuilds the cleaner; STT edits do not).
     pub fn cleanup_view(&self) -> CleanupView {
         CleanupView {
-            provider: self.cleanup_provider,
+            provider: self.provider,
             privacy: self.openrouter.privacy.clone(),
             openrouter: self.openrouter.cleanup.clone(),
             custom: self.custom_cleanup.clone(),
@@ -307,33 +313,46 @@ impl CloudConfig {
 /// [`CloudConfig::cleanup_view`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CleanupView {
-    pub provider: CleanupProvider,
+    pub provider: CloudProvider,
     pub privacy: Privacy,
     pub openrouter: CleanupConfig,
     pub custom: CustomCleanupConfig,
 }
 
-/// The service behind the `cloud` cleanup route (D52).
+/// The Cloud provider (D78; D52's cleanup provider): who the `cloud`
+/// cleanup route calls. The Windows pages call both "Cloud" and keep one
+/// provider for every cloud use; cloud speech-to-text itself always runs on
+/// OpenRouter, whatever this says (Android still pairs the two).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum CleanupProvider {
-    /// OpenRouter (default; D28).
+pub enum CloudProvider {
+    /// OpenRouter (default; D28): speech to text and cleanup.
     #[default]
     #[serde(rename = "openrouter")]
     OpenRouter,
-    /// The user's own OpenAI-compatible server ([`CustomCleanupConfig`]).
-    #[serde(rename = "custom")]
-    Custom,
+    /// The user's LiteLLM proxy or other OpenAI-compatible server
+    /// ([`CustomCleanupConfig`], D52): cleanup only. On the wire it keeps
+    /// its D52 id `custom` (settings files, key id, usage rows, shell
+    /// JSON); `litellm` is read too.
+    #[serde(rename = "custom", alias = "litellm")]
+    LiteLlm,
 }
 
-impl CleanupProvider {
+impl CloudProvider {
     pub fn is_openrouter(&self) -> bool {
-        *self == CleanupProvider::OpenRouter
+        *self == CloudProvider::OpenRouter
+    }
+
+    /// Cloud speech-to-text can run on this provider (OpenRouter only).
+    /// The router does not enforce it (Android pairs LiteLLM cleanup with
+    /// OpenRouter speech); the Windows settings do (D78).
+    pub fn offers_stt(self) -> bool {
+        self.is_openrouter()
     }
 
     pub fn as_str(self) -> &'static str {
         match self {
-            CleanupProvider::OpenRouter => "openrouter",
-            CleanupProvider::Custom => "custom",
+            CloudProvider::OpenRouter => "openrouter",
+            CloudProvider::LiteLlm => "custom",
         }
     }
 }
@@ -1271,17 +1290,60 @@ mod tests {
         }
     }
 
+    /// D78: settings saved before "Cloud" (D52's `cleanup_provider` /
+    /// `custom`, or none = OpenRouter) read as the same provider and are
+    /// written back byte-for-byte, so an OpenRouter user's file is unchanged
+    /// and a D52 custom server becomes the LiteLLM provider.
+    #[test]
+    fn pre_cloud_settings_read_and_write_unchanged() {
+        let or_json = serde_json::json!({
+            "schema": 2,
+            "openrouter": serde_json::to_value(OpenRouterConfig::default()).unwrap(),
+            "monthly_budget_usd": 5.0,
+        });
+        let c: CloudConfig = serde_json::from_value(or_json.clone()).unwrap();
+        assert_eq!(c.provider, CloudProvider::OpenRouter);
+        assert!(c.provider.offers_stt());
+        assert_eq!(serde_json::to_value(&c).unwrap(), or_json);
+
+        let d52 = serde_json::json!({
+            "schema": 2,
+            "openrouter": serde_json::to_value(OpenRouterConfig::default()).unwrap(),
+            "monthly_budget_usd": null,
+            "cleanup_provider": "custom",
+            "custom_cleanup": {
+                "base_url": "http://10.0.0.5:4000/v1", "model": "local-cleanup",
+                "timeout_ms": 4000, "connect_timeout_ms": 1500,
+                "consent_host": "10.0.0.5", "consent_at_ms": 7
+            },
+        });
+        let c: CloudConfig = serde_json::from_value(d52.clone()).unwrap();
+        assert_eq!(c.provider, CloudProvider::LiteLlm);
+        assert!(!c.provider.offers_stt());
+        assert_eq!(
+            c.cleanup_key_id(),
+            CUSTOM_CLEANUP_ID,
+            "the saved key keeps its id"
+        );
+        assert!(c.cleanup_consent_ok());
+        assert_eq!(serde_json::to_value(&c).unwrap(), d52);
+
+        let named: CloudConfig =
+            serde_json::from_str(r#"{"schema":2,"cleanup_provider":"litellm"}"#).unwrap();
+        assert_eq!(named.provider, CloudProvider::LiteLlm);
+    }
+
     #[test]
     fn custom_cleanup_config() {
         let mut c = CloudConfig::default();
-        assert_eq!(c.cleanup_provider, CleanupProvider::OpenRouter);
+        assert_eq!(c.provider, CloudProvider::OpenRouter);
         assert_eq!(c.cleanup_key_id(), OPENROUTER_ID);
         // Not serialised while default: older readers see the same JSON.
         let j = serde_json::to_value(&c).unwrap();
         assert!(j.get("cleanup_provider").is_none() && j.get("custom_cleanup").is_none());
         // Selecting Custom validates what is set; an empty address or model
         // is saved but not ready (the page saves Custom when picked).
-        c.cleanup_provider = CleanupProvider::Custom;
+        c.provider = CloudProvider::LiteLlm;
         assert_eq!(c.validate(), Ok(()));
         assert!(!c.cleanup_ready());
         c.custom_cleanup.base_url = "ftp://10.0.0.5".into();

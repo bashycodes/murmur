@@ -24,7 +24,7 @@ use flow_core::cleanup::{
 use flow_core::config::CleanupLevel;
 
 use crate::cloud::{
-    month_of, CleanupProvider, CleanupRoute, CleanupView, CloudUsage, OpenRouterConfig, Privacy,
+    month_of, CleanupRoute, CleanupView, CloudProvider, CloudUsage, OpenRouterConfig, Privacy,
     Route, SecretString, SttConfig, CUSTOM_CLEANUP_ID, OPENROUTER_ID,
 };
 use crate::gate::Gate;
@@ -34,8 +34,9 @@ use crate::server_clean::ServerClean;
 use crate::{
     effective_connect_timeout_ms, now_unix_ms, Backend, BackendError, Capabilities, CircuitStatus,
     CleanupFactory, CleanupPlan, CleanupStatus, CloudCapabilities, CloudFactory,
-    CustomCleanupFactory, EngineKind, Failure, HealthReport, Prefer, RemoteFactory, RouteDiag,
-    RouteStatus, RouterConfig, RouterError, RouterPoll, ServerConfig, SessionRoute, StartInfo,
+    CustomCleanupFactory, EngineKind, Failure, HealthReport, Prefer, RemoteFactory, RouteCheck,
+    RouteDiag, RouteStatus, RouterConfig, RouterError, RouterPoll, ServerConfig, SessionRoute,
+    StartInfo,
 };
 
 /// What the cloud STT backend is built for: the privacy + STT settings
@@ -208,6 +209,9 @@ impl State {
         if self.cfg.cloud.is_legacy() {
             return Err(not_cfg("cloud settings not migrated"));
         }
+        // D78: "one Cloud provider at a time" is a Windows settings rule
+        // (prefs), not the router's: Android still pairs LiteLLM cleanup
+        // with OpenRouter speech, so speech never looks at the provider.
         let o = self.cfg.cloud.openrouter.clone();
         o.validate().map_err(|e| not_cfg(&e))?;
         if !o.stt.consent_ok() {
@@ -621,7 +625,7 @@ impl Router {
 
     /// Enable cleanup through the user's own OpenAI-compatible server
     /// (D52): `f` builds the custom cleaner (`flow_cloud::custom_cleanup_factory`).
-    /// Used when `cloud.cleanup_provider` is `custom`. Additive.
+    /// Used when `cloud.provider` is `custom`. Additive.
     pub fn with_custom_cleanup_factory(mut self, f: CustomCleanupFactory) -> Self {
         self.custom_cleanup_factory = Some(f);
         let mut st = self.state.lk();
@@ -632,9 +636,9 @@ impl Router {
 
     /// This build can clean up with the provider `cfg` selects (D52).
     fn cleanup_supported(&self, cfg: &RouterConfig) -> bool {
-        match cfg.cloud.cleanup_provider {
-            CleanupProvider::OpenRouter => self.cleanup_factory.is_some(),
-            CleanupProvider::Custom => self.custom_cleanup_factory.is_some(),
+        match cfg.cloud.provider {
+            CloudProvider::OpenRouter => self.cleanup_factory.is_some(),
+            CloudProvider::LiteLlm => self.custom_cleanup_factory.is_some(),
         }
     }
 
@@ -678,7 +682,7 @@ impl Router {
         CleanupStatus {
             supported,
             enabled: supported && cfg.cloud_cleanup_wanted(),
-            provider: cfg.cloud.cleanup_provider,
+            provider: cfg.cloud.provider,
             host: cfg.cloud.cleanup_host(),
             order: cfg.effective_cleanup_order(),
             server_llm: self.server_clean.server_llm(),
@@ -714,7 +718,7 @@ impl Router {
         let cloud = st.cfg.cloud.clone();
         let view = cloud.cleanup_view();
         let custom = !cloud.cleanup_needs_key();
-        let key = if cloud.cleanup_provider == CleanupProvider::Custom {
+        let key = if cloud.provider == CloudProvider::LiteLlm {
             st.custom_key.clone()
         } else {
             st.cloud_key.clone()
@@ -1533,6 +1537,63 @@ impl Router {
             }
         }
         h
+    }
+
+    /// D75: the dictation routes a start would walk right now, in order,
+    /// each with the reason a start would skip it *without trying* (no
+    /// server host, an open or sticky circuit with a viable fallback,
+    /// missing cloud consent/key/budget, no local engine). Read-only and
+    /// no network: a route with `skip: None` would be tried, and a server
+    /// may still fail to answer. A cold local engine with an on-demand
+    /// loader (D24) counts as triable. Additive.
+    pub fn route_checks(&self) -> Vec<RouteCheck> {
+        let st = self.state.lk();
+        if st.cfg.validate_order().is_err() {
+            return Vec::new();
+        }
+        let routes = self.routes(&st);
+        let now = Instant::now();
+        routes
+            .iter()
+            .enumerate()
+            .map(|(i, r)| {
+                let skip = match r {
+                    Route::Client => (st.warm_local().is_none() && st.lazy.is_none()).then(|| {
+                        BackendError::new(Failure::LocalNotReady, "local model not loaded")
+                    }),
+                    Route::Server => {
+                        if !st.cfg.server.is_configured() {
+                            Some(BackendError::new(
+                                Failure::ServerNotConfigured,
+                                "no server host set",
+                            ))
+                        } else if st.circuit.sticky
+                            || (st.circuit.is_open(now) && self.viable_after(&st, &routes, i))
+                        {
+                            Some(BackendError::new(
+                                st.circuit.reason.unwrap_or(Failure::CircuitOpen),
+                                "paused after recent failures",
+                            ))
+                        } else {
+                            None
+                        }
+                    }
+                    Route::Cloud => {
+                        if st.cloud_circuit.sticky
+                            || (st.cloud_circuit.is_open(now) && self.viable_after(&st, &routes, i))
+                        {
+                            Some(BackendError::new(Failure::CircuitOpen, "circuit open"))
+                        } else {
+                            st.cloud_check().err()
+                        }
+                    }
+                };
+                RouteCheck {
+                    kind: r.engine(),
+                    skip,
+                }
+            })
+            .collect()
     }
 
     pub fn route_status(&self) -> RouteStatus {

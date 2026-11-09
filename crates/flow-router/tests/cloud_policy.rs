@@ -296,6 +296,24 @@ fn cloud_never_used_without_key() {
     assert_cloud_unused(&k);
 }
 
+/// D78: "one Cloud provider at a time" lives in the Windows settings, not
+/// the router. Android still pairs LiteLLM cleanup with OpenRouter speech
+/// (D52), so with LiteLLM as the cleanup provider cloud speech-to-text
+/// still goes to OpenRouter.
+#[test]
+fn litellm_cleanup_keeps_openrouter_cloud_speech() {
+    let mut c = cloud_cfg(&[Route::Cloud, Route::Client]);
+    c.cloud.provider = CloudProvider::LiteLlm;
+    c.cloud.custom_cleanup.base_url = "http://10.0.0.5:4000/v1".into();
+    c.cloud.custom_cleanup.model = "local-cleanup".into();
+    c.validate().unwrap();
+    let k = rig(c);
+    k.router.start_session(SessionConfig::default()).unwrap();
+    let r = dictate(&k.router);
+    assert_eq!(route(&r).engine, "cloud");
+    assert_eq!(route(&r).fallback, None);
+}
+
 #[test]
 fn cloud_never_used_when_order_is_empty_or_omits_cloud() {
     // Empty order = legacy D17 policy, which never includes the cloud.

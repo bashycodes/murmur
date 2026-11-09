@@ -23,8 +23,8 @@ ${group("What leaves this PC", `<div class="fl-row lw-leave" id="leave_none">
     <div class="fl-row-text"><div class="fl-row-title">Nothing</div><div class="fl-row-desc">Everything runs on this PC. Nothing is sent over the network.</div></div>
   </div>` +
     leave("leave_server", ICON.server, "Audio to your server", "settings-server") +
-    leave("leave_or_audio", ICON.cloud, "Audio to OpenRouter", "settings-speech") +
-    leave("leave_or_text", ICON.cloud, "Text to OpenRouter", "settings-cleanup"))}
+    leave("leave_or_audio", ICON.cloud, "Audio to the cloud", "settings-speech") +
+    leave("leave_or_text", ICON.cloud, "Text to the cloud", "settings-cleanup"))}
 ${group("History", row("Keep dictation history", "Shown on Home. Stored only on this PC.", `<select id="retention" class="fl-select lw-w160" aria-label="Keep dictation history">
       <option value="keep">Forever</option>
       <option value="days_30">30 days</option>

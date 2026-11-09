@@ -1,7 +1,7 @@
 # Murmur app design (source of truth for the UI refactor)
 
 Exported from the "Murmur App Design" canvas (claude.ai design artifact),
-version 1793315264-ed41, 2026-10-29.
+version 1794116499-a1a1 (v53), 2026-11-08.
 
 - `canvas.json`: artboard index (titles, sizes, grouping).
 - `*.dc.html`: one artboard each. Markup is plain HTML + inline styles; `<sc-for>`/`<sc-if>`

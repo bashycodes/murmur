@@ -20,7 +20,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 pub use cloud::{
-    month_of, CleanupConfig, CleanupProvider, CleanupRoute, CloudConfig, CloudProviderConfig,
+    month_of, CleanupConfig, CleanupRoute, CloudConfig, CloudProvider, CloudProviderConfig,
     CloudUsage, CustomCleanupConfig, OpenRouterConfig, Privacy, ProviderUsage, Route, SecretString,
     SttConfig, Usd,
 };
@@ -655,6 +655,15 @@ pub struct CircuitStatus {
     pub until_config_change: bool,
 }
 
+/// One dictation route as a start would see it now ([`Router::route_checks`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RouteCheck {
+    pub kind: EngineKind,
+    /// Why a start would skip this route without trying it; `None` = it
+    /// would be tried (a server may still fail to answer).
+    pub skip: Option<BackendError>,
+}
+
 /// Developer page "Active engine" + "Circuit" + "Server info" rows.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -698,7 +707,7 @@ pub struct CleanupStatus {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub server_circuit: Option<CircuitStatus>,
     /// D52: `openrouter` or `custom` (the service behind `cloud`). Additive.
-    pub provider: crate::cloud::CleanupProvider,
+    pub provider: crate::cloud::CloudProvider,
     /// D52: the custom server's host (consent, status line); `""` for
     /// OpenRouter. Additive.
     #[serde(skip_serializing_if = "String::is_empty")]

@@ -685,7 +685,7 @@ mod tests {
         crate::openrouter::apply_custom_cleanup(
             &mut p.developer,
             &crate::openrouter::CustomCleanupForm {
-                provider: flow_router::CleanupProvider::Custom,
+                provider: flow_router::CloudProvider::LiteLlm,
                 base_url: "http://100.64.0.99:4100".into(),
                 model: String::new(),
                 timeout_ms: 4000,
@@ -698,7 +698,7 @@ mod tests {
         let (q, o) = Prefs::load(&path);
         assert_eq!(o, LoadOutcome::Loaded);
         let c = &q.developer.cloud;
-        assert_eq!(c.cleanup_provider, flow_router::CleanupProvider::Custom);
+        assert_eq!(c.provider, flow_router::CloudProvider::LiteLlm);
         assert_eq!(c.custom_cleanup.base_url, "http://100.64.0.99:4100/v1");
         assert_eq!(q.developer.cloud, p.developer.cloud);
         // With a model and consent too.

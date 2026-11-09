@@ -28,6 +28,9 @@ use crate::http::{self, CloudError};
 
 /// LiteLLM's per-response cost header (USD).
 pub const COST_HEADER: &str = "x-litellm-response-cost";
+/// The same before LiteLLM's own adjustments; streamed answers send only
+/// this one.
+pub const COST_HEADER_ORIGINAL: &str = "x-litellm-response-cost-original";
 /// At most this many ids are kept from `/models`.
 pub const MAX_MODELS: usize = 1000;
 /// Cap on a `/models` body.
@@ -169,9 +172,16 @@ impl CustomCleaner {
     }
 }
 
-/// `x-litellm-response-cost` as a finite, non-negative USD amount.
+/// `x-litellm-response-cost` as a finite, non-negative USD amount, else
+/// (header absent, as on LiteLLM's streamed answers) its
+/// `x-litellm-response-cost-original`.
 pub fn cost_header(h: &reqwest::header::HeaderMap) -> Option<f64> {
-    h.get(COST_HEADER)
+    let name = if h.contains_key(COST_HEADER) {
+        COST_HEADER
+    } else {
+        COST_HEADER_ORIGINAL
+    };
+    h.get(name)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.trim().parse::<f64>().ok())
         .filter(|c| c.is_finite() && *c >= 0.0)
@@ -374,7 +384,10 @@ pub fn describe(e: &CloudError) -> String {
             "the server address is not a valid http(s) URL".into()
         }
         CloudError::Connect(_) => "cannot reach the server".into(),
-        CloudError::Auth => "the server rejected the key".into(),
+        CloudError::Auth => "the server rejected the key, or needs one".into(),
+        CloudError::BadRequest { code: Some(c), .. } if c == http::UNKNOWN_MODEL => {
+            "the server has no model by that name: pick one from its list".into()
+        }
         CloudError::Quota => "the server says the key is over its budget".into(),
         CloudError::RateLimited { .. } => "the server is busy or rate limited".into(),
         CloudError::Timeout => "the server did not answer in time".into(),
@@ -422,6 +435,12 @@ mod tests {
         assert_eq!(cost_header(&h), None);
         h.insert(COST_HEADER, "NaN".parse().unwrap());
         assert_eq!(cost_header(&h), None);
+        // Streamed answers carry only the `-original` header.
+        let mut s = reqwest::header::HeaderMap::new();
+        s.insert(COST_HEADER_ORIGINAL, "0.0003".parse().unwrap());
+        assert_eq!(cost_header(&s), Some(0.0003));
+        s.insert(COST_HEADER, "0.0001".parse().unwrap());
+        assert_eq!(cost_header(&s), Some(0.0001), "the main header wins");
     }
 
     #[test]
