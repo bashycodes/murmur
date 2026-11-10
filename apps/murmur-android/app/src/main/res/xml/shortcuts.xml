@@ -5,7 +5,7 @@
     <shortcut
         android:shortcutId="new_note"
         android:enabled="true"
-        android:icon="@drawable/ic_launcher"
+        android:icon="@mipmap/ic_launcher"
         android:shortcutShortLabel="@string/shortcut_new_note_short"
         android:shortcutLongLabel="@string/shortcut_new_note_long">
         <!-- NoteEditorActivity.ACTION_NEW_NOTE: a fresh note, field focused, keyboard up. -->
@@ -17,7 +17,7 @@
     <shortcut
         android:shortcutId="scratchpad"
         android:enabled="true"
-        android:icon="@drawable/ic_launcher"
+        android:icon="@mipmap/ic_launcher"
         android:shortcutShortLabel="@string/shortcut_scratchpad_short"
         android:shortcutLongLabel="@string/shortcut_scratchpad_long">
         <intent
