@@ -5,17 +5,24 @@ Writes:
   apps/murmur-android/app/src/main/res/drawable/ic_launcher_foreground.xml
       the white mark as a VectorDrawable on the 108 dp adaptive-icon canvas
       (also the themed-icon monochrome layer)
+  apps/murmur-android/app/src/main/res/drawable/ic_launcher_background.xml
+      the tile gradient of docs/brand/murmur-app.svg
   apps/murmur-windows/icons/{32x32.png,icon.png,icon.ico}
       rendered from docs/brand/murmur-app.svg; icon.ico holds 16-256 px
+  docs/brand/murmur-social.png
+      1280x640 GitHub social preview: the mark and the "Murmur" wordmark
 
-The bars are read from docs/brand/murmur-mark-mono.svg, so a change to the
-mark only needs the SVGs edited and this script re-run.
+The bars (x, y, width, height, rx) are read from
+docs/brand/murmur-mark-mono.svg and the tile gradient from
+docs/brand/murmur-app.svg, so a change to the mark only needs the SVGs edited
+and this script re-run.
 
 PNG rendering uses Playwright's headless Chromium (ImageMagick drops the
 tile gradient). Needs `pip install playwright` and `playwright install
 chromium`; the Android output needs neither (`--android-only`).
 """
 import argparse
+import base64
 import struct
 import sys
 import xml.etree.ElementTree as ET
@@ -23,41 +30,69 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 BRAND = ROOT / "docs/brand"
-ANDROID_FG = ROOT / "apps/murmur-android/app/src/main/res/drawable/ic_launcher_foreground.xml"
+ANDROID_RES = ROOT / "apps/murmur-android/app/src/main/res/drawable"
 WIN_ICONS = ROOT / "apps/murmur-windows/icons"
+FONT = ROOT / "apps/murmur-windows/ui/dist/fonts/Figtree.woff2"
 ICO_SIZES = (16, 24, 32, 48, 64, 128, 256)
+SVG_NS = "{http://www.w3.org/2000/svg}"
 
 # Adaptive icons: 108 dp canvas, the launcher mask shows the middle 72 dp and
 # only a 66 dp circle is guaranteed. 44 dp of mark width keeps its corners
 # inside that circle.
 CANVAS_DP = 108
 MARK_WIDTH_DP = 44
+SOCIAL_W, SOCIAL_H = 1280, 640
 
 
-def bars():
-    """(x, y, w, h) of each bar in the 256-unit mark viewBox."""
-    tree = ET.parse(BRAND / "murmur-mark-mono.svg")
-    rects = [e for e in tree.iter() if e.tag.endswith("rect")]
-    return [tuple(float(r.get(k)) for k in ("x", "y", "width", "height")) for r in rects]
+def parse_svg(name):
+    root = ET.parse(BRAND / name).getroot()
+    if root.get("width") != "256" or root.get("height") != "256":
+        sys.exit(f"{name}: expected width=256 height=256, the renderer resizes those")
+    return root
 
 
-def pill(x, y, w, h):
-    """VectorDrawable path for a bar with fully rounded ends (rx = w/2)."""
-    r = w / 2
-    return (f"M{x:g},{y + r:g}a{r:g},{r:g} 0,0 1,{w:g},0v{h - w:g}"
-            f"a{r:g},{r:g} 0,0 1,{-w:g},0z")
+def read_bars():
+    """(x, y, w, h, rx) of each bar in the 256-unit mark viewBox."""
+    rects = list(parse_svg("murmur-mark-mono.svg").iter(f"{SVG_NS}rect"))
+    if not rects:
+        sys.exit("murmur-mark-mono.svg: no <rect> bars found")
+    return [tuple(float(r.get(k, 0)) for k in ("x", "y", "width", "height", "rx")) for r in rects]
+
+
+def read_tile_gradient():
+    """(x1, y1, x2, y2) as box fractions and [(offset, colour)] of the tile."""
+    grads = list(parse_svg("murmur-app.svg").iter(f"{SVG_NS}linearGradient"))
+    if len(grads) != 1:
+        sys.exit(f"murmur-app.svg: expected one linearGradient, found {len(grads)}")
+    g = grads[0]
+    ends = tuple(float(g.get(k)) for k in ("x1", "y1", "x2", "y2"))
+    stops = [(float(s.get("offset")), s.get("stop-color").upper()) for s in g.iter(f"{SVG_NS}stop")]
+    return ends, stops
+
+
+def bar_path(x, y, w, h, rx):
+    """VectorDrawable path for a rounded bar (rx clamped to w/2, as SVG does)."""
+    r = min(rx, w / 2, h / 2)
+    if r == w / 2:  # fully rounded ends: one half-circle arc each
+        return (f"M{x:g},{y + r:g}a{r:g},{r:g} 0,0 1,{w:g},0v{h - w:g}"
+                f"a{r:g},{r:g} 0,0 1,{-w:g},0z")
+    if r == 0:
+        return f"M{x:g},{y:g}h{w:g}v{h:g}h{-w:g}z"
+    return (f"M{x + r:g},{y:g}h{w - 2 * r:g}a{r:g},{r:g} 0,0 1,{r:g},{r:g}v{h - 2 * r:g}"
+            f"a{r:g},{r:g} 0,0 1,{-r:g},{r:g}h{2 * r - w:g}a{r:g},{r:g} 0,0 1,{-r:g},{-r:g}"
+            f"v{2 * r - h:g}a{r:g},{r:g} 0,0 1,{r:g},{-r:g}z")
 
 
 def android_foreground():
-    bs = bars()
-    left = min(x for x, _, _, _ in bs)
-    right = max(x + w for x, _, w, _ in bs)
-    top = min(y for _, y, _, _ in bs)
-    bottom = max(y + h for _, y, _, h in bs)
-    s = MARK_WIDTH_DP / (right - left)
-    tx = CANVAS_DP / 2 - s * (left + right) / 2
-    ty = CANVAS_DP / 2 - s * (top + bottom) / 2
-    paths = "".join(pill(*b) for b in bs)
+    bars = read_bars()
+    left = min(x for x, _, _, _, _ in bars)
+    right = max(x + w for x, _, w, _, _ in bars)
+    top = min(y for _, y, _, _, _ in bars)
+    bottom = max(y + h for _, y, _, h, _ in bars)
+    scale = MARK_WIDTH_DP / (right - left)
+    tx = CANVAS_DP / 2 - scale * (left + right) / 2
+    ty = CANVAS_DP / 2 - scale * (top + bottom) / 2
+    paths = "".join(bar_path(*b) for b in bars)
     return f"""<?xml version="1.0" encoding="utf-8"?>
 <!-- Generated by tools/brand/gen-icons.py from docs/brand/murmur-mark-mono.svg; edit the SVG
      and re-run instead of editing this file. Launcher foreground and themed-icon layer. -->
@@ -67,8 +102,8 @@ def android_foreground():
     android:viewportWidth="{CANVAS_DP}"
     android:viewportHeight="{CANVAS_DP}">
     <group
-        android:scaleX="{s:.5f}"
-        android:scaleY="{s:.5f}"
+        android:scaleX="{scale:.5f}"
+        android:scaleY="{scale:.5f}"
         android:translateX="{tx:.4f}"
         android:translateY="{ty:.4f}">
         <path
@@ -79,21 +114,82 @@ def android_foreground():
 """
 
 
-def render_pngs(svg_path, sizes):
+def android_background():
+    (x1, y1, x2, y2), stops = read_tile_gradient()
+    items = "\n".join(f'                <item android:offset="{o:g}" android:color="#FF{c[1:]}" />'
+                      for o, c in stops)
+    return f"""<?xml version="1.0" encoding="utf-8"?>
+<!-- Generated by tools/brand/gen-icons.py from the tile gradient of docs/brand/murmur-app.svg;
+     edit the SVG and re-run instead of editing this file. Launcher background. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="{CANVAS_DP}dp"
+    android:height="{CANVAS_DP}dp"
+    android:viewportWidth="{CANVAS_DP}"
+    android:viewportHeight="{CANVAS_DP}">
+    <path android:pathData="M0,0h{CANVAS_DP}v{CANVAS_DP}h-{CANVAS_DP}z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="{x1 * CANVAS_DP:g}"
+                android:startY="{y1 * CANVAS_DP:g}"
+                android:endX="{x2 * CANVAS_DP:g}"
+                android:endY="{y2 * CANVAS_DP:g}">
+{items}
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>
+"""
+
+
+def sized_svg(name, px, fill=None):
+    """The SVG's markup with its 256x256 size swapped for px (and every rect's fill for fill)."""
+    root = parse_svg(name)
+    root.set("width", str(px))
+    root.set("height", str(px))
+    if fill:
+        for r in root.iter(f"{SVG_NS}rect"):
+            r.set("fill", fill)
+    ET.register_namespace("", SVG_NS[1:-1])
+    return ET.tostring(root, encoding="unicode")
+
+
+def social_html():
+    (x1, y1, x2, y2), stops = read_tile_gradient()
+    angle = 135 if (x1, y1, x2, y2) == (0, 0, 1, 1) else 180
+    css_stops = ", ".join(f"{c} {o * 100:g}%" for o, c in stops)
+    mark = sized_svg("murmur-mark-mono.svg", 240, fill="#FFFFFF")
+    font = base64.b64encode(FONT.read_bytes()).decode()
+    return f"""<html><head><style>
+@font-face {{ font-family: Figtree; src: url(data:font/woff2;base64,{font}) format("woff2");
+  font-weight: 300 900; }}
+body {{ margin: 0; width: {SOCIAL_W}px; height: {SOCIAL_H}px; display: flex; align-items: center;
+  justify-content: center; gap: 36px; background: linear-gradient({angle}deg, {css_stops}); }}
+span {{ font: 700 168px/1 Figtree, sans-serif; color: #FFFFFF; letter-spacing: -4px; }}
+</style></head><body>{mark}<span>Murmur</span></body></html>"""
+
+
+def render(pages):
+    """{key: (html, width, height)} -> {key: PNG bytes}, transparent background."""
     from playwright.sync_api import sync_playwright
 
-    svg = svg_path.read_text()
     out = {}
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
-        for px in sizes:
-            page = browser.new_page(viewport={"width": px, "height": px})
-            body = svg.replace('width="256" height="256"', f'width="{px}" height="{px}"', 1)
-            page.set_content(f'<html><body style="margin:0;background:transparent">{body}</body></html>')
-            out[px] = page.screenshot(omit_background=True)
+        for key, (html, w, h) in pages.items():
+            page = browser.new_page(viewport={"width": w, "height": h})
+            page.set_content(html)
+            page.evaluate("document.fonts.ready")
+            out[key] = page.screenshot(omit_background=True)
             page.close()
         browser.close()
     return out
+
+
+def icon_page(px):
+    body = sized_svg("murmur-app.svg", px)
+    return f'<html><body style="margin:0;background:transparent">{body}</body></html>', px, px
 
 
 def ico(pngs):
@@ -110,19 +206,30 @@ def ico(pngs):
     return head + dirs + data
 
 
+def write(path, content):
+    if isinstance(content, str):
+        path.write_text(content)
+    else:
+        path.write_bytes(content)
+    print(f"wrote {path.relative_to(ROOT)}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--android-only", action="store_true")
     args = ap.parse_args()
-    ANDROID_FG.write_text(android_foreground())
-    print(f"wrote {ANDROID_FG.relative_to(ROOT)}")
+    write(ANDROID_RES / "ic_launcher_foreground.xml", android_foreground())
+    write(ANDROID_RES / "ic_launcher_background.xml", android_background())
     if args.android_only:
         return 0
-    pngs = render_pngs(BRAND / "murmur-app.svg", ICO_SIZES)
-    (WIN_ICONS / "32x32.png").write_bytes(pngs[32])
-    (WIN_ICONS / "icon.png").write_bytes(pngs[256])
-    (WIN_ICONS / "icon.ico").write_bytes(ico(pngs))
-    print(f"wrote {WIN_ICONS.relative_to(ROOT)}/{{32x32.png,icon.png,icon.ico}}")
+    pages = {px: icon_page(px) for px in ICO_SIZES}
+    pages["social"] = (social_html(), SOCIAL_W, SOCIAL_H)
+    pngs = render(pages)
+    social = pngs.pop("social")
+    write(WIN_ICONS / "32x32.png", pngs[32])
+    write(WIN_ICONS / "icon.png", pngs[256])
+    write(WIN_ICONS / "icon.ico", ico(pngs))
+    write(BRAND / "murmur-social.png", social)
     return 0
 
 
