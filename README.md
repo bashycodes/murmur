@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/brand/murmur-mark.svg" width="112" alt="Murmur logo: five purple bars forming an M"></p>
+
 # murmur (Murmur)
 
 A privacy-first, local-only dictation app: push-to-talk dictation that
