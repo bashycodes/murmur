@@ -14,7 +14,7 @@ name: android-build
 on:
   workflow_dispatch:
   push:
-    branches: [integration, android-final, "feat/**"]
+    branches: [integration, main, android-final, "feat/**"]
     # Path filters are not evaluated for tag pushes: every release tag builds.
     tags: ["v*"]
     paths:
