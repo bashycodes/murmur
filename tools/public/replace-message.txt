@@ -1,0 +1,14 @@
+regex:Local Wis[p]r==>Murmur
+regex:Local-Wis[p]r==>Murmur
+regex:LocalWis[p]r==>Murmur
+regex:Local wis[p]r==>Murmur
+regex:local-wis[p]r==>murmur
+regex:localwis[p]r==>murmur
+regex:local wis[p]r==>murmur
+regex: ?\(`?[MS]:[0-9]{3,}(?:-[0-9]+)?`?(?:, `?[MS]:[0-9]{3,}(?:-[0-9]+)?`?)*\)==>
+regex:`?(?<![A-Za-z0-9_])[MS]:[0-9]{3,}(?:-[0-9]+)?`?==>[ref]
+regex:`Ot\(\)`/`Re\(\)`==>the client post-processing
+regex:`Ot\(\)`==>the client post-processing
+regex:`Re\(\)`==>the cursor-context step
+regex:\bOt\(\)/Re\(\)==>the client post-processing
+regex:`?contentObservationEndReaso[n]`?==>end reason

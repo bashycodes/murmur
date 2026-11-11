@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# FROZEN: promoted to tools/public/ (filter.sh, sync.sh; docs/public-release/sync.md). This copy is the audit trail of the 2026-11-09 first publish; change tools/public/ instead.
 """Build the per-run filter-repo inputs from the committed rules.
 
   prepare.py --repo MIRROR --out RUNDIR [--private FILE]

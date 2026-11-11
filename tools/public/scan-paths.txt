@@ -1,0 +1,9 @@
+# Path rules for scan.py: `<category> <name> <python-regex on the path>`.
+wispr-legal research-tree ^research/
+wispr-legal wispr-outputs _wispr\.jsonl$|(?:^|/)wispr_[^/]*$|(?:^|/)wispr_parity/|(?:^|/)wispr-[^/]*handoff
+wispr-legal old-findings ^findings/
+wispr-legal port-vectors ^crates/flow-core/tests/vectors
+wispr-legal copied-lists (?:policy-data/|a11y-lists-android|app-categories-android|app-lists-windows|data/app-lists\.json)
+wispr-legal competitor-doc competitor-comparison
+# Audio: counted for review (the only audio is a public-domain sample and stubs).
+info audio-file (?i)\.(?:wav|m4a|mp3|ogg|flac|opus|webm|aac)$

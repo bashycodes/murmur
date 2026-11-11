@@ -22,7 +22,7 @@ name: windows-build
 on:
   workflow_dispatch:
   push:
-    branches: [integration, win-final, "feat/**"]
+    branches: [integration, main, win-final, "feat/**"]
     # Path filters are not evaluated for tag pushes: every release tag builds.
     tags: ["v*"]
     paths:

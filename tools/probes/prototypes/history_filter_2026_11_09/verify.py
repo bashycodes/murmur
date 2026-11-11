@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# FROZEN: promoted to tools/public/ (filter.sh, sync.sh; docs/public-release/sync.md). This copy is the audit trail of the 2026-11-09 first publish; change tools/public/ instead.
 """Compare the original mirror with the rewritten one (public B).
 
   verify.py --orig ORIG --new NEW

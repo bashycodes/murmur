@@ -1,5 +1,10 @@
 # History filter report (public B)
 
+> **Since 2026-11-11:** the first publish (Step C below) ran on 2026-11-09
+> (public `main` `fad649b`). The filter now lives in `tools/public/`, and later
+> updates go through the fast-forward-only sync in [sync.md](sync.md). The
+> prototype paths below are the frozen audit trail.
+
 For owner sign-off before anything is pushed. Nothing has been pushed; the
 rewritten repo exists only in a local scratch mirror with no remote.
 
@@ -119,7 +124,7 @@ are fixed in HEAD. Left as is:
    repo's default branch. The alternative is to keep the name `integration`; in that case push
    `refs/heads/integration:refs/heads/integration` and set it as the default on GitHub.
 
-## Step C (after sign-off; not run)
+## Step C (the first publish, run on 2026-11-09; later updates: [sync.md](sync.md))
 
 Rerun on the then-current integration first (no `SOURCE_REF`), because the rules are
 idempotent and the run directory is new each time:
