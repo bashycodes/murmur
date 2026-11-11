@@ -6,7 +6,8 @@ name: repo-checks
 on:
   workflow_dispatch:
   push:
-    branches: [integration, "feat/**"]
+    branches: [integration, main, "feat/**"]
+    tags: ["v*"]
   pull_request:
 
 permissions:
@@ -40,12 +41,17 @@ jobs:
             base="$(git merge-base "$PR_BASE" "$PR_HEAD")"
           fi
           if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
-            # New branch or rewritten history: scan what is not on integration.
-            base="$(git merge-base origin/integration "$head" 2>/dev/null || true)"
+            # New branch, tag or rewritten history: scan what is not on
+            # integration (main in the public repo, which has no integration).
+            base="$(git merge-base origin/integration "$head" 2>/dev/null \
+              || git merge-base origin/main "$head" 2>/dev/null || true)"
           fi
           if [ -n "$base" ] && [ "$base" != "$head" ]; then
             tools/checks/leak-scan.py "$base..$head"
           fi
+      # The public sync's fast-forward and refusal checks (docs/public-release/sync.md).
+      - name: Public sync checks
+        run: tools/public/sync_test.sh
       - name: Decision ids unique
         run: tools/checks/decision-ids.sh
       # The android-build native gate on a stub toolchain: no SIGPIPE flake,
