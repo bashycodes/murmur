@@ -103,6 +103,10 @@ printf 'only-a-name\n' >"$WORK/bad/leak-patterns.txt"
 usage_error "malformed rule" python3 "$WORK/bad/leak-scan.py" --stdin </dev/null
 
 # Range mode: added lines, commit messages and identities.
+# A throwaway identity, so commits work on a runner with no global git user.
+NOREPLY="1+dev@users.noreply.github.com"
+export GIT_AUTHOR_NAME=dev GIT_COMMITTER_NAME=dev
+export GIT_AUTHOR_EMAIL="$NOREPLY" GIT_COMMITTER_EMAIL="$NOREPLY"
 cd "$WORK"
 git init -q -b main repo && cd repo
 commit() {  # commit EMAIL MESSAGE FILE TEXT
@@ -111,7 +115,6 @@ commit() {  # commit EMAIL MESSAGE FILE TEXT
   GIT_AUTHOR_NAME=dev GIT_AUTHOR_EMAIL="$1" GIT_COMMITTER_NAME=dev GIT_COMMITTER_EMAIL="$1" \
     git commit -q -m "$2"
 }
-NOREPLY="1+dev@users.noreply.github.com"
 commit "$NOREPLY" "base" a.txt "base"
 BASE="$(git rev-parse HEAD)"
 commit "$NOREPLY" "clean change" b.txt "sk-or-v1-LEAKCHECK-0123456789abcdef"
@@ -146,7 +149,7 @@ git checkout -q -b side
 commit "$NOREPLY" "side change" s.txt "x"
 git checkout -q old
 git rm -q m.txt
-GIT_COMMITTER_EMAIL="$NOREPLY" GIT_AUTHOR_EMAIL="$NOREPLY" git commit -q -m "old drops it"
+git commit -q -m "old drops it"
 python3 "$SCAN" "old..side" >/dev/null 2>&1 && fail "range: setup: two-dot should see the line"
 python3 "$SCAN" "old...side" >/dev/null 2>&1 || fail "range: three-dot range flagged base-side lines"
 ok "range: three-dot range starts at merge-base"
