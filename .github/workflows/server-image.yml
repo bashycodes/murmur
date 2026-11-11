@@ -1,14 +1,17 @@
 # murmur-server container image (deploy/docker/Dockerfile, D77): checks that
 # it builds and starts. Build only: nothing is pushed or published (users
-# build it from the source, docs/server-setup.md). Runs on pull requests and
-# on integration; feature-branch pushes are covered by their pull request.
+# build it from the source, docs/server-setup.md). Runs on pull requests, on
+# integration and on the public repo's main (path-filtered) and on release
+# tags (path filters do not apply to tags); feature-branch pushes are covered
+# by their pull request.
 # CPU image only: the CUDA variant (`--target cuda`) is built locally.
 name: server-image
 
 on:
   workflow_dispatch:
   push:
-    branches: [integration]
+    branches: [integration, main]
+    tags: ["v*"]
     paths:
       - "crates/**"
       - "Cargo.toml"
