@@ -35,17 +35,44 @@ A dry run does these steps:
    first-parent subjects, the tags not yet published, and the exact command
    that pushes this run.
 
-With `--push`, the tool runs one `git push --atomic public <tip>:refs/heads/main`.
-The push also carries `refs/tags/vX.Y.Z` for each tag you name with `--tags`.
-It never uses `--force`, `--all` or `--tags`. GitHub's own non-fast-forward
-check still applies.
+With `--push`, the tool first runs `git push public <tip>:refs/heads/main`.
+Then it pushes each tag you name with `--tags` on its own, as
+`git push public refs/tags/vX.Y.Z:refs/tags/vX.Y.Z`. It never uses `--force`,
+`--all` or `--tags`. GitHub's own non-fast-forward check still applies.
+
+The tags go one per push because of a GitHub limit: a push that carries more
+than three tags creates no push event. No workflow runs for it, so no release
+job runs either.
 
 `--run DIR` reuses a run that has passed, so the push matches what the dry run
-showed. The checks against the public repo run again at push time.
+showed. The checks against the public repo run again at push time. The run
+must still match `origin/integration`, which is fetched again first. If
+integration has moved since the run, the sync refuses. Either filter again
+(drop `--run`), or pass `--allow-stale` to publish the older state on purpose.
+The fast-forward then stays a fast-forward, and the next sync brings in the
+rest.
 
 Release flow: run `tools/release.sh X.Y.Z --apply`, push to the private repo,
 then run `sync.sh --tags vX.Y.Z` and, after that, `--push`. The public CI then
 builds the tag and attaches the APKs and the installers to the public release.
+
+### Backfilling the releases of the first publish
+
+The first publish on 2026-11-09 pushed `main` and all 18 tags in one push,
+so the tags got no push event and the public repo has no releases for them.
+Both build workflows have `workflow_dispatch`. A dispatch on a tag ref runs the
+workflow file at that tag with `github.ref_type == 'tag'`, so the release job
+runs too. To backfill one tag:
+
+```
+gh workflow run android-build.yml --repo bashycodes/murmur --ref v1.1.2
+gh workflow run windows-build.yml --repo bashycodes/murmur --ref v1.1.2
+```
+
+Every tag from v0.2.0 to v1.1.2 has both `workflow_dispatch` and the release
+job. Older tags may still fail to build, because the filter removed modules
+that their trees needed (history-filter-report.md, "Residuals"). Those tags
+stay without assets. This doc only describes the backfill; it has not been run.
 
 ## What it refuses (exit 1, nothing pushed)
 
@@ -53,6 +80,7 @@ builds the tag and attaches the APKs and the installers to the public release.
 |---|---|
 | filter run failed verify or scan / no `ok` marker | The run's `verify.txt` or `scan.txt` names the problem. A common case is a new integration commit with text that the rules would change in the HEAD tree: fix it on integration. |
 | run filtered a commit not on `origin/integration` | The run is a preview (`SOURCE_REF=feat/x filter.sh`). Only merged work is published. |
+| stale run | `--run` names a run of an older integration. Filter again, or pass `--allow-stale`. |
 | published main is not in the filtered history | The filter no longer reproduces the published SHAs. See "Determinism". |
 | published main is not an ancestor of the filtered tip | Not a fast-forward. Someone pushed to the public `main` directly. |
 | published tag `vX` is another object here | A published tag moved, or its message rules changed. |
@@ -101,8 +129,9 @@ Nothing is pushed.
   published SHAs do not change, and the next dry run shows whether that holds.
   Then fix HEAD too, because verify requires the HEAD tree to come out
   unchanged. Rotate any real credential.
-- **A push failed halfway.** The push is `--atomic`, so it either lands whole
-  or not at all. Rerun the dry run.
+- **A push failed halfway.** Each push lands whole or not at all. If `main`
+  landed but a tag did not, rerun the same command: `main` is then up to date,
+  and only the missing tags are pushed.
 
 ## Open decision: archiving the private repo
 
