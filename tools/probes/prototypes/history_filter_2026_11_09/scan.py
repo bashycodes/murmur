@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# FROZEN: promoted to tools/public/ (filter.sh, sync.sh; docs/public-release/sync.md). This copy is the audit trail of the 2026-11-09 first publish; change tools/public/ instead.
 """Rescan a whole git history: every blob, commit message and identity.
 
 Part of the public history filter (public B, see docs/public-release/history-filter-report.md).

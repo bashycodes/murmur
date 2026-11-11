@@ -1,0 +1,29 @@
+# Public scan patterns for scan.py: `<category> <name> <python-regex>`.
+# Categories: secrets, personal, wispr-legal (a hit fails the scan) and
+# info (counted only). Personal values themselves live in the uncommitted
+# private file, never here. Every phrase carries a [x] class so that this
+# file matches neither itself nor the replace-text rules once it is in the
+# history.
+
+# --- wispr-legal: decompiled-corpus citations and other-product material
+wispr-legal corpus-cite-m (?<![A-Za-z0-9_])M:[0-9]{3,}
+wispr-legal corpus-cite-s (?<![A-Za-z0-9_])S:[0-9]{3,}
+wispr-legal wispr-host (?i)wisprflo[w]\.(?:ai|com|app)|inference-inf[o]|wispr[a-z0-9-]*\.s3|s3[a-z0-9.-]*amazonaws\.com/[a-z0-9-]*wispr
+wispr-legal wispr-prompt (?i)You are Flow voic[e]|voice action mod[e]|LLM prompt's FORMATTIN[G]
+wispr-legal wispr-internal editedTextUnbounde[d]|Wispr's own app list[s]|mirrors Wispr's helpe[r]|app_kinds_from_wisp[r]|Wispr Flo[w]\.exe
+wispr-legal wispr-fn-cite (?:`Ot\(\)`|`Re\(\)`|\bOt\(\)/Re\(\)|contentObservationEndReaso[n])
+wispr-legal wispr-port (?i)port(?:ed)? of (?:the )?Wisp[r]|Wisp[r](?:'s)? (?:Windows|Android) `|decompiled (?:index\.js|smali|Wisp[r])
+wispr-legal wispr-ui-copy (?i)Caps \+ P[u]nctuation|Caps \+ Less p[u]nctuation|Run a transform on everything you dictate, automaticall[y]|This style applies in personal messenger[s]|For quick thoughts you want to come back t[o]|hey joe[y]
+wispr-legal old-name (?i)local[ _-]?wisp[r](?!\s+flow)
+wispr-legal re-tooling (?i)asar extrac[t]|smali_skeleto[n]|helperapi_schem[a]|flow_api_v1\.reconstructe[d]|flow_schema_fina[l]
+# Nominative mentions: counted, not a failure (owner keeps the timeline;
+# the README credit line is allowed).
+info wispr-word (?i)\bwispr\b
+
+# --- personal (generic shapes; the owner's own values come from --private)
+personal personal-email (?i)[A-Za-z0-9._%+-]+@(?:gmail|googlemail|yahoo|hotmail|outlook|live|icloud|me|proton|protonmail)\.(?:com|me|ch)
+personal phone-il (?<![0-9])(?:\+972[- ]?|0)5[0-9][- ]?[0-9]{3}[- ]?[0-9]{4}(?![0-9])
+personal phone-intl (?<![0-9A-Za-z+])\+[1-9][0-9]{0,2}[ -]?\(?[0-9]{2,4}\)?[ -][0-9]{3,4}[ -][0-9]{3,4}(?![0-9])
+personal real-tailnet-suffix (?i)(?<![a-z0-9-])(?!tail1234\b|tail1\b|tailnet\b|tailnet-abc\b|box\b|example\b)[a-z0-9-]+\.ts\.net\b
+info device-model SM-S936B
+info ticktick-project 6ade2cbf8f081c311be5b39d

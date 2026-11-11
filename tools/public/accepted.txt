@@ -1,0 +1,8 @@
+# Scan hits accepted on purpose: `<pattern-name> <path-glob> <reason>`.
+# Each reason must match an owner decision or a scan-report verdict.
+generic-high-entropy apps/*-android/app/src/main/java/dev/*/policy/Policy.kt code identifier (EditorInputType.isPassword), not a secret
+personal-email THIRD-PARTY-LICENSES third-party authors' addresses inside licence texts
+personal-email third_party/licenses/* third-party authors' addresses inside licence texts
+tailnet-ip * synthetic CGNAT test addresses (100.64.x.x); the real tailnet addresses are private patterns with 0 hits
+openai-key crates/*-server/tests/debug_capture.rs the fixture's fake key (sk-or-v1-0000fake…, allowlisted by leak-allow.txt), at its pre-A5 path too
+home-path crates/*-server/src/legacy.rs test placeholder account (one-letter name under /home), not a real user

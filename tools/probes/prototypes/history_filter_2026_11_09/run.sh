@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# FROZEN: promoted to tools/public/ (filter.sh, sync.sh; docs/public-release/sync.md). This copy is the audit trail of the 2026-11-09 first publish; change tools/public/ instead.
 # Public B: rewrite the history for the public repo in a scratch mirror.
 #
 #   run.sh [SOURCE_GITDIR]     default: this checkout's common git dir

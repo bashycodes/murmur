@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# FROZEN: promoted to tools/public/ (filter.sh, sync.sh; docs/public-release/sync.md). This copy is the audit trail of the 2026-11-09 first publish; change tools/public/ instead.
 # scan.sh REPO [scan.py args]: the three scans (secrets, personal,
 # wispr-legal) over every blob, message and identity of REPO's history.
 set -euo pipefail

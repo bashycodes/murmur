@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# FROZEN: promoted to tools/public/ (filter.sh, sync.sh; docs/public-release/sync.md). This copy is the audit trail of the 2026-11-09 first publish; change tools/public/ instead.
 # headdiff.sh RUNDIR: word-level diff of every integration HEAD file the
 # text rules changed (orig vs rewritten). For reviewing verify.py's list.
 set -euo pipefail
