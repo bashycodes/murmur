@@ -4,7 +4,9 @@
 #
 #   sync.sh                       filter origin/integration, check, dry run
 #   sync.sh --push                the same, then push the new commits
-#   sync.sh --run DIR [--push]    reuse a passed filter.sh run, no refilter
+#   sync.sh --run DIR [--push]    reuse a passed filter.sh run, no refilter;
+#                                 refused once origin/integration has moved
+#                                 past the run, unless --allow-stale
 #   sync.sh ... --tags v1.2.0[,v1.2.1]   also publish these new tags
 #
 # Every sync, dry run or not:
@@ -19,8 +21,11 @@
 #      identities) must be clean.
 #   5. A requested tag must be new, and its commit on the new main.
 # Then a dry run prints the range; --push runs exactly
-#   git push --atomic public <tip>:refs/heads/main [refs/tags/vX.Y.Z ...]
-# with no --force (the server refuses a non-fast-forward too).
+#   git push public <tip>:refs/heads/main
+#   git push public refs/tags/vX.Y.Z:refs/tags/vX.Y.Z     (one push per tag)
+# with no --force (the server refuses a non-fast-forward too). One tag per
+# push because GitHub sends no push event, so no release job runs, for a
+# push that carries more than three tags.
 #
 # Env: MURMUR_PUBLIC_URL (read, default the https URL), MURMUR_PUBLIC_PUSH_URL
 # (default the ssh URL), MURMUR_SOURCE_GITDIR (default this checkout's common
@@ -37,11 +42,12 @@ SOURCE_REF=refs/remotes/origin/integration
 usage() { sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 refuse() { echo "sync.sh: REFUSED: $*" >&2; echo "sync.sh: nothing pushed" >&2; exit 1; }
 
-push=0 run="" tags=()
+push=0 run="" stale_ok=0 tags=()
 while (( $# )); do
   case $1 in
     --push) push=1 ;;
     --run) run=${2:?--run needs a directory}; shift ;;
+    --allow-stale) stale_ok=1 ;;
     --tags) IFS=, read -ra more <<<"${2:?--tags needs vX.Y.Z}"; tags+=("${more[@]}"); shift ;;
     -h|--help) usage ;;
     *) echo "sync.sh: unknown argument $1" >&2; usage ;;
@@ -52,9 +58,12 @@ for t in "${tags[@]}"; do
   [[ $t =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "sync.sh: bad tag $t (want vX.Y.Z)" >&2; exit 2; }
 done
 
-# 1. A passed filter run.
+# published TAG: the public repo has refs/tags/TAG (reads $remote).
+published() { grep -q "[[:space:]]refs/tags/$1\$" <<<"$remote"; }
+
+# 1. A passed filter run of the current origin/integration.
+git -C "$SRC" fetch --quiet origin integration
 if [[ -z $run ]]; then
-  git -C "$SRC" fetch --quiet origin integration
   log=$(SOURCE_REF=$SOURCE_REF "$HERE/filter.sh" "$SRC" | tee /dev/stderr) \
     || refuse "the filter run failed verify or scan (see its verify.txt / scan.txt)"
   run=$(sed -n 's/^run: \([^ ]*\) verify=.*/\1/p' <<<"$log" | tail -1)
@@ -68,7 +77,10 @@ git -C "$SRC" merge-base --is-ancestor "$src_sha" "$SOURCE_REF" 2>/dev/null \
   || refuse "the run filtered ${src_sha:0:10}, which is not on $SOURCE_REF"
 new=$(git -C "$repo" rev-parse --verify 'refs/heads/integration^{commit}')
 cur=$(git -C "$SRC" rev-parse "$SOURCE_REF")
-[[ $cur == "$src_sha" ]] || echo "note: $SOURCE_REF is now ${cur:0:10}; this run filtered ${src_sha:0:10}"
+if [[ $cur != "$src_sha" ]]; then
+  (( stale_ok )) || refuse "stale run: it filtered ${src_sha:0:10}, $SOURCE_REF is now ${cur:0:10}; rerun without --run (or pass --allow-stale to publish the older state)"
+  echo "note: --allow-stale: publishing ${src_sha:0:10}, $SOURCE_REF is ${cur:0:10}"
+fi
 
 # 2. Published main is in the filtered history, below the new tip.
 remote=$(git ls-remote "$PUBLIC_URL" refs/heads/main 'refs/tags/*') || { echo "sync.sh: cannot read $PUBLIC_URL" >&2; exit 2; }
@@ -94,34 +106,43 @@ if (( count )); then
 fi
 
 # 5. Requested tags: new, and on the new main.
-refspecs=()
-(( count )) && refspecs+=("$new:refs/heads/main")
+new_tags=()
 for t in "${tags[@]}"; do
-  grep -q "[[:space:]]refs/tags/$t\$" <<<"$remote" && { echo "tag $t: already published, skipped"; continue; }
+  published "$t" && { echo "tag $t: already published, skipped"; continue; }
   tc=$(git -C "$repo" rev-parse --verify --quiet "refs/tags/$t^{commit}") || refuse "tag $t is not in the filtered repo"
   git -C "$repo" merge-base --is-ancestor "$tc" "$new" || refuse "tag $t (${tc:0:10}) is not on the new main"
-  refspecs+=("refs/tags/$t:refs/tags/$t")
+  new_tags+=("$t")
 done
 
 echo "public main: ${pub:0:10}   filtered tip: ${new:0:10} (from integration ${src_sha:0:10})"
 echo "range ${pub:0:10}..${new:0:10}: $count new commit(s)"
 (( count )) && git -C "$repo" log --oneline --first-parent "$pub..$new" | head -20
 unpub=$(git -C "$repo" tag --merged "$new" --list 'v*' | while read -r t; do
-  grep -q "[[:space:]]refs/tags/$t\$" <<<"$remote" || printf '%s ' "$t"; done)
+  published "$t" || printf '%s ' "$t"; done)
 [[ -z $unpub ]] || echo "unpublished tags on the new main: $unpub(publish with --tags)"
-if (( ! ${#refspecs[@]} )); then
+if (( ! count && ! ${#new_tags[@]} )); then
   echo "up to date: nothing to push"
   exit 0
 fi
-echo "would push: ${refspecs[*]}"
+(( count )) && echo "would push: $new:refs/heads/main"
+for t in "${new_tags[@]}"; do echo "would push: refs/tags/$t (a push of its own)"; done
 if (( ! push )); then
-  echo "dry run: nothing pushed. To push this run: $0 --run $run --push${tags:+ --tags $(IFS=,; echo "${tags[*]}")}"
+  next="$0 --run $run --push"
+  (( stale_ok )) && next+=" --allow-stale"
+  (( ${#new_tags[@]} )) && next+=" --tags $(IFS=,; echo "${new_tags[*]}")"
+  echo "dry run: nothing pushed. To push this run (while $SOURCE_REF stays at ${cur:0:10}): $next"
   exit 0
 fi
 
 git -C "$repo" remote remove public 2>/dev/null || true
 git -C "$repo" remote add public "$PUSH_URL"
-git -C "$repo" push --atomic public "${refspecs[@]}"
-after=$(git ls-remote "$PUSH_URL" refs/heads/main | awk '{print $1}')
-[[ $after == "$new" || $count == 0 ]] || { echo "sync.sh: pushed, but public main reads ${after:0:10}" >&2; exit 1; }
-echo "pushed: public main is ${new:0:10}"
+if (( count )); then
+  git -C "$repo" push public "$new:refs/heads/main"
+  after=$(git ls-remote "$PUSH_URL" refs/heads/main | awk '{print $1}')
+  [[ $after == "$new" ]] || { echo "sync.sh: pushed, but public main reads ${after:0:10}" >&2; exit 1; }
+  echo "pushed: public main is ${new:0:10}"
+fi
+for t in "${new_tags[@]}"; do
+  git -C "$repo" push public "refs/tags/$t:refs/tags/$t"
+  echo "pushed: tag $t"
+done

@@ -29,11 +29,13 @@ commit() {
   g "$1" rev-parse HEAD
 }
 
-# The private side: two commits, origin/integration on the second.
+# The private side: two commits, its origin's integration on the second.
 git init -q -b integration "$WORK/priv"
-commit "$WORK/priv" "private one" >/dev/null
+P1=$(commit "$WORK/priv" "private one")
 P2=$(commit "$WORK/priv" "private two")
-g "$WORK/priv" update-ref refs/remotes/origin/integration "$P2"
+git init -q --bare "$WORK/priv-origin.git"
+g "$WORK/priv" push -q "$WORK/priv-origin.git" integration
+g "$WORK/priv" remote add origin "$WORK/priv-origin.git"
 
 # The "filtered" history a filter run would produce: A (published) then B.
 git init -q -b integration "$WORK/filt"
@@ -51,11 +53,16 @@ mk_run() {
   echo ok > "$d/ok"
   echo "$d"
 }
-# reset_public SHA: a public repo whose main is SHA, with the v1.0.0 tag.
+# reset_public SHA: a public repo whose main is SHA, with the v1.0.0 tag. From
+# then on, its hook logs the refs of each push on one line of pushes.log.
 reset_public() {
   rm -rf "$WORK/public.git"
   git init -q --bare "$WORK/public.git"
   g "$WORK/filt" push -q "$WORK/public.git" "$1:refs/heads/main" refs/tags/v1.0.0
+  printf '#!/bin/sh\ncut -d" " -f3 | tr "\\n" " " >> "%s"; echo >> "%s"\n' \
+    "$WORK/pushes.log" "$WORK/pushes.log" > "$WORK/public.git/hooks/post-receive"
+  chmod +x "$WORK/public.git/hooks/post-receive"
+  : > "$WORK/pushes.log"
 }
 pub_main() { g "$WORK/public.git" rev-parse refs/heads/main; }
 # refused WHY PATTERN ARGS...: sync.sh exits 1, says PATTERN, leaves main as it was.
@@ -105,6 +112,12 @@ refused "not a fast-forward" "not a fast-forward" --run "$(mk_run side "$WORK/fi
 reset_public "$A"
 NOOK=$(mk_run nook "$WORK/filt"); rm "$NOOK/ok"
 refused "run without the ok marker" "did not pass" --run "$NOOK"
+# origin/integration moved past the run: refused unless --allow-stale.
+STALE=$(mk_run stale "$WORK/filt" "$P1")
+refused "stale run" "stale run" --run "$STALE" --push
+out=$("$SYNC" --run "$STALE" --allow-stale 2>&1) || fail "--allow-stale: $out"
+grep -q -- "--push --allow-stale" <<<"$out" || fail "--allow-stale: next step drops the flag: $out"
+ok "--allow-stale lets a stale run through and keeps the flag in the next step"
 refused "run of a commit not on origin/integration" "not on refs/remotes/origin/integration" \
   --run "$(mk_run foreign "$WORK/filt" "$(g "$WORK/filt" rev-parse "$S")")"
 
@@ -117,14 +130,20 @@ refused "leak in the new range" "leak-scan" --run "$(mk_run leaky "$WORK/leaky")
 git clone -q "$WORK/filt" "$WORK/tagged"
 g "$WORK/tagged" tag -a v1.0.1 -m "Release 1.0.1" "$B"
 g "$WORK/tagged" tag -a v1.0.2 -m "Release 1.0.2" "$S"
+g "$WORK/tagged" tag -a v1.0.3 -m "Release 1.0.3" "$B"
 TAGGED=$(mk_run tagged "$WORK/tagged")
 refused "tag not on the new main" "not on the new main" --run "$TAGGED" --push --tags v1.0.2
 refused "tag missing from the run" "not in the filtered repo" --run "$TAGGED" --tags v1.0.9
-out=$("$SYNC" --run "$TAGGED" --push --tags v1.0.1 2>&1) || fail "tag push: $out"
+out=$("$SYNC" --run "$TAGGED" --push --tags v1.0.1,v1.0.3 2>&1) || fail "tag push: $out"
 [ "$(pub_main)" = "$B" ] || fail "tag push: main"
 g "$WORK/public.git" rev-parse --verify -q refs/tags/v1.0.1 >/dev/null || fail "tag push: no v1.0.1"
+g "$WORK/public.git" rev-parse --verify -q refs/tags/v1.0.3 >/dev/null || fail "tag push: no v1.0.3"
 g "$WORK/public.git" rev-parse --verify -q refs/tags/v1.0.2 >/dev/null && fail "tag push: v1.0.2 pushed"
-ok "--tags pushes a new tag on main with the commits"
+# GitHub fires no push event for a push of more than three tags: main and
+# every tag must arrive in pushes of their own.
+want="refs/heads/main |refs/tags/v1.0.1 |refs/tags/v1.0.3 |"
+[ "$(tr '\n' '|' < "$WORK/pushes.log")" = "$want" ] || fail "tag push: pushes were: $(cat "$WORK/pushes.log")"
+ok "--tags pushes main, then each new tag on main in a push of its own"
 
 # A published tag the filtered repo has as another object.
 reset_public "$A"

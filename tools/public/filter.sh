@@ -25,8 +25,11 @@ SRC=${1:-$(cd "$HERE" && cd "$(git rev-parse --git-common-dir)" && pwd)}
 . "$HERE/common.sh"
 RUN=$BASE/work/$(date -u +%Y%m%dT%H%M%SZ)
 [[ -f $PRIVATE ]] || { echo "filter.sh: missing $PRIVATE" >&2; exit 2; }
+# filter-repo holds the whole history's blobs in memory; ~2 GB keeps it clear
+# of the OOM killer on this shared machine.
+MIN_AVAIL_MB=2000
 avail=$(free -m | awk '/^Mem:/ {print $7}')
-(( avail >= 2000 )) || { echo "filter.sh: only ${avail} MB available" >&2; exit 2; }
+(( avail >= MIN_AVAIL_MB )) || { echo "filter.sh: only ${avail} MB available, need $MIN_AVAIL_MB" >&2; exit 2; }
 
 mkdir -p "$BASE/work"
 mkdir -m 700 "$RUN"   # fails if it exists: runs never overwrite each other
