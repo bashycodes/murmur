@@ -1,4 +1,3 @@
-"use strict";
 // Murmur bar pill, styled after the design artboard
 // docs/design/app-design/MurmurBar.dc.html. The window
 // is a fixed 512x614 transparent canvas; states are pure CSS on
@@ -11,6 +10,8 @@
 // window is click-through, so the page reports the link's box
 // (`overlay_action` link_rect, null once it is gone) and src/overlay.rs
 // makes just that box clickable. Theme: `overlay_theme` + `overlay:theme`.
+// Loaded as an ES module (overlay.html), like settings.js.
+import { fixFor } from "./lib/fix-for.js";
 // Bar heights (px) from the artboard's waveform; the mic level scales them.
 const PROFILE = [6, 10, 16, 12, 20, 14, 8, 18, 22, 12, 9, 16, 11, 6, 14, 10, 7, 5];
 const GAIN = 5; // --level = min(1, 5 * v) for dictation
@@ -82,25 +83,6 @@ function apply(s) {
     if (!isActive())
         showMaxWarning(0);
     syncDone();
-}
-/** Which settings page fixes what the bubble says; null = nothing to fix
- *  there ("No speech heard", a microphone or paste error). Cloud first:
- *  "Cloud STT failed (…); used your server" is about OpenRouter. */
-function fixFor(text) {
-    if (/AI cleanup model not found/i.test(text))
-        return { page: "settings-cleanup", label: "Choose a model →" };
-    if (/(speech|whisper|parakeet) model (not found|failed)|model file not found/i.test(text)) {
-        return { page: "settings-speech", label: "Choose a model →" };
-    }
-    if (/cloud stt|openrouter|openrouter\.ai/i.test(text))
-        return { page: "settings-openrouter", label: "Fix →" };
-    if (/cloud cleanup|ai cleanup/i.test(text))
-        return { page: "settings-cleanup", label: "Fix →" };
-    if (/dictation disabled|local model not loaded/i.test(text))
-        return { page: "settings-speech", label: "Fix →" };
-    if (/server/i.test(text))
-        return { page: "settings-server", label: "Fix →" };
-    return null;
 }
 /** Bubble text; `kind` (error / notice) adds the dot and, when a settings
  *  page can fix it, the link. Live transcript passes no kind. */

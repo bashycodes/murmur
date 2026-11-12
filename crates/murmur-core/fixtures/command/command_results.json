@@ -19,11 +19,19 @@
     },
     {
       "input": {"err": "no_llm"},
-      "json": {"ok": false, "kind": "no_llm", "error": "Command Mode needs AI: turn on AI cleanup (local model) or OpenRouter text cleanup"}
+      "json": {"ok": false, "kind": "no_llm", "error": "Command Mode needs AI: turn on AI cleanup (local model) or cloud text cleanup"}
+    },
+    {
+      "input": {"err": "selection_not_allowed", "to": "OpenRouter"},
+      "json": {"ok": false, "kind": "selection_not_allowed", "error": "Command Mode would send the selection to OpenRouter: allow surrounding text there, or use a local AI model"}
+    },
+    {
+      "input": {"err": "selection_not_allowed", "to": "LiteLLM (10.0.0.5)"},
+      "json": {"ok": false, "kind": "selection_not_allowed", "error": "Command Mode would send the selection to LiteLLM (10.0.0.5): allow surrounding text there, or use a local AI model"}
     },
     {
       "input": {"err": "selection_not_allowed"},
-      "json": {"ok": false, "kind": "selection_not_allowed", "error": "Command Mode would send the selection to OpenRouter: allow surrounding text there, or use a local AI model"}
+      "json": {"ok": false, "kind": "selection_not_allowed", "error": "Command Mode would send the selection to the cloud: allow surrounding text there, or use a local AI model"}
     },
     {
       "input": {"err": "timeout", "secs": 25},
