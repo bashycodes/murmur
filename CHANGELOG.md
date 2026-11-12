@@ -16,6 +16,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-12
+
 ### Added
 
 - **Copyright and third-party notices ship with every build** (D80). The Windows installer (`COPYRIGHT.txt`, `NOTICE.txt` next to the app), the Android APK (`assets/licenses/`), the murmur-server container image (`/opt/murmur-server/`) and the colleague bundle (its root and the server source archive) now carry `COPYRIGHT` (all rights reserved, no open-source licence), `NOTICE` (the licences of the libraries, fonts and models used, with copyleft and restricted ones marked) and `THIRD-PARTY-LICENSES` (their full texts). Each model zip of the colleague bundle carries `MODEL-LICENSES.txt`, and the model list shows each model's licence.
@@ -1358,7 +1360,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   adaptive connect timeout, connection pre-warm.
 - All P1/P2 findings of the 2026-10-22 review (`docs/reviews/2026-10-22-integration.md`).
 
-[Unreleased]: https://github.com/bashycodes/murmur/compare/v1.1.2...HEAD
+[Unreleased]: https://github.com/bashycodes/murmur/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/bashycodes/murmur/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/bashycodes/murmur/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/bashycodes/murmur/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/bashycodes/murmur/compare/v1.0.0...v1.1.0
