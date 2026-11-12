@@ -1,5 +1,5 @@
 //! The STT adapter seam (docs/cloud-stt.md): [`openrouter::OpenRouterStt`]
-//! (D28, the one compiled-in provider) and, D84, [`litellm::LiteLlmStt`] on
+//! (D28, the one compiled-in provider) and, D85, [`litellm::LiteLlmStt`] on
 //! the user's own LiteLLM proxy. The chunking / encoding driver in `lib.rs`
 //! is shared.
 

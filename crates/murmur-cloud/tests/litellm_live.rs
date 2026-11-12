@@ -13,7 +13,7 @@
 //! errors for a wrong key and an unknown model. It prints latencies and
 //! the shape of the answers, never the key.
 //!
-//! D84: with `MURMUR_LITELLM_STT_MODEL=<audio_transcription model>` also
+//! D85: with `MURMUR_LITELLM_STT_MODEL=<audio_transcription model>` also
 //! `litellm_proxy_speech_to_text`: speech-model detection from
 //! `/model/info`, a transcription of the bundled public-domain clip, the
 //! Speech page's Test, and a whole dictation on the proxy's speech route

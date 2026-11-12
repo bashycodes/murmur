@@ -1,7 +1,7 @@
 // Settings → Speech to text (design: SettingsSpeech.dc.html): the engine
 // order and the meeting order (D47) (features/engines.ts), the model on
 // this PC (features/general.ts) and cloud speech to text on OpenRouter or
-// (D84) the LiteLLM proxy (features/openrouter.ts). Markup only.
+// (D85) the LiteLLM proxy (features/openrouter.ts). Markup only.
 
 import { ICON, iconSvg } from "../../lib/icons.js";
 import { group, heading, row, toggle } from "../../lib/markup.js";

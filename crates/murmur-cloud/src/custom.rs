@@ -1,5 +1,5 @@
 //! D52: text cleanup through the user's own OpenAI-compatible server (a
-//! LiteLLM proxy, vLLM, Ollama, …) instead of OpenRouter. D84: the same
+//! LiteLLM proxy, vLLM, Ollama, …) instead of OpenRouter. D85: the same
 //! server can do speech to text too ([`crate::adapters::litellm`]); its
 //! speech models are found here ([`speech_models`]).
 //!
@@ -302,7 +302,7 @@ pub fn models_json(r: Result<Vec<String>, CloudError>) -> Value {
     }
 }
 
-/// D84: [`models_json`] plus `"speech_models"`, the ids among them that
+/// D85: [`models_json`] plus `"speech_models"`, the ids among them that
 /// can transcribe ([`speech_models`]): one `/models` call, then one
 /// `/model/info` call when the first worked.
 pub fn models_with_speech_json(
@@ -323,7 +323,7 @@ pub fn models_with_speech_json(
     }
 }
 
-/// D84: the speech-to-text models among `listed` (the server's `/models`
+/// D85: the speech-to-text models among `listed` (the server's `/models`
 /// ids). LiteLLM says which ones: `GET {base}/model/info` gives each
 /// model's `model_info.mode`, `audio_transcription` for speech. A server
 /// without that endpoint (vLLM, Ollama, an older proxy) or an answer that

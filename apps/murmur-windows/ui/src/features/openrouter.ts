@@ -46,7 +46,7 @@ interface KeyInfo {
   warn_no_limit: boolean;
 }
 
-/** `dev_or_custom_models`: the server's model ids (D84: and those that can
+/** `dev_or_custom_models`: the server's model ids (D85: and those that can
  *  transcribe), or an error line. */
 interface CustomModels {
   models?: string[];
@@ -228,7 +228,7 @@ export function showOr(v: OrView): void {
   $<HTMLInputElement>("or_cleanup_send_app_name").checked = c.send_app_name;
   showCleanupStatus(c.status);
   const short = (id: string): string => id.split("/").pop() ?? id;
-  // D78/D84: LiteLLM does speech only with a speech model set for the proxy.
+  // D78/D85: LiteLLM does speech only with a speech model set for the proxy.
   const sttAvailable = s.available ?? !custom;
   const sttModel = s.provider === "custom" ? s.custom_model : short(s.model);
   $<HTMLElement>("or_used_stt").textContent = !sttAvailable
@@ -551,7 +551,7 @@ async function orSttToggled(): Promise<void> {
   if ((await orApplyStt(consent)) && !litellm) void refreshCatalog(false);
 }
 
-/** D84: the Speech page's cloud card for the speech provider: OpenRouter's
+/** D85: the Speech page's cloud card for the speech provider: OpenRouter's
  *  model, path, language and dictionary rows, or the proxy's speech model. */
 function showSttProvider(v: OrView): void {
   const p = v.stt.provider ?? "openrouter";
@@ -657,7 +657,7 @@ function showCustom(v: OrView): void {
   if (document.activeElement !== $("cu_base_url")) setValue("cu_base_url", cu.base_url);
   void showNormalisedUrl();
   if (document.activeElement !== $("cu_model")) setValue("cu_model", cu.model);
-  // D84: the proxy's speech model ("" = none); Test connection lists them.
+  // D85: the proxy's speech model ("" = none); Test connection lists them.
   const stt = v.stt.custom_model ?? "";
   if (stt !== "") ensureOption("cu_stt_model", stt, stt);
   $<HTMLSelectElement>("cu_stt_model").value = stt;
@@ -833,7 +833,7 @@ async function cuModelsNow(outId: string, fill: boolean): Promise<void> {
   }
 }
 
-/** D84: offer the proxy's speech models in the Cloud page's Speech model
+/** D85: offer the proxy's speech models in the Cloud page's Speech model
  *  list; with none saved yet, the first one is saved (speech is then
  *  available, still off until switched on with its own consent). Runs
  *  inside the card's write queue. Returns the line's speech part. */

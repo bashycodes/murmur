@@ -2681,7 +2681,7 @@ fn dev_or_ack_notice(
 
 /// STT "Test": the bundled 3 s public-domain clip through the saved
 /// speech-to-text settings; `key` = an OpenRouter key typed but not saved
-/// yet (`None` = the stored one). D84: on the LiteLLM proxy when it is the
+/// yet (`None` = the stored one). D85: on the LiteLLM proxy when it is the
 /// speech provider, with its saved key. Needs no consent (not the user's
 /// audio).
 #[tauri::command]
@@ -2698,7 +2698,7 @@ async fn dev_or_test_stt(
         )),
         _ => None,
     };
-    // D84: the proxy when it is the speech provider (the OpenRouter key
+    // D85: the proxy when it is the speech provider (the OpenRouter key
     // field's text is never sent there).
     let litellm = cloud.speech_provider() == murmur_router::CloudProvider::LiteLlm;
     tauri::async_runtime::spawn_blocking(move || {
@@ -2909,7 +2909,7 @@ fn dev_cloud_clear_custom_key(state: tauri::State<'_, AppState>) -> Result<KeySt
 /// keyless call; `consent: true` (the page's dialog was accepted) records
 /// consent for the host first ([`crate::openrouter::apply_custom_key_consent`]).
 /// `murmur_cloud::custom::models_with_speech_json`: `{models,
-/// speech_models}` (D84) or `{error, message}` (a code and a line that
+/// speech_models}` (D85) or `{error, message}` (a code and a line that
 /// never holds the URL or the key).
 #[tauri::command]
 async fn dev_or_custom_models(
@@ -2957,7 +2957,7 @@ fn custom_models(base_url: &str, key: Option<String>) -> serde_json::Value {
     #[cfg(feature = "cloud")]
     {
         let key = key.map(murmur_router::SecretString::new);
-        // D84: with the speech models among them.
+        // D85: with the speech models among them.
         murmur_cloud::custom::models_with_speech_json(
             base_url,
             key.as_ref(),

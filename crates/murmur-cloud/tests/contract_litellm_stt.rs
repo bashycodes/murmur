@@ -1,4 +1,4 @@
-//! D84: cloud speech-to-text on the user's LiteLLM proxy, against a fake
+//! D85: cloud speech-to-text on the user's LiteLLM proxy, against a fake
 //! OpenAI-compatible server (plain http on loopback; the URL is user-typed,
 //! so no base-URL override): the multipart `/audio/transcriptions` wire,
 //! the optional key, the LiteLLM cost headers, the WAV retry, speech-model
