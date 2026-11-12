@@ -108,16 +108,23 @@ class ShellUiTest {
         walk(a.window.decorView).first { it.isClickable && it.contentDescription?.startsWith("$label: ") == true }
 
     @Test fun drawerEngineLinesOpenTheirSettingsPage() {
-        // Owner report: both lines opened Developer settings.
+        // Owner report: both lines opened Developer settings. Runs in every flavor: the remote
+        // build has no AI cleanup page, so its line opens OpenRouter's page instead.
         val a = launch()
-        val want = mapOf("Speech to text" to SettingsPages.Page.SPEECH, "AI cleanup" to ShellPages.cleanupDest(MurmurApp.of(a).caps).let { (it as ShellPages.Dest.Page).page })
-        for ((label, page) in want) {
+        val cleanup = ShellPages.cleanupDest(MurmurApp.of(a).caps) ?: ShellPages.Dest.Page(SettingsPages.Page.HUB)
+        val want = mapOf("Speech to text" to ShellPages.Dest.Page(SettingsPages.Page.SPEECH), "AI cleanup" to cleanup)
+        for ((label, dest) in want) {
             openDrawer(a)
             engineLine(a, label).performClick()
             val i = shadowOf(a).nextStartedActivity
-            assertEquals(label, SettingsActivity::class.java.name, i.component?.className)
-            assertEquals(label, page.name, i.getStringExtra(SettingsActivity.EXTRA_PAGE))
-            assertEquals(label, SettingsPages.TITLES.getValue(page))
+            when (dest) {
+                is ShellPages.Dest.Page -> {
+                    assertEquals(label, SettingsActivity::class.java.name, i.component?.className)
+                    assertEquals(label, dest.page.name, i.getStringExtra(SettingsActivity.EXTRA_PAGE))
+                    assertEquals(label, SettingsPages.TITLES.getValue(dest.page))
+                }
+                ShellPages.Dest.OpenRouter -> assertEquals(label, OpenRouterActivity::class.java.name, i.component?.className)
+            }
             assertFalse(a.frame.drawerOpen)
         }
     }
