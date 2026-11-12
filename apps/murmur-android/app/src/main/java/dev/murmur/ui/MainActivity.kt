@@ -19,7 +19,6 @@ import dev.murmur.MurmurApp
 import dev.murmur.R
 import dev.murmur.core.NativeMurmurCore
 import dev.murmur.data.AppVersion
-import dev.murmur.data.DevSummary
 import dev.murmur.data.SettingsPages
 import dev.murmur.data.SetupChecklist
 import dev.murmur.data.ShellPages
@@ -198,7 +197,7 @@ class MainActivity : Activity() {
                 runOnUiThread { ShellPages.stats(s).forEachIndexed { i, (n, u) -> stats.set(i, n, u) } }
             }
             enginesCard(
-                ShellPages.speechLine(DevSummary.routing(dev, app.caps)),
+                ShellPages.speechLine(dev, app.caps, app.engine.phoneSpeechReady(settings)),
                 ShellPages.cleanupLine(
                     settings, dev.effective(app.caps), app.caps,
                     serverLlm = if (dev.serverConfigured) app.engine.router()?.cleanupStatus()?.serverLlm else null,

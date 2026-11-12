@@ -262,12 +262,21 @@ object SettingsSummary {
         DevSettings.Route.CLOUD -> OpenRouter.NAME
     }
 
-    /** Speech to text row: the engines that are on, in try order ("Your server, then this phone"). */
-    fun speech(d: DevSettings, caps: BuildCaps): String {
-        val on = DevPages.engines(d, caps).filter { DevPages.engineOn(d.effective(caps), it) }
+    /**
+     * Speech to text row, and the drawer's line ([ShellPages.speechLine]): the engines a dictation
+     * will try, in order ("Your server, then this phone"; [SpeechEngines.planned]), then the engines
+     * that are on but cannot run ("This phone · server not set up"), or "Not set up: …" when none
+     * can run yet. [phoneReady] = [dev.murmur.EngineHolder.phoneSpeechReady].
+     */
+    fun speech(d: DevSettings, caps: BuildCaps, phoneReady: Boolean): String {
+        val on = SpeechEngines.on(d, caps)
         if (on.isEmpty()) return "Off: no engine is on"
-        if (on.size == 1) return "${engineName(on[0])} only"
-        return on.mapIndexed { i, r -> if (i == 0) engineName(r) else engineName(r).replaceFirstChar { it.lowercase() } }.joinToString(", then ")
+        val planned = SpeechEngines.planned(d, caps, phoneReady)
+        val waiting = on - planned.toSet()
+        if (planned.isEmpty()) return "Not set up: " + Prose.list(waiting.map { SpeechEngines.setupHint(it) }, "or")
+        val chain = if (planned.size == 1 && waiting.isEmpty()) "${engineName(planned[0])} only"
+        else planned.mapIndexed { i, r -> if (i == 0) engineName(r) else engineName(r).replaceFirstChar { it.lowercase() } }.joinToString(", then ")
+        return (listOf(chain) + waiting.map { SpeechEngines.notReady(it) }).joinToString(" · ")
     }
 
     /**

@@ -30,6 +30,7 @@ import dev.murmur.data.ParakeetFiles
 import dev.murmur.data.EngineRoute
 import dev.murmur.data.DevSettings
 import dev.murmur.data.DevStore
+import dev.murmur.data.ServerHealth
 import dev.murmur.data.BuildCaps
 import android.app.Application
 import android.util.Log
@@ -52,6 +53,7 @@ import dev.murmur.data.HistoryStore
 import dev.murmur.data.InsightsStore
 import dev.murmur.data.EnginePlan
 import dev.murmur.data.SettingsStore
+import dev.murmur.data.SpeechEngines
 import dev.murmur.health.A11ySetting
 import dev.murmur.health.AccessibilityHealth
 import dev.murmur.policy.BubbleVisibilityPolicy
@@ -113,6 +115,9 @@ class MurmurApp : Application() {
 
     /** Last dictation's result + route (Developer page, engine badge). In-memory only (§5). */
     val lastRoute = MutableStateFlow<LastDictation?>(null)
+
+    /** Last server health probe (Test connection, Settings pages); in-memory only. */
+    val serverHealth = ServerHealth()
 
     /** D35: History rows being retried now (their Retry shows busy). */
     val retrying = MutableStateFlow<Set<Long>>(emptySet())
@@ -415,6 +420,14 @@ class EngineHolder(
         if (setProbe != null) setProbe.invoke()
         else if (!app.caps.local || s.mockEngine) LoadSet.Default
         else LoadSet.of(app.effectiveLanguage(s), hebrewModel() != null, s.keepBothLanguages) { defaultModelInstalled(s) }
+
+    /**
+     * The phone can transcribe the next dictation: what [wantedSet] loads for the current language
+     * is installed ([SpeechEngines.phoneReady]; a Hebrew model alone counts when the language is Hebrew).
+     * The one input every speech summary (drawer, Settings, Developer) takes for the phone.
+     */
+    fun phoneSpeechReady(s: Settings = app.settings.load()): Boolean =
+        SpeechEngines.phoneReady(s, wantedSet(s)) { defaultModelInstalled(s) }
 
     /** D54: a default (whisper / Parakeet) model is installed, so "Keep both languages loaded" has two models to keep. */
     fun defaultModelInstalled(s: Settings = app.settings.load()): Boolean = EnginePlan.defaultInstalled(
