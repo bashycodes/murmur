@@ -185,7 +185,7 @@ docker run -d --name murmur-server --restart unless-stopped --gpus all -p 0.0.0.
 
 `docker logs murmur-server` says where each Whisper model runs
 (`whisper runs on the GPU (CUDA: ...)`). Without a usable graphics card it
-says why and runs on the processor, which works but takes about 25 s per
+says why and runs on the processor, which works but takes about 13 s per
 dictation with turbo: then drop both lines. More: `docs/container.md` §7.
 
 Ports published by Docker bypass `ufw`: the server itself refuses

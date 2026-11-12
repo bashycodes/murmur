@@ -134,9 +134,9 @@ language (`MURMUR_STT=whisper-large-v3-turbo-q5_0`, instead of Parakeet),
 and `ivrit-whisper-large-v3-turbo-q5_0` for Hebrew
 (`MURMUR_HEBREW=ivrit-whisper-large-v3-turbo-q5_0`, instead of the
 zipformer). Without the variables the picks stay Parakeet and the zipformer
-(§3), in both images. On a CPU, turbo takes about 25 s per dictation
-(`docs/model-benchmarks.md`; 13 s measured for an 11 s clip on a desktop
-CPU, the CPU fallback, 2026-11-12): keep Parakeet there.
+(§3), in both images. On a CPU, turbo takes about 13 s per dictation
+(measured: 13.2 s for an 11 s clip at 4 threads, `docs/findings/2026-11-12-server-whisper-turbo-smoke.md`), so keep Parakeet
+there.
 
 The log says where each whisper speech model runs, once at start:
 
@@ -206,7 +206,9 @@ The image carries two CUDA plugins next to the CPU server:
   (murmur-llm `backend::choose`).
 * `libmurmur_whisper_cuda.so`, the whisper.cpp plugin (`murmur-whisper
   --features cuda`, D84) with the `libcudart`, `libcublas` and
-  `libcublasLt` it links (about 0.7 GB, the bulk of the image's growth),
+  `libcublasLt` it links (measured, CUDA 12.8.1: `libcublasLt` 752 MB,
+  `libcublas` 116 MB, `libcudart` 0.7 MB, the plugin itself 55 MB for one
+  GPU architecture; the bulk of the image's growth),
   selected through `MURMUR_WHISPER_LIB`. Every whisper speech model loads
   through it: on the best NVIDIA GPU (most free memory), or on the CPU when
   the GPU fails to load the model. `MURMUR_WHISPER_DEVICE=cpu` forces the
@@ -234,7 +236,11 @@ For an offline CUDA image, build the plugins on a CUDA host
 and stage them with `tools/container/stage-prebuilt.sh --cuda-llm
 target/release/libmurmur_llm.so --cuda-whisper target/release/libmurmur_whisper.so
 --cuda-lib /usr/local/cuda/lib64` (they go to `deploy/docker/prebuilt/cuda/`,
-which only the CUDA image copies).
+which only the CUDA image copies). D84 moved `libmurmur_llm_cuda.so` there
+from `prebuilt/lib/`: restage an older staging before building
+`--target cuda`. Staged without `--cuda-whisper`, the image's
+`MURMUR_WHISPER_LIB` names a missing file and whisper runs on the CPU (the
+script warns).
 
 ## 9. Air-gapped hosts: move the image
 
