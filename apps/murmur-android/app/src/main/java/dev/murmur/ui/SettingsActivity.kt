@@ -28,6 +28,7 @@ import dev.murmur.data.OpenRouter
 import dev.murmur.data.LanguageDefault
 import dev.murmur.data.Retention
 import dev.murmur.data.RetryLogic
+import dev.murmur.data.ServerHealth
 import dev.murmur.data.Settings
 import dev.murmur.data.SettingsDraft
 import dev.murmur.data.SettingsPages
@@ -35,6 +36,7 @@ import dev.murmur.data.SettingsPages.Field
 import dev.murmur.data.SettingsPages.Page
 import dev.murmur.data.SettingsSummary
 import dev.murmur.data.ShellPages
+import dev.murmur.data.SpeechEngines
 import dev.murmur.server.ServerModels
 import java.io.File
 import kotlin.concurrent.thread
@@ -191,13 +193,17 @@ class SettingsActivity : Activity() {
         // Also when only AI cleanup uses the server (its Engines row shows this state too).
         val used = d.allowServer || d.cleanupOn(dev.murmur.data.DevSettings.CleanupRoute.SERVER)
         if (!caps.remote || !used || !d.serverConfigured || checking) return
+        // A Test connection / Save probe of this server that just ran (Developer → Server) shows at
+        // once, also while the router is still reopening after a Save.
+        val e = d.effective(caps)
+        app.serverHealth.fresh(e, System.currentTimeMillis())?.let { health = it; refreshServer(); return }
         val r = app.engine.router() ?: return
         checking = true
         refreshServer()
         thread(name = "settings-health") {
             var h = runCatching { r.routeStatus().health }.getOrNull()
-            val fresh = h?.checkedAtMs?.let { System.currentTimeMillis() - it < HEALTH_MAX_AGE_MS } == true
-            if (!fresh) h = runCatching { r.probeSaved() }.getOrNull() ?: h
+            val fresh = h?.checkedAtMs?.let { System.currentTimeMillis() - it < ServerHealth.MAX_AGE_MS } == true
+            if (!fresh) h = runCatching { r.probeSaved() }.getOrNull()?.also { app.serverHealth.record(e, it, System.currentTimeMillis()) } ?: h
             runOnUiThread {
                 checking = false
                 if (h != null) health = h
@@ -327,7 +333,7 @@ class SettingsActivity : Activity() {
                 bubble.setSubtitle(SettingsSummary.bubble(s))
                 apps.setSubtitle(SettingsSummary.apps(s))
                 timing.setSubtitle(SettingsSummary.timing(s))
-                speechRow.setSubtitle(SettingsSummary.speech(d, caps))
+                speechRow.setSubtitle(SettingsSummary.speech(d, caps, SpeechEngines.phoneReady(s, app.engine.defaultModelInstalled(s))))
                 cleanup?.setSubtitle(SettingsSummary.cleanupRow(
                     s, d.effective(caps), caps,
                     serverLlm = if (d.serverConfigured) app.engine.router()?.cleanupStatus()?.serverLlm else null,
@@ -779,8 +785,6 @@ class SettingsActivity : Activity() {
 
     companion object {
         const val EXTRA_PAGE = "page"
-        /** A cached health probe younger than this is shown as is (else the page probes once). */
-        private const val HEALTH_MAX_AGE_MS = 60_000L
         private const val REQ_BACKUP_EXPORT = 30
         private const val REQ_BACKUP_IMPORT = 31
 
