@@ -16,6 +16,10 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Changed
+
+- **Android: the OpenRouter page is now "Cloud", with an OpenRouter | LiteLLM switch** (D78, as on Windows). One Cloud provider at a time: picking LiteLLM (or any OpenAI-compatible server) shows its address, optional key and Test connection, which also fills its model list; it does AI cleanup only, so cloud speech turns off and its switch reads "Not available". Settings saved with LiteLLM cleanup next to cloud speech are fixed once on start, with a notice on the Cloud page. Settings shows "Cloud: OpenRouter · key saved · $0.42 this month", AI cleanup reads "… · Cloud, then rules", the usage card names the proxy "Your proxy" with the cost it reported, and the debug log says "LiteLLM".
+
 ## [1.2.0] - 2026-11-12
 
 ### Added

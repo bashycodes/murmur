@@ -259,7 +259,8 @@ class DevStore(private val kv: KeyValue, private val caps: BuildCaps, private va
         putLong("server.health_ttl_s", s.healthTtlS)
         putBoolean("keep_local_warm", s.keepLocalWarm)
         putBoolean("show_engine_badge", s.showEngineBadge)
-        putBoolean("allow_cloud", s.allowCloud)
+        // D78: never cloud speech with LiteLLM as the Cloud provider.
+        putBoolean("allow_cloud", OpenRouterPage.oneProvider(s).allowCloud)
         putString("cloud", if (s.cloud.isDefault) null else s.cloud.toJson().toString())
         putCleanup(s.allowCloudCleanup, s.cleanupOrder, s.cleanupOff)
     }
@@ -272,7 +273,7 @@ class DevStore(private val kv: KeyValue, private val caps: BuildCaps, private va
         putString(CLEANUP_OFF, full.filter { it in off || (it == DevSettings.CleanupRoute.CLOUD && !allowCloudCleanup) }.joinToString(",") { it.wire })
     }
 
-    /** Only the cloud part (OpenRouter page, consent dialogs, migration), leaving unsaved form fields alone. */
+    /** Only the cloud part (Cloud page, consent dialogs, migration), leaving unsaved form fields alone. */
     fun saveCloud(
         allowCloud: Boolean? = null, cloud: CloudSettings, routeOrder: List<DevSettings.Route>? = null,
         allowCloudCleanup: Boolean? = null, cleanupOrder: List<DevSettings.CleanupRoute>? = null,
@@ -280,8 +281,10 @@ class DevStore(private val kv: KeyValue, private val caps: BuildCaps, private va
     ) {
         // Read before the edit: load() may write its own one-time migration flag.
         val cur = if (allowCloudCleanup != null || cleanupOrder != null || cleanupOff != null) load() else null
+        // D78: LiteLLM as the Cloud provider turns cloud speech off, whatever the caller passed.
+        val stt = if (cloud.customProvider) false else allowCloud
         kv.edit {
-            allowCloud?.let { putBoolean("allow_cloud", it) }
+            stt?.let { putBoolean("allow_cloud", it) }
             // Always written once touched: a schema-2 value marks the D28 migration as done.
             putString("cloud", cloud.toJson().toString())
             routeOrder?.let { o -> putString("route_order", o.joinToString(",") { it.wire }) }

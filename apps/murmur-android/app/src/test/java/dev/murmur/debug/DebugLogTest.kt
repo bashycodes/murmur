@@ -54,7 +54,7 @@ class DebugLogTest {
         assertTrue(DebugFormat.summary(DebugFormat.dictation(t)).contains(" · AI OpenRouter gpt-4o-mini"))
         val c = t.copy(llmProvider = "custom")
         assertEquals("custom", JSONObject(DebugFormat.dictation(c)).getString("llm_provider"))
-        assertTrue(DebugFormat.summary(DebugFormat.dictation(c)).contains(" · AI custom server gpt-4o-mini"))
+        assertTrue(DebugFormat.summary(DebugFormat.dictation(c)).contains(" · AI LiteLLM gpt-4o-mini"))
     }
 
     @Test fun sourceFieldNamesTheAudioSource() {
