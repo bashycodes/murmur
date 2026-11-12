@@ -21,7 +21,8 @@
 #                 any layout: files are found by name and size, then checked
 #                 against the pinned SHA-256), e.g. a murmur-server library.
 # --llm WHICH     cleanup models: default (Qwen2.5 1.5B, 1.1 GB), all
-#                 (+ Llama 3.2 3B for GPUs, Qwen2.5 0.5B; 3.6 GB), none.
+#                 (+ Llama 3.2 3B and Gemma 3 12B for GPUs, Qwen2.5 0.5B;
+#                 10.9 GB), none.
 # --only LIST     only these model folders (comma-separated ids), e.g. a test.
 # --android-run ID, --windows-run ID   use these CI runs instead.
 # --allow-stale   accept a CI run older than the commit even when the app's

@@ -74,6 +74,16 @@ get models/Llama-3.2-Acceptable-Use-Policy.md https://raw.githubusercontent.com/
 curl -fsSL --retry 3 https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/ |
   python3 -I "$ROOT/tools/notice/html_text.py" 'NVIDIA Open Model License Agreement' 'Version Release Date:' \
   > "$L/models/NVIDIA-Open-Model-License.txt"
+# Gemma 3 (the GPU server's cleanup model): the Terms of Use (section 3.1
+# asks every copy to carry them) and the Prohibited Use Policy they include.
+{ echo "Gemma Terms of Use"; echo
+  curl -fsSL --retry 3 https://ai.google.dev/gemma/terms |
+    python3 -I "$ROOT/tools/notice/html_text.py" 'The terms below apply' 'Note: Previous versions' | sed '$d'
+} > "$L/models/Gemma-Terms-of-Use.txt"
+{ echo "Gemma Prohibited Use Policy"; echo
+  curl -fsSL --retry 3 https://ai.google.dev/gemma/prohibited_use_policy |
+    python3 -I "$ROOT/tools/notice/html_text.py" 'Google reserves the right to update this Gemma' 'Send feedback' | sed '$d'
+} > "$L/models/Gemma-Prohibited-Use-Policy.txt"
 
 # Standard texts (SPDX license-list-data v3.25.0) for licences a component
 # declares without shipping its own file.
