@@ -31,6 +31,7 @@ import dev.murmur.data.DevSettings
 import dev.murmur.data.DevSettingsForm
 import dev.murmur.data.DevSettingsForm.Field
 import dev.murmur.data.DevSummary
+import dev.murmur.data.SettingsSummary
 import java.text.DateFormat
 import java.util.Date
 import kotlin.concurrent.thread
@@ -171,7 +172,7 @@ class DeveloperActivity : Activity() {
                 navRow(R.drawable.ic_dev_status, "Status & server info", "Engines, circuits, last probe") { open(Page.STATUS) }
                 refreshers += {
                     val s = app.dev.load()
-                    route.text = DevSummary.routing(s, caps)
+                    route.text = SettingsSummary.speech(s, caps, app.engine.phoneSpeechReady())
                     val l = app.lastRoute.value
                     last.text = l?.let { d ->
                         DevSummary.lastShort(d.result) + " · " +
@@ -188,7 +189,7 @@ class DeveloperActivity : Activity() {
                 val speech = navRow(R.drawable.ic_dev_route, "Speech to text", "") { SettingsActivity.open(this@DeveloperActivity, dev.murmur.data.SettingsPages.Page.SPEECH) }
                 val engines = navRow(R.drawable.ic_dev_engine, TITLES.getValue(Page.ENGINES)) { open(Page.ENGINES) }
                 refreshers += {
-                    speech.setSubtitle("Engines and order · " + DevSummary.routing(app.dev.load(), caps))
+                    speech.setSubtitle("Engines and order · " + SettingsSummary.speech(app.dev.load(), caps, app.engine.phoneSpeechReady()))
                     engines.setSubtitle(DevSummary.engineOptions(app.dev.load().showEngineBadge, if (caps.local) decodingLabel(app.dev.parakeetDecodingOverride) else null))
                 }
             }
@@ -400,9 +401,15 @@ class DeveloperActivity : Activity() {
         val json = s.effective(caps).toServerConfigJson().toString()
         thread(name = "dev-probe") {
             val h = NativeMurmurCore.probeServer(json)
-            if (!h.ok) app.debugLog.event("server_probe", DevText.probe(h)) else rememberServerModel(h)
+            probed(s, h)
             runOnUiThread { lastProbe = h; probeResult?.show(DevText.probe(h), if (h.ok) Tone.OK else Tone.BAD); refresh() }
         }
+    }
+
+    /** A probe of [s] finished: log a failure, keep the server's model, and share the result with the Settings pages. */
+    private fun probed(s: DevSettings, h: HealthReport) {
+        if (!h.ok) app.debugLog.event("server_probe", DevText.probe(h)) else rememberServerModel(h)
+        app.serverHealth.record(s.effective(caps), h, System.currentTimeMillis())
     }
 
     /** The debug log's `model` for server dictations: what the server says it runs. */
@@ -661,7 +668,7 @@ class DeveloperActivity : Activity() {
                 probeResult?.show("Probing ${s.host}:${s.port}…")
                 thread(name = "dev-probe-saved") {
                     val h = runCatching { router.probeSaved() }.getOrElse { HealthReport(ok = false, error = "error", message = it.message) }
-                    if (!h.ok) app.debugLog.event("server_probe", DevText.probe(h)) else rememberServerModel(h)
+                    probed(s, h)
                     runOnUiThread { lastProbe = h; probeResult?.show(DevText.probe(h), if (h.ok) Tone.OK else Tone.BAD); refresh() }
                 }
             }

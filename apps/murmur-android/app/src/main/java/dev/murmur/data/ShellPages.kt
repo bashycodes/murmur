@@ -75,7 +75,7 @@ object ShellPages {
 
     fun versionLine(version: String) = "$APP_NAME $version"
 
-    /** Status dot of an engine line: green = on the phone / your server, glow = cloud, grey = off, red = disabled. */
+    /** Status dot of an engine line: green = on the phone / your server, glow = cloud, grey = off, red = disabled or not set up. */
     enum class Dot { OK, CLOUD, OFF, BAD }
 
     /** Where a drawer line opens: a Settings page, or OpenRouter's page (`remote`'s only AI cleanup, D28). */
@@ -100,16 +100,19 @@ object ShellPages {
         val description: String get() = "$label: $text"
     }
 
-    /** [routing] = [DevSummary.routing] ("Server first → Phone", "Dictation disabled"); opens Settings → Speech to text. */
-    fun speechLine(routing: String) = EngineLine(
-        "Speech to text", routing,
-        when {
-            routing == "Dictation disabled" -> Dot.BAD
-            routing.contains("Cloud") -> Dot.CLOUD
+    /**
+     * The drawer's Speech to text line: the same text as Settings → Speech to text's row
+     * ([SettingsSummary.speech]), so the two never disagree. The dot is the first engine's that can
+     * run; red when none can (all off, or on but not set up). Opens Settings → Speech to text.
+     */
+    fun speechLine(d: DevSettings, caps: BuildCaps, phoneReady: Boolean): EngineLine {
+        val dot = when (SpeechEngines.planned(d, caps, phoneReady).firstOrNull()) {
+            null -> Dot.BAD
+            DevSettings.Route.CLOUD -> Dot.CLOUD
             else -> Dot.OK
-        },
-        Dest.Page(SettingsPages.Page.SPEECH),
-    )
+        }
+        return EngineLine("Speech to text", SettingsSummary.speech(d, caps, phoneReady), dot, Dest.Page(SettingsPages.Page.SPEECH))
+    }
 
     /**
      * The drawer's AI cleanup line: the same text as Settings → AI cleanup's row
