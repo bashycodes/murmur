@@ -1,5 +1,6 @@
 package dev.murmur.data
 
+import dev.murmur.core.HealthReport
 import dev.murmur.data.DevSettings.CleanupRoute
 
 /**
@@ -94,15 +95,30 @@ object CleanupEngines {
         }
     }
 
-    /** Server row from `cleanup_status` ([serverLlm] null = not connected yet; [circuitOpen] = recently failing). */
-    fun serverLine(d: DevSettings, caps: BuildCaps, serverLlm: Boolean?, circuitOpen: Boolean = false): String = when {
+    /**
+     * Server row. `cleanup_status` first ([serverLlm]: the cleanup connection's hello, null = none yet;
+     * [circuitOpen] = recently failing), else the last health probe ([h]: Server → Test connection's or
+     * the settings pages'; [checking] while one runs): not set up / not reachable / connected / ready.
+     */
+    fun serverLine(
+        d: DevSettings, caps: BuildCaps, serverLlm: Boolean?, circuitOpen: Boolean = false,
+        h: HealthReport? = null, checking: Boolean = false,
+    ): String = when {
         !caps.remote -> "Not in this build"
         !d.serverConfigured -> "Not set up"
-        circuitOpen -> "Not reachable"
-        serverLlm == true -> "Has an AI model"
-        serverLlm == false -> "No AI model on the server"
-        else -> "Not connected yet"
+        circuitOpen -> NOT_REACHABLE
+        serverLlm == true -> READY
+        serverLlm == false -> NO_LLM
+        h == null -> if (checking) "Checking…" else "Not checked yet"
+        !h.ok -> NOT_REACHABLE
+        h.llm == true -> READY
+        h.llm == false -> NO_LLM
+        else -> "Connected"
     }
+
+    private const val READY = "Ready · has an AI model"
+    private const val NO_LLM = "Connected · no AI model on the server"
+    private const val NOT_REACHABLE = "Not reachable"
 
     /**
      * Cloud row: "Sends text · asks first" until consent, then its model; "· no key" ([hasKey]: the

@@ -73,7 +73,8 @@ class SettingsActivity : Activity() {
     /** Hub warnings callout: the engine loads / reloads while the page is open, so it is polled. */
     private var status: (() -> Unit)? = null
     private var speech: SpeechPage? = null
-    /** The router's last server health probe (Your server row, Speech to text). */
+    private var cleanupEngines: CleanupPage? = null
+    /** The router's last server health probe (Your server row, Speech to text, AI cleanup's Engines). */
     private var health: HealthReport? = null
     private var checking = false
     private val main = Handler(Looper.getMainLooper())
@@ -122,7 +123,7 @@ class SettingsActivity : Activity() {
         if (draft != null) validate()
         refresh()
         if (status != null) poll.run()
-        if (page == Page.HUB || page == Page.SPEECH) checkServer()
+        if (page == Page.HUB || page == Page.SPEECH || page == Page.CLEANUP) checkServer()
     }
 
     override fun onPause() {
@@ -185,7 +186,9 @@ class SettingsActivity : Activity() {
      */
     private fun checkServer() {
         val d = app.dev.load()
-        if (!caps.remote || !d.allowServer || !d.serverConfigured || checking) return
+        // Also when only AI cleanup uses the server (its Engines row shows this state too).
+        val used = d.allowServer || d.cleanupOn(dev.murmur.data.DevSettings.CleanupRoute.SERVER)
+        if (!caps.remote || !used || !d.serverConfigured || checking) return
         val r = app.engine.router() ?: return
         checking = true
         refreshServer()
@@ -203,6 +206,7 @@ class SettingsActivity : Activity() {
 
     private fun refreshServer() {
         speech?.let { it.health = health; it.checking = checking; it.refresh() }
+        cleanupEngines?.let { it.health = health; it.checking = checking; it.refresh() }
         refresh()
     }
 
@@ -612,6 +616,7 @@ class SettingsActivity : Activity() {
             lateinit var strength: DevUi.ChoiceGroup<dev.murmur.core.CleanupLevel>
             // D36: the engines (this phone, your server, OpenRouter) in try order, as on Speech to text.
             val engines = CleanupPage(this@SettingsActivity, ui, update = { f -> applyNow(f) })
+                .also { it.health = health; it.checking = checking; cleanupEngines = it }
             engines.render(this)
             val anyOn = { app.settings.load().llmEnabled || app.dev.load().effective(caps).offPhoneCleanup }
             refreshers += {
