@@ -788,7 +788,9 @@ fn command_selection_stays_on_device_unless_surrounding_text_is_allowed() {
     );
     assert_eq!(
         command(&k.router, None, Some("SELECTEDSECRET")),
-        Err(CommandError::SelectionNotAllowed)
+        Err(CommandError::SelectionNotAllowed {
+            to: Some("OpenRouter".into())
+        })
     );
     assert_eq!(k.cloud.calls(), 0, "the selection never reached OpenRouter");
 
@@ -858,7 +860,9 @@ fn router_command_uses_the_local_engines_llm() {
     let k = rig_opts(cfg(), true, false, true);
     assert_eq!(
         k.router.command("make it shorter", Some("x"), T),
-        Err(CommandError::SelectionNotAllowed)
+        Err(CommandError::SelectionNotAllowed {
+            to: Some("OpenRouter".into())
+        })
     );
     assert_eq!(k.cloud.calls(), 0);
     // ... while generating at the cursor may use the cloud.

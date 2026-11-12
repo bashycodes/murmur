@@ -47,6 +47,22 @@ class CommandVectorsTest {
         assertEquals(noLlm.getString("error"), CommandOutcome.NO_LLM_MESSAGE)
     }
 
+    /** D78: the pill names the active Cloud provider (and LiteLLM's host), else "the cloud". */
+    @Test fun theSelectionRefusalNamesTheActiveProvider() {
+        val cases = fixture.getJSONArray("cases")
+        val refusals = (0 until cases.length()).map { cases.getJSONObject(it) }
+            .filter { it.getJSONObject("input").optString("err") == CommandOutcome.SELECTION_NOT_ALLOWED }
+            .associate { it.getJSONObject("input").optString("to") to CommandOutcome.decode(it.getJSONObject("json").toString()) }
+        assertEquals(setOf("OpenRouter", "LiteLLM (10.0.0.5)", ""), refusals.keys)
+        for ((to, got) in refusals) {
+            got as CommandOutcome.Failed
+            val where = to.ifEmpty { "the cloud" }
+            assertTrue(got.message, got.message.startsWith("Command Mode would send the selection to $where:"))
+        }
+        assertTrue(!(refusals.getValue("LiteLLM (10.0.0.5)") as CommandOutcome.Failed).message.contains("OpenRouter"))
+        assertTrue(!CommandOutcome.NO_LLM_MESSAGE.contains("OpenRouter"))
+    }
+
     @Test fun garbageNeverWritesText() {
         for (bad in listOf(null, "", "not json", """{"ok":true}""", """{"ok":true,"text":""}""", "{}")) {
             assertTrue(bad.toString(), CommandOutcome.decode(bad) is CommandOutcome.Failed)

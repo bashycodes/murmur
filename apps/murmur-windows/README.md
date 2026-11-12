@@ -380,10 +380,11 @@ before the paste.
   for controls without it, with a Ctrl+C whose clipboard change is undone
   right away (only if nothing else wrote to the clipboard meanwhile).
 * The rewrite needs an AI: the local model from [AI cleanup](#ai-cleanup-optional-off-by-default),
-  or OpenRouter text cleanup (same order, consent and budget as cleanup).
-  The selected text goes to OpenRouter only with *Send text around the
-  cursor* on; otherwise the command uses the local model, or says it
-  can't. Prompt and answer cleaning (`crates/murmur-core/src/command.rs`)
+  or cloud text cleanup on your Cloud provider, OpenRouter or LiteLLM
+  (same order, consent and budget as cleanup). The selected text goes to
+  the cloud only with *Send text around the cursor* on; otherwise the
+  command uses the local model, or says it can't and names where the text
+  would have gone ("OpenRouter", "LiteLLM (10.0.0.5)"). Prompt and answer cleaning (`crates/murmur-core/src/command.rs`)
   strip preambles ("Sure, here is…"), wrapping quotes, code fences and
   trailing notes, so only the result is pasted.
 * No AI, model still loading, a selection over 4000 characters, a password

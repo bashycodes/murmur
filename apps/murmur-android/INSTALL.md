@@ -580,7 +580,7 @@ keyboard:
 - **✎** (Command Mode) appears next to the mic while text is selected: tap it, say what to do
   ("make it shorter", "translate to Spanish"); the selection is replaced by the rewrite, the rest of
   the text stays. It stops on a pause or ✓; ✕ cancels. Needs AI cleanup
-  (the on-device model, or OpenRouter text cleanup with *Send text around the cursor* on). With
+  (the on-device model, or cloud text cleanup, OpenRouter or LiteLLM, with *Send text around the cursor* on). With
   *Settings → Bubble → Command mode → Always* it is always there and, without a selection, writes
   what you describe at the cursor. Refused in password / number / phone / URL fields, banking and
   excluded apps.

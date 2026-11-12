@@ -341,6 +341,14 @@ pub trait Cleaner: Send + Sync {
         None
     }
 
+    /// D52/D78: where a cloud backend sends text, as the user is told
+    /// ("OpenRouter", "LiteLLM (10.0.0.5)"). `None` (the default) for
+    /// on-device and server backends, or when the backend does not know;
+    /// messages then say "the cloud".
+    fn destination(&self) -> Option<String> {
+        None
+    }
+
     /// This backend's own hard timeout, replacing the session's
     /// `llm_timeout_ms` (cloud cleanup: `cleanup.timeout_ms`, D28).
     /// Default: the session value.

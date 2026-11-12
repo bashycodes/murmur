@@ -7,8 +7,9 @@
 //! Platform-neutral so every shell can reuse it: the prompt, the response
 //! sanitiser (small models wrap answers in quotes, "Here's …:" preambles
 //! and code fences) and a bounded [`run`] over any [`Cleaner`] (the same
-//! backend route as dictation cleanup: the on-device LLM, or OpenRouter
-//! when the user allowed cloud cleanup).
+//! backend route as dictation cleanup: the on-device LLM, or the Cloud
+//! provider, OpenRouter or LiteLLM (D78), when the user allowed cloud
+//! cleanup).
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -37,14 +38,17 @@ pub enum CommandError {
     #[error("Selection too long for Command Mode (max {max} characters)")]
     SelectionTooLong { max: usize },
     /// No on-device LLM loaded and no cloud cleanup allowed.
-    #[error("Command Mode needs AI: turn on AI cleanup (local model) or OpenRouter text cleanup")]
+    #[error("Command Mode needs AI: turn on AI cleanup (local model) or cloud text cleanup")]
     NoLlm,
     /// Only a cloud backend is available and the user did not allow
     /// surrounding / selected text to leave the device (D28 prompt scope).
+    /// `to` is that backend's [`Cleaner::destination`] (D52/D78: the real
+    /// provider and host); `None` reads "the cloud".
     #[error(
-        "Command Mode would send the selection to OpenRouter: allow surrounding text there, or use a local AI model"
+        "Command Mode would send the selection to {}: allow surrounding text there, or use a local AI model",
+        destination_or_cloud(.to)
     )]
-    SelectionNotAllowed,
+    SelectionNotAllowed { to: Option<String> },
     #[error("AI didn't answer within {secs} s")]
     Timeout { secs: u64 },
     #[error("AI returned no text")]
@@ -66,13 +70,19 @@ impl CommandError {
             CommandError::NoInstruction => "no_instruction",
             CommandError::SelectionTooLong { .. } => "selection_too_long",
             CommandError::NoLlm => "no_llm",
-            CommandError::SelectionNotAllowed => "selection_not_allowed",
+            CommandError::SelectionNotAllowed { .. } => "selection_not_allowed",
             CommandError::Timeout { .. } => "timeout",
             CommandError::Empty => "empty",
             CommandError::LanguageChanged => "language_changed",
             CommandError::Backend(_) => "backend",
         }
     }
+}
+
+/// How a refusal names where text would go: the backend's
+/// [`Cleaner::destination`], else "the cloud".
+pub fn destination_or_cloud(to: &Option<String>) -> &str {
+    to.as_deref().unwrap_or("the cloud")
 }
 
 /// The wire shape of a command's outcome (FFI `murmur_command`, JNI
@@ -330,7 +340,12 @@ pub(crate) fn selection_route(
     if has_selection && !cl.prompt_scope().surrounding_text {
         return match ai_split(&cl) {
             Some((_, Some(local))) if local.prompt_scope().surrounding_text => Ok(local),
-            _ => Err(CommandError::SelectionNotAllowed),
+            Some((cloud, _)) => Err(CommandError::SelectionNotAllowed {
+                to: cloud.destination(),
+            }),
+            None => Err(CommandError::SelectionNotAllowed {
+                to: cl.destination(),
+            }),
         };
     }
     Ok(cl)
@@ -582,6 +597,7 @@ mod tests {
         delay: Duration,
         scope: PromptScope,
         engine: &'static str,
+        destination: Option<&'static str>,
         prompts: Mutex<Vec<CleanPrompt>>,
     }
 
@@ -592,6 +608,7 @@ mod tests {
                 delay: Duration::ZERO,
                 scope: PromptScope::FULL,
                 engine: "local",
+                destination: None,
                 prompts: Mutex::default(),
             })
         }
@@ -622,6 +639,9 @@ mod tests {
         }
         fn engine(&self) -> &'static str {
             self.engine
+        }
+        fn destination(&self) -> Option<String> {
+            self.destination.map(Into::into)
         }
     }
 
@@ -708,7 +728,7 @@ mod tests {
         let cloud = Fake::cloud("cloud answer");
         assert_eq!(
             run(dynamic(&cloud), "shorten", Some("secret text"), T),
-            Err(CommandError::SelectionNotAllowed)
+            Err(CommandError::SelectionNotAllowed { to: None })
         );
         assert_eq!(cloud.calls(), 0);
         // Speak-to-generate sends no selection: the cloud route is fine.
@@ -716,6 +736,34 @@ mod tests {
             run(dynamic(&cloud), "write hello", None, T).as_deref(),
             Ok("cloud answer")
         );
+    }
+
+    #[test]
+    fn the_selection_refusal_names_the_active_cloud_provider() {
+        let refusal = |destination: Option<&'static str>| {
+            let cloud = Arc::new(Fake {
+                destination,
+                ..Arc::try_unwrap(Fake::cloud("x")).ok().unwrap()
+            });
+            // Cloud-first route without a usable local part: the refusal
+            // names the cloud part's destination.
+            let routed: Arc<dyn Cleaner> =
+                Arc::new(RoutedCleaner::new(cloud as Arc<dyn Cleaner>, None));
+            run(Some(routed), "shorten", Some("secret"), T)
+                .unwrap_err()
+                .to_string()
+        };
+        assert_eq!(
+            refusal(Some("OpenRouter")),
+            "Command Mode would send the selection to OpenRouter: allow surrounding text there, or use a local AI model"
+        );
+        let lite = refusal(Some("LiteLLM (10.0.0.5)"));
+        assert!(
+            lite.starts_with("Command Mode would send the selection to LiteLLM (10.0.0.5):"),
+            "{lite}"
+        );
+        assert!(!lite.contains("OpenRouter"), "{lite}");
+        assert!(refusal(None).starts_with("Command Mode would send the selection to the cloud:"));
     }
 
     #[test]
@@ -754,7 +802,10 @@ mod tests {
                 "selection_too_long",
             ),
             (CommandError::NoLlm, "no_llm"),
-            (CommandError::SelectionNotAllowed, "selection_not_allowed"),
+            (
+                CommandError::SelectionNotAllowed { to: None },
+                "selection_not_allowed",
+            ),
             (CommandError::Timeout { secs: 1 }, "timeout"),
             (CommandError::Empty, "empty"),
             (CommandError::LanguageChanged, "language_changed"),
@@ -908,7 +959,12 @@ mod tests {
             CommandError::NoInstruction.to_string(),
             "No instruction heard"
         );
-        assert!(CommandError::NoLlm.to_string().contains("AI cleanup"));
+        let no_llm = CommandError::NoLlm.to_string();
+        assert!(no_llm.contains("AI cleanup") && no_llm.contains("cloud text cleanup"));
+        assert!(
+            !no_llm.contains("OpenRouter"),
+            "D78: the provider may be LiteLLM"
+        );
         assert_eq!(
             CommandError::Timeout { secs: 25 }.to_string(),
             "AI didn't answer within 25 s"

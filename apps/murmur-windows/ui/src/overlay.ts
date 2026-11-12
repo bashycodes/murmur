@@ -115,7 +115,9 @@ function fixFor(text: string): Fix | null {
   if (/(speech|whisper|parakeet) model (not found|failed)|model file not found/i.test(text)) {
     return { page: "settings-speech", label: "Choose a model →" };
   }
-  if (/cloud stt|openrouter|openrouter\.ai/i.test(text)) return { page: "settings-openrouter", label: "Fix →" };
+  // Command Mode / transforms refusing a selection name the Cloud provider
+  // ("… send the selection to LiteLLM (10.0.0.5)"): its switch is on the Cloud page.
+  if (/cloud stt|openrouter|send the selection to/i.test(text)) return { page: "settings-openrouter", label: "Fix →" };
   if (/cloud cleanup|ai cleanup/i.test(text)) return { page: "settings-cleanup", label: "Fix →" };
   if (/dictation disabled|local model not loaded/i.test(text)) return { page: "settings-speech", label: "Fix →" };
   if (/server/i.test(text)) return { page: "settings-server", label: "Fix →" };

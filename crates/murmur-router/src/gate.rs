@@ -263,6 +263,10 @@ impl Cleaner for Gate {
         Some(self.st.lk().cfg.cleanup_model().to_string())
     }
 
+    fn destination(&self) -> Option<String> {
+        Some(self.st.lk().cfg.cleanup_destination())
+    }
+
     fn timeout_ms(&self) -> Option<u64> {
         Some(self.st.lk().cfg.cleanup_timeout_ms())
     }
