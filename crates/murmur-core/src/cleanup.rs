@@ -1759,15 +1759,27 @@ fn run_metered(
         return (CleanOutcome::Fallback(FallbackReason::Empty), usage, why);
     }
     // D65: a dictation is never translated. The one check on the answer
-    // (otherwise used as given, D59) is its writing system.
-    if let Some(s) = script_kept(asr_text).filter(|s| script_lock::drifted_from(*s, asr_text, &out))
-    {
-        let why = Some(format!("answer not in {}", s.language()));
-        return (
-            CleanOutcome::Fallback(FallbackReason::LanguageChanged),
-            usage,
-            why,
-        );
+    // (otherwise used as given, D59) is its writing system: it keeps the
+    // transcript's script and adds no other one, nor (Hebrew) a Latin word
+    // the transcript, dictionary or screen words do not have.
+    if let Some(s) = script_kept(asr_text) {
+        let why = if script_lock::drifted_from(s, asr_text, &out) {
+            Some(format!("answer not in {}", s.language()))
+        } else {
+            let mut known: Vec<&str> = Vec::new();
+            if let Some(src) = &source {
+                known = src.dictionary.vocabulary();
+                known.extend(src.ctx.screen_words.iter().map(String::as_str));
+            }
+            script_lock::added_foreign(s, asr_text, &out, &known)
+        };
+        if why.is_some() {
+            return (
+                CleanOutcome::Fallback(FallbackReason::LanguageChanged),
+                usage,
+                why,
+            );
+        }
     }
     (CleanOutcome::Formatted(out), usage, None)
 }
@@ -2146,6 +2158,46 @@ mod tests {
             ),
             CleanOutcome::Formatted("Nos vemos a las 8.".into())
         );
+    }
+
+    // D65: an answer that stays mostly Hebrew but adds another script, or
+    // a Latin word the dictation does not have, falls back too. Latin
+    // words of the dictation, digits and punctuation are kept.
+    #[test]
+    fn an_answer_that_adds_another_script_falls_back() {
+        let he = "תבדוק מתי הרכבת יוצאת מחר בבוקר ותשלח לי בוואטסאפ";
+        let falls_back = |answer: &'static str, dictation: &str| {
+            run(Arc::new(Fixed(answer, Duration::ZERO)), dictation, 500)
+                == CleanOutcome::Fallback(FallbackReason::LanguageChanged)
+        };
+        assert!(falls_back(
+            "תבדוק מתי הרכבת поезд יוצאת מחר בבוקר ותשלח לי בוואטסאפ.",
+            he
+        ));
+        assert!(falls_back(
+            "תבדוק מתי الرכבת יוצאת מחר בבוקר ותשלח לי בוואטסאפ.",
+            he
+        ));
+        assert!(falls_back(
+            "תבדוק מתי הרכבת יוצאת 明天 בבוקר ותשלח לי בוואטסאפ.",
+            he
+        ));
+        assert!(falls_back(
+            "תבדוק מתי הרכבת יוצאת tomorrow בבוקר ותשלח לי בוואטסאפ.",
+            he
+        ));
+        assert!(!falls_back(
+            "תבדוק מתי הרכבת יוצאת מחר בבוקר, ותשלח לי בוואטסאפ.",
+            he
+        ));
+        assert!(!falls_back(
+            "תבדוק מתי הרכבת יוצאת מחר ב-8:15 ותשלח לי ב-WhatsApp.",
+            he
+        ));
+        let mixed = "תבדוק בגוגל מאפס מתי הרכבת יוצאת";
+        assert!(!falls_back("תבדוק ב-Google Maps מתי הרכבת יוצאת.", mixed));
+        let kept = "תבדוק ב Google Maps מתי הרכבת יוצאת";
+        assert!(!falls_back("תבדוק ב-Google Maps מתי הרכבת יוצאת.", kept));
     }
 
     // D65 threshold edges. The answer is measured against the dictation's
