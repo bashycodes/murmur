@@ -99,7 +99,9 @@ fn main() {
                 .map(|a| command::sanitize(&a, Some(s)))
                 .map_err(|e| format!("{e:?}"))
         } else {
-            command::run(Some(cl.clone()), i, Some(s), timeout).map_err(|e| e.kind().to_string())
+            command::run(Some(cl.clone()), i, Some(s), timeout)
+                .map(command::CommandOutput::into_text)
+                .map_err(|e| e.kind().to_string())
         };
         let ms = t0.elapsed().as_millis();
         let (text, err) = match &r {
