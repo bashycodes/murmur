@@ -53,6 +53,15 @@ pub struct ModelTiming {
     /// ([`crate::llm_keep`]).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub reused: bool,
+    /// Where the model runs, when the load chose a device: a whisper model
+    /// with a GPU plugin configured (`ModelConfig::whisper_lib`, D84):
+    /// `"CUDA: NVIDIA L4"`, or `"CPU"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device: Option<String>,
+    /// Why a GPU that was asked for is not used (the plugin did not load,
+    /// or its GPU failed and the CPU took over).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gpu_error: Option<String>,
 }
 
 /// Every model of one load, in load order.
@@ -98,6 +107,8 @@ mod tests {
                         ms: 2190,
                     }],
                     reused: false,
+                    device: None,
+                    gpu_error: None,
                 },
                 ModelTiming {
                     kind: ModelKind::Llm,
@@ -106,6 +117,8 @@ mod tests {
                     ms: 0,
                     phases: Vec::new(),
                     reused: true,
+                    device: None,
+                    gpu_error: None,
                 },
             ],
         };

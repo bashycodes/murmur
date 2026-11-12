@@ -32,6 +32,14 @@ serde_json.workspace = true
 # Inside it, no usable GPU, or a GPU that fails to load the model, means
 # the CPU (`backend::choose`, `Plan::fallbacks`).
 vulkan = ["whisper-rs/vulkan"]
+# GPU through CUDA (whisper.cpp GGML_CUDA), for murmur-server's CUDA image
+# (deploy/docker/Dockerfile `cuda-whisper`, D84). Needs the CUDA toolkit
+# (nvcc, cuBLAS) at build time. The .so links libcudart, libcublas and
+# libcublasLt (shipped in the image) and the driver's libcuda.so.1 (injected
+# by the NVIDIA container runtime): without a driver it does not load and
+# the server uses its built-in CPU whisper; without a GPU it runs on the CPU
+# (`backend::choose`).
+cuda = ["whisper-rs/cuda"]
 
 [dev-dependencies]
 # tests/plugin_e2e.rs drives the built cdylib through murmur-core's loader.
