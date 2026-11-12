@@ -16,6 +16,12 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Fixed
+
+- **Android: Settings → Speech to text rows open their engine's page.** Tapping "Your server" (or OpenRouter, or the phone's engine) opens that engine's settings; only the switch at the end of the row turns it on or off. Before, tapping anywhere on the row toggled it and nothing on the page led to the server's address and key.
+- **Android: the Server page is easier to fill in.** Keyboard Next goes host → port → token → Done and never lands on the TLS switch (Enter used to turn TLS on); warnings sit under the form so they no longer push the fields around while you type, and say "this phone" instead of "the client"; the token help names the real command, `murmur-server keys add <name>`.
+- **Android: settings top bars stay put.** Back and Save no longer scroll away with a long page (Settings, Developer settings, OpenRouter pages).
+
 ## [1.2.0] - 2026-11-12
 
 ### Added

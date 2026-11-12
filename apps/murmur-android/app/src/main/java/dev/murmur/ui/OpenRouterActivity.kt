@@ -78,10 +78,7 @@ class OpenRouterActivity : Activity() {
 
     /** The page under the design's top bar (back, "Cloud server"). */
     private fun page(build: LinearLayout.() -> Unit) = with(ui) {
-        screen {
-            topBar(TITLE, DevUi.TopNav.BACK, onNav = ::finish)
-            build()
-        }
+        screen(header = { topBar(TITLE, DevUi.TopNav.BACK, onNav = ::finish) }, build = build)
     }
 
     private fun refresh() { val s = app.dev.load(); for (r in refreshers) r(s) }

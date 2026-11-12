@@ -467,7 +467,7 @@ object DevSettingsForm {
     }
 
     const val BOTH_OFF = "Dictation disabled: turn on Allow server or Allow client."
-    const val NO_HOST = "Server enabled but no host set: dictation will use the client (or fail if the client is off)."
+    const val NO_HOST = "Your server is on but has no address yet: dictation skips it and uses the next engine that is on, such as this phone."
     const val PLAINTEXT = "Unencrypted (ws://): OK only on your LAN or over an encrypted VPN."
     const val CLOUD_NO_CONSENT = "Cloud speech-to-text is on but has no consent: it will be skipped (OpenRouter page)."
     const val CLOUD_NOT_IN_ORDER = "Cloud allowed but not in the route order: it will not be used."

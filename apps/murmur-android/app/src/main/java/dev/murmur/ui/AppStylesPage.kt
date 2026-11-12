@@ -61,9 +61,8 @@ internal class AppStylesPage(
     private fun dp(v: Int) = (v * activity.resources.displayMetrics.density).toInt()
 
     /** [header]: the page's top bar (added first). */
-    fun render(header: LinearLayout.() -> Unit = {}) = with(ui) {
-        screen {
-            header()
+    fun render(header: (LinearLayout.() -> Unit)? = null) = with(ui) {
+        screen(header = header) {
             note("Put an app in another group than the built-in list does (for example a work chat app the list calls personal).")
             list = card { }
             action("Add app") { pick() }
