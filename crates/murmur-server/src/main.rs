@@ -87,6 +87,7 @@ fn load_unchecked(a: &Args) -> Result<Config, String> {
         c.state_dir = Some(SYSTEM_STATE_DIR.into());
     }
     c.insecure_bind_any = a.insecure_bind_any;
+    c.apply_whisper_lib_env(murmur_build_info::env::var("MURMUR_WHISPER_LIB").ok());
     Ok(c)
 }
 
