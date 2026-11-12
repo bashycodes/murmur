@@ -1,6 +1,5 @@
 package dev.murmur.data
 
-import dev.murmur.core.CleanupLevel
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -74,12 +73,29 @@ object ShellPages {
     /** Status dot of an engine line: green = on the phone / your server, glow = cloud, grey = off, red = disabled. */
     enum class Dot { OK, CLOUD, OFF, BAD }
 
-    data class EngineLine(val label: String, val text: String, val dot: Dot) {
+    /** Where a drawer line opens: a Settings page, or OpenRouter's page (`remote`'s only AI cleanup, D28). */
+    sealed interface Dest {
+        data class Page(val page: SettingsPages.Page) : Dest
+        data object OpenRouter : Dest
+    }
+
+    /**
+     * Where AI cleanup is set: its Settings page where the build has one, else OpenRouter's page
+     * where the build has the cloud, else none (no row on the Settings hub). One answer for the
+     * Settings hub's row and the drawer's line, so they cannot open different screens.
+     */
+    fun cleanupDest(caps: BuildCaps): Dest? = when {
+        SettingsPages.visible(SettingsPages.Page.CLEANUP, caps) -> Dest.Page(SettingsPages.Page.CLEANUP)
+        caps.cloud -> Dest.OpenRouter
+        else -> null
+    }
+
+    data class EngineLine(val label: String, val text: String, val dot: Dot, val dest: Dest) {
         /** One TalkBack phrase. */
         val description: String get() = "$label: $text"
     }
 
-    /** [routing] = [DevSummary.routing] ("Server first → Phone", "Dictation disabled"). */
+    /** [routing] = [DevSummary.routing] ("Server first → Phone", "Dictation disabled"); opens Settings → Speech to text. */
     fun speechLine(routing: String) = EngineLine(
         "Speech to text", routing,
         when {
@@ -87,23 +103,22 @@ object ShellPages {
             routing.contains("Cloud") -> Dot.CLOUD
             else -> Dot.OK
         },
+        Dest.Page(SettingsPages.Page.SPEECH),
     )
 
     /**
-     * The engines AI cleanup will use ([CleanupEngines.planned]; [d] = the effective settings,
-     * [phoneAi] = the on-device AI is on in a build that has it, [serverLlm] from `cleanup_status`),
-     * "Off" when the dictation's LLM step does not run; then the formatting rules or off.
+     * The drawer's AI cleanup line: the same text as Settings → AI cleanup's row
+     * ([SettingsSummary.cleanupRow], [d] = the effective settings, [serverLlm] from `cleanup_status`),
+     * so the two never disagree. The dot is the first engine's; grey when no AI engine runs.
      */
-    fun cleanupLine(s: Settings, d: DevSettings, phoneAi: Boolean, serverLlm: Boolean? = null): EngineLine {
-        val plan = CleanupEngines.planned(d, phoneAi, serverLlm)
-        val runs = s.cleanupFor(d.offPhoneCleanup) != CleanupLevel.NONE
-        val engines = if (runs) CleanupEngines.engineLine(d, plan) else null
-        val cloudFirst = plan.firstOrNull() == DevSettings.CleanupRoute.CLOUD
-        return when {
-            engines != null -> EngineLine("AI cleanup", engines, if (cloudFirst) Dot.CLOUD else Dot.OK)
-            s.spokenCleanup -> EngineLine("AI cleanup", "Off · formatting rules only", Dot.OFF)
-            else -> EngineLine("AI cleanup", "Off", Dot.OFF)
+    fun cleanupLine(s: Settings, d: DevSettings, caps: BuildCaps, serverLlm: Boolean? = null): EngineLine {
+        val plan = CleanupEngines.plannedFor(s, d, caps, serverLlm)
+        val dot = when (plan.firstOrNull()) {
+            null -> Dot.OFF
+            DevSettings.CleanupRoute.CLOUD -> Dot.CLOUD
+            else -> Dot.OK
         }
+        return EngineLine("AI cleanup", SettingsSummary.cleanupRow(s, d, caps, serverLlm), dot, cleanupDest(caps) ?: Dest.Page(SettingsPages.Page.HUB))
     }
 
     /**
