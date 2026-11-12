@@ -500,7 +500,7 @@ current value and open a page:
 | General · *Excluded apps* | package names, one per line (checked) | *Save* |
 | General · *Timing and limits* | Stop after silence (ms, 0 or 300–10000), Decode while speaking, session limit (1–20 min) | *Save* |
 | Models · *Speech to text* | *Engines*: one switch per engine (Use your server / Use this phone / Use OpenRouter for speech; OpenRouter asks for consent) in try order, *Change order* (↑ / ↓). *On this phone* (local / hybrid): the model in use → *Model on this phone* (Whisper or Parakeet, *Speech model (whisper)* / *Parakeet model folder* imports), *Import another model*, *Keep loaded while the server is used* (hybrid); *Transcribe while I speak* | at once (reloads) |
-| Models · *AI cleanup* | Clean up with local AI; *Clean up with OpenRouter* (hybrid, → the OpenRouter page); *AI cleanup model* import; strength. The row says "OpenRouter (<model>), then on-device" while cloud cleanup is on. In `remote` it opens the OpenRouter page | at once (reloads) |
+| Models · *AI cleanup* | Clean up with local AI; *Clean up with OpenRouter* (hybrid, → the Cloud page); *AI cleanup model* import; strength. The row says "OpenRouter (<model>), then on-device" while cloud cleanup is on. In `remote` it opens the Cloud page | at once (reloads) |
 | Connections · *Your server* (hybrid / remote) | Developer settings' *Server* page; the row shows the last check ("Connected · 41 ms") | top bar |
 | Connections · *OpenRouter* (hybrid / remote) | The OpenRouter page (§5c); the row shows this month's cost | at once |
 | Data & privacy | *Keep history* (Keep / 24 hours / Never save, asks before deleting); *Learn from my edits*; *Debug log* | at once |
