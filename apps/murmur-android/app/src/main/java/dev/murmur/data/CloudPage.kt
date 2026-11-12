@@ -105,7 +105,7 @@ object CloudPage {
         if (c.customProvider) consentLine(c.customCleanup.consentAtMs, c.customCleanup.consentOk, "cleanup", date, c.customCleanup.host)
         else consentLine(c.cleanup.consentAtMs, c.cleanup.consentOk, "cleanup", date)
 
-    /** Settings → DICTATION "Cloud (OpenRouter)" and the AI cleanup row: "Speech on · Cleanup on (llama-3.3-70b-instruct)". */
+    /** One line for the Cloud page's two uses: "Speech on · Cleanup on (llama-3.3-70b-instruct)". */
     fun settingsSummary(s: DevSettings, hasKey: Boolean): String {
         val speech = if (s.cloudRouted && s.cloud.stt.consentOk) "Speech on" else "Speech off"
         val cleanup = when {

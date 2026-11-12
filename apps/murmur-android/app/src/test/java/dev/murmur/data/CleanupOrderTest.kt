@@ -242,7 +242,7 @@ class CleanupOrderTest {
         assertEquals("OpenRouter · Sends text · asks first · no key", CleanupEngines.cloudLine(d.copy(allowCloudCleanup = true), hasKey = false))
     }
 
-    @Test fun anUnusableCustomServerSaysCloudCleanupIsOff() {
+    @Test fun anUnusableLiteLlmSaysCloudCleanupIsOff() {
         // Custom selected, then its model cleared: the router gets OpenRouter without cleanup
         // consent; the order row must say so, never "OpenRouter".
         val d = DevSettings.defaults(BuildCaps.ALL)

@@ -294,7 +294,7 @@ class SettingsPagesTest {
         assertEquals("Light · Your server, then rules", SettingsSummary.cleanupRow(s, dev, caps, serverLlm = true))
     }
 
-    @Test fun aiCleanupRowNamesACustomServerOnlyWhenUsable() {
+    @Test fun aiCleanupRowNamesLiteLlmOnlyWhenUsable() {
         FakeCustomAddress.install()
         val noServer = dev.withCleanup(DevSettings.CleanupRoute.SERVER, false)
         val custom = CustomCleanupSettings(baseUrl = "http://10.0.0.5:4000/v1", model = "gpt-4o-mini")

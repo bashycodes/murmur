@@ -224,7 +224,7 @@ class CloudPageTest {
         assertTrue(CloudPage.settingsSummary(or, hasKey = false).endsWith("· no key"))
     }
 
-    @Test fun anUnusableCustomServerIsShownAsOffNotAsOpenRouter() {
+    @Test fun anUnusableLiteLlmIsShownAsOffNotAsOpenRouter() {
         val on = CloudPage.enableCleanup(base.copy(cloud = base.cloud.copy(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = server)), now)
         val broken = CloudPage.withCustom(on) { copy(model = "") }
         assertTrue(broken.cloud.customNotSetUp)

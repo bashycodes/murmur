@@ -144,7 +144,7 @@ class CloudUiTest {
         assertTrue("Speech off · Cleanup off · no key" in t)
     }
 
-    @Test fun aRefreshReadsTheCustomServerAddressOnce() {
+    @Test fun aRefreshReadsTheLiteLlmAddressOnce() {
         // D52: the cleanup card and the custom-server card share one settings value per refresh.
         val prev = dev.murmur.data.LiteLLM.check
         var calls = 0
