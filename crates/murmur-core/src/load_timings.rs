@@ -4,7 +4,7 @@
 
 use std::time::Instant;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// One step of one model's load, in milliseconds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -54,14 +54,59 @@ pub struct ModelTiming {
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub reused: bool,
     /// Where the model runs, when the load chose a device: a whisper model
-    /// with a GPU plugin configured (`ModelConfig::whisper_lib`, D84):
-    /// `"CUDA: NVIDIA L4"`, or `"CPU"`.
+    /// with a GPU plugin configured (`ModelConfig::whisper_lib`, D84). Its
+    /// `gpu_error` says why a GPU that was asked for is not used (the
+    /// plugin did not load, or its GPU failed and the CPU took over).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub device: Option<String>,
-    /// Why a GPU that was asked for is not used (the plugin did not load,
-    /// or its GPU failed and the CPU took over).
-    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runs_on: Option<WhisperBackend>,
+}
+
+/// Where a whisper model runs: from the GPU plugin's JSON
+/// (`murmur_whisper_info` or `murmur_whisper_backends`,
+/// `crate::whisper_plugin`), or [`WhisperBackend::cpu`] for the built-in
+/// engine.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct WhisperBackend {
+    /// "Vulkan", "CUDA", "CPU", …
+    pub backend: String,
+    /// The GPU's name, or "CPU".
+    pub device: String,
+    /// Set when a GPU was asked for or found but is not used.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gpu_error: Option<String>,
+}
+
+impl WhisperBackend {
+    pub fn from_info(json: &str) -> Option<Self> {
+        let v: serde_json::Value = serde_json::from_str(json).ok()?;
+        let backend = v.get("backend")?.as_str()?.to_string();
+        Some(Self {
+            device: v
+                .get("device")
+                .and_then(|d| d.as_str())
+                .unwrap_or(&backend)
+                .to_string(),
+            gpu_error: v
+                .get("gpu_error")
+                .and_then(|e| e.as_str())
+                .map(str::to_string),
+            backend,
+        })
+    }
+
+    /// The CPU (the built-in engine, or the plugin without a GPU).
+    pub fn cpu() -> Self {
+        Self {
+            backend: "CPU".into(),
+            device: "CPU".into(),
+            gpu_error: None,
+        }
+    }
+
+    /// The model runs on a GPU (any backend but the CPU).
+    pub fn is_gpu(&self) -> bool {
+        !self.backend.eq_ignore_ascii_case("cpu")
+    }
 }
 
 /// Every model of one load, in load order.
@@ -107,8 +152,7 @@ mod tests {
                         ms: 2190,
                     }],
                     reused: false,
-                    device: None,
-                    gpu_error: None,
+                    runs_on: None,
                 },
                 ModelTiming {
                     kind: ModelKind::Llm,
@@ -117,8 +161,7 @@ mod tests {
                     ms: 0,
                     phases: Vec::new(),
                     reused: true,
-                    device: None,
-                    gpu_error: None,
+                    runs_on: None,
                 },
             ],
         };

@@ -116,8 +116,9 @@ fn a_whisper_plugin_that_does_not_load_falls_back_to_the_cpu() {
     };
     let core = MurmurCore::load_models(&cfg).expect("CPU fallback loads");
     let asr = &core.load_timings().models[0];
-    assert_eq!(asr.device.as_deref(), Some("CPU"), "{asr:?}");
-    let why = asr.gpu_error.as_deref().unwrap_or_default();
+    let on = asr.runs_on.as_ref().expect("a plugin was asked for");
+    assert!(!on.is_gpu(), "{on:?}");
+    let why = on.gpu_error.as_deref().unwrap_or_default();
     // A build without the plugin loader says so instead of trying the path.
     let expected = if cfg!(feature = "whisper-plugin") {
         "libmurmur_whisper_cuda.so"
@@ -140,7 +141,7 @@ fn a_whisper_plugin_that_does_not_load_falls_back_to_the_cpu() {
     })
     .unwrap();
     let asr = &plain.load_timings().models[0];
-    assert_eq!((&asr.device, &asr.gpu_error), (&None, &None));
+    assert_eq!(asr.runs_on, None);
 }
 
 /// Runs only when a Silero model is present (`MURMUR_SILERO_MODEL` or

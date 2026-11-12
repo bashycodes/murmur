@@ -84,21 +84,27 @@ fn asr_placement(t: &LoadTimings) -> Vec<(bool, String)> {
         .iter()
         .filter(|m| m.kind == ModelKind::Asr)
         .filter_map(|m| {
-            let device = m.device.as_deref()?;
+            let on = m.runs_on.as_ref()?;
             let model = match m.language.as_deref() {
                 Some(l) => format!("speech model ({l})"),
                 None => "speech model".to_string(),
             };
-            Some(match (m.gpu_error.as_deref(), device) {
-                (Some(e), _) => (
+            Some(match (on.is_gpu(), on.gpu_error.as_deref()) {
+                (true, _) => (
+                    false,
+                    format!(
+                        "{model}: whisper runs on the GPU ({}: {})",
+                        on.backend, on.device
+                    ),
+                ),
+                (false, Some(e)) => (
                     true,
                     format!("{model}: whisper runs on the CPU, the GPU is not used: {e}"),
                 ),
-                (None, "CPU") => (
+                (false, None) => (
                     true,
                     format!("{model}: whisper runs on the CPU, the GPU plugin found no GPU"),
                 ),
-                (None, d) => (false, format!("{model}: whisper runs on the GPU ({d})")),
             })
         })
         .collect()
@@ -294,7 +300,9 @@ impl Pool {
 #[cfg(test)]
 mod tests {
     use super::{asr_placement, draft_not_applied};
-    use murmur_core::load_timings::{LoadBackend, LoadTimings, ModelKind, ModelTiming};
+    use murmur_core::load_timings::{
+        LoadBackend, LoadTimings, ModelKind, ModelTiming, WhisperBackend,
+    };
 
     #[test]
     fn a_plugin_that_ignores_llm_draft_is_reported() {
@@ -312,7 +320,12 @@ mod tests {
         assert_eq!(draft_not_applied(Some(4), Some(r#"{"draft":2}"#)), Some(2));
     }
 
-    fn asr(language: Option<&str>, device: Option<&str>, gpu_error: Option<&str>) -> ModelTiming {
+    /// `on`: `(backend, device)` of a model a plugin was asked for.
+    fn asr(
+        language: Option<&str>,
+        on: Option<(&str, &str)>,
+        gpu_error: Option<&str>,
+    ) -> ModelTiming {
         ModelTiming {
             kind: ModelKind::Asr,
             language: language.map(str::to_string),
@@ -320,8 +333,11 @@ mod tests {
             ms: 1,
             phases: Vec::new(),
             reused: false,
-            device: device.map(str::to_string),
-            gpu_error: gpu_error.map(str::to_string),
+            runs_on: on.map(|(backend, device)| WhisperBackend {
+                backend: backend.into(),
+                device: device.into(),
+                gpu_error: gpu_error.map(str::to_string),
+            }),
         }
     }
 
@@ -330,10 +346,10 @@ mod tests {
         let t = LoadTimings {
             total_ms: 1,
             models: vec![
-                asr(None, Some("CUDA: NVIDIA L4"), None),
+                asr(None, Some(("CUDA", "NVIDIA L4")), None),
                 asr(
                     Some("he"),
-                    Some("CPU"),
+                    Some(("CPU", "CPU")),
                     Some("whisper GPU plugin not found (libcuda.so.1: cannot open)"),
                 ),
                 // No plugin asked for (built-in whisper, Parakeet): quiet.
@@ -360,7 +376,7 @@ mod tests {
         );
         let no_gpu = asr_placement(&LoadTimings {
             total_ms: 1,
-            models: vec![asr(None, Some("CPU"), None)],
+            models: vec![asr(None, Some(("CPU", "CPU")), None)],
         });
         assert_eq!(
             no_gpu,
