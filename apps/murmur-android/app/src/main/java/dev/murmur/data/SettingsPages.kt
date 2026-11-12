@@ -316,8 +316,8 @@ object SettingsSummary {
     fun cloud(d: DevSettings, hasKey: Boolean, usage: CloudUsage): String {
         val c = d.cloud
         if (!c.customProvider) return "${OpenRouter.NAME} · ${if (hasKey) "key saved" else "no key"} · ${CloudText.usd(usage.budgetCostUsd)} this month"
-        if (c.customNotSetUp) return "${CustomServer.NAME} · not set up"
-        return "${CustomServer.NAME} · ${c.customCleanup.host}" + if (usage.customCostUsd > 0) " · ${CloudText.usd(usage.customCostUsd)} this month" else ""
+        if (c.customNotSetUp) return "${LiteLLM.NAME} · not set up"
+        return "${LiteLLM.NAME} · ${c.customCleanup.host}" + if (usage.customCostUsd > 0) " · ${CloudText.usd(usage.customCostUsd)} this month" else ""
     }
 
     /** "This phone" engine line: the on-device engine that runs ("Parakeet · works offline"). */

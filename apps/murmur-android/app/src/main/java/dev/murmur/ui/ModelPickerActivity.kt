@@ -21,7 +21,7 @@ import dev.murmur.data.CloudCatalog
 import dev.murmur.data.CloudCatalog.Use
 import dev.murmur.data.DevSettings
 import dev.murmur.data.OpenRouter
-import dev.murmur.data.OpenRouterPage
+import dev.murmur.data.CloudPage
 import java.text.DateFormat
 import java.util.Date
 import kotlin.concurrent.thread
@@ -121,7 +121,7 @@ class ModelPickerActivity : Activity() {
     /** Re-reads the rows (no network) and redraws the list. */
     private fun reload() {
         val rows = CloudCatalog.decodeRows(NativeMurmurCore.cloudCatalog(use.wire, query, filters.toJson()))
-        val inUse = OpenRouterPage.model(stored(), use)
+        val inUse = CloudPage.model(stored(), use)
         current.text = CloudCatalog.modelSummary(inUse, if (use == Use.STT) stored().cloud.stt.sttPath else null)
         statusLine.text = CloudCatalog.sourceLine(status, System.currentTimeMillis()) { DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(it)) } +
             if (refreshing) " · refreshing…" else ""
@@ -173,7 +173,7 @@ class ModelPickerActivity : Activity() {
     private fun save(id: String, sttPath: String) {
         val m = id.trim()
         OpenRouter.modelIdError(m)?.let { Toast.makeText(this, it, Toast.LENGTH_LONG).show(); return }
-        val next = OpenRouterPage.withModel(stored(), use, m, sttPath)
+        val next = CloudPage.withModel(stored(), use, m, sttPath)
         app.dev.saveCloud(cloud = next.cloud)
         app.engine.applyDevSettings(app.dev.load())
         // The router checks the id too (same rule); a refusal there is logged, the stored choice stays.

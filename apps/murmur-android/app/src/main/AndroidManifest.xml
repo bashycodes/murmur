@@ -80,7 +80,7 @@
             android:launchMode="singleTop" android:windowSoftInputMode="adjustResize|stateVisible" />
         <activity android:name=".ui.DeveloperActivity" android:exported="false" android:label="@string/title_developer"
             android:theme="@style/Theme.Murmur.Shell" />
-        <activity android:name=".ui.OpenRouterActivity" android:exported="false" android:label="Cloud server"
+        <activity android:name=".ui.CloudActivity" android:exported="false" android:label="Cloud server"
             android:theme="@style/Theme.Murmur.Shell" />
         <activity android:name=".ui.ModelPickerActivity" android:exported="false" android:label="Model"
             android:theme="@style/Theme.Murmur.Shell" />

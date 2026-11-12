@@ -19,10 +19,10 @@ import dev.murmur.data.CloudInput
 import dev.murmur.data.CloudText
 import dev.murmur.data.CloudUsage
 import dev.murmur.data.CleanupProvider
-import dev.murmur.data.CustomServer
+import dev.murmur.data.LiteLLM
 import dev.murmur.data.DevSettings
 import dev.murmur.data.OpenRouter
-import dev.murmur.data.OpenRouterPage
+import dev.murmur.data.CloudPage
 import dev.murmur.data.SettingsSummary
 import java.text.DateFormat
 import java.util.Date
@@ -32,7 +32,7 @@ import kotlin.concurrent.thread
  * D78 "Cloud": the one page for online models (D28 replaced the D18 provider list), in the app
  * design's look (top bar, cards; desktop SettingsOpenRouter.dc.html "Settings · Cloud" adapted to
  * the phone). Reached from Settings → Connections "Cloud" and from Developer settings.
- *   PROVIDER         OpenRouter | LiteLLM switch (one provider at a time, [OpenRouterPage.withProvider]),
+ *   PROVIDER         OpenRouter | LiteLLM switch (one provider at a time, [CloudPage.withProvider]),
  *                    what each one is and offers
  *   API KEY          OpenRouter: SecretField (never in the a11y tree), Paste / Clear, Save, Check key
  *   PRIVACY          OpenRouter: zero-retention providers only, deny data collection (confirm to turn off)
@@ -45,7 +45,7 @@ import kotlin.concurrent.thread
  *   USAGE            this month's cost (total / speech / cleanup), requests, budget, reset; the proxy's line
  * Every change applies at once (store + live router), like the old consent dialog did.
  */
-class OpenRouterActivity : Activity() {
+class CloudActivity : Activity() {
     private val app get() = MurmurApp.of(this)
     private val caps get() = app.caps
     private lateinit var ui: DevUi
@@ -189,15 +189,15 @@ class OpenRouterActivity : Activity() {
         card {
             val on = toggleRow(STT_SWITCH, STT_DESC, s0.allowCloud)
             val notAvailable = note(CloudText.CUSTOM_STT_NOTE)
-            val model = navRow(R.drawable.ic_set_mic, "Model") { ModelPickerActivity.open(this@OpenRouterActivity, CloudCatalog.Use.STT) }
+            val model = navRow(R.drawable.ic_set_mic, "Model") { ModelPickerActivity.open(this@CloudActivity, CloudCatalog.Use.STT) }
             val lang = navRow(R.drawable.ic_set_language, "Language") { editLanguage() }
             val dict = toggleRow("Send dictionary words", "Helps spell names (Whisper on Groq only)", s0.cloud.stt.sendDictionary)
             val consent = infoRow("Consent to send audio")
             on.onChange { v -> if (!quiet) onStt(on, v) }
-            dict.onChange { v -> if (!quiet) change { OpenRouterPage.withStt(it) { copy(sendDictionary = v) } } }
+            dict.onChange { v -> if (!quiet) change { CloudPage.withStt(it) { copy(sendDictionary = v) } } }
             refreshers += { s ->
                 // D78: LiteLLM does cleanup only; the switch stays off and says why.
-                val available = OpenRouterPage.sttAvailable(s)
+                val available = CloudPage.sttAvailable(s)
                 quietly { on.isChecked = s.allowCloud && available; dict.isChecked = s.cloud.stt.sendDictionary }
                 on.isEnabled = available
                 on.setDescription(if (available) STT_DESC else CloudText.STT_NOT_AVAILABLE)
@@ -205,7 +205,7 @@ class OpenRouterActivity : Activity() {
                 for (row in listOf(model.view, lang.view, dict.row, consent.parent as View)) row.visibility = if (available) View.VISIBLE else View.GONE
                 model.setSubtitle(CloudCatalog.modelSummary(s.cloud.stt.model, s.cloud.stt.sttPath))
                 lang.setSubtitle(s.cloud.stt.language.ifEmpty { "Follow your dictation languages" })
-                consent.text = OpenRouterPage.consentLine(s.cloud.stt.consentAtMs, s.cloud.stt.consentOk, "speech-to-text", ::date)
+                consent.text = CloudPage.consentLine(s.cloud.stt.consentAtMs, s.cloud.stt.consentOk, "speech-to-text", ::date)
             }
         }
         val test = action("Test speech-to-text") { onTestStt() }
@@ -218,7 +218,7 @@ class OpenRouterActivity : Activity() {
         sectionLabel("TEXT CLEANUP")
         card {
             val on = toggleRow(CLEANUP_SWITCH, "Sends the dictated text (not your voice) after each dictation; off by default", s0.allowCloudCleanup)
-            val model = navRow(R.drawable.ic_set_sparkle, "Model") { ModelPickerActivity.open(this@OpenRouterActivity, CloudCatalog.Use.CLEANUP) }
+            val model = navRow(R.drawable.ic_set_sparkle, "Model") { ModelPickerActivity.open(this@CloudActivity, CloudCatalog.Use.CLEANUP) }
             val sort = navRow(R.drawable.ic_dev_route, "Provider choice") { editSort() }
             val timeout = navRow(R.drawable.ic_set_timer, "Time limit") { editTimeout() }
             val consent = infoRow("Consent to send text")
@@ -232,9 +232,9 @@ class OpenRouterActivity : Activity() {
                 model.setSubtitle(CloudCatalog.modelSummary(s.cloud.cleanup.model))
                 sort.setSubtitle(CloudInput.sortName(s.cloud.cleanup.sort))
                 timeout.setSubtitle("${s.cloud.cleanup.timeoutMs} ms, then the text is pasted without it")
-                consent.text = OpenRouterPage.cleanupConsentLine(s.cloud, ::date)
+                consent.text = CloudPage.cleanupConsentLine(s.cloud, ::date)
                 // D52: the router got no cleanup consent for an unusable proxy; say so here.
-                status.text = if (s.cloud.customNotSetUp) CustomServer.NOT_SET_UP
+                status.text = if (s.cloud.customNotSetUp) LiteLLM.NOT_SET_UP
                     else app.engine.router()?.let { DevText.cleanupStatus(it.cleanupStatus()) } ?: "Speech engine not loaded"
             }
         }
@@ -244,9 +244,9 @@ class OpenRouterActivity : Activity() {
             val around = toggleRow("Send text around the cursor", "Up to 300 characters before and 150 after, and a selection", s0.cloud.cleanup.sendSurroundingText)
             val screen = toggleRow("Send on-screen words", "Names and words visible in the app", s0.cloud.cleanup.sendScreenWords)
             val appName = toggleRow("Send app name", "The app's package name, not just its kind", s0.cloud.cleanup.sendAppName)
-            around.onChange { v -> if (!quiet) change { OpenRouterPage.withCleanup(it) { copy(sendSurroundingText = v) } } }
-            screen.onChange { v -> if (!quiet) change { OpenRouterPage.withCleanup(it) { copy(sendScreenWords = v) } } }
-            appName.onChange { v -> if (!quiet) change { OpenRouterPage.withCleanup(it) { copy(sendAppName = v) } } }
+            around.onChange { v -> if (!quiet) change { CloudPage.withCleanup(it) { copy(sendSurroundingText = v) } } }
+            screen.onChange { v -> if (!quiet) change { CloudPage.withCleanup(it) { copy(sendScreenWords = v) } } }
+            appName.onChange { v -> if (!quiet) change { CloudPage.withCleanup(it) { copy(sendAppName = v) } } }
             refreshers += { s ->
                 val c = s.cloud.cleanup
                 quietly { around.isChecked = c.sendSurroundingText; screen.isChecked = c.sendScreenWords; appName.isChecked = c.sendAppName }
@@ -260,9 +260,9 @@ class OpenRouterActivity : Activity() {
     private fun LinearLayout.customCard() = with(ui) {
         val label = sectionLabel("YOUR LITELLM PROXY")
         val box = card {
-            val notSetUp = note(CustomServer.NOT_SET_UP, color = p.danger)
+            val notSetUp = note(LiteLLM.NOT_SET_UP, color = p.danger)
             val url = navRow(R.drawable.ic_dev_route, "Address") { editCustomUrl() }
-            note("Any OpenAI-compatible server works. ${CustomServer.URL_HINT}")
+            note("Any OpenAI-compatible server works. ${LiteLLM.URL_HINT}")
             val http = note(CloudText.HTTP_WARNING, color = p.danger)
             val keyLine = infoRow("Stored key")
             customKeyField = secretRow(
@@ -281,7 +281,7 @@ class OpenRouterActivity : Activity() {
                 notSetUp.visibility = if (cloud.customNotSetUp) View.VISIBLE else View.GONE
                 url.setSubtitle(c.baseUrl.ifEmpty { "Not set: e.g. http://192.168.1.20:4000" })
                 http.visibility = if (c.baseUrl.isNotEmpty() && !c.https) View.VISIBLE else View.GONE
-                keyLine.text = app.cloudKeys.masked(CustomServer.ID)
+                keyLine.text = app.cloudKeys.masked(LiteLLM.ID)
                 model.setSubtitle(c.model.ifEmpty { if (proxyModels.isEmpty()) "Not set: Test connection loads the list" else "Not set: pick one of ${proxyModels.size}" })
                 timeout.setSubtitle("${c.timeoutMs} ms, then the text is pasted without it")
             }
@@ -306,30 +306,30 @@ class OpenRouterActivity : Activity() {
     }
 
     private fun onStt(row: DevUi.ToggleRow, on: Boolean) {
-        if (!on) { change(OpenRouterPage::disableStt); return }
+        if (!on) { change(CloudPage::disableStt); return }
         val s = app.dev.load()
         // D78: the switch is disabled with LiteLLM; a stale tap still says why instead of turning it on.
-        if (!OpenRouterPage.sttAvailable(s)) { quietly { row.isChecked = false }; providerResult.show(CloudText.LITELLM_NO_STT, Tone.WARN); return }
-        val enable = { change { OpenRouterPage.enableStt(it, System.currentTimeMillis()) }; refreshCatalog(); warnNoKey() }
-        if (!OpenRouterPage.sttNeedsConsent(s)) { enable(); return }
+        if (!CloudPage.sttAvailable(s)) { quietly { row.isChecked = false }; providerResult.show(CloudText.LITELLM_NO_STT, Tone.WARN); return }
+        val enable = { change { CloudPage.enableStt(it, System.currentTimeMillis()) }; refreshCatalog(); warnNoKey() }
+        if (!CloudPage.sttNeedsConsent(s)) { enable(); return }
         ui.confirm(CloudText.STT_CONSENT_TITLE, CloudText.sttConsentBody(s.cloud.stt), CloudText.STT_CONSENT_BUTTON, onYes = enable,
             onNo = { quietly { row.isChecked = false } })
     }
 
     private fun onCleanup(row: DevUi.ToggleRow, on: Boolean) {
-        if (!on) { change(OpenRouterPage::disableCleanup); return }
+        if (!on) { change(CloudPage::disableCleanup); return }
         val s = app.dev.load()
         if (s.cloud.customNotSetUp) {
             // Nothing to consent to yet: the proxy's host is not known.
             quietly { row.isChecked = false }
-            customResult.show((OpenRouterPage.customMissing(s.cloud.customCleanup) ?: "Check the time limit") + " above, then turn cleanup on.", Tone.WARN)
+            customResult.show((CloudPage.customMissing(s.cloud.customCleanup) ?: "Check the time limit") + " above, then turn cleanup on.", Tone.WARN)
             return
         }
         val enable = {
-            change { OpenRouterPage.enableCleanup(it, System.currentTimeMillis()) }
+            change { CloudPage.enableCleanup(it, System.currentTimeMillis()) }
             if (!app.dev.load().cloud.customProvider) { refreshCatalog(); warnNoKey() }
         }
-        if (!OpenRouterPage.cleanupNeedsConsent(s)) { enable(); return }
+        if (!CloudPage.cleanupNeedsConsent(s)) { enable(); return }
         val (title, body, button) = CloudText.cleanupConsent(s.cloud)
         ui.confirm(title, body, button, onYes = enable, onNo = { quietly { row.isChecked = false } })
     }
@@ -341,11 +341,11 @@ class OpenRouterActivity : Activity() {
      */
     private fun askConsentIfNeeded() {
         val s = app.dev.load()
-        if (!s.allowCloudCleanup || s.cloud.customNotSetUp || !OpenRouterPage.cleanupNeedsConsent(s)) return
+        if (!s.allowCloudCleanup || s.cloud.customNotSetUp || !CloudPage.cleanupNeedsConsent(s)) return
         val (title, body, button) = CloudText.cleanupConsent(s.cloud)
         ui.confirm(title, body, button,
-            onYes = { change { OpenRouterPage.enableCleanup(it, System.currentTimeMillis()) } },
-            onNo = { change(OpenRouterPage::disableCleanup) })
+            onYes = { change { CloudPage.enableCleanup(it, System.currentTimeMillis()) } },
+            onNo = { change(CloudPage::disableCleanup) })
     }
 
     private fun warnNoKey() {
@@ -357,11 +357,11 @@ class OpenRouterActivity : Activity() {
     private fun selectProvider(p: CleanupProvider) {
         val cur = app.dev.load()
         if (cur.cloud.cleanupProvider == p) return
-        val next = OpenRouterPage.withProvider(cur, p)
+        val next = CloudPage.withProvider(cur, p)
         change { next }
         providerResult.show(if (cur.allowCloud && !next.allowCloud) CloudText.LITELLM_STT_OFF_NOTICE else "", Tone.WARN)
         customResult.show(
-            if (next.cloud.customNotSetUp) (OpenRouterPage.customMissing(next.cloud.customCleanup) ?: "Check the time limit") + " below; cleanup uses the proxy once its address and model are set."
+            if (next.cloud.customNotSetUp) (CloudPage.customMissing(next.cloud.customCleanup) ?: "Check the time limit") + " below; cleanup uses the proxy once its address and model are set."
             else "",
             Tone.WARN,
         )
@@ -377,18 +377,18 @@ class OpenRouterActivity : Activity() {
 
     private fun editCustomUrl() = textDialog(
         "Proxy address", app.dev.load().cloud.customCleanup.baseUrl, "http://192.168.1.20:4000", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI,
-        "The OpenAI-compatible API root. ${CustomServer.URL_HINT} Consent is for this host only.",
+        "The OpenAI-compatible API root. ${LiteLLM.URL_HINT} Consent is for this host only.",
         { CloudInput.baseUrl(it).error },
     ) { raw ->
         val v = CloudInput.baseUrl(raw).value!!
         if (v != app.dev.load().cloud.customCleanup.baseUrl) proxyModels = emptyList()
-        customChanged { OpenRouterPage.withCustom(it) { copy(baseUrl = v) } }
+        customChanged { CloudPage.withCustom(it) { copy(baseUrl = v) } }
     }
 
     private fun editCustomModel() = textDialog(
         "Model", app.dev.load().cloud.customCleanup.model, "gpt-4o-mini", InputType.TYPE_CLASS_TEXT,
         "As your proxy lists it (Test connection loads the list).", { CloudInput.customModel(it).error },
-    ) { raw -> val v = CloudInput.customModel(raw).value!!; customChanged { OpenRouterPage.withCustom(it) { copy(model = v) } } }
+    ) { raw -> val v = CloudInput.customModel(raw).value!!; customChanged { CloudPage.withCustom(it) { copy(model = v) } } }
 
     /** The Model row: the list from the last Test connection (and typing one), else typing. */
     private fun pickCustomModel() {
@@ -401,7 +401,7 @@ class OpenRouterActivity : Activity() {
                 d.dismiss()
                 if (i == models.size) { editCustomModel(); return@setSingleChoiceItems }
                 val v = models[i]
-                if (CustomServer.validModelId(v)) customChanged { OpenRouterPage.withCustom(it) { copy(model = v) } }
+                if (LiteLLM.validModelId(v)) customChanged { CloudPage.withCustom(it) { copy(model = v) } }
                 else customResult.show("That id has spaces or is too long: type it with $TYPE_MODEL instead.", Tone.BAD)
             }
             .setNegativeButton("Cancel", null).show()
@@ -409,29 +409,29 @@ class OpenRouterActivity : Activity() {
 
     private fun editCustomTimeout() = textDialog(
         "Cleanup time limit (ms)", app.dev.load().cloud.customCleanup.timeoutMs.toString(), "4000", InputType.TYPE_CLASS_NUMBER,
-        "${CustomServer.TIMEOUT_MIN}-${CustomServer.TIMEOUT_MAX}. After it, the formatted text is pasted and the request is cancelled.",
+        "${LiteLLM.TIMEOUT_MIN}-${LiteLLM.TIMEOUT_MAX}. After it, the formatted text is pasted and the request is cancelled.",
         { CloudInput.customTimeout(it).error },
-    ) { raw -> val v = CloudInput.customTimeout(raw).value!!; customChanged { OpenRouterPage.withCustom(it) { copy(timeoutMs = v) } } }
+    ) { raw -> val v = CloudInput.customTimeout(raw).value!!; customChanged { CloudPage.withCustom(it) { copy(timeoutMs = v) } } }
 
     private fun saveCustomKey() {
         val k = customKeyField.text.toString().trim()
         if (k.isEmpty()) { customResult.show("Paste the key first.", Tone.BAD); return }
         try {
-            app.cloudKeys.set(CustomServer.ID, k)
+            app.cloudKeys.set(LiteLLM.ID, k)
         } catch (e: Exception) {
             customResult.show("Could not store the key on this phone (${e.javaClass.simpleName}).", Tone.BAD); return
         }
-        app.engine.setCloudKey(k, CustomServer.ID)
+        app.engine.setCloudKey(k, LiteLLM.ID)
         customKeyField.setText("")
         customResult.show("Key saved on this phone.", Tone.OK)
         refresh()
     }
 
     private fun confirmClearCustomKey() {
-        if (!app.cloudKeys.has(CustomServer.ID)) { customKeyField.setText(""); return }
+        if (!app.cloudKeys.has(LiteLLM.ID)) { customKeyField.setText(""); return }
         ui.confirm("Delete the proxy key?", "Removes your LiteLLM proxy's key from this phone. Requests then go without one.", "Delete", onYes = {
-            app.cloudKeys.remove(CustomServer.ID)
-            app.engine.setCloudKey(null, CustomServer.ID)
+            app.cloudKeys.remove(LiteLLM.ID)
+            app.engine.setCloudKey(null, LiteLLM.ID)
             customKeyField.setText("")
             customResult.show("Key deleted from this phone.")
             refresh()
@@ -465,7 +465,7 @@ class OpenRouterActivity : Activity() {
 
     /** Turning a privacy guard off asks first; turning it on never does. */
     private fun onPrivacy(row: DevUi.ToggleRow, on: Boolean, isZdr: Boolean) {
-        val update = { change { if (isZdr) OpenRouterPage.withPrivacy(it, zdr = on) else OpenRouterPage.withPrivacy(it, denyCollection = on) } }
+        val update = { change { if (isZdr) CloudPage.withPrivacy(it, zdr = on) else CloudPage.withPrivacy(it, denyCollection = on) } }
         if (on) { update(); return }
         ui.confirm(
             if (isZdr) CloudText.ZDR_OFF_TITLE else CloudText.COLLECTION_OFF_TITLE,
@@ -553,12 +553,12 @@ class OpenRouterActivity : Activity() {
         "Cleanup time limit (ms)", app.dev.load().cloud.cleanup.timeoutMs.toString(), "2500", InputType.TYPE_CLASS_NUMBER,
         "${OpenRouter.CLEANUP_TIMEOUT_MIN}-${OpenRouter.CLEANUP_TIMEOUT_MAX}. After it, the formatted text is pasted and the request is cancelled.",
         { CloudInput.timeout(it).error },
-    ) { raw -> val v = CloudInput.timeout(raw).value!!; change { OpenRouterPage.withCleanup(it) { copy(timeoutMs = v) } } }
+    ) { raw -> val v = CloudInput.timeout(raw).value!!; change { CloudPage.withCleanup(it) { copy(timeoutMs = v) } } }
 
     private fun editLanguage() = textDialog(
         "Speech-to-text language", app.dev.load().cloud.stt.language, "en", InputType.TYPE_CLASS_TEXT,
         "Empty = follow your dictation languages; e.g. en, de, pt-br", { CloudInput.language(it).error },
-    ) { raw -> val v = CloudInput.language(raw).value!!; change { OpenRouterPage.withStt(it) { copy(language = v) } } }
+    ) { raw -> val v = CloudInput.language(raw).value!!; change { CloudPage.withStt(it) { copy(language = v) } } }
 
     private fun editSort() {
         val cur = app.dev.load().cloud.cleanup.sort
@@ -566,7 +566,7 @@ class OpenRouterActivity : Activity() {
         AlertDialog.Builder(this).setTitle("Provider choice")
             .setSingleChoiceItems(opts.map { it.second }.toTypedArray(), opts.indexOfFirst { it.first == cur }) { d, i ->
                 val v = opts[i].first
-                change { OpenRouterPage.withCleanup(it) { copy(sort = v) } }
+                change { CloudPage.withCleanup(it) { copy(sort = v) } }
                 d.dismiss()
             }
             .setNegativeButton("Cancel", null).show()
@@ -601,8 +601,8 @@ class OpenRouterActivity : Activity() {
         private const val STT_DESC = "Sends the audio of your dictations to OpenRouter; off by default"
         private const val TYPE_MODEL = "Type a model id…"
         /** The switch's segments, in order. */
-        val PROVIDERS = listOf(CleanupProvider.OPENROUTER to OpenRouter.NAME, CleanupProvider.CUSTOM to CustomServer.NAME)
-        fun open(ctx: Context) = ctx.startActivity(Intent(ctx, OpenRouterActivity::class.java))
+        val PROVIDERS = listOf(CleanupProvider.OPENROUTER to OpenRouter.NAME, CleanupProvider.CUSTOM to LiteLLM.NAME)
+        fun open(ctx: Context) = ctx.startActivity(Intent(ctx, CloudActivity::class.java))
         private fun String.cap() = replaceFirstChar { it.uppercase() }
     }
 }
