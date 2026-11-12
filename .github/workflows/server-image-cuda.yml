@@ -2,8 +2,13 @@
 # D84): checks that the CUDA plugins (llama.cpp and whisper.cpp) compile and
 # link and that the image starts. Build only: no GPU on the runner and nothing
 # is pushed. Its own workflow so it is never a required check: it is the
-# slowest build in the repo. Runs when the CUDA build's inputs change, and by
-# hand (workflow_dispatch, which can also build every GPU architecture).
+# slowest build in the repo. Runs when the CUDA build's inputs change, on pull
+# requests and on integration/main (feature-branch pushes are covered by
+# their pull request: push + pull_request would build twice, in two
+# concurrency groups), and by hand (workflow_dispatch, which can also build
+# every GPU architecture).
+# Every run is a cold cargo + nvcc build: type=gha keeps image layers, not
+# BuildKit cache mounts (the stage's cargo registry and target/).
 name: server-image-cuda
 
 on:
@@ -13,18 +18,34 @@ on:
         description: "GPU architectures (CUDAARCHS); the image's default is 75;80;86;89;90;120"
         default: "86"
   push:
-    branches: [integration, main, "feat/**"]
+    branches: [integration, main]
     paths:
-      - "deploy/docker/Dockerfile"
-      - "crates/murmur-whisper/**"
-      - "crates/murmur-llm/**"
+      # Everything the build context carries (.dockerignore): the cuda
+      # target also builds the CPU server from the whole workspace.
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "VERSION"
+      - "deploy/docker/**"
+      - ".dockerignore"
+      - "COPYRIGHT"
+      - "NOTICE"
+      - "THIRD-PARTY-LICENSES"
       - "tools/container/stage-prebuilt.sh"
       - ".github/workflows/server-image-cuda.yml"
   pull_request:
     paths:
-      - "deploy/docker/Dockerfile"
-      - "crates/murmur-whisper/**"
-      - "crates/murmur-llm/**"
+      # Everything the build context carries (.dockerignore): the cuda
+      # target also builds the CPU server from the whole workspace.
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "VERSION"
+      - "deploy/docker/**"
+      - ".dockerignore"
+      - "COPYRIGHT"
+      - "NOTICE"
+      - "THIRD-PARTY-LICENSES"
       - "tools/container/stage-prebuilt.sh"
       - ".github/workflows/server-image-cuda.yml"
 
