@@ -18,8 +18,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
-- **murmur-server's NVIDIA (CUDA) image runs Whisper on the graphics card** (D84). Whisper speech models, the main one and per-language ones such as Hebrew, now load on the GPU in the CUDA image (until now only AI cleanup did). Without a GPU or the NVIDIA driver the server runs them on the processor and the log says why. The CPU image is unchanged. Parakeet stays the English default.
-- **Stock Whisper large-v3 turbo in the model list** (`whisper-large-v3-turbo-q5_0`, 574 MB; D84): the most accurate model for any language when it runs on a graphics card. On the server's CUDA image, `MURMUR_STT=whisper-large-v3-turbo-q5_0` makes it the main speech engine, and `MURMUR_HEBREW=ivrit-whisper-large-v3-turbo-q5_0` puts Hebrew on ivrit.ai's turbo. On a PC it downloads like the other models and runs through the Vulkan GPU engine. On a processor it is slow (about 25 s per dictation).
+- **murmur-server's NVIDIA (CUDA) image runs Whisper on the graphics card** (D84). Whisper speech models, the main one and per-language ones such as Hebrew, now load on the GPU in the CUDA image (until now only AI cleanup did). Without a GPU or the NVIDIA driver the server runs them on the processor and the log says why. The CPU image behaves the same. Parakeet stays the English default.
+- **Stock Whisper large-v3 turbo in the model list** (`whisper-large-v3-turbo-q5_0`, 574 MB; D84): the most accurate model for any language when it runs on a graphics card. On the server's CUDA image, `MURMUR_STT=whisper-large-v3-turbo-q5_0` makes it the main speech engine, and `MURMUR_HEBREW=ivrit-whisper-large-v3-turbo-q5_0` puts Hebrew on ivrit.ai's turbo. On a PC it downloads like the other models and runs through the Vulkan GPU engine. On a processor it is slow (about 13 s per dictation), so the colleague bundle leaves it out unless `tools/colleague-bundle.sh --gpu-models` asks for it.
 
 ## [1.2.0] - 2026-11-12
 

@@ -4,7 +4,7 @@
 # integration and on the public repo's main (path-filtered) and on release
 # tags (path filters do not apply to tags); feature-branch pushes are covered
 # by their pull request.
-# CPU image only: the CUDA variant (`--target cuda`) is built locally.
+# CPU image only: the CUDA variant (`--target cuda`) is server-image-cuda.yml.
 name: server-image
 
 on:

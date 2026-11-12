@@ -1,0 +1,90 @@
+# murmur-server's NVIDIA CUDA image (deploy/docker/Dockerfile `--target cuda`,
+# D84): checks that the CUDA plugins (llama.cpp and whisper.cpp) compile and
+# link and that the image starts. Build only: no GPU on the runner and nothing
+# is pushed. Its own workflow so it is never a required check: it is the
+# slowest build in the repo. Runs when the CUDA build's inputs change, and by
+# hand (workflow_dispatch, which can also build every GPU architecture).
+name: server-image-cuda
+
+on:
+  workflow_dispatch:
+    inputs:
+      cudaarchs:
+        description: "GPU architectures (CUDAARCHS); the image's default is 75;80;86;89;90;120"
+        default: "86"
+  push:
+    branches: [integration, main, "feat/**"]
+    paths:
+      - "deploy/docker/Dockerfile"
+      - "crates/murmur-whisper/**"
+      - "crates/murmur-llm/**"
+      - "tools/container/stage-prebuilt.sh"
+      - ".github/workflows/server-image-cuda.yml"
+  pull_request:
+    paths:
+      - "deploy/docker/Dockerfile"
+      - "crates/murmur-whisper/**"
+      - "crates/murmur-llm/**"
+      - "tools/container/stage-prebuilt.sh"
+      - ".github/workflows/server-image-cuda.yml"
+
+concurrency:
+  group: server-image-cuda-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  cuda:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      # The CUDA devel image and two CUDA builds need more disk than the
+      # runner has free.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - uses: docker/setup-buildx-action@v3
+
+      # One architecture by default (Ampere, sm_86): the build is checked, not
+      # shipped, and every extra architecture adds minutes of nvcc.
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/Dockerfile
+          target: cuda
+          push: false
+          load: true
+          tags: murmur-server:ci-cuda
+          build-args: |
+            MURMUR_GIT_SHA=${{ github.sha }}
+            CARGO_BUILD_JOBS=4
+            CUDAARCHS=${{ inputs.cudaarchs || '86' }}
+          cache-from: type=gha,scope=cuda
+          cache-to: type=gha,scope=cuda,mode=min
+
+      # Without a GPU the image must still start: the CLI runs, and the
+      # entrypoint refuses an empty models folder with its message. The
+      # plugins resolve every library but the driver's libcuda.so.1, which
+      # the NVIDIA container toolkit injects at run time.
+      - name: Image starts, plugins link
+        run: |
+          docker run --rm --entrypoint /opt/murmur-server/bin/murmur-server murmur-server:ci-cuda gen-token --out /tmp/t
+          if docker run --rm murmur-server:ci-cuda >out.txt 2>&1; then cat out.txt; exit 1; fi
+          grep -q "no speech model in /models" out.txt || { cat out.txt; exit 1; }
+          docker run --rm --entrypoint sh murmur-server:ci-cuda -c '
+            set -eu
+            cd /opt/murmur-server/lib
+            ls -l
+            for p in libmurmur_whisper_cuda.so libmurmur_llm_cuda.so; do
+              missing=$(ldd "$p" | awk "/not found/ {print \$1}" | grep -vx "libcuda.so.1" || true)
+              [ -z "$missing" ] || { echo "FAIL: $p: missing $missing"; exit 1; }
+            done
+            echo "MURMUR_WHISPER_LIB=$MURMUR_WHISPER_LIB"; test -f "$MURMUR_WHISPER_LIB"'
+          docker image ls murmur-server:ci-cuda
