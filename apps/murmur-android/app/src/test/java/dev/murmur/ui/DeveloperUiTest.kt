@@ -2,6 +2,8 @@ package dev.murmur.ui
 
 import android.app.AlertDialog
 import android.content.Intent
+import android.view.KeyEvent
+import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
@@ -106,5 +108,80 @@ class DeveloperUiTest {
         assertFalse("not closed behind the user's back", a.isFinishing)
         c.pause()
         assertEquals("an invalid value is never written", before, app.dev.load().port)
+    }
+
+    /** v1.2.0 bug: Next from Port landed on the TLS switch row and Enter turned TLS on. */
+    @Test fun keyboardNextGoesHostPortTokenThenDoneAndNeverTogglesTls() {
+        val a = launch(Page.SERVER)
+        val tlsRow = UiTestKit.rowTitled(a, "Use TLS (wss)")
+        if (tlsRow.createAccessibilityNodeInfo().isChecked) tlsRow.performClick()
+        val tlsBefore = tlsRow.createAccessibilityNodeInfo().isChecked
+        val host = field(a, "Host or IP"); val port = field(a, "Port"); val token = field(a, "Token")
+        assertEquals(EditorInfo.IME_ACTION_NEXT, host.imeOptions and EditorInfo.IME_MASK_ACTION)
+        assertEquals(EditorInfo.IME_ACTION_NEXT, port.imeOptions and EditorInfo.IME_MASK_ACTION)
+        assertEquals(EditorInfo.IME_ACTION_DONE, token.imeOptions and EditorInfo.IME_MASK_ACTION)
+        host.requestFocus()
+        host.onEditorAction(EditorInfo.IME_ACTION_NEXT)
+        assertTrue("host → port", port.hasFocus())
+        port.onEditorAction(EditorInfo.IME_ACTION_NEXT)
+        assertTrue("port → token, not the TLS switch", token.hasFocus())
+        // A hardware / IME Enter on the port field takes the same path.
+        port.requestFocus()
+        port.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
+        port.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
+        assertTrue("Enter on port → token", token.hasFocus())
+        token.onEditorAction(EditorInfo.IME_ACTION_DONE)
+        assertFalse("Done leaves the form", token.hasFocus())
+        assertEquals("TLS unchanged", tlsBefore, tlsRow.createAccessibilityNodeInfo().isChecked)
+    }
+
+    /** With TLS on, the certificate pin is part of the chain: port → pin → token. */
+    @Test fun keyboardNextVisitsThePinWhileTlsIsOn() {
+        val a = launch(Page.SERVER)
+        val tlsRow = UiTestKit.rowTitled(a, "Use TLS (wss)")
+        if (!tlsRow.createAccessibilityNodeInfo().isChecked) tlsRow.performClick()
+        val port = field(a, "Port"); val pin = field(a, "Certificate pin (optional)"); val token = field(a, "Token")
+        port.requestFocus()
+        port.onEditorAction(EditorInfo.IME_ACTION_NEXT)
+        assertTrue("port → pin", pin.hasFocus())
+        pin.onEditorAction(EditorInfo.IME_ACTION_NEXT)
+        assertTrue("pin → token", token.hasFocus())
+        assertTrue("TLS still on", tlsRow.createAccessibilityNodeInfo().isChecked)
+    }
+
+    /** v1.2.0 bug: the warning banner grew and shrank above the fields while typing, moving them. */
+    @Test fun serverBannerKeepsItsHeightAboveTheFields() {
+        org.junit.Assume.assumeTrue(app.caps.remote && app.dev.load().allowServer)
+        val a = launch(Page.SERVER)
+        val host = field(a, "Host or IP")
+        host.setText("")
+        val all = walk(a.window.decorView).toList()
+        val banner = all.filterIsInstance<TextView>().first { it.text.toString().contains(dev.murmur.data.DevSettingsForm.NO_HOST) }
+        assertTrue("above the fields", all.indexOf(banner) < all.indexOf(host))
+        assertEquals("fixed number of lines", banner.minLines, banner.maxLines)
+        assertFalse("plain words, no 'client'", dev.murmur.data.DevSettingsForm.NO_HOST.contains("client"))
+        // Nothing to warn about: still shown, same lines, a neutral line instead of going away.
+        host.setText("100.64.0.10")
+        field(a, "Token").setText("a".repeat(dev.murmur.data.DevSettings.MIN_TOKEN_LEN))
+        val tls = UiTestKit.rowTitled(a, "Use TLS (wss)")
+        if (!tls.createAccessibilityNodeInfo().isChecked) tls.performClick()
+        assertEquals(android.view.View.VISIBLE, banner.visibility)
+        assertEquals(DeveloperActivity.NO_WARNINGS, banner.text.toString())
+    }
+
+    @Test fun tokenHelpNamesTheServersKeysAddCommand() {
+        val t = texts(launch(Page.SERVER))
+        assertTrue(t.toString(), t.any { it.contains("murmur-server keys add <name>") })
+        assertFalse(t.any { it.contains("gen-token") })
+    }
+
+    /** v1.2.0 bug: the top bar (back, Save) scrolled away with the form. */
+    @Test fun topBarStaysOutsideTheScrollingColumn() {
+        for (p in listOf(Page.SERVER, Page.HUB)) {
+            val a = launch(p)
+            val back = buttons(a).first { it.contentDescription == "Back" }
+            var v: android.view.ViewParent? = back.parent
+            while (v != null) { assertFalse("$p: back button inside the scroll view", v is android.widget.ScrollView); v = v.parent }
+        }
     }
 }

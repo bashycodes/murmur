@@ -13,10 +13,13 @@ import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.TextWatcher
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -110,26 +113,39 @@ internal class DevUi(val activity: Activity) {
      * for the main tabs). The frame pads itself by the status bar, cutout and side bars, so the
      * content scrolls *below* the status bar, never under the clock; only the bottom (navigation
      * bar, keyboard) stays edge-to-edge, as scroll padding the last card can move past.
+     * [header] (a settings page's top bar) is built above the scroll view and stays put while
+     * the column scrolls.
      */
-    fun screen(background: Int = p.bg, build: LinearLayout.() -> Unit): LinearLayout {
+    fun screen(background: Int = p.bg, header: (LinearLayout.() -> Unit)? = null, build: LinearLayout.() -> Unit): LinearLayout {
         val col = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             build()
         }
         val scroll = ScrollView(ctx).apply {
+            id = R.id.screen_scroll
             setBackgroundColor(background)
             isFillViewport = true
             clipToPadding = false
             addView(col, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
+        val head = header?.let { h -> LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; h() } }
+        val content: View = head?.let {
+            LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(it, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+            }
+        } ?: scroll
         val frame = FrameLayout(ctx).apply {
             setBackgroundColor(background)
-            addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            addView(content, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             setOnApplyWindowInsetsListener { v, insets ->
                 val i = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout() or WindowInsets.Type.ime())
                 val pad = ScreenPadding.of(i.left, i.top, i.right, i.bottom, ::dp)
                 v.setPadding(pad.frameLeft, pad.frameTop, pad.frameRight, 0)
-                scroll.setPadding(pad.scrollSide, pad.scrollTop, pad.scrollSide, pad.scrollBottom)
+                // The header lines up with the column (its top bar undoes the same side padding).
+                head?.setPadding(pad.scrollSide, pad.scrollTop, pad.scrollSide, 0)
+                scroll.setPadding(pad.scrollSide, if (head == null) pad.scrollTop else 0, pad.scrollSide, pad.scrollBottom)
                 insets
             }
         }
@@ -142,8 +158,7 @@ internal class DevUi(val activity: Activity) {
     }
 
     /** The current [screen]'s scroll view (null if this activity shows something else). */
-    fun currentScroll(): ScrollView? =
-        (activity.findViewById<ViewGroup>(android.R.id.content)?.getChildAt(0) as? ViewGroup)?.getChildAt(0) as? ScrollView
+    fun currentScroll(): ScrollView? = activity.findViewById(R.id.screen_scroll)
 
     /**
      * A scrolling column that is not attached (a shell tab's content, the drawer): 16 dp side
@@ -503,6 +518,31 @@ internal class DevUi(val activity: Activity) {
         return f
     }
 
+    /**
+     * Keyboard Next walks [fields] in this order and the last one shows Done (closes the keyboard).
+     * Explicit, because Android's own "next" is the next focusable view on screen, which can be a
+     * switch row that Enter then toggles.
+     */
+    fun imeChain(vararg fields: FieldRow) {
+        fields.forEachIndexed { i, f ->
+            val next = fields.getOrNull(i + 1)?.edit
+            f.edit.imeOptions = (if (next != null) EditorInfo.IME_ACTION_NEXT else EditorInfo.IME_ACTION_DONE) or EditorInfo.IME_FLAG_NO_EXTRACT_UI
+            f.edit.setOnEditorActionListener { v, action, event ->
+                val enter = event != null && event.keyCode == KeyEvent.KEYCODE_ENTER
+                if (enter && event.action != KeyEvent.ACTION_DOWN) return@setOnEditorActionListener true
+                when {
+                    action != EditorInfo.IME_ACTION_NEXT && action != EditorInfo.IME_ACTION_DONE && !enter -> false
+                    next != null -> { next.requestFocus(); true }
+                    else -> {
+                        v.clearFocus()
+                        ctx.getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(v.windowToken, 0)
+                        true
+                    }
+                }
+            }
+        }
+    }
+
     private fun baseButton(text: String) = Button(ctx, null, 0, android.R.style.Widget_DeviceDefault_Button_Borderless).apply {
         this.text = text; isAllCaps = false; sans(TypeScale.W_MEDIUM)
         stateListAnimator = null
@@ -579,10 +619,11 @@ internal class DevUi(val activity: Activity) {
         return b
     }
 
-    class Result(val view: TextView, private val p: DevPalette) {
+    /** [fixed]: a [fixedBanner], always shown at the same height. */
+    class Result(val view: TextView, private val p: DevPalette, private val fixed: Boolean = false) {
         fun show(text: CharSequence, tone: Tone = Tone.NEUTRAL) {
             view.text = text
-            view.visibility = if (text.isEmpty()) View.GONE else View.VISIBLE
+            view.visibility = if (text.isEmpty() && !fixed) View.GONE else View.VISIBLE
             view.setTextColor(when (tone) { Tone.OK -> p.ok; Tone.BAD -> p.danger; Tone.WARN -> p.t.onPeach; else -> p.text })
             (view.background as? GradientDrawable)?.setColor(when (tone) { Tone.BAD -> p.dangerBg; Tone.WARN -> p.t.peach; else -> p.surface })
         }
@@ -605,6 +646,21 @@ internal class DevUi(val activity: Activity) {
     /** Warning / error banner at the top of a page; hidden while empty. */
     fun LinearLayout.banner(): Result = result()
 
+    /**
+     * [banner] for a page whose warnings change while you type: always shown and exactly [lines]
+     * lines tall (longer text ends in "…"; TalkBack still reads all of it), so the fields below
+     * it never move. The page shows a neutral line when there is nothing to warn about.
+     */
+    fun LinearLayout.fixedBanner(lines: Int): Result {
+        val v = result().view.apply {
+            setTextIsSelectable(false)
+            minLines = lines; maxLines = lines
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            visibility = View.VISIBLE
+        }
+        return Result(v, p, fixed = true)
+    }
+
     // =====================================================================================
     // Screens beyond Settings (main screen, Dictionary & snippets, History, model import)
     // =====================================================================================
@@ -615,7 +671,7 @@ internal class DevUi(val activity: Activity) {
      */
     fun rebuild(background: Int = p.bg, build: LinearLayout.() -> Unit): LinearLayout {
         val old = currentScroll()?.scrollY ?: 0
-        val col = screen(background, build)
+        val col = screen(background, build = build)
         if (old > 0) (col.parent as ScrollView).let { s -> s.post { s.scrollTo(0, old) } }
         return col
     }

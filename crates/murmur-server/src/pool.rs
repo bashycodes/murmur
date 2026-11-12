@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use murmur_core::config::ModelConfig;
+use murmur_core::load_timings::{LoadTimings, ModelKind};
 use murmur_core::{CoreError, MurmurCore};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
@@ -74,6 +75,41 @@ fn draft_not_applied(want: Option<usize>, info: Option<&str>) -> Option<usize> {
     (got != want.min(8)).then_some(got)
 }
 
+/// Where each whisper speech model runs, for the models a GPU plugin was
+/// asked for (`[model] whisper_lib`, D84): `(warn, line)`. A model on the
+/// CPU despite the plugin is a warning that says why (no driver, no GPU,
+/// the GPU failed to load it).
+fn asr_placement(t: &LoadTimings) -> Vec<(bool, String)> {
+    t.models
+        .iter()
+        .filter(|m| m.kind == ModelKind::Asr)
+        .filter_map(|m| {
+            let on = m.runs_on.as_ref()?;
+            let model = match m.language.as_deref() {
+                Some(l) => format!("speech model ({l})"),
+                None => "speech model".to_string(),
+            };
+            Some(match (on.is_gpu(), on.gpu_error.as_deref()) {
+                (true, _) => (
+                    false,
+                    format!(
+                        "{model}: whisper runs on the GPU ({}: {})",
+                        on.backend, on.device
+                    ),
+                ),
+                (false, Some(e)) => (
+                    true,
+                    format!("{model}: whisper runs on the CPU, the GPU is not used: {e}"),
+                ),
+                (false, None) => (
+                    true,
+                    format!("{model}: whisper runs on the CPU, the GPU plugin found no GPU"),
+                ),
+            })
+        })
+        .collect()
+}
+
 impl Pool {
     /// Load `workers` cores (blocking; seconds for real models).
     pub fn load(model: &ModelConfig, workers: usize, max_queue: usize) -> Result<Self, CoreError> {
@@ -88,6 +124,15 @@ impl Pool {
                     got,
                     "llm_draft not applied (plugin without murmur_llm_set_draft, or MURMUR_LLM_DRAFT set)"
                 );
+            }
+        }
+        if let Some(core) = cores.first() {
+            for (warn, line) in asr_placement(core.load_timings()) {
+                if warn {
+                    tracing::warn!("{line}");
+                } else {
+                    tracing::info!("{line}");
+                }
             }
         }
         let pool = Self::from_cores(cores, model, max_queue);
@@ -254,7 +299,10 @@ impl Pool {
 
 #[cfg(test)]
 mod tests {
-    use super::draft_not_applied;
+    use super::{asr_placement, draft_not_applied};
+    use murmur_core::load_timings::{
+        LoadBackend, LoadTimings, ModelKind, ModelTiming, WhisperBackend,
+    };
 
     #[test]
     fn a_plugin_that_ignores_llm_draft_is_reported() {
@@ -270,5 +318,72 @@ mod tests {
         );
         // MURMUR_LLM_DRAFT overrode the config.
         assert_eq!(draft_not_applied(Some(4), Some(r#"{"draft":2}"#)), Some(2));
+    }
+
+    /// `on`: `(backend, device)` of a model a plugin was asked for.
+    fn asr(
+        language: Option<&str>,
+        on: Option<(&str, &str)>,
+        gpu_error: Option<&str>,
+    ) -> ModelTiming {
+        ModelTiming {
+            kind: ModelKind::Asr,
+            language: language.map(str::to_string),
+            backend: LoadBackend::Whisper,
+            ms: 1,
+            phases: Vec::new(),
+            reused: false,
+            runs_on: on.map(|(backend, device)| WhisperBackend {
+                backend: backend.into(),
+                device: device.into(),
+                gpu_error: gpu_error.map(str::to_string),
+            }),
+        }
+    }
+
+    #[test]
+    fn where_whisper_runs_is_logged_when_a_gpu_plugin_was_asked_for() {
+        let t = LoadTimings {
+            total_ms: 1,
+            models: vec![
+                asr(None, Some(("CUDA", "NVIDIA L4")), None),
+                asr(
+                    Some("he"),
+                    Some(("CPU", "CPU")),
+                    Some("whisper GPU plugin not found (libcuda.so.1: cannot open)"),
+                ),
+                // No plugin asked for (built-in whisper, Parakeet): quiet.
+                asr(Some("ar"), None, None),
+            ],
+        };
+        let lines = asr_placement(&t);
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert_eq!(
+            lines[0],
+            (
+                false,
+                "speech model: whisper runs on the GPU (CUDA: NVIDIA L4)".into()
+            )
+        );
+        assert!(lines[1].0, "a CPU fallback is a warning");
+        assert!(
+            lines[1]
+                .1
+                .starts_with("speech model (he): whisper runs on the CPU")
+                && lines[1].1.contains("libcuda.so.1"),
+            "{}",
+            lines[1].1
+        );
+        let no_gpu = asr_placement(&LoadTimings {
+            total_ms: 1,
+            models: vec![asr(None, Some(("CPU", "CPU")), None)],
+        });
+        assert_eq!(
+            no_gpu,
+            vec![(
+                true,
+                "speech model: whisper runs on the CPU, the GPU plugin found no GPU".into()
+            )]
+        );
     }
 }

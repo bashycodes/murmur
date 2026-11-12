@@ -1,11 +1,10 @@
-"""Needs the Notetaker switched on (D51: `NOTETAKER_ENABLED = true` in
-src/meetings/mod.rs and ui/src/pages/notetaker.ts, then rebuild ui/dist).
-
-Headless check of the D47 meeting transcription order against mock-tauri.js.
+"""Headless check of the D47 meeting transcription order against mock-tauri.js.
 
 Probe (Playwright + its bundled Chromium):
     python3 tools/probes/settings_mock/serve.py 8765 &
     python3 tools/probes/settings_mock/check_meeting_order.py [port]
+The Notetaker is hidden in the release (D51), so this loads
+/notetaker-on/settings.html: serve.py flips the UI switch there.
 Settings -> Speech to text -> Meetings: three rows (this PC, your server,
 OpenRouter) with the same ranked-list widget as Engines and Cleanup order
 (rank, up/down, switch, badge). Unedited it shows dictation's order and
@@ -59,7 +58,7 @@ with sync_playwright() as p:
         tag = f"[{scheme}] "
         pg = b.new_page(viewport={"width": 1280, "height": 900}, color_scheme=scheme)
         pg.on("pageerror", lambda e: errors.append(str(e)))
-        pg.goto(f"http://127.0.0.1:{port}/settings.html")
+        pg.goto(f"http://127.0.0.1:{port}/notetaker-on/settings.html")
         pg.wait_for_timeout(500)
         pg.evaluate("window.__goPage('settings-speech')")
         pg.wait_for_timeout(300)

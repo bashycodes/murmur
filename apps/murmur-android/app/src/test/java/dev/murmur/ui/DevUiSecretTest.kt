@@ -44,7 +44,7 @@ class DevUiSecretTest {
                     toggleRow("Use TLS (wss)", "Encrypt the connection", false)
                 }
                 sectionLabel("AUTHENTICATION")
-                card { token = secretRow("Token", secret, "From `murmur-server gen-token`", "token", onEdit = {}) }
+                card { token = secretRow("Token", secret, "Run `murmur-server keys add <name>` on your server and paste the key it prints.", "token", onEdit = {}) }
                 action("Test connection") {}
             }
         }

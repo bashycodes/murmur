@@ -15,6 +15,7 @@ whisper-base-en-q5_1	spdx/MIT.txt	MIT · OpenAI Whisper, ggml by ggerganov/whisp
 whisper-base-q5_1	spdx/MIT.txt	MIT · OpenAI Whisper, ggml by ggerganov/whisper.cpp	converted to ggml and quantised to q5_1 (ggerganov/whisper.cpp) from openai/whisper-base
 whisper-tiny-en-q5_1	spdx/MIT.txt	MIT · OpenAI Whisper, ggml by ggerganov/whisper.cpp	converted to ggml and quantised to q5_1 (ggerganov/whisper.cpp) from openai/whisper-tiny.en
 whisper-small-en-q5_1	spdx/MIT.txt	MIT · OpenAI Whisper, ggml by ggerganov/whisper.cpp	converted to ggml and quantised to q5_1 (ggerganov/whisper.cpp) from openai/whisper-small.en
+whisper-large-v3-turbo-q5_0	spdx/MIT.txt	MIT · OpenAI Whisper, ggml by ggerganov/whisper.cpp	converted to ggml and quantised to q5_0 (ggerganov/whisper.cpp) from openai/whisper-large-v3-turbo
 whisper-tiny-lid	spdx/MIT.txt	MIT · OpenAI Whisper, ggml by ggerganov/whisper.cpp	converted to ggml and quantised to q5_1 (ggerganov/whisper.cpp) from openai/whisper-tiny
 zipformer-he-int8	spdx/CC-BY-4.0.txt	CC-BY-4.0 · Yakov Kolani / ivrit.ai	int8 ONNX as published by its authors (ivrit-ai/zipformer2-66m-streaming-he)
 parakeet-tdt-0.6b-v3-he-int8	spdx/CC-BY-4.0.txt	CC-BY-4.0 · NVIDIA (nvidia/parakeet-tdt-0.6b-v3), fine-tuned by thewh1teagle, int8 by krut42	converted to int8 ONNX (krut42) from thewh1teagle/parakeet-tdt-0.6b-v3-he, fine-tuned from nvidia/parakeet-tdt-0.6b-v3

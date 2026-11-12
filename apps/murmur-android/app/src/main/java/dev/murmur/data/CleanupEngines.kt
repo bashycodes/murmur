@@ -44,11 +44,11 @@ object CleanupEngines {
     fun plannedFor(s: Settings, d: DevSettings, caps: BuildCaps, serverLlm: Boolean? = null): List<CleanupRoute> =
         planned(d, s.llmEnabled && caps.local, serverLlm)
 
-    /** A [planned] engine in a summary line: "this phone" / "your server" / its provider ("OpenRouter", "Custom server (10.0.0.5)"). */
-    fun planName(r: CleanupRoute, d: DevSettings): String = when (r) {
+    /** A [planned] engine in a summary line: "this phone" / "your server" / "cloud" (D78: whichever provider). */
+    fun planName(r: CleanupRoute): String = when (r) {
         CleanupRoute.LOCAL -> "this phone"
         CleanupRoute.SERVER -> "your server"
-        CleanupRoute.CLOUD -> d.cloud.cleanupProviderName
+        CleanupRoute.CLOUD -> SettingsSummary.CLOUD.lowercase()
     }
 
     /** "Change order": [r] swapped with its listed neighbour; engines this build lacks keep their place. */
@@ -61,22 +61,18 @@ object CleanupEngines {
         return order.map { when (it) { r -> other; other -> r; else -> it } }
     }
 
-    /** D52: the cloud engine is named by its provider ("OpenRouter" / "Custom server (10.0.0.5)"). */
-    fun name(r: CleanupRoute, d: DevSettings? = null): String = when (r) {
+    /** D78: the cloud engine's row is "Cloud" whichever provider is picked; [cloudLine] names the provider. */
+    fun name(r: CleanupRoute): String = when (r) {
         CleanupRoute.LOCAL -> "This phone"
         CleanupRoute.SERVER -> "Your server"
-        CleanupRoute.CLOUD -> cloudName(d)
+        CleanupRoute.CLOUD -> SettingsSummary.CLOUD
     }
 
-    /** The row keeps "Custom server" when it is not set up; [cloudLine] then says why it is off. */
-    private fun cloudName(d: DevSettings?) =
-        if (d?.cloud?.customNotSetUp == true) CustomServer.NAME else d?.cloud?.cleanupProviderName ?: OpenRouter.NAME
-
     /** The switch's spoken label. */
-    fun useLabel(r: CleanupRoute, d: DevSettings? = null): String = when (r) {
+    fun useLabel(r: CleanupRoute): String = when (r) {
         CleanupRoute.LOCAL -> "Clean up on this phone"
         CleanupRoute.SERVER -> "Clean up on your server"
-        CleanupRoute.CLOUD -> "Clean up with ${cloudName(d)}"
+        CleanupRoute.CLOUD -> "Clean up in the cloud"
     }
 
     /**
@@ -130,15 +126,16 @@ object CleanupEngines {
     private const val NOT_REACHABLE = "Not reachable"
 
     /**
-     * Cloud row: "Sends text · asks first" until consent, then its model; "· no key" ([hasKey]: the
-     * OpenRouter key; a custom server's key is optional). D52: "· unencrypted (http)" for an http:// server.
+     * Cloud row: its provider, "Sends text · asks first" until consent, then its model; "· no key"
+     * ([hasKey]: the OpenRouter key; LiteLLM's key is optional). D52: "· unencrypted (http)" for an
+     * http:// proxy. "OpenRouter · Sends text · llama-3.3-70b-instruct" / "LiteLLM (10.0.0.5) · Sends text · gpt-4o-mini".
      */
     fun cloudLine(d: DevSettings, hasKey: Boolean): String {
         val c = d.cloud
-        // D52: a selected custom server that is not usable sends nothing; say so, never "OpenRouter".
-        if (c.customNotSetUp) return CustomServer.NOT_SET_UP
+        // D52: a selected LiteLLM that is not usable sends nothing; say so, never "OpenRouter".
+        if (c.customNotSetUp) return LiteLLM.NOT_SET_UP
         val model = if (c.customProvider) c.customCleanup.model else c.cleanup.model.substringAfter('/')
-        return "Sends text · " + (if (!c.cleanupConsentOk) "asks first" else model) +
+        return "${c.cleanupProviderName} · Sends text · " + (if (!c.cleanupConsentOk) "asks first" else model) +
             (if (c.customProvider && !c.customCleanup.https) " · unencrypted (http)" else "") +
             if (d.allowCloudCleanup && !hasKey && !c.customProvider) " · no key" else ""
     }

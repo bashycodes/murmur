@@ -76,7 +76,7 @@ background* (each is a row on the *Permissions* page, menu ☰ → Permissions: 
 *Native engine* `murmur-ffi <version>+<commit>` (e.g. `murmur-ffi 0.2.0+1a2b3c4`; D26).
 
 **3. Point it at the server.** Menu ☰ → *Settings* → *Your server* (or Menu ☰ → *Developer settings* → *Server*): host = the PC's
-`100.x.y.z` (or its VPN DNS name), port `7313`, *Paste* the token, *Use TLS* off, *Save* (top
+`100.x.y.z` (or its VPN DNS name), port `7313`, *Paste* the key, *Use TLS* off, *Save* (top
 bar), then *Test connection* (bottom) → `OK · median N ms … · parakeet`. *Settings → Speech to text*:
 *Use your server* + *Use this phone* on (the defaults in hybrid; they apply at once). Plain `ws://` is
 only allowed when the address is private or a VPN address **and** the phone reaches it through its
@@ -164,8 +164,8 @@ One line per dictation; the fields are the same in the Windows app:
 | `audio` | Android: file name of the kept WAV in `files/debug/audio/` (*Keep last dictation audio*), else `null` |
 | `source` | Android: where the audio came from: `mic`, or `wav` for a dictation fed from a WAV file (debug builds, *Feed a WAV file as the microphone* below); the viewer shows `source=wav` |
 | `llm` | `formatted` (AI text used), `llm_skipped_clean` (nothing for the AI to do: a normal result), `llm_timeout`, `llm_error: <code>` (cloud cleanup refused up front: no consent / key / budget, open circuit, `no_private_route`), `null` = AI off |
-| `llm_engine` / `llm_model` / `llm_cost_usd` | who ran the AI cleanup (`local`, `cloud` = OpenRouter, `server`), its model, and the OpenRouter cost |
-| `llm_ttft_ms` / `llm_generation_id` | cloud cleanup: time to the first token, OpenRouter's generation id |
+| `llm_engine` / `llm_provider` / `llm_model` / `llm_cost_usd` | who ran the AI cleanup (`local`, `cloud`, `server`); with `cloud`, `llm_provider` says which Cloud provider (`openrouter`, or `custom` = your LiteLLM proxy; the viewer shows "OpenRouter" / "LiteLLM"); its model; and the cost (OpenRouter's, or what your proxy reported, if anything) |
+| `llm_ttft_ms` / `llm_generation_id` | cloud cleanup: time to the first token; OpenRouter's generation id (none with LiteLLM) |
 | `stt_cost_usd` | what cloud speech-to-text cost for this dictation |
 
 Android also writes an `engine_mismatch` event when the phone engine that loaded is not the
@@ -420,10 +420,11 @@ debug log says "Hebrew model failed: …". Auto-detect stays English-first.
 ## 5b. Server mode (hybrid / remote)
 
 1. On the server box: run `murmur-server` (see `docs/protocol.md` / `crates/murmur-server`), bound
-   to its VPN `100.x` address or the LAN; `murmur-server gen-token` prints the token.
+   to its VPN `100.x` address or the LAN; `murmur-server keys add <name>` prints the key to
+   paste into the app as the token.
 2. Phone: join the same VPN (or be on the same LAN). No extra permission is needed.
 3. Menu ☰ → **Settings** → **Your server** (the same page as Menu ☰ → *Developer settings* → *Server*):
-   host = the server's `100.x.y.z` or its VPN DNS name, port `7313`, *Paste* the token,
+   host = the server's `100.x.y.z` or its VPN DNS name, port `7313`, *Paste* the key,
    *Save* (top bar), then *Test connection* → "OK · median N ms (…) · murmur-server … · parakeet".
 4. Dictate: the hub's status card shows *Last dictation* `Server · client N ms`; *Status &
    server info → Active engine* shows `Server 100.x.y.z:7313 · …`.
@@ -438,15 +439,26 @@ debug log says "Hebrew model failed: …". Auto-detect stays English-first.
    loaded. Dictation fails only when no route is possible (both engines off, or no phone model),
    and the error says which.
 
-## 5c. Cloud → OpenRouter (hybrid / remote, opt-in, third party)
+## 5c. Cloud (hybrid / remote, opt-in, third party)
 
-OpenRouter (openrouter.ai) is the **only** cloud service the app can use (D28), for two separate
-opt-ins: **cloud speech-to-text** (your audio) and **text cleanup** (the dictated text, not your
-voice). Both are off by default and each has its own consent; turning one on never turns the
-other on. No other provider is in the app any more, and no extra permission: it uses `INTERNET`.
-The `local` flavour has no cloud at all.
+The *Cloud* page holds the app's online models (D78). It has one *Provider* switch with two
+choices, and only one is on at a time:
 
-Open it from *Settings → OpenRouter* (under *Connections*) or *Developer settings → OpenRouter (cloud)*:
+- **OpenRouter** (openrouter.ai, D28): **cloud speech-to-text** (your audio) and **text cleanup**
+  (the dictated text, not your voice).
+- **LiteLLM**, or any OpenAI-compatible server you run (vLLM, Ollama, …; D52): **text cleanup
+  only**. While it is picked, cloud speech-to-text is off and its switch reads "Not available".
+
+Each use is off by default and has its own consent; turning one on never turns the other on.
+LiteLLM's consent is tied to the host you typed. No extra permission: it uses `INTERNET`. The
+`local` flavour has no cloud at all.
+
+The steps below are for OpenRouter. With LiteLLM picked, the page hides OpenRouter's *API key*
+and *Privacy* cards and, under *Text cleanup*, the *Model*, *Provider choice* and *Time limit*
+rows, and shows *Your LiteLLM proxy* instead (*Address*, optional *API key*, *Test connection*,
+*Model*, *Time limit*).
+
+Open it from *Settings → Cloud* (under *Connections*) or *Developer settings → Cloud*:
 
 1. **API key**: paste a key from openrouter.ai/keys (*Paste*), *Save key*. It is stored only
    Keystore-encrypted; the page shows `••••` + the last 4 characters and other accessibility
@@ -454,21 +466,21 @@ Open it from *Settings → OpenRouter* (under *Connections*) or *Developer setti
    this month $z" (and a warning if the key has no credit limit). One key serves both uses.
 2. **Privacy**: *Zero-retention providers only* and *Deny data collection* are on; turning
    either off asks first ("Some providers may keep or train on your audio and text").
-3. **Speech-to-text**: switch on *Cloud speech-to-text*. The dialog "Send your voice to
+3. **Speech-to-text**: switch on *Use the cloud for speech*. The dialog "Send your voice to
    OpenRouter?" says the audio leaves the phone; *Send audio to OpenRouter* records consent and
    puts *Cloud* first in the route order (reorder under *Settings → Speech to text → Change order*).
    *Model* opens the model picker (default `openai/whisper-large-v3-turbo`, about $0.012-0.04
    per hour of audio). *Test speech-to-text* uploads a 3 s public-domain clip → "OK · heard "And
    so, my fellow Americans" · N ms · $… · <model>".
-4. **Text cleanup**: switch on *Clean up text with OpenRouter*. Its own dialog ("Send dictated
+4. **Text cleanup**: switch on *Use the cloud for cleanup*. Its own dialog ("Send dictated
    text to OpenRouter?") lists exactly what is sent: the dictated words, the kind of app, your
    style and your dictionary words; *What cleanup sends* adds text around the cursor, on-screen
-   words or the app name, each off by default. *OpenRouter first* (phone AI as backup) or *Phone AI
-   first*; *Provider choice* (fastest by default); *Time limit* (2500 ms, 800-8000: after it the
+   words or the app name, each off by default. Which engine cleans first (this phone, your server or
+   the cloud) is set in *Settings → AI cleanup*; *Provider choice* (fastest by default); *Time limit* (2500 ms, 800-8000: after it the
    formatted text is pasted and the request is cancelled). It runs on phone and cloud dictations,
    never on your own server's. With it on, the cleanup step runs even when the local AI is off.
 5. **Model picker**: every OpenRouter model that can do the job, from the list OpenRouter
-   publishes (cached 24 h; an offline list is built in; refreshed only when the OpenRouter page
+   publishes (cached 24 h; an offline list is built in; refreshed only when the Cloud page
    or the picker opens, or a use is switched on). Search by name or id; chips *Transcription* /
    *Chat audio* (speech) or *Text* (cleanup), *Zero-retention only* (on), *Fast providers*,
    *Free*. Each row: name (★ = recommended), id, price (per hour of audio, or ≈ per dictation),
@@ -481,7 +493,7 @@ Open it from *Settings → OpenRouter* (under *Connections*) or *Developer setti
 Upgrading from 0.4.0 or older: on the first start the old provider list is converted once. An
 OpenRouter entry keeps its key, model and consent; every other provider and its stored key is
 deleted. If another provider was the active one, cloud speech-to-text is switched off (not moved
-to OpenRouter). A banner on *Developer settings* and on the OpenRouter page says what changed
+to OpenRouter). A banner on *Developer settings* and on the Cloud page says what changed
 until you tap *Dismiss*.
 
 ## Settings layout
@@ -498,10 +510,10 @@ current value and open a page:
 | General · *Bubble size* | Live preview, Shrink to a dot, Shake to restore, Bubble size; *Command mode* (✎ button: When text is selected / Always / Off) | at once |
 | General · *Excluded apps* | package names, one per line (checked) | *Save* |
 | General · *Timing and limits* | Stop after silence (ms, 0 or 300–10000), Decode while speaking, session limit (1–20 min) | *Save* |
-| Models · *Speech to text* | *Engines*: one switch per engine (Use your server / Use this phone / Use OpenRouter for speech; OpenRouter asks for consent) in try order, *Change order* (↑ / ↓). *On this phone* (local / hybrid): the model in use → *Model on this phone* (Whisper or Parakeet, *Speech model (whisper)* / *Parakeet model folder* imports), *Import another model*, *Keep loaded while the server is used* (hybrid); *Transcribe while I speak* | at once (reloads) |
-| Models · *AI cleanup* | Clean up with local AI; *Clean up with OpenRouter* (hybrid, → the OpenRouter page); *AI cleanup model* import; strength. The row says "OpenRouter (<model>), then on-device" while cloud cleanup is on. In `remote` it opens the OpenRouter page | at once (reloads) |
+| Models · *Speech to text* | *Engines*: one switch per engine (Use your server / Use this phone / Use the cloud for speech; the cloud asks for consent) in try order, *Change order* (↑ / ↓). *On this phone* (local / hybrid): the model in use → *Model on this phone* (Whisper or Parakeet, *Speech model (whisper)* / *Parakeet model folder* imports), *Import another model*, *Keep loaded while the server is used* (hybrid); *Transcribe while I speak* | at once (reloads) |
+| Models · *AI cleanup* | *Engines*: one switch per engine (Clean up on this phone / Clean up on your server / Clean up in the cloud; the cloud asks for consent) in try order, *Change order* (↑ / ↓); *AI cleanup model* import; strength. The row says e.g. "Medium · Cloud, then rules". In `remote` it opens the Cloud page | at once (reloads) |
 | Connections · *Your server* (hybrid / remote) | Developer settings' *Server* page; the row shows the last check ("Connected · 41 ms") | top bar |
-| Connections · *OpenRouter* (hybrid / remote) | The OpenRouter page (§5c); the row shows this month's cost | at once |
+| Connections · *Cloud* (hybrid / remote) | The Cloud page (§5c); the row shows this month's cost | at once |
 | Data & privacy | *Keep history* (Keep / 24 hours / Never save, asks before deleting); *Learn from my edits*; *Debug log* | at once |
 | Back up & restore | *Export all data*, *Restore from a backup* | – |
 | Advanced | *Developer settings* (when visible), *Mock engine* switch | at once |
@@ -522,7 +534,7 @@ A hub with grouped cards; each row shows its current value and opens a focused p
 | *Speech to text* | Opens *Settings → Speech to text* (engines on/off and their order moved there) | at once |
 | *Engine options* | Engine badge, Parakeet decoding (both apply at once); *Test session* | – |
 | *Server* | host, port, Use TLS, certificate pin, token (masked; Show / Paste / Clear), timeouts; *Test connection* | top bar |
-| *OpenRouter (cloud)* | The OpenRouter page (§5c); the row says "Speech on/off · Cleanup on/off" (+ "no key", budget). A one-time migration notice sits on top of the hub until dismissed | at once |
+| *Cloud* | The Cloud page (§5c); the row says "Speech on/off · Cleanup on/off" (+ "no key", budget). A one-time migration notice sits on top of the hub until dismissed | at once |
 | *Debug log & audio* | Debug log, Keep last dictation audio (apply at once); View / Share / Clear | – |
 | *Build* | flavour + native library, *Reset to defaults* (asks first), *Lock* (local) | – |
 
@@ -609,8 +621,8 @@ Every screen uses the app design (top bar, cards, light and dark):
 | Notes | **+** (*New note*), search (by content), notes as cards (first line, last changed · more text, *Pinned* badge) under *Pinned* and *Notes*; tap opens the note editor, ⋮ / long-press / TalkBack actions: *Pin* or *Unpin*, *Share*, *Delete* (asks). The *Quick note* (the old Scratchpad) is one of them, pinned by default |
 | Note editor (Quick note, any note) | word count, *Copy all*, *Share*, *Clear* (asks), one big field; saves as you go; the only screen of ours with the bubble |
 | Speech model / Parakeet model / AI cleanup model | *Status* (Active model, Size, Engine), *Import model file…* / *Import model folder…* with progress and errors under it, *Recommended* (tap = copy download link), *Imported* (*Use*, *Delete* asks first) |
-| OpenRouter (Settings → OpenRouter, Developer settings) | *This month* (total / speech / cleanup, budget), *API key* (masked; Show / Paste / Clear, *Save key*, *Check key*), *Privacy*, *Speech-to-text* (opt-in + consent, Model, Language, Send dictionary words, *Test*), *Text cleanup* (opt-in + its own consent, Model, order, Provider choice, Time limit, Status), *What cleanup sends*, *Usage* (budget, Reset counters) |
-| Model picker (OpenRouter → Model) | *In use*, list source + *Refresh*, search, filter chips, rows (name, id, price, context, badges), *Use custom model id…* |
+| Cloud (Settings → Cloud, Developer settings) | *Provider* (OpenRouter / LiteLLM), *API key* (masked; Show / Paste / Clear, *Save key*, *Check key*), *Privacy*, *Your LiteLLM proxy* (LiteLLM only), *Speech-to-text* (opt-in + consent, Model, Language, Send dictionary words, *Test*), *Text cleanup* (opt-in + its own consent, Model, order, Provider choice, Time limit, Status), *What cleanup sends*, *Usage* (budget, Reset counters) |
+| Model picker (Cloud → Model) | *In use*, list source + *Refresh*, search, filter chips, rows (name, id, price, context, badges), *Use custom model id…* |
 
 ## Device test checklist
 
@@ -661,18 +673,18 @@ Logcat tags: `MurmurA11y` (insertion step trail), `MurmurService`, `MurmurMic`, 
 
 **OpenRouter (D28)** — `hybrid` (and `remote`) APK and a real OpenRouter key; record model,
 latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CONTEXT.md`
-- [ ] `local`: no *OpenRouter* row in Settings; Developer settings → OpenRouter says "Not in this build";
+- [ ] `local`: no *Cloud* row in Settings; Developer settings → Cloud says "Not in this build";
       App info shows no network permission (unchanged).
 - [ ] Upgrade over a 0.4.0 install that had a Groq provider active: the hub shows "Cloud speech-to-text now
       uses OpenRouter only. Groq was removed and its key deleted…"; cloud speech-to-text is off; *Dismiss* hides it.
 - [ ] Fresh install: both opt-ins off, both privacy switches on. *Paste* + *Save key*: the field empties and
       `Stored key: ••••abcd`; *Check key* → "Key OK · … · credit left …"; a wrong key → "auth_failed: key rejected".
-- [ ] *Cloud speech-to-text* on: "Send your voice to OpenRouter?"; *Cancel* leaves it off; accept → *Settings →
-      Speech to text* lists OpenRouter first. Text cleanup stays off.
+- [ ] *Use the cloud for speech* on: "Send your voice to OpenRouter?"; *Cancel* leaves it off; accept → *Settings →
+      Speech to text* lists Cloud first. Text cleanup stays off.
 - [ ] *Test speech-to-text* → "OK · heard "And so, my fellow Americans…" · N ms · $…".
 - [ ] Dictate 10 s in Notes: preview badge `[C]` even with *Engine badge* off; *Active engine* `cloud ·
       OpenRouter · openai/whisper-large-v3-turbo · $…`; Usage "Speech $… · Cleanup $0".
-- [ ] *Clean up text with OpenRouter* on: its own dialog lists what is sent; turn *Send app name* on and
+- [ ] *Use the cloud for cleanup* on: its own dialog lists what is sent; turn *Send app name* on and
       reopen the dialog (off → on): it now names the app's name. Dictate a messy sentence ("um so like
       send it tomorrow comma ok"): History shows *AI cleaned*; the debug line has `llm_engine: cloud`,
       `llm_cost_usd`; Usage "Cleanup $…". A clean sentence logs `llm: llm_skipped_clean` and costs nothing.
@@ -792,7 +804,7 @@ latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CO
       `token`, `key_sealed` or `sk-or-` text in it. Uninstall the app (or *Clear storage*), reinstall,
       *Restore from a backup* → pick the file → the dialog lists notes, dictations, dictionary words,
       snippets, Insights days and settings; *Replace* → toast, Settings reopens with the old values.
-      Notes (with pins), History, Dictionary, Insights and the OpenRouter / server choices are back;
+      Notes (with pins), History, Dictionary, Insights and the Cloud / server choices are back;
       the OpenRouter key and server token are empty (enter them again) and models need re-importing.
       Picking a dictionary export or a photo → "not a Murmur backup", nothing changed.
 - [ ] Command Mode (needs AI cleanup: local model, or OpenRouter cleanup with *Send text around the
