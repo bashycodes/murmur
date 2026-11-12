@@ -23,7 +23,10 @@
 #                       links; needed with --cuda-whisper
 #
 # The CUDA files go to deploy/docker/prebuilt/cuda/, which only the CUDA image
-# copies.
+# copies (D84 moved libmurmur_llm_cuda.so there from prebuilt/lib/: restage
+# an older staging before building `--target cuda`). The CUDA image points
+# MURMUR_WHISPER_LIB at libmurmur_whisper_cuda.so; staged without
+# --cuda-whisper, whisper runs on the CPU with a warning in the log.
 #
 # The image runs Ubuntu 24.04 (glibc 2.39): build on a host with that glibc
 # or older. Writes deploy/docker/prebuilt/{bin,lib,cuda} (git-ignored).
@@ -46,7 +49,7 @@ while [ $# -gt 0 ]; do
         --cuda-llm) CUDA_LLM="${2:?--cuda-llm FILE}"; shift ;;
         --cuda-whisper) CUDA_WHISPER="${2:?--cuda-whisper FILE}"; shift ;;
         --cuda-lib) CUDA_LIB="${2:?--cuda-lib DIR}"; shift ;;
-        -h|--help) sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) die "unknown option: $1" ;;
     esac
     shift
@@ -73,6 +76,10 @@ GOMP="$(gcc -print-file-name=libgomp.so.1 2>/dev/null || true)"
 [ -e "$GOMP" ] || die "libgomp.so.1 not found (the llama.cpp plugin needs it)"
 
 [ -z "$CUDA_WHISPER" ] || [ -n "$CUDA_LIB" ] || die "--cuda-whisper needs --cuda-lib DIR (its cuBLAS/cudart)"
+if [ -n "$CUDA_LLM" ] && [ -z "$CUDA_WHISPER" ]; then
+    echo "stage-prebuilt.sh: warning: --cuda-llm without --cuda-whisper: the CUDA image's" \
+        "whisper speech models will run on the CPU (MURMUR_WHISPER_LIB names a missing file)" >&2
+fi
 rm -rf "${OUT:?}/bin" "${OUT:?}/lib" "${OUT:?}/cuda"
 mkdir -p "$OUT/bin" "$OUT/lib"
 install -m 0755 "$TARGET/murmur-server" "$OUT/bin/murmur-server"
@@ -99,4 +106,7 @@ if [ -n "$CUDA_WHISPER" ]; then
     done
 fi
 echo "staged in ${OUT#"$ROOT"/}:"
-(cd "$OUT" && find bin lib cuda -type f -printf '  %p  %s bytes\n' 2>/dev/null | sort)
+dirs="bin lib"
+[ -d "$OUT/cuda" ] && dirs="$dirs cuda"
+# shellcheck disable=SC2086 # $dirs: the staged directories, word-split on purpose
+(cd "$OUT" && find $dirs -type f -printf '  %p  %s bytes\n' | sort)
