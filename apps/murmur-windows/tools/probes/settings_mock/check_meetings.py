@@ -1,11 +1,10 @@
-"""Needs the Notetaker switched on (D51: `NOTETAKER_ENABLED = true` in
-src/meetings/mod.rs and ui/src/pages/notetaker.ts, then rebuild ui/dist).
-
-Headless check of the Meetings page (Notetaker, D45) against mock-tauri.js.
+"""Headless check of the Meetings page (Notetaker, D45) against mock-tauri.js.
 
 Probe (Playwright + its bundled Chromium):
     python3 tools/probes/settings_mock/serve.py 8765 &
     python3 tools/probes/settings_mock/check_meetings.py [port]
+The Notetaker is hidden in the release (D51), so this loads
+/notetaker-on/settings.html: serve.py flips the UI switch there.
 Checks the list (date, duration, app, failed status), opening a transcript
 with Me / Others turns, copy, delete (after the confirm dialog), start and
 stop from the page with the live indicator, the meeting detection setting
@@ -32,7 +31,7 @@ with sync_playwright() as p:
     pg = b.new_page(viewport={"width": 1280, "height": 800})
     errors = []
     pg.on("pageerror", lambda e: errors.append(str(e)))
-    pg.goto(f"http://127.0.0.1:{port}/settings.html")
+    pg.goto(f"http://127.0.0.1:{port}/notetaker-on/settings.html")
     pg.wait_for_timeout(300)
     nav = pg.locator('.lw-sidebar [data-page="meetings"]')
     check(nav.inner_text().strip() == "Meetings", f"nav says Meetings: {nav.inner_text()!r}")
@@ -40,12 +39,12 @@ with sync_playwright() as p:
     pg.wait_for_timeout(200)
     check(pg.is_visible("#page_meetings"), "Meetings page shown")
     rows = pg.locator("#mt_list .lw-mt-row")
-    check(rows.count() == 2, f"two meetings listed ({rows.count()})")
+    check(rows.count() == 3, f"three meetings listed ({rows.count()})")
     first = rows.nth(0).inner_text()
     check("25 min" in first and "teams" in first, f"duration + app: {first!r}")
     check("Thanks for joining" in first, "preview line")
-    second = rows.nth(1).inner_text()
-    check("Failed: speech model not found" in second, f"failed status: {second!r}")
+    failed = rows.nth(2).inner_text()
+    check("Failed: speech model not found" in failed, f"failed status (oldest, last): {failed!r}")
     check(pg.locator('#mt_list [data-id="m1"] [aria-label="Transcribe again"]').count() == 1, "retry on a failed meeting")
 
     # Open the transcript.
@@ -75,7 +74,7 @@ with sync_playwright() as p:
     pg.wait_for_timeout(100)
     pg.click("#mt_del_ok")
     pg.wait_for_timeout(200)
-    check(pg.is_visible("#mt_list_view") and rows.count() == 1, "deleted, back on the list")
+    check(pg.is_visible("#mt_list_view") and rows.count() == 2, "deleted, back on the list")
 
     # Start / stop from the page.
     pg.click("#mt_toggle")
@@ -85,7 +84,7 @@ with sync_playwright() as p:
     pg.click("#mt_toggle")
     pg.wait_for_timeout(200)
     check(pg.inner_text("#mt_toggle") == "Start recording", "stopped")
-    check(rows.count() == 2 and "Waiting to be transcribed" in rows.nth(0).inner_text(), "new meeting queued")
+    check(rows.count() == 3 and "Waiting to be transcribed" in rows.nth(0).inner_text(), "new meeting queued")
 
     # Meeting detection (D48): off by default, saved to prefs.
     check(pg.input_value("#mt_detect") == "off", "detection off by default")
