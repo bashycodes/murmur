@@ -48,9 +48,11 @@ import kotlin.concurrent.thread
  * [OpenRouterActivity], opened from the hub's CONNECTION card.
  *   debug    debug log, keep last dictation audio (both apply at once, as before)
  *   status   active engine, circuits, server info, native capabilities; Reset circuit
- * The Server page has Save in the top bar, enabled once something changed and the
- * whole form validates. Save writes the whole [DevSettings] like the old single page
- * ([DevDraft], [DevSettingsForm]); settings apply from the next dictation.
+ * The Server page has Save in the top bar and a Save button under the form, enabled once
+ * something changed and the whole form validates. Save writes the whole [DevSettings] like
+ * the old single page ([DevDraft], [DevSettingsForm]); settings apply from the next dictation.
+ * Leaving the page saves valid edits (back, the app going to the background) and asks about
+ * ones that do not validate yet ([DevDraft.onLeave]): typed values are never dropped silently.
  */
 class DeveloperActivity : Activity() {
     private val app get() = MurmurApp.of(this)
@@ -59,6 +61,7 @@ class DeveloperActivity : Activity() {
     private lateinit var page: Page
     private lateinit var draft: DevDraft
     private var saveButton: View? = null
+    private var saveAction: View? = null
     private val refreshers = ArrayList<() -> Unit>()
     private var backCallback: OnBackInvokedCallback? = null
     private var banner: DevUi.Result? = null
@@ -80,6 +83,7 @@ class DeveloperActivity : Activity() {
             backCallback = OnBackInvokedCallback { confirmLeave() }.also {
                 onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, it)
             }
+            savedInstanceState?.getStringArray(STATE_DRAFT)?.let { restoreFields(it) }
             validate()
         }
     }
@@ -87,6 +91,20 @@ class DeveloperActivity : Activity() {
     override fun onDestroy() {
         backCallback?.let { onBackInvokedDispatcher.unregisterOnBackInvokedCallback(it) }
         super.onDestroy()
+    }
+
+    /** Backgrounding (home, recents, another app to copy a token from) keeps valid edits. */
+    override fun onPause() {
+        super.onPause()
+        if (!hasForm) return
+        validate()
+        if (draft.onLeave(caps) == DevDraft.Leave.SAVE) onSave("Server settings saved")
+    }
+
+    /** Edits that do not validate yet outlive a process death too (never the token: it is a secret). */
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        if (hasForm && draft.dirty) outState.putStringArray(STATE_DRAFT, readFields())
     }
 
     override fun onResume() {
@@ -122,15 +140,19 @@ class DeveloperActivity : Activity() {
         }
     }
 
-    /** Unsaved edits: ask before dropping them. */
+    /** Back: valid edits are saved on the way out; ones that cannot be saved yet are asked about. */
     private fun confirmLeave() {
-        if (!draft.dirty) { finish(); return }
-        AlertDialog.Builder(this)
-            .setTitle("Discard changes?")
-            .setMessage("Your changes on this page are not saved.")
-            .setNegativeButton("Keep editing", null)
-            .setPositiveButton("Discard") { _, _ -> finish() }
-            .show()
+        validate()
+        when (draft.onLeave(caps)) {
+            DevDraft.Leave.CLOSE -> finish()
+            DevDraft.Leave.SAVE -> { onSave(); finish() }
+            DevDraft.Leave.ASK -> AlertDialog.Builder(this)
+                .setTitle("Discard changes?")
+                .setMessage("Some values on this page are not valid yet, so your changes can't be saved.")
+                .setNegativeButton("Keep editing", null)
+                .setPositiveButton("Discard") { _, _ -> finish() }
+                .show()
+        }
     }
 
     // =====================================================================================
@@ -335,6 +357,8 @@ class DeveloperActivity : Activity() {
                 commitTimeout = fieldRow("Commit timeout base (ms)", s.commitTimeoutBaseMs.toString(), InputType.TYPE_CLASS_NUMBER, help = "500-60000", onEdit = edit)
                 healthTtl = fieldRow("Health cache (s)", s.healthTtlS.toString(), InputType.TYPE_CLASS_NUMBER, help = "5-600", onEdit = edit)
             }
+            saveAction = action("Save", DevUi.Style.PRIMARY) { onSave() }
+            note("Changes are also saved when you leave this page.")
             action("Test connection") { onTestConnection() }
             probeResult = result()
             note("Uses the values on this page, saved or not.")
@@ -572,6 +596,17 @@ class DeveloperActivity : Activity() {
         else -> i
     }
 
+    /** The Server form's views, in [restoreFields] order; the token is left out on purpose. */
+    private fun readFields(): Array<String> = arrayOf(
+        host.text, port.text, tls.isChecked.toString(), pin.text, connectTimeout.text, commitTimeout.text, healthTtl.text,
+    )
+
+    private fun restoreFields(v: Array<String>) {
+        if (v.size != 7) return
+        host.text = v[0]; port.text = v[1]; tls.isChecked = v[2].toBoolean(); pin.text = v[3]
+        connectTimeout.text = v[4]; commitTimeout.text = v[5]; healthTtl.text = v[6]
+    }
+
     private fun validate(): DevSettingsForm.Result {
         if (!hasForm) return draft.result(caps)
         draft = draft.edit { readViews(this) }
@@ -588,17 +623,17 @@ class DeveloperActivity : Activity() {
         val lines = DevPages.warningsFor(page, r.warnings) + off.map { (f, e) -> "$e (on the ${TITLES.getValue(DevPages.pageOf(f))} page)" }
         banner?.show(lines.joinToString("\n"), if (off.isNotEmpty() || DevSettingsForm.BOTH_OFF in lines) Tone.BAD else Tone.WARN)
         val can = draft.canSave(caps)
-        saveButton?.let { if (it.isEnabled != can) { it.isEnabled = can; it.alpha = if (can) 1f else 0.35f } }
+        for (b in listOfNotNull(saveButton, saveAction)) if (b.isEnabled != can) { b.isEnabled = can; b.alpha = if (can) 1f else 0.35f }
         return r
     }
 
-    private fun onSave() {
+    private fun onSave(savedText: String = "Saved: applies to the next dictation") {
         val r = validate()
         val s = r.settings ?: return
         if (!draft.dirty) return
         app.dev.save(s)
         app.engine.applyDevSettings(s)
-        Toast.makeText(this, if (s.effective(caps).bothOff) DevSettingsForm.BOTH_OFF else "Saved: applies to the next dictation", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, if (s.effective(caps).bothOff) DevSettingsForm.BOTH_OFF else savedText, Toast.LENGTH_LONG).show()
         draft = DevDraft.of(app.dev.load(), page)
         validate()
         usersKeys?.check()
@@ -638,6 +673,7 @@ class DeveloperActivity : Activity() {
 
     companion object {
         const val EXTRA_PAGE = "page"
+        private const val STATE_DRAFT = "server_draft"
         private const val PROBE_ACTIVITY = "dev.murmur.probe.EnglishProbeActivity"
 
         val TITLES = mapOf(

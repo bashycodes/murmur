@@ -1,7 +1,11 @@
 package dev.murmur.ui
 
+import android.app.AlertDialog
 import android.content.Intent
+import android.widget.Button
+import android.widget.EditText
 import android.widget.ImageButton
+import android.widget.TextView
 import dev.murmur.MurmurApp
 import dev.murmur.data.DevPages.Page
 import dev.murmur.data.SettingsPages
@@ -18,6 +22,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowAlertDialog
 
 /** Developer settings after routing moved to Settings → Speech to text: top bar, hub links, Save on Server only. */
 @RunWith(RobolectricTestRunner::class)
@@ -28,6 +33,18 @@ class DeveloperUiTest {
     private fun launch(p: Page) = Robolectric.buildActivity(
         DeveloperActivity::class.java, Intent(ctx, DeveloperActivity::class.java).putExtra(DeveloperActivity.EXTRA_PAGE, p.name),
     ).setup().visible().get()
+
+    private fun controller(p: Page) = Robolectric.buildActivity(
+        DeveloperActivity::class.java, Intent(ctx, DeveloperActivity::class.java).putExtra(DeveloperActivity.EXTRA_PAGE, p.name),
+    ).setup().visible()
+
+    /** The input a field label ([TextView.getLabelFor]) points at. */
+    private fun field(a: android.app.Activity, label: String): EditText {
+        val l = walk(a.window.decorView).filterIsInstance<TextView>().first { it.text.toString() == label && it.labelFor != 0 }
+        return a.findViewById(l.labelFor)
+    }
+
+    private val app get() = MurmurApp.of(ctx)
 
     private fun buttons(a: android.app.Activity) = walk(a.window.decorView).filterIsInstance<ImageButton>()
 
@@ -51,5 +68,43 @@ class DeveloperUiTest {
             assertFalse("$p", buttons(a).any { it.contentDescription.toString().startsWith("Save ") })
             UiTestKit.assertTouchTargets(a, "dev $p")
         }
+    }
+
+    @Test fun serverPageHasAVisibleSaveButtonThatSaves() {
+        val a = launch(Page.SERVER)
+        val save = walk(a.window.decorView).filterIsInstance<Button>().first { it.text.toString() == "Save" }
+        assertFalse("nothing to save yet", save.isEnabled)
+        field(a, "Port").setText("7401")
+        assertTrue(save.isEnabled)
+        save.performClick()
+        assertEquals(7401, app.dev.load().port)
+    }
+
+    @Test fun backgroundingKeepsValidEdits() {
+        val c = controller(Page.SERVER)
+        field(c.get(), "Port").setText("7402")
+        c.pause()
+        assertEquals("typed but not confirmed with Save, still kept", 7402, app.dev.load().port)
+    }
+
+    @Test fun backWithValidEditsSavesAndCloses() {
+        val a = launch(Page.SERVER)
+        field(a, "Port").setText("7403")
+        buttons(a).first { it.contentDescription == "Back" }.performClick()
+        assertEquals(7403, app.dev.load().port)
+        assertTrue(a.isFinishing)
+    }
+
+    @Test fun backWithInvalidEditsAsksInsteadOfDropping() {
+        val before = app.dev.load().port
+        val c = controller(Page.SERVER)
+        val a = c.get()
+        field(a, "Port").setText("0")
+        buttons(a).first { it.contentDescription == "Back" }.performClick()
+        val d = ShadowAlertDialog.getLatestAlertDialog() as AlertDialog
+        assertTrue(d.isShowing)
+        assertFalse("not closed behind the user's back", a.isFinishing)
+        c.pause()
+        assertEquals("an invalid value is never written", before, app.dev.load().port)
     }
 }

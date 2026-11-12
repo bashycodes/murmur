@@ -50,6 +50,16 @@ class DevPagesTest {
         assertTrue(Field.PORT in e.result(caps).errors)
     }
 
+    @Test fun leavingNeverDropsEditsSilently() {
+        val clean = DevDraft.of(saved, Page.SERVER)
+        assertEquals(DevDraft.Leave.CLOSE, clean.onLeave(caps))
+        // A valid edit (e.g. a pasted token) is saved on the way out.
+        assertEquals(DevDraft.Leave.SAVE, clean.edit { copy(token = "t".repeat(DevSettings.MIN_TOKEN_LEN)) }.onLeave(caps))
+        // An edit that cannot be saved yet is asked about, never dropped.
+        assertEquals(DevDraft.Leave.ASK, clean.edit { copy(port = "0") }.onLeave(caps))
+        assertEquals(DevDraft.Leave.CLOSE, clean.edit { copy(port = "0") }.edit { copy(port = saved.port.toString()) }.onLeave(caps))
+    }
+
     @Test fun savedSettingsEqualOldWholePageSave() {
         // Same semantics as the single-page form: the whole DevSettings is validated + written.
         val e = DevDraft.of(saved, Page.SERVER).edit { copy(port = "7400", healthTtlS = "60") }
