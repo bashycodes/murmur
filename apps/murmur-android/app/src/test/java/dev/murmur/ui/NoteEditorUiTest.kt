@@ -11,8 +11,8 @@ import dev.murmur.ui.UiTestKit.texts
 import dev.murmur.ui.UiTestKit.walk
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -24,7 +24,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowAlertDialog
 import java.io.File
 
-/** Note editor (Quick note + notes): restore on open, save on pause, Copy / Share / Clear, word count, dictation surface, note ids. */
+/** Note editor (Quick note + notes): restore on open, save on pause, Copy / Share / Clear, word count, dictation screen, note ids. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = MurmurApp::class)
 class NoteEditorUiTest {
@@ -32,7 +32,7 @@ class NoteEditorUiTest {
     private val app get() = MurmurApp.of(ctx)
     private val file get() = File(ctx.filesDir, "notes/scratchpad.txt")
 
-    @After fun cleanup() { File(ctx.filesDir, "notes").deleteRecursively(); app.dictationSurface = null }
+    @After fun cleanup() { File(ctx.filesDir, "notes").deleteRecursively() }
 
     private fun launch() = Robolectric.buildActivity(NoteEditorActivity::class.java).setup()
 
@@ -65,13 +65,15 @@ class NoteEditorUiTest {
         assertTrue(texts(a).toString(), "3 words" in texts(a))
     }
 
-    @Test fun isTheDictationSurfaceOnlyWhileInFront() {
+    @Test fun isTheDictationScreenOnlyWhileInFront() {
         val c = launch()
-        assertSame(c.get(), app.dictationSurface)
-        c.pause()
-        assertNull(app.dictationSurface)
-        c.resume()
-        assertSame(c.get(), app.dictationSurface)
+        val front = app.ownScreens.front
+        assertTrue(front.value.dictationScreen)
+        assertFalse(front.value.hidesBubble) // the bubble stays over the note editor
+        c.pause().stop()
+        assertFalse(front.value.dictationScreen)
+        c.restart().resume()
+        assertTrue(front.value.dictationScreen)
     }
 
     @Test fun copyPutsTheWholeTextOnTheClipboard() {
@@ -122,7 +124,7 @@ class NoteEditorUiTest {
         val c = Robolectric.buildActivity(NoteEditorActivity::class.java, NoteEditorActivity.note(ctx, "n-shop")).setup()
         assertEquals("milk", editor(c.get()).text.toString())
         assertEquals(NoteEditorActivity.NOTE_TITLE, c.get().title.toString())
-        assertSame(c.get(), app.dictationSurface) // the bubble works in every note editor
+        assertTrue(app.ownScreens.front.value.dictationScreen) // the bubble works in every note editor
         editor(c.get()).setText("milk and eggs")
         c.pause().stop().destroy()
         awaitNote("n-shop", "milk and eggs")

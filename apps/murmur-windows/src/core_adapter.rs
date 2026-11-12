@@ -1228,58 +1228,24 @@ fn on_cpu(e: Arc<dyn AsrEngine>) -> Loaded {
 /// the built-in engine takes over. `MURMUR_WHISPER_DEVICE=cpu` keeps the
 /// plugin on the CPU.
 fn whisper_engine(p: &std::path::Path, threads: usize) -> Result<Loaded, murmur_core::CoreError> {
-    use murmur_core::whisper_plugin::{PluginOptions, PluginWhisper, WhisperPluginError};
+    use murmur_core::whisper_plugin::{load_with_fallback, PluginOptions, PluginOutcome};
     let path = require(p, false)?;
     let opts = PluginOptions {
         threads,
-        // Same as the built-in engine below: the full 30 s window.
+        // The full 30 s window, on the plugin and the built-in engine alike.
         fit_ctx: false,
         vad_model: None,
     };
-    let gpu_error = match PluginWhisper::load(&path, &opts, None) {
-        Ok(e) => {
-            let b = RunsOn::whisper(e.backend(), true, whisper_cpu_forced());
-            return Ok((Arc::new(e), Some(b)));
-        }
-        // No plugin next to the exe, or no Vulkan driver: the CPU, quietly.
-        Err(WhisperPluginError::PluginNotFound { .. }) => None,
-        Err(WhisperPluginError::Backend(m)) => {
-            eprintln!("[model] whisper GPU engine failed ({path}): {m}; using the CPU");
-            Some(m)
-        }
-    };
-    let e = builtin_whisper(&path, threads)?;
-    let plugin = gpu_error.is_some();
+    // The same seam as murmur-server (D84). No plugin next to the exe, or no
+    // Vulkan driver: the CPU, quietly.
+    let w = load_with_fallback(&path, &opts, None)?;
+    if let PluginOutcome::Failed(m) = &w.plugin {
+        eprintln!("[model] whisper GPU engine failed ({path}): {m}; using the CPU");
+    }
+    let plugin = !matches!(w.plugin, PluginOutcome::NotFound(_));
     Ok((
-        e,
-        Some(RunsOn::whisper(
-            WhisperBackend {
-                gpu_error,
-                ..WhisperBackend::cpu()
-            },
-            plugin,
-            whisper_cpu_forced(),
-        )),
-    ))
-}
-
-#[cfg(feature = "whisper")]
-fn builtin_whisper(
-    path: &str,
-    threads: usize,
-) -> Result<Arc<dyn AsrEngine>, murmur_core::CoreError> {
-    murmur_core::whisper::WhisperEngine::load(path, threads)
-        .map(|e| Arc::new(e) as Arc<dyn AsrEngine>)
-        .map_err(|e| murmur_core::CoreError::Load(e.to_string()))
-}
-
-#[cfg(not(feature = "whisper"))]
-fn builtin_whisper(
-    _path: &str,
-    _threads: usize,
-) -> Result<Arc<dyn AsrEngine>, murmur_core::CoreError> {
-    Err(murmur_core::CoreError::Load(
-        "this build has no whisper engine (feature `whisper`)".into(),
+        w.engine,
+        Some(RunsOn::whisper(w.backend, plugin, whisper_cpu_forced())),
     ))
 }
 

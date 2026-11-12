@@ -1,6 +1,8 @@
 package dev.murmur
 
 import dev.murmur.core.RouterErrors
+import dev.murmur.bubble.DictationScreen
+import dev.murmur.bubble.OwnScreens
 import dev.murmur.debug.DebugAudioStore
 import dev.murmur.debug.DebugLogFile
 import dev.murmur.debug.DebugLogger
@@ -19,7 +21,7 @@ import dev.murmur.data.LastDictation
 import dev.murmur.data.CloudKeyStore
 import dev.murmur.data.CloudMigration
 import dev.murmur.data.OpenRouter
-import dev.murmur.data.CustomServer
+import dev.murmur.data.LiteLLM
 import dev.murmur.data.CustomModelsKey
 import dev.murmur.data.RouterOpener
 import dev.murmur.data.LoadSet
@@ -28,6 +30,7 @@ import dev.murmur.data.ParakeetFiles
 import dev.murmur.data.EngineRoute
 import dev.murmur.data.DevSettings
 import dev.murmur.data.DevStore
+import dev.murmur.data.ServerHealth
 import dev.murmur.data.BuildCaps
 import android.app.Application
 import android.util.Log
@@ -50,6 +53,7 @@ import dev.murmur.data.HistoryStore
 import dev.murmur.data.InsightsStore
 import dev.murmur.data.EnginePlan
 import dev.murmur.data.SettingsStore
+import dev.murmur.data.SpeechEngines
 import dev.murmur.health.A11ySetting
 import dev.murmur.health.AccessibilityHealth
 import dev.murmur.policy.BubbleVisibilityPolicy
@@ -112,18 +116,17 @@ class MurmurApp : Application() {
     /** Last dictation's result + route (Developer page, engine badge). In-memory only (§5). */
     val lastRoute = MutableStateFlow<LastDictation?>(null)
 
+    /** Last server health probe (Test connection, Settings pages); in-memory only. */
+    val serverHealth = ServerHealth()
+
     /** D35: History rows being retried now (their Retry shows busy). */
     val retrying = MutableStateFlow<Set<Long>>(emptySet())
 
     /** D35: bumped when a retry changed a History row, so open History screens reload. */
     val historyRevision = MutableStateFlow(0L)
 
-    /**
-     * The dictation screen of ours in front right now (any note editor sets itself on resume,
-     * clears on pause), or null. While set, the accessibility service treats our own field like any
-     * other app's ([dev.murmur.policy.OwnAppGate]); otherwise our screens get no bubble.
-     */
-    @Volatile var dictationSurface: Any? = null
+    /** Which of our screens are in front (activity lifecycle): no bubble over them, except a note editor. */
+    val ownScreens = OwnScreens()
 
     /** Notes text (the Scratchpad / Quick note is one of them) + their index, app-private `files/notes/`. */
     val documents: NotesStore by lazy { NotesStore(File(filesDir, "notes")) }
@@ -192,6 +195,7 @@ class MurmurApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        registerActivityLifecycleCallbacks(OwnScreenCallbacks())
         // Review C2: a blocking native call on Main is a bug (ANR on the server route); say so loudly.
         BlockingCalls.isMainThread = { android.os.Looper.myLooper() == android.os.Looper.getMainLooper() }
         BlockingCalls.onViolation = { Log.e("MurmurEngine", "blocking native call on the main thread: $it", Throwable("C2")) }
@@ -261,15 +265,20 @@ class MurmurApp : Application() {
      * D28, once: stored D18 cloud settings (schema 1) become the one OpenRouter config. The rules
      * are the router's (`nativeMigrateCloud`, pure and fast); only runs (and only loads the native
      * library this early) while a schema-1 config is stored. A failure leaves it for the next start.
+     * Then D78's one-provider rule (a saved LiteLLM + cloud speech mix: speech off, one notice).
+     * Since D78 this loads the store on every call, not only while a schema-1 config is stored.
      */
     @Synchronized
     fun migrateCloud() {
-        if (dev.legacyCloudJson() == null) return
-        val r = runCatching {
-            CloudMigration.run(dev, cloudKeys) { NativeMurmurCore.migrateCloud(it) }
-        }.onFailure { Log.w("MurmurEngine", "cloud migration: ${it.message}") }.getOrNull() ?: return
-        // Ids and names only; never a key.
-        debugLog.event("cloud_migration", "migrated=${r.migrated} removed=${r.removedNames.size} key_moved=${r.keyFrom != null} cloud_disabled=${r.cloudDisabled}")
+        if (dev.legacyCloudJson() != null) {
+            runCatching {
+                CloudMigration.run(dev, cloudKeys) { NativeMurmurCore.migrateCloud(it) }
+            }.onFailure { Log.w("MurmurEngine", "cloud migration: ${it.message}") }.getOrNull()?.let { r ->
+                // Ids and names only; never a key.
+                debugLog.event("cloud_migration", "migrated=${r.migrated} removed=${r.removedNames.size} key_moved=${r.keyFrom != null} cloud_disabled=${r.cloudDisabled}")
+            }
+        }
+        if (runCatching { CloudMigration.fixOneProvider(dev) }.getOrDefault(false)) debugLog.event("cloud_one_provider", "cloud_stt=off")
     }
 
     /** Server token + the stored OpenRouter and custom-server keys (runs on the debug-log thread, never throws). */
@@ -277,8 +286,36 @@ class MurmurApp : Application() {
         val out = ArrayList<String>()
         runCatching { dev.load() }.getOrNull()?.token?.takeIf { it.isNotEmpty() }?.let(out::add)
         runCatching { cloudKeys.get(OpenRouter.ID) }.getOrNull()?.let(out::add)
-        runCatching { cloudKeys.get(CustomServer.ID) }.getOrNull()?.let(out::add)
+        runCatching { cloudKeys.get(LiteLLM.ID) }.getOrNull()?.let(out::add)
         return out
+    }
+
+    /** Feeds [ownScreens]: every activity of ours, started to stopped, re-read on resume, pause and config changes. */
+    private inner class OwnScreenCallbacks : ActivityLifecycleCallbacks {
+        private val main = android.os.Handler(android.os.Looper.getMainLooper())
+        private val configWatches = java.util.WeakHashMap<android.app.Activity, android.content.ComponentCallbacks>()
+
+        private fun screen(a: android.app.Activity) = OwnScreens.Screen(dictation = a is DictationScreen, split = a.isInMultiWindowMode)
+
+        override fun onActivityCreated(a: android.app.Activity, state: android.os.Bundle?) {
+            // Split screen / free-form entered or left in place: the activity's own config changes (API 31+).
+            val watch = object : android.content.ComponentCallbacks {
+                override fun onConfigurationChanged(c: android.content.res.Configuration) {
+                    main.post { ownScreens.refresh(a, screen(a)) }
+                }
+                @Deprecated("Deprecated in Java") override fun onLowMemory() = Unit
+            }
+            a.registerComponentCallbacks(watch)
+            configWatches[a] = watch
+        }
+        override fun onActivityStarted(a: android.app.Activity) = ownScreens.started(a, screen(a))
+        override fun onActivityResumed(a: android.app.Activity) = ownScreens.refresh(a, screen(a))
+        override fun onActivityPaused(a: android.app.Activity) = ownScreens.refresh(a, screen(a))
+        override fun onActivityStopped(a: android.app.Activity) = ownScreens.stopped(a, recreating = a.isChangingConfigurations)
+        override fun onActivitySaveInstanceState(a: android.app.Activity, out: android.os.Bundle) = Unit
+        override fun onActivityDestroyed(a: android.app.Activity) {
+            configWatches.remove(a)?.let { a.unregisterComponentCallbacks(it) }
+        }
     }
 
     companion object {
@@ -388,6 +425,14 @@ class EngineHolder(
         if (setProbe != null) setProbe.invoke()
         else if (!app.caps.local || s.mockEngine) LoadSet.Default
         else LoadSet.of(app.effectiveLanguage(s), hebrewModel() != null, s.keepBothLanguages) { defaultModelInstalled(s) }
+
+    /**
+     * The phone can transcribe the next dictation: what [wantedSet] loads for the current language
+     * is installed ([SpeechEngines.phoneReady]; a Hebrew model alone counts when the language is Hebrew).
+     * The one input every speech summary (drawer, Settings, Developer) takes for the phone.
+     */
+    fun phoneSpeechReady(s: Settings = app.settings.load()): Boolean =
+        SpeechEngines.phoneReady(s, wantedSet(s)) { defaultModelInstalled(s) }
 
     /** D54: a default (whisper / Parakeet) model is installed, so "Keep both languages loaded" has two models to keep. */
     fun defaultModelInstalled(s: Settings = app.settings.load()): Boolean = EnginePlan.defaultInstalled(
@@ -645,11 +690,11 @@ class EngineHolder(
      */
     private fun syncCloud(r: NativeMurmurCore) {
         if (!app.caps.cloud) return
-        for (id in listOf(OpenRouter.ID, CustomServer.ID)) app.cloudKeys.get(id)?.let { key ->
+        for (id in listOf(OpenRouter.ID, LiteLLM.ID)) app.cloudKeys.get(id)?.let { key ->
             runCatching { r.setCloudKey(id, key) }.onFailure { Log.w("MurmurEngine", "set_cloud_key: ${it.message}") }
         }
         app.dev.cloudUsageJson?.let { r.setCloudUsage(it) }
-        r.cloudNotice()?.let { app.dev.cloudNotice = it; r.ackCloudNotice() }
+        r.cloudNotice()?.let { app.dev.addCloudNotice(it); r.ackCloudNotice() }
     }
 
     /** A key was saved / cleared: tell the live router (D28 id `openrouter`, D52 `custom`). */

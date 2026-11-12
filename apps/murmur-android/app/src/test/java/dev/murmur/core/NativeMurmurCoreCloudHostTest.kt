@@ -10,7 +10,7 @@ import dev.murmur.data.DevStore
 import dev.murmur.data.EnginePlan
 import dev.murmur.data.EngineRoute
 import dev.murmur.data.OpenRouter
-import dev.murmur.data.OpenRouterPage
+import dev.murmur.data.CloudPage
 import dev.murmur.data.SecretVault
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -76,8 +76,8 @@ class NativeMurmurCoreCloudHostTest {
     @Test fun routerWithBothUsesButNoKeyRefusesUpFront() {
         requireCloudLib()
         val caps = BuildCaps(local = true, remote = true, cloud = true)
-        val dev = OpenRouterPage.enableCleanup(
-            OpenRouterPage.enableStt(DevSettings(allowServer = false, allowClient = true), 1), 1,
+        val dev = CloudPage.enableCleanup(
+            CloudPage.enableStt(DevSettings(allowServer = false, allowClient = true), 1), 1,
         ).copy(cleanupOrder = listOf(DevSettings.CleanupRoute.CLOUD, DevSettings.CleanupRoute.LOCAL, DevSettings.CleanupRoute.SERVER))
         val plan = EngineRoute.plan(EnginePlan.Plan.Native(ModelConfig(asrPath = "", threads = 2), EnginePlan.LlmStatus.Off), dev, caps) as EngineRoute.Plan.Routed
         assertTrue(plan.routerConfigJson, plan.routerConfigJson.contains("\"cleanup_order\":[\"cloud\",\"local\",\"server\"]"))

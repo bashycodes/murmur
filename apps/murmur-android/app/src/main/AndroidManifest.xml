@@ -71,7 +71,7 @@
         <!-- History, Insights, Notes and the note editor draw the design's top bar (Theme.Murmur.Shell). -->
         <activity android:name=".ui.HistoryActivity" android:exported="false" android:label="@string/title_history" android:theme="@style/Theme.Murmur.Shell" />
         <activity android:name=".ui.InsightsActivity" android:exported="false" android:label="@string/title_insights" android:theme="@style/Theme.Murmur.Shell" />
-        <!-- Notes list: no bubble here (only the editor is a dictation surface). -->
+        <!-- Notes list: no bubble here (only the editor is a dictation screen). -->
         <activity android:name=".ui.CallsActivity" android:exported="false" android:label="Calls" android:theme="@style/Theme.Murmur.Shell" />
         <activity android:name=".ui.NotesActivity" android:exported="false" android:label="@string/title_notes" android:theme="@style/Theme.Murmur.Shell" />
         <!-- Note editor (Quick note + every note): the one screen of ours the bubble dictates into (policy/OwnAppGate). -->
@@ -80,7 +80,7 @@
             android:launchMode="singleTop" android:windowSoftInputMode="adjustResize|stateVisible" />
         <activity android:name=".ui.DeveloperActivity" android:exported="false" android:label="@string/title_developer"
             android:theme="@style/Theme.Murmur.Shell" />
-        <activity android:name=".ui.OpenRouterActivity" android:exported="false" android:label="Cloud server"
+        <activity android:name=".ui.CloudActivity" android:exported="false" android:label="Cloud server"
             android:theme="@style/Theme.Murmur.Shell" />
         <activity android:name=".ui.ModelPickerActivity" android:exported="false" android:label="Model"
             android:theme="@style/Theme.Murmur.Shell" />

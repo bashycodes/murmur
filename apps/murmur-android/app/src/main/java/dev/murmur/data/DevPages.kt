@@ -15,7 +15,7 @@ import dev.murmur.data.DevSettingsForm.Input
  * [engineOn], [withEngine], [reorder]). Developer keeps the engine extras on [Page.ENGINES].
  */
 object DevPages {
-    /** D28: the cloud has its own page (ui/OpenRouterActivity), not a sub-page of this form. */
+    /** D28: the cloud has its own page (ui/CloudActivity), not a sub-page of this form. */
     enum class Page { HUB, ENGINES, SERVER, DEBUG, STATUS }
 
     private val SERVER_FIELDS = setOf(
@@ -52,7 +52,7 @@ object DevPages {
     fun speechWarnings(warnings: List<String>): List<String> =
         warnings.filter { it !in SERVER_WARNINGS }.map { if (it == DevSettingsForm.BOTH_OFF) NO_ENGINE else it }
 
-    /** [base] with the inputs [p] edits taken from [edits]. The cloud part is never page-owned (OpenRouter page). */
+    /** [base] with the inputs [p] edits taken from [edits]. The cloud part is never page-owned (Cloud page). */
     fun merge(base: Input, edits: Input, p: Page): Input = when (p) {
         Page.SERVER -> base.copy(
             host = edits.host, port = edits.port, tls = edits.tls, pin = edits.pin, token = edits.token,
@@ -94,13 +94,13 @@ object DevPages {
     }
 
     /**
-     * Server / phone switch. The cloud goes through its consent ([OpenRouterPage.enableStt]) after
+     * Server / phone switch. The cloud goes through its consent ([CloudPage.enableStt]) after
      * [placeCloud], so it starts where the list shows it instead of jumping to the top.
      */
     fun withEngine(s: DevSettings, r: Route, on: Boolean): DevSettings = when (r) {
         Route.SERVER -> s.copy(allowServer = on)
         Route.CLIENT -> s.copy(allowClient = on)
-        Route.CLOUD -> if (on) s.copy(allowCloud = true) else OpenRouterPage.disableStt(s)
+        Route.CLOUD -> if (on) s.copy(allowCloud = true) else CloudPage.disableStt(s)
     }
 
     /** The cloud put into the stored order at its listed place (before turning it on). */
@@ -142,11 +142,11 @@ data class DevDraft(val saved: Input, val draft: Input, val page: DevPages.Page)
 
     enum class Leave { CLOSE, SAVE, ASK }
 
-    /** The store changed under the page (OpenRouter page, consent): keep this page's edits. */
+    /** The store changed under the page (Cloud page, consent): keep this page's edits. */
     fun rebase(stored: DevSettings): DevDraft {
         val s = Input.of(stored)
         if (!dirty) return DevDraft(s, s, page)
-        // An order this page did not change follows the store (the OpenRouter page puts the cloud first).
+        // An order this page did not change follows the store (the Cloud page puts the cloud first).
         val edits = if (draft.routeOrder == saved.routeOrder) draft.copy(routeOrder = s.routeOrder) else draft
         return DevDraft(s, DevPages.merge(s, edits, page), page)
     }
@@ -158,26 +158,6 @@ data class DevDraft(val saved: Input, val draft: Input, val page: DevPages.Page)
 
 /** Hub row subtitles and the status card: the current value at a glance. Never the token or a key. */
 object DevSummary {
-    fun routeName(r: Route, s: DevSettings): String = when (r) {
-        Route.SERVER -> "Server"
-        Route.CLIENT -> "Phone"
-        Route.CLOUD -> "Cloud (${OpenRouter.NAME})"
-    }
-
-    fun routing(s: DevSettings, caps: BuildCaps): String {
-        val e = s.effective(caps)
-        if (e.bothOff) return "Dictation disabled"
-        val names = e.routeOrder.filter {
-            when (it) {
-                Route.SERVER -> e.allowServer
-                Route.CLIENT -> e.allowClient
-                Route.CLOUD -> e.cloudRouted
-            }
-        }.map { routeName(it, e) }
-        // The stored order, made obvious: "Phone first → Server" / "Server only".
-        return if (names.size == 1) "${names[0]} only" else names.mapIndexed { i, n -> if (i == 0) "$n first" else n }.joinToString(" → ")
-    }
-
     private fun hostPort(s: DevSettings) = (if (s.host.contains(':')) "[${s.host}]" else s.host) + ":" + s.port
 
     fun server(s: DevSettings, caps: BuildCaps): String {

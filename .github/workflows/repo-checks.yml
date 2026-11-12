@@ -1,6 +1,6 @@
 # Cheap repo-wide checks that the path-filtered app builds would skip
-# (docs-only branches never trigger them). A few minutes on ubuntu; only the
-# runner's own Rust toolchain (cargo fetch + metadata, nothing compiled).
+# (docs-only branches never trigger them). A few minutes on ubuntu; Rust
+# from rust-toolchain.toml (fmt --check, cargo fetch + metadata, nothing compiled).
 name: repo-checks
 
 on:
@@ -52,6 +52,15 @@ jobs:
       # The public sync's fast-forward and refusal checks (docs/public-release/sync.md).
       - name: Public sync checks
         run: tools/public/sync_test.sh
+      # Both Rust workspaces stay rustfmt-clean, so an agent's `cargo fmt
+      # --all` touches only its own files. The version and rustfmt come from
+      # rust-toolchain.toml, as in the app builds.
+      - name: Rust formatting
+        run: |
+          rustup toolchain install
+          cargo fmt --version
+          cargo fmt --all --check
+          cargo fmt --all --check --manifest-path apps/murmur-windows/Cargo.toml
       - name: Decision ids unique
         run: tools/checks/decision-ids.sh
       # The android-build native gate on a stub toolchain: no SIGPIPE flake,

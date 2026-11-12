@@ -194,8 +194,8 @@ class MurmurAccessibilityService : AccessibilityService(), AccessibilityBridge {
         if (app.fieldSelection.value != selected) app.fieldSelection.value = selected
     }
 
-    /** Our own screens get no bubble and no insert, except a note editor while it is in front ([OwnAppGate]). */
-    private fun ownAppBlocked(pkg: String?) = OwnAppGate.blocks(pkg, packageName, app.dictationSurface != null)
+    /** Our own fields get no Ready bubble and no insert, except a note editor's while it is in front ([OwnAppGate]). */
+    private fun ownAppBlocked(pkg: String?) = OwnAppGate.blocks(pkg, packageName, app.ownScreens.front.value.dictationScreen)
 
     /** SoftKeyboardStateTracker: visible fraction of the IME window rect. */
     private fun imeVisibleFraction(w: AccessibilityWindowInfo): Float {
