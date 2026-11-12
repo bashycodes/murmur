@@ -117,8 +117,8 @@ Parakeet converted to int8 ONNX by the sherpa-onnx authors or krut42; Qwen
 and Llama quantised to GGUF q4_k_m by Qwen and by bartowski; Zipformer as
 its authors publish it (int8 ONNX).
 
-- Whisper GGML models (tiny/base/small, .en and multilingual; language
-  detection), from ggerganov/whisper.cpp
+- Whisper GGML models (tiny/base/small/large-v3-turbo, .en and multilingual;
+  language detection), from ggerganov/whisper.cpp
   MIT (model card: ggerganov/whisper.cpp; OpenAI's Whisper weights: MIT).
   https://huggingface.co/ggerganov/whisper.cpp
 - Parakeet TDT 0.6B v2 int8 (sherpa-onnx export of nvidia/parakeet-tdt-0.6b-v2)
