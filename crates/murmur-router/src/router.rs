@@ -24,8 +24,9 @@ use murmur_core::cleanup::{
 use murmur_core::config::CleanupLevel;
 
 use crate::cloud::{
-    month_of, CleanupRoute, CleanupView, CloudProvider, CloudUsage, OpenRouterConfig, Privacy,
-    Route, SecretString, SttConfig, CUSTOM_CLEANUP_ID, OPENROUTER_ID,
+    month_of, CleanupRoute, CleanupView, CloudConfig, CloudProvider, CloudUsage,
+    CustomCleanupConfig, OpenRouterConfig, Privacy, Route, SecretString, SttConfig,
+    CUSTOM_CLEANUP_ID, OPENROUTER_ID,
 };
 use crate::gate::Gate;
 use crate::local::{LazyLocal, LoadNote, LocalLoader};
@@ -34,17 +35,84 @@ use crate::server_clean::ServerClean;
 use crate::{
     effective_connect_timeout_ms, now_unix_ms, Backend, BackendError, Capabilities, CircuitStatus,
     CleanupFactory, CleanupPlan, CleanupStatus, CloudCapabilities, CloudFactory,
-    CustomCleanupFactory, EngineKind, Failure, HealthReport, Prefer, RemoteFactory, RouteCheck,
-    RouteDiag, RouteStatus, RouterConfig, RouterError, RouterPoll, ServerConfig, SessionRoute,
-    StartInfo,
+    CustomCleanupFactory, CustomSttFactory, EngineKind, Failure, HealthReport, Prefer,
+    RemoteFactory, RouteCheck, RouteDiag, RouteStatus, RouterConfig, RouterError, RouterPoll,
+    ServerConfig, SessionRoute, StartInfo,
 };
 
-/// What the cloud STT backend is built for: the privacy + STT settings
-/// (the cleanup settings do not rebuild it).
-type SttView = (Privacy, SttConfig);
+/// What the cloud STT backend is built for: OpenRouter's privacy + STT
+/// settings, or (D84) the LiteLLM proxy's address, speech model and connect
+/// limit. The cleanup settings do not rebuild it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum SttView {
+    OpenRouter(Privacy, SttConfig),
+    LiteLlm {
+        base_url: String,
+        model: String,
+        connect_timeout_ms: u64,
+    },
+}
 
-fn stt_view(o: &OpenRouterConfig) -> SttView {
-    (o.privacy.clone(), o.stt.clone())
+impl SttView {
+    fn provider_id(&self) -> &'static str {
+        match self {
+            SttView::OpenRouter(..) => OPENROUTER_ID,
+            SttView::LiteLlm { .. } => CUSTOM_CLEANUP_ID,
+        }
+    }
+
+    /// Base of the cloud commit deadline (ms): OpenRouter's setting; the
+    /// proxy uses the same default.
+    fn timeout_base_ms(&self) -> u64 {
+        match self {
+            SttView::OpenRouter(_, s) => s.timeout_base_ms,
+            SttView::LiteLlm { .. } => SttConfig::default().timeout_base_ms,
+        }
+    }
+
+    fn model(&self) -> String {
+        match self {
+            SttView::OpenRouter(_, s) => s.model.clone(),
+            SttView::LiteLlm { model, .. } => model.clone(),
+        }
+    }
+}
+
+fn or_view(o: &OpenRouterConfig) -> SttView {
+    SttView::OpenRouter(o.privacy.clone(), o.stt.clone())
+}
+
+fn litellm_view(c: &CustomCleanupConfig) -> SttView {
+    SttView::LiteLlm {
+        base_url: c.base_url.clone(),
+        model: c.stt_model.trim().to_string(),
+        connect_timeout_ms: c.connect_timeout_ms,
+    }
+}
+
+/// The STT view of the provider cloud speech goes to (D84).
+fn stt_view(c: &CloudConfig) -> SttView {
+    match c.speech_provider() {
+        CloudProvider::OpenRouter => or_view(&c.openrouter),
+        CloudProvider::LiteLlm => litellm_view(&c.custom_cleanup),
+    }
+}
+
+/// Where the cloud route may send this dictation, with its key: what
+/// [`State::cloud_check`] allows.
+enum CloudGate {
+    OpenRouter(OpenRouterConfig, SecretString),
+    /// D84: the LiteLLM proxy; its key is optional.
+    LiteLlm(CustomCleanupConfig, Option<SecretString>),
+}
+
+impl CloudGate {
+    fn view(&self) -> SttView {
+        match self {
+            CloudGate::OpenRouter(o, _) => or_view(o),
+            CloudGate::LiteLlm(c, _) => litellm_view(c),
+        }
+    }
 }
 
 const BACKOFF_MIN: Duration = Duration::from_secs(5);
@@ -196,22 +264,33 @@ impl State {
         self.lazy.clone()
     }
 
-    /// The OpenRouter STT config and the key, or why the cloud route must
+    /// Where cloud speech goes and its key, or why the cloud route must
     /// be skipped (C1: consent + key + budget; `allow_cloud` and `order`
-    /// are checked by the caller).
-    fn cloud_gate(&mut self) -> Result<(OpenRouterConfig, SecretString), BackendError> {
-        self.cloud_check()
-    }
-
-    /// [`State::cloud_gate`] (counters of a past month count as zero).
-    fn cloud_check(&self) -> Result<(OpenRouterConfig, SecretString), BackendError> {
+    /// are checked by the caller). Counters of a past month count as zero.
+    fn cloud_check(&self) -> Result<CloudGate, BackendError> {
         let not_cfg = |m: &str| BackendError::new(Failure::CloudNotConfigured, m);
         if self.cfg.cloud.is_legacy() {
             return Err(not_cfg("cloud settings not migrated"));
         }
+        // D84: the LiteLLM proxy once it has a speech model. Its own audio
+        // consent, bound to its host; the key is optional; the OpenRouter
+        // budget never counts it (D52).
+        if self.cfg.cloud.speech_provider() == CloudProvider::LiteLlm {
+            let c = self.cfg.cloud.custom_cleanup.clone();
+            c.validate().map_err(|e| not_cfg(&e))?;
+            if !c.stt_ready() {
+                return Err(not_cfg("no proxy address or speech model set"));
+            }
+            if !c.stt_consent_ok() {
+                return Err(not_cfg(
+                    "no consent recorded for sending audio to the proxy",
+                ));
+            }
+            return Ok(CloudGate::LiteLlm(c, self.custom_key.clone()));
+        }
         // D78: "one Cloud provider at a time" is a Windows settings rule
         // (prefs), not the router's: Android still pairs LiteLLM cleanup
-        // with OpenRouter speech, so speech never looks at the provider.
+        // (without a speech model) with OpenRouter speech.
         let o = self.cfg.cloud.openrouter.clone();
         o.validate().map_err(|e| not_cfg(&e))?;
         if !o.stt.consent_ok() {
@@ -236,7 +315,7 @@ impl State {
                 ));
             }
         }
-        Ok((o, key))
+        Ok(CloudGate::OpenRouter(o, key))
     }
 }
 
@@ -354,6 +433,8 @@ pub struct Router {
     starting: Mutex<()>,
     remote_factory: Option<RemoteFactory>,
     cloud_factory: Option<CloudFactory>,
+    /// D84: cloud speech on the LiteLLM proxy.
+    custom_stt_factory: Option<CustomSttFactory>,
     cleanup_factory: Option<CleanupFactory>,
     /// D52: builds the custom-server cleaner.
     custom_cleanup_factory: Option<CustomCleanupFactory>,
@@ -484,6 +565,7 @@ impl Router {
             starting: Mutex::new(()),
             remote_factory: remote,
             cloud_factory: None,
+            custom_stt_factory: None,
         };
         {
             let mut st = r.state.lk();
@@ -597,6 +679,22 @@ impl Router {
     pub fn with_cloud(mut self, f: CloudFactory) -> Self {
         self.cloud_factory = Some(f);
         self
+    }
+
+    /// D84: enable cloud speech on the user's LiteLLM proxy: `f` builds its
+    /// backend (`murmur_cloud::custom_stt_factory`). Used while
+    /// `cloud.speech_provider()` is LiteLLM. Additive.
+    pub fn with_custom_stt(mut self, f: CustomSttFactory) -> Self {
+        self.custom_stt_factory = Some(f);
+        self
+    }
+
+    /// This build can send speech to the provider `c` picks (D84).
+    fn cloud_supported(&self, c: &CloudConfig) -> bool {
+        match c.speech_provider() {
+            CloudProvider::OpenRouter => self.cloud_factory.is_some(),
+            CloudProvider::LiteLlm => self.custom_stt_factory.is_some(),
+        }
     }
 
     /// Cloud adapters for `capabilities().cloud_adapters`. Additive.
@@ -1011,7 +1109,7 @@ impl Router {
             st.health = None;
             self.server_clean.reset_circuit();
         }
-        if stt_view(&st.cfg.cloud.openrouter) != stt_view(&cfg.cloud.openrouter) {
+        if stt_view(&st.cfg.cloud) != stt_view(&cfg.cloud) {
             st.cloud = None;
             st.cloud_circuit = Circuit::new(true);
         }
@@ -1051,8 +1149,19 @@ impl Router {
     pub fn set_cloud_key(&self, provider_id: &str, key: Option<SecretString>) {
         let mut st = self.state.lk();
         if provider_id == CUSTOM_CLEANUP_ID {
-            st.custom_key = key.filter(|k| !k.is_empty());
+            let key = key.filter(|k| !k.is_empty());
+            // D84: the proxy's key is its speech key too.
+            let speech = st.cfg.cloud.speech_provider() == CloudProvider::LiteLlm;
+            if st.custom_key != key && speech {
+                st.cloud = None;
+                st.cloud_circuit = Circuit::new(true);
+            }
+            st.custom_key = key;
             self.refresh_cleanup(&mut st);
+            drop(st);
+            if speech {
+                self.recheck_active();
+            }
             return;
         }
         if provider_id != OPENROUTER_ID && !st.key_aliases.iter().any(|a| a == provider_id) {
@@ -1528,15 +1637,66 @@ impl Router {
         h.engine = EngineKind::Cloud;
         h.provider.get_or_insert_with(|| OPENROUTER_ID.into());
         h.model.get_or_insert_with(|| o.stt.model.clone());
+        self.note_probe(&or_view(o), &h);
+        h
+    }
+
+    /// D84: the Speech page's "Test" on the LiteLLM proxy: transcribe the
+    /// bundled public-domain clip with `c` (its address and `stt_model`).
+    /// `key: None` = the saved proxy key, which only goes to a host the
+    /// user agreed to send text or audio to. Blocking; never panics; no
+    /// consent needed (the clip is not the user's audio).
+    pub fn probe_custom_stt(
+        &self,
+        c: &CustomCleanupConfig,
+        key: Option<SecretString>,
+    ) -> HealthReport {
+        let fail = |k: Failure, m: &str| {
+            let mut h = HealthReport::failed(EngineKind::Cloud, &BackendError::new(k, m));
+            h.provider = Some(CUSTOM_CLEANUP_ID.into());
+            h.model = Some(c.stt_model.trim().to_string());
+            h
+        };
+        let Some(f) = &self.custom_stt_factory else {
+            return fail(
+                Failure::CloudNotConfigured,
+                "this build has no cloud support",
+            );
+        };
+        if let Err(e) = c.validate() {
+            return fail(Failure::CloudNotConfigured, &e);
+        }
+        if !c.stt_ready() {
+            return fail(
+                Failure::CloudNotConfigured,
+                "no proxy address or speech model set",
+            );
+        }
+        let key = key.filter(|k| !k.is_empty()).or_else(|| {
+            (c.consent_ok() || c.stt_consent_ok())
+                .then(|| self.state.lk().custom_key.clone())
+                .flatten()
+        });
+        let mut h = f(c, key).probe();
+        h.engine = EngineKind::Cloud;
+        h.provider = Some(CUSTOM_CLEANUP_ID.into());
+        h.model
+            .get_or_insert_with(|| c.stt_model.trim().to_string());
+        self.note_probe(&litellm_view(c), &h);
+        h
+    }
+
+    /// A probe of the saved speech settings closes the cloud circuit on
+    /// success and records a failure otherwise.
+    fn note_probe(&self, view: &SttView, h: &HealthReport) {
         let mut st = self.state.lk();
-        if stt_view(&st.cfg.cloud.openrouter) == stt_view(o) {
+        if stt_view(&st.cfg.cloud) == *view {
             if h.ok {
                 st.cloud_circuit = Circuit::new(true);
             } else if let Some(k) = h.error.as_deref().and_then(failure_from_str) {
                 st.cloud_circuit.record_failure(k, Instant::now());
             }
         }
-        h
     }
 
     /// D75: the dictation routes a start would walk right now, in order,
@@ -1655,20 +1815,26 @@ impl Router {
         b
     }
 
-    fn cloud_for(
-        &self,
-        st: &mut State,
-        o: OpenRouterConfig,
-        key: SecretString,
-    ) -> Arc<dyn Backend> {
-        let view = stt_view(&o);
+    fn cloud_for(&self, st: &mut State, gate: CloudGate) -> Arc<dyn Backend> {
+        let view = gate.view();
         if let Some((c, b)) = &st.cloud {
             if *c == view {
                 return b.clone();
             }
         }
-        let f = self.cloud_factory.as_ref().expect("cloud factory");
-        let b = f(&o, key);
+        let b = match gate {
+            CloudGate::OpenRouter(o, key) => {
+                let f = self.cloud_factory.as_ref().expect("cloud factory");
+                f(&o, key)
+            }
+            CloudGate::LiteLlm(c, key) => {
+                let f = self
+                    .custom_stt_factory
+                    .as_ref()
+                    .expect("custom stt factory");
+                f(&c, key)
+            }
+        };
         // The cloud STT backend runs a client-side pipeline: it cleans with
         // the same plan as the local engine (D28 §2.5 table).
         b.install_cleanup(st.cleanup_plan.clone());
@@ -1690,7 +1856,7 @@ impl Router {
     fn routes(&self, st: &State) -> Vec<Route> {
         let server_eff = self.remote_factory.is_some() && st.cfg.allow_server;
         let client_eff = st.local_capable && st.cfg.allow_client;
-        let cloud_eff = self.cloud_factory.is_some() && st.cfg.allow_cloud;
+        let cloud_eff = self.cloud_supported(&st.cfg.cloud) && st.cfg.allow_cloud;
         let list = if st.cfg.order.is_empty() {
             // Legacy D17 policy: never the cloud.
             match st.cfg.prefer {
@@ -1754,9 +1920,9 @@ impl Router {
                 if st.cloud_circuit.sticky {
                     return None;
                 }
-                let (o, key) = st.cloud_gate().ok()?;
-                ident.cloud = Some(stt_view(&o));
-                (EngineKind::Cloud, self.cloud_for(st, o, key))
+                let gate = st.cloud_check().ok()?;
+                ident.cloud = Some(gate.view());
+                (EngineKind::Cloud, self.cloud_for(st, gate))
             }
         };
         Some(Hop {
@@ -1779,8 +1945,8 @@ impl Router {
             Route::Server => id.server.as_ref() == Some(&st.cfg.server) && !st.circuit.sticky,
             Route::Cloud => {
                 !st.cloud_circuit.sticky
-                    && match (st.cloud_gate(), id.cloud.as_ref()) {
-                        (Ok((o, _)), Some(c)) => stt_view(&o) == *c,
+                    && match (st.cloud_check(), id.cloud.as_ref()) {
+                        (Ok(g), Some(c)) => g.view() == *c,
                         _ => false,
                     }
             }
@@ -2083,12 +2249,13 @@ impl Router {
         i: usize,
         route: &mut RouteInfo,
     ) -> Try {
-        let (o, key) = match st.cloud_gate() {
+        let gate = match st.cloud_check() {
             Ok(x) => x,
             Err(e) => return Try::Skip(e),
         };
-        route.provider = Some(OPENROUTER_ID.into());
-        route.model = Some(o.stt.model.clone());
+        let view = gate.view();
+        route.provider = Some(view.provider_id().into());
+        route.model = Some(view.model());
         if st.cloud_circuit.is_open(Instant::now()) && self.viable_after(st, routes, i) {
             return Try::Skip(BackendError::new(
                 Failure::CircuitOpen,
@@ -2102,7 +2269,7 @@ impl Router {
                 "not retried until the cloud key or provider changes",
             ));
         }
-        let cloud = self.cloud_for(st, o, key);
+        let cloud = self.cloud_for(st, gate);
         match cloud.start_session(cfg) {
             Ok(i) => Try::Started(cloud, i.queued),
             Err(e) => Try::Skip(e),
@@ -2186,7 +2353,7 @@ impl Router {
         let st = self.state.lk();
         let ms = match kind {
             EngineKind::Cloud => {
-                let base = st.cloud.as_ref().map_or(6000, |(v, _)| v.1.timeout_base_ms);
+                let base = st.cloud.as_ref().map_or(6000, |(v, _)| v.timeout_base_ms());
                 // D28: the cloud cleanup has its own timeout.
                 // D36: the whole cleanup chain may run (one budget per
                 // engine in the order).
@@ -2428,8 +2595,8 @@ impl Router {
             a.route.provider = None;
             a.route.model = None;
         } else if let Some(v) = &hop.ident.cloud {
-            a.route.provider = Some(OPENROUTER_ID.into());
-            a.route.model = Some(v.1.model.clone());
+            a.route.provider = Some(v.provider_id().into());
+            a.route.model = Some(v.model());
         }
         a.route.engine = hop.kind.as_str().into();
         // Local never fails over: no buffer to keep (review C9).
@@ -2570,8 +2737,8 @@ impl Active {
             // Failover in progress: name the route being switched to.
             return Some(SessionRoute {
                 engine: *kind,
-                provider: id.cloud.as_ref().map(|_| OPENROUTER_ID.to_string()),
-                model: id.cloud.as_ref().map(|v| v.1.model.clone()),
+                provider: id.cloud.as_ref().map(|v| v.provider_id().to_string()),
+                model: id.cloud.as_ref().map(SttView::model),
                 server: id.server.as_ref().map(ServerConfig::addr),
                 fallback: self.route.fallback.clone(),
             });

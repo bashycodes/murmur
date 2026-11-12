@@ -1,6 +1,7 @@
 //! D52: text cleanup through the user's own OpenAI-compatible server (a
-//! LiteLLM proxy, vLLM, Ollama, …) instead of OpenRouter. Cleanup only:
-//! cloud speech-to-text stays OpenRouter-only.
+//! LiteLLM proxy, vLLM, Ollama, …) instead of OpenRouter. D84: the same
+//! server can do speech to text too ([`crate::adapters::litellm`]); its
+//! speech models are found here ([`speech_models`]).
 //!
 //! The base URL is whatever the user typed (normalised by
 //! `murmur_router::cloud::normalize_custom_base_url`); plain http is allowed
@@ -301,6 +302,89 @@ pub fn models_json(r: Result<Vec<String>, CloudError>) -> Value {
     }
 }
 
+/// D84: [`models_json`] plus `"speech_models"`, the ids among them that
+/// can transcribe ([`speech_models`]): one `/models` call, then one
+/// `/model/info` call when the first worked.
+pub fn models_with_speech_json(
+    base_url: &str,
+    key: Option<&SecretString>,
+    timeout: Duration,
+) -> Value {
+    let t0 = Instant::now();
+    match list_models(base_url, key, timeout) {
+        Ok(models) => {
+            let left = timeout
+                .saturating_sub(t0.elapsed())
+                .max(Duration::from_secs(1));
+            let speech = speech_models(base_url, key, left, &models);
+            json!({ "models": models, "speech_models": speech })
+        }
+        Err(e) => models_json(Err(e)),
+    }
+}
+
+/// D84: the speech-to-text models among `listed` (the server's `/models`
+/// ids). LiteLLM says which ones: `GET {base}/model/info` gives each
+/// model's `model_info.mode`, `audio_transcription` for speech. A server
+/// without that endpoint (vLLM, Ollama, an older proxy) or an answer that
+/// does not parse falls back to the names: ids containing `whisper` or
+/// `transcribe`. Sorted, without duplicates; never an error.
+pub fn speech_models(
+    base_url: &str,
+    key: Option<&SecretString>,
+    timeout: Duration,
+    listed: &[String],
+) -> Vec<String> {
+    let info = murmur_router::cloud::normalize_custom_base_url(base_url)
+        .map_err(|_| CloudError::Connect("bad_base_url".into()))
+        .and_then(|base| {
+            let deadline = Instant::now() + timeout;
+            let rb = client(timeout.min(Duration::from_secs(5))).get(format!("{base}/model/info"));
+            let resp = http::send(auth(rb, key), deadline)?;
+            http::json_capped(resp, MODELS_BODY_CAP)
+        });
+    match info.ok().and_then(|v| parse_speech_models(&v)) {
+        Some(ids) => ids,
+        None => speech_like(listed),
+    }
+}
+
+/// LiteLLM's `/model/info` (`{"data": [{"model_name", "model_info":
+/// {"mode"}}]}`) → the names whose mode is `audio_transcription`; `None`
+/// when the body is not that shape.
+pub fn parse_speech_models(v: &Value) -> Option<Vec<String>> {
+    let arr = v.get("data").and_then(Value::as_array)?;
+    let mut ids: Vec<String> = arr
+        .iter()
+        .filter(|m| {
+            m.pointer("/model_info/mode").and_then(Value::as_str) == Some("audio_transcription")
+        })
+        .filter_map(|m| m.get("model_name").and_then(Value::as_str))
+        .map(str::to_string)
+        .filter(|id| valid_custom_model_id(id))
+        .collect();
+    ids.sort();
+    ids.dedup();
+    ids.truncate(MAX_MODELS);
+    Some(ids)
+}
+
+/// Ids that look like speech-to-text models by name (`whisper`,
+/// `transcribe`), for servers that do not say.
+pub fn speech_like(ids: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = ids
+        .iter()
+        .filter(|id| {
+            let l = id.to_ascii_lowercase();
+            l.contains("whisper") || l.contains("transcribe")
+        })
+        .cloned()
+        .collect();
+    out.sort();
+    out.dedup();
+    out
+}
+
 /// The fixed sentence "Test cleanup" sends (never user text).
 pub const TEST_SAMPLE: &str =
     "um so i think we should uh meet on tuesday no wait wednesday at three";
@@ -423,6 +507,43 @@ mod tests {
         );
         assert_eq!(parse_models(&json!([{"id": "a"}])).unwrap(), ["a"]);
         assert_eq!(parse_models(&json!({"x": 1})), Err(CloudError::Malformed));
+    }
+
+    #[test]
+    fn speech_models_from_litellm_model_info() {
+        let v = json!({"data": [
+            {"model_name": "local-whisper", "model_info": {"mode": "audio_transcription"}},
+            {"model_name": "local-cleanup", "model_info": {"mode": "chat"}},
+            {"model_name": "no-info"},
+            {"model_name": "local-whisper", "model_info": {"mode": "audio_transcription"}},
+        ]});
+        assert_eq!(parse_speech_models(&v).unwrap(), ["local-whisper"]);
+        assert_eq!(
+            parse_speech_models(&json!({"data": []})).unwrap(),
+            Vec::<String>::new()
+        );
+        assert_eq!(parse_speech_models(&json!({"detail": "Not Found"})), None);
+    }
+
+    #[test]
+    fn speech_models_by_name_when_the_server_does_not_say() {
+        let ids: Vec<String> = [
+            "gpt-4o-mini",
+            "whisper-1",
+            "gpt-4o-mini-transcribe",
+            "Systran/faster-Whisper-small",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        assert_eq!(
+            speech_like(&ids),
+            [
+                "Systran/faster-Whisper-small",
+                "gpt-4o-mini-transcribe",
+                "whisper-1"
+            ]
+        );
     }
 
     #[test]

@@ -845,6 +845,16 @@ pub type RemoteFactory = Box<dyn Fn(&ServerConfig) -> Arc<dyn Backend> + Send + 
 pub type CloudFactory =
     Box<dyn Fn(&OpenRouterConfig, SecretString) -> Arc<dyn Backend> + Send + Sync>;
 
+/// D84: builds the cloud STT backend on the user's LiteLLM proxy (or any
+/// OpenAI-compatible server with `/audio/transcriptions`) for its config
+/// (address, `stt_model`, connect timeout) and the optional key. Cached
+/// like [`CloudFactory`]; used while `cloud.speech_provider()` is LiteLLM.
+pub type CustomSttFactory = Box<
+    dyn Fn(&crate::cloud::CustomCleanupConfig, Option<SecretString>) -> Arc<dyn Backend>
+        + Send
+        + Sync,
+>;
+
 /// Builds the OpenRouter cleaner for the config + key (`murmur-cloud`'s
 /// `OpenRouterCleaner`, D28). Called once per (privacy, cleanup config,
 /// key) and cached. The router wraps it with consent / circuit / budget

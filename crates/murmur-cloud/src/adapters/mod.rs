@@ -1,7 +1,7 @@
-//! The STT adapter seam (docs/cloud-stt.md). D28: OpenRouter is the only
-//! provider, so [`openrouter::OpenRouterStt`] is the only implementation;
-//! the trait stays so the chunking / encoding driver in `lib.rs` is
-//! testable on its own.
+//! The STT adapter seam (docs/cloud-stt.md): [`openrouter::OpenRouterStt`]
+//! (D28, the one compiled-in provider) and, D84, [`litellm::LiteLlmStt`] on
+//! the user's own LiteLLM proxy. The chunking / encoding driver in `lib.rs`
+//! is shared.
 
 use std::time::Instant;
 
@@ -10,6 +10,7 @@ use murmur_router::SecretString;
 use crate::encode::{AudioFormat, EncodedAudio};
 use crate::http::CloudError;
 
+pub mod litellm;
 pub mod openrouter;
 
 /// One upload.
@@ -88,7 +89,7 @@ impl TermBudget {
 }
 
 pub trait CloudAdapter: Send + Sync {
-    /// `"openrouter"`.
+    /// `"openrouter"` or `"litellm"`.
     fn id(&self) -> &'static str;
     fn preferred_format(&self) -> AudioFormat;
     /// Chunk above this many encoded bytes.
