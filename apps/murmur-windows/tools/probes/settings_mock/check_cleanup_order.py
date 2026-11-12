@@ -123,7 +123,7 @@ with sync_playwright() as p:
         move(pg, "cloud", "up")
         check(tag + "OpenRouter first", [x[0] for x in rows(pg)] == ["cloud", "server", "local"], str(rows(pg)))
         line = pg.inner_text("#ai_engine_line")
-        check(tag + "now-line starts with OpenRouter", line.startswith("OpenRouter ("), line)
+        check(tag + "now-line starts with the cloud (D78)", line.startswith("The cloud ("), line)
         pg.screenshot(path=str(out / f"cleanup-order-moved-{scheme}.png"), full_page=True)
 
         # The Developer page carries no cleanup order.
