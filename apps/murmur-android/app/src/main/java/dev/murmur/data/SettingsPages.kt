@@ -276,7 +276,7 @@ object SettingsSummary {
      * [serverLlm] from `cleanup_status` ([CleanupEngines.planned]).
      */
     fun cleanupRow(s: Settings, d: DevSettings, caps: BuildCaps, serverLlm: Boolean? = null): String {
-        val engines = CleanupEngines.planned(d, s.llmEnabled && caps.local, serverLlm).map { CleanupEngines.planName(it, d) }
+        val engines = CleanupEngines.plannedFor(s, d, caps, serverLlm).map { CleanupEngines.planName(it, d) }
         val chain = engines + listOfNotNull(if (s.spokenCleanup) "rules" else null)
         if (engines.isEmpty()) return if (s.spokenCleanup) "Rules only" else "Off"
         return levelName(s.cleanupFor(d.offPhoneCleanup)) + " · " + chain.mapIndexed { i, e -> if (i == 0) e.replaceFirstChar { it.uppercase() } else e }.joinToString(", then ")

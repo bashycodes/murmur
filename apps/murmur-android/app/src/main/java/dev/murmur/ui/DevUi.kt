@@ -133,6 +133,8 @@ internal class DevUi(val activity: Activity) {
                 insets
             }
         }
+        // A focused field (and its help line) stays above the keyboard.
+        ScrollReveal.install(scroll, dp(48))
         activity.window.decorView.setBackgroundColor(background)
         activity.setContentView(frame)
         frame.requestApplyInsets()
