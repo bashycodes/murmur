@@ -178,87 +178,227 @@ pub fn drifted_from(locked: Script, source: &str, answer: &str) -> bool {
     }
 }
 
-/// D65: what `answer`, a cleanup of `source` (in `locked`, non-Latin),
-/// adds that `source` does not have: a letter of another non-Latin script
-/// (Arabic, Cyrillic, Greek, CJK, …), a CJK or full-width mark, or U+FFFD;
-/// for a Hebrew source also a Latin word (two letters or more, any case)
-/// that is not in `source` or `known` (the prompt's dictionary and screen
-/// words) and does not spell a Hebrew word of `source` ("בסלאק" →
-/// "ב-Slack", [`spells`]). [`drifted_from`] misses these: the answer stays
-/// mostly `locked` (Qwen2.5-14B, 2026-11-12: Chinese, Cyrillic, Arabic
-/// and Turkish words inside Hebrew lines). `None`: nothing added.
-pub fn added_foreign(locked: Script, source: &str, answer: &str, known: &[&str]) -> Option<String> {
-    let class = |c: char| -> Option<Option<Script>> {
+/// What [`added_foreign`] counts as another writing system in an answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Foreign {
+    /// A letter of a non-Latin script the lock knows, other than the locked one.
+    Script(Script),
+    /// Any other letter (CJK, …), a CJK or full-width mark, or U+FFFD.
+    Other,
+}
+
+impl Foreign {
+    fn of(c: char, locked: Script) -> Option<Foreign> {
         let cp = c as u32;
         if c == '\u{FFFD}' || (0x3000..=0x303F).contains(&cp) || (0xFF00..=0xFFEF).contains(&cp) {
-            return Some(None);
+            return Some(Foreign::Other);
         }
         if !c.is_alphabetic() {
             return None;
         }
         match Script::of(c) {
             Some(s) if s == locked || s == Script::Latin => None,
-            s => Some(s),
+            Some(s) => Some(Foreign::Script(s)),
+            None => Some(Foreign::Other),
         }
-    };
-    let had: Vec<Option<Script>> = source.chars().filter_map(class).collect();
+    }
+}
+
+/// D65: what `answer`, a cleanup of `source` (in `locked`, non-Latin),
+/// adds that `source` does not have: a letter of another non-Latin script
+/// (Arabic, Cyrillic, Greek, CJK, …), a CJK or full-width mark, or U+FFFD;
+/// for a Hebrew source also a Latin word (two letters or more, any case)
+/// that is not in `source` or `known` (the whole dictionary vocabulary and
+/// the screen words, whether or not the prompt showed them) and is not
+/// written in `source` in Hebrew letters: a word or two adjacent words
+/// that [`spells`] it ("בסלאק" → "ב-Slack", "צ'אט ג'יפיטי" → "ChatGPT"),
+/// or, for an all-caps word of 2–5 letters, its letters' English names
+/// ("איי פי איי" → "API", "אוקיי" → "OK", [`spells_letters`]).
+/// [`drifted_from`] misses these: the answer stays mostly `locked`
+/// (Qwen2.5-14B, 2026-11-12: Chinese, Cyrillic, Arabic and Turkish words
+/// inside Hebrew lines). `None`: nothing added. Dictation cleanup only:
+/// Command Mode and transforms check [`drifted`] and not this yet.
+pub fn added_foreign(locked: Script, source: &str, answer: &str, known: &[&str]) -> Option<String> {
+    let had: Vec<Foreign> = source
+        .chars()
+        .filter_map(|c| Foreign::of(c, locked))
+        .collect();
     if let Some(c) = answer
         .chars()
-        .find(|c| class(*c).is_some_and(|k| !had.contains(&k)))
+        .find(|c| Foreign::of(*c, locked).is_some_and(|k| !had.contains(&k)))
     {
         return Some(format!("answer adds {c:?}"));
     }
     if locked != Script::Hebrew {
         return None;
     }
-    let mut kept: Vec<String> = latin_words(source).collect();
-    kept.extend(known.iter().flat_map(|k| latin_words(k)));
-    let hebrew: Vec<&str> = source
+    let mut kept: Vec<String> = latin_words(source).map(str::to_lowercase).collect();
+    kept.extend(
+        known
+            .iter()
+            .flat_map(|k| latin_words(k))
+            .map(str::to_lowercase),
+    );
+    let hebrew: Vec<String> = source
         .split(|c: char| Script::of(c) != Some(Script::Hebrew) && c != '\'' && c != '\u{05F3}')
+        .map(plain_hebrew)
         .filter(|w| !w.is_empty())
         .collect();
+    let pairs: Vec<String> = hebrew.windows(2).map(|p| p.concat()).collect();
     latin_words(answer)
-        .find(|w| !kept.contains(w) && !hebrew.iter().any(|h| spells(w, h)))
+        .find(|w| {
+            let lw = w.to_lowercase();
+            !kept.contains(&lw)
+                && !hebrew.iter().chain(&pairs).any(|h| spells(&lw, h))
+                && !spells_letters(w, &hebrew)
+        })
         .map(|w| format!("answer adds {w:?}"))
 }
 
-/// Lowercase runs of two or more Latin letters.
-fn latin_words(text: &str) -> impl Iterator<Item = String> + '_ {
+/// Runs of two or more Latin letters, as written.
+fn latin_words(text: &str) -> impl Iterator<Item = &str> + '_ {
     text.split(|c: char| Script::of(c) != Some(Script::Latin))
         .filter(|w| w.chars().count() >= 2)
-        .map(str::to_lowercase)
 }
 
-/// Consonant classes of a transliteration: a Hebrew letter and the Latin
-/// spellings it is written with. Vowel letters (א ה ו י ע, a e i o u y h
-/// w) are not compared.
-fn hebrew_class(c: char) -> Option<u8> {
-    Some(match c {
-        'ב' => b'b',
-        'ג' => b'g',
-        'ד' => b'd',
-        'ז' => b'z',
-        'ח' => b'h',
-        'ט' | 'ת' => b't',
-        'כ' | 'ך' | 'ק' => b'k',
-        'ל' => b'l',
-        'מ' | 'ם' => b'm',
-        'נ' | 'ן' => b'n',
-        'ס' | 'ש' => b's',
-        'פ' | 'ף' => b'p',
-        'צ' | 'ץ' => b'c',
-        'ר' => b'r',
-        _ => return None,
+/// A Hebrew word compared by its letters: no geresh, no points, final
+/// forms as the regular letter.
+fn plain_hebrew(w: &str) -> String {
+    w.chars()
+        .filter_map(|c| match c {
+            'ך' => Some('כ'),
+            'ם' => Some('מ'),
+            'ן' => Some('נ'),
+            'ף' => Some('פ'),
+            'ץ' => Some('צ'),
+            'א'..='ת' => Some(c),
+            _ => None,
+        })
+        .collect()
+}
+
+/// `h`, then `h` without one and two leading one-letter prefixes
+/// (ב ה ו כ ל מ ש) while it has them.
+fn unprefixed(h: &str) -> impl Iterator<Item = &str> {
+    let mut rest = Some(h);
+    let mut n = 0;
+    std::iter::from_fn(move || {
+        let cur = rest?;
+        n += 1;
+        rest = match cur.chars().next() {
+            Some(p @ ('ב' | 'ה' | 'ו' | 'כ' | 'ל' | 'מ' | 'ש')) if n <= 2 => {
+                Some(&cur[p.len_utf8()..])
+            }
+            _ => None,
+        };
+        Some(cur)
     })
 }
 
+/// How an English letter's name is written in Hebrew letters (as
+/// [`plain_hebrew`] leaves it: no geresh, no final forms).
+fn letter_names(c: char) -> &'static [&'static str] {
+    match c {
+        'A' | 'I' => &["איי", "אי"],
+        'B' => &["בי", "ביי"],
+        'C' => &["סי"],
+        'D' => &["די"],
+        'E' => &["אי", "איי"],
+        'F' => &["אפ", "עפ"],
+        'G' => &["גי"],
+        'H' => &["אייצ", "הייצ", "אייטש"],
+        'J' => &["גיי", "גי"],
+        'K' => &["קיי", "קי"],
+        'L' => &["אל", "אאל"],
+        'M' => &["אמ", "אאמ"],
+        'N' => &["אנ", "אאנ"],
+        'O' => &["או", "אוו"],
+        'P' => &["פי"],
+        'Q' => &["קיו"],
+        'R' => &["אר", "ער", "אאר"],
+        'S' => &["אס", "עס", "אאס"],
+        'T' => &["טי"],
+        'U' => &["יו"],
+        'V' => &["וי", "ווי"],
+        'W' => &["דאבליו", "דבליו"],
+        'X' => &["אקס"],
+        'Y' => &["וואי", "וויי"],
+        'Z' => &["זי", "זד"],
+        _ => &[],
+    }
+}
+
+/// Is all of `h` the names of `letters`, in order?
+fn names_spell(h: &str, letters: &[char]) -> bool {
+    match letters.split_first() {
+        None => h.is_empty(),
+        Some((c, rest)) => letter_names(*c)
+            .iter()
+            .any(|n| h.strip_prefix(n).is_some_and(|t| names_spell(t, rest))),
+    }
+}
+
+/// Is `w`, an all-caps word of 2–5 letters, said letter by letter in
+/// `hebrew` (the source's words, [`plain_hebrew`]): up to one adjacent
+/// word per letter, joined ("איי פי איי" → "API", "אוקיי" → "OK"), the
+/// first one perhaps with a prefix ("בפי אר" → "ב-PR")?
+fn spells_letters(w: &str, hebrew: &[String]) -> bool {
+    let letters: Vec<char> = w.chars().collect();
+    if !(2..=5).contains(&letters.len()) || !letters.iter().all(char::is_ascii_uppercase) {
+        return false;
+    }
+    (0..hebrew.len()).any(|i| {
+        (1..=letters.len().min(hebrew.len() - i)).any(|k| {
+            let tail = hebrew[i + 1..i + k].concat();
+            unprefixed(&hebrew[i]).any(|head| names_spell(&format!("{head}{tail}"), &letters))
+        })
+    })
+}
+
+/// Consonant classes of a transliteration: a Hebrew letter and the Latin
+/// spellings it is written with. Vowel letters (א ה י ע and a single ו)
+/// are not compared; a doubled וו is v or w ("ווייז" → "Waze").
+fn hebrew_skeleton(h: &str) -> Vec<u8> {
+    let mut v: Vec<u8> = Vec::new();
+    let mut chars = h.chars().peekable();
+    while let Some(c) = chars.next() {
+        let k = match c {
+            'ו' if chars.peek() == Some(&'ו') => {
+                chars.next();
+                b'w'
+            }
+            'ב' => b'b',
+            'ג' => b'g',
+            'ד' => b'd',
+            'ז' => b'z',
+            'ח' => b'h',
+            'ט' | 'ת' => b't',
+            'כ' | 'ך' | 'ק' => b'k',
+            'ל' => b'l',
+            'מ' | 'ם' => b'm',
+            'נ' | 'ן' => b'n',
+            'ס' | 'ש' => b's',
+            'פ' | 'ף' => b'p',
+            'צ' | 'ץ' => b'c',
+            'ר' => b'r',
+            _ => continue,
+        };
+        if v.last() != Some(&k) {
+            v.push(k);
+        }
+    }
+    v
+}
+
 /// The consonant classes of a lowercase Latin word, each with the Hebrew
-/// classes it may be written as; `None` for a letter outside ASCII.
+/// classes it may be written as; `None` for a letter outside ASCII. Not
+/// compared: a e i o u y h, and a w before no vowel.
 fn latin_classes(w: &str) -> Option<Vec<&'static [u8]>> {
     let b = w.as_bytes();
     if !w.is_ascii() {
         return None;
     }
+    let vowel = |c: Option<u8>| matches!(c, Some(b'a' | b'e' | b'i' | b'o' | b'u' | b'y'));
     let mut out: Vec<&'static [u8]> = Vec::new();
     let mut i = 0;
     while i < b.len() {
@@ -271,8 +411,11 @@ fn latin_classes(w: &str) -> Option<Vec<&'static [u8]>> {
             (b'p', Some(b'h')) => (b"p", 2),
             (b't', Some(b'h')) => (b"t", 2),
             (b'c', Some(b'e' | b'i' | b'y')) => (b"s", 1),
+            (b'w', Some(b'h')) => (b"w", 2),
+            (b'w', n) if vowel(n) => (b"w", 1),
             (b'a' | b'e' | b'i' | b'o' | b'u' | b'y' | b'h' | b'w', _) => (b"", 1),
-            (b'b' | b'v', _) => (b"b", 1),
+            (b'b', _) => (b"b", 1),
+            (b'v', _) => (b"bw", 1),
             (b'c' | b'k' | b'q', _) => (b"k", 1),
             (b'f' | b'p', _) => (b"p", 1),
             (b'j', _) => (b"gz", 1),
@@ -305,36 +448,18 @@ fn latin_classes(w: &str) -> Option<Vec<&'static [u8]>> {
     Some(out)
 }
 
-/// Does Latin word `w` (lowercase) spell Hebrew word `h`, perhaps after
-/// one or two one-letter prefixes (ב ה ו כ ל מ ש: "בסלאק" → "Slack",
-/// "לדרייב" → "Drive")? Compared by consonants, two at least.
+/// Does Latin word `w` (lowercase) spell Hebrew word `h` ([`plain_hebrew`]),
+/// perhaps after one or two one-letter prefixes ("בסלאק" → "Slack",
+/// "לדרייב" → "Drive")? Compared by consonants, two at least. Not matched:
+/// a v or w written with a single ו ("ויקיפדיה" → "Wikipedia").
 fn spells(w: &str, h: &str) -> bool {
     let Some(lat) = latin_classes(w).filter(|l| l.len() >= 2) else {
         return false;
     };
-    let skeleton = |s: &str| {
-        let mut v: Vec<u8> = Vec::new();
-        for k in s.chars().filter_map(hebrew_class) {
-            if v.last() != Some(&k) {
-                v.push(k);
-            }
-        }
-        v
-    };
-    let mut rest = h;
-    for _ in 0..3 {
-        let he = skeleton(rest);
-        if he.len() == lat.len() && he.iter().zip(&lat).all(|(k, alt)| alt.contains(k)) {
-            return true;
-        }
-        match rest.chars().next() {
-            Some(p @ ('ב' | 'ה' | 'ו' | 'כ' | 'ל' | 'מ' | 'ש')) => {
-                rest = &rest[p.len_utf8()..]
-            }
-            _ => break,
-        }
-    }
-    false
+    unprefixed(h).any(|rest| {
+        let he = hebrew_skeleton(rest);
+        he.len() == lat.len() && he.iter().zip(&lat).all(|(k, alt)| alt.contains(k))
+    })
 }
 
 /// The prompt line that locks the language (appended to the user turn,
@@ -496,6 +621,62 @@ mod tests {
         assert!(!spells("after", "אחרי"));
         assert!(!spells("ok", "אוקיי"), "one consonant: no verdict");
         assert!(!spells("ağaç", "אגץ"));
+        // A doubled וו is v or w; a single ו is a vowel.
+        assert!(spells("waze", "ווייז"));
+        assert!(spells("vodafone", "בוודאפון"));
+        assert!(spells("twitter", "טוויטר"));
+        assert!(!spells("wikipedia", "ויקיפדיה"), "single ו: not matched");
+    }
+
+    // Made-up lines: an acronym said by its letters' English names, as
+    // separate words or one word, is the dictation's own word.
+    #[test]
+    fn an_acronym_said_letter_by_letter_is_kept() {
+        for (src, answer) in [
+            (
+                "תבדוק את ה איי פי איי של השירות",
+                "תבדוק את ה-API של השירות.",
+            ),
+            ("תפתח פי אר על התיקון הזה", "תפתח PR על התיקון הזה."),
+            ("שלחו לי אס אם אס עם הקוד", "שלחו לי SMS עם הקוד."),
+            ("הוא עובד על כלי איי איי חדש", "הוא עובד על כלי AI חדש."),
+            (
+                "הסי אי או של החברה דיבר אתמול",
+                "ה-CEO של החברה דיבר אתמול.",
+            ),
+            ("אוקיי אז נדבר מחר", "OK, אז נדבר מחר."),
+            ("נשלח לך בפי די אף", "נשלח לך ב-PDF."),
+        ] {
+            assert_eq!(
+                added_foreign(Script::Hebrew, src, answer, &[]),
+                None,
+                "{answer}"
+            );
+        }
+        let src = "תבדוק את הממשק של השירות";
+        for junk in ["תבדוק את ה-API של השירות.", "תבדוק את Api של השירות."]
+        {
+            assert!(
+                added_foreign(Script::Hebrew, src, junk, &[]).is_some(),
+                "{junk}"
+            );
+        }
+        // Lowercase junk is never an acronym, whatever the dictation says.
+        let src = "שילמתי תשע עשרה מאות שקל אוקיי";
+        let junk = "שילמתי nineteen מאות שקל, אוקיי.";
+        assert!(added_foreign(Script::Hebrew, src, junk, &[]).is_some());
+        let junk = "שילמתי geçerer מאות שקל, אוקיי.";
+        assert!(added_foreign(Script::Hebrew, src, junk, &[]).is_some());
+    }
+
+    #[test]
+    fn a_name_said_as_two_words_is_kept() {
+        let src = "תשאל את צ'אט ג'יפיטי מה הוא חושב";
+        let a = "תשאל את ChatGPT מה הוא חושב.";
+        assert_eq!(added_foreign(Script::Hebrew, src, a, &[]), None);
+        let src = "תפתח את ווייז ותבדוק אם יש פקקים";
+        let a = "תפתח את Waze ותבדוק אם יש פקקים.";
+        assert_eq!(added_foreign(Script::Hebrew, src, a, &[]), None);
     }
 
     #[test]
