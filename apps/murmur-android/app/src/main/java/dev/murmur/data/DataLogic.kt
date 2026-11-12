@@ -52,8 +52,8 @@ data class Settings(
     val userDenylist: Set<String> = emptySet(),
     /** Local LLM cleanup (murmur-llm plugin + an imported GGUF). Off by default. */
     val llmEnabled: Boolean = false,
-    /** Live preview of partial transcripts next to the bubble. */
-    val livePreview: Boolean = true,
+    /** Live preview of partial transcripts next to the bubble. Off by default. */
+    val livePreview: Boolean = DEFAULT_LIVE_PREVIEW,
     /** Shake to bring a snoozed bubble back / reveal it for 10 s. */
     val shakeToReveal: Boolean = true,
     /** Shrink the Ready bubble to 36dp after 5 s. */
@@ -145,6 +145,11 @@ data class Settings(
         /** Phones decode slower than the desktop default budget of 1.5 s. */
         const val ANDROID_LLM_TIMEOUT_MS = 3_000L
         const val PARTIAL_INTERVAL_MS = 1_500
+        /**
+         * Live preview starts off: partial decodes cost battery and can delay the commit
+         * (docs/proposals/streaming-asr-latency.md). A stored choice is kept as is.
+         */
+        const val DEFAULT_LIVE_PREVIEW = false
         /** D22: `murmur_core::endpoint::RECOMMENDED_SILENCE_MS` (was 2000 until 2026-10-23). */
         const val DEFAULT_ENDPOINT_SILENCE_MS = 1_500
         const val OLD_DEFAULT_ENDPOINT_SILENCE_MS = 2_000

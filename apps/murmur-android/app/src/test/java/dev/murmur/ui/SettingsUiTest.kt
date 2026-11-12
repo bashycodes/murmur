@@ -99,7 +99,7 @@ class SettingsUiTest {
     @Test fun hubRowsShowTheirCurrentValue() {
         val a = launch()
         val t = texts(a)
-        assertTrue(t.toString(), "100% · live preview · shrinks to a dot · shake to restore" in t)
+        assertTrue(t.toString(), "100% · shrinks to a dot · shake to restore" in t)
         assertTrue("Banking apps" in t)
         assertTrue("Until you delete it. Stored only on this phone." in t)
         assertTrue(t.any { it.startsWith("Stops after a 1.5 s pause") })
