@@ -114,7 +114,7 @@ class BubblePresence(
 
     /**
      * Should the bubble window be shown for dictation state [s]? While [ownScreenInFront]
-     * ([OwnScreens.inFront]) only a running dictation shows, so it can still be stopped: no
+     * ([OwnScreens.front]) only a running dictation shows, so it can still be stopped: no
      * Ready, Error, Repair or shake-revealed bubble over our own controls.
      */
     fun visible(s: DictationState, ownScreenInFront: Boolean): Boolean {

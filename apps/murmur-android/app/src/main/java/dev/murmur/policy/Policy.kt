@@ -111,11 +111,12 @@ object InsertGuard {
 }
 
 /**
- * This app's own windows. The bubble normally ignores them (a settings field is not a place to
- * dictate), except while a screen made for dictation is in front: a note editor
- * ([dev.murmur.ui.NoteEditorActivity] registers itself in [dev.murmur.MurmurApp.dictationSurface]).
+ * This app's own fields. A settings field is not a place to dictate: it gives no Ready bubble and
+ * takes no insert, except while a screen made for dictation is in front (a note editor, a
+ * [dev.murmur.bubble.DictationScreen], per [dev.murmur.bubble.OwnScreens]). Keeping the bubble off
+ * our screens in every other state is [dev.murmur.bubble.BubblePresence.visible]'s job.
  */
 object OwnAppGate {
-    /** True when [pkg] is this app and no dictation surface of ours is in front: no bubble, no insert. */
-    fun blocks(pkg: String?, ownPackage: String, surfaceInFront: Boolean) = pkg == ownPackage && !surfaceInFront
+    /** True when [pkg] is this app and no dictation screen of ours is in front: no Ready bubble, no insert. */
+    fun blocks(pkg: String?, ownPackage: String, dictationScreenInFront: Boolean) = pkg == ownPackage && !dictationScreenInFront
 }
