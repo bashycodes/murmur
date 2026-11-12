@@ -88,7 +88,8 @@ server.
 | English on a phone | `parakeet-unified-en-0.6b-int8` (or `whisper-base-en-q5_1`, 60 MB, on older phones) | 663 MB |
 | Other languages | `whisper-base-q5_1` (light) or `whisper-small-q5_1` (more accurate) | 60 / 190 MB |
 | Hebrew | `zipformer-he-int8`, plus `whisper-tiny-lid` to detect Hebrew automatically | 72 + 32 MB |
-| Hebrew, PC with a graphics card | `ivrit-whisper-large-v3-turbo-q5_0` (most accurate) | 574 MB |
+| Hebrew, PC or server with a graphics card | `ivrit-whisper-large-v3-turbo-q5_0` (most accurate Hebrew) | 574 MB |
+| Any language, PC or server with a graphics card | `whisper-large-v3-turbo-q5_0` (stock Whisper turbo, most accurate multilingual) | 574 MB |
 | AI cleanup | `qwen2.5-1.5b-instruct-q4_k_m` (from the cleanup zip) | 1117 MB |
 <!-- notetaker -->
 | Meeting speakers (Windows) | `speaker-diarization` (at the top of the models zip, not in `library/`) | 34 MB |
@@ -153,6 +154,39 @@ docker exec murmur-server murmur-server keys add alice-phone
 docker exec murmur-server murmur-server keys list
 docker exec murmur-server murmur-server keys revoke alice-phone
 ```
+
+#### With an NVIDIA graphics card
+
+The server can run Whisper on the graphics card: build the CUDA image
+instead (needs internet and the NVIDIA container toolkit on the machine;
+20-40 minutes):
+
+```sh
+docker build -t murmur-server:cuda --target cuda \
+  -f murmur-server-source-{{VERSION}}/deploy/docker/Dockerfile murmur-server-source-{{VERSION}}
+```
+
+Then start it as above with `--gpus all` and `murmur-server:cuda`, and
+pick one or both turbo models (both are in the models zip):
+
+```sh
+docker run -d --name murmur-server --restart unless-stopped --gpus all -p 0.0.0.0:7313:7313 \
+  -e MURMUR_HEBREW=ivrit-whisper-large-v3-turbo-q5_0 \
+  -e MURMUR_STT=whisper-large-v3-turbo-q5_0 \
+  -v ~/murmur-models/library:/models:ro -v murmur_data:/data murmur-server:cuda
+```
+
+* `MURMUR_HEBREW=ivrit-whisper-large-v3-turbo-q5_0`: Hebrew on ivrit.ai's
+  Whisper turbo (the most accurate Hebrew model) instead of the zipformer.
+* `MURMUR_STT=whisper-large-v3-turbo-q5_0`: stock Whisper turbo as the
+  speech model for English and every other language, instead of Parakeet.
+  Leave this line out to keep Parakeet for English (fast on any machine);
+  keep it in if you dictate in several languages.
+
+`docker logs murmur-server` says where each Whisper model runs
+(`whisper runs on the GPU (CUDA: ...)`). Without a usable graphics card it
+says why and runs on the processor, which works but takes about 13 s per
+dictation with turbo: then drop both lines. More: `docs/container.md` §7.
 
 Ports published by Docker bypass `ufw`: the server itself refuses
 everything except loopback, LAN and VPN addresses. On a machine with a

@@ -353,7 +353,7 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&s).unwrap();
         assert!(v["devices"].is_array(), "{s}");
         let b = v["backend"].as_str().unwrap();
-        if !cfg!(feature = "vulkan") {
+        if !cfg!(any(feature = "vulkan", feature = "cuda")) {
             assert_eq!(b, "CPU");
         }
         assert!(!v["device"].as_str().unwrap().is_empty());

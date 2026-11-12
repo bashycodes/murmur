@@ -143,6 +143,15 @@ impl Config {
         Self::from_toml(&s)
     }
 
+    /// `[model] whisper_lib` when the config sets none: `whisper_lib_env`
+    /// (the `MURMUR_WHISPER_LIB` variable, which the CUDA image sets to its
+    /// `libmurmur_whisper_cuda.so`, D84). An empty value is no plugin.
+    pub fn apply_whisper_lib_env(&mut self, whisper_lib_env: Option<String>) {
+        if self.model.whisper_lib.is_none() {
+            self.model.whisper_lib = whisper_lib_env.filter(|p| !p.trim().is_empty());
+        }
+    }
+
     /// The server's per-session audio cap (`max_session_s` at 16 kHz).
     pub fn max_session_samples(&self) -> usize {
         (self.max_session_s as usize).saturating_mul(murmur_core::config::SAMPLE_RATE)
@@ -315,6 +324,23 @@ pub fn write_token(path: &Path) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn whisper_lib_comes_from_the_config_else_the_environment() {
+        let mut c = Config::from_toml("auth = \"none\"\n").unwrap();
+        assert_eq!(c.model.whisper_lib, None, "no plugin unless asked for");
+        c.apply_whisper_lib_env(Some(" ".into()));
+        assert_eq!(c.model.whisper_lib, None, "an empty variable is no plugin");
+        c.apply_whisper_lib_env(Some("/opt/lib/libmurmur_whisper_cuda.so".into()));
+        assert_eq!(
+            c.model.whisper_lib.as_deref(),
+            Some("/opt/lib/libmurmur_whisper_cuda.so")
+        );
+        let mut c =
+            Config::from_toml("auth = \"none\"\n[model]\nwhisper_lib = \"/m/own.so\"\n").unwrap();
+        c.apply_whisper_lib_env(Some("/opt/lib/libmurmur_whisper_cuda.so".into()));
+        assert_eq!(c.model.whisper_lib.as_deref(), Some("/m/own.so"));
+    }
 
     #[test]
     fn example_config_parses() {

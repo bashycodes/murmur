@@ -98,9 +98,10 @@ the server. Sizes in MB.
 | Many languages | `whisper-base` | 148 | PC | optional |
 | Many languages | `whisper-base-q5_1` | 60 | phone, PC | optional |
 | Many languages | `whisper-small-q5_1` | 190 | PC | optional |
+| Many languages | `whisper-large-v3-turbo-q5_0` | 574 | server CUDA image or PC with a graphics chip (most accurate, any language) | optional, GPU only |
 | Hebrew | `zipformer-he-int8` | 72 | server, PC and phone Hebrew default | recommended |
 | Hebrew | `parakeet-tdt-0.6b-v3-he-int8` | 673 | server, PC, phone (larger alternative) | optional |
-| Hebrew | `ivrit-whisper-large-v3-turbo-q5_0` | 574 | PC with a graphics chip (most accurate Hebrew) | recommended with a GPU |
+| Hebrew | `ivrit-whisper-large-v3-turbo-q5_0` | 574 | PC with a graphics chip, server CUDA image (most accurate Hebrew) | recommended with a GPU |
 | Language detection | `whisper-tiny-lid` | 32 | server; the PC takes it with any Hebrew model | recommended |
 | AI cleanup | `qwen2.5-1.5b-instruct-q4_k_m` | 1117 | server, PC without a GPU, flagship phones | recommended |
 | AI cleanup | `llama-3.2-3b-instruct-q4_k_m` | 2019 | PC with a GPU (most accurate cleanup) | recommended with a GPU |
