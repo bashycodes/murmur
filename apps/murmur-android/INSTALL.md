@@ -164,8 +164,8 @@ One line per dictation; the fields are the same in the Windows app:
 | `audio` | Android: file name of the kept WAV in `files/debug/audio/` (*Keep last dictation audio*), else `null` |
 | `source` | Android: where the audio came from: `mic`, or `wav` for a dictation fed from a WAV file (debug builds, *Feed a WAV file as the microphone* below); the viewer shows `source=wav` |
 | `llm` | `formatted` (AI text used), `llm_skipped_clean` (nothing for the AI to do: a normal result), `llm_timeout`, `llm_error: <code>` (cloud cleanup refused up front: no consent / key / budget, open circuit, `no_private_route`), `null` = AI off |
-| `llm_engine` / `llm_model` / `llm_cost_usd` | who ran the AI cleanup (`local`, `cloud` = OpenRouter, `server`), its model, and the OpenRouter cost |
-| `llm_ttft_ms` / `llm_generation_id` | cloud cleanup: time to the first token, OpenRouter's generation id |
+| `llm_engine` / `llm_provider` / `llm_model` / `llm_cost_usd` | who ran the AI cleanup (`local`, `cloud`, `server`); with `cloud`, `llm_provider` says which Cloud provider (`openrouter`, or `custom` = your LiteLLM proxy; the viewer shows "OpenRouter" / "LiteLLM"); its model; and the cost (OpenRouter's, or what your proxy reported, if anything) |
+| `llm_ttft_ms` / `llm_generation_id` | cloud cleanup: time to the first token; OpenRouter's generation id (none with LiteLLM) |
 | `stt_cost_usd` | what cloud speech-to-text cost for this dictation |
 
 Android also writes an `engine_mismatch` event when the phone engine that loaded is not the
@@ -439,13 +439,23 @@ debug log says "Hebrew model failed: …". Auto-detect stays English-first.
    loaded. Dictation fails only when no route is possible (both engines off, or no phone model),
    and the error says which.
 
-## 5c. Cloud → OpenRouter (hybrid / remote, opt-in, third party)
+## 5c. Cloud (hybrid / remote, opt-in, third party)
 
-OpenRouter (openrouter.ai) is the **only** cloud service the app can use (D28), for two separate
-opt-ins: **cloud speech-to-text** (your audio) and **text cleanup** (the dictated text, not your
-voice). Both are off by default and each has its own consent; turning one on never turns the
-other on. No other provider is in the app any more, and no extra permission: it uses `INTERNET`.
-The `local` flavour has no cloud at all.
+The *Cloud* page holds the app's online models (D78). It has one *Provider* switch with two
+choices, and only one is on at a time:
+
+- **OpenRouter** (openrouter.ai, D28): **cloud speech-to-text** (your audio) and **text cleanup**
+  (the dictated text, not your voice).
+- **LiteLLM**, or any OpenAI-compatible server you run (vLLM, Ollama, …; D52): **text cleanup
+  only**. While it is picked, cloud speech-to-text is off and its switch reads "Not available".
+
+Each use is off by default and has its own consent; turning one on never turns the other on.
+LiteLLM's consent is tied to the host you typed. No extra permission: it uses `INTERNET`. The
+`local` flavour has no cloud at all.
+
+The steps below are for OpenRouter. With LiteLLM picked, the page hides OpenRouter's *API key*
+and *Privacy* cards and its cleanup model rows, and shows *Your LiteLLM proxy* instead
+(*Address*, optional *API key*, *Test connection*, *Model*, *Time limit*).
 
 Open it from *Settings → Cloud* (under *Connections*) or *Developer settings → Cloud*:
 
