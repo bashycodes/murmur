@@ -341,7 +341,7 @@ pub fn test_cleanup(cfg: &CustomCleanupConfig, key: Option<SecretString>) -> Cle
     match r {
         Ok(text) => CleanupTest {
             ok: true,
-            text: Some(murmur_core::cleanup::strip_think(&text).trim().to_string()),
+            text: Some(murmur_core::cleanup::strip_think(&text).trim().into()),
             latency_ms,
             cost_usd: call.cost_usd,
             model,
