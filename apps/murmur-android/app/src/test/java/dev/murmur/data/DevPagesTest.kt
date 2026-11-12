@@ -101,6 +101,8 @@ class DevPagesTest {
         assertEquals(listOf(DevSettingsForm.NO_HOST, DevSettingsForm.PLAINTEXT, DevSettingsForm.NO_TOKEN), DevPages.warningsFor(Page.SERVER, all))
         // Engines, consent and the cloud's place: on Settings → Speech to text, in its words.
         assertEquals(listOf(DevPages.NO_ENGINE, DevSettingsForm.CLOUD_NO_CONSENT, order), DevPages.speechWarnings(all))
+        // D78: the consent warning names the page by its umbrella name, not one provider.
+        assertEquals("Cloud speech-to-text is on but has no consent: it will be skipped (Cloud page).", DevSettingsForm.CLOUD_NO_CONSENT)
         // every warning is shown somewhere
         for (w in all) assertTrue(w, Page.entries.any { w in DevPages.warningsFor(it, all) } || w in DevPages.speechWarnings(all))
     }
