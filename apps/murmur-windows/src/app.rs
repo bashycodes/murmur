@@ -2680,8 +2680,10 @@ fn dev_or_ack_notice(
 }
 
 /// STT "Test": the bundled 3 s public-domain clip through the saved
-/// speech-to-text settings; `key` = typed but not saved yet (`None` = the
-/// stored one). Needs no consent (not the user's audio).
+/// speech-to-text settings; `key` = an OpenRouter key typed but not saved
+/// yet (`None` = the stored one). D84: on the LiteLLM proxy when it is the
+/// speech provider, with its saved key. Needs no consent (not the user's
+/// audio).
 #[tauri::command]
 async fn dev_or_test_stt(
     app: AppHandle,
@@ -2689,23 +2691,27 @@ async fn dev_or_test_stt(
 ) -> Result<murmur_router::HealthReport, String> {
     let state = app.state::<AppState>();
     let router = state.router.get().cloned().ok_or("router not ready")?;
-    let cfg = state
-        .prefs
-        .read()
-        .unwrap()
-        .developer
-        .cloud
-        .openrouter
-        .clone();
+    let cloud = state.prefs.read().unwrap().developer.cloud.clone();
     let key = match key.as_deref().map(str::trim) {
         Some(k) if !k.is_empty() => Some(murmur_router::SecretString::new(
             credentials::normalize_key(k)?,
         )),
         _ => None,
     };
-    tauri::async_runtime::spawn_blocking(move || router.router().probe_cloud(&cfg, key))
-        .await
-        .map_err(|e| e.to_string())
+    // D84: the proxy when it is the speech provider (the OpenRouter key
+    // field's text is never sent there).
+    let litellm = cloud.speech_provider() == murmur_router::CloudProvider::LiteLlm;
+    tauri::async_runtime::spawn_blocking(move || {
+        if litellm {
+            router
+                .router()
+                .probe_custom_stt(&cloud.custom_cleanup, None)
+        } else {
+            router.router().probe_cloud(&cloud.openrouter, key)
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 /// Cleanup "Test" result (a fixed sample sentence, never user text).
@@ -2902,8 +2908,9 @@ fn dev_cloud_clear_custom_key(state: tauri::State<'_, AppState>) -> Result<KeySt
 /// held back for want of consent is `{error: "consent_needed"}`, not a
 /// keyless call; `consent: true` (the page's dialog was accepted) records
 /// consent for the host first ([`crate::openrouter::apply_custom_key_consent`]).
-/// `murmur_cloud::custom::models_json`: `{models}` or `{error, message}` (a
-/// code and a line that never holds the URL or the key).
+/// `murmur_cloud::custom::models_with_speech_json`: `{models,
+/// speech_models}` (D84) or `{error, message}` (a code and a line that
+/// never holds the URL or the key).
 #[tauri::command]
 async fn dev_or_custom_models(
     app: AppHandle,
@@ -2950,11 +2957,12 @@ fn custom_models(base_url: &str, key: Option<String>) -> serde_json::Value {
     #[cfg(feature = "cloud")]
     {
         let key = key.map(murmur_router::SecretString::new);
-        murmur_cloud::custom::models_json(murmur_cloud::custom::list_models(
+        // D84: with the speech models among them.
+        murmur_cloud::custom::models_with_speech_json(
             base_url,
             key.as_ref(),
             Duration::from_secs(8),
-        ))
+        )
     }
     #[cfg(not(feature = "cloud"))]
     {

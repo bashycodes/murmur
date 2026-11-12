@@ -163,13 +163,15 @@ export function showOr(v) {
     $("or_cleanup_send_app_name").checked = c.send_app_name;
     showCleanupStatus(c.status);
     const short = (id) => id.split("/").pop() ?? id;
-    // D78: LiteLLM does cleanup only; speech stays on this PC and your server.
+    // D78/D84: LiteLLM does speech only with a speech model set for the proxy.
     const sttAvailable = s.available ?? !custom;
+    const sttModel = s.provider === "custom" ? s.custom_model : short(s.model);
     $("or_used_stt").textContent = !sttAvailable
-        ? "Your proxy has no speech model here, so speech stays on this PC and your server. Pick OpenRouter to send speech to the cloud."
+        ? "No speech model is set for your proxy, so speech stays on this PC and your server. Press Test connection to find one, or pick OpenRouter."
         : s.allow
-            ? `Sends audio · ${short(s.model)}`
-            : `Would send audio · ${short(s.model)}`;
+            ? `Sends audio · ${sttModel}`
+            : `Would send audio · ${sttModel}`;
+    showSttProvider(v);
     // D36: the cloud's place among the engines that are on.
     const firstOn = c.engines.find((e) => e.enabled)?.route;
     const cleanupModel = custom ? c.custom.model || "no model picked yet" : short(c.model);
@@ -450,19 +452,41 @@ async function orSttToggled() {
         return;
     }
     let consent = false;
-    if (!views.or?.stt.consent) {
-        consent = await askDialog("or_stt_consent_dlg", "or_stt_consent_ok", "or_stt_consent_cancel");
+    const s = views.or?.stt;
+    const litellm = s?.provider === "custom";
+    if (!s?.consent) {
+        consent = litellm
+            ? await askDialog("cu_stt_consent_dlg", "cu_stt_consent_ok", "cu_stt_consent_cancel", () => {
+                const host = s?.consent_host || "your proxy";
+                $("cu_stt_consent_host_title").textContent = host;
+                $("cu_stt_consent_host").textContent = host;
+                $("cu_stt_consent_http").hidden = !views.or?.cleanup.custom.plain_http;
+            })
+            : await askDialog("or_stt_consent_dlg", "or_stt_consent_ok", "or_stt_consent_cancel");
         if (!consent) {
             box.checked = false;
             return;
         }
     }
-    if (await orApplyStt(consent))
+    if ((await orApplyStt(consent)) && !litellm)
         void refreshCatalog(false);
+}
+/** D84: the Speech page's cloud card for the speech provider: OpenRouter's
+ *  model, path, language and dictionary rows, or the proxy's speech model. */
+function showSttProvider(v) {
+    const p = v.stt.provider ?? "openrouter";
+    $("or_stt_provider_name").textContent = p === "custom" ? "LiteLLM" : "OpenRouter";
+    for (const r of $("or_stt_box").querySelectorAll("[data-stt-provider]")) {
+        r.hidden = r.dataset.sttProvider !== p;
+    }
+    $("cu_stt_model_name").textContent = v.stt.custom_model || "none";
+    $("cu_stt_host").textContent = v.cleanup.custom.host || "your proxy";
 }
 async function orTestStt() {
     const out = $("or_stt_test_out");
-    out.textContent = "Sending a 3 s public-domain clip to openrouter.ai…";
+    const s = views.or?.stt;
+    const host = s?.provider === "custom" ? s.consent_host || "your proxy" : "openrouter.ai";
+    out.textContent = `Sending a 3 s public-domain clip to ${host}…`;
     out.className = "hint";
     try {
         const typed = $("or_key").value.trim();
@@ -552,6 +576,11 @@ function showCustom(v) {
     void showNormalisedUrl();
     if (document.activeElement !== $("cu_model"))
         setValue("cu_model", cu.model);
+    // D84: the proxy's speech model ("" = none); Test connection lists them.
+    const stt = v.stt.custom_model ?? "";
+    if (stt !== "")
+        ensureOption("cu_stt_model", stt, stt);
+    $("cu_stt_model").value = stt;
     ensureOption("cu_timeout_ms", String(cu.timeout_ms), `${cu.timeout_ms / 1000} seconds`);
     $("cu_http_warn").hidden = !cu.plain_http;
     const ks = $("cu_key_state");
@@ -570,7 +599,7 @@ const PROVIDER_TEXT = {
     custom: {
         name: "LiteLLM",
         desc: "Your own LiteLLM proxy (or any OpenAI-compatible server), on your network or wherever you run it.",
-        offers: "Speech to text: not yet · AI cleanup: yes",
+        offers: "Speech to text: yes, with a speech model on your proxy · AI cleanup: yes",
     },
 };
 /** The parts of the Cloud and AI cleanup pages for the saved `provider`
@@ -606,6 +635,7 @@ async function cuApply(provider, consent) {
         model: $("cu_model").value,
         timeout_ms: Number.isFinite(t) ? t : 4000,
         consent,
+        stt_model: $("cu_stt_model").value,
     };
     const r = await orCall("dev_or_set_custom_cleanup", { form }, "or_cleanup_msg", "Saved — applies to the next dictation");
     if (r) {
@@ -703,7 +733,8 @@ async function cuModelsNow(outId, fill) {
             // The AI cleanup page's Model field offers the proxy's list (D78).
             $("cu_model_list").replaceChildren(...r.models.map((id) => Object.assign(document.createElement("option"), { value: id })));
             const n = r.models.length;
-            out.textContent = `Connected · ${n} model${n === 1 ? "" : "s"} · ${ms} ms${fill && n ? ": pick one in the Model field" : ""}`;
+            const speech = await cuSpeechModels(r.speech_models ?? []);
+            out.textContent = `Connected · ${n} model${n === 1 ? "" : "s"} · ${ms} ms${speech}${fill && n ? ": pick one in the Model field" : ""}`;
             out.className = "hint ok";
         }
         else {
@@ -715,6 +746,25 @@ async function cuModelsNow(outId, fill) {
         out.textContent = String(e);
         out.className = "hint err";
     }
+}
+/** D84: offer the proxy's speech models in the Cloud page's Speech model
+ *  list; with none saved yet, the first one is saved (speech is then
+ *  available, still off until switched on with its own consent). Runs
+ *  inside the card's write queue. Returns the line's speech part. */
+async function cuSpeechModels(ids) {
+    const sel = $("cu_stt_model");
+    const saved = views.or?.stt.custom_model ?? "";
+    sel.replaceChildren(new Option("None: speech stays on this PC and your server", ""), ...[...new Set([...ids, ...(saved ? [saved] : [])])].map((id) => new Option(id, id)));
+    sel.value = saved;
+    if (ids.length === 0)
+        return " · no speech model";
+    if (saved === "" && views.or?.cleanup.provider === "custom") {
+        sel.value = ids[0];
+        if (await cuApply("custom", false))
+            return ` · speech model ${ids[0]} set`;
+        sel.value = "";
+    }
+    return ` · ${ids.length} speech model${ids.length === 1 ? "" : "s"}`;
 }
 async function orTestCleanup() {
     const out = $("or_cleanup_test_out");
@@ -903,7 +953,7 @@ async function pickModelNow(id, paraphrase) {
 function wire() {
     // The dialogs are opened from the Speech to text and AI cleanup pages too: a
     // modal inside a hidden page root would never show, so they live on <body>.
-    for (const id of ["or_stt_consent_dlg", "or_cleanup_consent_dlg", "cu_consent_dlg", "or_confirm", "or_picker"]) {
+    for (const id of ["or_stt_consent_dlg", "cu_stt_consent_dlg", "or_cleanup_consent_dlg", "cu_consent_dlg", "or_confirm", "or_picker"]) {
         document.body.append($(id));
     }
     $("or_notice_ok").addEventListener("click", () => void orCall("dev_or_ack_notice", {}, "or_key_status", "").then((v) => v && showOr(v)));
@@ -945,7 +995,7 @@ function wire() {
                 void cuChanged(picked);
         });
     }
-    for (const id of ["cu_base_url", "cu_model", "cu_timeout_ms"]) {
+    for (const id of ["cu_base_url", "cu_model", "cu_timeout_ms", "cu_stt_model"]) {
         $(id).addEventListener("change", () => void cuChanged(provider()));
     }
     $("cu_base_url").addEventListener("input", () => {
