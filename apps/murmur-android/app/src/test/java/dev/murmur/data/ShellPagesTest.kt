@@ -97,7 +97,7 @@ class ShellPagesTest {
         )
         assertEquals(Dot.CLOUD, ShellPages.speechLine(OpenRouterPage.enableStt(server, NOW), caps, true).dot)
         assertEquals(Dot.BAD, ShellPages.speechLine(server.copy(allowServer = false, allowClient = false), caps, true).dot)
-        assertEquals("Speech to text: This phone only", ShellPages.speechLine(base, caps, true).description)
+        assertEquals("Speech to text: This phone · server not set up", ShellPages.speechLine(base, caps, true).description)
 
         val ai = Settings(llmEnabled = true)
         val cloudFirst = OpenRouterPage.enableCleanup(base, NOW).copy(cleanupOrder = listOf(CleanupRoute.CLOUD, CleanupRoute.LOCAL, CleanupRoute.SERVER))

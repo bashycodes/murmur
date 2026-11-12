@@ -14,9 +14,9 @@ class ServerHealthTest {
         val cache = ServerHealth()
         assertNull(cache.fresh(saved, 1_000))
         cache.record(saved, ok, 1_000)
-        assertEquals(ok, cache.fresh(saved, 1_500))
+        assertEquals(ServerHealth.Probe(ok, 1_000), cache.fresh(saved, 1_500))
         // Fields that do not change which server is reached keep the result (Save raises the connect timeout).
-        assertEquals(ok, cache.fresh(saved.copy(connectTimeoutMs = saved.connectTimeoutMs * 2), 1_500))
+        assertEquals(ok, cache.fresh(saved.copy(connectTimeoutMs = saved.connectTimeoutMs * 2), 1_500)?.report)
     }
 
     @Test fun anotherServerOrAnOldProbeDoesNotCount() {
@@ -34,8 +34,27 @@ class ServerHealthTest {
         val cache = ServerHealth()
         val down = HealthReport(ok = false, error = "connect_failed")
         cache.record(saved, down, 1_000)
-        assertEquals("Not reachable", SettingsSummary.server(saved, BuildCaps.ALL, cache.fresh(saved, 1_200)))
+        assertEquals("Not reachable", SettingsSummary.server(saved, BuildCaps.ALL, cache.fresh(saved, 1_200)?.report))
         cache.record(saved, ok.copy(rttMs = null), 2_000)
-        assertEquals("Connected", SettingsSummary.server(saved, BuildCaps.ALL, cache.fresh(saved, 2_100)))
+        assertEquals("Connected", SettingsSummary.server(saved, BuildCaps.ALL, cache.fresh(saved, 2_100)?.report))
+    }
+
+    @Test fun theNewerOfTheSharedAndTheRouterProbeWins() {
+        // Review: a 60 s old "Connected" must not hide the router's newer failure, nor the reverse.
+        val shared = ServerHealth.Probe(ok, 1_000)
+        val routerDown = HealthReport(ok = false, error = "connect_failed", checkedAtMs = 2_000)
+        assertEquals(ServerHealth.Probe(routerDown, 2_000), ServerHealth.newer(shared, routerDown))
+        val routerOld = routerDown.copy(checkedAtMs = 500)
+        assertEquals(shared, ServerHealth.newer(shared, routerOld))
+        assertEquals(shared, ServerHealth.newer(shared, routerDown.copy(checkedAtMs = null)))
+        assertEquals(ServerHealth.Probe(routerDown, 2_000), ServerHealth.newer(null, routerDown))
+        assertNull(ServerHealth.newer(null, null))
+        assertEquals(true, ServerHealth.isFresh(2_000, 2_500))
+        assertEquals(false, ServerHealth.isFresh(null, 2_500))
+    }
+
+    @Test fun sameServerIgnoresTimeouts() {
+        assertEquals(true, ServerHealth.sameServer(saved, saved.copy(healthTtlS = saved.healthTtlS + 5)))
+        assertEquals(false, ServerHealth.sameServer(saved, saved.copy(tls = !saved.tls)))
     }
 }

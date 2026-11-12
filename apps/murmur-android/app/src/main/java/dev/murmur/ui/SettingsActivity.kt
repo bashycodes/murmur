@@ -36,7 +36,6 @@ import dev.murmur.data.SettingsPages.Field
 import dev.murmur.data.SettingsPages.Page
 import dev.murmur.data.SettingsSummary
 import dev.murmur.data.ShellPages
-import dev.murmur.data.SpeechEngines
 import dev.murmur.server.ServerModels
 import java.io.File
 import kotlin.concurrent.thread
@@ -185,28 +184,36 @@ class SettingsActivity : Activity() {
     }
 
     /**
-     * Your server's state: the router's cached health when it is recent, else one probe of the
-     * saved config (off the main thread; a few bytes over your LAN / VPN).
+     * Your server's state: the newer of the shared probe ([MurmurApp.serverHealth]: Test connection,
+     * Save) and the router's own health when recent, else one probe of the saved config (off the
+     * main thread; a few bytes over your LAN / VPN). A shared probe shows at once, also while the
+     * router is still reopening after a Save.
      */
     private fun checkServer() {
         val d = app.dev.load()
         // Also when only AI cleanup uses the server (its Engines row shows this state too).
         val used = d.allowServer || d.cleanupOn(dev.murmur.data.DevSettings.CleanupRoute.SERVER)
         if (!caps.remote || !used || !d.serverConfigured || checking) return
-        // A Test connection / Save probe of this server that just ran (Developer → Server) shows at
-        // once, also while the router is still reopening after a Save.
         val e = d.effective(caps)
-        app.serverHealth.fresh(e, System.currentTimeMillis())?.let { health = it; refreshServer(); return }
-        val r = app.engine.router() ?: return
+        val shared = app.serverHealth.fresh(e, System.currentTimeMillis())
+        shared?.let { health = it.report }
+        val r = app.engine.router()
+        if (r == null) { refreshServer(); return }
         checking = true
         refreshServer()
         thread(name = "settings-health") {
-            var h = runCatching { r.routeStatus().health }.getOrNull()
-            val fresh = h?.checkedAtMs?.let { System.currentTimeMillis() - it < ServerHealth.MAX_AGE_MS } == true
-            if (!fresh) h = runCatching { r.probeSaved() }.getOrNull()?.also { app.serverHealth.record(e, it, System.currentTimeMillis()) } ?: h
+            var p = ServerHealth.newer(shared, runCatching { r.routeStatus().health }.getOrNull())
+            if (!ServerHealth.isFresh(p?.atMs, System.currentTimeMillis())) {
+                runCatching { r.probeSaved() }.getOrNull()?.let { h ->
+                    val now = System.currentTimeMillis()
+                    p = ServerHealth.Probe(h, now)
+                    // probeSaved reaches the router's config: share it only while that is still the saved one.
+                    if (app.engine.router() === r && ServerHealth.sameServer(app.dev.load().effective(caps), e)) app.serverHealth.record(e, h, now)
+                }
+            }
             runOnUiThread {
                 checking = false
-                if (h != null) health = h
+                p?.let { health = it.report }
                 if (alive()) refreshServer()
             }
         }
@@ -333,7 +340,7 @@ class SettingsActivity : Activity() {
                 bubble.setSubtitle(SettingsSummary.bubble(s))
                 apps.setSubtitle(SettingsSummary.apps(s))
                 timing.setSubtitle(SettingsSummary.timing(s))
-                speechRow.setSubtitle(SettingsSummary.speech(d, caps, SpeechEngines.phoneReady(s, app.engine.defaultModelInstalled(s))))
+                speechRow.setSubtitle(SettingsSummary.speech(d, caps, app.engine.phoneSpeechReady(s)))
                 cleanup?.setSubtitle(SettingsSummary.cleanupRow(
                     s, d.effective(caps), caps,
                     serverLlm = if (d.serverConfigured) app.engine.router()?.cleanupStatus()?.serverLlm else null,

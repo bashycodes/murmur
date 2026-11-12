@@ -152,25 +152,6 @@ class DevPagesTest {
 
     // ---- hub subtitles ----
 
-    @Test fun routingSummary() {
-        // 2026-10-24 phone-local-only: the order must be obvious at a glance ("X first → Y").
-        assertEquals("Server first → Phone", DevSummary.routing(saved, caps))
-        assertEquals("Phone first → Server", DevSummary.routing(saved.copy(routeOrder = listOf(Route.CLIENT, Route.SERVER)), caps))
-        assertEquals("Phone only", DevSummary.routing(saved.copy(allowServer = false), caps))
-        assertEquals("Server only", DevSummary.routing(saved.copy(allowClient = false), caps))
-        assertEquals("Dictation disabled", DevSummary.routing(saved.copy(allowServer = false, allowClient = false), caps))
-        assertEquals("Phone only", DevSummary.routing(DevSettings.defaults(BuildCaps.LOCAL), BuildCaps.LOCAL))
-        val c = saved.copy(allowCloud = true, routeOrder = listOf(Route.CLOUD, Route.SERVER, Route.CLIENT))
-        assertEquals("Cloud (OpenRouter) first → Server → Phone", DevSummary.routing(c, caps))
-    }
-
-    @Test fun routingSummaryFollowsTheStoredOrder() {
-        for (order in listOf(listOf(Route.SERVER, Route.CLIENT), listOf(Route.CLIENT, Route.SERVER))) {
-            val shown = DevSummary.routing(saved.copy(routeOrder = order), caps).split(" → ").map { it.removeSuffix(" first") }
-            assertEquals(order.map { DevSummary.routeName(it, saved) }, shown)
-        }
-    }
-
     @Test fun serverSummaryNeverShowsTheToken() {
         val s = DevSummary.server(saved, caps)
         assertEquals("100.64.0.10:7313 · ws:// · token set", s)

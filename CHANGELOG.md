@@ -18,7 +18,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Fixed
 
-- **Android: the drawer's Speech to text line tells the truth.** It shows the same text as Settings → Speech to text ("This phone, then your server"), names only engines that can run, and turns red with "Not set up: add your server or import a speech model" when none can, instead of a green "Server first → Phone" on a fresh install.
+- **Android: the Speech to text summary tells the truth.** The drawer, Settings and Developer settings show the same text ("This phone, then your server"). An engine counts once it has what it needs: the phone a speech model for the current language (a Hebrew model alone counts for Hebrew), your server an address, OpenRouter consent. Engines that are on but missing it are named ("This phone · server not set up"). With none ready, the line turns red and reads "Not set up: add your server or import a speech model", instead of a green "Server first → Phone" on a fresh install.
 - **Android: a passing Test connection shows in Settings at once.** Settings → Connections → Your server reads "Connected · N ms" on return instead of "Not checked yet".
 
 ## [1.2.0] - 2026-11-12
