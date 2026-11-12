@@ -1,7 +1,7 @@
 // Settings → Speech to text (design: SettingsSpeech.dc.html): the engine
 // order and the meeting order (D47) (features/engines.ts), the model on
-// this PC (features/general.ts) and OpenRouter speech to text
-// (features/openrouter.ts). Markup only.
+// this PC (features/general.ts) and cloud speech to text on OpenRouter or
+// (D85) the LiteLLM proxy (features/openrouter.ts). Markup only.
 
 import { ICON, iconSvg } from "../../lib/icons.js";
 import { group, heading, row, toggle } from "../../lib/markup.js";
@@ -108,14 +108,21 @@ ${group(
 ${SERVER_MODELS_GROUP}
 
 <section class="lw-section" id="or_stt_group" data-needs="cloud">
-  <h3 class="fl-group-title lw-title-badge">Cloud · OpenRouter <span class="fl-badge fl-badge-light" id="or_stt_used_badge">Used only when on above</span> <button type="button" class="lw-link lw-link-sm" data-go="settings-openrouter">Change provider →</button></h3>
+  <h3 class="fl-group-title lw-title-badge">Cloud · <span id="or_stt_provider_name">OpenRouter</span> <span class="fl-badge fl-badge-light" id="or_stt_used_badge">Used only when on above</span> <button type="button" class="lw-link lw-link-sm" data-go="settings-openrouter">Change provider →</button></h3>
   <div class="fl-group" id="or_stt_box">
     ${row(
       `<span id="or_stt_model_name"></span> <span id="or_stt_model_badges" class="pills"></span>`,
       `<span id="or_stt_model_desc"></span> <code id="or_stt_model_id" class="lw-mono"></code>`,
       `<button type="button" class="fl-btn fl-btn-secondary lw-btn-160" id="or_stt_change">Change</button>`,
+      `data-stt-provider="openrouter"`,
     )}
-    ${row("Language", "", `<input id="or_stt_language" class="fl-input lw-w160" spellcheck="false" placeholder="Auto-detect" aria-label="Language (empty = auto-detect)" />`)}
+    ${row(
+      `<code id="cu_stt_model_name" class="lw-mono"></code>`,
+      `Speech model on your proxy at <span id="cu_stt_host" class="lw-mono"></span>, with your dictionary words. Pick another on the Cloud page.`,
+      "",
+      `data-stt-provider="custom" hidden`,
+    )}
+    ${row("Language", "", `<input id="or_stt_language" class="fl-input lw-w160" spellcheck="false" placeholder="Auto-detect" aria-label="Language (empty = auto-detect)" />`, `data-stt-provider="openrouter"`)}
     ${row(
       "Speech path",
       "A chat model with audio input may paraphrase instead of writing down what you said.",
@@ -124,11 +131,13 @@ ${SERVER_MODELS_GROUP}
         <option value="transcriptions">Transcription endpoint</option>
         <option value="chat_audio">Chat model with audio input</option>
       </select>`,
+      `data-stt-provider="openrouter"`,
     )}
     ${row(
       "Send dictionary words",
       "Helps it spell names the way you do.",
       toggle("or_stt_send_dictionary", "Send dictionary words"),
+      `data-stt-provider="openrouter"`,
     )}
     ${row(
       "Try it",
