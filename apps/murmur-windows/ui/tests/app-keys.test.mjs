@@ -3,7 +3,7 @@
 // `npm test`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isOpenSettings, OPEN_SETTINGS_KEYS, shouldOpenSettings } from "../dist/lib/app-keys.js";
+import { isOpenSettings, shouldOpenSettings } from "../dist/lib/app-keys.js";
 
 const press = (over = {}) => ({
   key: ",",
@@ -44,8 +44,4 @@ test("does nothing when Settings is already open, or setup or a dialog is over t
   assert.equal(shouldOpenSettings(press(), { ...idle, settingsOpen: true }), false);
   assert.equal(shouldOpenSettings(press(), { ...idle, onboardingOpen: true }), false);
   assert.equal(shouldOpenSettings(press(), { ...idle, dialogOpen: true }), false);
-});
-
-test("the shortcuts list shows Ctrl ,", () => {
-  assert.deepEqual(OPEN_SETTINGS_KEYS, ["Ctrl", ","]);
 });

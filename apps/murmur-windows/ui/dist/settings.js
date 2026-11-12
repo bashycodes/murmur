@@ -272,21 +272,25 @@ $("settings").addEventListener("click", (e) => {
     if (e.target === e.currentTarget)
         closeSettings();
 });
-document.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape" || $("settings").hidden || onboarding.isOpen())
-        return;
-    if (document.querySelector("dialog[open]"))
-        return; // the dialog closes first
-    closeSettings();
-});
-// Ctrl+, opens Settings: this window only, never a global hotkey.
-document.addEventListener("keydown", (e) => {
-    const state = {
+/** What is on screen, for the window's own keys (Esc, Ctrl+,). */
+function windowState() {
+    return {
         settingsOpen: !$("settings").hidden,
         onboardingOpen: onboarding.isOpen(),
         dialogOpen: !!document.querySelector("dialog[open]"),
     };
-    if (!shouldOpenSettings(e, state))
+}
+document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape")
+        return;
+    const w = windowState();
+    // An open dialog closes first.
+    if (w.settingsOpen && !w.onboardingOpen && !w.dialogOpen)
+        closeSettings();
+});
+// Ctrl+, opens Settings: this window only, never a global hotkey.
+document.addEventListener("keydown", (e) => {
+    if (!shouldOpenSettings(e, windowState()))
         return;
     e.preventDefault();
     go("settings");
