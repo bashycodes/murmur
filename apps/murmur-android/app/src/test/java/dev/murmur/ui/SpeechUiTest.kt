@@ -70,7 +70,7 @@ class SpeechUiTest {
             assertEquals(Switch::class.java.name, info.className)
             assertTrue(info.isCheckable)
             assertEquals(DevPages.engineOn(app.dev.load(), r), info.isChecked)
-            assertTrue(info.text.toString(), info.text.startsWith("Use "))
+            assertTrue(info.text.toString(), info.text.startsWith("${i + 1}. Use "))
         }
         assertEquals(app.caps.local, "On this phone" in t)
         UiTestKit.assertTouchTargets(a, "speech")

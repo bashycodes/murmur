@@ -113,7 +113,9 @@ class DeveloperUiTest {
     /** v1.2.0 bug: Next from Port landed on the TLS switch row and Enter turned TLS on. */
     @Test fun keyboardNextGoesHostPortTokenThenDoneAndNeverTogglesTls() {
         val a = launch(Page.SERVER)
-        val tlsBefore = app.dev.load().tls
+        val tlsRow = UiTestKit.rowTitled(a, "Use TLS (wss)")
+        if (tlsRow.createAccessibilityNodeInfo().isChecked) tlsRow.performClick()
+        val tlsBefore = tlsRow.createAccessibilityNodeInfo().isChecked
         val host = field(a, "Host or IP"); val port = field(a, "Port"); val token = field(a, "Token")
         assertEquals(EditorInfo.IME_ACTION_NEXT, host.imeOptions and EditorInfo.IME_MASK_ACTION)
         assertEquals(EditorInfo.IME_ACTION_NEXT, port.imeOptions and EditorInfo.IME_MASK_ACTION)
@@ -127,22 +129,44 @@ class DeveloperUiTest {
         port.requestFocus()
         port.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
         port.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
+        assertTrue("Enter on port → token", token.hasFocus())
         token.onEditorAction(EditorInfo.IME_ACTION_DONE)
         assertFalse("Done leaves the form", token.hasFocus())
-        val tlsRow = UiTestKit.rowTitled(a, "Use TLS (wss)").createAccessibilityNodeInfo()
-        assertEquals("TLS unchanged", tlsBefore, tlsRow.isChecked)
+        assertEquals("TLS unchanged", tlsBefore, tlsRow.createAccessibilityNodeInfo().isChecked)
     }
 
-    /** v1.2.0 bug: the warning banner sat above the fields and grew / shrank while typing, moving them. */
-    @Test fun serverWarningsSitBelowTheFields() {
+    /** With TLS on, the certificate pin is part of the chain: port → pin → token. */
+    @Test fun keyboardNextVisitsThePinWhileTlsIsOn() {
+        val a = launch(Page.SERVER)
+        val tlsRow = UiTestKit.rowTitled(a, "Use TLS (wss)")
+        if (!tlsRow.createAccessibilityNodeInfo().isChecked) tlsRow.performClick()
+        val port = field(a, "Port"); val pin = field(a, "Certificate pin (optional)"); val token = field(a, "Token")
+        port.requestFocus()
+        port.onEditorAction(EditorInfo.IME_ACTION_NEXT)
+        assertTrue("port → pin", pin.hasFocus())
+        pin.onEditorAction(EditorInfo.IME_ACTION_NEXT)
+        assertTrue("pin → token", token.hasFocus())
+        assertTrue("TLS still on", tlsRow.createAccessibilityNodeInfo().isChecked)
+    }
+
+    /** v1.2.0 bug: the warning banner grew and shrank above the fields while typing, moving them. */
+    @Test fun serverBannerKeepsItsHeightAboveTheFields() {
         org.junit.Assume.assumeTrue(app.caps.remote && app.dev.load().allowServer)
         val a = launch(Page.SERVER)
-        field(a, "Host or IP").setText("")
+        val host = field(a, "Host or IP")
+        host.setText("")
         val all = walk(a.window.decorView).toList()
-        val warning = all.filterIsInstance<TextView>().first { it.text.toString().contains(dev.murmur.data.DevSettingsForm.NO_HOST) }
-        assertTrue(warning.visibility == android.view.View.VISIBLE)
-        assertTrue("below the last field", all.indexOf(warning) > all.indexOf(field(a, "Health cache (s)")))
+        val banner = all.filterIsInstance<TextView>().first { it.text.toString().contains(dev.murmur.data.DevSettingsForm.NO_HOST) }
+        assertTrue("above the fields", all.indexOf(banner) < all.indexOf(host))
+        assertEquals("fixed number of lines", banner.minLines, banner.maxLines)
         assertFalse("plain words, no 'client'", dev.murmur.data.DevSettingsForm.NO_HOST.contains("client"))
+        // Nothing to warn about: still shown, same lines, a neutral line instead of going away.
+        host.setText("100.64.0.10")
+        field(a, "Token").setText("a".repeat(dev.murmur.data.DevSettings.MIN_TOKEN_LEN))
+        val tls = UiTestKit.rowTitled(a, "Use TLS (wss)")
+        if (!tls.createAccessibilityNodeInfo().isChecked) tls.performClick()
+        assertEquals(android.view.View.VISIBLE, banner.visibility)
+        assertEquals(DeveloperActivity.NO_WARNINGS, banner.text.toString())
     }
 
     @Test fun tokenHelpNamesTheServersKeysAddCommand() {

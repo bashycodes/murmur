@@ -235,6 +235,17 @@ internal class SpeechPage(
         Route.CLOUD -> OpenRouterActivity.open(activity)
     }
 
+    /** TalkBack reads the view as [className] saying [text]; [checked] makes it checkable, [clickLabel] names its tap. */
+    private fun readsAs(className: String, text: String, checked: Boolean? = null, clickLabel: String? = null) = object : View.AccessibilityDelegate() {
+        override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfo) {
+            super.onInitializeAccessibilityNodeInfo(host, info)
+            info.className = className
+            info.text = text
+            if (checked != null) { info.isCheckable = true; info.isChecked = checked }
+            if (clickLabel != null) info.addAction(AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK, clickLabel))
+        }
+    }
+
     /**
      * One ranked engine. While reordering: ↑ / ↓. Otherwise the row body opens the engine's own
      * page ([openSettings]) and only the switch at the end turns it on or off.
@@ -269,14 +280,7 @@ internal class SpeechPage(
             body.isClickable = true; body.isFocusable = true
             body.background = ripple()
             body.setOnClickListener { openSettings(r) }
-            body.accessibilityDelegate = object : View.AccessibilityDelegate() {
-                override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfo) {
-                    super.onInitializeAccessibilityNodeInfo(host, info)
-                    info.className = android.widget.Button::class.java.name
-                    info.text = "${i + 1}. $name. $sub"
-                    info.addAction(AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK, "open $name settings"))
-                }
-            }
+            body.accessibilityDelegate = readsAs(android.widget.Button::class.java.name, "${i + 1}. $name. $sub", clickLabel = "open $name settings")
             val sw = designSwitch(on).apply {
                 isClickable = false; isFocusable = false
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
@@ -289,14 +293,7 @@ internal class SpeechPage(
                 background = ripple()
                 addView(sw, android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
                 setOnClickListener { toggle(r, !on) }
-                accessibilityDelegate = object : View.AccessibilityDelegate() {
-                    override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfo) {
-                        super.onInitializeAccessibilityNodeInfo(host, info)
-                        info.className = Switch::class.java.name
-                        info.isCheckable = true; info.isChecked = on
-                        info.text = useLabel(r)
-                    }
-                }
+                accessibilityDelegate = readsAs(Switch::class.java.name, "${i + 1}. ${useLabel(r)}. $sub", checked = on)
             }
             row.addView(target, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT))
         }

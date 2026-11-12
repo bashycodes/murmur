@@ -76,7 +76,7 @@ background* (each is a row on the *Permissions* page, menu ☰ → Permissions: 
 *Native engine* `murmur-ffi <version>+<commit>` (e.g. `murmur-ffi 0.2.0+1a2b3c4`; D26).
 
 **3. Point it at the server.** Menu ☰ → *Settings* → *Your server* (or Menu ☰ → *Developer settings* → *Server*): host = the PC's
-`100.x.y.z` (or its VPN DNS name), port `7313`, *Paste* the token, *Use TLS* off, *Save* (top
+`100.x.y.z` (or its VPN DNS name), port `7313`, *Paste* the key, *Use TLS* off, *Save* (top
 bar), then *Test connection* (bottom) → `OK · median N ms … · parakeet`. *Settings → Speech to text*:
 *Use your server* + *Use this phone* on (the defaults in hybrid; they apply at once). Plain `ws://` is
 only allowed when the address is private or a VPN address **and** the phone reaches it through its
@@ -420,10 +420,11 @@ debug log says "Hebrew model failed: …". Auto-detect stays English-first.
 ## 5b. Server mode (hybrid / remote)
 
 1. On the server box: run `murmur-server` (see `docs/protocol.md` / `crates/murmur-server`), bound
-   to its VPN `100.x` address or the LAN; `murmur-server gen-token` prints the token.
+   to its VPN `100.x` address or the LAN; `murmur-server keys add <name>` prints the key to
+   paste into the app as the token.
 2. Phone: join the same VPN (or be on the same LAN). No extra permission is needed.
 3. Menu ☰ → **Settings** → **Your server** (the same page as Menu ☰ → *Developer settings* → *Server*):
-   host = the server's `100.x.y.z` or its VPN DNS name, port `7313`, *Paste* the token,
+   host = the server's `100.x.y.z` or its VPN DNS name, port `7313`, *Paste* the key,
    *Save* (top bar), then *Test connection* → "OK · median N ms (…) · murmur-server … · parakeet".
 4. Dictate: the hub's status card shows *Last dictation* `Server · client N ms`; *Status &
    server info → Active engine* shows `Server 100.x.y.z:7313 · …`.
