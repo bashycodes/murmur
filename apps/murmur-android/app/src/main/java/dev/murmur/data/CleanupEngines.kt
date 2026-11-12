@@ -106,9 +106,11 @@ object CleanupEngines {
         else s.copy(llmEnabled = true) to d.withCleanup(CleanupRoute.LOCAL, true).cleanupOff
 
     /**
-     * Server row. `cleanup_status` first ([serverLlm]: the cleanup connection's hello, null = none yet;
-     * [circuitOpen] = recently failing), else the last health probe ([h]: Server → Test connection's or
-     * the settings pages'; [checking] while one runs): not set up / not reachable / connected / ready.
+     * Server row: not set up / not reachable / connected / ready. Unreachable first: an open circuit
+     * ([circuitOpen] = recently failing) or a failed health probe ([h]: Server → Test connection's or the
+     * settings pages', fresh on page open). The hello's "has a model" ([serverLlm], null = none yet) is
+     * kept by the router with no expiry, so it must not hide a server that is down now. Then the hello,
+     * else the probe ([checking] while one runs).
      */
     fun serverLine(
         d: DevSettings, caps: BuildCaps, serverLlm: Boolean?, circuitOpen: Boolean = false,
@@ -116,11 +118,10 @@ object CleanupEngines {
     ): String = when {
         !caps.remote -> "Not in this build"
         !d.serverConfigured -> "Not set up"
-        circuitOpen -> NOT_REACHABLE
+        circuitOpen || h?.ok == false -> NOT_REACHABLE
         serverLlm == true -> READY
         serverLlm == false -> NO_LLM
         h == null -> if (checking) "Checking…" else "Not checked yet"
-        !h.ok -> NOT_REACHABLE
         h.llm == true -> READY
         h.llm == false -> NO_LLM
         else -> "Connected"
