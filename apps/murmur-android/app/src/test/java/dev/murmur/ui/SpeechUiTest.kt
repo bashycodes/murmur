@@ -48,7 +48,12 @@ class SpeechUiTest {
         app.settings.save(app.settings.load().copy(decodeWhileSpeaking = dev.murmur.data.Settings().decodeWhileSpeaking))
     }
 
+    /** The row body (rank, name, state line): opens the engine's page. */
     private fun engineRow(a: Activity, r: Route) = rowTitled(a, SettingsSummary.engineName(r))
+
+    /** The switch target at the end of the engine's row: the only part that turns it on or off. */
+    private fun engineSwitch(a: Activity, r: Route): android.view.View =
+        (engineRow(a, r).parent as android.view.ViewGroup).let { it.getChildAt(it.childCount - 1) }
 
     @Test fun enginesAreRankedSwitchRowsInTheStoredOrder() {
         val a = launch()
@@ -58,7 +63,10 @@ class SpeechUiTest {
         val list = DevPages.engines(app.dev.load(), app.caps)
         assertTrue(list.isNotEmpty())
         list.forEachIndexed { i, r ->
-            val info = engineRow(a, r).createAccessibilityNodeInfo()
+            val row = engineRow(a, r).createAccessibilityNodeInfo()
+            assertEquals(android.widget.Button::class.java.name, row.className)
+            assertTrue(row.text.toString(), row.text.startsWith("${i + 1}. ${SettingsSummary.engineName(r)}. "))
+            val info = engineSwitch(a, r).createAccessibilityNodeInfo()
             assertEquals(Switch::class.java.name, info.className)
             assertTrue(info.isCheckable)
             assertEquals(DevPages.engineOn(app.dev.load(), r), info.isChecked)
@@ -72,9 +80,29 @@ class SpeechUiTest {
         val a = launch()
         val r = if (app.caps.remote) Route.SERVER else Route.CLIENT
         val was = DevPages.engineOn(app.dev.load(), r)
-        engineRow(a, r).performClick(); idle()
+        engineSwitch(a, r).performClick(); idle()
         assertEquals(!was, DevPages.engineOn(app.dev.load(), r))
-        assertEquals(!was, engineRow(a, r).createAccessibilityNodeInfo().isChecked)
+        assertEquals(!was, engineSwitch(a, r).createAccessibilityNodeInfo().isChecked)
+    }
+
+    /** v1.2.0 bug: tapping "Your server" toggled it, and nothing on this page led to its address and key. */
+    @Test fun tappingTheServerRowOpensTheServerPageWithoutToggling() {
+        assumeTrue(app.caps.remote)
+        val a = launch()
+        val was = DevPages.engineOn(app.dev.load(), Route.SERVER)
+        engineRow(a, Route.SERVER).performClick(); idle()
+        assertEquals("the row body does not toggle", was, DevPages.engineOn(app.dev.load(), Route.SERVER))
+        val next = org.robolectric.Shadows.shadowOf(a).nextStartedActivity
+        assertEquals(DeveloperActivity::class.java.name, next.component?.className)
+        assertEquals(DevPages.Page.SERVER.name, next.getStringExtra(DeveloperActivity.EXTRA_PAGE))
+    }
+
+    @Test fun tappingTheOpenRouterRowOpensItsPage() {
+        assumeTrue(app.caps.cloud)
+        val a = launch()
+        engineRow(a, Route.CLOUD).performClick(); idle()
+        assertEquals(OpenRouterActivity::class.java.name, org.robolectric.Shadows.shadowOf(a).nextStartedActivity.component?.className)
+        assertFalse(app.dev.load().cloudRouted)
     }
 
     @Test fun changeOrderSwapsNeighboursAndSaves() {
@@ -97,12 +125,12 @@ class SpeechUiTest {
     @Test fun openRouterAsksForConsentAndCancelLeavesItOff() {
         assumeTrue(app.caps.cloud)
         val a = launch()
-        engineRow(a, Route.CLOUD).performClick(); idle()
+        engineSwitch(a, Route.CLOUD).performClick(); idle()
         val d = ShadowAlertDialog.getLatestAlertDialog()
         assertNotNull(d); assertTrue(d.isShowing)
         d.getButton(android.content.DialogInterface.BUTTON_NEGATIVE).performClick(); idle()
         assertFalse(app.dev.load().cloudRouted)
-        assertFalse(engineRow(a, Route.CLOUD).createAccessibilityNodeInfo().isChecked)
+        assertFalse(engineSwitch(a, Route.CLOUD).createAccessibilityNodeInfo().isChecked)
     }
 
     @Test fun transcribeWhileISpeakAppliesAtOnce() {
