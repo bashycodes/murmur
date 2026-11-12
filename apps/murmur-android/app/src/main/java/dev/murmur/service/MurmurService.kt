@@ -64,6 +64,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -164,8 +165,10 @@ class MurmurService : Service() {
             // "Bubble size" and "Shrink to a dot" ride along with repair, so either applies to the live bubble at once.
             // Command Mode's ✎ rides along too: shown per the "Command button" setting and the field's selection.
             val command = combine(app.settings.commandButton, app.fieldSelection) { mode, sel -> mode.shows(sel) }
-            // Our own screens in front ride along too: no bubble over them (OwnScreens).
-            val repairAndLook = combine(repair, app.settings.bubbleScale, app.settings.shrinkToDot, command, app.ownScreens.inFront) { r, scale, dot, cmd, own ->
+            // Our own screens in front ride along too: no resting bubble over them (OwnScreens). An Error
+            // raised meanwhile stays in the state, so leaving the app shows it unless it timed out.
+            val ownScreen = app.ownScreens.front.map { it.hidesBubble }
+            val repairAndLook = combine(repair, app.settings.bubbleScale, app.settings.shrinkToDot, command, ownScreen) { r, scale, dot, cmd, own ->
                 Look(r, scale, dot, cmd, own)
             }
             combine(controller.state, controller.level, showCopy, presence.presence, repairAndLook) { s, l, c, p, look ->
@@ -785,7 +788,7 @@ class MurmurService : Service() {
     /** D37: where the last session's language came from (keyboard / phone / fixed), for the debug line. */
     @Volatile private var languageSource: String? = null
 
-    /** Bubble look settings + Command Mode's ✎ (one flow, so the bubble combine stays at five inputs). */
+    /** Repair, bubble look settings, Command Mode's ✎ and "our screen is in front" (one flow, so the bubble combine stays at five inputs). */
     private data class Look(val repair: Boolean, val scale: Float, val dot: Boolean, val command: Boolean, val ownScreen: Boolean)
 
     private inner class BubbleListener : BubbleView.Listener {

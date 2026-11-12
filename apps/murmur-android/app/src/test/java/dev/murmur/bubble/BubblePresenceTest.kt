@@ -160,7 +160,9 @@ class BubblePresenceTest {
     @Test fun ownScreenInFrontHidesEveryRestingBubble() = runTest {
         val p = presence()
         assertFalse(p.visible(DictationState.Ready, ownScreenInFront = true))
-        assertFalse(p.visible(DictationState.Error(DictationState.ErrorKind.FailedToTranscribe), ownScreenInFront = true))
+        val error = DictationState.Error(DictationState.ErrorKind.FailedToTranscribe)
+        assertFalse(p.visible(error, ownScreenInFront = true))
+        assertTrue(p.visible(error, ownScreenInFront = false)) // an error raised in Settings shows on leaving
         p.repair = true
         assertFalse(p.visible(DictationState.Idle, ownScreenInFront = true))
         p.repair = false

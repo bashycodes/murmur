@@ -1,7 +1,7 @@
 package dev.murmur.ui
 
 import android.app.Activity
-import dev.murmur.bubble.DictationSurface
+import dev.murmur.bubble.DictationScreen
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -34,10 +34,9 @@ import kotlinx.coroutines.SupervisorJob
  * kept across recreation (rotation, process death).
  *
  * Dictation: the field is an ordinary EditText, so the bubble and the accessibility service type
- * into it like into any other app. It is a [DictationSurface], the one exception to "no bubble
- * on our own screens" ([dev.murmur.bubble.OwnScreens]), and while in front it registers itself as
- * [MurmurApp.dictationSurface] so the accessibility service treats its field like any other app's
- * ([dev.murmur.policy.OwnAppGate]). Nothing here inserts dictated text itself, so a
+ * into it like into any other app. It is a [DictationScreen], the one exception to "no bubble
+ * on our own screens": while it is in front ([dev.murmur.bubble.OwnScreens]) the accessibility
+ * service treats its field like any other app's ([dev.murmur.policy.OwnAppGate]). Nothing here inserts dictated text itself, so a
  * dictation goes in once, through the same commitText path as everywhere else. A new note does
  * not start recording by itself: the mic session belongs to the bubble's service and starts from
  * a bubble tap (starting it from here would need a new service entry point and a mic start
@@ -48,7 +47,7 @@ import kotlinx.coroutines.SupervisorJob
  * Look: the design's top bar with back and the note's name, Copy all / Share / Clear pills, the
  * word count, and the text on a white 24 dp card (no artboard of its own; Android*.dc.html parts).
  */
-class NoteEditorActivity : Activity(), DictationSurface {
+class NoteEditorActivity : Activity(), DictationScreen {
     private val app get() = MurmurApp.of(this)
     private lateinit var docId: String
     private lateinit var edit: EditText
@@ -183,13 +182,7 @@ class NoteEditorActivity : Activity(), DictationSurface {
 
     private fun showCount() { count.text = TextStats.label(current()) }
 
-    override fun onResume() {
-        super.onResume()
-        app.dictationSurface = this
-    }
-
     override fun onPause() {
-        if (app.dictationSurface === this) app.dictationSurface = null
         if (::saver.isInitialized) saver.flush()
         super.onPause()
     }

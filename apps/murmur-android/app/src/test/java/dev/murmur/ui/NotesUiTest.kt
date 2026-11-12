@@ -13,7 +13,6 @@ import dev.murmur.ui.UiTestKit.walk
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -34,7 +33,7 @@ class NotesUiTest {
     private val app get() = MurmurApp.of(ctx)
     private val dir get() = File(ctx.filesDir, "notes")
 
-    @After fun cleanup() { dir.deleteRecursively(); app.dictationSurface = null }
+    @After fun cleanup() { dir.deleteRecursively() }
 
     /** Store calls run on the documents thread: wait until the list shows [want]. */
     private fun ActivityController<NotesActivity>.await(want: String): NotesActivity {
@@ -64,8 +63,9 @@ class NotesUiTest {
         assertTrue(t.toString(), NotesView.QUICK_NOTE in t && "Groceries" in t && NotesActivity.PINNED in t)
         assertTrue(t.indexOf(NotesView.QUICK_NOTE) < t.indexOf("Plumber Tuesday"))
         assertEquals("kept from before", app.documents.load(DocumentStore.SCRATCHPAD))
-        // Not a dictation surface: the bubble stays off our own list screen.
-        assertNull(app.dictationSurface)
+        // Not a dictation screen: the bubble stays off our own list screen.
+        assertTrue(app.ownScreens.front.value.hidesBubble)
+        assertFalse(app.ownScreens.front.value.dictationScreen)
     }
 
     @Test fun tappingANoteOpensItInTheEditor() {

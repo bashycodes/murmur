@@ -18,7 +18,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Fixed
 
-- **Android: the bubble stays off Murmur's own screens.** It used to show over some Settings pages (covering, for example, the reorder arrows under Speech to text → Change order) whenever it was showing an error, the repair icon or a shake reveal. Now it hides on every Murmur screen and comes back when you leave the app; the note editor still has it, and a dictation already running stays visible so you can stop it.
+- **Android: the bubble no longer covers Murmur's own screens** (such as the reorder arrows under Settings → Speech to text → Change order): it hides on every Murmur screen in full screen, except the note editor and a dictation already running.
 
 ## [1.2.0] - 2026-11-12
 
