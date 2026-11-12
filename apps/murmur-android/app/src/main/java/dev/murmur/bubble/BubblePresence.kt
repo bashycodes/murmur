@@ -112,9 +112,15 @@ class BubblePresence(
         return ShakeOutcome.IGNORED
     }
 
-    /** Should the bubble window be shown for dictation state [s]? */
-    fun visible(s: DictationState): Boolean {
+    /**
+     * Should the bubble window be shown for dictation state [s]? While [ownScreenInFront]
+     * ([OwnScreens.front]) only a running dictation shows, so it can still be stopped: no
+     * Ready, Error, Repair or shake-revealed bubble over our own controls.
+     */
+    fun visible(s: DictationState, ownScreenInFront: Boolean): Boolean {
         val p = _presence.value
+        val active = s is DictationState.Recording || s is DictationState.Processing
+        if (ownScreenInFront) return active
         return when (s) {
             is DictationState.Recording, is DictationState.Processing, is DictationState.Error -> true
             DictationState.Ready -> !p.snoozed

@@ -1,6 +1,8 @@
 package dev.murmur
 
 import dev.murmur.core.RouterErrors
+import dev.murmur.bubble.DictationScreen
+import dev.murmur.bubble.OwnScreens
 import dev.murmur.debug.DebugAudioStore
 import dev.murmur.debug.DebugLogFile
 import dev.murmur.debug.DebugLogger
@@ -118,12 +120,8 @@ class MurmurApp : Application() {
     /** D35: bumped when a retry changed a History row, so open History screens reload. */
     val historyRevision = MutableStateFlow(0L)
 
-    /**
-     * The dictation screen of ours in front right now (any note editor sets itself on resume,
-     * clears on pause), or null. While set, the accessibility service treats our own field like any
-     * other app's ([dev.murmur.policy.OwnAppGate]); otherwise our screens get no bubble.
-     */
-    @Volatile var dictationSurface: Any? = null
+    /** Which of our screens are in front (activity lifecycle): no bubble over them, except a note editor. */
+    val ownScreens = OwnScreens()
 
     /** Notes text (the Scratchpad / Quick note is one of them) + their index, app-private `files/notes/`. */
     val documents: NotesStore by lazy { NotesStore(File(filesDir, "notes")) }
@@ -192,6 +190,7 @@ class MurmurApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        registerActivityLifecycleCallbacks(OwnScreenCallbacks())
         // Review C2: a blocking native call on Main is a bug (ANR on the server route); say so loudly.
         BlockingCalls.isMainThread = { android.os.Looper.myLooper() == android.os.Looper.getMainLooper() }
         BlockingCalls.onViolation = { Log.e("MurmurEngine", "blocking native call on the main thread: $it", Throwable("C2")) }
@@ -279,6 +278,34 @@ class MurmurApp : Application() {
         runCatching { cloudKeys.get(OpenRouter.ID) }.getOrNull()?.let(out::add)
         runCatching { cloudKeys.get(CustomServer.ID) }.getOrNull()?.let(out::add)
         return out
+    }
+
+    /** Feeds [ownScreens]: every activity of ours, started to stopped, re-read on resume, pause and config changes. */
+    private inner class OwnScreenCallbacks : ActivityLifecycleCallbacks {
+        private val main = android.os.Handler(android.os.Looper.getMainLooper())
+        private val configWatches = java.util.WeakHashMap<android.app.Activity, android.content.ComponentCallbacks>()
+
+        private fun screen(a: android.app.Activity) = OwnScreens.Screen(dictation = a is DictationScreen, split = a.isInMultiWindowMode)
+
+        override fun onActivityCreated(a: android.app.Activity, state: android.os.Bundle?) {
+            // Split screen / free-form entered or left in place: the activity's own config changes (API 31+).
+            val watch = object : android.content.ComponentCallbacks {
+                override fun onConfigurationChanged(c: android.content.res.Configuration) {
+                    main.post { ownScreens.refresh(a, screen(a)) }
+                }
+                @Deprecated("Deprecated in Java") override fun onLowMemory() = Unit
+            }
+            a.registerComponentCallbacks(watch)
+            configWatches[a] = watch
+        }
+        override fun onActivityStarted(a: android.app.Activity) = ownScreens.started(a, screen(a))
+        override fun onActivityResumed(a: android.app.Activity) = ownScreens.refresh(a, screen(a))
+        override fun onActivityPaused(a: android.app.Activity) = ownScreens.refresh(a, screen(a))
+        override fun onActivityStopped(a: android.app.Activity) = ownScreens.stopped(a, recreating = a.isChangingConfigurations)
+        override fun onActivitySaveInstanceState(a: android.app.Activity, out: android.os.Bundle) = Unit
+        override fun onActivityDestroyed(a: android.app.Activity) {
+            configWatches.remove(a)?.let { a.unregisterComponentCallbacks(it) }
+        }
     }
 
     companion object {
