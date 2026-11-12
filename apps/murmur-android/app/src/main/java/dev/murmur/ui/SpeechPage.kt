@@ -20,7 +20,7 @@ import dev.murmur.data.DevSettings
 import dev.murmur.data.DevSettings.Route
 import dev.murmur.data.DevSettingsForm
 import dev.murmur.data.OpenRouter
-import dev.murmur.data.OpenRouterPage
+import dev.murmur.data.CloudPage
 import dev.murmur.data.Settings
 import dev.murmur.data.SettingsSummary
 import java.io.File
@@ -30,7 +30,7 @@ import java.io.File
  *   Engines        ranked rows (rank square, name, state line, switch) for this build's engines in
  *                  the stored try order; "Change order" swaps the switches for ↑ / ↓. Everything
  *                  applies at once ([DevPages.withEngine], [DevPages.reorder]). OpenRouter asks for
- *                  its consent first, as on the OpenRouter page ([OpenRouterPage.enableStt]).
+ *                  its consent first, as on the Cloud page ([CloudPage.enableStt]).
  *                  Tapping a row opens that engine's page (Your server, the phone's model,
  *                  OpenRouter); only the switch turns it on or off.
  *   On this phone  the model in use (name, language, size, import date) → engine choice and imports;
@@ -232,7 +232,7 @@ internal class SpeechPage(
     private fun openSettings(r: Route) = when (r) {
         Route.SERVER -> DeveloperActivity.open(activity, DevPages.Page.SERVER)
         Route.CLIENT -> openEngine()
-        Route.CLOUD -> OpenRouterActivity.open(activity)
+        Route.CLOUD -> CloudActivity.open(activity)
     }
 
     /** TalkBack reads the view as [className] saying [text]; [checked] makes it checkable, [clickLabel] names its tap. */
@@ -322,14 +322,14 @@ internal class SpeechPage(
 
     /** Same consent as the Cloud page; the engine starts at its listed place. D78: refused while LiteLLM is the provider. */
     private fun enableCloud() {
-        if (!OpenRouterPage.sttAvailable(app.dev.load())) {
+        if (!CloudPage.sttAvailable(app.dev.load())) {
             android.widget.Toast.makeText(activity, CloudText.LITELLM_NO_STT, android.widget.Toast.LENGTH_LONG).show()
             refresh()
             return
         }
         val s = DevPages.placeCloud(app.dev.load(), caps)
         val go = {
-            val n = OpenRouterPage.enableStt(s, System.currentTimeMillis())
+            val n = CloudPage.enableStt(s, System.currentTimeMillis())
             app.dev.saveCloud(allowCloud = n.allowCloud, cloud = n.cloud, routeOrder = n.routeOrder)
             app.engine.applyDevSettings(app.dev.load())
             refresh()
@@ -337,7 +337,7 @@ internal class SpeechPage(
                 android.widget.Toast.makeText(activity, "Add your OpenRouter API key on the Cloud page: nothing is sent without one.", android.widget.Toast.LENGTH_LONG).show()
             }
         }
-        if (!OpenRouterPage.sttNeedsConsent(s)) { go(); return }
+        if (!CloudPage.sttNeedsConsent(s)) { go(); return }
         ui.confirm(CloudText.STT_CONSENT_TITLE, CloudText.sttConsentBody(s.cloud.stt), CloudText.STT_CONSENT_BUTTON, onYes = go, onNo = { refresh() })
     }
 

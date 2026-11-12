@@ -64,7 +64,7 @@ class SettingsUiTest {
         assertEquals(BuildConfig.CAP_LOCAL || caps.cloud, "AI cleanup" in t)
         assertEquals(caps.remote || caps.cloud, "Connections" in t)
         assertEquals(caps.remote, "Your server" in t)
-        assertEquals(caps.cloud, OpenRouterActivity.TITLE in t)
+        assertEquals(caps.cloud, CloudActivity.TITLE in t)
         assertTrue(t.any { it.startsWith("Version ") && "(${caps.flavor})" in it })
         // remote always shows Developer settings; local / hybrid only once unlocked.
         assertEquals(MurmurApp.of(a).dev.visible, "Developer settings" in t)

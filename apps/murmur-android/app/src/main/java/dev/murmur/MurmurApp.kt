@@ -21,7 +21,7 @@ import dev.murmur.data.LastDictation
 import dev.murmur.data.CloudKeyStore
 import dev.murmur.data.CloudMigration
 import dev.murmur.data.OpenRouter
-import dev.murmur.data.CustomServer
+import dev.murmur.data.LiteLLM
 import dev.murmur.data.CustomModelsKey
 import dev.murmur.data.RouterOpener
 import dev.murmur.data.LoadSet
@@ -286,7 +286,7 @@ class MurmurApp : Application() {
         val out = ArrayList<String>()
         runCatching { dev.load() }.getOrNull()?.token?.takeIf { it.isNotEmpty() }?.let(out::add)
         runCatching { cloudKeys.get(OpenRouter.ID) }.getOrNull()?.let(out::add)
-        runCatching { cloudKeys.get(CustomServer.ID) }.getOrNull()?.let(out::add)
+        runCatching { cloudKeys.get(LiteLLM.ID) }.getOrNull()?.let(out::add)
         return out
     }
 
@@ -690,7 +690,7 @@ class EngineHolder(
      */
     private fun syncCloud(r: NativeMurmurCore) {
         if (!app.caps.cloud) return
-        for (id in listOf(OpenRouter.ID, CustomServer.ID)) app.cloudKeys.get(id)?.let { key ->
+        for (id in listOf(OpenRouter.ID, LiteLLM.ID)) app.cloudKeys.get(id)?.let { key ->
             runCatching { r.setCloudKey(id, key) }.onFailure { Log.w("MurmurEngine", "set_cloud_key: ${it.message}") }
         }
         app.dev.cloudUsageJson?.let { r.setCloudUsage(it) }

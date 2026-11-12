@@ -101,7 +101,7 @@ class SpeechUiTest {
         assumeTrue(app.caps.cloud)
         val a = launch()
         engineRow(a, Route.CLOUD).performClick(); idle()
-        assertEquals(OpenRouterActivity::class.java.name, org.robolectric.Shadows.shadowOf(a).nextStartedActivity.component?.className)
+        assertEquals(CloudActivity::class.java.name, org.robolectric.Shadows.shadowOf(a).nextStartedActivity.component?.className)
         assertFalse(app.dev.load().cloudRouted)
     }
 

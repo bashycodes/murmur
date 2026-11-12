@@ -133,7 +133,7 @@ object CleanupEngines {
     fun cloudLine(d: DevSettings, hasKey: Boolean): String {
         val c = d.cloud
         // D52: a selected LiteLLM that is not usable sends nothing; say so, never "OpenRouter".
-        if (c.customNotSetUp) return CustomServer.NOT_SET_UP
+        if (c.customNotSetUp) return LiteLLM.NOT_SET_UP
         val model = if (c.customProvider) c.customCleanup.model else c.cleanup.model.substringAfter('/')
         return "${c.cleanupProviderName} · Sends text · " + (if (!c.cleanupConsentOk) "asks first" else model) +
             (if (c.customProvider && !c.customCleanup.https) " · unencrypted (http)" else "") +

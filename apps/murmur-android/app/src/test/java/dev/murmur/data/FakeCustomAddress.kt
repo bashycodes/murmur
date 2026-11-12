@@ -22,5 +22,5 @@ object FakeCustomAddress : CustomAddressCheck {
         return CustomAddress(url = "$scheme://$urlHost$port$path", host = host, modelOk = modelOk)
     }
 
-    fun install() { CustomServer.check = this }
+    fun install() { LiteLLM.check = this }
 }

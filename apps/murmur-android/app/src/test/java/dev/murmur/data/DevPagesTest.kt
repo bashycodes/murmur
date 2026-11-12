@@ -69,9 +69,9 @@ class DevPagesTest {
     }
 
     @Test fun rebaseKeepsThisPagesEditsAndTakesTheRestFromTheStore() {
-        // Speech to text / the OpenRouter page saved meanwhile; Server keeps its own edit.
+        // Speech to text / the Cloud page saved meanwhile; Server keeps its own edit.
         val d = DevDraft.of(saved, Page.SERVER).edit { copy(port = "7400") }
-        val stored = OpenRouterPage.enableCleanup(OpenRouterPage.enableStt(saved, 1), 1).copy(allowClient = false, routeOrder = listOf(Route.CLOUD, Route.CLIENT, Route.SERVER))
+        val stored = CloudPage.enableCleanup(CloudPage.enableStt(saved, 1), 1).copy(allowClient = false, routeOrder = listOf(Route.CLOUD, Route.CLIENT, Route.SERVER))
         val r = d.rebase(stored)
         assertEquals("7400", r.draft.port)
         assertTrue(r.draft.allowCloud); assertTrue(r.draft.allowCloudCleanup); assertFalse(r.draft.allowClient)
@@ -101,6 +101,8 @@ class DevPagesTest {
         assertEquals(listOf(DevSettingsForm.NO_HOST, DevSettingsForm.PLAINTEXT, DevSettingsForm.NO_TOKEN), DevPages.warningsFor(Page.SERVER, all))
         // Engines, consent and the cloud's place: on Settings → Speech to text, in its words.
         assertEquals(listOf(DevPages.NO_ENGINE, DevSettingsForm.CLOUD_NO_CONSENT, order), DevPages.speechWarnings(all))
+        // D78: the consent warning names the page by its umbrella name, not one provider.
+        assertEquals("Cloud speech-to-text is on but has no consent: it will be skipped (Cloud page).", DevSettingsForm.CLOUD_NO_CONSENT)
         // every warning is shown somewhere
         for (w in all) assertTrue(w, Page.entries.any { w in DevPages.warningsFor(it, all) } || w in DevPages.speechWarnings(all))
     }
@@ -121,7 +123,7 @@ class DevPagesTest {
     @Test fun enginesListThisBuildsEnginesInStoredOrderWithANewCloudLast() {
         assertEquals(listOf(Route.SERVER, Route.CLIENT, Route.CLOUD), DevPages.engines(saved, caps))
         assertEquals(listOf(Route.CLIENT, Route.SERVER, Route.CLOUD), DevPages.engines(saved.copy(routeOrder = listOf(Route.CLIENT, Route.SERVER)), caps))
-        assertEquals(listOf(Route.CLOUD, Route.SERVER, Route.CLIENT), DevPages.engines(OpenRouterPage.enableStt(saved, 1), caps))
+        assertEquals(listOf(Route.CLOUD, Route.SERVER, Route.CLIENT), DevPages.engines(CloudPage.enableStt(saved, 1), caps))
         assertEquals(listOf(Route.CLIENT), DevPages.engines(saved, BuildCaps.LOCAL))
         assertEquals(listOf(Route.SERVER, Route.CLOUD), DevPages.engines(saved, BuildCaps.REMOTE))
     }
@@ -130,7 +132,7 @@ class DevPagesTest {
         assertTrue(DevPages.engineOn(saved, Route.SERVER)); assertTrue(DevPages.engineOn(saved, Route.CLIENT)); assertFalse(DevPages.engineOn(saved, Route.CLOUD))
         assertFalse(DevPages.withEngine(saved, Route.SERVER, false).allowServer)
         assertFalse(DevPages.withEngine(saved, Route.CLIENT, false).allowClient)
-        val on = OpenRouterPage.enableStt(DevPages.placeCloud(saved, caps), 5)
+        val on = CloudPage.enableStt(DevPages.placeCloud(saved, caps), 5)
         assertTrue(DevPages.engineOn(on, Route.CLOUD))
         // Turned on from its listed place (3rd), it stays 3rd instead of jumping to the top.
         assertEquals(listOf(Route.SERVER, Route.CLIENT, Route.CLOUD), on.routeOrder)
@@ -169,7 +171,7 @@ class DevPagesTest {
         assertEquals("Speech off · Cleanup off", DevSummary.cloud(saved, caps, hasKey = true))
         val noConsent = saved.copy(allowCloud = true, routeOrder = DevSettings.withCloudFirst(saved.routeOrder))
         assertEquals("Speech on, no consent · Cleanup off · no key", DevSummary.cloud(noConsent, caps, hasKey = false))
-        val ok = OpenRouterPage.enableStt(saved, 1).let { it.copy(cloud = it.cloud.copy(monthlyBudgetUsd = 5.0)) }
+        val ok = CloudPage.enableStt(saved, 1).let { it.copy(cloud = it.cloud.copy(monthlyBudgetUsd = 5.0)) }
         assertEquals("Speech on · Cleanup off · budget \$5.00", DevSummary.cloud(ok, caps, hasKey = true))
     }
 

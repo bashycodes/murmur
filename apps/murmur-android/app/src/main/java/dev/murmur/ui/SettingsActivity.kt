@@ -306,16 +306,16 @@ class SettingsActivity : Activity() {
             // `remote` has no on-device AI: its cleanup is OpenRouter's (D28).
             val cleanup = when (val d = ShellPages.cleanupDest(caps)) {
                 is ShellPages.Dest.Page -> rowCard("AI cleanup") { open(d.page) }
-                ShellPages.Dest.OpenRouter -> rowCard("AI cleanup") { OpenRouterActivity.open(this@SettingsActivity) }
+                ShellPages.Dest.Cloud -> rowCard("AI cleanup") { CloudActivity.open(this@SettingsActivity) }
                 null -> null
             }
 
             var server: DevUi.NavRow? = null
-            var openRouter: DevUi.NavRow? = null
+            var cloudRow: DevUi.NavRow? = null
             if (caps.remote || caps.cloud) {
                 sectionLabel("Connections")
                 if (caps.remote) server = rowCard("Your server") { DeveloperActivity.open(this@SettingsActivity, DevPages.Page.SERVER) }
-                if (caps.cloud) openRouter = rowCard(OpenRouterActivity.TITLE) { OpenRouterActivity.open(this@SettingsActivity) }
+                if (caps.cloud) cloudRow = rowCard(CloudActivity.TITLE) { CloudActivity.open(this@SettingsActivity) }
             }
 
             sectionLabel("Data & privacy")
@@ -346,7 +346,7 @@ class SettingsActivity : Activity() {
                     serverLlm = if (d.serverConfigured) app.engine.router()?.cleanupStatus()?.serverLlm else null,
                 ))
                 server?.setSubtitle(SettingsSummary.server(d, caps, health, checking))
-                openRouter?.setSubtitle(
+                cloudRow?.setSubtitle(
                     SettingsSummary.cloud(d, app.cloudKeys.has(OpenRouter.ID), CloudUsage.decode(app.engine.router()?.cloudUsageJson() ?: app.dev.cloudUsageJson)),
                 )
                 history.setSubtitle(SettingsSummary.keepHistory(s.retention))
