@@ -52,6 +52,8 @@ pub mod outcome {
     /// Mic or session start failed.
     pub const START_FAILED: &str = "start_failed";
     pub const CANCELLED: &str = "cancelled";
+    /// A Command Mode question: the answer was shown, nothing inserted.
+    pub const ANSWERED: &str = "answered";
 }
 
 /// `insert`: `{"outcome": …, "steps": […]}`. Steps = the paste plan that

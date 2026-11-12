@@ -257,17 +257,20 @@ impl Policy {
         self.max_ms * 16
     }
 
-    /// How long the card for `answer` stays up: reading time at about 15
-    /// characters a second, between [`Policy::answer_min_ms`] and
+    /// How long the card for `answer` stays up: reading time at
+    /// [`READ_CHARS_PER_SEC`], between [`Policy::answer_min_ms`] and
     /// [`ANSWER_MAX_MS`].
     pub fn answer_linger_ms(&self, answer: &str) -> u64 {
-        let read = answer.chars().count() as u64 * 1000 / 15;
+        let read = answer.chars().count() as u64 * 1000 / READ_CHARS_PER_SEC;
         read.clamp(self.answer_min_ms, ANSWER_MAX_MS.max(self.answer_min_ms))
     }
 }
 
 /// Longest an answer card stays up on its own (Esc closes it sooner).
 pub const ANSWER_MAX_MS: u64 = 60_000;
+
+/// Reading speed an answer card allows for (characters a second).
+pub const READ_CHARS_PER_SEC: u64 = 15;
 
 /// Pill text of a transform shortcut pressed with nothing selected.
 pub const TRANSFORM_NO_SELECTION: &str = "Select text to transform";

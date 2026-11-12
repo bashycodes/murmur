@@ -468,6 +468,14 @@ impl Controller {
             } if self.debug_on() && self.current_session() == Some(*session) => {
                 self.debug_emit(*session, outcome::ERROR, Some(message.clone()));
             }
+            Input::CommandAnswered { session, answer }
+                if self.current_session() == Some(*session) =>
+            {
+                if self.debug_on() {
+                    self.debug_emit(*session, outcome::ANSWERED, None);
+                }
+                self.record_answer(*session, answer);
+            }
             _ => {}
         }
         let tick = input == Input::Tick;
@@ -598,20 +606,9 @@ impl Controller {
     /// Store the history row once the paste outcome is known, then watch
     /// the field for corrections.
     fn record(&self, session: SessionId, paste: &Result<(), String>) {
-        // The row needs the app: a field snapshot still running under load
-        // would otherwise leave it without one (and a retry with no app).
-        let snapshot = self
-            .shared
-            .sessions
-            .lock()
-            .unwrap()
-            .get(&session)
-            .and_then(|i| i.context_done.clone());
-        if let Some(done) = snapshot {
-            let _ = done.wait(CONTEXT_WAIT);
-        }
-        let info = self.shared.sessions.lock().unwrap().remove(&session);
-        let Some(info) = info else { return };
+        let Some(info) = self.take_session(session) else {
+            return;
+        };
         // Cancelled before anything was inserted: the user dropped it.
         if paste.as_ref().err().map(String::as_str) == Some(PASTE_CANCELLED) {
             return;
@@ -629,6 +626,45 @@ impl Controller {
             }
             return;
         }
+        self.record_dictation(info, paste);
+    }
+
+    /// History row of a question Command Mode answered: the answer as
+    /// the result, nothing pasted.
+    fn record_answer(&self, session: SessionId, answer: &str) {
+        let Some(info) = self.take_session(session) else {
+            return;
+        };
+        let Some(mut cmd) = info.command else { return };
+        cmd.result = Some(answer.to_string());
+        self.record_command(
+            cmd,
+            info.context,
+            &info.samples,
+            info.result.as_ref(),
+            &Err(ANSWERED.to_string()),
+        );
+    }
+
+    /// Remove a finished session's facts, once its field snapshot is done.
+    fn take_session(&self, session: SessionId) -> Option<SessionInfo> {
+        // The row needs the app: a field snapshot still running under load
+        // would otherwise leave it without one (and a retry with no app).
+        let snapshot = self
+            .shared
+            .sessions
+            .lock()
+            .unwrap()
+            .get(&session)
+            .and_then(|i| i.context_done.clone());
+        if let Some(done) = snapshot {
+            let _ = done.wait(CONTEXT_WAIT);
+        }
+        self.shared.sessions.lock().unwrap().remove(&session)
+    }
+
+    /// History row (and insights, learn-from-edits) of a dictation.
+    fn record_dictation(&self, info: SessionInfo, paste: &Result<(), String>) {
         let Some(r) = info.result else { return };
         let plain = r.plain();
         // Auto-apply: what was pasted is the transform's text.
@@ -729,7 +765,10 @@ impl Controller {
     ) {
         let Some(result) = cmd.result else { return };
         let plain = crate::paste::plain_text(&result);
-        *self.shared.last_text.lock().unwrap() = Some(plain.clone());
+        // An answer is not text to paste again ("paste last transcript").
+        if paste.as_ref().err().map(String::as_str) != Some(ANSWERED) {
+            *self.shared.last_text.lock().unwrap() = Some(plain.clone());
+        }
         let Some(h) = &self.history else { return };
         let ctx = ctx.unwrap_or_default();
         let entry = history::Entry {
@@ -1752,6 +1791,9 @@ pub const SELECTION_FAILED: &str = "Couldn't read the selected text";
 /// Command Mode: the selection changed while the AI worked.
 pub const SELECTION_CHANGED: &str = "Selection changed: text left unchanged";
 
+/// The "paste" outcome of a Command Mode answer: shown, never pasted.
+pub const ANSWERED: &str = "answered";
+
 /// Command Mode, before a rewrite replaces `original` (the selection the
 /// command ran on): `read_now` reads the selection again, and anything
 /// but the same text (another selection, none, a read error) is
@@ -2704,7 +2746,20 @@ mod tests {
         assert_eq!(reads, 1, "nothing is replaced, so nothing is re-read");
         assert!(matches!(r.c.machine().phase(), Phase::Answer { .. }));
         assert!(!log.contains(&"play Error".to_string()));
-        assert!(history_latest(&r).is_none(), "nothing was written");
+        let e = history_latest(&r).expect("history row of the answer");
+        assert!(e.command);
+        assert_eq!(e.raw, "[stub: 1.0 s of audio]", "the instruction");
+        assert_eq!(e.original.as_deref(), Some("cant come tmrw"));
+        assert_eq!(
+            e.formatted.as_deref(),
+            Some("It says they cannot come tomorrow.")
+        );
+        assert_eq!(e.pasted, None, "nothing was written");
+        assert_eq!(
+            *r.c.shared.last_text.lock().unwrap(),
+            None,
+            "an answer is not pasted again"
+        );
         // Esc closes the card.
         r.at(2000, Input::Hotkey(HotkeyAction::Cancel));
         assert_eq!(r.c.machine().phase(), &Phase::Idle);

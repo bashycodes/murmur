@@ -95,9 +95,26 @@ pub enum CommandOutput {
     Answer(String),
 }
 
+impl CommandOutput {
+    /// The text or the answer, whichever it is.
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Text(t) | Self::Answer(t) => t,
+        }
+    }
+
+    /// The text or the answer, whichever it is, owned.
+    pub fn into_text(self) -> String {
+        match self {
+            Self::Text(t) | Self::Answer(t) => t,
+        }
+    }
+}
+
 /// The fixed marker an answer to a question starts with (both prompts
 /// ask for it). Matched case-insensitively, spaces inside the brackets
-/// allowed, but only as the very start of the reply ([`parse_answer`]).
+/// allowed: [`parse_answer`] reads it at the very start of the reply,
+/// and [`run`] never writes a reply that carries it anywhere.
 pub const ANSWER_MARKER: &str = "[ANSWER]";
 
 /// `[ANSWER]` (any case, inner spaces, an optional ":") at the start.
@@ -105,11 +122,51 @@ static MARKER: LazyLock<regex::Regex> =
     LazyLock::new(|| regex::Regex::new(r"(?i)^\s*\[\s*answer\s*\]\s*:?").unwrap());
 
 /// The answer of a reply that starts with [`ANSWER_MARKER`] (trimmed,
-/// possibly empty), `None` when the reply is not marked: a marker later
-/// in the text or a broken one (`[ANSWER`, `ANSWER]`) is not a marker,
-/// and the reply is an ordinary rewrite.
+/// possibly empty), `None` when the reply does not start with it (a
+/// broken marker, `[ANSWER` or `ANSWER]`, is never one). [`run`] also
+/// looks past a fence, quotes or a preamble, and anywhere in the reply.
 pub fn parse_answer(raw: &str) -> Option<&str> {
     MARKER.find(raw).map(|m| raw[m.end()..].trim())
+}
+
+/// `[ANSWER]` anywhere (any case, inner spaces, an optional ":").
+static MARKER_ANYWHERE: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"(?i)\[+\s*answer\s*\]+\s*:?").unwrap());
+
+/// Whether a command may read `raw` as an answer ([`Replies`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Replies {
+    /// Transforms: the reply is always text to write.
+    TextOnly,
+    /// Command Mode: a reply carrying [`ANSWER_MARKER`] is an answer.
+    MayAnswer,
+}
+
+/// Classify a Command Mode reply. The marker is looked for after
+/// [`sanitize`] has taken off a code fence, wrapping quotes or a "Here's
+/// …:" preamble, and then anywhere in the reply ("Sure! [ANSWER] …"): a
+/// reply that carries it is never written into the field. The answer is
+/// what follows the first marker (what precedes it when nothing does).
+/// Only when the selection itself contains the marker may a rewrite keep
+/// it, and then only a reply that starts with it is an answer.
+fn classify(raw: &str, selected: Option<&str>) -> CommandOutput {
+    if let Some(a) = parse_answer(raw) {
+        return CommandOutput::Answer(sanitize(a, None));
+    }
+    let sel_has_marker = selected.is_some_and(|s| MARKER_ANYWHERE.is_match(s));
+    if !sel_has_marker {
+        let bare = sanitize(raw, None);
+        if let Some(m) = MARKER_ANYWHERE.find(&bare) {
+            let after = bare[m.end()..].trim();
+            let a = if after.is_empty() {
+                bare[..m.start()].trim()
+            } else {
+                after
+            };
+            return CommandOutput::Answer(sanitize(a, None));
+        }
+    }
+    CommandOutput::Text(sanitize(raw, selected))
 }
 
 /// How a refusal names where text would go: the backend's
@@ -367,7 +424,7 @@ pub fn run(
         selected,
         lock,
         timeout,
-        true,
+        Replies::MayAnswer,
     )
 }
 
@@ -409,35 +466,31 @@ pub(crate) fn ask(
     lock: Option<Script>,
     timeout: Duration,
 ) -> Result<String, CommandError> {
-    match ask_marked(cl, prompt, selected, lock, timeout, false)? {
-        CommandOutput::Text(t) | CommandOutput::Answer(t) => Ok(t),
-    }
+    ask_marked(cl, prompt, selected, lock, timeout, Replies::TextOnly).map(CommandOutput::into_text)
 }
 
-/// [`ask`], and with `answers` a reply marked with [`ANSWER_MARKER`] is a
-/// [`CommandOutput::Answer`]: sanitised on its own and not held to the
-/// selection's script (it is not written into the text).
+/// [`ask`], and with [`Replies::MayAnswer`] a reply carrying
+/// [`ANSWER_MARKER`] is a [`CommandOutput::Answer`] ([`classify`]): not
+/// held to the selection's script (it is not written into the text).
 fn ask_marked(
     cl: Arc<dyn Cleaner>,
     prompt: CleanPrompt,
     selected: Option<&str>,
     lock: Option<Script>,
     timeout: Duration,
-    answers: bool,
+    replies: Replies,
 ) -> Result<CommandOutput, CommandError> {
     let deadline = Instant::now() + timeout;
-    let read = |raw: String| match parse_answer(&raw).filter(|_| answers) {
-        Some(a) => CommandOutput::Answer(sanitize(a, None)),
-        None => CommandOutput::Text(sanitize(&raw, selected)),
+    let read = |raw: String| match replies {
+        Replies::MayAnswer => classify(&raw, selected),
+        Replies::TextOnly => CommandOutput::Text(sanitize(&raw, selected)),
     };
     let mut out = read(ask_once(&cl, prompt.clone(), deadline, timeout)?);
     let drifted = |o: &CommandOutput, s: Script| match o {
         CommandOutput::Text(t) => script_lock::drifted(s, t),
         CommandOutput::Answer(_) => false,
     };
-    if let Some(s) = lock.filter(|s| {
-        matches!(&out, CommandOutput::Text(t) if !t.trim().is_empty()) && drifted(&out, *s)
-    }) {
+    if let Some(s) = lock.filter(|s| !out.as_str().trim().is_empty() && drifted(&out, *s)) {
         if deadline.saturating_duration_since(Instant::now()) < MIN_RETRY {
             return Err(CommandError::LanguageChanged);
         }
@@ -450,8 +503,7 @@ fn ask_marked(
             return Err(CommandError::LanguageChanged);
         }
     }
-    let (CommandOutput::Text(t) | CommandOutput::Answer(t)) = &out;
-    if t.trim().is_empty() {
+    if out.as_str().trim().is_empty() {
         return Err(CommandError::Empty);
     }
     Ok(out)
@@ -1073,12 +1125,79 @@ mod tests {
             "[ANSWER It means hello.",
             "ANSWER] It means hello.",
             "[ANSWR] It means hello.",
-            "[[ANSWER]] It means hello.",
-            "It means hello. [ANSWER]",
-            "Sure! [ANSWER] It means hello.",
         ] {
             assert_eq!(parse_answer(raw), None, "{raw:?}");
+            // A broken marker is a rewrite.
+            let f = Fake::ok(raw);
+            assert!(
+                matches!(
+                    run(dynamic(&f), "fix this", Some("hello"), T),
+                    Ok(CommandOutput::Text(_))
+                ),
+                "{raw:?}"
+            );
         }
+    }
+
+    /// The reply as `run` reads it for a question about "can we do friday".
+    fn asked(reply: &'static str) -> Result<CommandOutput, CommandError> {
+        run(
+            dynamic(&Fake::ok(reply)),
+            "what does this mean",
+            Some("can we do friday"),
+            T,
+        )
+    }
+
+    #[test]
+    fn a_fenced_answer_is_still_an_answer() {
+        assert_eq!(
+            asked("```\n[ANSWER] It asks to move the meeting.\n```"),
+            Ok(CommandOutput::Answer("It asks to move the meeting.".into()))
+        );
+    }
+
+    #[test]
+    fn a_quoted_answer_is_still_an_answer() {
+        assert_eq!(
+            asked("\"[ANSWER] It asks to move the meeting.\""),
+            Ok(CommandOutput::Answer("It asks to move the meeting.".into()))
+        );
+    }
+
+    #[test]
+    fn an_answer_after_a_preamble_is_still_an_answer() {
+        assert_eq!(parse_answer("Sure! [ANSWER] It asks to move it."), None);
+        for reply in [
+            "Sure! [ANSWER] It asks to move the meeting.",
+            "Here's the answer: [ANSWER] It asks to move the meeting.",
+        ] {
+            assert_eq!(
+                asked(reply),
+                Ok(CommandOutput::Answer("It asks to move the meeting.".into())),
+                "{reply:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_reply_carrying_the_marker_is_never_written() {
+        // Marker at the end: the text before it is the answer.
+        assert_eq!(
+            asked("It asks to move the meeting. [ANSWER]"),
+            Ok(CommandOutput::Answer("It asks to move the meeting.".into()))
+        );
+        assert_eq!(parse_answer("[[ANSWER]] It asks to move it."), None);
+        assert_eq!(
+            asked("[[ANSWER]] It asks to move the meeting."),
+            Ok(CommandOutput::Answer("It asks to move the meeting.".into()))
+        );
+        // Unless the selection has the marker itself.
+        let f = Fake::ok("Q1 [ANSWER] Friday works.");
+        assert_eq!(
+            run(dynamic(&f), "fix this", Some("q1 [answer] friday works"), T),
+            Ok(CommandOutput::Text("Q1 [ANSWER] Friday works.".into()))
+        );
     }
 
     #[test]
