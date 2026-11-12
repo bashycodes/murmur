@@ -22,6 +22,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Fixed
 
+- **AI cleanup and Command Mode drop a reasoning model's `<think>…</think>` text** (also an unfinished `<think>…` at the end) before using the answer, so a LiteLLM or custom server in front of a reasoning model no longer types its reasoning into the field.
 - **Android: Developer settings → Status & server info: the cleanup section is "Cloud cleanup"**, not "Cloud cleanup (OpenRouter)", since its status covers LiteLLM too.
 - **Android: the Speech to text warning for cloud speech without consent points to the Cloud page** (it said "OpenRouter page").
 - **Android: the bubble no longer covers Murmur's own screens** (such as the reorder arrows under Settings → Speech to text → Change order): it hides on every Murmur screen in full screen, except the note editor and a dictation already running.

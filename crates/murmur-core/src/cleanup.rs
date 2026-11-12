@@ -1557,6 +1557,22 @@ static POSTAMBLE: LazyLock<regex::Regex> = LazyLock::new(|| {
         .unwrap()
 });
 
+/// A reasoning model's `<think>…</think>` block, or an unterminated one that
+/// runs to the end of the answer (cut off by the token cap or the deadline).
+static THINK: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"(?is)<think>.*?(?:</think>|\z)").unwrap());
+
+/// A raw model answer without its reasoning: every `<think>…</think>`
+/// block and an unterminated trailing `<think>…` are removed. Servers that
+/// pass reasoning through as text (a custom server or LiteLLM in front of a
+/// reasoning model) put it in the answer; OpenRouter is asked not to
+/// (`include_reasoning: false`), and stripping there too is harmless. Used
+/// by every path that takes a model answer as text: dictation cleanup
+/// ([`unwrap_output`]), Command Mode and summaries.
+pub fn strip_think(s: &str) -> std::borrow::Cow<'_, str> {
+    THINK.replace_all(s, "")
+}
+
 /// Strip preamble/commentary, then one layer of wrapping quotes or guillemets.
 pub fn unwrap_output(s: &str) -> String {
     unwrap_output_inner(s, false, None)
@@ -1586,6 +1602,7 @@ fn plain_words(s: &str) -> Vec<String> {
 }
 
 fn unwrap_output_inner(s: &str, keep_quotes: bool, input: Option<&str>) -> String {
+    let s = strip_think(s);
     let t = POSTAMBLE.replace(s.trim(), "");
     let dictated = |m: &str| {
         let label = plain_words(m);
@@ -2433,6 +2450,48 @@ mod tests {
         ] {
             assert_eq!(unwrap_output(raw), want, "{raw:?}");
         }
+    }
+
+    #[test]
+    fn think_blocks_are_stripped() {
+        for (raw, want) in [
+            // Closed block before the real text.
+            (
+                "<think>The user wants filler removed.</think>Meet at 3 PM.",
+                "Meet at 3 PM.",
+            ),
+            // Closed block in the middle, any case, across lines.
+            (
+                "Bring the cups.<THINK>\nmaybe a list?\n</Think> Bring the ice.",
+                "Bring the cups. Bring the ice.",
+            ),
+            // Unterminated trailing block (cut off mid-thought).
+            (
+                "Water the plants.<think>Should I add a",
+                "Water the plants.",
+            ),
+            // Nothing to strip.
+            ("The bus was on time.", "The bus was on time."),
+            // Only reasoning: nothing is left.
+            ("<think>hmm</think>", ""),
+        ] {
+            assert_eq!(strip_think(raw).trim(), want, "{raw:?}");
+        }
+    }
+
+    #[test]
+    fn a_think_block_at_the_start_never_reaches_the_answer() {
+        let raw =
+            "<think>\nThe speaker said um twice. Remove them.\n</think>\n\n\"Lunch is at noon.\"";
+        assert_eq!(unwrap_output(raw), "Lunch is at noon.");
+        assert_eq!(
+            unwrap_output_for(raw, "um lunch is um at noon"),
+            "Lunch is at noon."
+        );
+        assert_eq!(
+            unwrap_output("Lunch is at noon.<think>or 1 PM"),
+            "Lunch is at noon."
+        );
     }
 
     #[test]
