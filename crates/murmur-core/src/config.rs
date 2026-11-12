@@ -402,6 +402,16 @@ pub struct ModelConfig {
     /// Omitted from JSON when `None`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lid_path: Option<String>,
+    /// Path of a GPU build of the `murmur-whisper` plugin (feature
+    /// `whisper-plugin`; murmur-server's CUDA image sets
+    /// `libmurmur_whisper_cuda.so`, D84). When set, every whisper ASR model
+    /// (the default and each `languages` entry; not `lid_path`) loads
+    /// through it first; a plugin that does not load (no driver) means the
+    /// built-in CPU whisper.cpp, and [`crate::load_timings::LoadTimings`] says why
+    /// (`gpu_error`). `None` (default) = built-in whisper only. Omitted
+    /// from JSON when `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub whisper_lib: Option<String>,
 }
 
 fn is_auto(d: &ParakeetDecoding) -> bool {
@@ -558,6 +568,7 @@ impl Default for ModelConfig {
             parakeet_decoding: ParakeetDecoding::Auto,
             languages: BTreeMap::new(),
             lid_path: None,
+            whisper_lib: None,
         }
     }
 }

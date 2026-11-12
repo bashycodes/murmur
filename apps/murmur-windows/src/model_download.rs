@@ -279,6 +279,24 @@ pub const CATALOG: &[CatalogEntry] = &[
         extras: &[],
         files: &[model_file!(whisper_base!(), "ggml-small.en-q5_1.bin", 190_098_681, "bfdff4894dcb76bbf647d56263ea2a96645423f1669176f4844a1bf8e478ad30")],
     },
+    // Stock large-v3-turbo (D84): the multilingual whisper for a GPU, on a
+    // PC (Vulkan) or as murmur-server's main or per-language engine (CUDA
+    // image). About 25 s per clip on a 4-core CPU (docs/model-benchmarks.md).
+    // Pinned 2026-11-12 from the HF API's LFS id (no download).
+    CatalogEntry {
+        id: "whisper-large-v3-turbo-q5_0",
+        title: "Whisper large-v3 turbo",
+        desc: "Many languages · most accurate · needs a GPU; slow on the CPU",
+        engine: ModelEngine::Whisper,
+        dest: "ggml-large-v3-turbo-q5_0.bin",
+        page: "https://huggingface.co/ggerganov/whisper.cpp",
+        recommended: false,
+        recommended_gpu: false,
+        language: None,
+        license: Some("MIT · OpenAI Whisper, ggml by ggerganov/whisper.cpp"),
+        extras: &[],
+        files: &[model_file!(whisper_base!(), "ggml-large-v3-turbo-q5_0.bin", 574_041_195, "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2")],
+    },
     CatalogEntry {
         id: ZIPFORMER_HE_ID,
         title: "Zipformer Hebrew",
@@ -1082,7 +1100,7 @@ mod tests {
 
     #[test]
     fn catalogue_is_pinned_to_hugging_face_commits() {
-        assert_eq!(CATALOG.len(), 14);
+        assert_eq!(CATALOG.len(), 15);
         let mut ids = std::collections::HashSet::new();
         for e in CATALOG {
             assert!(ids.insert(e.id), "duplicate id {}", e.id);

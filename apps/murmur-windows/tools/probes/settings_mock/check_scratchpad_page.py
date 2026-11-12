@@ -82,7 +82,9 @@ with sync_playwright() as p:
     pg.click('.lw-sidebar [data-page="notetaker"]')
     pg.wait_for_timeout(100)
     check(pg.is_visible("#page_notetaker"), "Notetaker preview page shown")
-    check(pg.is_visible("#page_notetaker .fl-badge"), "preview has its Coming later badge")
+    check(pg.is_visible("#page_notetaker .fl-badge")
+          and pg.inner_text("#page_notetaker .fl-badge").strip() == "Coming later",
+          "preview has its Coming later badge")
     meet = sorted({c[0] for c in pg.evaluate("window.__mockCalls") if c[0].startswith("meeting_")})
     check(meet == [], f"no meeting commands called: {meet}")
     check(pg.eval_on_selector('[data-edit="meeting"]', "e => e.closest('.fl-row').hidden"), "meeting shortcut row hidden")

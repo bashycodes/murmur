@@ -82,15 +82,19 @@ data class DevSettings(
     val prefer: Prefer
         get() = if (routeOrder.firstOrNull { it == Route.SERVER || it == Route.CLIENT } == Route.CLIENT) Prefer.CLIENT else Prefer.SERVER
 
+    /** D78: these settings with cloud speech off when LiteLLM is the Cloud provider ([CloudSettings.sttAvailable]; its consent is kept). */
+    fun oneCloudProvider(): DevSettings = if (allowCloud && !cloud.sttAvailable) copy(allowCloud = false) else this
+
     /**
      * Toggles AND build capability (§1.3 "effective flags"); public hosts force TLS (§2.6).
-     * A build without the cloud client sends the router no cloud settings at all (C2).
+     * A build without the cloud client sends the router no cloud settings at all (C2). D78: no
+     * cloud speech while LiteLLM is the Cloud provider ([oneCloudProvider]).
      */
     fun effective(caps: BuildCaps) = copy(
         allowServer = allowServer && caps.remote,
         allowClient = allowClient && caps.local,
         tls = tls || (host.isNotEmpty() && HostRules.classify(host) == HostRules.AddrClass.PUBLIC),
-        allowCloud = allowCloud && caps.cloud,
+        allowCloud = oneCloudProvider().allowCloud && caps.cloud,
         routeOrder = if (caps.cloud) routeOrder else routeOrder - Route.CLOUD,
         cloud = if (caps.cloud) cloud else CloudSettings(),
         allowCloudCleanup = allowCloudCleanup && caps.cloud,
@@ -440,7 +444,7 @@ object DevSettingsForm {
         val healthTtlS: String,
         val keepLocalWarm: Boolean,
         val showEngineBadge: Boolean,
-        /** The cloud part is edited on the OpenRouter page (applies at once); the form passes it through. */
+        /** The cloud part is edited on the Cloud page (applies at once); the form passes it through. */
         val allowCloud: Boolean = false,
         val cloud: CloudSettings = CloudSettings(),
         val allowCloudCleanup: Boolean = false,
@@ -467,9 +471,9 @@ object DevSettingsForm {
     }
 
     const val BOTH_OFF = "Dictation disabled: turn on Allow server or Allow client."
-    const val NO_HOST = "Server enabled but no host set: dictation will use the client (or fail if the client is off)."
+    const val NO_HOST = "Your server is on but has no address yet: dictation skips it and uses the next engine that is on, such as this phone."
     const val PLAINTEXT = "Unencrypted (ws://): OK only on your LAN or over an encrypted VPN."
-    const val CLOUD_NO_CONSENT = "Cloud speech-to-text is on but has no consent: it will be skipped (OpenRouter page)."
+    const val CLOUD_NO_CONSENT = "Cloud speech-to-text is on but has no consent: it will be skipped (Cloud page)."
     const val CLOUD_NOT_IN_ORDER = "Cloud allowed but not in the route order: it will not be used."
     const val NO_TOKEN = "No token: a server with auth (the default) will reject the connection."
 

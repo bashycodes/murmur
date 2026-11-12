@@ -98,6 +98,52 @@ fn missing_silero_model_is_model_not_found() {
     }
 }
 
+/// D84: a GPU plugin that does not load (the CUDA image without the NVIDIA
+/// runtime: no libcuda.so.1) leaves the model on the built-in CPU
+/// whisper.cpp, and the load says so; without `whisper_lib` nothing is
+/// reported.
+#[test]
+fn a_whisper_plugin_that_does_not_load_falls_back_to_the_cpu() {
+    let Some((model, _)) = fixture() else {
+        return;
+    };
+    let cfg = ModelConfig {
+        asr_backend: AsrBackend::Whisper,
+        asr_path: model.to_string_lossy().into(),
+        threads: 2,
+        whisper_lib: Some("/nonexistent/libmurmur_whisper_cuda.so".into()),
+        ..Default::default()
+    };
+    let core = MurmurCore::load_models(&cfg).expect("CPU fallback loads");
+    let asr = &core.load_timings().models[0];
+    let on = asr.runs_on.as_ref().expect("a plugin was asked for");
+    assert!(!on.is_gpu(), "{on:?}");
+    let why = on.gpu_error.as_deref().unwrap_or_default();
+    // A build without the plugin loader says so instead of trying the path.
+    let expected = if cfg!(feature = "whisper-plugin") {
+        "libmurmur_whisper_cuda.so"
+    } else {
+        "whisper-plugin"
+    };
+    assert!(why.contains(expected), "{why}");
+    // It still transcribes (a synthetic tone; the words do not matter).
+    core.start_session(SessionConfig::default()).unwrap();
+    let tone: Vec<i16> = (0..16_000 * 2)
+        .map(|i| ((i as f32 * 440.0 * std::f32::consts::TAU / 16_000.0).sin() * 8_000.0) as i16)
+        .collect();
+    core.push_audio(&tone);
+    let r = core.commit();
+    assert_ne!(r.status, CommitStatus::Error, "{r:?}");
+
+    let plain = MurmurCore::load_models(&ModelConfig {
+        whisper_lib: None,
+        ..cfg
+    })
+    .unwrap();
+    let asr = &plain.load_timings().models[0];
+    assert_eq!(asr.runs_on, None);
+}
+
 /// Runs only when a Silero model is present (`MURMUR_SILERO_MODEL` or
 /// `models/ggml-silero-v5.1.2.bin`; never downloaded by tests).
 #[test]

@@ -24,6 +24,9 @@
 #                 (+ Llama 3.2 3B and Gemma 3 12B for GPUs, Qwen2.5 0.5B;
 #                 10.9 GB), none.
 # --only LIST     only these model folders (comma-separated ids), e.g. a test.
+# --gpu-models    also the speech models only worth it on an NVIDIA GPU
+#                 (D84: stock whisper-large-v3-turbo-q5_0, 574 MB); left out
+#                 by default.
 # --android-run ID, --windows-run ID   use these CI runs instead.
 # --allow-stale   accept a CI run older than the commit even when the app's
 #                 files changed since (default: refuse).
@@ -53,6 +56,10 @@ HERE="$ROOT/tools/bundle"
 SOURCE="" OUT="$ROOT/dist/colleague-bundle" LLM=default ONLY="" CACHES=()
 ANDROID_RUN="" WINDOWS_RUN="" ALLOW_STALE=0 SERVER_TARGET="" NO_SERVER=0
 NO_ZIP=0 NO_FETCH=0 DRY=0 NO_IMAGE=0 SHERPA_LIB="${SHERPA_ONNX_LIB_DIR:-}"
+GPU_MODELS=0
+# Catalogue speech models bundled only with --gpu-models (D84): on a CPU
+# they are too slow to be anyone's pick.
+GPU_ONLY=",whisper-large-v3-turbo-q5_0,"
 
 die() { echo "colleague-bundle.sh: $*" >&2; exit 1; }
 say() { echo "== $*"; }
@@ -63,6 +70,7 @@ while [ $# -gt 0 ]; do
     --cache) CACHES+=("${2:?--cache DIR}"); shift ;;
     --llm) LLM="${2:?--llm default|all|none}"; shift ;;
     --only) ONLY="${2:?--only LIST}"; shift ;;
+    --gpu-models) GPU_MODELS=1 ;;
     --android-run) ANDROID_RUN="${2:?}"; shift ;;
     --windows-run) WINDOWS_RUN="${2:?}"; shift ;;
     --allow-stale) ALLOW_STALE=1 ;;
@@ -73,7 +81,7 @@ while [ $# -gt 0 ]; do
     --no-zip) NO_ZIP=1 ;;
     --no-fetch) NO_FETCH=1 ;;
     --dry-run) DRY=1 ;;
-    -h|--help) sed -n '2,47p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,50p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown option: $1" ;;
   esac
   shift
@@ -113,8 +121,9 @@ g show "$COMMIT:apps/murmur-windows/src/core_adapter.rs" > "$WORK/core_adapter.r
 python3 -I "$HERE/models_manifest.py" "$WORK/list.txt" "$WORK/catalog.rs" "$WORK/core_adapter.rs" > "$WORK/all.tsv"
 NOTETAKER=0
 grep -q $'\tdiarizer\t' "$WORK/all.tsv" && NOTETAKER=1
-awk -F'\t' -v llm="$LLM" -v only=",$ONLY," '
+awk -F'\t' -v llm="$LLM" -v only=",$ONLY," -v gpu="$GPU_MODELS" -v gpuonly="$GPU_ONLY" '
   only != ",," { if (index(only, "," $1 ",")) print; next }
+  gpu != 1 && index(gpuonly, "," $1 ",") { next }
   $2 != "llm" { print; next }
   llm == "all" || (llm == "default" && $1 == "qwen2.5-1.5b-instruct-q4_k_m") { print }
 ' "$WORK/all.tsv" > "$WORK/models.tsv"

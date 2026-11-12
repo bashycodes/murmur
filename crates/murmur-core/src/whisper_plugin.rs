@@ -18,7 +18,7 @@
 use std::ffi::{c_char, CStr, CString};
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use libloading::{Library, Symbol};
 
@@ -67,51 +67,7 @@ pub enum WhisperPluginError {
     Backend(String),
 }
 
-/// Where a whisper model runs, from the plugin's JSON (`murmur_whisper_info`
-/// or `murmur_whisper_backends`).
-#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-pub struct WhisperBackend {
-    /// "Vulkan", "CPU", …
-    pub backend: String,
-    /// The GPU's name, or "CPU".
-    pub device: String,
-    /// Set when a GPU was found but failed and the CPU took over.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub gpu_error: Option<String>,
-}
-
-impl WhisperBackend {
-    pub fn from_info(json: &str) -> Option<Self> {
-        let v: serde_json::Value = serde_json::from_str(json).ok()?;
-        let backend = v.get("backend")?.as_str()?.to_string();
-        Some(Self {
-            device: v
-                .get("device")
-                .and_then(|d| d.as_str())
-                .unwrap_or(&backend)
-                .to_string(),
-            gpu_error: v
-                .get("gpu_error")
-                .and_then(|e| e.as_str())
-                .map(str::to_string),
-            backend,
-        })
-    }
-
-    /// The CPU (the built-in engine, or the plugin without a GPU).
-    pub fn cpu() -> Self {
-        Self {
-            backend: "CPU".into(),
-            device: "CPU".into(),
-            gpu_error: None,
-        }
-    }
-
-    /// The model runs on a GPU (any backend but the CPU).
-    pub fn is_gpu(&self) -> bool {
-        !self.backend.eq_ignore_ascii_case("cpu")
-    }
-}
+pub use crate::load_timings::WhisperBackend;
 
 /// Candidate plugin paths in lookup order.
 pub fn plugin_candidates(explicit: Option<&str>) -> Vec<PathBuf> {
@@ -338,6 +294,91 @@ impl Drop for PluginWhisper {
         // library is never closed.
         unsafe { (self.unload)(self.handle) };
     }
+}
+
+/// What became of the GPU plugin in [`load_with_fallback`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PluginOutcome {
+    /// The plugin has the model: on its GPU, or on its own CPU when it
+    /// found no usable GPU (see the backend's `gpu_error`).
+    Loaded,
+    /// No plugin loaded (none at the path, or its GPU runtime is missing:
+    /// no `vulkan-1.dll` / `libcuda.so.1`); the built-in CPU engine.
+    NotFound(String),
+    /// The plugin loaded but failed; the built-in CPU engine.
+    Failed(String),
+}
+
+/// A whisper model from [`load_with_fallback`].
+pub struct WhisperLoad {
+    pub engine: Arc<dyn AsrEngine>,
+    /// Where it runs. On the built-in engine after [`PluginOutcome::Failed`]
+    /// its `gpu_error` is the plugin's error; after `NotFound` it is unset
+    /// (no plugin is the normal case for a CPU build).
+    pub backend: WhisperBackend,
+    pub plugin: PluginOutcome,
+}
+
+/// The one whisper GPU seam (D84; the Windows shell and
+/// `MurmurCore::load_models`): `model` through the plugin (`plugin`: an
+/// explicit path, else the [`plugin_candidates`] lookup), else, when the
+/// plugin does not load or fails, on the built-in CPU whisper.cpp (feature
+/// `whisper`) with the same options.
+pub fn load_with_fallback(
+    model: &str,
+    opts: &PluginOptions,
+    plugin: Option<&str>,
+) -> Result<WhisperLoad, crate::CoreError> {
+    let outcome = match PluginWhisper::load(model, opts, plugin) {
+        Ok(p) => {
+            return Ok(WhisperLoad {
+                backend: p.backend(),
+                engine: Arc::new(p),
+                plugin: PluginOutcome::Loaded,
+            })
+        }
+        Err(e @ WhisperPluginError::PluginNotFound { .. }) => {
+            PluginOutcome::NotFound(e.to_string())
+        }
+        Err(WhisperPluginError::Backend(m)) => PluginOutcome::Failed(m),
+    };
+    let gpu_error = match &outcome {
+        PluginOutcome::Failed(m) => Some(m.clone()),
+        _ => None,
+    };
+    Ok(WhisperLoad {
+        engine: builtin(model, opts)?,
+        backend: WhisperBackend {
+            gpu_error,
+            ..WhisperBackend::cpu()
+        },
+        plugin: outcome,
+    })
+}
+
+/// The built-in CPU whisper.cpp with the plugin's options.
+#[cfg(feature = "whisper")]
+pub(crate) fn builtin(
+    model: &str,
+    opts: &PluginOptions,
+) -> Result<Arc<dyn AsrEngine>, crate::CoreError> {
+    let mut w = crate::whisper::WhisperEngine::load(model, opts.threads)
+        .map_err(|e| crate::CoreError::Load(e.to_string()))?
+        .with_fit_ctx(opts.fit_ctx);
+    if let Some(v) = &opts.vad_model {
+        w = w.with_silero_vad(v);
+    }
+    Ok(Arc::new(w))
+}
+
+#[cfg(not(feature = "whisper"))]
+pub(crate) fn builtin(
+    _model: &str,
+    _opts: &PluginOptions,
+) -> Result<Arc<dyn AsrEngine>, crate::CoreError> {
+    Err(crate::CoreError::Load(
+        "this build has no whisper engine (feature `whisper`)".into(),
+    ))
 }
 
 #[cfg(test)]

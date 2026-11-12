@@ -23,6 +23,7 @@ whisper-small-en-q5_1 stt whisper ggml-small.en-q5_1.bin 190098681 bfdff4894dcb7
 whisper-base stt whisper ggml-base.bin 147951465 60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base.bin Whisper base
 whisper-base-q5_1 stt whisper ggml-base-q5_1.bin 59707625 422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898 https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base-q5_1.bin Whisper base q5_1
 whisper-small-q5_1 stt whisper ggml-small-q5_1.bin 190085487 ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-small-q5_1.bin Whisper small
+whisper-large-v3-turbo-q5_0 stt whisper ggml-large-v3-turbo-q5_0.bin 574041195 394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2 https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-large-v3-turbo-q5_0.bin Whisper large-v3 turbo
 
 # Hebrew speech
 zipformer-he-int8 hebrew sherpa_online encoder.int8.onnx 70478964 6c6febcb74a09435315a1d872a6539f6e7fc2c333533f14c74edc0e85c49ffcd https://huggingface.co/ivrit-ai/zipformer2-66m-streaming-he/resolve/ee769a2a13b887f91572eec349458bfb0fe79e7a/sherpa-onnx/encoder.int8.onnx Zipformer Hebrew

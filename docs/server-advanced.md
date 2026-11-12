@@ -438,8 +438,9 @@ catalogue's files under their upstream names):
 | `whisper-base`, `whisper-small-q5_1` | `ggml-base.bin`, `ggml-small-q5_1.bin` | `whisper` |
 | `whisper-base-en-q5_1`, `whisper-base-q5_1`, `whisper-tiny-en-q5_1`, `whisper-small-en-q5_1` | `ggml-base.en-q5_1.bin`, `ggml-base-q5_1.bin`, `ggml-tiny.en-q5_1.bin`, `ggml-small.en-q5_1.bin` | `whisper` |
 | `zipformer-he-int8`, `parakeet-tdt-0.6b-v3-he-int8` | the Hebrew folders (kind `hebrew`) | `sherpa_online`, `parakeet` |
-| `ivrit-whisper-large-v3-turbo-q5_0` | `ggml-ivrit-large-v3-turbo-q5_0.bin` (kind `hebrew`; Windows only) | `whisper` |
-| `qwen2.5-0.5b-instruct-q4_k_m`, `qwen2.5-1.5b-instruct-q4_k_m`, `llama-3.2-3b-instruct-q4_k_m`, `gemma-3-12b-it-q4_k_m` | the `.gguf` (kind `llm`) | `gguf` |
+| `ivrit-whisper-large-v3-turbo-q5_0` | `ggml-ivrit-large-v3-turbo-q5_0.bin` (kind `hebrew`; Windows, and the server's CUDA image as `[model.languages.he]`) | `whisper` |
+| `whisper-large-v3-turbo-q5_0` | `ggml-large-v3-turbo-q5_0.bin` (GPU: the server's CUDA image, Windows with Vulkan) | `whisper` |
+| `qwen2.5-0.5b-instruct-q4_k_m`, `qwen2.5-1.5b-instruct-q4_k_m`, `llama-3.2-3b-instruct-q4_k_m`, `gemma-3-12b-it-q4_k_m` (server only) | the `.gguf` (kind `llm`) | `gguf` |
 
 Unknown keys are an error (a typo would otherwise vanish silently).
 

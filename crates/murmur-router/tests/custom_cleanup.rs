@@ -372,3 +372,40 @@ fn saved_custom_key_is_lent_only_for_the_consented_host() {
     k.router.update_config(c);
     assert_eq!(lent("http://10.0.0.5:4000/v1"), None);
 }
+
+/// D78: Command Mode's refusal names the active Cloud provider and its
+/// host (D52 consent is bound to it), never OpenRouter while LiteLLM is on.
+#[test]
+fn command_refusal_names_the_active_cloud_provider() {
+    use murmur_core::command::{run, CommandError};
+    let refusal = |c: RouterConfig| {
+        let k = rig(c, None);
+        let r = run(
+            k.router.command_cleaner(None),
+            "make it formal",
+            Some("SELECTEDSECRET"),
+            std::time::Duration::from_secs(5),
+        );
+        assert_eq!((k.or.calls(), k.custom.calls()), (0, 0), "nothing sent");
+        r.unwrap_err()
+    };
+    let e = refusal(custom_cfg());
+    assert_eq!(
+        e,
+        CommandError::SelectionNotAllowed {
+            to: Some("LiteLLM (10.0.0.5)".into())
+        }
+    );
+    assert!(!e.to_string().contains("OpenRouter"), "{e}");
+
+    let mut or = custom_cfg();
+    or.cloud.provider = CloudProvider::OpenRouter;
+    or.cloud.openrouter.cleanup.consent_host = "openrouter.ai".into();
+    or.cloud.openrouter.cleanup.consent_at_ms = 1_792_540_900_000;
+    assert_eq!(
+        refusal(or),
+        CommandError::SelectionNotAllowed {
+            to: Some("OpenRouter".into())
+        }
+    );
+}

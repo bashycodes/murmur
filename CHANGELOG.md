@@ -18,9 +18,28 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
-- **Gemma 3 12B is a cleanup model for servers with a GPU.** A server with an NVIDIA GPU of 10 GB or more can now run Gemma 3 12B Instruct (Q4_K_M) for AI cleanup. It is in the server catalogue (`gemma-3-12b-it-q4_k_m`, pinned by SHA-256), and the Windows app lists it as a cleanup model, not a recommended one.
+- **murmur-server's NVIDIA (CUDA) image runs Whisper on the graphics card** (D84). Whisper speech models, the main one and per-language ones such as Hebrew, now load on the GPU in the CUDA image (until now only AI cleanup did). Without a GPU or the NVIDIA driver the server runs them on the processor and the log says why. The CPU image behaves the same. Parakeet stays the English default.
+- **Stock Whisper large-v3 turbo in the model list** (`whisper-large-v3-turbo-q5_0`, 574 MB; D84): the most accurate model for any language when it runs on a graphics card. On the server's CUDA image, `MURMUR_STT=whisper-large-v3-turbo-q5_0` makes it the main speech engine, and `MURMUR_HEBREW=ivrit-whisper-large-v3-turbo-q5_0` puts Hebrew on ivrit.ai's turbo. On a PC it downloads like the other models and runs through the Vulkan GPU engine. On a processor it is slow (about 13 s per dictation), so the colleague bundle leaves it out unless `tools/colleague-bundle.sh --gpu-models` asks for it.
+- **Gemma 3 12B is a cleanup model for servers with a GPU.** A murmur-server with an NVIDIA GPU of 10 GB or more can now run Gemma 3 12B Instruct (Q4_K_M) for AI cleanup. It is in the server catalogue as `gemma-3-12b-it-q4_k_m`, pinned by SHA-256.
+  - Whoever runs the server downloads the model from Hugging Face and accepts Google's Gemma Terms of Use. Murmur never bundles or hands on Gemma: the colleague bundle leaves it out, even with `--llm all`.
   - It was benchmarked against Qwen2.5-7B and Qwen2.5-14B in English and Hebrew. It was the only one that made no harmful Hebrew edit; Qwen2.5-14B mixed Chinese, Cyrillic and Arabic into Hebrew lines.
-  - The GPU setup is in `docs/colleague-install.md` ("With a GPU"), and the results are in `docs/model-benchmarks.md`. Its licence (the Gemma Terms of Use) is in NOTICE and `third_party/licenses/`.
+  - The GPU setup is in `docs/colleague-install.md` ("With a GPU"), and the results are in `docs/model-benchmarks.md`.
+
+### Changed
+
+- **Android: the OpenRouter page is now "Cloud", with an OpenRouter | LiteLLM switch** (D78, as on Windows). One Cloud provider at a time: picking LiteLLM (or any OpenAI-compatible server) is saved at once, even before its address and model are set (it sends nothing until then), and shows its address, optional key and Test connection, which also fills its model list; it does AI cleanup only, so cloud speech turns off and its switch reads "Not available". Settings saved with LiteLLM cleanup next to cloud speech are fixed once on start, with a notice on the Cloud page that no longer replaces a notice not yet dismissed (the D28 migration's or the router's). Settings shows "Cloud: OpenRouter · key saved · $0.42 this month", AI cleanup reads "… · Cloud, then rules", the usage card names the proxy "Your proxy" with the cost it reported, and the debug log says "LiteLLM".
+
+### Fixed
+
+- **Android: Developer settings → Status & server info: the cleanup section is "Cloud cleanup"**, not "Cloud cleanup (OpenRouter)", since its status covers LiteLLM too.
+- **Android: the Speech to text warning for cloud speech without consent points to the Cloud page** (it said "OpenRouter page").
+- **Command Mode and Transforms no longer say "OpenRouter" while your Cloud provider is LiteLLM** (D78, Android and Windows). A selection that may not leave the device is refused with the real destination ("… would send the selection to LiteLLM (10.0.0.5)" or "… to OpenRouter"), and "needs AI" reads "… or cloud text cleanup". On Windows the Murmur bar's Fix link for that refusal opens the AI cleanup page, where the "Text around the cursor" switch is, for either provider.
+- **Android: the bubble no longer covers Murmur's own screens** (such as the reorder arrows under Settings → Speech to text → Change order): it hides on every Murmur screen in full screen, except the note editor and a dictation already running.
+- **Android: Settings → Speech to text rows open their engine's page.** Tapping "Your server" (or OpenRouter, or the phone's engine) opens that engine's settings; only the switch at the end of the row turns it on or off. Before, tapping anywhere on the row toggled it and nothing on the page led to the server's address and key.
+- **Android: the Server page is easier to fill in.** Keyboard Next goes host → port → (certificate pin, while TLS is on) → token → Done and never lands on the TLS switch (Enter used to turn TLS on); the warning box at the top keeps one height so it no longer pushes the fields around while you type, and its warnings say "this phone" instead of "the client"; the token help now points to `murmur-server keys add <name>`, the command that makes a key for the phone.
+- **Android: settings top bars stay put.** Back and Save no longer scroll away with a long page (Settings, Developer settings, OpenRouter pages).
+- **Android: the Speech to text summary tells the truth.** The drawer, Settings and Developer settings show the same text ("This phone, then your server"). An engine counts once it has what it needs: the phone a speech model for the current language (a Hebrew model alone counts for Hebrew), your server an address, OpenRouter consent. Engines that are on but missing it are named ("This phone · server not set up"). With none ready, the line turns red and reads "Not set up: add your server or import a speech model", instead of a green "Server first → Phone" on a fresh install.
+- **Android: a passing Test connection shows in Settings at once.** Settings → Connections → Your server reads "Connected · N ms" on return instead of "Not checked yet".
 
 ## [1.2.0] - 2026-11-12
 
