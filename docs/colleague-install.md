@@ -194,6 +194,73 @@ public address, publish on its LAN address only
 (`-p 192.168.1.20:7313:7313`). More: `docs/server-setup.md` and
 `docs/container.md` in the source archive.
 
+### With a GPU: a larger cleanup model
+
+If the server has an NVIDIA GPU with more than 10 GB of memory, use
+**Gemma 3 12B** for AI cleanup. It is the most careful model for Hebrew,
+and close to the default in English (`docs/model-benchmarks.md`, "GPU
+cleanup model"). On a CPU it is far too slow, at about 6 s per dictation.
+
+These steps are for NVIDIA GPUs with CUDA only. AMD and other GPUs (Vulkan)
+are not covered yet. The host needs the NVIDIA driver and the NVIDIA
+container toolkit.
+
+1. **Download Gemma yourself.** Murmur does not ship Gemma or hand it on;
+   it is not in any bundle or zip. Downloading it means you accept
+   Google's [Gemma Terms of Use](https://ai.google.dev/gemma/terms) and its
+   [Prohibited Use Policy](https://ai.google.dev/gemma/prohibited_use_policy),
+   so read them first. The model is 7.3 GB, pinned to one Hugging Face
+   commit and checked by its SHA-256:
+
+   ```sh
+   d=~/murmur-models/library/gemma-3-12b-it-q4_k_m; mkdir -p $d
+   curl -L -o $d/google_gemma-3-12b-it-Q4_K_M.gguf \
+     https://huggingface.co/bartowski/google_gemma-3-12b-it-GGUF/resolve/648e3a36a77c8a9f12d86e741f9dcb9089c769c4/google_gemma-3-12b-it-Q4_K_M.gguf
+   echo "fc57f67efa46d711c346e587cbef7d049e95f3df8db2eb2271153343ef0acc7b  $d/google_gemma-3-12b-it-Q4_K_M.gguf" | sha256sum -c
+   printf 'kind = "llm"\ntitle = "Gemma 3 12B Instruct"\ncatalogue_id = "gemma-3-12b-it-q4_k_m"\n' > $d/model.toml
+   ```
+
+2. **Build the CUDA image** from the source. Set `CUDAARCHS` to your GPU's
+   compute capability, for example 86 for an RTX 30xx.
+
+   ```sh
+   docker build --target cuda --build-arg CUDAARCHS="86" -t murmur-server:cuda \
+     -f murmur-server-source-{{VERSION}}/deploy/docker/Dockerfile murmur-server-source-{{VERSION}}
+   ```
+
+3. **Replace the running server.** Remove the existing container first.
+   The keys stay safe in the `murmur_data` volume.
+
+   ```sh
+   docker rm -f murmur-server
+   docker run -d --name murmur-server --restart unless-stopped --gpus all -p 0.0.0.0:7313:7313 \
+     -e MURMUR_LLM=gemma-3-12b-it-q4_k_m \
+     -v ~/murmur-models/library:/models:ro -v murmur_data:/data murmur-server:cuda
+   ```
+
+The first start loads the model, which takes a few minutes. Then
+`docker logs murmur-server` names `AI cleanup gemma-3-12b-it-q4_k_m`.
+
+If you have saved your own `/data/config.toml`, the server ignores
+`MURMUR_LLM`. In that case, set the model in the file instead
+(`llm_path = "/models/gemma-3-12b-it-q4_k_m/google_gemma-3-12b-it-Q4_K_M.gguf"`)
+and run `docker restart murmur-server`.
+
+The apps list Gemma from your server as a custom model, because they have
+no pin for it, and they never fetch it from Hugging Face. If a teammate
+downloads it from your server, you are the one handing it on, so the
+Gemma terms apply to that copy too.
+
+Choose by GPU memory:
+
+* More than 10 GB: Gemma 3 12B, as above.
+* 8–10 GB: use `MURMUR_LLM=llama-3.2-3b-instruct-q4_k_m`. It is in the
+  cleanup zip of a bundle made with `--llm all`. Gemma does not fit fully:
+  the server would run part of it on the CPU, and how fast that is has not
+  been measured.
+* 6–8 GB: Llama 3.2 3B as well.
+* Less than 6 GB, or no GPU: keep the default.
+
 ### Without Docker
 
 For a server without Docker ({{GLIBC}} or newer, e.g. Ubuntu 24.04):

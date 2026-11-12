@@ -22,6 +22,7 @@
 #                 against the pinned SHA-256), e.g. a murmur-server library.
 # --llm WHICH     cleanup models: default (Qwen2.5 1.5B, 1.1 GB), all
 #                 (+ Llama 3.2 3B for GPUs, Qwen2.5 0.5B; 3.6 GB), none.
+#                 Never Gemma (D80: not ours to hand on).
 # --only LIST     only these model folders (comma-separated ids), e.g. a test.
 # --gpu-models    also the speech models only worth it on an NVIDIA GPU
 #                 (D84: stock whisper-large-v3-turbo-q5_0, 574 MB); left out
@@ -118,6 +119,12 @@ g show "$COMMIT:docs/air-gapped-models.txt" > "$WORK/list.txt"
 g show "$COMMIT:apps/murmur-windows/src/model_download.rs" > "$WORK/catalog.rs"
 g show "$COMMIT:apps/murmur-windows/src/core_adapter.rs" > "$WORK/core_adapter.rs"
 python3 -I "$HERE/models_manifest.py" "$WORK/list.txt" "$WORK/catalog.rs" "$WORK/core_adapter.rs" > "$WORK/all.tsv"
+# D80: Gemma's terms allow handing it on only under an agreement we do not
+# have, so no bundle carries a model under them, whatever the list says.
+if g show "$COMMIT:tools/notice/models.tsv" 2>/dev/null | awk -F'\t' '$3 ~ /^Gemma Terms of Use/ { print $1 }' |
+    grep -qxFf - <(cut -f1 "$WORK/all.tsv"); then
+  die "the model list names a Gemma model; Gemma is never bundled (D80)"
+fi
 NOTETAKER=0
 grep -q $'\tdiarizer\t' "$WORK/all.tsv" && NOTETAKER=1
 awk -F'\t' -v llm="$LLM" -v only=",$ONLY," -v gpu="$GPU_MODELS" -v gpuonly="$GPU_ONLY" '

@@ -25,6 +25,10 @@ NOTICES = {
     "Llama 3.2 Community License": "Built with Llama. Llama 3.2 is licensed under the Llama 3.2 Community "
                                    "License, Copyright (c) Meta Platforms, Inc. All Rights Reserved.",
     "NVIDIA Open Model License": "Licensed by NVIDIA Corporation under the NVIDIA Open Model License.",
+    # Gemma is never bundled (D80: the bundle refuses it); the notice is here
+    # so that a zip that ever carried it would say what the terms ask.
+    "Gemma Terms of Use": "Gemma is provided under and subject to the Gemma Terms of Use found at "
+                          "ai.google.dev/gemma/terms.",
 }
 
 

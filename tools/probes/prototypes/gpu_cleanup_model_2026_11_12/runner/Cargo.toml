@@ -1,0 +1,14 @@
+# Text-only cleanup replay with per-call LLM counters (tools/probes/prototypes/gpu_cleanup_model_2026_11_12).
+# Own workspace (like the other probe runners) so the product workspace is
+# untouched; uses this checkout's murmur-core.
+[package]
+name = "gpu-model-clean"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+murmur-core = { path = "../../../../../crates/murmur-core", features = ["llm"] }
+serde_json = "1"
