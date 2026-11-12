@@ -34,6 +34,7 @@ import dev.murmur.data.SettingsPages
 import dev.murmur.data.SettingsPages.Field
 import dev.murmur.data.SettingsPages.Page
 import dev.murmur.data.SettingsSummary
+import dev.murmur.server.ServerModels
 import java.io.File
 import kotlin.concurrent.thread
 
@@ -604,8 +605,8 @@ class SettingsActivity : Activity() {
                 "Formatting rules always run while Auto-format (Language page) is on: spoken punctuation, " +
                     "quotes and brackets, fillers, \"scratch that\", numbers, lists and your writing style. " +
                     "AI cleanup also polishes each transcript (run-on sentences, leftover fillers, corrections) with the " +
-                    "first engine below that is on and ready: a small model on this phone (needs an imported GGUF model, adds " +
-                    "1–3 s), your server's, or OpenRouter's. It is skipped when the text is already clean, and if it takes too " +
+                    "first engine below that is on and ready: a small model on this phone (pick it under Model below: import a GGUF " +
+                    "file${if (ServerModels.AVAILABLE) " or download one from your server" else ""}; adds 1–3 s), your server's, or OpenRouter's. It is skipped when the text is already clean, and if it takes too " +
                     "long, or changes too much, the formatted transcript is inserted instead. Dictionary replacements and " +
                     "snippets apply either way.",
             )
@@ -623,7 +624,9 @@ class SettingsActivity : Activity() {
             sectionLabel("MODEL")
             card {
                 val model = navRow(R.drawable.ic_set_sparkle, "AI cleanup model") { startActivity(ModelImportActivity.llmIntent(this@SettingsActivity)) }
-                refreshers += { model.setSubtitle(fileName(app.settings.llmModelPath) ?: "None imported") }
+                // The short name ("qwen2.5-0.5b") on one line: a long file name wrapped mid-word (the page shows the full name).
+                model.subtitle.apply { isSingleLine = true; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE }
+                refreshers += { model.setSubtitle(SettingsSummary.shortModel(fileName(app.settings.llmModelPath)) ?: "None imported") }
             }
             sectionLabel("STRENGTH")
             card {

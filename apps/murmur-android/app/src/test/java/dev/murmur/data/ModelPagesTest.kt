@@ -54,4 +54,17 @@ class ModelPagesTest {
         assertEquals("Import model folder…", ModelPages.importLabel(Screen.PARAKEET, busy = false))
         assertEquals("Importing…", ModelPages.importLabel(Screen.LLM, busy = true))
     }
+
+    /** The owner's v1.1.2 setup: the copy claimed "only this phone", "nothing from the internet" next to Hugging Face links. */
+    @Test fun introsMatchWhatTheAppDoes() {
+        for (server in listOf(false, true)) {
+            val llm = ModelPages.intro(Screen.LLM, server)
+            for (stale in listOf("runs only on this phone", "off until you turn it on")) assertTrue(llm, stale !in llm)
+            assertTrue(llm, "\"This phone\"" in llm && "GGUF" in llm)
+            assertEquals(llm, server, "your own server" in llm)
+            val whisper = ModelPages.intro(Screen.WHISPER, server)
+            assertTrue(whisper, "Nothing ever comes from the internet" !in whisper)
+            assertEquals(whisper, server, "your own server" in whisper)
+        }
+    }
 }
