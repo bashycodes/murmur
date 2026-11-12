@@ -146,10 +146,17 @@ internal class ServerModelsUi(private val host: ServerModelsHost) : ServerModels
         val inUse = plan != null && plan.installed && plan.target.absolutePath == host.activePath()
         val downloading = job?.modelId == m.id
         val tone = when { downloading -> Tone.NEUTRAL; plan == null -> Tone.WARN; inUse || plan.installed -> Tone.OK; else -> Tone.NEUTRAL }
-        stateRow(
-            if (plan?.slot?.fileExt != null) R.drawable.ic_scr_file else R.drawable.ic_scr_folder,
-            m.title, ServerModelPages.subtitle(m, planned), ServerModelPages.state(plan, inUse, downloading), tone,
-        )
+        // The row and its button are one card item, so a Download sits with its own model (not under the last row).
+        item {
+            val r = stateRow(
+                if (plan?.slot?.fileExt != null) R.drawable.ic_scr_file else R.drawable.ic_scr_folder,
+                m.title, ServerModelPages.subtitle(m, planned), ServerModelPages.state(plan, inUse, downloading), tone,
+            )
+            chips(m, plan, inUse, downloading, job)?.let { r.view.setPadding(r.view.paddingLeft, r.view.paddingTop, r.view.paddingRight, dp(4)); chipRow(*it) }
+        }
+    }
+
+    private fun chips(m: LibraryModel, plan: Plan?, inUse: Boolean, downloading: Boolean, job: ServerDownloads.Job?): Array<android.widget.Button>? = with(ui) {
         val chips = buildList {
             if (downloading) add(chip("Cancel") { job?.cancel?.set(true) }.apply { contentDescription = "Cancel downloading ${m.title}" })
             else ServerModelPages.action(plan, inUse)?.let { a ->
@@ -159,7 +166,7 @@ internal class ServerModelsUi(private val host: ServerModelsHost) : ServerModels
                 })
             }
         }
-        if (chips.isNotEmpty()) chipRow(*chips.toTypedArray())
+        chips.takeIf { it.isNotEmpty() }?.toTypedArray()
     }
 
     private fun list() {
