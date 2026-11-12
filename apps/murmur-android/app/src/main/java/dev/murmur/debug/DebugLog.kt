@@ -150,6 +150,8 @@ data class InsertOutcome(val outcome: String, val steps: List<String> = emptyLis
         const val CANCELLED = "cancelled"
         /** Command Mode: the AI gave no text (no AI, timeout, refused selection, …); nothing changed. */
         const val COMMAND_FAILED = "command_failed"
+        /** Command Mode: the instruction asked a question; the answer was shown, nothing was written. */
+        const val ANSWERED = "answered"
     }
 }
 
