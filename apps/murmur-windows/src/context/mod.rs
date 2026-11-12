@@ -200,28 +200,66 @@ pub fn apply_bucket_override(
     };
 }
 
-/// App → style bucket, with a tab-title fallback for browsers whose address
-/// bar couldn't be read.
-pub fn classify(exe: &str, host: Option<&str>, title: &str) -> StyleBucket {
-    let kind = app_kind(exe, host);
-    if kind != AppKind::Other || host.is_some() {
-        return bucket_of(kind);
+/// Site names matched as whole host labels on hosts the app groups don't
+/// list (`outlook.example.org` matches, `example-slack.test` doesn't). The
+/// last label (the TLD) is never compared.
+const WORK_HOST_LABELS: &[&str] = &["slack"];
+const EMAIL_HOST_LABELS: &[&str] = &["gmail", "outlook", "protonmail"];
+const PERSONAL_HOST_LABELS: &[&str] = &["whatsapp", "telegram"];
+/// Webmail hosts named after the service: only as the first label
+/// (`mail.example.org`, not `news.mail.example.org`).
+const EMAIL_FIRST_LABELS: &[&str] = &["mail", "webmail"];
+
+/// Bucket for an unlisted host that carries a listed site's name as a
+/// whole label; `None` when nothing matches.
+fn host_label_bucket(host: &str) -> Option<StyleBucket> {
+    let host = host.strip_prefix("www.").unwrap_or(host);
+    let labels: Vec<&str> = host.split('.').collect();
+    let (_, names) = labels.split_last()?;
+    let any = |list: &[&str]| names.iter().any(|l| list.contains(l));
+    let webmail = names
+        .first()
+        .is_some_and(|l| EMAIL_FIRST_LABELS.contains(l));
+    if any(EMAIL_HOST_LABELS) || webmail {
+        Some(StyleBucket::Email)
+    } else if any(WORK_HOST_LABELS) {
+        Some(StyleBucket::Work)
+    } else if any(PERSONAL_HOST_LABELS) {
+        Some(StyleBucket::Personal)
+    } else {
+        None
     }
-    // "… - Gmail - Google Chrome": match " - "-separated segments.
+}
+
+/// Bucket from a browser tab title: `" - "`-separated segments matched
+/// whole (`"… - Gmail - Google Chrome"`); `None` when nothing matches.
+fn title_bucket(title: &str) -> Option<StyleBucket> {
     let segs: Vec<String> = title
         .split(" - ")
         .map(|s| s.trim().to_ascii_lowercase())
         .collect();
     let any = |list: &[&str]| segs.iter().any(|s| list.contains(&s.as_str()));
     if any(EMAIL_TITLES) {
-        StyleBucket::Email
+        Some(StyleBucket::Email)
     } else if any(WORK_TITLES) {
-        StyleBucket::Work
+        Some(StyleBucket::Work)
     } else if any(PERSONAL_TITLES) {
-        StyleBucket::Personal
+        Some(StyleBucket::Personal)
     } else {
-        StyleBucket::Other
+        None
     }
+}
+
+/// App → style bucket. A listed exe or host wins; an unlisted (or unread)
+/// host falls back to a site name among its labels, then the tab title.
+pub fn classify(exe: &str, host: Option<&str>, title: &str) -> StyleBucket {
+    let kind = app_kind(exe, host);
+    if kind != AppKind::Other {
+        return bucket_of(kind);
+    }
+    host.and_then(host_label_bucket)
+        .or_else(|| title_bucket(title))
+        .unwrap_or(StyleBucket::Other)
 }
 
 /// Capitalised words from the window title, used as ASR hotwords.
@@ -555,6 +593,101 @@ mod tests {
             classify("chrome.exe", Some("example.com"), "Example"),
             StyleBucket::Other
         );
+    }
+
+    #[test]
+    fn unlisted_host_falls_back_to_the_tab_title() {
+        assert_eq!(
+            classify(
+                "chrome.exe",
+                Some("portal.example.org"),
+                "Inbox - Outlook - Google Chrome"
+            ),
+            StyleBucket::Email
+        );
+        assert_eq!(
+            classify(
+                "msedge.exe",
+                Some("intranet.example.net"),
+                "general (Channel) - Example Co - Slack - Microsoft Edge"
+            ),
+            StyleBucket::Work
+        );
+        assert_eq!(
+            classify("firefox.exe", Some("chat.example.test"), "Telegram"),
+            StyleBucket::Personal
+        );
+        // A listed host still beats the title.
+        assert_eq!(
+            classify(
+                "chrome.exe",
+                Some("app.slack.com"),
+                "Inbox - Gmail - Google Chrome"
+            ),
+            StyleBucket::Work
+        );
+    }
+
+    #[test]
+    fn unlisted_host_matches_a_site_name_label() {
+        for host in [
+            "outlook.example.org",
+            "mail.example.org",
+            "webmail.example.co.uk",
+            "www.mail.example.org",
+            "gmail.example.test",
+        ] {
+            assert_eq!(
+                classify("chrome.exe", Some(host), ""),
+                StyleBucket::Email,
+                "{host}"
+            );
+        }
+        assert_eq!(
+            classify("chrome.exe", Some("example.slack.test"), ""),
+            StyleBucket::Work
+        );
+        assert_eq!(
+            classify("chrome.exe", Some("whatsapp.example.net"), ""),
+            StyleBucket::Personal
+        );
+        // The host's label wins over a title naming another site.
+        assert_eq!(
+            classify("chrome.exe", Some("outlook.example.org"), "Slack"),
+            StyleBucket::Email
+        );
+    }
+
+    #[test]
+    fn site_names_inside_labels_or_titles_do_not_match() {
+        for host in [
+            "slackware.example.org",
+            "example-slack.test",
+            "outlooks.example.net",
+            "mailchimp.example.com",
+            "gmailtools.example.org",
+            "example.mail",
+            "news.mail.example.org",
+            "telegramme.example.fr",
+            "mymail.example.org",
+        ] {
+            assert_eq!(
+                classify("chrome.exe", Some(host), ""),
+                StyleBucket::Other,
+                "{host}"
+            );
+        }
+        for title in [
+            "Outlook for the weekend - Example News - Google Chrome",
+            "Slackline tips - Example Blog",
+            "Re: gmail export question - Example Forum",
+        ] {
+            assert_eq!(
+                classify("chrome.exe", Some("news.example.org"), title),
+                StyleBucket::Other,
+                "{title}"
+            );
+        }
     }
 
     #[test]
