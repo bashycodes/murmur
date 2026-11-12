@@ -23,4 +23,4 @@ ivrit-whisper-large-v3-turbo-q5_0	spdx/Apache-2.0.txt	Apache-2.0 · ivrit.ai (iv
 qwen2.5-0.5b-instruct-q4_k_m	spdx/Apache-2.0.txt	Apache-2.0 · Qwen (Qwen/Qwen2.5-0.5B-Instruct-GGUF)	quantised to GGUF q4_k_m by Qwen from Qwen/Qwen2.5-0.5B-Instruct
 qwen2.5-1.5b-instruct-q4_k_m	spdx/Apache-2.0.txt	Apache-2.0 · Qwen (Qwen/Qwen2.5-1.5B-Instruct-GGUF)	quantised to GGUF q4_k_m by Qwen from Qwen/Qwen2.5-1.5B-Instruct
 llama-3.2-3b-instruct-q4_k_m	models/Llama-3.2-Community-License.txt,models/Llama-3.2-Acceptable-Use-Policy.md	Llama 3.2 Community License · Built with Llama	quantised to GGUF q4_k_m (bartowski) from meta-llama/Llama-3.2-3B-Instruct
-gemma-3-12b-it-q4_k_m	models/Gemma-Terms-of-Use.txt,models/Gemma-Prohibited-Use-Policy.txt	Gemma Terms of Use · Gemma is provided under and subject to the Gemma Terms of Use found at ai.google.dev/gemma/terms	quantised to GGUF q4_k_m (bartowski) from google/gemma-3-12b-it
+gemma-3-12b-it-q4_k_m	models/Gemma-Terms-of-Use.txt,models/Gemma-Prohibited-Use-Policy.txt	Gemma Terms of Use · Google (google/gemma-3-12b-it)	quantised to GGUF q4_k_m (bartowski) from google/gemma-3-12b-it
