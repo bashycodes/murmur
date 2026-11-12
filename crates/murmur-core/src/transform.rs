@@ -122,7 +122,7 @@ impl std::fmt::Display for TransformError {
             TransformError::Command(CommandError::SelectionNotAllowed { to }) => write!(
                 f,
                 "This transform would send the selection to {}: allow surrounding text there, or use a local AI model",
-                command::destination_or_cloud(to)
+                command::destination_or_cloud(to.as_deref())
             ),
             TransformError::Command(e) => e.fmt(f),
         }
