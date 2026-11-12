@@ -95,6 +95,7 @@ pub const CATALOGUE: &[CatalogueModel] = &[
     cat("qwen2.5-0.5b-instruct-q4_k_m", ModelKind::Llm, "gguf"),
     cat("qwen2.5-1.5b-instruct-q4_k_m", ModelKind::Llm, "gguf"),
     cat("llama-3.2-3b-instruct-q4_k_m", ModelKind::Llm, "gguf"),
+    cat("gemma-3-12b-it-q4_k_m", ModelKind::Llm, "gguf"),
 ];
 
 /// The catalogue model `id` names, if any.

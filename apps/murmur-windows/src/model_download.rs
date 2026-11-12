@@ -136,6 +136,11 @@ macro_rules! llama32_3b_base {
         "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/5ab33fa94d1d04e903623ae72c95d1696f09f9e8/"
     };
 }
+macro_rules! gemma3_12b_base {
+    () => {
+        "https://huggingface.co/bartowski/google_gemma-3-12b-it-GGUF/resolve/648e3a36a77c8a9f12d86e741f9dcb9089c769c4/"
+    };
+}
 macro_rules! whisper_base {
     () => {
         "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/"
@@ -378,7 +383,30 @@ pub const CATALOG: &[CatalogEntry] = &[
         extras: &[],
         files: &[model_file!(llama32_3b_base!(), "Llama-3.2-3B-Instruct-Q4_K_M.gguf", 2_019_377_696, "6c1a2b41161032677be168d354123594c0e6e67d2b9227c84f296ad037c728ff")],
     },
+    // The pick for a murmur-server with a GPU (>= 10 GB of video memory):
+    // the only one of Qwen2.5 7B / 14B and Gemma 3 12B that never put
+    // foreign-script or English words into a Hebrew line; on the CPU it takes
+    // ~6 s per dictation, so never recommended for a PC. SHA-256 measured on
+    // the downloaded file, equal to the HF LFS id. docs/model-benchmarks.md
+    // "GPU cleanup model".
+    CatalogEntry {
+        id: GEMMA3_12B_ID,
+        title: "Gemma 3 12B Instruct",
+        desc: "For a server with a GPU (10 GB or more) · best Hebrew; far too slow on a CPU",
+        engine: ModelEngine::Llm,
+        dest: "google_gemma-3-12b-it-Q4_K_M.gguf",
+        page: "https://huggingface.co/bartowski/google_gemma-3-12b-it-GGUF",
+        recommended: false,
+        recommended_gpu: false,
+        language: None,
+        license: Some("Gemma Terms of Use · Gemma is provided under and subject to the Gemma Terms of Use found at ai.google.dev/gemma/terms"),
+        extras: &[],
+        files: &[model_file!(gemma3_12b_base!(), "google_gemma-3-12b-it-Q4_K_M.gguf", 7_300_575_264, "fc57f67efa46d711c346e587cbef7d049e95f3df8db2eb2271153343ef0acc7b")],
+    },
 ];
+
+/// Catalogue id of Gemma 3 12B (the GPU server's cleanup model).
+pub const GEMMA3_12B_ID: &str = "gemma-3-12b-it-q4_k_m";
 
 /// Catalogue id of Llama 3.2 3B (the GPU pick).
 pub const LLAMA32_3B_ID: &str = "llama-3.2-3b-instruct-q4_k_m";
@@ -1534,7 +1562,8 @@ mod tests {
             [
                 "qwen2.5-0.5b-instruct-q4_k_m",
                 "qwen2.5-1.5b-instruct-q4_k_m",
-                LLAMA32_3B_ID
+                LLAMA32_3B_ID,
+                GEMMA3_12B_ID
             ]
         );
         for e in &llm {
@@ -1547,6 +1576,9 @@ mod tests {
                 e.files[0].url.starts_with("https://huggingface.co/Qwen/")
                     || e.files[0].url.starts_with(
                         "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/"
+                    )
+                    || e.files[0].url.starts_with(
+                        "https://huggingface.co/bartowski/google_gemma-3-12b-it-GGUF/"
                     ),
                 "{}",
                 e.files[0].url
