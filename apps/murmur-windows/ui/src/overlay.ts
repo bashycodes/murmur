@@ -10,6 +10,9 @@
 // window is click-through, so the page reports the link's box
 // (`overlay_action` link_rect, null once it is gone) and src/overlay.rs
 // makes just that box clickable. Theme: `overlay_theme` + `overlay:theme`.
+// Loaded as an ES module (overlay.html), like settings.js.
+
+import { fixFor } from "./lib/fix-for.js";
 
 type OverlayState =
   | { state: "resting" }
@@ -100,29 +103,6 @@ function apply(s: OverlayState): void {
   syncDone();
 }
 
-// Settings pages the Murmur bar may open (src/app.rs OVERLAY_SETTINGS_PAGES).
-type FixPage = "settings-speech" | "settings-cleanup" | "settings-openrouter" | "settings-server";
-interface Fix {
-  page: FixPage;
-  label: string;
-}
-
-/** Which settings page fixes what the bubble says; null = nothing to fix
- *  there ("No speech heard", a microphone or paste error). Cloud first:
- *  "Cloud STT failed (…); used your server" is about OpenRouter. */
-function fixFor(text: string): Fix | null {
-  if (/AI cleanup model not found/i.test(text)) return { page: "settings-cleanup", label: "Choose a model →" };
-  if (/(speech|whisper|parakeet) model (not found|failed)|model file not found/i.test(text)) {
-    return { page: "settings-speech", label: "Choose a model →" };
-  }
-  // Command Mode / transforms refusing a selection name the Cloud provider
-  // ("… send the selection to LiteLLM (10.0.0.5)"): its switch is on the Cloud page.
-  if (/cloud stt|openrouter|send the selection to/i.test(text)) return { page: "settings-openrouter", label: "Fix →" };
-  if (/cloud cleanup|ai cleanup/i.test(text)) return { page: "settings-cleanup", label: "Fix →" };
-  if (/dictation disabled|local model not loaded/i.test(text)) return { page: "settings-speech", label: "Fix →" };
-  if (/server/i.test(text)) return { page: "settings-server", label: "Fix →" };
-  return null;
-}
 
 /** Bubble text; `kind` (error / notice) adds the dot and, when a settings
  *  page can fix it, the link. Live transcript passes no kind. */
