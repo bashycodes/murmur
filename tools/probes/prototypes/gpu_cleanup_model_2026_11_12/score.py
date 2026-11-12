@@ -14,8 +14,12 @@ usage: score.py TAG [TAG ...] [--fails]
   that are Hebrew (the score_he.py test, D65), mean share of the input's
   Hebrew words kept, finals that lost more than 20 % of them ("cut"),
   finals with a Latin-letter word the input does not have ("leak": an
-  English word inside Hebrew), and finals whose Hebrew words differ from the
-  input's at all ("reworded"; listed by --fails for a manual harm check).
+  English word inside Hebrew), "junk": finals with a leak or any Arabic,
+  Cyrillic, CJK or U+FFFD character (always harmful: the D65 script check
+  passes them because the line stays mostly Hebrew), and finals whose Hebrew words differ from the
+  input's at all ("reworded"; listed by --fails for a manual harm check),
+  finals with any punctuation mark ("punct.": the inputs have none, so this
+  is how often the model punctuated a Hebrew line at all).
 * tokens: mean prompt tokens prefilled per dictation (the cached prefix not
   counted) and mean generated tokens, from the plugin's `last` counters; the
   GPU latency estimate in docs/model-benchmarks.md is built from these.
@@ -32,6 +36,8 @@ sys.path.insert(0, os.path.join(here, "..", "hebrew_stays_hebrew_2026_11_07"))
 from score_he import hebrew, kept  # noqa: E402
 
 P = os.path.join(here, "..")
+FOREIGN = re.compile(r"[\u0400-\u04ff\u0600-\u06ff\u3000-\u9fff\uff00-\uffef\ufffd]")
+PUN = re.compile(r"[,.?!:;]")
 LATIN = re.compile(r"[A-Za-z]{2,}")
 HEW = re.compile(r"[\u0590-\u05ff]+")
 
@@ -87,8 +93,8 @@ def main():
     raw_sim = statistics.mean(sim(c["input"], c["expected"]) for c in bench.values())
     print(f"bench raw-input sim {raw_sim:.3f}")
     print("| model | bench exact | bench sim | better/worse | numbers pass | HE answer Hebrew | HE final Hebrew"
-          " | HE words kept | HE cut | HE leak | HE reworded | fallbacks | prefill tok / gen tok (mean) | CPU LLM p50 s |")
-    print("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+          " | HE words kept | HE cut | HE leak | HE junk | HE reworded | HE punct. | fallbacks | prefill tok / gen tok (mean) | CPU LLM p50 s |")
+    print("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     detail = []
     for tag in tags:
         cells, allrows = [], []
@@ -123,22 +129,24 @@ def main():
             ans = sum(hebrew(r.get("raw")) is True for r in h)
             fin = sum(hebrew(r.get("text")) is True for r in h)
             ks = [kept(he[r["id"]]["input"], r["text"]) for r in h if hebrew(r.get("text"))]
-            leak = re_w = 0
+            leak = re_w = junk = 0
             for r in h:
                 src, out = he[r["id"]]["input"], r.get("text") or ""
-                if set(LATIN.findall(out)) - set(LATIN.findall(src)):
-                    leak += 1
-                    detail.append(f"{tag} he {r['id']} leak: {out!r}")
+                lk = bool(set(LATIN.findall(out)) - set(LATIN.findall(src)))
+                leak += lk
+                if lk or FOREIGN.search(out):
+                    junk += 1
+                    detail.append(f"{tag} he {r['id']} junk: {out!r}")
                 if HEW.findall(src) != HEW.findall(out):
                     re_w += 1
                     detail.append(f"{tag} he {r['id']} reworded: {out!r}")
             cells += [f"{ans}/{len(h)}", f"{fin}/{len(h)}", f"{statistics.mean(ks):.2f}", str(sum(k < 0.8 for k in ks)),
-                      str(leak), str(re_w)]
+                      str(leak), str(junk), str(re_w), f"{sum(bool(PUN.search(r.get('text') or '')) for r in h)}/{len(h)}"]
             for r in h:
                 if hebrew(r.get("raw")) is not True:
                     detail.append(f"{tag} he {r['id']} not Hebrew [{r.get('fallback_reason')}]: {r.get('raw')!r}")
         else:
-            cells += ["-"] * 6
+            cells += ["-"] * 8
         fb = sum(1 for r in allrows if r.get("fallback_reason") and r["fallback_reason"] != "llm_skipped_clean")
         last = [r["last"] for r in allrows if isinstance(r.get("last"), dict)]
         pre = [l.get("prefill_tokens") or l.get("prefilled") for l in last]
