@@ -23,6 +23,8 @@ use crate::endpoint::{EndpointState, Endpointer};
 use crate::learn::{self, Candidate};
 use crate::lid::{self, LanguageId};
 use crate::llm_keep::{self, KeptLlm, LlmKey, LlmSlot};
+#[cfg(feature = "whisper")]
+use crate::load_timings::WhisperBackend;
 use crate::load_timings::{ms_since, LoadBackend, LoadTimings, ModelKind, ModelTiming, Phase};
 use crate::paste::{self, PasteSegment};
 use crate::postprocess::{self, DictMatcher};
@@ -465,6 +467,8 @@ fn load_asr(
     use crate::config::AsrBackend;
     let t = Instant::now();
     let threads = m.threads.unwrap_or(cfg.threads).max(1);
+    #[cfg_attr(not(feature = "whisper"), allow(unused_mut))]
+    let mut runs_on = None;
     let (engine, backend, phases): (Arc<dyn AsrEngine>, LoadBackend, Vec<Phase>) = match &m
         .asr_backend
     {
@@ -475,15 +479,9 @@ fn load_asr(
         ),
         #[cfg(feature = "whisper")]
         AsrBackend::Whisper => {
-            require_file(&m.asr_path)?;
-            let mut w = crate::whisper::WhisperEngine::load(&m.asr_path, threads)
-                .map_err(|e| CoreError::Load(e.to_string()))?
-                .with_fit_ctx(cfg.whisper_fit_ctx);
-            if let Some(v) = cfg.vad_model_path.as_deref().filter(|v| !v.is_empty()) {
-                require_file(v)?;
-                w = w.with_silero_vad(v);
-            }
-            (Arc::new(w), LoadBackend::Whisper, Vec::new())
+            let (w, r) = load_whisper(&m.asr_path, cfg, threads)?;
+            runs_on = r;
+            (w, LoadBackend::Whisper, Vec::new())
         }
         #[cfg(not(feature = "whisper"))]
         AsrBackend::Whisper => {
@@ -523,8 +521,75 @@ fn load_asr(
         ms: ms_since(t),
         phases,
         reused: false,
+        runs_on,
     };
     Ok((engine, timing))
+}
+
+/// A whisper model's files exist; its VAD model, if any.
+#[cfg(feature = "whisper")]
+fn whisper_inputs<'a>(path: &str, cfg: &'a ModelConfig) -> Result<Option<&'a str>, CoreError> {
+    require_file(path)?;
+    let vad = cfg.vad_model_path.as_deref().filter(|v| !v.is_empty());
+    if let Some(v) = vad {
+        require_file(v)?;
+    }
+    Ok(vad)
+}
+
+/// A whisper ASR model: through the GPU plugin when
+/// [`ModelConfig::whisper_lib`] names one (D84; the one seam,
+/// [`crate::whisper_plugin::load_with_fallback`]), else, or when the plugin
+/// does not load, on the built-in CPU whisper.cpp. Where it runs is
+/// reported only when a plugin was asked for.
+#[cfg(all(feature = "whisper", feature = "whisper-plugin"))]
+fn load_whisper(
+    path: &str,
+    cfg: &ModelConfig,
+    threads: usize,
+) -> Result<(Arc<dyn AsrEngine>, Option<WhisperBackend>), CoreError> {
+    use crate::whisper_plugin::{builtin, load_with_fallback, PluginOptions, PluginOutcome};
+    let opts = PluginOptions {
+        threads,
+        fit_ctx: cfg.whisper_fit_ctx,
+        vad_model: whisper_inputs(path, cfg)?.map(str::to_string),
+    };
+    let Some(lib) = cfg.whisper_lib.as_deref().filter(|l| !l.is_empty()) else {
+        return Ok((builtin(path, &opts)?, None));
+    };
+    let w = load_with_fallback(path, &opts, Some(lib))?;
+    let mut runs_on = w.backend;
+    // Asked for by path, so a missing plugin is worth a reason too.
+    if let PluginOutcome::NotFound(e) = w.plugin {
+        runs_on.gpu_error = Some(e);
+    }
+    Ok((w.engine, Some(runs_on)))
+}
+
+#[cfg(all(feature = "whisper", not(feature = "whisper-plugin")))]
+fn load_whisper(
+    path: &str,
+    cfg: &ModelConfig,
+    threads: usize,
+) -> Result<(Arc<dyn AsrEngine>, Option<WhisperBackend>), CoreError> {
+    let vad = whisper_inputs(path, cfg)?;
+    let mut w = crate::whisper::WhisperEngine::load(path, threads)
+        .map_err(|e| CoreError::Load(e.to_string()))?
+        .with_fit_ctx(cfg.whisper_fit_ctx);
+    if let Some(v) = vad {
+        w = w.with_silero_vad(v);
+    }
+    let runs_on = cfg
+        .whisper_lib
+        .as_deref()
+        .filter(|l| !l.is_empty())
+        .map(|_| WhisperBackend {
+            gpu_error: Some(
+                "whisper_lib is set, but this build has no `whisper-plugin` feature".into(),
+            ),
+            ..WhisperBackend::cpu()
+        });
+    Ok((Arc::new(w), runs_on))
 }
 
 /// The language identifier of `cfg` ([`ModelConfig::lid_model`]): `None`
@@ -545,6 +610,7 @@ fn load_lid(cfg: &ModelConfig) -> Result<Option<WithTiming<Arc<dyn LanguageId>>>
             ms: ms_since(t),
             phases: Vec::new(),
             reused: false,
+            runs_on: None,
         };
         Ok(Some((Arc::new(lid), timing)))
     }
@@ -629,6 +695,7 @@ fn llm_timing(ms: u64, phases: Vec<Phase>, reused: bool) -> ModelTiming {
         ms,
         phases,
         reused,
+        runs_on: None,
     }
 }
 

@@ -1,5 +1,6 @@
 //! Which ggml device runs the whisper model: a GPU (Vulkan, in the Windows
-//! `murmur_whisper_vulkan.dll` build) or the CPU. Same policy as the cleanup
+//! `murmur_whisper_vulkan.dll` build; CUDA, in the server's
+//! `libmurmur_whisper_cuda.so`) or the CPU. Same policy as the cleanup
 //! engine (murmur-llm `backend`).
 //!
 //! [`choose`] is pure, so the policy is unit-tested without whisper.cpp:
@@ -8,7 +9,7 @@
 //! * otherwise the best real GPU: a discrete GPU before an integrated one,
 //!   then the one with the most free memory. Software rasterisers
 //!   (llvmpipe, SwiftShader, Microsoft Basic Render) are not GPUs;
-//! * no GPU device (a CPU build, or Vulkan found no device) = the CPU.
+//! * no GPU device (a CPU build, or Vulkan / CUDA found no device) = the CPU.
 //!
 //! The engine loads on the chosen GPU and, when that fails, again on the
 //! CPU ([`Plan::fallbacks`]).
@@ -337,11 +338,11 @@ mod tests {
 
     #[test]
     fn this_build_lists_its_devices_without_panicking() {
-        // CPU build: the CPU only. A Vulkan build may add GPUs.
+        // CPU build: the CPU only. A Vulkan or CUDA build may add GPUs.
         let d = devices();
         assert!(d.iter().all(|d| d.gpu_index.is_some()
             == matches!(d.kind, DeviceKind::Gpu | DeviceKind::IntegratedGpu)));
-        if !cfg!(feature = "vulkan") {
+        if !cfg!(any(feature = "vulkan", feature = "cuda")) {
             assert!(
                 d.iter()
                     .all(|d| d.kind != DeviceKind::Gpu && d.kind != DeviceKind::IntegratedGpu),

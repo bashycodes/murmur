@@ -8,7 +8,7 @@ image. The server inside is the same as the host install
 
 | file | what |
 |---|---|
-| `deploy/docker/Dockerfile` | CPU image (default target `runtime`) and NVIDIA CUDA image (`--target cuda`) |
+| `deploy/docker/Dockerfile` | CPU image (default target `runtime`) and NVIDIA CUDA image (`--target cuda`: cleanup and whisper on the GPU) |
 | `deploy/docker/entrypoint.sh` | the config from the models folder, the admin key, bind rewrite, CLI commands; also `/usr/local/bin/murmur-server` |
 | `deploy/docker/healthcheck.sh` | TCP liveness check (`murmur-healthcheck`) |
 | `deploy/docker-compose.yml` | Compose: the quick start as a file, `gpu` profile |
@@ -19,7 +19,7 @@ image. The server inside is the same as the host install
 | `tools/container/stage-prebuilt.sh` | stages host-built binaries for an offline image build |
 
 What the image contains: `murmur-server` built with the production features
-(`whisper,parakeet,tls,llm`), the llama.cpp plugin `libmurmur_llm.so`, the
+(`whisper,whisper-plugin,parakeet,tls,llm`), the llama.cpp plugin `libmurmur_llm.so`, the
 sherpa-onnx and onnxruntime shared libraries and `libgomp`. **No models**,
 and nothing in it downloads any: you mount them. There is no published
 image; build it from the source (§8).
@@ -50,6 +50,7 @@ ubuntu tar czf /b/murmur_data.tgz -C /data .`); the models are your folder.
 | `MURMUR_BIND_CONTAINER_IP` | `1` | see Binding |
 | `MURMUR_INSECURE_BIND_ANY` | `0` | see Binding |
 | `MURMUR_START_GRACE_S` | `600` | healthcheck grace while the models load |
+| `MURMUR_WHISPER_LIB` | CUDA image: its `libmurmur_whisper_cuda.so`; CPU image: unset | the whisper GPU plugin (`[model] whisper_lib` when the config sets none); empty = built-in CPU whisper (§7) |
 | `MURMUR_CONFIG` | (unset) | a config file elsewhere, used as is (Helm): no generated config, no admin key; the entrypoint waits for the first `keys add` |
 
 ## 3. The config
@@ -118,7 +119,39 @@ and paste the pin into the apps.
 
 ## 7. GPU (NVIDIA)
 
-Only AI cleanup uses the GPU. See "NVIDIA CUDA image" below, then
+What runs where (D84):
+
+| | CPU image | CUDA image, NVIDIA runtime (`--gpus all`) | CUDA image, no GPU or no driver |
+|---|---|---|---|
+| whisper speech models (`asr_engine = "whisper"`, `[model.languages.*]` whisper entries: stock or ivrit.ai turbo) | CPU | **GPU** (CUDA plugin) | CPU, with a warning in the log saying why |
+| AI cleanup (llama.cpp) | CPU | **GPU** | CPU |
+| Parakeet, zipformer (sherpa-onnx) | CPU | CPU | CPU |
+| language detection (whisper tiny, `lid_path`) | CPU | CPU | CPU |
+
+So on a GPU box the whisper turbo models become usable: stock
+`whisper-large-v3-turbo-q5_0` as the main speech engine for English or any
+language (`MURMUR_STT=whisper-large-v3-turbo-q5_0`, instead of Parakeet),
+and `ivrit-whisper-large-v3-turbo-q5_0` for Hebrew
+(`MURMUR_HEBREW=ivrit-whisper-large-v3-turbo-q5_0`, instead of the
+zipformer). Without the variables the picks stay Parakeet and the zipformer
+(§3), in both images. On a CPU, turbo takes about 13 s per dictation
+(measured: 13.2 s for an 11 s clip at 4 threads, `docs/findings/2026-11-12-server-whisper-turbo-smoke.md`), so keep Parakeet
+there.
+
+The log says where each whisper speech model runs, once at start:
+
+```text
+speech model: whisper runs on the GPU (CUDA: NVIDIA RTX A4000)
+speech model (he): whisper runs on the CPU, the GPU is not used: whisper GPU plugin not found (/opt/murmur-server/lib/libmurmur_whisper_cuda.so: libcuda.so.1: cannot open shared object file ...)
+```
+
+Turbo latency on a CUDA GPU: **estimate**, not measured (no CUDA GPU was
+available): the encoder ≈ 0.2-0.4 s per 30 s window, ≈ 0.3-0.6 s per
+dictation on an RTX 3060-class card (`docs/model-benchmarks.md` "Desktop GPU"),
+against ≈ 1 s measured for ivrit turbo through Vulkan on a laptop iGPU
+(D42).
+
+See "NVIDIA CUDA image" below, then
 `docker compose -f deploy/docker-compose.yml --profile gpu up -d --build murmur-server-gpu`
 (it needs the NVIDIA container toolkit). Both services use the
 `murmur_data` volume: run one at a time.
@@ -164,23 +197,50 @@ docker build -f deploy/docker/Dockerfile --target cuda -t murmur-server:local-cu
     --build-arg CUDAARCHS="86" .      # your GPU's compute capability; default: 75-120
 ```
 
-What runs on the GPU: **LLM cleanup only.** The image carries a CUDA build
-of the llama.cpp plugin (`murmur-llm --features cuda`; cuBLAS linked
-statically) as `libmurmur_llm_cuda.so`, selected through `MURMUR_LLM_LIB`. ASR
-(Parakeet / zipformer through sherpa-onnx) uses sherpa-onnx's CPU provider
-and whisper (language ID) stays on the CPU; both are fast enough on a CPU
-(ASR ~0.03-0.1x real time) while the LLM is the slow step (1.4-2.9 s per
-cleanup on a 4-core CPU, `docs/findings/2026-10-31-server-model-setup.md`).
-The plugin picks the GPU and falls back to the CPU when the model does not
-fit (murmur-llm `backend::choose`). It needs the driver's `libcuda.so.1`,
-which the NVIDIA container toolkit injects (`--gpus all`, the Compose `gpu`
-profile, the chart's `gpu.enabled`). To run the CUDA image without a GPU,
-set `MURMUR_LLM_LIB=/opt/murmur-server/lib/libmurmur_llm.so` (the CPU plugin is
-in the image too).
+What runs on the GPU: **AI cleanup and the whisper speech models** (§7).
+The image carries two CUDA plugins next to the CPU server:
 
-For an offline CUDA image, build the plugin on a CUDA host
-(`cargo build --release -p murmur-llm --features cuda`) and stage it with
-`tools/container/stage-prebuilt.sh --cuda-llm target/release/libmurmur_llm.so`.
+* `libmurmur_llm_cuda.so`, the llama.cpp plugin (`murmur-llm --features
+  cuda`; cuBLAS linked statically), selected through `MURMUR_LLM_LIB`. It
+  picks the GPU and falls back to the CPU when the model does not fit
+  (murmur-llm `backend::choose`).
+* `libmurmur_whisper_cuda.so`, the whisper.cpp plugin (`murmur-whisper
+  --features cuda`, D84) with the `libcudart`, `libcublas` and
+  `libcublasLt` it links (measured, CUDA 12.8.1: `libcublasLt` 752 MB,
+  `libcublas` 116 MB, `libcudart` 0.7 MB, the plugin itself 55 MB for one
+  GPU architecture; the bulk of the image's growth),
+  selected through `MURMUR_WHISPER_LIB`. Every whisper speech model loads
+  through it: on the best NVIDIA GPU (most free memory), or on the CPU when
+  the GPU fails to load the model. `MURMUR_WHISPER_DEVICE=cpu` forces the
+  CPU (A/B runs). It is built with `GGML_NATIVE=OFF`, so its CPU fallback
+  runs on any x86-64 CPU with AVX2.
+
+Both need the driver's `libcuda.so.1`, which the NVIDIA container toolkit
+injects (`--gpus all`, the Compose `gpu` profile, the chart's
+`gpu.enabled`). Without it the whisper plugin does not load and whisper
+runs on the server's built-in CPU whisper.cpp (the warning above); for the
+LLM, set `MURMUR_LLM_LIB=/opt/murmur-server/lib/libmurmur_llm.so` (the CPU
+plugin is in the image too). Parakeet and the zipformer (sherpa-onnx) use
+its CPU provider and the language-ID whisper stays on the built-in CPU
+whisper: they are fast enough on a CPU (ASR ~0.03-0.1x real time,
+`docs/findings/2026-10-31-server-model-setup.md`).
+
+`CUDAARCHS` sets the GPU architectures for both plugins (the whisper build
+gets it as `CMAKE_CUDA_ARCHITECTURES`). Not sure of your GPU? Keep the
+default list; `nvidia-smi --query-gpu=compute_cap --format=csv` on the
+host tells you the one number to pass for a faster build.
+
+For an offline CUDA image, build the plugins on a CUDA host
+(`cargo build --release -p murmur-llm --features cuda`, then
+`GGML_NATIVE=OFF cargo build --release -p murmur-whisper --features cuda`)
+and stage them with `tools/container/stage-prebuilt.sh --cuda-llm
+target/release/libmurmur_llm.so --cuda-whisper target/release/libmurmur_whisper.so
+--cuda-lib /usr/local/cuda/lib64` (they go to `deploy/docker/prebuilt/cuda/`,
+which only the CUDA image copies). D84 moved `libmurmur_llm_cuda.so` there
+from `prebuilt/lib/`: restage an older staging before building
+`--target cuda`. Staged without `--cuda-whisper`, the image's
+`MURMUR_WHISPER_LIB` names a missing file and whisper runs on the CPU (the
+script warns).
 
 ## 9. Air-gapped hosts: move the image
 

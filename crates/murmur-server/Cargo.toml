@@ -6,10 +6,13 @@ license-file.workspace = true
 description = "Self-hosted murmur-core server for hybrid dictation (LAN/VPN only; stores no audio or text unless [debug] capture is on)"
 
 [features]
-default = ["whisper", "tls"]
+default = ["whisper", "whisper-plugin", "tls"]
 whisper = ["murmur-core/whisper"]
 parakeet = ["murmur-core/parakeet"]
 llm = ["murmur-core/llm"]
+# Whisper through a GPU build of the murmur-whisper plugin when
+# `[model] whisper_lib` / MURMUR_WHISPER_LIB names one (the CUDA image, D84).
+whisper-plugin = ["murmur-core/whisper-plugin"]
 tls = ["dep:tokio-rustls", "dep:rustls", "dep:rustls-pemfile"]
 
 [dependencies]

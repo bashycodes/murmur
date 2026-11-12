@@ -95,6 +95,27 @@ run "$D" FLOW_STT=another-stt MURMUR_STT=parakeet-tdt-0.6b-v2-int8 || { cat "$T/
 grep -q "^asr_path = \"$M/parakeet-tdt-0.6b-v2-int8\"" "$G" || fail "MURMUR_STT did not win"
 ok "old FLOW_* names: read with a notice, the new name wins"
 
+# 3c. D84: the two whisper turbo models (the GPU image's options): stock turbo
+# as the main speech engine, ivrit.ai turbo as the Hebrew route.
+model "$M" whisper-large-v3-turbo-q5_0 stt whisper ggml-large-v3-turbo-q5_0.bin
+model "$M" ivrit-whisper-large-v3-turbo-q5_0 hebrew whisper ggml-ivrit-large-v3-turbo-q5_0.bin
+run "$D" MURMUR_STT=whisper-large-v3-turbo-q5_0 MURMUR_HEBREW=ivrit-whisper-large-v3-turbo-q5_0 ||
+    { cat "$T/out"; fail "turbo picks"; }
+grep -q '^asr_engine = "whisper"' "$G" || fail "turbo asr_engine"
+grep -q "^asr_path = \"$M/whisper-large-v3-turbo-q5_0/ggml-large-v3-turbo-q5_0.bin\"" "$G" ||
+    fail "turbo asr_path"
+sed -n '/^\[model.languages.he\]/,/^$/p' "$G" >"$T/he"
+grep -q '^asr_backend = "whisper"' "$T/he" || fail "ivrit turbo engine"
+grep -q "^asr_path = \"$M/ivrit-whisper-large-v3-turbo-q5_0/ggml-ivrit-large-v3-turbo-q5_0.bin\"" "$T/he" ||
+    fail "ivrit turbo file"
+grep -q "speech whisper-large-v3-turbo-q5_0, .*Hebrew ivrit-whisper-large-v3-turbo-q5_0" "$T/out" ||
+    fail "turbo picks not logged"
+run "$D" || { cat "$T/out"; fail "default picks with turbo present"; }
+grep -q "^asr_path = \"$M/parakeet-tdt-0.6b-v2-int8\"" "$G" || fail "turbo displaced Parakeet"
+grep -q "^asr_path = \"$M/zipformer-he-int8\"" "$G" || fail "turbo displaced the zipformer"
+rm -r "$M/whisper-large-v3-turbo-q5_0" "$M/ivrit-whisper-large-v3-turbo-q5_0"
+ok "turbo: stock as MURMUR_STT, ivrit.ai as MURMUR_HEBREW; defaults unchanged"
+
 # 4. Own config in /data wins; the CLI uses it too.
 cp "$G" "$D/config.toml"
 echo "# edited" >>"$D/config.toml"
