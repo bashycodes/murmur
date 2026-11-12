@@ -31,6 +31,7 @@ import dev.murmur.data.DevSettings
 import dev.murmur.data.DevSettingsForm
 import dev.murmur.data.DevSettingsForm.Field
 import dev.murmur.data.DevSummary
+import dev.murmur.data.SettingsSummary
 import java.text.DateFormat
 import java.util.Date
 import kotlin.concurrent.thread
@@ -172,7 +173,7 @@ class DeveloperActivity : Activity() {
                 navRow(R.drawable.ic_dev_status, "Status & server info", "Engines, circuits, last probe") { open(Page.STATUS) }
                 refreshers += {
                     val s = app.dev.load()
-                    route.text = DevSummary.routing(s, caps)
+                    route.text = SettingsSummary.speech(s, caps, app.engine.phoneSpeechReady())
                     val l = app.lastRoute.value
                     last.text = l?.let { d ->
                         DevSummary.lastShort(d.result) + " · " +
@@ -189,7 +190,7 @@ class DeveloperActivity : Activity() {
                 val speech = navRow(R.drawable.ic_dev_route, "Speech to text", "") { SettingsActivity.open(this@DeveloperActivity, dev.murmur.data.SettingsPages.Page.SPEECH) }
                 val engines = navRow(R.drawable.ic_dev_engine, TITLES.getValue(Page.ENGINES)) { open(Page.ENGINES) }
                 refreshers += {
-                    speech.setSubtitle("Engines and order · " + DevSummary.routing(app.dev.load(), caps))
+                    speech.setSubtitle("Engines and order · " + SettingsSummary.speech(app.dev.load(), caps, app.engine.phoneSpeechReady()))
                     engines.setSubtitle(DevSummary.engineOptions(app.dev.load().showEngineBadge, if (caps.local) decodingLabel(app.dev.parakeetDecodingOverride) else null))
                 }
             }

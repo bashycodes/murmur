@@ -9,10 +9,15 @@ import dev.murmur.data.DevSettings.Route
  */
 object SpeechEngines {
     /**
-     * The phone can transcribe: the mock engine, or a default model the engine plan can load
-     * ([defaultInstalled] = [EnginePlan.defaultInstalled]: whisper, or Parakeet when selected).
+     * The phone can transcribe: the mock engine, or what [set] (the engine holder's load set for the
+     * current language, [LoadSet.of]) loads is installed. A language's own model ([LoadSet.Language],
+     * [LoadSet.Both]) is only planned when installed; the default one needs [defaultInstalled]
+     * ([EnginePlan.defaultInstalled]: whisper, or Parakeet when selected).
      */
-    fun phoneReady(s: Settings, defaultInstalled: Boolean): Boolean = s.mockEngine || defaultInstalled
+    fun phoneReady(s: Settings, set: LoadSet, defaultInstalled: () -> Boolean): Boolean = s.mockEngine || when (set) {
+        LoadSet.Default -> defaultInstalled()
+        is LoadSet.Language, LoadSet.Both -> true
+    }
 
     /** The engines switched on in this build, in try order ([d] = the stored settings). */
     fun on(d: DevSettings, caps: BuildCaps): List<Route> {
@@ -35,10 +40,17 @@ object SpeechEngines {
         }
     }
 
-    /** What an engine that is on but not [planned] still needs, for the "Not set up" summary. */
+    /** What an engine that is on but not [planned] still needs, when none can run ("Not set up: …"). */
     fun setupHint(r: Route): String = when (r) {
         Route.SERVER -> "add your server"
         Route.CLIENT -> "import a speech model"
         Route.CLOUD -> "allow ${OpenRouter.NAME}"
+    }
+
+    /** An engine that is on but not [planned], next to the ones that run ("This phone · server not set up"). */
+    fun notReady(r: Route): String = when (r) {
+        Route.SERVER -> "server not set up"
+        Route.CLIENT -> "no phone model"
+        Route.CLOUD -> "${OpenRouter.NAME} not allowed"
     }
 }
