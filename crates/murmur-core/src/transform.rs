@@ -3,7 +3,7 @@
 //! dictation can be passed through one before it is pasted (auto-apply).
 //!
 //! Built on Command Mode ([`crate::command`]): the same cleanup route
-//! (on-device LLM, OpenRouter under the user's cleanup consent), the same
+//! (on-device LLM, the Cloud provider under the user's cleanup consent), the same
 //! answer sanitiser and the same hard timeout. Platform-neutral so every
 //! shell can reuse it; the shells own the shortcuts and the settings.
 
@@ -117,11 +117,12 @@ impl std::fmt::Display for TransformError {
             }
             TransformError::Command(CommandError::NoLlm) => write!(
                 f,
-                "Transforms need AI: turn on AI cleanup (local model) or OpenRouter text cleanup"
+                "Transforms need AI: turn on AI cleanup (local model) or cloud text cleanup"
             ),
-            TransformError::Command(CommandError::SelectionNotAllowed) => write!(
+            TransformError::Command(CommandError::SelectionNotAllowed { to }) => write!(
                 f,
-                "This transform would send the selection to OpenRouter: allow surrounding text there, or use a local AI model"
+                "This transform would send the selection to {}: allow surrounding text there, or use a local AI model",
+                command::destination_or_cloud(to.as_deref())
             ),
             TransformError::Command(e) => e.fmt(f),
         }
@@ -381,10 +382,17 @@ mod tests {
     fn a_selection_never_goes_to_a_cloud_route_that_forbids_surrounding_text() {
         let cloud = Fake::new("cloud", PromptScope::MINIMAL);
         let e = run_transform(dynamic(&cloud), "polish", "secret", Source::Selection, T);
+        // A backend that does not name its destination reads "the cloud".
         assert_eq!(
             e,
-            Err(TransformError::Command(CommandError::SelectionNotAllowed))
+            Err(TransformError::Command(CommandError::SelectionNotAllowed {
+                to: None
+            }))
         );
+        assert!(e
+            .unwrap_err()
+            .to_string()
+            .starts_with("This transform would send the selection to the cloud:"));
         assert_eq!(cloud.calls(), 0);
         let local = Fake::new("local", PromptScope::FULL);
         let routed: Arc<dyn Cleaner> = Arc::new(RoutedCleaner::new(
@@ -394,6 +402,23 @@ mod tests {
         let r = run_transform(Some(routed), "polish", "secret", Source::Selection, T);
         assert_eq!(r.as_deref(), Ok("local"));
         assert_eq!(cloud.calls(), 0, "the selection stayed on the device");
+    }
+
+    #[test]
+    fn the_refusal_names_the_active_cloud_provider() {
+        let text = |to: &str| {
+            TransformError::Command(CommandError::SelectionNotAllowed {
+                to: Some(to.into()),
+            })
+            .to_string()
+        };
+        assert!(text("OpenRouter")
+            .starts_with("This transform would send the selection to OpenRouter:"));
+        let lite = text("LiteLLM (10.0.0.5)");
+        assert!(lite.starts_with("This transform would send the selection to LiteLLM (10.0.0.5):"));
+        assert!(!lite.contains("OpenRouter"));
+        let no_llm = TransformError::Command(CommandError::NoLlm).to_string();
+        assert!(!no_llm.contains("OpenRouter"), "{no_llm}");
     }
 
     #[test]

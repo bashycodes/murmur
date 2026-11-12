@@ -380,10 +380,11 @@ before the paste.
   for controls without it, with a Ctrl+C whose clipboard change is undone
   right away (only if nothing else wrote to the clipboard meanwhile).
 * The rewrite needs an AI: the local model from [AI cleanup](#ai-cleanup-optional-off-by-default),
-  or OpenRouter text cleanup (same order, consent and budget as cleanup).
-  The selected text goes to OpenRouter only with *Send text around the
-  cursor* on; otherwise the command uses the local model, or says it
-  can't. Prompt and answer cleaning (`crates/murmur-core/src/command.rs`)
+  or cloud text cleanup on your Cloud provider, OpenRouter or LiteLLM
+  (same order, consent and budget as cleanup). The selected text goes to
+  the cloud only with *Send text around the cursor* on; otherwise the
+  command uses the local model, or says it can't and names where the text
+  would have gone ("OpenRouter", "LiteLLM (10.0.0.5)"). Prompt and answer cleaning (`crates/murmur-core/src/command.rs`)
   strip preambles ("Sure, here is…"), wrapping quotes, code fences and
   trailing notes, so only the result is pasted.
 * No AI, model still loading, a selection over 4000 characters, a password
@@ -595,7 +596,7 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - [ ] Shift+Alt+X puts the last transcript on the clipboard (no paste); Ctrl+V in Notepad shows it.
 - [ ] Command Mode with AI cleanup ready: select "hey cant make it tmrw" in Notepad, Word and a Chrome text box, hold Ctrl+Win+Alt, say "make this more formal", release → the orange pill spins, then the selection is replaced by a formal sentence (no "Sure, here…", no quotes); Ctrl+V afterwards gives your old clipboard; History shows the instruction and result.
 - [ ] Command Mode with nothing selected: "write a two-line thank-you note" is typed at the cursor.
-- [ ] Command Mode with AI cleanup off and no OpenRouter cleanup: error sound, pill "Command Mode needs AI…", the selection is untouched. Esc while the pill spins: nothing is pasted.
+- [ ] Command Mode with AI cleanup off and no cloud cleanup: error sound, pill "Command Mode needs AI…", the selection is untouched. Esc while the pill spins: nothing is pasted.
 - [ ] Command Mode in an app without UI Automation text (e.g. a terminal or an Electron editor): the Ctrl+C fallback reads the selection and the clipboard is restored.
 - [ ] AI cleanup off (default): tray "AI cleanup: off", results unchanged.
 - [ ] AI cleanup on without `murmur_llm.dll`: tray "⚠ AI cleanup engine (murmur_llm.dll) missing", dictation still pastes.

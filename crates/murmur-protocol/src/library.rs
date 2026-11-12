@@ -81,6 +81,7 @@ pub const CATALOGUE: &[CatalogueModel] = &[
     cat("whisper-base-q5_1", ModelKind::Stt, "whisper"),
     cat("whisper-tiny-en-q5_1", ModelKind::Stt, "whisper"),
     cat("whisper-small-en-q5_1", ModelKind::Stt, "whisper"),
+    cat("whisper-large-v3-turbo-q5_0", ModelKind::Stt, "whisper"),
     cat("zipformer-he-int8", ModelKind::Hebrew, "sherpa_online"),
     cat(
         "parakeet-tdt-0.6b-v3-he-int8",

@@ -96,12 +96,12 @@ class BubblePresenceTest {
         p.onState(DictationState.Ready)
         assertTrue(p.snooze())
         assertTrue(p.presence.value.snoozed)
-        assertFalse(p.visible(DictationState.Ready))
+        assertFalse(p.visible(DictationState.Ready, ownScreenInFront = false))
         advanceTimeBy(BubblePresence.SNOOZE_MS - 1); runCurrent()
         assertTrue(p.presence.value.snoozed)
         advanceTimeBy(2); runCurrent()
         assertFalse(p.presence.value.snoozed)
-        assertTrue(p.visible(DictationState.Ready))
+        assertTrue(p.visible(DictationState.Ready, ownScreenInFront = false))
     }
 
     @Test fun snoozeOnlyFromReady() = runTest {
@@ -132,11 +132,11 @@ class BubblePresenceTest {
     @Test fun shakeWhenIdleRevealsFor10s() = runTest {
         val p = presence()
         p.onState(DictationState.Idle)
-        assertFalse(p.visible(DictationState.Idle))
+        assertFalse(p.visible(DictationState.Idle, ownScreenInFront = false))
         assertEquals(BubblePresence.ShakeOutcome.REVEALED, p.onShake(locked = false))
-        assertTrue(p.visible(DictationState.Idle))
+        assertTrue(p.visible(DictationState.Idle, ownScreenInFront = false))
         advanceTimeBy(BubblePresence.REVEAL_MS + 1); runCurrent()
-        assertFalse(p.visible(DictationState.Idle))
+        assertFalse(p.visible(DictationState.Idle, ownScreenInFront = false))
     }
 
     @Test fun shakeWhenReadyDoesNothing() = runTest {
@@ -148,13 +148,33 @@ class BubblePresenceTest {
     @Test fun activeDictationIsAlwaysVisibleEvenIfSnoozedEarlier() = runTest {
         val p = presence()
         p.onState(DictationState.Ready); p.snooze()
-        assertTrue(p.visible(DictationState.Processing(false, 0)))
+        assertTrue(p.visible(DictationState.Processing(false, 0), ownScreenInFront = false))
     }
 
     @Test fun repairIsVisibleWithoutField() = runTest {
         val p = presence()
         p.repair = true
-        assertTrue(p.visible(DictationState.Idle))
+        assertTrue(p.visible(DictationState.Idle, ownScreenInFront = false))
+    }
+
+    @Test fun ownScreenInFrontHidesEveryRestingBubble() = runTest {
+        val p = presence()
+        assertFalse(p.visible(DictationState.Ready, ownScreenInFront = true))
+        val error = DictationState.Error(DictationState.ErrorKind.FailedToTranscribe)
+        assertFalse(p.visible(error, ownScreenInFront = true))
+        assertTrue(p.visible(error, ownScreenInFront = false)) // an error raised in Settings shows on leaving
+        p.repair = true
+        assertFalse(p.visible(DictationState.Idle, ownScreenInFront = true))
+        p.repair = false
+        p.onShake(locked = false)
+        assertFalse(p.visible(DictationState.Idle, ownScreenInFront = true))
+        assertTrue(p.visible(DictationState.Idle, ownScreenInFront = false)) // back on leaving the app
+    }
+
+    @Test fun runningDictationStaysVisibleOverOwnScreens() = runTest {
+        val p = presence()
+        assertTrue(p.visible(DictationState.Recording(false, 0), ownScreenInFront = true))
+        assertTrue(p.visible(DictationState.Processing(false, 0), ownScreenInFront = true))
     }
 }
 

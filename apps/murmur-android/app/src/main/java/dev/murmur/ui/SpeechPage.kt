@@ -20,7 +20,7 @@ import dev.murmur.data.DevSettings
 import dev.murmur.data.DevSettings.Route
 import dev.murmur.data.DevSettingsForm
 import dev.murmur.data.OpenRouter
-import dev.murmur.data.OpenRouterPage
+import dev.murmur.data.CloudPage
 import dev.murmur.data.Settings
 import dev.murmur.data.SettingsSummary
 import java.io.File
@@ -30,7 +30,9 @@ import java.io.File
  *   Engines        ranked rows (rank square, name, state line, switch) for this build's engines in
  *                  the stored try order; "Change order" swaps the switches for ↑ / ↓. Everything
  *                  applies at once ([DevPages.withEngine], [DevPages.reorder]). OpenRouter asks for
- *                  its consent first, as on the OpenRouter page ([OpenRouterPage.enableStt]).
+ *                  its consent first, as on the Cloud page ([CloudPage.enableStt]).
+ *                  Tapping a row opens that engine's page (Your server, the phone's model,
+ *                  OpenRouter); only the switch turns it on or off.
  *   On this phone  the model in use (name, language, size, import date) → engine choice and imports;
  *                  "Import another model"; "Hebrew model" (D37: visible here, not only on the engine
  *                  page); Keep both languages loaded (D54); keep it loaded (hybrid);
@@ -219,13 +221,35 @@ internal class SpeechPage(
         Route.CLOUD -> SettingsSummary.cloudEngine(d, app.cloudKeys.has(OpenRouter.ID))
     }
 
-    /** `use your server` / `use this phone` / `use OpenRouter for speech` (the design's switch labels). */
+    /** `use your server` / `use this phone` / `use the cloud for speech` (the design's switch labels, D78). */
     private fun useLabel(r: Route) = when (r) {
         Route.SERVER -> "Use your server"
         Route.CLIENT -> "Use this phone"
-        Route.CLOUD -> "Use ${OpenRouter.NAME} for speech"
+        Route.CLOUD -> "Use the cloud for speech"
     }
 
+    /** The page that sets an engine up: your server's address and key, the phone's model, OpenRouter's key. */
+    private fun openSettings(r: Route) = when (r) {
+        Route.SERVER -> DeveloperActivity.open(activity, DevPages.Page.SERVER)
+        Route.CLIENT -> openEngine()
+        Route.CLOUD -> CloudActivity.open(activity)
+    }
+
+    /** TalkBack reads the view as [className] saying [text]; [checked] makes it checkable, [clickLabel] names its tap. */
+    private fun readsAs(className: String, text: String, checked: Boolean? = null, clickLabel: String? = null) = object : View.AccessibilityDelegate() {
+        override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfo) {
+            super.onInitializeAccessibilityNodeInfo(host, info)
+            info.className = className
+            info.text = text
+            if (checked != null) { info.isCheckable = true; info.isChecked = checked }
+            if (clickLabel != null) info.addAction(AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK, clickLabel))
+        }
+    }
+
+    /**
+     * One ranked engine. While reordering: ↑ / ↓. Otherwise the row body opens the engine's own
+     * page ([openSettings]) and only the switch at the end turns it on or off.
+     */
     private fun LinearLayout.engineRow(i: Int, n: Int, r: Route, on: Boolean, sub: String) = with(ui) {
         val name = SettingsSummary.engineName(r)
         val title = tv(name, TypeScale.ROW, p.text, TypeScale.W_MEDIUM)
@@ -234,35 +258,44 @@ internal class SpeechPage(
             orientation = LinearLayout.VERTICAL; addView(title); addView(subtitle)
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
         }
-        val row = LinearLayout(ctx).apply {
+        val ripple = { android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf((p.text and 0x00FFFFFF) or 0x22000000), null, null) }
+        val body = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             minimumHeight = dp(DevUi.ROW_MIN_DP)
-            setPadding(dp(20), dp(14), dp(if (reordering) 8 else 20), dp(14))
+            setPadding(dp(20), dp(14), dp(if (reordering) 8 else 12), dp(14))
             addView(rankSquare(i + 1).apply { (layoutParams as LinearLayout.LayoutParams).marginEnd = dp(14) })
-            addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(12) })
+            addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }
+        val row = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            addView(body, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         }
         if (reordering) {
             row.addView(iconButton(R.drawable.ic_dev_up, "Move $name up") { move(r, -1) }.apply { isEnabled = i > 0; alpha = if (i > 0) 1f else 0.3f })
             row.addView(iconButton(R.drawable.ic_dev_down, "Move $name down") { move(r, +1) }.apply { isEnabled = i < n - 1; alpha = if (i < n - 1) 1f else 0.3f })
-            row.isFocusable = true
-            row.contentDescription = "${i + 1}. $name. $sub"
+            row.setPadding(0, 0, dp(8), 0)
+            body.isFocusable = true
+            body.contentDescription = "${i + 1}. $name. $sub"
         } else {
+            body.isClickable = true; body.isFocusable = true
+            body.background = ripple()
+            body.setOnClickListener { openSettings(r) }
+            body.accessibilityDelegate = readsAs(android.widget.Button::class.java.name, "${i + 1}. $name. $sub", clickLabel = "open $name settings")
             val sw = designSwitch(on).apply {
                 isClickable = false; isFocusable = false
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }
-            row.addView(sw)
-            row.isClickable = true; row.isFocusable = true
-            row.background = android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf((p.text and 0x00FFFFFF) or 0x22000000), null, null)
-            row.setOnClickListener { toggle(r, !on) }
-            row.accessibilityDelegate = object : View.AccessibilityDelegate() {
-                override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfo) {
-                    super.onInitializeAccessibilityNodeInfo(host, info)
-                    info.className = Switch::class.java.name
-                    info.isCheckable = true; info.isChecked = on
-                    info.text = "${i + 1}. ${useLabel(r)}. $sub"
-                }
+            // The switch's own 48 dp+ target: the full row height, a little wider than the pill.
+            val target = android.widget.FrameLayout(ctx).apply {
+                setPadding(dp(8), 0, dp(20), 0)
+                minimumHeight = dp(DevUi.ROW_MIN_DP); minimumWidth = dp(48)
+                isClickable = true; isFocusable = true
+                background = ripple()
+                addView(sw, android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+                setOnClickListener { toggle(r, !on) }
+                accessibilityDelegate = readsAs(Switch::class.java.name, "${i + 1}. ${useLabel(r)}. $sub", checked = on)
             }
+            row.addView(target, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT))
         }
         addView(row)
     }
@@ -287,19 +320,24 @@ internal class SpeechPage(
         saveDev(DevPages.withEngine(app.dev.load(), r, on))
     }
 
-    /** Same consent as the OpenRouter page; the engine starts at its listed place. */
+    /** Same consent as the Cloud page; the engine starts at its listed place. D78: refused while LiteLLM is the provider. */
     private fun enableCloud() {
+        if (!CloudPage.sttAvailable(app.dev.load())) {
+            android.widget.Toast.makeText(activity, CloudText.LITELLM_NO_STT, android.widget.Toast.LENGTH_LONG).show()
+            refresh()
+            return
+        }
         val s = DevPages.placeCloud(app.dev.load(), caps)
         val go = {
-            val n = OpenRouterPage.enableStt(s, System.currentTimeMillis())
+            val n = CloudPage.enableStt(s, System.currentTimeMillis())
             app.dev.saveCloud(allowCloud = n.allowCloud, cloud = n.cloud, routeOrder = n.routeOrder)
             app.engine.applyDevSettings(app.dev.load())
             refresh()
             if (!app.cloudKeys.has(OpenRouter.ID)) {
-                android.widget.Toast.makeText(activity, "Add your OpenRouter API key on the OpenRouter page: nothing is sent without one.", android.widget.Toast.LENGTH_LONG).show()
+                android.widget.Toast.makeText(activity, "Add your OpenRouter API key on the Cloud page: nothing is sent without one.", android.widget.Toast.LENGTH_LONG).show()
             }
         }
-        if (!OpenRouterPage.sttNeedsConsent(s)) { go(); return }
+        if (!CloudPage.sttNeedsConsent(s)) { go(); return }
         ui.confirm(CloudText.STT_CONSENT_TITLE, CloudText.sttConsentBody(s.cloud.stt), CloudText.STT_CONSENT_BUTTON, onYes = go, onNo = { refresh() })
     }
 

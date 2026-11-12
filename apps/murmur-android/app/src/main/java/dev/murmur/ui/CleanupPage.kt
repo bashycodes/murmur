@@ -19,14 +19,14 @@ import dev.murmur.data.CloudText
 import dev.murmur.data.DevSettings
 import dev.murmur.data.DevSettings.CleanupRoute
 import dev.murmur.data.OpenRouter
-import dev.murmur.data.OpenRouterPage
+import dev.murmur.data.CloudPage
 import dev.murmur.data.Settings
 
 /**
  * Settings → AI cleanup's "Engines" card (D36): this build's cleanup engines in the stored order,
  * the same ranked rows as Speech to text ([SpeechPage]): rank square, name, state line, switch;
  * "Change order" swaps the switches for ↑ / ↓. Everything applies at once (store + live router).
- * OpenRouter asks for its own consent first, as on the OpenRouter page. The phone's switch is
+ * OpenRouter asks for its own consent first, as on the Cloud page. The phone's switch is
  * also the on-device AI ([Settings.llmEnabled]), via [update] so the engine reloads.
  */
 internal class CleanupPage(
@@ -125,7 +125,7 @@ internal class CleanupPage(
     }
 
     private fun LinearLayout.engineRow(i: Int, n: Int, r: CleanupRoute, on: Boolean, sub: String, d: DevSettings) = with(ui) {
-        val name = CleanupEngines.name(r, d)
+        val name = CleanupEngines.name(r)
         val title = tv(name, TypeScale.ROW, p.text, TypeScale.W_MEDIUM)
         val subtitle = tv(sub, TypeScale.SUB, p.muted).apply { setPadding(0, dp(2), 0, 0) }
         val texts = LinearLayout(ctx).apply {
@@ -158,7 +158,7 @@ internal class CleanupPage(
                     super.onInitializeAccessibilityNodeInfo(host, info)
                     info.className = Switch::class.java.name
                     info.isCheckable = true; info.isChecked = on
-                    info.text = "${i + 1}. ${CleanupEngines.useLabel(r, d)}. $sub"
+                    info.text = "${i + 1}. ${CleanupEngines.useLabel(r)}. $sub"
                 }
             }
         }
@@ -176,7 +176,7 @@ internal class CleanupPage(
     private fun toggle(r: CleanupRoute, on: Boolean) {
         when {
             r == CleanupRoute.CLOUD && on -> enableCloud()
-            r == CleanupRoute.CLOUD -> saveCleanup(OpenRouterPage.disableCleanup(app.dev.load()))
+            r == CleanupRoute.CLOUD -> saveCleanup(CloudPage.disableCleanup(app.dev.load()))
             r == CleanupRoute.LOCAL -> {
                 // The cleanup entry first (live router updated in place), then the AI switch,
                 // whose engine reload then reads the stored entry.
@@ -190,17 +190,17 @@ internal class CleanupPage(
         }
     }
 
-    /** Same consent as the OpenRouter page (D52: the selected provider's); the engine is switched on where the list shows it. */
+    /** Same consent as the Cloud page (D52: the selected provider's); the engine is switched on where the list shows it. */
     private fun enableCloud() {
         val s = app.dev.load()
         val go = {
-            saveCleanup(OpenRouterPage.enableCleanup(app.dev.load(), System.currentTimeMillis()))
+            saveCleanup(CloudPage.enableCleanup(app.dev.load(), System.currentTimeMillis()))
             // A custom server's key is optional.
             if (!s.cloud.customProvider && !app.cloudKeys.has(OpenRouter.ID)) {
-                android.widget.Toast.makeText(activity, "Add your OpenRouter API key on the OpenRouter page: nothing is sent without one.", android.widget.Toast.LENGTH_LONG).show()
+                android.widget.Toast.makeText(activity, "Add your OpenRouter API key on the Cloud page: nothing is sent without one.", android.widget.Toast.LENGTH_LONG).show()
             }
         }
-        if (!OpenRouterPage.cleanupNeedsConsent(s)) { go(); return }
+        if (!CloudPage.cleanupNeedsConsent(s)) { go(); return }
         val (title, body, button) = CloudText.cleanupConsent(s.cloud)
         ui.confirm(title, body, button, onYes = go, onNo = { refresh() })
     }
@@ -208,6 +208,6 @@ internal class CleanupPage(
     private fun move(r: CleanupRoute, dir: Int) {
         val d = app.dev.load()
         saveCleanup(d.copy(cleanupOrder = CleanupEngines.reorder(d, caps, r, dir)))
-        ui.announce("${CleanupEngines.name(r, d)} is now number ${CleanupEngines.engines(app.dev.load(), caps).indexOf(r) + 1}")
+        ui.announce("${CleanupEngines.name(r)} is now number ${CleanupEngines.engines(app.dev.load(), caps).indexOf(r) + 1}")
     }
 }

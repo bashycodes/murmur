@@ -32,6 +32,14 @@ threads = 4            # 4 on the i7-6700: oversubscribing hyperthreads is far s
 # llm_lib = "/usr/local/lib/libmurmur_llm.so"
 # llm_draft = 4       # cleanup prompt-lookup drafting (D69): 4 by default, 0 = off
 # vad_model_path = "/var/lib/murmur-server/models/ggml-silero-v5.1.2.bin"
+# Whisper on a GPU (D84): the CUDA build of the murmur-whisper plugin. Every
+# whisper speech model (asr_engine = "whisper", whisper languages entries)
+# loads through it; no driver = the built-in CPU whisper (a warning says why).
+# Default: MURMUR_WHISPER_LIB, else none. The CUDA image sets it.
+# whisper_lib = "/opt/murmur-server/lib/libmurmur_whisper_cuda.so"
+# GPU alternative to Parakeet, any language (catalogue whisper-large-v3-turbo-q5_0):
+# asr_engine = "whisper"
+# asr_path = "/var/lib/murmur-server/library/whisper-large-v3-turbo-q5_0/ggml-large-v3-turbo-q5_0.bin"
 
 # Per-language models (D33). A session whose language is forced to one of
 # these (the client's language setting: "he", "he-IL" and "iw" all match
@@ -45,6 +53,9 @@ threads = 4            # 4 on the i7-6700: oversubscribing hyperthreads is far s
 # Alternative, 642 MiB, slightly less accurate (fetch-models.sh --hebrew-parakeet):
 # asr_backend = "parakeet"
 # asr_path = "/var/lib/murmur-server/models/parakeet-tdt-0.6b-v3-he-int8"
+# Most accurate, needs a GPU (whisper_lib above; ~13 s on a CPU):
+# asr_backend = "whisper"
+# asr_path = "/var/lib/murmur-server/library/ivrit-whisper-large-v3-turbo-q5_0/ggml-ivrit-large-v3-turbo-q5_0.bin"
 
 # [tls]                # optional wss:// (LAN without a VPN); pin the cert in the client
 # cert = "/etc/murmur-server/cert.pem"

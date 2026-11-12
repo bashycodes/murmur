@@ -861,7 +861,7 @@ impl CoreApi for RouterAdapter {
     }
 
     /// Command Mode on the dictation cleanup route: the on-device LLM,
-    /// and/or OpenRouter when cloud cleanup is allowed (the router's gate
+    /// and/or the cloud when cloud cleanup is allowed (the router's gate
     /// re-checks consent and budget per call). The server route never
     /// runs commands.
     fn command(
@@ -881,7 +881,7 @@ impl CoreApi for RouterAdapter {
     }
 
     /// Transforms on the same route as Command Mode (consent, budget,
-    /// OpenRouter then this PC); a selection keeps the surrounding-text
+    /// the cloud then this PC); a selection keeps the surrounding-text
     /// gate, a dictation's transcript doesn't need it.
     fn transform(
         &self,

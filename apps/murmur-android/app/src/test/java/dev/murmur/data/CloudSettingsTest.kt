@@ -103,14 +103,14 @@ class CloudSettingsTest {
     @Test fun customServerCostIsShownApartFromTheBudget() {
         val u = CloudUsage("2026-11", listOf(
             CloudUsage.ProviderUsage(OpenRouter.ID, requests = 3, costUsd = 0.5, purpose = CloudUsage.PURPOSE_STT),
-            CloudUsage.ProviderUsage(CustomServer.ID, requests = 9, costUsd = 4.0, purpose = CloudUsage.PURPOSE_CLEANUP),
+            CloudUsage.ProviderUsage(LiteLLM.ID, requests = 9, costUsd = 4.0, purpose = CloudUsage.PURPOSE_CLEANUP),
         ))
         assertEquals(0.5, u.budgetCostUsd, 1e-9); assertEquals(4.0, u.customCostUsd, 1e-9)
         val lines = CloudText.usageLines(u, CloudSettings(monthlyBudgetUsd = 1.0))
         assertEquals("Speech \$0.50 · Cleanup \$0 · this month (2026-11)", lines[0])
         assertEquals("3 speech requests (0.0 min) · 0 cleanup requests", lines[1])
         assertEquals("Budget \$1.00/month: \$0.50 used", lines[2])
-        assertEquals("Custom server: 9 cleanup requests · reported \$4.00 (not in the budget)", lines[3])
+        assertEquals("Your proxy: 9 cleanup requests · reported \$4.00 (not in the budget)", lines[3])
         // The page header: OpenRouter only, against the budget.
         assertEquals(listOf("\$0.50" to "this month of \$1.00", "\$0.50" to "speech", "\$0" to "cleanup"),
             CloudText.usageStats(u, CloudSettings(monthlyBudgetUsd = 1.0)))
@@ -118,10 +118,10 @@ class CloudSettingsTest {
             """{"supported":true,"enabled":true,"provider":"custom","host":"10.0.0.5","model":"m","month_cost_usd":4.0,"custom_month_cost_usd":4.0}""")
         assertEquals(4.0, st.customMonthCostUsd, 1e-9)
         val line = dev.murmur.core.DevText.cleanupStatus(st)
-        assertEquals("On · Custom server (10.0.0.5) · m · \$4.00 on your server this month (not in budget)", line)
+        assertEquals("On · LiteLLM (10.0.0.5) · m · \$4.00 on your server this month (not in budget)", line)
         // Both providers this month: OpenRouter's part and the server's, never added together.
         val both = dev.murmur.core.DevText.cleanupStatus(st.copy(monthCostUsd = 4.5))
-        assertEquals("On · Custom server (10.0.0.5) · m · OpenRouter this month \$0.50 · \$4.00 on your server this month (not in budget)", both)
+        assertEquals("On · LiteLLM (10.0.0.5) · m · OpenRouter this month \$0.50 · \$4.00 on your server this month (not in budget)", both)
         val or = dev.murmur.core.DevText.cleanupStatus(st.copy(provider = "openrouter", host = "", monthCostUsd = 4.5))
         assertEquals("On · m · this month \$0.50 · \$4.00 on your server this month (not in budget)", or)
     }
@@ -130,14 +130,14 @@ class CloudSettingsTest {
         // A server that sends no cost header still shows its requests; OpenRouter's cleanup stays its own.
         val u = CloudUsage("2026-11", listOf(
             CloudUsage.ProviderUsage(OpenRouter.ID, requests = 2, costUsd = 0.25, costEstimated = true, purpose = CloudUsage.PURPOSE_CLEANUP),
-            CloudUsage.ProviderUsage(CustomServer.ID, requests = 1, purpose = CloudUsage.PURPOSE_CLEANUP),
+            CloudUsage.ProviderUsage(LiteLLM.ID, requests = 1, purpose = CloudUsage.PURPOSE_CLEANUP),
         ))
         val lines = CloudText.usageLines(u, CloudSettings())
         assertEquals("Speech \$0 · Cleanup ≈ \$0.25 · this month (2026-11)", lines[0])
         assertEquals("0 speech requests (0.0 min) · 2 cleanup requests", lines[1])
-        assertEquals("Custom server: 1 cleanup request · no cost reported (not in the budget)", lines.last())
+        assertEquals("Your proxy: 1 cleanup request · no cost reported (not in the budget)", lines.last())
         assertEquals(listOf("\$0.25" to "this month", "\$0" to "speech", "≈\$0.25" to "cleanup"), CloudText.usageStats(u, CloudSettings()))
-        assertTrue("no custom line without custom usage", CloudText.usageLines(CloudUsage(), CloudSettings()).none { it.startsWith(CustomServer.NAME) })
+        assertTrue("no custom line without custom usage", CloudText.usageLines(CloudUsage(), CloudSettings()).none { it.startsWith(LiteLLM.USAGE_LABEL) })
     }
 
     @Test fun routeWording() {
@@ -147,7 +147,7 @@ class CloudSettingsTest {
         assertEquals("AI cleanup: OpenRouter · llama-3.3-70b-instruct · \$0.0007", CloudText.cleanupRow(r))
         assertNull(CloudText.cleanupRow(RouteInfo("local")))
         // D52: named by the provider that cleaned.
-        assertEquals("AI cleanup: Custom server (10.0.0.5) · llama-3.3-70b-instruct · \$0.0007", CloudText.cleanupRow(r, "Custom server (10.0.0.5)"))
+        assertEquals("AI cleanup: LiteLLM (10.0.0.5) · llama-3.3-70b-instruct · \$0.0007", CloudText.cleanupRow(r, "LiteLLM (10.0.0.5)"))
         // D30: AI cleanup tried, the fallback pipeline produced the text.
         assertEquals("AI cleanup: on-device · qwen2.5-1.5b · OpenRouter not used (llm_timeout)",
             CloudText.cleanupRow(RouteInfo("local", llmEngine = "local", llmModel = "qwen2.5-1.5b", cleanupRoute = "local", cloudFallback = "llm_timeout")))
@@ -170,7 +170,7 @@ class CloudSettingsTest {
         val fake = FakeVaultKeys()
         val keys = CloudKeyStore(kv) { id -> SecretVault(SecretVault.cloudAlias(id), fake) }
         val store = DevStore(kv, BuildCaps.ALL, SecretVault("murmur_dev_token", fake))
-        val s = OpenRouterPage.enableCleanup(OpenRouterPage.enableStt(DevSettings.defaults(BuildCaps.ALL), now), now)
+        val s = CloudPage.enableCleanup(CloudPage.enableStt(DevSettings.defaults(BuildCaps.ALL), now), now)
             .let { it.copy(cloud = it.cloud.copy(monthlyBudgetUsd = 3.0)) }
         store.save(s)
         keys.set(OpenRouter.ID, " $key ")
@@ -198,7 +198,7 @@ class CloudSettingsTest {
 
     @Test fun storeKeepsCleanupFieldsAndALocalBuildMasksThem() {
         val kv = MemKV(); val fake = FakeVaultKeys()
-        val s = OpenRouterPage.enableCleanup(DevSettings.defaults(BuildCaps.ALL), now)
+        val s = CloudPage.enableCleanup(DevSettings.defaults(BuildCaps.ALL), now)
             .copy(cleanupOrder = listOf(DevSettings.CleanupRoute.CLOUD, DevSettings.CleanupRoute.SERVER, DevSettings.CleanupRoute.LOCAL))
             .withCleanup(DevSettings.CleanupRoute.SERVER, false)
         DevStore(kv, BuildCaps.ALL, SecretVault("t", fake)).save(s)
@@ -251,23 +251,23 @@ class CloudSettingsTest {
         assertFalse("another host voids it", ok.copy(customCleanup = ok.customCleanup.copy(baseUrl = "http://10.0.0.6:4000/v1")).cleanupConsentOk)
         assertTrue("host compared case-insensitively", CustomCleanupSettings("http://LLM.Lan:4000", "m", consentHost = "llm.lan", consentAtMs = 1).consentOk)
         assertFalse(CustomCleanupSettings("not a url", "m", consentHost = "", consentAtMs = 1).consentOk)
-        assertEquals(CustomServer.ID, ok.cleanupKeyId); assertEquals(OpenRouter.ID, CloudSettings().cleanupKeyId)
+        assertEquals(LiteLLM.ID, ok.cleanupKeyId); assertEquals(OpenRouter.ID, CloudSettings().cleanupKeyId)
         assertEquals("Qwen/Qwen2.5-7B-Instruct", ok.cleanupModel); assertEquals(4_000L, ok.cleanupTimeoutMs)
     }
 
     @Test fun addressComesFromTheRouterReader() {
         // The page parses no URLs: whatever the router's reader says is the URL, host and model check.
         val seen = mutableListOf<Pair<String, String>>()
-        CustomServer.check = CustomAddressCheck { u, m -> seen += u to m; CustomAddress(url = "http://[2001:db8::1]:4000/v1", host = "2001:db8::1", modelOk = m == "ok") }
+        LiteLLM.check = CustomAddressCheck { u, m -> seen += u to m; CustomAddress(url = "http://[2001:db8::1]:4000/v1", host = "2001:db8::1", modelOk = m == "ok") }
         try {
             assertEquals("http://[2001:db8::1]:4000/v1", CloudInput.baseUrl("http://[2001:DB8::0:1]:4000").value)
             assertEquals("2001:db8::1", CustomCleanupSettings("anything").host)
             assertEquals("2001:db8::1", CustomCleanupSettings("anything").withConsent(now).consentHost)
-            assertTrue(CustomServer.validModelId("ok")); assertFalse(CustomServer.validModelId("two words"))
+            assertTrue(LiteLLM.validModelId("ok")); assertFalse(LiteLLM.validModelId("two words"))
             assertTrue(seen.contains("http://[2001:DB8::0:1]:4000" to ""))
-            CustomServer.check = CustomAddressCheck { _, _ -> CustomAddress(error = "bad_base_url", message = "base URL must not contain ? or #") }
+            LiteLLM.check = CustomAddressCheck { _, _ -> CustomAddress(error = "bad_base_url", message = "base URL must not contain ? or #") }
             assertEquals("Base URL must not contain ? or #", CloudInput.baseUrl("http://x/v1?q").error)
-            assertEquals("", CustomServer.host("http://x/v1?q"))
+            assertEquals("", LiteLLM.host("http://x/v1?q"))
             assertTrue(CloudInput.baseUrl(" ").error!!.isNotEmpty())
         } finally { FakeCustomAddress.install() }
     }
@@ -275,7 +275,7 @@ class CloudSettingsTest {
     @Test fun oneAddressLookupServesReadyHostAndHttps() {
         // A page refresh reads ready, host, https and consent of one settings value: one native call.
         var calls = 0
-        CustomServer.check = CustomAddressCheck { u, m -> calls++; FakeCustomAddress.check(u, m) }
+        LiteLLM.check = CustomAddressCheck { u, m -> calls++; FakeCustomAddress.check(u, m) }
         try {
             val c = CustomCleanupSettings("http://10.0.0.5:4000", " m ", consentHost = "10.0.0.5", consentAtMs = 1)
             assertTrue(c.ready); assertEquals("10.0.0.5", c.host); assertFalse(c.https); assertTrue(c.consentOk)
@@ -289,12 +289,12 @@ class CloudSettingsTest {
 
     @Test fun aLibraryWithoutTheAddressCallReadsAsNotSetUp() {
         // No native library in JVM tests: the real reader says "unusable", never a guess.
-        CustomServer.check = CustomAddressCheck { u, m -> dev.murmur.core.NativeMurmurCore.customCleanupAddress(u, m) }
+        LiteLLM.check = CustomAddressCheck { u, m -> dev.murmur.core.NativeMurmurCore.customCleanupAddress(u, m) }
         try {
-            assertNull(CustomServer.normalizeBaseUrl("http://10.0.0.5:4000"))
+            assertNull(LiteLLM.normalizeBaseUrl("http://10.0.0.5:4000"))
             val c = CloudSettings(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = custom.withConsent(now))
             assertFalse(c.cleanupConsentOk); assertTrue(c.customNotSetUp)
-            assertEquals(CustomServer.NOT_SET_UP, c.cleanupProviderName)
+            assertEquals(LiteLLM.NOT_SET_UP, c.cleanupProviderName)
         } finally { FakeCustomAddress.install() }
     }
 
@@ -337,14 +337,14 @@ class CloudSettingsTest {
         val c = CloudSettings(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = custom)
         val (title, body, button) = CloudText.cleanupConsent(c)
         assertEquals("Send dictated text to 10.0.0.5?", title)
-        assertTrue(body, body.contains("10.0.0.5") && body.contains(CloudText.HTTP_WARNING) && body.contains("always uses OpenRouter"))
+        assertTrue(body, body.contains("10.0.0.5") && body.contains(CloudText.HTTP_WARNING) && body.contains("AI cleanup only"))
         assertFalse(body, body.contains("openrouter.ai"))
         assertEquals(CloudText.CUSTOM_CONSENT_BUTTON, button)
         val tls = CloudText.cleanupConsent(c.copy(customCleanup = custom.copy(baseUrl = "https://10.0.0.5/v1"))).second
         assertFalse(tls.contains(CloudText.HTTP_WARNING))
         assertEquals(CloudText.CLEANUP_CONSENT_TITLE, CloudText.cleanupConsent(CloudSettings()).first)
-        assertEquals("Custom server (10.0.0.5)", c.cleanupProviderName)
-        assertEquals(CustomServer.NOT_SET_UP, CloudSettings(cleanupProvider = CleanupProvider.CUSTOM).cleanupProviderName)
+        assertEquals("LiteLLM (10.0.0.5)", c.cleanupProviderName)
+        assertEquals(LiteLLM.NOT_SET_UP, CloudSettings(cleanupProvider = CleanupProvider.CUSTOM).cleanupProviderName)
         assertEquals("OpenRouter", CloudSettings().cleanupProviderName)
         assertEquals("Connected: 2 models", CloudText.customModelsLine(dev.murmur.core.CustomModels(listOf("a", "b"))))
         assertEquals("Failed: key rejected (Authentication Error)", CloudText.customModelsLine(dev.murmur.core.CustomModels(error = "auth_failed", message = "Authentication Error")))

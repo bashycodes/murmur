@@ -7,7 +7,7 @@
 #     docker build -f deploy/docker/Dockerfile -t murmur-server .
 #   CPU, from binaries built on the host (no network; tools/container/stage-prebuilt.sh first):
 #     docker build -f deploy/docker/Dockerfile --build-arg SOURCE=prebuilt -t murmur-server:local .
-#   NVIDIA CUDA variant (LLM cleanup on the GPU):
+#   NVIDIA CUDA variant (AI cleanup and whisper speech models on the GPU, D84):
 #     docker build -f deploy/docker/Dockerfile --target cuda -t murmur-server:local-cuda .
 #
 # Needs BuildKit (Docker 23+ default; RUN --mount, COPY --chmod). No
@@ -34,7 +34,7 @@ RUN apt-get update \
 WORKDIR /src
 COPY . .
 # The production feature set (docs/findings/2026-10-31-server-model-setup.md).
-ARG FEATURES=whisper,parakeet,tls,llm
+ARG FEATURES=whisper,whisper-plugin,parakeet,tls,llm
 # Baked into `murmur-server --version`/health (no .git in the context).
 ARG MURMUR_GIT_SHA=unknown
 ARG CARGO_BUILD_JOBS=2
@@ -76,12 +76,14 @@ COPY deploy/docker/prebuilt/ /out/
 
 FROM artifacts-${SOURCE} AS artifacts
 
-# ---- CUDA llama.cpp plugin -----------------------------------------------------
-# Only LLM cleanup uses the GPU: sherpa-onnx (Parakeet/zipformer) runs with
-# the CPU provider and whisper (LID) stays on the CPU (docs/container.md).
+# ---- CUDA plugins: llama.cpp (cleanup) and whisper.cpp (speech) ----------------
+# On the GPU: AI cleanup and every whisper speech model (the stock or ivrit.ai
+# turbo as the main engine or the Hebrew route, D84). sherpa-onnx
+# (Parakeet/zipformer) runs with the CPU provider and the whisper language-ID
+# model stays on the built-in CPU whisper (docs/container.md §7).
 FROM ${RUST_IMAGE} AS rust-toolchain
 
-FROM ${CUDA_DEVEL_IMAGE} AS cuda-llm-source-build
+FROM ${CUDA_DEVEL_IMAGE} AS cuda-plugins-source-build
 RUN apt-get update \
     && apt-get install -y --no-install-recommends cmake clang libclang-dev git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
@@ -95,31 +97,47 @@ COPY . .
 ARG CUDAARCHS="75;80;86;89;90;120"
 ARG MURMUR_GIT_SHA=unknown
 ARG CARGO_BUILD_JOBS=2
-# llama-cpp-sys-2 links cudart/cuBLAS statically; only the driver's
-# libcuda.so.1 is needed at run time, which the NVIDIA container toolkit
-# injects. The link uses the toolkit's stub.
+# llama-cpp-sys-2 links cudart/cuBLAS statically. whisper-rs-sys links them
+# dynamically (libcudart, libcublas, libcublasLt .so.12), so those three are
+# copied next to the plugins. Either way the driver's libcuda.so.1 comes from
+# the NVIDIA container toolkit at run time; the link uses the toolkit's stub.
+# The whisper build gets the architectures as CMAKE_CUDA_ARCHITECTURES
+# (whisper-rs-sys passes CMAKE_*/GGML_* variables to CMake; ggml ignores
+# CUDAARCHS) and GGML_NATIVE=OFF, so its CPU fallback runs on any x86-64 CPU
+# with AVX2, not only the build machine's.
+# CUDAFLAGS (CMake's initial CMAKE_CUDA_FLAGS): nvcc's host objects must be
+# position-independent to link into the plugins (.so); the cmake crate adds
+# -fPIC to the C/C++ flags only, and without it rust-lld refuses ggml-cuda's
+# objects ("relocation R_X86_64_PC32 ... recompile with -fPIC").
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
     set -eu; \
-    export CUDAARCHS MURMUR_GIT_SHA MURMUR_GIT_DIRTY=0; \
+    export CUDAARCHS MURMUR_GIT_SHA MURMUR_GIT_DIRTY=0 CUDAFLAGS="-Xcompiler=-fPIC"; \
     BINDGEN_EXTRA_CLANG_ARGS="-I$(gcc -print-file-name=include)"; export BINDGEN_EXTRA_CLANG_ARGS; \
     export LIBRARY_PATH=/usr/local/cuda/lib64/stubs; \
     cargo build --release --locked -j "$CARGO_BUILD_JOBS" -p murmur-llm --features cuda; \
+    CMAKE_CUDA_ARCHITECTURES="$CUDAARCHS" GGML_NATIVE=OFF \
+        cargo build --release --locked -j "$CARGO_BUILD_JOBS" -p murmur-whisper --features cuda; \
     mkdir -p /out/lib; \
-    cp -L target/release/libmurmur_llm.so /out/lib/libmurmur_llm_cuda.so
+    cp -L target/release/libmurmur_llm.so /out/lib/libmurmur_llm_cuda.so; \
+    cp -L target/release/libmurmur_whisper.so /out/lib/libmurmur_whisper_cuda.so; \
+    for l in libcudart.so.12 libcublas.so.12 libcublasLt.so.12; do \
+        cp -L "/usr/local/cuda/lib64/$l" /out/lib/; done
 
-FROM scratch AS cuda-llm-source
-COPY --from=cuda-llm-source-build /out/ /out/
+FROM scratch AS cuda-plugins-source
+COPY --from=cuda-plugins-source-build /out/ /out/
 
-FROM scratch AS cuda-llm-prebuilt
-COPY deploy/docker/prebuilt/lib/libmurmur_llm_cuda.so /out/lib/
+# tools/container/stage-prebuilt.sh --cuda-llm / --cuda-whisper / --cuda-lib.
+FROM scratch AS cuda-plugins-prebuilt
+COPY deploy/docker/prebuilt/cuda/ /out/lib/
 
-FROM cuda-llm-${SOURCE} AS cuda-llm
+FROM cuda-plugins-${SOURCE} AS cuda-plugins
 
 # ---- runtime images --------------------------------------------------------------
 # Same layout in both:
 #   /opt/murmur-server/bin/murmur-server (+ /usr/local/bin/murmur-server link)
-#   /opt/murmur-server/lib  sherpa-onnx, onnxruntime, libmurmur_llm*.so, libgomp
+#   /opt/murmur-server/lib  sherpa-onnx, onnxruntime, libmurmur_llm*.so, libgomp;
+#                           CUDA image: + libmurmur_whisper_cuda.so, cudart, cuBLAS
 #   /opt/murmur-server/{COPYRIGHT,NOTICE,THIRD-PARTY-LICENSES}  rights, third-party
 #   notices and their full licence texts (D80)
 #   /usr/local/bin/murmur-server -> the entrypoint (finds the config for
@@ -129,7 +147,7 @@ FROM cuda-llm-${SOURCE} AS cuda-llm
 FROM ${CUDA_RUNTIME_IMAGE} AS cuda
 COPY --from=artifacts /out/bin/murmur-server /opt/murmur-server/bin/murmur-server
 COPY --from=artifacts /out/lib/ /opt/murmur-server/lib/
-COPY --from=cuda-llm /out/lib/libmurmur_llm_cuda.so /opt/murmur-server/lib/
+COPY --from=cuda-plugins /out/lib/ /opt/murmur-server/lib/
 COPY --chmod=0755 deploy/docker/entrypoint.sh /usr/local/bin/murmur-entrypoint
 COPY --chmod=0755 deploy/docker/healthcheck.sh /usr/local/bin/murmur-healthcheck
 COPY COPYRIGHT NOTICE THIRD-PARTY-LICENSES /opt/murmur-server/
@@ -148,8 +166,13 @@ RUN set -eu; \
 # compose `gpu` profile / the chart's gpu.enabled). If the GPU fails at load,
 # the plugin falls back to the CPU (murmur-llm backend::choose); without the
 # NVIDIA runtime set MURMUR_LLM_LIB=/opt/murmur-server/lib/libmurmur_llm.so.
+# MURMUR_WHISPER_LIB (D84): whisper speech models load through the CUDA
+# whisper plugin. Without libcuda.so.1 it does not load and the server uses
+# its built-in CPU whisper, with a warning in the log; with the driver but no
+# GPU the plugin runs on the CPU. MURMUR_WHISPER_LIB= (empty) skips it.
 ENV LD_LIBRARY_PATH=/opt/murmur-server/lib \
     MURMUR_LLM_LIB=/opt/murmur-server/lib/libmurmur_llm_cuda.so \
+    MURMUR_WHISPER_LIB=/opt/murmur-server/lib/libmurmur_whisper_cuda.so \
     NVIDIA_VISIBLE_DEVICES=all \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility
 # Zero-config start (D77, entrypoint.sh): models from /models, key in /data.
