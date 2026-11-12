@@ -28,6 +28,7 @@ import dev.murmur.data.ParakeetFiles
 import dev.murmur.data.EngineRoute
 import dev.murmur.data.DevSettings
 import dev.murmur.data.DevStore
+import dev.murmur.data.ServerHealth
 import dev.murmur.data.BuildCaps
 import android.app.Application
 import android.util.Log
@@ -111,6 +112,9 @@ class MurmurApp : Application() {
 
     /** Last dictation's result + route (Developer page, engine badge). In-memory only (§5). */
     val lastRoute = MutableStateFlow<LastDictation?>(null)
+
+    /** Last server health probe (Test connection, Settings pages); in-memory only. */
+    val serverHealth = ServerHealth()
 
     /** D35: History rows being retried now (their Retry shows busy). */
     val retrying = MutableStateFlow<Set<Long>>(emptySet())

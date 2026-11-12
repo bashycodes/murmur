@@ -262,12 +262,21 @@ object SettingsSummary {
         DevSettings.Route.CLOUD -> OpenRouter.NAME
     }
 
-    /** Speech to text row: the engines that are on, in try order ("Your server, then this phone"). */
-    fun speech(d: DevSettings, caps: BuildCaps): String {
-        val on = DevPages.engines(d, caps).filter { DevPages.engineOn(d.effective(caps), it) }
+    /**
+     * Speech to text row, and the drawer's line ([ShellPages.speechLine]): the engines a dictation
+     * will try, in order ("Your server, then this phone"; [SpeechEngines.planned]), or "Not set up: …"
+     * when engines are on but none can run yet. [phoneReady] = [SpeechEngines.phoneReady].
+     */
+    fun speech(d: DevSettings, caps: BuildCaps, phoneReady: Boolean): String {
+        val on = SpeechEngines.on(d, caps)
         if (on.isEmpty()) return "Off: no engine is on"
-        if (on.size == 1) return "${engineName(on[0])} only"
-        return on.mapIndexed { i, r -> if (i == 0) engineName(r) else engineName(r).replaceFirstChar { it.lowercase() } }.joinToString(", then ")
+        val planned = SpeechEngines.planned(d, caps, phoneReady)
+        if (planned.isEmpty()) {
+            val hints = on.map { SpeechEngines.setupHint(it) }
+            return "Not set up: " + (if (hints.size == 1) hints[0] else hints.dropLast(1).joinToString(", ") + " or " + hints.last())
+        }
+        if (planned.size == 1) return "${engineName(planned[0])} only"
+        return planned.mapIndexed { i, r -> if (i == 0) engineName(r) else engineName(r).replaceFirstChar { it.lowercase() } }.joinToString(", then ")
     }
 
     /**

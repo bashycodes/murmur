@@ -385,9 +385,15 @@ class DeveloperActivity : Activity() {
         val json = s.effective(caps).toServerConfigJson().toString()
         thread(name = "dev-probe") {
             val h = NativeMurmurCore.probeServer(json)
-            if (!h.ok) app.debugLog.event("server_probe", DevText.probe(h)) else rememberServerModel(h)
+            probed(s, h)
             runOnUiThread { lastProbe = h; probeResult?.show(DevText.probe(h), if (h.ok) Tone.OK else Tone.BAD); refresh() }
         }
+    }
+
+    /** A probe of [s] finished: log a failure, keep the server's model, and share the result with the Settings pages. */
+    private fun probed(s: DevSettings, h: HealthReport) {
+        if (!h.ok) app.debugLog.event("server_probe", DevText.probe(h)) else rememberServerModel(h)
+        app.serverHealth.record(s.effective(caps), h, System.currentTimeMillis())
     }
 
     /** The debug log's `model` for server dictations: what the server says it runs. */
@@ -644,7 +650,7 @@ class DeveloperActivity : Activity() {
                 probeResult?.show("Probing ${s.host}:${s.port}…")
                 thread(name = "dev-probe-saved") {
                     val h = runCatching { router.probeSaved() }.getOrElse { HealthReport(ok = false, error = "error", message = it.message) }
-                    if (!h.ok) app.debugLog.event("server_probe", DevText.probe(h)) else rememberServerModel(h)
+                    probed(s, h)
                     runOnUiThread { lastProbe = h; probeResult?.show(DevText.probe(h), if (h.ok) Tone.OK else Tone.BAD); refresh() }
                 }
             }
