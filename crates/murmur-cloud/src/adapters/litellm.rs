@@ -1,4 +1,4 @@
-//! D84: speech to text on the user's LiteLLM proxy (or any OpenAI-compatible
+//! D85: speech to text on the user's LiteLLM proxy (or any OpenAI-compatible
 //! server): `POST {base}/audio/transcriptions`, the OpenAI multipart form
 //! (`file`, `model`, `response_format=json`, `temperature`, optional
 //! `language` and `prompt`). No OpenRouter extensions (`provider`,

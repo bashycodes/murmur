@@ -41,7 +41,7 @@ use crate::{
 };
 
 /// What the cloud STT backend is built for: OpenRouter's privacy + STT
-/// settings, or (D84) the LiteLLM proxy's address, speech model and connect
+/// settings, or (D85) the LiteLLM proxy's address, speech model and connect
 /// limit. The cleanup settings do not rebuild it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum SttView {
@@ -90,7 +90,7 @@ fn litellm_view(c: &CustomCleanupConfig) -> SttView {
     }
 }
 
-/// The STT view of the provider cloud speech goes to (D84).
+/// The STT view of the provider cloud speech goes to (D85).
 fn stt_view(c: &CloudConfig) -> SttView {
     match c.speech_provider() {
         CloudProvider::OpenRouter => or_view(&c.openrouter),
@@ -102,7 +102,7 @@ fn stt_view(c: &CloudConfig) -> SttView {
 /// [`State::cloud_check`] allows.
 enum CloudGate {
     OpenRouter(OpenRouterConfig, SecretString),
-    /// D84: the LiteLLM proxy; its key is optional.
+    /// D85: the LiteLLM proxy; its key is optional.
     LiteLlm(CustomCleanupConfig, Option<SecretString>),
 }
 
@@ -272,7 +272,7 @@ impl State {
         if self.cfg.cloud.is_legacy() {
             return Err(not_cfg("cloud settings not migrated"));
         }
-        // D84: the LiteLLM proxy once it has a speech model. Its own audio
+        // D85: the LiteLLM proxy once it has a speech model. Its own audio
         // consent, bound to its host; the key is optional; the OpenRouter
         // budget never counts it (D52).
         if self.cfg.cloud.speech_provider() == CloudProvider::LiteLlm {
@@ -433,7 +433,7 @@ pub struct Router {
     starting: Mutex<()>,
     remote_factory: Option<RemoteFactory>,
     cloud_factory: Option<CloudFactory>,
-    /// D84: cloud speech on the LiteLLM proxy.
+    /// D85: cloud speech on the LiteLLM proxy.
     custom_stt_factory: Option<CustomSttFactory>,
     cleanup_factory: Option<CleanupFactory>,
     /// D52: builds the custom-server cleaner.
@@ -681,7 +681,7 @@ impl Router {
         self
     }
 
-    /// D84: enable cloud speech on the user's LiteLLM proxy: `f` builds its
+    /// D85: enable cloud speech on the user's LiteLLM proxy: `f` builds its
     /// backend (`murmur_cloud::custom_stt_factory`). Used while
     /// `cloud.speech_provider()` is LiteLLM. Additive.
     pub fn with_custom_stt(mut self, f: CustomSttFactory) -> Self {
@@ -689,7 +689,7 @@ impl Router {
         self
     }
 
-    /// This build can send speech to the provider `c` picks (D84).
+    /// This build can send speech to the provider `c` picks (D85).
     fn cloud_supported(&self, c: &CloudConfig) -> bool {
         match c.speech_provider() {
             CloudProvider::OpenRouter => self.cloud_factory.is_some(),
@@ -1150,7 +1150,7 @@ impl Router {
         let mut st = self.state.lk();
         if provider_id == CUSTOM_CLEANUP_ID {
             let key = key.filter(|k| !k.is_empty());
-            // D84: the proxy's key is its speech key too.
+            // D85: the proxy's key is its speech key too.
             let speech = st.cfg.cloud.speech_provider() == CloudProvider::LiteLlm;
             if st.custom_key != key && speech {
                 st.cloud = None;
@@ -1641,7 +1641,7 @@ impl Router {
         h
     }
 
-    /// D84: the Speech page's "Test" on the LiteLLM proxy: transcribe the
+    /// D85: the Speech page's "Test" on the LiteLLM proxy: transcribe the
     /// bundled public-domain clip with `c` (its address and `stt_model`).
     /// `key: None` = the saved proxy key, which only goes to a host the
     /// user agreed to send text or audio to. Blocking; never panics; no

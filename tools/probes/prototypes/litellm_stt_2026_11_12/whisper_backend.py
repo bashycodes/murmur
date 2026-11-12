@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""D84 live-test backend: an OpenAI-compatible `/v1/audio/transcriptions`
+"""D85 live-test backend: an OpenAI-compatible `/v1/audio/transcriptions`
 server for a LiteLLM proxy to route an `audio_transcription` model to.
 
 Dated probe (2026-11-12, `feat/litellm-stt`); not a product. With

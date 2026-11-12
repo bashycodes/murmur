@@ -845,7 +845,7 @@ pub type RemoteFactory = Box<dyn Fn(&ServerConfig) -> Arc<dyn Backend> + Send + 
 pub type CloudFactory =
     Box<dyn Fn(&OpenRouterConfig, SecretString) -> Arc<dyn Backend> + Send + Sync>;
 
-/// D84: builds the cloud STT backend on the user's LiteLLM proxy (or any
+/// D85: builds the cloud STT backend on the user's LiteLLM proxy (or any
 /// OpenAI-compatible server with `/audio/transcriptions`) for its config
 /// (address, `stt_model`, connect timeout) and the optional key. Cached
 /// like [`CloudFactory`]; used while `cloud.speech_provider()` is LiteLLM.

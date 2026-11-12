@@ -158,7 +158,7 @@ pub struct CloudConfig {
     pub monthly_budget_usd: Option<Usd>,
     /// D78: the one Cloud provider, OpenRouter or LiteLLM, that every cloud
     /// use goes to. Cleanup calls it; cloud speech-to-text goes to it too
-    /// once LiteLLM has a speech model (D84, [`Self::speech_provider`]).
+    /// once LiteLLM has a speech model (D85, [`Self::speech_provider`]).
     /// Stored under its D52 name `cleanup_provider`, so saved settings read
     /// unchanged; omitted while OpenRouter.
     #[serde(
@@ -229,7 +229,7 @@ impl CloudConfig {
         Ok(())
     }
 
-    /// D84: who cloud speech-to-text goes to. LiteLLM when it is the
+    /// D85: who cloud speech-to-text goes to. LiteLLM when it is the
     /// provider and has a speech model, else OpenRouter: a LiteLLM setup
     /// without one (Android's custom cleanup server paired with OpenRouter
     /// speech, D78) keeps its OpenRouter speech unchanged.
@@ -244,10 +244,10 @@ impl CloudConfig {
     }
 
     /// The selected Cloud provider can do speech to text: OpenRouter
-    /// always, LiteLLM once a speech model is set (D84). The Windows
+    /// always, LiteLLM once a speech model is set (D85). The Windows
     /// settings keep cloud speech off otherwise (D78's one-provider rule).
     pub fn offers_stt(&self) -> bool {
-        self.provider.is_openrouter() || !self.custom_cleanup.stt_model.trim().is_empty()
+        self.provider.is_openrouter() || self.speech_provider() == CloudProvider::LiteLlm
     }
 
     /// The cleanup consent for the selected provider: openrouter.ai, or
@@ -343,7 +343,7 @@ pub struct CleanupView {
 /// The Cloud provider (D78; D52's cleanup provider): who the `cloud`
 /// cleanup route calls. The Windows pages call both "Cloud" and keep one
 /// provider for every cloud use; cloud speech-to-text follows it once
-/// LiteLLM has a speech model ([`CloudConfig::speech_provider`], D84), else
+/// LiteLLM has a speech model ([`CloudConfig::speech_provider`], D85), else
 /// runs on OpenRouter (Android still pairs the two).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum CloudProvider {
@@ -353,7 +353,7 @@ pub enum CloudProvider {
     OpenRouter,
     /// The user's LiteLLM proxy or other OpenAI-compatible server
     /// ([`CustomCleanupConfig`], D52): cleanup, and speech to text when it
-    /// has a speech model (D84). On the wire it keeps
+    /// has a speech model (D85). On the wire it keeps
     /// its D52 id `custom` (settings files, key id, usage rows, shell
     /// JSON); `litellm` is read too.
     #[serde(rename = "custom", alias = "litellm")]
@@ -386,7 +386,9 @@ pub const CONNECT_TIMEOUT_RANGE_MS: (u64, u64) = (200, 10_000);
 /// proxy, vLLM, Ollama, …). Plain `http://` is allowed to any host by the
 /// owner's choice: the key and the dictated text then cross the network
 /// unencrypted. The key, optional, lives in secure storage under
-/// [`CUSTOM_CLEANUP_ID`], never here.
+/// [`CUSTOM_CLEANUP_ID`], never here. D85: despite the name it also holds
+/// the proxy's speech-to-text settings (`stt_model` and its own audio
+/// consent); the name stays for the settings wire.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CustomCleanupConfig {
@@ -400,7 +402,7 @@ pub struct CustomCleanupConfig {
     /// URL to another host voids the consent.
     pub consent_host: String,
     pub consent_at_ms: u64,
-    /// D84: the proxy's speech-to-text model (`/audio/transcriptions`).
+    /// D85: the proxy's speech-to-text model (`/audio/transcriptions`).
     /// Empty = no speech on the proxy: cloud speech-to-text then stays on
     /// OpenRouter ([`CloudConfig::speech_provider`]). Omitted while empty,
     /// so D52/D78 settings files read and write unchanged.
@@ -450,21 +452,23 @@ impl CustomCleanupConfig {
 
     /// The user consented to send dictated text to this server's host.
     pub fn consent_ok(&self) -> bool {
-        self.consent_at_ms > 0 && !self.consent_host.is_empty() && {
-            let h = self.host();
-            !h.is_empty() && self.consent_host.eq_ignore_ascii_case(&h)
-        }
+        self.host_consent_ok(&self.consent_host, self.consent_at_ms)
     }
 
-    /// D84: the user consented to send audio to this server's host.
+    /// D85: the user consented to send audio to this server's host.
     pub fn stt_consent_ok(&self) -> bool {
-        self.stt_consent_at_ms > 0 && !self.stt_consent_host.is_empty() && {
+        self.host_consent_ok(&self.stt_consent_host, self.stt_consent_at_ms)
+    }
+
+    /// A consent given at `at_ms` for `host` holds for the current host.
+    fn host_consent_ok(&self, host: &str, at_ms: u64) -> bool {
+        at_ms > 0 && !host.is_empty() && {
             let h = self.host();
-            !h.is_empty() && self.stt_consent_host.eq_ignore_ascii_case(&h)
+            !h.is_empty() && host.eq_ignore_ascii_case(&h)
         }
     }
 
-    /// D84: address and speech model are set, so the proxy can transcribe.
+    /// D85: address and speech model are set, so the proxy can transcribe.
     pub fn stt_ready(&self) -> bool {
         self.api_base().is_ok() && valid_custom_model_id(self.stt_model.trim())
     }
@@ -1383,7 +1387,7 @@ mod tests {
         assert_eq!(
             c.speech_provider(),
             CloudProvider::OpenRouter,
-            "no speech model: speech stays on OpenRouter (D84)"
+            "no speech model: speech stays on OpenRouter (D85)"
         );
         assert_eq!(
             c.cleanup_key_id(),
@@ -1451,7 +1455,7 @@ mod tests {
         assert_eq!(o.validate(), Ok(()));
     }
 
-    /// D84: a speech model on the LiteLLM proxy moves cloud speech there,
+    /// D85: a speech model on the LiteLLM proxy moves cloud speech there,
     /// with its own audio consent bound to the proxy's host.
     #[test]
     fn litellm_speech_model_and_audio_consent() {

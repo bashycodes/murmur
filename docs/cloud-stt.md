@@ -12,7 +12,7 @@ Deepgram, AssemblyAI, generic OpenAI-compatible, presets, custom base URLs) is
 OpenAI-compatible server, typically a LiteLLM proxy: §6.5. C8 below then holds for
 OpenRouter and speech-to-text; the custom server's host is the one the user typed.
 
-**D84 (2026-11-12):** with a speech model set for it, the LiteLLM proxy also does
+**D85 (2026-11-12):** with a speech model set for it, the LiteLLM proxy also does
 speech-to-text (`/audio/transcriptions`): §6.6.
 
 **Goal.** In Developer settings the user may attach an OpenRouter API key and opt in,
@@ -250,7 +250,7 @@ OpenRouter with its own settings, consent and key, and the pages say so.
   parameters, and the cost comes from the header anyway.
 * Prompt scope switches are shared with OpenRouter (stored under `openrouter.cleanup`).
 
-### 6.6 LiteLLM speech-to-text (D84)
+### 6.6 LiteLLM speech-to-text (D85)
 
 * **Who**: `CloudConfig::speech_provider()` is LiteLLM when the Cloud provider is LiteLLM
   **and** `custom_cleanup.stt_model` is set; otherwise OpenRouter (so Android, which never

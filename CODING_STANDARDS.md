@@ -22,7 +22,8 @@ Each rule comes from a problem a review caught before merge.
   text off the device goes through the router's cloud gate and is rechecked
   on fallback hops. A provider is only ever reached through OpenRouter,
   except AI cleanup's custom server (D52), whose host the user typed and
-  consented to.
+  consented to, and (D85) audio to that same LiteLLM proxy for speech to
+  text, only after a separate audio consent for that host.
 
 ## Shared code
 

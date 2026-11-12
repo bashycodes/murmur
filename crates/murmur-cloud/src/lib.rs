@@ -4,7 +4,7 @@
 //! The only crate in the product that sends audio or text to a third
 //! party. The one compiled-in host is OpenRouter: the API root is the
 //! constant [`api::BASE_URL`], and `tools/check-build-matrix.sh` fails if
-//! another provider host string is compiled into a cloud build. D52/D84:
+//! another provider host string is compiled into a cloud build. D52/D85:
 //! text cleanup and speech may instead go to a LiteLLM proxy the user typed
 //! in ([`custom`], [`adapters::litellm`]; never a compiled-in host). It is
 //! linked only into builds that enable the shell's `cloud` feature (C2).
@@ -73,7 +73,7 @@ pub use settings::{
 };
 
 /// Adapters compiled into this crate (`Router::cloud_capabilities`): one
-/// compiled-in provider (D84's LiteLLM proxy is user-typed, not listed).
+/// compiled-in provider (D85's LiteLLM proxy is user-typed, not listed).
 pub const ADAPTERS: [&str; 1] = ["openrouter"];
 /// The provider id of the one OpenRouter entry.
 pub const PROVIDER_ID: &str = "openrouter";
@@ -113,7 +113,7 @@ pub fn cleanup_factory() -> CleanupFactory {
     })
 }
 
-/// D84: `murmur_router::CustomSttFactory` building a [`CloudBackend`] on the
+/// D85: `murmur_router::CustomSttFactory` building a [`CloudBackend`] on the
 /// LiteLLM proxy. `cleaner` as for [`factory_with`].
 pub fn custom_stt_factory_with(
     cleaner: impl Fn() -> Option<Arc<dyn Cleaner>> + Send + Sync + 'static,
@@ -182,7 +182,7 @@ struct CallSlot {
 /// The speech adapter of a [`CloudAsr`].
 enum Stt {
     OpenRouter(Box<OpenRouterStt>),
-    /// D84: the user's LiteLLM proxy.
+    /// D85: the user's LiteLLM proxy.
     LiteLlm(LiteLlmStt),
 }
 
@@ -210,7 +210,7 @@ impl Stt {
     }
 }
 
-/// `AsrEngine` that sends the utterance to OpenRouter, or (D84) to the
+/// `AsrEngine` that sends the utterance to OpenRouter, or (D85) to the
 /// user's LiteLLM proxy.
 pub struct CloudAsr {
     settings: SttSettings,
@@ -231,7 +231,7 @@ impl CloudAsr {
         Self::build(settings, key, Api::new(), info)
     }
 
-    /// D84: speech on the LiteLLM proxy `c` (address, `stt_model`, connect
+    /// D85: speech on the LiteLLM proxy `c` (address, `stt_model`, connect
     /// limit) with its optional key. No catalogue, no budget estimate and
     /// no deferred cost lookup: the cost is the proxy's header, or unknown.
     pub fn litellm(c: &CustomCleanupConfig, key: Option<SecretString>) -> Self {
@@ -301,14 +301,14 @@ impl CloudAsr {
         self.adapter.path()
     }
 
-    /// `openrouter` or (D84) `custom`, the LiteLLM proxy.
+    /// `openrouter` or (D85) `custom`, the LiteLLM proxy.
     pub fn provider_id(&self) -> &'static str {
         self.adapter.provider_id()
     }
 
     /// The error line users see: [`CloudError`]'s `Display` names
     /// OpenRouter, so a proxy error gets [`custom::describe`]'s neutral
-    /// words (D84).
+    /// words (D85).
     fn describe(&self, e: &CloudError) -> String {
         match self.adapter {
             Stt::OpenRouter(_) => e.to_string(),
