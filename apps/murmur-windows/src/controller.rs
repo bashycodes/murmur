@@ -18,6 +18,7 @@ use crate::learn::{self, Anchors, EditWatch, FieldReader, Read};
 use crate::prefs::Prefs;
 use crate::recent_apps::RecentAppStore;
 use crate::suggestions::SuggestionStore;
+use murmur_core::command::CommandOutput;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
@@ -1291,8 +1292,11 @@ impl Controller {
     }
 
     /// Run the spoken instruction on the captured selection (off-thread);
-    /// the answer comes back as `CommandFinished`. Cancelled (Esc, the
-    /// processing timeout) = nothing is sent back and nothing is pasted.
+    /// the rewrite comes back as `CommandFinished`, the answer to a
+    /// question as `CommandAnswered`. Before a rewrite replaces the
+    /// selection the selection is read again: changed (or unreadable)
+    /// = nothing is pasted. Cancelled (Esc, the processing timeout) =
+    /// nothing is sent back and nothing is pasted.
     fn run_command(&self, session: SessionId, instruction: String) {
         let (selection, cancelled) = {
             let mut g = self.shared.sessions.lock().unwrap();
@@ -1307,6 +1311,7 @@ impl Controller {
         let core = self.core.clone();
         let shared = self.shared.clone();
         let tx = self.tx.clone();
+        let platform = self.platform.clone();
         std::thread::spawn(move || {
             let selected = match selection {
                 Some(rx) => rx
@@ -1327,12 +1332,18 @@ impl Controller {
                 {
                     cmd.original = sel.clone();
                 }
-                let r = core.command(
+                let r = match core.command(
                     &instruction,
                     sel.as_deref(),
                     murmur_core::command::DEFAULT_TIMEOUT,
-                );
-                if let (Ok(text), Some(cmd)) = (
+                )? {
+                    CommandOutput::Text(text) => {
+                        selection_unchanged(sel.as_deref(), || platform.capture_selection())
+                            .map(|()| CommandOutput::Text(text))
+                    }
+                    answer => Ok(answer),
+                };
+                if let (Ok(CommandOutput::Text(text)), Some(cmd)) = (
                     &r,
                     shared
                         .sessions
@@ -1345,7 +1356,17 @@ impl Controller {
                 }
                 r
             });
-            let _ = tx.send(Input::CommandFinished { session, result });
+            let _ = tx.send(match result {
+                Ok(CommandOutput::Answer(answer)) => Input::CommandAnswered { session, answer },
+                Ok(CommandOutput::Text(text)) => Input::CommandFinished {
+                    session,
+                    result: Ok(text),
+                },
+                Err(e) => Input::CommandFinished {
+                    session,
+                    result: Err(e),
+                },
+            });
         });
     }
 }
@@ -1728,6 +1749,27 @@ fn run_retry(
 /// Command Mode: the selection could not be read in time.
 pub const SELECTION_FAILED: &str = "Couldn't read the selected text";
 
+/// Command Mode: the selection changed while the AI worked.
+pub const SELECTION_CHANGED: &str = "Selection changed: text left unchanged";
+
+/// Command Mode, before a rewrite replaces `original` (the selection the
+/// command ran on): `read_now` reads the selection again, and anything
+/// but the same text (another selection, none, a read error) is
+/// [`SELECTION_CHANGED`]. Text generated at the cursor (`original` blank)
+/// replaces nothing and is not checked.
+fn selection_unchanged(
+    original: Option<&str>,
+    read_now: impl FnOnce() -> Result<Option<String>, String>,
+) -> Result<(), String> {
+    let Some(original) = original.filter(|s| !s.trim().is_empty()) else {
+        return Ok(());
+    };
+    match read_now() {
+        Ok(Some(now)) if now == original => Ok(()),
+        _ => Err(SELECTION_CHANGED.to_string()),
+    }
+}
+
 /// `PasteFinished` error of a paste dropped by Esc / the timeout before
 /// anything was inserted.
 pub const PASTE_CANCELLED: &str = "cancelled";
@@ -2097,6 +2139,11 @@ mod tests {
         /// Command Mode: what `capture_selection` answers (`None` = no
         /// selection).
         selection: Mutex<Option<Result<Option<String>, String>>>,
+        /// What every read after the first answers (`None` = the same as
+        /// `selection`): the selection changed meanwhile.
+        reselection: Mutex<Option<Result<Option<String>, String>>>,
+        /// `capture_selection` calls so far.
+        selection_reads: AtomicU64,
         /// D37: the foreground window's keyboard language.
         keyboard: Mutex<Option<String>>,
     }
@@ -2207,7 +2254,12 @@ mod tests {
         }
         fn capture_selection(&self) -> Result<Option<String>, String> {
             self.push("capture selection");
-            self.selection.lock().unwrap().clone().unwrap_or(Ok(None))
+            let later = self.selection_reads.fetch_add(1, Ordering::SeqCst) > 0;
+            let again = self.reselection.lock().unwrap().clone();
+            match again.filter(|_| later) {
+                Some(r) => r,
+                None => self.selection.lock().unwrap().clone().unwrap_or(Ok(None)),
+            }
         }
         fn view_changes(&self, row: Option<i64>) {
             self.push(format!("view changes {row:?}"));
@@ -2594,6 +2646,88 @@ mod tests {
             .fake
             .log()
             .contains(&"paste [stub: 1.0 s of audio]".to_string()));
+    }
+
+    #[test]
+    fn command_mode_reads_the_selection_again_before_replacing_it() {
+        let mut r = command_rig(Ok(Some("cant come tmrw".into())));
+        r.core
+            .set_command_reply(Ok("I can't come tomorrow.".into()));
+        r.pump(); // CommandFinished -> Paste
+        r.pump();
+        let log = r.fake.log();
+        let reads = log.iter().filter(|l| *l == "capture selection").count();
+        assert_eq!(reads, 2, "once for the command, once before the paste");
+        assert!(log.contains(&"paste I can't come tomorrow.".to_string()));
+    }
+
+    #[test]
+    fn command_mode_pastes_nothing_when_the_selection_changed() {
+        for now in [
+            Ok(Some("another sentence".to_string())),
+            Ok(None),
+            Err("no access".to_string()),
+        ] {
+            let mut r = command_rig(Ok(Some("cant come tmrw".into())));
+            *r.fake.reselection.lock().unwrap() = Some(now.clone());
+            r.core
+                .set_command_reply(Ok("I can't come tomorrow.".into()));
+            r.pump(); // CommandFinished(Err)
+            let log = r.fake.log();
+            assert!(
+                !log.iter().any(|l| l.starts_with("paste")),
+                "{now:?} {log:?}"
+            );
+            assert!(
+                log.iter().any(|l| l.contains(SELECTION_CHANGED)),
+                "{now:?} {log:?}"
+            );
+            assert!(matches!(r.c.machine().phase(), Phase::Error { .. }));
+        }
+    }
+
+    #[test]
+    fn a_question_about_the_selection_shows_the_answer_card_and_pastes_nothing() {
+        let mut r = command_rig(Ok(Some("cant come tmrw".into())));
+        r.core
+            .set_command_answer("It says they cannot come tomorrow.");
+        r.pump(); // CommandAnswered
+        let log = r.fake.log();
+        assert!(!log.iter().any(|l| l.starts_with("paste")), "{log:?}");
+        assert!(
+            log.contains(
+                &"overlay Answer { message: \"It says they cannot come tomorrow.\" }".to_string()
+            ),
+            "{log:?}"
+        );
+        let reads = log.iter().filter(|l| *l == "capture selection").count();
+        assert_eq!(reads, 1, "nothing is replaced, so nothing is re-read");
+        assert!(matches!(r.c.machine().phase(), Phase::Answer { .. }));
+        assert!(!log.contains(&"play Error".to_string()));
+        assert!(history_latest(&r).is_none(), "nothing was written");
+        // Esc closes the card.
+        r.at(2000, Input::Hotkey(HotkeyAction::Cancel));
+        assert_eq!(r.c.machine().phase(), &Phase::Idle);
+        assert_eq!(
+            r.fake.log().last().map(String::as_str),
+            Some("overlay Resting")
+        );
+    }
+
+    #[test]
+    fn selection_unchanged_compares_the_text_read_again() {
+        let same = || Ok(Some("abc".to_string()));
+        assert_eq!(selection_unchanged(Some("abc"), same), Ok(()));
+        for now in [Ok(Some("abd".to_string())), Ok(None), Err("x".to_string())] {
+            assert_eq!(
+                selection_unchanged(Some("abc"), || now.clone()),
+                Err(SELECTION_CHANGED.to_string())
+            );
+        }
+        // Generated at the cursor: nothing to compare, nothing read.
+        for original in [None, Some(""), Some("  ")] {
+            assert_eq!(selection_unchanged(original, || panic!("read")), Ok(()));
+        }
     }
 
     #[test]

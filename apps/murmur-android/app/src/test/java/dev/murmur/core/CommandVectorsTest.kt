@@ -18,6 +18,7 @@ class CommandVectorsTest {
     @Test fun everyVectorDecodesToItsOutcome() {
         val cases = fixture.getJSONArray("cases")
         val kinds = mutableSetOf<String>()
+        var answers = 0
         for (i in 0 until cases.length()) {
             val c = cases.getJSONObject(i)
             val input = c.getJSONObject("input")
@@ -25,6 +26,9 @@ class CommandVectorsTest {
             val got = CommandOutcome.decode(want.toString())
             if (input.has("ok")) {
                 assertEquals(CommandOutcome.Text(input.getString("ok")), got)
+            } else if (input.has("answer")) {
+                assertEquals(CommandOutcome.Answer(input.getString("answer")), got)
+                answers++
             } else {
                 got as CommandOutcome.Failed
                 assertEquals(input.getString("err"), got.kind)
@@ -38,6 +42,7 @@ class CommandVectorsTest {
             CommandOutcome.LANGUAGE_CHANGED, CommandOutcome.BACKEND,
         )
         assertEquals("the Kotlin kind constants are the core's", all, kinds)
+        assertTrue("an answer to a question has a vector", answers > 0)
     }
 
     @Test fun theShellsNoLlmTextIsTheCores() {
@@ -64,7 +69,7 @@ class CommandVectorsTest {
     }
 
     @Test fun garbageNeverWritesText() {
-        for (bad in listOf(null, "", "not json", """{"ok":true}""", """{"ok":true,"text":""}""", "{}")) {
+        for (bad in listOf(null, "", "not json", """{"ok":true}""", """{"ok":true,"text":""}""", """{"ok":true,"answer":""}""", "{}")) {
             assertTrue(bad.toString(), CommandOutcome.decode(bad) is CommandOutcome.Failed)
         }
     }

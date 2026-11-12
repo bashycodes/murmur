@@ -127,6 +127,11 @@ sealed interface DictationState {
         data class EngineLoading(val message: String) : ErrorKind
         /** Command Mode produced nothing to write ([message] says why); the field is unchanged. */
         data class CommandFailed(val message: String) : ErrorKind
+        /**
+         * Command Mode answered a question about the selection: the bubble's card shows [text]
+         * (copy or dismiss); the field is unchanged. Not a failure: no error tone.
+         */
+        data class CommandAnswer(val text: String) : ErrorKind
     }
 }
 
@@ -1117,7 +1122,8 @@ class DictationController(
     /**
      * Command Mode, after the instruction was transcribed: ask the AI (off the caller's thread,
      * bounded by [COMMAND_TIMEOUT_MS]), then replace the selection, or write at the cursor. Any
-     * failure leaves the field as it was: error tone + the reason in the bubble.
+     * failure leaves the field as it was: error tone + the reason in the bubble. A question about
+     * the selection is answered in the bubble's card, and the field is left as it was too.
      */
     private suspend fun runCommand(
         c: MurmurCore, target: CommandTarget.Field, result: CommitResult, appId: String?, gen: Long,
@@ -1138,6 +1144,12 @@ class DictationController(
                 record(null, InsertOutcome.COMMAND_FAILED, answer.message)
                 failCommand(answer.message)
                 done(InsertOutcome.COMMAND_FAILED, result, answer.kind, null)
+                return
+            }
+            is CommandOutcome.Answer -> {
+                record(answer.text, InsertOutcome.ANSWERED)
+                _state.value = DictationState.Error(DictationState.ErrorKind.CommandAnswer(answer.text))
+                done(InsertOutcome.ANSWERED, result, null, null)
                 return
             }
             is CommandOutcome.Text -> answer.text

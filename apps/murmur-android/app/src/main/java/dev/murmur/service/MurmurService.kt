@@ -806,9 +806,13 @@ class MurmurService : Service() {
                 BubbleButton.DONE -> { haptic(VibrationEffect.EFFECT_CLICK); controller.release() }
                 BubbleButton.PASTE -> controller.pasteRetry()
                 BubbleButton.COPY -> {
-                    // FailedToPaste (target changed / paste failed): copy that text, not the previous one.
-                    val failed = (s as? DictationState.Error)?.kind as? DictationState.ErrorKind.FailedToPaste
-                    (failed?.text ?: lastText)?.let { copySensitive(it); showCopy.value = false }
+                    // FailedToPaste (target changed / paste failed) or a command's answer: copy that text, not the previous one.
+                    val pending = when (val k = (s as? DictationState.Error)?.kind) {
+                        is DictationState.ErrorKind.FailedToPaste -> k.text
+                        is DictationState.ErrorKind.CommandAnswer -> k.text
+                        else -> null
+                    }
+                    (pending ?: lastText)?.let { copySensitive(it); showCopy.value = false }
                 }
                 BubbleButton.DISMISS -> when ((s as? DictationState.Error)?.let { ErrorTap.of(it.kind) } ?: ErrorTap.Action.DISMISS) {
                     ErrorTap.Action.RECHECK -> recheck()

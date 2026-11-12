@@ -5,12 +5,16 @@ import org.json.JSONObject
 
 /**
  * Command Mode (2026-10-28): what `nativeCommand` answered, i.e. murmur-core
- * `command::result_json` (`{"ok":true,"text"}` / `{"ok":false,"kind","error"}`). The wire
+ * `command::result_json` (`{"ok":true,"text"}` / `{"ok":true,"answer"}` /
+ * `{"ok":false,"kind","error"}`). The wire
  * shape is pinned by crates/murmur-core/fixtures/command/command_results.json.
  */
 sealed interface CommandOutcome {
     /** The rewrite (or generated text) to put in place of the selection / at the cursor. */
     data class Text(val text: String) : CommandOutcome
+
+    /** The instruction asked a question about the selection: show [text], write nothing. */
+    data class Answer(val text: String) : CommandOutcome
 
     /** [kind] = `CommandError::kind()`; [message] = its pill text. Nothing is written. */
     data class Failed(val kind: String, val message: String) : CommandOutcome
@@ -38,8 +42,11 @@ sealed interface CommandOutcome {
         fun decode(json: String?): CommandOutcome = try {
             val o = JSONObject(json ?: "{}")
             val text = o.optString("text", "")
+            val answer = o.optString("answer", "")
             if (o.optBoolean("ok") && text.isNotEmpty()) {
                 Text(text)
+            } else if (o.optBoolean("ok") && answer.isNotEmpty()) {
+                Answer(answer)
             } else if (o.optBoolean("ok")) {
                 Failed(EMPTY, "AI returned no text")
             } else {

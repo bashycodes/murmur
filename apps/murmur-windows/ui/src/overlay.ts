@@ -5,7 +5,8 @@
 // Backend events: `dictation:status` ({state, message?}), `audio:level`
 // (0..1, ~every 150 ms), `dictation:preview`, `dictation:route`,
 // `dictation:live-route`, `dictation:max-warning` (ms left).
-// Error / fell-back bubbles carry a "Fix →" / "Choose a model →" link to
+// Command Mode's answer to a question (`answer`) shows as a card in the
+// bubble; nothing was pasted. Error / fell-back bubbles carry a "Fix →" / "Choose a model →" link to
 // the settings page that fixes them (`overlay_action` open_settings). The
 // window is click-through, so the page reports the link's box
 // (`overlay_action` link_rect, null once it is gone) and src/overlay.rs
@@ -13,6 +14,7 @@
 // Loaded as an ES module (overlay.html), like settings.js.
 
 import { fixFor } from "./lib/fix-for.js";
+import { bubbleFor, type BubbleKind } from "./lib/overlay-bubble.js";
 
 type OverlayState =
   | { state: "resting" }
@@ -22,7 +24,8 @@ type OverlayState =
   | { state: "processing" }
   | { state: "command_processing" }
   | { state: "error"; message: string }
-  | { state: "notice"; message: string };
+  | { state: "notice"; message: string }
+  | { state: "answer"; message: string };
 
 // Bar heights (px) from the artboard's waveform; the mic level scales them.
 const PROFILE = [6, 10, 16, 12, 20, 14, 8, 18, 22, 12, 9, 16, 11, 6, 14, 10, 7, 5];
@@ -79,17 +82,19 @@ function apply(s: OverlayState): void {
   } else {
     delete pill.dataset.command;
   }
-  const message = s.state === "error" || s.state === "notice" ? s.message : "";
+  const bubble = bubbleFor(s);
+  const message = bubble?.text ?? "";
   msg.textContent = message;
   if (!isActive()) {
     target = 0;
     v = 0;
     showPreview("");
   }
-  // Error / notice text ("Dictation disabled — …", "No speech heard")
-  // shows in the bubble above the pill for as long as the pill lingers.
-  if (message) {
-    setBubble(message, s.state === "error" ? "error" : "notice");
+  // Error / notice text ("Dictation disabled — …", "No speech heard") and
+  // a command's answer show in the bubble above the pill for as long as
+  // the pill lingers.
+  if (bubble) {
+    setBubble(bubble.text, bubble.kind);
     preview.classList.add("visible");
   } else {
     delete preview.dataset.kind;
@@ -104,13 +109,14 @@ function apply(s: OverlayState): void {
 }
 
 
-/** Bubble text; `kind` (error / notice) adds the dot and, when a settings
- *  page can fix it, the link. Live transcript passes no kind. */
-function setBubble(text: string, kind?: "error" | "notice"): void {
+/** Bubble text; `kind` error / notice adds the dot and, when a settings
+ *  page can fix it, the link; answer makes it a card. Live transcript
+ *  passes no kind. */
+function setBubble(text: string, kind?: BubbleKind): void {
   previewText.textContent = text;
   if (kind) preview.dataset.kind = kind;
   else delete preview.dataset.kind;
-  const fix = kind ? fixFor(text) : null;
+  const fix = kind === "error" || kind === "notice" ? fixFor(text) : null;
   previewFix.hidden = !fix;
   previewFix.textContent = fix?.label ?? "";
   if (fix) previewFix.dataset.page = fix.page;

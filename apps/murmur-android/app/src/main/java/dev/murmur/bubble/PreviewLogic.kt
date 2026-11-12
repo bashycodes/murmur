@@ -42,6 +42,8 @@ object RouteLabel {
 /** The live-preview line next to the bubble: partial transcript, or a silence hint. */
 object PreviewContent {
     const val MAX_CHARS = 140
+    /** Lines a command's answer card shows before it is cut (Copy has all of it). */
+    const val CARD_LINES = 12
     const val CANT_HEAR = "Can't hear you. Check the microphone."
     const val NO_SPEECH = "No speech heard. Nothing was inserted."
     const val ONLY_FILLER = "Only filler words heard. Nothing was inserted."
@@ -49,7 +51,8 @@ object PreviewContent {
     const val COMMAND_LISTENING = "Command: say what to do with the selection"
     const val COMMAND_WORKING = "Command: rewriting…"
 
-    data class Line(val text: String, val dim: Boolean)
+    /** [card]: a command's answer, shown whole in a larger card instead of one clipped line. */
+    data class Line(val text: String, val dim: Boolean, val card: Boolean = false)
 
     /**
      * [badge]: D17 `show_engine_badge` — the last dictation's engine (S / L / L•), prefixed while recording.
@@ -57,6 +60,9 @@ object PreviewContent {
      * recording / processing, so the user sees where the audio goes before the commit.
      */
     fun line(state: DictationState, partial: String?, hint: DictationHint?, enabled: Boolean, badge: String? = null, route: String? = null): Line? {
+        // A command's answer is the card itself, whatever the live-preview setting.
+        val answer = ((state as? DictationState.Error)?.kind as? DictationState.ErrorKind.CommandAnswer)?.text
+        if (answer != null) return Line(answer, dim = false, card = true)
         val live = state is DictationState.Recording || state is DictationState.Processing
         if (route != null && live) {
             val l = lineNoBadge(state, partial, hint, enabled)
