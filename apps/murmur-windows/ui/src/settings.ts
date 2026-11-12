@@ -11,6 +11,7 @@ import { engines, versionTapped } from "./features/engines.js";
 import { collectGeneral, general } from "./features/general.js";
 import { modelsFeature } from "./features/models.js";
 import { openrouter } from "./features/openrouter.js";
+import { shouldOpenSettings } from "./lib/app-keys.js";
 import { $, el, html, setStatus } from "./lib/dom.js";
 import { ICON, iconEl } from "./lib/icons.js";
 import { onEvent } from "./lib/ipc.js";
@@ -294,6 +295,17 @@ document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape" || $<HTMLElement>("settings").hidden || onboarding.isOpen()) return;
   if (document.querySelector("dialog[open]")) return; // the dialog closes first
   closeSettings();
+});
+// Ctrl+, opens Settings: this window only, never a global hotkey.
+document.addEventListener("keydown", (e) => {
+  const state = {
+    settingsOpen: !$<HTMLElement>("settings").hidden,
+    onboardingOpen: onboarding.isOpen(),
+    dialogOpen: !!document.querySelector("dialog[open]"),
+  };
+  if (!shouldOpenSettings(e, state)) return;
+  e.preventDefault();
+  go("settings");
 });
 document.addEventListener("change", (e) => {
   const t = e.target as HTMLElement;

@@ -1,6 +1,7 @@
 // Settings → General: shortcuts, voice and theme
 // (docs/design/app-design/SettingsGeneral.dc.html). Fields and the
 // keycap / Change editors: features/general.ts.
+import { OPEN_SETTINGS_KEYS } from "../../lib/app-keys.js";
 import { group, heading, row, toggle } from "../../lib/markup.js";
 import { NOTETAKER_ENABLED } from "../notetaker.js";
 /** Keycaps of the saved shortcut + Change; Change records the keys the
@@ -27,7 +28,9 @@ ${group("Shortcuts", row("Push to talk", "Hold, speak, let go to paste.", key("p
         row("Open Scratchpad", "", key("scratchpad", "Open Scratchpad")) +
         row("New note and dictate", "", key("new_note", "New note and dictate")) +
         // Kept in the DOM (the form reads it) but hidden with the Notetaker (D51).
-        row("Start or stop a meeting recording", "", key("meeting", "Start or stop a meeting recording"), NOTETAKER_ENABLED ? "" : "hidden"))}
+        row("Start or stop a meeting recording", "", key("meeting", "Start or stop a meeting recording"), NOTETAKER_ENABLED ? "" : "hidden") +
+        // Fixed, and only while the Murmur window has focus (lib/app-keys.ts).
+        row("Open Settings", "Only in the Murmur window, so it never takes the keys from another app.", `<span class="fl-kbd-group" id="open_settings_keys">${OPEN_SETTINGS_KEYS.map((k) => `<kbd class="fl-kbd">${k}</kbd>`).join("")}</span>`))}
 <p class="fl-help lw-group-help" id="keys_help" hidden>Type the keys joined by +, e.g. <code>Ctrl+Win</code>. Keys: Ctrl, Win, Alt, Shift, Space, Esc, A–Z, 0–9, F1–F24. Ctrl/Alt/Shift match either side; Left Alt, Right Alt (also Left/Right Ctrl, Shift) match one side only, e.g. Right Alt (the push-to-talk default). Max 3 keys, at least one modifier. Empty = off (Scratchpad, New note${NOTETAKER_ENABLED ? ", meeting recording" : ""}). Enter saves, Esc cancels.</p>
 ${group("Voice", row("Microphone", "", `<select id="microphone" class="fl-select is-wide" data-save="prefs" aria-label="Microphone"></select>`) +
         row("Languages", `<span id="languages_desc"></span><span id="languages_parakeet" hidden> Parakeet only understands English; <button type="button" class="lw-link" data-go="settings-speech">switch to Whisper →</button> for other languages.</span>` +
