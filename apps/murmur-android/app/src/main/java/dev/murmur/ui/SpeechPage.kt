@@ -31,6 +31,8 @@ import java.io.File
  *                  the stored try order; "Change order" swaps the switches for ↑ / ↓. Everything
  *                  applies at once ([DevPages.withEngine], [DevPages.reorder]). OpenRouter asks for
  *                  its consent first, as on the OpenRouter page ([OpenRouterPage.enableStt]).
+ *                  Tapping a row opens that engine's page (Your server, the phone's model,
+ *                  OpenRouter); only the switch turns it on or off.
  *   On this phone  the model in use (name, language, size, import date) → engine choice and imports;
  *                  "Import another model"; "Hebrew model" (D37: visible here, not only on the engine
  *                  page); Keep both languages loaded (D54); keep it loaded (hybrid);
@@ -226,6 +228,28 @@ internal class SpeechPage(
         Route.CLOUD -> "Use the cloud for speech"
     }
 
+    /** The page that sets an engine up: your server's address and key, the phone's model, OpenRouter's key. */
+    private fun openSettings(r: Route) = when (r) {
+        Route.SERVER -> DeveloperActivity.open(activity, DevPages.Page.SERVER)
+        Route.CLIENT -> openEngine()
+        Route.CLOUD -> OpenRouterActivity.open(activity)
+    }
+
+    /** TalkBack reads the view as [className] saying [text]; [checked] makes it checkable, [clickLabel] names its tap. */
+    private fun readsAs(className: String, text: String, checked: Boolean? = null, clickLabel: String? = null) = object : View.AccessibilityDelegate() {
+        override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfo) {
+            super.onInitializeAccessibilityNodeInfo(host, info)
+            info.className = className
+            info.text = text
+            if (checked != null) { info.isCheckable = true; info.isChecked = checked }
+            if (clickLabel != null) info.addAction(AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_CLICK, clickLabel))
+        }
+    }
+
+    /**
+     * One ranked engine. While reordering: ↑ / ↓. Otherwise the row body opens the engine's own
+     * page ([openSettings]) and only the switch at the end turns it on or off.
+     */
     private fun LinearLayout.engineRow(i: Int, n: Int, r: Route, on: Boolean, sub: String) = with(ui) {
         val name = SettingsSummary.engineName(r)
         val title = tv(name, TypeScale.ROW, p.text, TypeScale.W_MEDIUM)
@@ -234,35 +258,44 @@ internal class SpeechPage(
             orientation = LinearLayout.VERTICAL; addView(title); addView(subtitle)
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
         }
-        val row = LinearLayout(ctx).apply {
+        val ripple = { android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf((p.text and 0x00FFFFFF) or 0x22000000), null, null) }
+        val body = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             minimumHeight = dp(DevUi.ROW_MIN_DP)
-            setPadding(dp(20), dp(14), dp(if (reordering) 8 else 20), dp(14))
+            setPadding(dp(20), dp(14), dp(if (reordering) 8 else 12), dp(14))
             addView(rankSquare(i + 1).apply { (layoutParams as LinearLayout.LayoutParams).marginEnd = dp(14) })
-            addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(12) })
+            addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }
+        val row = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            addView(body, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         }
         if (reordering) {
             row.addView(iconButton(R.drawable.ic_dev_up, "Move $name up") { move(r, -1) }.apply { isEnabled = i > 0; alpha = if (i > 0) 1f else 0.3f })
             row.addView(iconButton(R.drawable.ic_dev_down, "Move $name down") { move(r, +1) }.apply { isEnabled = i < n - 1; alpha = if (i < n - 1) 1f else 0.3f })
-            row.isFocusable = true
-            row.contentDescription = "${i + 1}. $name. $sub"
+            row.setPadding(0, 0, dp(8), 0)
+            body.isFocusable = true
+            body.contentDescription = "${i + 1}. $name. $sub"
         } else {
+            body.isClickable = true; body.isFocusable = true
+            body.background = ripple()
+            body.setOnClickListener { openSettings(r) }
+            body.accessibilityDelegate = readsAs(android.widget.Button::class.java.name, "${i + 1}. $name. $sub", clickLabel = "open $name settings")
             val sw = designSwitch(on).apply {
                 isClickable = false; isFocusable = false
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }
-            row.addView(sw)
-            row.isClickable = true; row.isFocusable = true
-            row.background = android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf((p.text and 0x00FFFFFF) or 0x22000000), null, null)
-            row.setOnClickListener { toggle(r, !on) }
-            row.accessibilityDelegate = object : View.AccessibilityDelegate() {
-                override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfo) {
-                    super.onInitializeAccessibilityNodeInfo(host, info)
-                    info.className = Switch::class.java.name
-                    info.isCheckable = true; info.isChecked = on
-                    info.text = "${i + 1}. ${useLabel(r)}. $sub"
-                }
+            // The switch's own 48 dp+ target: the full row height, a little wider than the pill.
+            val target = android.widget.FrameLayout(ctx).apply {
+                setPadding(dp(8), 0, dp(20), 0)
+                minimumHeight = dp(DevUi.ROW_MIN_DP); minimumWidth = dp(48)
+                isClickable = true; isFocusable = true
+                background = ripple()
+                addView(sw, android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+                setOnClickListener { toggle(r, !on) }
+                accessibilityDelegate = readsAs(Switch::class.java.name, "${i + 1}. ${useLabel(r)}. $sub", checked = on)
             }
+            row.addView(target, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT))
         }
         addView(row)
     }

@@ -223,13 +223,52 @@ class SettingsPagesTest {
 
     @Test fun speechToTextRowListsTheEnginesThatAreOnInOrder() {
         val caps = BuildCaps.ALL
-        assertEquals("Your server, then this phone", SettingsSummary.speech(dev, caps))
-        assertEquals("This phone, then your server", SettingsSummary.speech(dev.copy(routeOrder = listOf(DevSettings.Route.CLIENT, DevSettings.Route.SERVER)), caps))
-        assertEquals("This phone only", SettingsSummary.speech(dev.copy(allowServer = false), caps))
-        assertEquals("Off: no engine is on", SettingsSummary.speech(dev.copy(allowServer = false, allowClient = false), caps))
-        assertEquals("Cloud, then your server, then this phone", SettingsSummary.speech(OpenRouterPage.enableStt(dev, 1), caps))
+        assertEquals("Your server, then this phone", SettingsSummary.speech(dev, caps, phoneReady = true))
+        assertEquals("This phone, then your server", SettingsSummary.speech(dev.copy(routeOrder = listOf(DevSettings.Route.CLIENT, DevSettings.Route.SERVER)), caps, true))
+        assertEquals("This phone only", SettingsSummary.speech(dev.copy(allowServer = false), caps, true))
+        assertEquals("Off: no engine is on", SettingsSummary.speech(dev.copy(allowServer = false, allowClient = false), caps, true))
+        assertEquals("Cloud, then your server, then this phone", SettingsSummary.speech(OpenRouterPage.enableStt(dev, 1), caps, true))
         // A build without the server sees only the phone, whatever is stored.
-        assertEquals("This phone only", SettingsSummary.speech(dev, BuildCaps.LOCAL))
+        assertEquals("This phone only", SettingsSummary.speech(dev, BuildCaps.LOCAL, true))
+    }
+
+    @Test fun speechToTextRowNamesOnlyEnginesThatCanRun() {
+        // Owner report: fresh install, no server, no phone model -> the drawer said "Server first → Phone".
+        val caps = BuildCaps.ALL
+        val fresh = DevSettings.defaults(caps)
+        assertEquals("Not set up: add your server or import a speech model", SettingsSummary.speech(fresh, caps, phoneReady = false))
+        assertEquals("Not set up: add your server", SettingsSummary.speech(fresh.copy(allowClient = false), caps, false))
+        // The cloud counts once consented.
+        val cloudNoConsent = fresh.copy(allowCloud = true, routeOrder = DevSettings.withCloudFirst(fresh.routeOrder))
+        assertEquals("Not set up: allow OpenRouter, add your server or import a speech model", SettingsSummary.speech(cloudNoConsent, caps, false))
+    }
+
+    @Test fun speechToTextRowShowsEnginesThatAreOnButCannotRun() {
+        // Review: an engine switched on but not set up is named, not dropped.
+        val caps = BuildCaps.ALL
+        val fresh = DevSettings.defaults(caps)
+        assertEquals("This phone · server not set up", SettingsSummary.speech(fresh, caps, phoneReady = true))
+        assertEquals("Your server · no phone model", SettingsSummary.speech(dev, caps, phoneReady = false))
+        assertEquals("Cloud · server not set up · no phone model", SettingsSummary.speech(OpenRouterPage.enableStt(fresh, 1), caps, false))
+        val cloudNoConsent = dev.copy(allowCloud = true, routeOrder = DevSettings.withCloudFirst(dev.routeOrder))
+        assertEquals("Your server, then this phone · OpenRouter not allowed", SettingsSummary.speech(cloudNoConsent, caps, true))
+        // A build without the server never names it.
+        assertEquals("This phone only", SettingsSummary.speech(fresh, BuildCaps.LOCAL, true))
+    }
+
+    @Test fun phoneIsReadyWhenWhatItLoadsIsInstalled() {
+        val none = { false }
+        val some = { true }
+        assertEquals(false, SpeechEngines.phoneReady(Settings(), LoadSet.Default, none))
+        assertEquals(true, SpeechEngines.phoneReady(Settings(), LoadSet.Default, some))
+        assertEquals(true, SpeechEngines.phoneReady(Settings(mockEngine = true), LoadSet.Default, none))
+        // Review: only a Hebrew model, language Hebrew -> the phone loads it, so it is ready.
+        val hebrewOnly = LoadSet.of("he", hebrewInstalled = true, keepBoth = false, defaultInstalled = none)
+        assertEquals(LoadSet.Language("he"), hebrewOnly)
+        assertEquals(true, SpeechEngines.phoneReady(Settings(), hebrewOnly, none))
+        // The same model with English: the default model is what loads, and there is none.
+        assertEquals(false, SpeechEngines.phoneReady(Settings(), LoadSet.of("en", hebrewInstalled = true, keepBoth = false, defaultInstalled = none), none))
+        assertEquals(true, SpeechEngines.phoneReady(Settings(), LoadSet.Both, none))
     }
 
     @Test fun aiCleanupRowNamesStrengthEnginesAndRules() {

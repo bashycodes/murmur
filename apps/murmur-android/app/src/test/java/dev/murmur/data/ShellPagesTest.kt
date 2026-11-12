@@ -88,13 +88,17 @@ class ShellPagesTest {
     private val cleanupPage = Dest.Page(SettingsPages.Page.CLEANUP)
 
     @Test fun engineLinesAndDots() {
-        assertEquals(ShellPages.EngineLine("Speech to text", "Server first → Phone", Dot.OK, speechPage), ShellPages.speechLine("Server first → Phone"))
-        assertEquals(Dot.CLOUD, ShellPages.speechLine("Cloud (OpenRouter) first → Phone").dot)
-        assertEquals(Dot.BAD, ShellPages.speechLine("Dictation disabled").dot)
-        assertEquals("Speech to text: Phone only", ShellPages.speechLine("Phone only").description)
-
         val caps = BuildCaps.ALL
         val base = DevSettings.defaults(caps)
+        val server = base.copy(host = "100.64.0.10")
+        assertEquals(
+            ShellPages.EngineLine("Speech to text", "Your server, then this phone", Dot.OK, speechPage),
+            ShellPages.speechLine(server, caps, phoneReady = true),
+        )
+        assertEquals(Dot.CLOUD, ShellPages.speechLine(OpenRouterPage.enableStt(server, NOW), caps, true).dot)
+        assertEquals(Dot.BAD, ShellPages.speechLine(server.copy(allowServer = false, allowClient = false), caps, true).dot)
+        assertEquals("Speech to text: This phone · server not set up", ShellPages.speechLine(base, caps, true).description)
+
         val ai = Settings(llmEnabled = true)
         val cloudFirst = OpenRouterPage.enableCleanup(base, NOW).copy(cleanupOrder = listOf(CleanupRoute.CLOUD, CleanupRoute.LOCAL, CleanupRoute.SERVER))
         val cloud = ShellPages.cleanupLine(ai, cloudFirst, caps)
@@ -143,9 +147,30 @@ class ShellPagesTest {
         }
     }
 
+    @Test fun freshInstallSpeechLineIsNotGreen() {
+        // Owner report: no server, no phone model -> "Server first → Phone" with a green dot.
+        val line = ShellPages.speechLine(DevSettings.defaults(BuildCaps.ALL), BuildCaps.ALL, phoneReady = false)
+        assertEquals("Not set up: add your server or import a speech model" to Dot.BAD, line.text to line.dot)
+        // Green once one engine can run.
+        assertEquals(Dot.OK, ShellPages.speechLine(DevSettings.defaults(BuildCaps.ALL), BuildCaps.ALL, phoneReady = true).dot)
+        assertEquals(Dot.OK, ShellPages.speechLine(serverOnly, BuildCaps.ALL, phoneReady = false).dot)
+    }
+
+    @Test fun drawerSpeechLineMatchesTheSettingsRow() {
+        // Owner report: drawer "Phone first → Server" while Settings said "This phone, then your server".
+        val base = DevSettings.defaults(BuildCaps.ALL)
+        val ds = listOf(
+            base, serverOnly, base.copy(host = "100.64.0.10", routeOrder = listOf(DevSettings.Route.CLIENT, DevSettings.Route.SERVER)),
+            OpenRouterPage.enableStt(serverOnly, NOW), base.copy(allowServer = false, allowClient = false),
+        )
+        for (d in ds) for (ready in listOf(true, false)) for (c in listOf(BuildCaps.ALL, BuildCaps.LOCAL, BuildCaps.REMOTE)) {
+            assertEquals("$d $ready $c", SettingsSummary.speech(d, c, ready), ShellPages.speechLine(d, c, ready).text)
+        }
+    }
+
     @Test fun drawerEngineLinesOpenTheirOwnSettingsPage() {
         // Owner report: both lines opened Developer settings.
-        assertEquals(speechPage, ShellPages.speechLine("Phone only").dest)
+        assertEquals(speechPage, ShellPages.speechLine(DevSettings.defaults(BuildCaps.ALL), BuildCaps.ALL, true).dest)
         assertEquals("Speech to text", SettingsPages.TITLES.getValue(SettingsPages.Page.SPEECH))
         assertEquals(cleanupPage, ShellPages.cleanupLine(Settings(), serverOnly, BuildCaps.ALL).dest)
         assertEquals("AI cleanup", SettingsPages.TITLES.getValue(SettingsPages.Page.CLEANUP))

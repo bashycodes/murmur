@@ -2,4 +2,6 @@
 <resources>
     <!-- NoteEditorActivity's field: a fixed id so its text and caret survive a rotation. -->
     <item name="note_editor" type="id" />
+    <!-- DevUi.screen's scroll view, found by DevUi.currentScroll (rebuild keeps its position). -->
+    <item name="screen_scroll" type="id" />
 </resources>

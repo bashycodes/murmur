@@ -1,6 +1,8 @@
 package dev.murmur
 
 import dev.murmur.core.RouterErrors
+import dev.murmur.bubble.DictationScreen
+import dev.murmur.bubble.OwnScreens
 import dev.murmur.debug.DebugAudioStore
 import dev.murmur.debug.DebugLogFile
 import dev.murmur.debug.DebugLogger
@@ -28,6 +30,7 @@ import dev.murmur.data.ParakeetFiles
 import dev.murmur.data.EngineRoute
 import dev.murmur.data.DevSettings
 import dev.murmur.data.DevStore
+import dev.murmur.data.ServerHealth
 import dev.murmur.data.BuildCaps
 import android.app.Application
 import android.util.Log
@@ -50,6 +53,7 @@ import dev.murmur.data.HistoryStore
 import dev.murmur.data.InsightsStore
 import dev.murmur.data.EnginePlan
 import dev.murmur.data.SettingsStore
+import dev.murmur.data.SpeechEngines
 import dev.murmur.health.A11ySetting
 import dev.murmur.health.AccessibilityHealth
 import dev.murmur.policy.BubbleVisibilityPolicy
@@ -112,18 +116,17 @@ class MurmurApp : Application() {
     /** Last dictation's result + route (Developer page, engine badge). In-memory only (§5). */
     val lastRoute = MutableStateFlow<LastDictation?>(null)
 
+    /** Last server health probe (Test connection, Settings pages); in-memory only. */
+    val serverHealth = ServerHealth()
+
     /** D35: History rows being retried now (their Retry shows busy). */
     val retrying = MutableStateFlow<Set<Long>>(emptySet())
 
     /** D35: bumped when a retry changed a History row, so open History screens reload. */
     val historyRevision = MutableStateFlow(0L)
 
-    /**
-     * The dictation screen of ours in front right now (any note editor sets itself on resume,
-     * clears on pause), or null. While set, the accessibility service treats our own field like any
-     * other app's ([dev.murmur.policy.OwnAppGate]); otherwise our screens get no bubble.
-     */
-    @Volatile var dictationSurface: Any? = null
+    /** Which of our screens are in front (activity lifecycle): no bubble over them, except a note editor. */
+    val ownScreens = OwnScreens()
 
     /** Notes text (the Scratchpad / Quick note is one of them) + their index, app-private `files/notes/`. */
     val documents: NotesStore by lazy { NotesStore(File(filesDir, "notes")) }
@@ -192,6 +195,7 @@ class MurmurApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        registerActivityLifecycleCallbacks(OwnScreenCallbacks())
         // Review C2: a blocking native call on Main is a bug (ANR on the server route); say so loudly.
         BlockingCalls.isMainThread = { android.os.Looper.myLooper() == android.os.Looper.getMainLooper() }
         BlockingCalls.onViolation = { Log.e("MurmurEngine", "blocking native call on the main thread: $it", Throwable("C2")) }
@@ -283,6 +287,34 @@ class MurmurApp : Application() {
         runCatching { cloudKeys.get(OpenRouter.ID) }.getOrNull()?.let(out::add)
         runCatching { cloudKeys.get(CustomServer.ID) }.getOrNull()?.let(out::add)
         return out
+    }
+
+    /** Feeds [ownScreens]: every activity of ours, started to stopped, re-read on resume, pause and config changes. */
+    private inner class OwnScreenCallbacks : ActivityLifecycleCallbacks {
+        private val main = android.os.Handler(android.os.Looper.getMainLooper())
+        private val configWatches = java.util.WeakHashMap<android.app.Activity, android.content.ComponentCallbacks>()
+
+        private fun screen(a: android.app.Activity) = OwnScreens.Screen(dictation = a is DictationScreen, split = a.isInMultiWindowMode)
+
+        override fun onActivityCreated(a: android.app.Activity, state: android.os.Bundle?) {
+            // Split screen / free-form entered or left in place: the activity's own config changes (API 31+).
+            val watch = object : android.content.ComponentCallbacks {
+                override fun onConfigurationChanged(c: android.content.res.Configuration) {
+                    main.post { ownScreens.refresh(a, screen(a)) }
+                }
+                @Deprecated("Deprecated in Java") override fun onLowMemory() = Unit
+            }
+            a.registerComponentCallbacks(watch)
+            configWatches[a] = watch
+        }
+        override fun onActivityStarted(a: android.app.Activity) = ownScreens.started(a, screen(a))
+        override fun onActivityResumed(a: android.app.Activity) = ownScreens.refresh(a, screen(a))
+        override fun onActivityPaused(a: android.app.Activity) = ownScreens.refresh(a, screen(a))
+        override fun onActivityStopped(a: android.app.Activity) = ownScreens.stopped(a, recreating = a.isChangingConfigurations)
+        override fun onActivitySaveInstanceState(a: android.app.Activity, out: android.os.Bundle) = Unit
+        override fun onActivityDestroyed(a: android.app.Activity) {
+            configWatches.remove(a)?.let { a.unregisterComponentCallbacks(it) }
+        }
     }
 
     companion object {
@@ -392,6 +424,14 @@ class EngineHolder(
         if (setProbe != null) setProbe.invoke()
         else if (!app.caps.local || s.mockEngine) LoadSet.Default
         else LoadSet.of(app.effectiveLanguage(s), hebrewModel() != null, s.keepBothLanguages) { defaultModelInstalled(s) }
+
+    /**
+     * The phone can transcribe the next dictation: what [wantedSet] loads for the current language
+     * is installed ([SpeechEngines.phoneReady]; a Hebrew model alone counts when the language is Hebrew).
+     * The one input every speech summary (drawer, Settings, Developer) takes for the phone.
+     */
+    fun phoneSpeechReady(s: Settings = app.settings.load()): Boolean =
+        SpeechEngines.phoneReady(s, wantedSet(s)) { defaultModelInstalled(s) }
 
     /** D54: a default (whisper / Parakeet) model is installed, so "Keep both languages loaded" has two models to keep. */
     fun defaultModelInstalled(s: Settings = app.settings.load()): Boolean = EnginePlan.defaultInstalled(
