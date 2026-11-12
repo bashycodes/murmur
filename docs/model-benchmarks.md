@@ -321,8 +321,9 @@ What the hand check found:
   * "ToUpdate"
 
   The D65 script check passes all of them, because each line stays mostly
-  Hebrew. A no-drafting control on 5 of these lines is in
-  `results/qwen2.5-14b-he5-nodraft.jsonl`, if it ran.
+  Hebrew. It is not yet known whether prompt-lookup drafting plays a part.
+  `control.sh` reruns 5 of these lines with drafting off, but it has not
+  been run, because the shared build lock was busy.
 * **Qwen2.5-7B** is best at the English bench (14/19), but in Hebrew it:
   * changed a pronoun, which changes the meaning
   * introduced a spelling error
