@@ -129,6 +129,19 @@ data class DevDraft(val saved: Input, val draft: Input, val page: DevPages.Page)
     /** The top-bar Save: something changed and the whole form is valid. */
     fun canSave(caps: BuildCaps) = dirty && result(caps).canSave
 
+    /**
+     * What leaving the page (back, the top-bar arrow, the app going to the background) does
+     * with the edits: nothing to keep, save them, or ask because they do not validate yet.
+     * Never a silent drop.
+     */
+    fun onLeave(caps: BuildCaps): Leave = when {
+        !dirty -> Leave.CLOSE
+        canSave(caps) -> Leave.SAVE
+        else -> Leave.ASK
+    }
+
+    enum class Leave { CLOSE, SAVE, ASK }
+
     /** The store changed under the page (OpenRouter page, consent): keep this page's edits. */
     fun rebase(stored: DevSettings): DevDraft {
         val s = Input.of(stored)

@@ -9,6 +9,7 @@ import android.provider.OpenableColumns
 import android.widget.Toast
 import dev.murmur.MurmurApp
 import dev.murmur.R
+import dev.murmur.data.CleanupEngines
 import dev.murmur.data.HebrewImport
 import dev.murmur.data.HebrewModels
 import dev.murmur.data.ModelFiles
@@ -373,14 +374,26 @@ class ModelImportActivity : Activity() {
     }
 
     private fun activate(f: File) {
+        val hadModel = activePath?.let { File(it).exists() } == true
         activePath = f.absolutePath
+        if (llm) phoneOnForFirstModel(hadModel)
         reloadEngine()
-        val hint = if (llm && !app.settings.load().llmEnabled) " Turn on AI cleanup in Settings to use it." else ""
+        val phoneOn = CleanupEngines.on(app.dev.load(), app.settings.load(), dev.murmur.data.DevSettings.CleanupRoute.LOCAL)
+        val hint = if (llm && !phoneOn) " Turn on This phone under AI cleanup → Engines to use it." else ""
         Toast.makeText(this, "Using ${f.name}.$hint", Toast.LENGTH_LONG).show()
         render()
     }
 
     private fun reloadEngine() = app.engine.reload()
+
+    /** The first cleanup model switches the phone engine on ([CleanupEngines.phoneOnForFirstModel]); the reload after reads both. */
+    private fun phoneOnForFirstModel(hadModel: Boolean) {
+        val d = app.dev.load()
+        val (s, off) = CleanupEngines.phoneOnForFirstModel(hadModel, app.settings.load(), d) ?: return
+        app.dev.saveCloud(cloud = d.cloud, cleanupOff = off)
+        app.engine.applyDevSettings(app.dev.load())
+        app.settings.save(s)
+    }
 
     companion object {
         private const val REQ_PICK = 10
