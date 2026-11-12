@@ -54,6 +54,11 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Fixed
 
+- **Android: settings pages no longer scroll under the status bar.** On the AI cleanup pages the "ENGINES" header drew over the clock and the "Import model file…" button stuck over the status bar; every settings page now keeps clear of it.
+- **Android: notes at the top of the AI cleanup pages are no longer cut off at the right edge.**
+- **Android: AI cleanup's Model row shows a short model name on one line** instead of the file name broken mid-word.
+- **Android: each model in "From your server" has its own Download** (AI cleanup and speech model pages), so it is clear which model a download fetches.
+- **Android: the AI cleanup and speech model pages describe what the app does now.** They no longer say cleanup runs only on the phone or that nothing comes from the internet: they say to turn on the "This phone" engine, that a model can be imported or (hybrid and remote builds) downloaded from your server, and that the Recommended links are for a computer.
 - **Android: the Server page no longer loses what you typed.** Valid changes on Settings → Server are saved when you go back or switch away from the app (no need to tap ✓); changes that are not valid yet ask before they are discarded. A Save button sits under the form, and the field you type in (such as the token) scrolls above the keyboard.
 
 - **Android: the drawer's Engines lines open the right page.** "Speech to text" opens Settings → Speech to text and "AI cleanup" opens Settings → AI cleanup (OpenRouter's page in the `remote` build); both used to open Developer settings. A failed speech engine's notice on Home also opens Speech to text.

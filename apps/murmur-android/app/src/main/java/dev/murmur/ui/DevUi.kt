@@ -54,6 +54,21 @@ internal class DevPalette(
 internal enum class Tone { NEUTRAL, OK, BAD, WARN }
 
 /**
+ * How [DevUi.screen] splits the system-bar insets (px) between its frame and its scroll view:
+ * the status bar / cutout and the side bars go on the frame (content never scrolls under them);
+ * the bottom bar / keyboard go on the scroll view as padding the content scrolls through.
+ */
+internal data class ScreenPadding(
+    val frameLeft: Int, val frameTop: Int, val frameRight: Int,
+    val scrollSide: Int, val scrollTop: Int, val scrollBottom: Int,
+) {
+    companion object {
+        fun of(left: Int, top: Int, right: Int, bottom: Int, dp: (Int) -> Int) =
+            ScreenPadding(left, top, right, dp(16), dp(8), bottom + dp(24))
+    }
+}
+
+/**
  * Builder for one screen in the Murmur Android look (docs/design/app-design, Android*.dc.html):
  * platform views only, no UI deps. Figtree text, grouped 24 dp cards with hairline dividers on a
  * cool-grey page, uppercase section labels, rows with a title + grey subtitle, the design's pill
@@ -92,7 +107,9 @@ internal class DevUi(val activity: Activity) {
 
     /**
      * Scrolling column on the page background ([background]: settings grey by default, `t.bg`
-     * for the main tabs); pads itself by the system bars, cutout and keyboard.
+     * for the main tabs). The frame pads itself by the status bar, cutout and side bars, so the
+     * content scrolls *below* the status bar, never under the clock; only the bottom (navigation
+     * bar, keyboard) stays edge-to-edge, as scroll padding the last card can move past.
      */
     fun screen(background: Int = p.bg, build: LinearLayout.() -> Unit): LinearLayout {
         val col = LinearLayout(ctx).apply {
@@ -104,19 +121,29 @@ internal class DevUi(val activity: Activity) {
             isFillViewport = true
             clipToPadding = false
             addView(col, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        val frame = FrameLayout(ctx).apply {
+            setBackgroundColor(background)
+            addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             setOnApplyWindowInsetsListener { v, insets ->
                 val i = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout() or WindowInsets.Type.ime())
-                v.setPadding(i.left + dp(16), i.top + dp(8), i.right + dp(16), i.bottom + dp(24))
+                val pad = ScreenPadding.of(i.left, i.top, i.right, i.bottom, ::dp)
+                v.setPadding(pad.frameLeft, pad.frameTop, pad.frameRight, 0)
+                scroll.setPadding(pad.scrollSide, pad.scrollTop, pad.scrollSide, pad.scrollBottom)
                 insets
             }
         }
         // A focused field (and its help line) stays above the keyboard.
         ScrollReveal.install(scroll, dp(48))
         activity.window.decorView.setBackgroundColor(background)
-        activity.setContentView(scroll)
-        scroll.requestApplyInsets()
+        activity.setContentView(frame)
+        frame.requestApplyInsets()
         return col
     }
+
+    /** The current [screen]'s scroll view (null if this activity shows something else). */
+    fun currentScroll(): ScrollView? =
+        (activity.findViewById<ViewGroup>(android.R.id.content)?.getChildAt(0) as? ViewGroup)?.getChildAt(0) as? ScrollView
 
     /**
      * A scrolling column that is not attached (a shell tab's content, the drawer): 16 dp side
@@ -153,9 +180,13 @@ internal class DevUi(val activity: Activity) {
         isAccessibilityHeading = true
     }.also(::addView)
 
+    /**
+     * Grey explanatory text. Full column width (a wrap-content TextView can measure its widest
+     * line a few px short and clip the last glyph at the end edge), with 4 dp inner padding.
+     */
     fun LinearLayout.note(text: CharSequence, color: Int = p.muted, sizeSp: Float = 15f) = tv(text, sizeSp, color).apply {
         setPadding(dp(4), dp(6), dp(4), dp(6))
-    }.also(::addView)
+    }.also { addView(it, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)) }
 
     // ---- cards ----
 
@@ -486,6 +517,15 @@ internal class DevUi(val activity: Activity) {
         setOnClickListener { onClick(this) }
     }
 
+    /**
+     * One item of a card made of several views (a row and its chips): they stay together, the
+     * card's hairline falls between items, not between a row and its own actions.
+     */
+    fun LinearLayout.item(build: LinearLayout.() -> Unit): LinearLayout = LinearLayout(ctx).apply {
+        orientation = LinearLayout.VERTICAL
+        build()
+    }.also { addView(it, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)) }
+
     /** Row of chips inside a card. */
     fun LinearLayout.chipRow(vararg chips: Button) = LinearLayout(ctx).apply {
         orientation = LinearLayout.HORIZONTAL
@@ -574,7 +614,7 @@ internal class DevUi(val activity: Activity) {
      * keeps the scroll position of the page it replaces.
      */
     fun rebuild(background: Int = p.bg, build: LinearLayout.() -> Unit): LinearLayout {
-        val old = (activity.findViewById<ViewGroup>(android.R.id.content)?.getChildAt(0) as? ScrollView)?.scrollY ?: 0
+        val old = currentScroll()?.scrollY ?: 0
         val col = screen(background, build)
         if (old > 0) (col.parent as ScrollView).let { s -> s.post { s.scrollTo(0, old) } }
         return col

@@ -109,4 +109,16 @@ class CleanupUiTest {
         assertFalse(app.dev.load().allowCloudCleanup)
         assertFalse(row(a, CleanupRoute.CLOUD).createAccessibilityNodeInfo().isChecked)
     }
+
+    /** v1.1.2: the Model row wrapped the file name mid-word ("…q4_k_m.ggu" / "f"); it shows the short name on one line. */
+    @Test fun modelRowShowsTheShortNameOnOneLine() {
+        val keep = app.settings.llmModelPath
+        app.settings.llmModelPath = java.io.File(ctx.filesDir, "qwen2.5-0.5b-instruct-q4_k_m.gguf").path
+        try {
+            val a = launch()
+            val sub = UiTestKit.walk(a.window.decorView).filterIsInstance<android.widget.TextView>().single { it.text.toString() == "qwen2.5-0.5b" }
+            assertEquals(1, sub.maxLines)
+            assertFalse("qwen2.5-0.5b-instruct-q4_k_m.gguf" in texts(a))
+        } finally { app.settings.llmModelPath = keep }
+    }
 }

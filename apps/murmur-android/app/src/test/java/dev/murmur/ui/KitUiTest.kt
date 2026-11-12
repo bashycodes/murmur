@@ -149,4 +149,43 @@ class KitUiTest {
         val title = walk(b.a.window.decorView).filterIsInstance<TextView>().first { it.text == "Speech to text" }
         assertSame(Fonts.sans(b.a, TypeScale.W_MEDIUM), title.typeface)
     }
+
+    /** Status bar and cutout pad the frame (content never scrolls under the clock); the bottom bar / keyboard pad the scroll. */
+    @Test fun screenKeepsContentBelowTheStatusBar() {
+        val pad = ScreenPadding.of(left = 0, top = 63, right = 0, bottom = 48) { it * 2 }
+        assertEquals(ScreenPadding(frameLeft = 0, frameTop = 63, frameRight = 0, scrollSide = 32, scrollTop = 16, scrollBottom = 96), pad)
+        val a = activity()
+        val ui = DevUi(a)
+        val col = ui.screen { }
+        val scroll = col.parent as android.widget.ScrollView
+        assertSame(scroll, ui.currentScroll())
+        assertTrue("the scroll sits inside a frame that takes the top inset", scroll.parent is FrameLayout)
+    }
+
+    /** A row and its chips form one card item: the hairline goes between items, not under a row's own button. */
+    @Test fun cardItemKeepsARowWithItsChips() {
+        val a = activity()
+        val ui = DevUi(a)
+        lateinit var card: LinearLayout
+        with(ui) {
+            screen {
+                card = card {
+                    for (n in listOf("Model A", "Model B")) item {
+                        stateRow(null, n, "490 MB", "", Tone.NEUTRAL)
+                        chipRow(chip("Download") {})
+                    }
+                }
+            }
+        }
+        assertEquals(2, card.childCount)
+        for (i in 0 until card.childCount) assertEquals(2, (card.getChildAt(i) as LinearLayout).childCount)
+    }
+
+    /** Notes take the column's full width so a wrapped last line is never clipped at the end edge. */
+    @Test fun noteFillsTheColumnWidth() {
+        val a = activity()
+        lateinit var note: TextView
+        with(DevUi(a)) { screen { note = note("Optional. A long explanation that wraps over several lines on a phone.") } }
+        assertEquals(android.view.ViewGroup.LayoutParams.MATCH_PARENT, note.layoutParams.width)
+    }
 }
