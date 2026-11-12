@@ -162,6 +162,17 @@ class KitUiTest {
         assertTrue("the scroll sits inside a frame that takes the top inset", scroll.parent is FrameLayout)
     }
 
+    /** A header (a settings page's top bar) sits above the scroll view, so it stays put while the column scrolls. */
+    @Test fun screenHeaderStaysOutsideTheScroll() {
+        val a = activity()
+        val ui = DevUi(a)
+        lateinit var head: LinearLayout
+        val col = ui.screen(header = { head = this }) { }
+        val scroll = col.parent as android.widget.ScrollView
+        assertSame(scroll, ui.currentScroll())
+        assertSame("header and scroll share one parent", scroll.parent, head.parent)
+    }
+
     /** A row and its chips form one card item: the hairline goes between items, not under a row's own button. */
     @Test fun cardItemKeepsARowWithItsChips() {
         val a = activity()

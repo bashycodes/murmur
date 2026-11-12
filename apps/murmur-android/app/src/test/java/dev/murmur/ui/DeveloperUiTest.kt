@@ -2,6 +2,8 @@ package dev.murmur.ui
 
 import android.app.AlertDialog
 import android.content.Intent
+import android.view.KeyEvent
+import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
@@ -106,5 +108,56 @@ class DeveloperUiTest {
         assertFalse("not closed behind the user's back", a.isFinishing)
         c.pause()
         assertEquals("an invalid value is never written", before, app.dev.load().port)
+    }
+
+    /** v1.2.0 bug: Next from Port landed on the TLS switch row and Enter turned TLS on. */
+    @Test fun keyboardNextGoesHostPortTokenThenDoneAndNeverTogglesTls() {
+        val a = launch(Page.SERVER)
+        val tlsBefore = app.dev.load().tls
+        val host = field(a, "Host or IP"); val port = field(a, "Port"); val token = field(a, "Token")
+        assertEquals(EditorInfo.IME_ACTION_NEXT, host.imeOptions and EditorInfo.IME_MASK_ACTION)
+        assertEquals(EditorInfo.IME_ACTION_NEXT, port.imeOptions and EditorInfo.IME_MASK_ACTION)
+        assertEquals(EditorInfo.IME_ACTION_DONE, token.imeOptions and EditorInfo.IME_MASK_ACTION)
+        host.requestFocus()
+        host.onEditorAction(EditorInfo.IME_ACTION_NEXT)
+        assertTrue("host → port", port.hasFocus())
+        port.onEditorAction(EditorInfo.IME_ACTION_NEXT)
+        assertTrue("port → token, not the TLS switch", token.hasFocus())
+        // A hardware / IME Enter on the port field takes the same path.
+        port.requestFocus()
+        port.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
+        port.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
+        token.onEditorAction(EditorInfo.IME_ACTION_DONE)
+        assertFalse("Done leaves the form", token.hasFocus())
+        val tlsRow = UiTestKit.rowTitled(a, "Use TLS (wss)").createAccessibilityNodeInfo()
+        assertEquals("TLS unchanged", tlsBefore, tlsRow.isChecked)
+    }
+
+    /** v1.2.0 bug: the warning banner sat above the fields and grew / shrank while typing, moving them. */
+    @Test fun serverWarningsSitBelowTheFields() {
+        org.junit.Assume.assumeTrue(app.caps.remote && app.dev.load().allowServer)
+        val a = launch(Page.SERVER)
+        field(a, "Host or IP").setText("")
+        val all = walk(a.window.decorView).toList()
+        val warning = all.filterIsInstance<TextView>().first { it.text.toString().contains(dev.murmur.data.DevSettingsForm.NO_HOST) }
+        assertTrue(warning.visibility == android.view.View.VISIBLE)
+        assertTrue("below the last field", all.indexOf(warning) > all.indexOf(field(a, "Health cache (s)")))
+        assertFalse("plain words, no 'client'", dev.murmur.data.DevSettingsForm.NO_HOST.contains("client"))
+    }
+
+    @Test fun tokenHelpNamesTheServersKeysAddCommand() {
+        val t = texts(launch(Page.SERVER))
+        assertTrue(t.toString(), t.any { it.contains("murmur-server keys add <name>") })
+        assertFalse(t.any { it.contains("gen-token") })
+    }
+
+    /** v1.2.0 bug: the top bar (back, Save) scrolled away with the form. */
+    @Test fun topBarStaysOutsideTheScrollingColumn() {
+        for (p in listOf(Page.SERVER, Page.HUB)) {
+            val a = launch(p)
+            val back = buttons(a).first { it.contentDescription == "Back" }
+            var v: android.view.ViewParent? = back.parent
+            while (v != null) { assertFalse("$p: back button inside the scroll view", v is android.widget.ScrollView); v = v.parent }
+        }
     }
 }

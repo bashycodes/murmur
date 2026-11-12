@@ -130,14 +130,13 @@ class DeveloperActivity : Activity() {
     // ---- top bar (back, Save on the Server page) ----
 
     private fun page(build: LinearLayout.() -> Unit): LinearLayout = with(ui) {
-        screen {
+        screen(header = {
             val bar = topBar(
                 TITLES.getValue(page), DevUi.TopNav.BACK, onNav = { if (hasForm) confirmLeave() else finish() },
                 actions = if (hasForm) listOf(DevUi.TopAction(R.drawable.ic_lw_check, "Save ${TITLES.getValue(page)}") { onSave() }) else emptyList(),
             )
             saveButton = bar.actions.firstOrNull()
-            build()
-        }
+        }, build = build)
     }
 
     /** Back: valid edits are saved on the way out; ones that cannot be saved yet are asked about. */
@@ -336,7 +335,6 @@ class DeveloperActivity : Activity() {
         val s = app.dev.load()
         val edit = { if (::draft.isInitialized && fieldRows.isNotEmpty()) validate(); Unit }
         page {
-            banner = banner()
             if (!caps.remote) note("This build has no network code: the server route is not available.", p.danger, 14f)
             sectionLabel("ADDRESS")
             card {
@@ -349,7 +347,7 @@ class DeveloperActivity : Activity() {
             }
             sectionLabel("AUTHENTICATION")
             card {
-                token = secretRow("Token", s.token, "From `murmur-server gen-token`, at least ${DevSettings.MIN_TOKEN_LEN} characters", "token", onEdit = edit)
+                token = secretRow("Token", s.token, TOKEN_HELP, "token", onEdit = edit)
             }
             sectionLabel("TIMEOUTS")
             card {
@@ -357,6 +355,9 @@ class DeveloperActivity : Activity() {
                 commitTimeout = fieldRow("Commit timeout base (ms)", s.commitTimeoutBaseMs.toString(), InputType.TYPE_CLASS_NUMBER, help = "500-60000", onEdit = edit)
                 healthTtl = fieldRow("Health cache (s)", s.healthTtlS.toString(), InputType.TYPE_CLASS_NUMBER, help = "5-600", onEdit = edit)
             }
+            // Below the form, not above it: its lines come and go while you type (no host yet,
+            // no token), and above the fields that moved them under your finger.
+            banner = banner()
             saveAction = action("Save", DevUi.Style.PRIMARY) { onSave() }
             note("Changes are also saved when you leave this page.")
             action("Test connection") { onTestConnection() }
@@ -370,6 +371,10 @@ class DeveloperActivity : Activity() {
             Field.CONNECT_TIMEOUT to connectTimeout, Field.COMMIT_TIMEOUT to commitTimeout, Field.HEALTH_TTL to healthTtl,
         )
         tls.onChange { validate() }
+        // Next never lands on the TLS switch (Enter would toggle it): host → port → token → Done.
+        imeChain(host, port, token)
+        imeChain(pin, token)
+        imeChain(connectTimeout, commitTimeout, healthTtl)
     }
 
     private fun onTestConnection() {
@@ -673,6 +678,8 @@ class DeveloperActivity : Activity() {
 
     companion object {
         const val EXTRA_PAGE = "page"
+        /** The server CLI command that makes a key (crates/murmur-server `keys add`). */
+        val TOKEN_HELP = "The key `murmur-server keys add <name>` prints on your server, at least ${DevSettings.MIN_TOKEN_LEN} characters"
         private const val STATE_DRAFT = "server_draft"
         private const val PROBE_ACTIVITY = "dev.murmur.probe.EnglishProbeActivity"
 
