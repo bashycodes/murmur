@@ -133,7 +133,7 @@ object CloudCatalog {
         else -> "${ms / 3_600_000} h old"
     }
 
-    /** The model row on the OpenRouter page. */
+    /** The model row on the Cloud page. */
     fun modelSummary(id: String, sttPath: String? = null): String =
         id + when (sttPath) { "chat_audio" -> " · chat model (may paraphrase)"; "transcriptions" -> " · transcription"; else -> "" }
 

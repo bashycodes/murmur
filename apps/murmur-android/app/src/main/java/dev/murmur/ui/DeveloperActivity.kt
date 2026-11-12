@@ -23,7 +23,7 @@ import dev.murmur.core.ParakeetDecoding
 import dev.murmur.core.SessionConfig
 import dev.murmur.data.CloudText
 import dev.murmur.data.OpenRouter
-import dev.murmur.data.CustomServer
+import dev.murmur.data.LiteLLM
 import dev.murmur.data.DevDraft
 import dev.murmur.data.DevPages
 import dev.murmur.data.DevPages.Page
@@ -46,7 +46,7 @@ import kotlin.concurrent.thread
  *   server   host, port, TLS, pin, token (secret), timeouts; Test connection; with an admin
  *            key (D39) a USERS & KEYS row → [UsersKeysActivity]
  * The cloud (D28: OpenRouter only, speech-to-text and text cleanup) has its own page,
- * [OpenRouterActivity], opened from the hub's CONNECTION card.
+ * [CloudActivity], opened from the hub's CONNECTION card.
  *   debug    debug log, keep last dictation audio (both apply at once, as before)
  *   status   active engine, circuits, server info, native capabilities; Reset circuit
  * The Server page has Save in the top bar and a Save button under the form, enabled once
@@ -110,7 +110,7 @@ class DeveloperActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        // The OpenRouter page / another sub-page may have saved meanwhile.
+        // The Cloud page / another sub-page may have saved meanwhile.
         val stored = app.dev.load()
         draft = draft.rebase(stored)
         if (hasForm) validate()
@@ -197,7 +197,7 @@ class DeveloperActivity : Activity() {
             sectionLabel("CONNECTION")
             card {
                 val server = navRow(R.drawable.ic_dev_server, "Server") { open(Page.SERVER) }
-                val cloud = navRow(R.drawable.ic_dev_cloud, OpenRouterActivity.TITLE) { OpenRouterActivity.open(this@DeveloperActivity) }
+                val cloud = navRow(R.drawable.ic_dev_cloud, CloudActivity.TITLE) { CloudActivity.open(this@DeveloperActivity) }
                 refreshers += {
                     val s = app.dev.load()
                     server.setSubtitle(DevSummary.server(s, caps) + if (caps.remote && s.serverConfigured) "\n" + DevSummary.timeouts(s) else "")
@@ -245,7 +245,7 @@ class DeveloperActivity : Activity() {
         val b = banner()
         b.show(text, Tone.WARN)
         chipRow(
-            chip("Open Cloud") { OpenRouterActivity.open(this@DeveloperActivity) },
+            chip("Open Cloud") { CloudActivity.open(this@DeveloperActivity) },
             chip("Dismiss") { app.dev.cloudNotice = null; b.show(""); (it.parent as? View)?.visibility = View.GONE }.apply { contentDescription = "Dismiss the cloud notice" },
         )
     }
@@ -688,7 +688,7 @@ class DeveloperActivity : Activity() {
     /** Also forgets the OpenRouter and custom server keys (sealed copies and their Keystore keys). */
     private fun onResetDefaults() {
         app.cloudKeys.remove(OpenRouter.ID); app.engine.setCloudKey(null)
-        app.cloudKeys.remove(CustomServer.ID); app.engine.setCloudKey(null, CustomServer.ID)
+        app.cloudKeys.remove(LiteLLM.ID); app.engine.setCloudKey(null, LiteLLM.ID)
         app.dev.reset()
         app.engine.applyDevSettings(app.dev.load())
         lastProbe = null

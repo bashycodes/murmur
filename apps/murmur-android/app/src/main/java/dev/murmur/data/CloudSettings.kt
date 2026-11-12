@@ -171,7 +171,7 @@ data class CustomAddress(
     val https: Boolean get() = url?.startsWith("https://") ?: true
 }
 
-/** Where [CustomServer] gets the router's reading of an address (the native library; a fake in JVM tests). */
+/** Where [LiteLLM] gets the router's reading of an address (the native library; a fake in JVM tests). */
 fun interface CustomAddressCheck {
     fun check(baseUrl: String, model: String): CustomAddress
 }
@@ -181,7 +181,7 @@ fun interface CustomAddressCheck {
  * URL normalisation, the consent host and model-id rules come from the router through [check]
  * (never a Kotlin URL parser), so the page records consent for exactly the host the router checks.
  */
-object CustomServer {
+object LiteLLM {
     /** Secure-storage id of its optional key (`SecretVault("murmur_cloud_custom")`, `set_cloud_key("custom")`). */
     const val ID = "custom"
     /** D78: the provider's name in the Cloud page's switch and in summaries. */
@@ -216,10 +216,10 @@ object CustomServer {
  * host of [baseUrl]: pointing it at another host voids it.
  */
 data class CustomCleanupSettings(
-    /** Stored normalised ([CustomServer.normalizeBaseUrl]); "" = not set up. */
+    /** Stored normalised ([LiteLLM.normalizeBaseUrl]); "" = not set up. */
     val baseUrl: String = "",
     val model: String = "",
-    val timeoutMs: Long = CustomServer.DEFAULT_TIMEOUT_MS,
+    val timeoutMs: Long = LiteLLM.DEFAULT_TIMEOUT_MS,
     val connectTimeoutMs: Long = 1_500,
     val consentHost: String = "",
     val consentAtMs: Long = 0,
@@ -228,7 +228,7 @@ data class CustomCleanupSettings(
      * The router's reading of [baseUrl] and [model], looked up once per settings value (one native
      * call per page refresh): [host], [https], [consentOk] and [ready] all derive from it.
      */
-    private val address: CustomAddress by lazy { CustomServer.address(baseUrl, model.trim()) }
+    private val address: CustomAddress by lazy { LiteLLM.address(baseUrl, model.trim()) }
 
     val host: String get() = address.host
     val https: Boolean get() = address.https
@@ -236,7 +236,7 @@ data class CustomCleanupSettings(
 
     /** The router accepts it (`CustomCleanupConfig::validate`): a usable URL and model id. */
     val ready: Boolean
-        get() = address.let { it.url != null && it.modelOk } && timeoutMs in CustomServer.TIMEOUT_MIN..CustomServer.TIMEOUT_MAX
+        get() = address.let { it.url != null && it.modelOk } && timeoutMs in LiteLLM.TIMEOUT_MIN..LiteLLM.TIMEOUT_MAX
 
     fun withConsent(nowMs: Long) = copy(consentHost = host, consentAtMs = nowMs)
 
@@ -251,7 +251,7 @@ data class CustomCleanupSettings(
             return CustomCleanupSettings(
                 baseUrl = o.optString("base_url"),
                 model = o.optString("model"),
-                timeoutMs = o.optLong("timeout_ms", CustomServer.DEFAULT_TIMEOUT_MS),
+                timeoutMs = o.optLong("timeout_ms", LiteLLM.DEFAULT_TIMEOUT_MS),
                 connectTimeoutMs = o.optLong("connect_timeout_ms", 1_500),
                 consentHost = o.optString("consent_host"),
                 consentAtMs = o.optLong("consent_at_ms", 0),
@@ -292,17 +292,17 @@ data class CloudSettings(
     val cleanupModel: String get() = if (customProvider) customCleanup.model else cleanup.model
     val cleanupTimeoutMs: Long get() = if (customProvider) customCleanup.timeoutMs else cleanup.timeoutMs
     /** The cleanup key's [CloudKeyStore] id: the custom key is optional, OpenRouter's is required. */
-    val cleanupKeyId: String get() = if (customProvider) CustomServer.ID else OpenRouter.ID
+    val cleanupKeyId: String get() = if (customProvider) LiteLLM.ID else OpenRouter.ID
 
-    /** Custom server selected but not usable: shown as [CustomServer.NOT_SET_UP], never as OpenRouter. */
+    /** Custom server selected but not usable: shown as [LiteLLM.NOT_SET_UP], never as OpenRouter. */
     val customNotSetUp: Boolean get() = customProvider && !customCleanup.ready
 
-    /** "OpenRouter" / "LiteLLM (10.0.0.5)" / [CustomServer.NOT_SET_UP]: the cloud cleanup engine's name. */
+    /** "OpenRouter" / "LiteLLM (10.0.0.5)" / [LiteLLM.NOT_SET_UP]: the cloud cleanup engine's name. */
     val cleanupProviderName: String
         get() = when {
             !customProvider -> OpenRouter.NAME
-            customNotSetUp -> CustomServer.NOT_SET_UP
-            else -> customCleanup.host.let { if (it.isEmpty()) CustomServer.NAME else "${CustomServer.NAME} ($it)" }
+            customNotSetUp -> LiteLLM.NOT_SET_UP
+            else -> customCleanup.host.let { if (it.isEmpty()) LiteLLM.NAME else "${LiteLLM.NAME} ($it)" }
         }
 
     /** The `OpenRouterConfig` JSON (`nativeProbeCloud`, `nativeSetCloudKeyFor`). */
@@ -323,7 +323,7 @@ data class CloudSettings(
      * [toJson] for the router: a custom server that is not [CustomCleanupSettings.ready] would make
      * the router refuse the whole config, so it is sent as OpenRouter with no cleanup consent (no
      * cleanup leaves the phone until the server is set up). The pages then say
-     * [CustomServer.NOT_SET_UP] ([customNotSetUp]), never "OpenRouter".
+     * [LiteLLM.NOT_SET_UP] ([customNotSetUp]), never "OpenRouter".
      */
     fun routerJson(): JSONObject =
         if (customProvider && !customCleanup.ready) copy(cleanupProvider = CleanupProvider.OPENROUTER, cleanup = cleanup.withoutConsent()).toJson()
@@ -367,7 +367,7 @@ data class CloudUsage(val month: String = "", val providers: List<ProviderUsage>
         val purpose: String = PURPOSE_STT,
     ) {
         /** D52: the custom cleanup server's counter (never OpenRouter's, never in the budget). */
-        val isCustom: Boolean get() = providerId == CustomServer.ID
+        val isCustom: Boolean get() = providerId == LiteLLM.ID
     }
 
     /** `CloudUsage::total_cost`: every provider, the custom server included (never shown as OpenRouter's). */
@@ -381,12 +381,12 @@ data class CloudUsage(val month: String = "", val providers: List<ProviderUsage>
      * D52: one use's OpenRouter part (what the budget counts), the custom server left out; counters
      * of removed providers count as speech-to-text.
      */
-    fun openRouterCostFor(purpose: String): Double = openRouter(purpose).sumOf { it.costUsd }
-    fun openRouterEstimated(purpose: String): Boolean = openRouter(purpose).any { it.costEstimated }
-    fun openRouterRequests(purpose: String): Long = openRouter(purpose).sumOf { it.requests }
+    fun openRouterCostFor(purpose: String): Double = cloudRow(purpose).sumOf { it.costUsd }
+    fun openRouterEstimated(purpose: String): Boolean = cloudRow(purpose).any { it.costEstimated }
+    fun openRouterRequests(purpose: String): Long = cloudRow(purpose).sumOf { it.requests }
     /** D52: cleanup requests sent to the custom server this month (counted even when it reports no cost). */
     val customRequests: Long get() = providers.filter { it.isCustom }.sumOf { it.requests }
-    private fun openRouter(purpose: String) = providers.filter { it.purpose == purpose && !it.isCustom }
+    private fun cloudRow(purpose: String) = providers.filter { it.purpose == purpose && !it.isCustom }
     fun billedAudioMs(): Long = providers.filter { it.purpose == PURPOSE_STT }.sumOf { it.billedAudioMs }
 
     fun toJson(): JSONObject = JSONObject().apply {
@@ -435,7 +435,7 @@ object CloudText {
     /** D78 provider switch: what each provider is and what it does here. */
     const val OPENROUTER_DESC = "openrouter.ai: hundreds of models from many companies. Pay per use with your own key."
     const val OPENROUTER_OFFERS = "Speech to text: yes · AI cleanup: yes"
-    const val LITELLM_DESC = "Your own ${CustomServer.LONG_NAME}, on your network or wherever you run it."
+    const val LITELLM_DESC = "Your own ${LiteLLM.LONG_NAME}, on your network or wherever you run it."
     const val LITELLM_OFFERS = "Speech to text: not yet · AI cleanup: yes"
 
     /** D78: why cloud speech cannot be turned on while LiteLLM is the Cloud provider. */
@@ -598,7 +598,7 @@ object CloudText {
         // D52: the owner's own server is never in the OpenRouter budget; its requests count even without a cost.
         if (u.customRequests > 0 || u.customCostUsd > 0) {
             val cost = u.customCostUsd.takeIf { it > 0 }?.let { "reported ${usd(it)}" } ?: "no cost reported"
-            lines += "${CustomServer.USAGE_LABEL}: ${count(u.customRequests, "cleanup request")} · $cost (not in the budget)"
+            lines += "${LiteLLM.USAGE_LABEL}: ${count(u.customRequests, "cleanup request")} · $cost (not in the budget)"
         }
         return lines
     }
@@ -618,7 +618,7 @@ object CloudText {
     fun routeName(s: CloudSettings) = "${OpenRouter.NAME} (${s.stt.model.substringAfter('/')})"
 }
 
-/** The OpenRouter page's small text inputs (dialogs) → values, or the inline error. */
+/** The Cloud page's small text inputs (dialogs) → values, or the inline error. */
 object CloudInput {
     data class Parsed<T>(val value: T?, val error: String?)
 
@@ -646,10 +646,10 @@ object CloudInput {
         return Parsed(v, null)
     }
 
-    /** D52 base URL as typed → the router's normalised URL ([CustomServer.address]). */
+    /** D52 base URL as typed → the router's normalised URL ([LiteLLM.address]). */
     fun baseUrl(raw: String): Parsed<String> {
         if (raw.isBlank()) return Parsed(null, "Enter http(s)://host[:port][/path], e.g. http://192.168.1.20:4000")
-        val a = CustomServer.address(raw)
+        val a = LiteLLM.address(raw)
         return if (a.url != null) Parsed(a.url, null)
         else Parsed(null, (a.message ?: "Not a valid http(s) URL").replaceFirstChar { it.uppercase() })
     }
@@ -659,7 +659,7 @@ object CloudInput {
         val m = raw.trim()
         return when {
             m.isEmpty() -> Parsed(null, "Enter a model id the server lists, e.g. gpt-4o-mini")
-            !CustomServer.validModelId(m) -> Parsed(null, "A model id is at most 256 characters, without spaces")
+            !LiteLLM.validModelId(m) -> Parsed(null, "A model id is at most 256 characters, without spaces")
             else -> Parsed(m, null)
         }
     }
@@ -667,8 +667,8 @@ object CloudInput {
     /** D52 custom server timeout, 800-30000 ms. */
     fun customTimeout(raw: String): Parsed<Long> {
         val v = raw.trim().toLongOrNull()
-        if (v == null || v !in CustomServer.TIMEOUT_MIN..CustomServer.TIMEOUT_MAX) {
-            return Parsed(null, "Timeout must be a whole number ${CustomServer.TIMEOUT_MIN}-${CustomServer.TIMEOUT_MAX} ms")
+        if (v == null || v !in LiteLLM.TIMEOUT_MIN..LiteLLM.TIMEOUT_MAX) {
+            return Parsed(null, "Timeout must be a whole number ${LiteLLM.TIMEOUT_MIN}-${LiteLLM.TIMEOUT_MAX} ms")
         }
         return Parsed(v, null)
     }

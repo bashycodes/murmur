@@ -26,20 +26,20 @@ import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowAlertDialog
 
 /**
- * D28 OpenRouter page + model picker in the Settings look: cards, both opt-ins off with their
+ * D28 Cloud page + model picker in the Settings look: cards, both opt-ins off with their
  * own consent dialogs, privacy on, the API key never in the a11y tree, the one-time notice.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = MurmurApp::class)
-class OpenRouterUiTest {
+class CloudUiTest {
     private val ctx get() = RuntimeEnvironment.getApplication()
     private val app get() = MurmurApp.of(ctx)
 
     @Before fun cloudBuild() = assumeTrue(app.caps.cloud)
 
-    private fun launch() = Robolectric.buildActivity(OpenRouterActivity::class.java, Intent(ctx, OpenRouterActivity::class.java)).setup().visible().get()
+    private fun launch() = Robolectric.buildActivity(CloudActivity::class.java, Intent(ctx, CloudActivity::class.java)).setup().visible().get()
 
-    private fun switchOf(a: OpenRouterActivity, title: String) =
+    private fun switchOf(a: CloudActivity, title: String) =
         walk(rowTitled(a, title)).filterIsInstance<android.widget.Switch>().single()
 
     @Test fun cardsAndDefaults() {
@@ -48,44 +48,44 @@ class OpenRouterUiTest {
         for (want in listOf(
             "PROVIDER", "OpenRouter", "LiteLLM", "API KEY", "PRIVACY", "SPEECH-TO-TEXT", "TEXT CLEANUP", "WHAT CLEANUP SENDS", "USAGE",
             "Stored key", "Show", "Paste", "Clear", "Save key", "Check key",
-            "Zero-retention providers only", "Deny data collection", OpenRouterActivity.STT_SWITCH, OpenRouterActivity.CLEANUP_SWITCH,
+            "Zero-retention providers only", "Deny data collection", CloudActivity.STT_SWITCH, CloudActivity.CLEANUP_SWITCH,
             "Model", "Send text around the cursor", "Send on-screen words", "Send app name", "Monthly budget", "Reset counters",
             "Test speech-to-text", "this month", "speech", "cleanup",
         )) assertTrue(want, want in t)
         assertTrue(switchOf(a, "Zero-retention providers only").isChecked)
         assertTrue(switchOf(a, "Deny data collection").isChecked)
-        for (off in listOf(OpenRouterActivity.STT_SWITCH, OpenRouterActivity.CLEANUP_SWITCH, "Send text around the cursor", "Send on-screen words", "Send app name")) {
+        for (off in listOf(CloudActivity.STT_SWITCH, CloudActivity.CLEANUP_SWITCH, "Send text around the cursor", "Send on-screen words", "Send app name")) {
             assertFalse(off, switchOf(a, off).isChecked)
         }
         assertTrue(t.any { it.startsWith(OpenRouter.DEFAULT_STT_MODEL) })
         assertTrue(t.any { it.startsWith(OpenRouter.DEFAULT_CLEANUP_MODEL) })
-        assertEquals(android.widget.Switch::class.java.name, rowTitled(a, OpenRouterActivity.STT_SWITCH).createAccessibilityNodeInfo().className)
+        assertEquals(android.widget.Switch::class.java.name, rowTitled(a, CloudActivity.STT_SWITCH).createAccessibilityNodeInfo().className)
         UiTestKit.assertTouchTargets(a, "openrouter")
     }
 
     @Test fun cleanupHasItsOwnConsentAndCancelLeavesItOff() {
         val a = launch()
-        rowTitled(a, OpenRouterActivity.CLEANUP_SWITCH).performClick(); idle()
+        rowTitled(a, CloudActivity.CLEANUP_SWITCH).performClick(); idle()
         val d = ShadowAlertDialog.getLatestAlertDialog()
         val sd = org.robolectric.Shadows.shadowOf(d)
         assertEquals("Send dictated text to OpenRouter?", sd.title.toString())
         assertTrue(sd.message.toString().startsWith("After each dictation, the text (and your dictionary words) is sent to OpenRouter (openrouter.ai)"))
         assertEquals("Send text to OpenRouter", d.getButton(DialogInterface.BUTTON_POSITIVE).text.toString())
         d.getButton(DialogInterface.BUTTON_NEGATIVE).performClick(); idle()
-        assertFalse(switchOf(a, OpenRouterActivity.CLEANUP_SWITCH).isChecked)
+        assertFalse(switchOf(a, CloudActivity.CLEANUP_SWITCH).isChecked)
         assertFalse(app.dev.load().allowCloudCleanup); assertFalse(app.dev.load().cloud.cleanup.consentOk)
 
-        rowTitled(a, OpenRouterActivity.CLEANUP_SWITCH).performClick(); idle()
+        rowTitled(a, CloudActivity.CLEANUP_SWITCH).performClick(); idle()
         ShadowAlertDialog.getLatestAlertDialog().getButton(DialogInterface.BUTTON_POSITIVE).performClick(); idle()
         val s = app.dev.load()
         assertTrue(s.allowCloudCleanup); assertTrue(s.cloud.cleanup.consentOk); assertTrue(s.cloudCleanupRouted)
         assertFalse("cleanup never turns speech-to-text on", s.allowCloud); assertFalse(s.cloud.stt.consentOk)
-        assertTrue(switchOf(a, OpenRouterActivity.CLEANUP_SWITCH).isChecked)
+        assertTrue(switchOf(a, CloudActivity.CLEANUP_SWITCH).isChecked)
     }
 
     @Test fun speechToTextConsentNamesTheAudio() {
         val a = launch()
-        rowTitled(a, OpenRouterActivity.STT_SWITCH).performClick(); idle()
+        rowTitled(a, CloudActivity.STT_SWITCH).performClick(); idle()
         val d = ShadowAlertDialog.getLatestAlertDialog()
         val sd = org.robolectric.Shadows.shadowOf(d)
         assertEquals("Send your voice to OpenRouter?", sd.title.toString())
@@ -138,7 +138,7 @@ class OpenRouterUiTest {
         app.dev.cloudNotice = "The model openai/gpt-transcribe has no zero-retention provider on OpenRouter."
         val a = Robolectric.buildActivity(DeveloperActivity::class.java, Intent(ctx, DeveloperActivity::class.java)).setup().visible().get()
         val t = texts(a)
-        assertTrue(t.toString(), OpenRouterActivity.TITLE in t)
+        assertTrue(t.toString(), CloudActivity.TITLE in t)
         assertFalse("no provider list any more", "Cloud providers" in t)
         assertTrue(t.any { it.startsWith("The model openai/gpt-transcribe") })
         assertTrue("Speech off · Cleanup off · no key" in t)
@@ -146,41 +146,41 @@ class OpenRouterUiTest {
 
     @Test fun aRefreshReadsTheCustomServerAddressOnce() {
         // D52: the cleanup card and the custom-server card share one settings value per refresh.
-        val prev = dev.murmur.data.CustomServer.check
+        val prev = dev.murmur.data.LiteLLM.check
         var calls = 0
-        dev.murmur.data.CustomServer.check = dev.murmur.data.CustomAddressCheck { u, m -> calls++; dev.murmur.data.FakeCustomAddress.check(u, m) }
+        dev.murmur.data.LiteLLM.check = dev.murmur.data.CustomAddressCheck { u, m -> calls++; dev.murmur.data.FakeCustomAddress.check(u, m) }
         try {
             app.dev.saveCloud(cloud = app.dev.load().cloud.copy(
                 cleanupProvider = dev.murmur.data.CleanupProvider.CUSTOM,
                 customCleanup = dev.murmur.data.CustomCleanupSettings("http://10.0.0.5:4000", "m"),
             ))
-            val c = Robolectric.buildActivity(OpenRouterActivity::class.java, Intent(ctx, OpenRouterActivity::class.java)).setup().visible()
+            val c = Robolectric.buildActivity(CloudActivity::class.java, Intent(ctx, CloudActivity::class.java)).setup().visible()
             assertTrue("custom card shown", "10.0.0.5" in texts(c.get()).joinToString())
-            assertTrue("switch title does not follow the provider", OpenRouterActivity.CLEANUP_SWITCH in texts(c.get()))
+            assertTrue("switch title does not follow the provider", CloudActivity.CLEANUP_SWITCH in texts(c.get()))
             calls = 0
             c.pause().resume()
             assertEquals(1, calls)
-        } finally { dev.murmur.data.CustomServer.check = prev }
+        } finally { dev.murmur.data.LiteLLM.check = prev }
     }
 
     @Test fun settingsHubHasTheUserFacingEntry() {
         val a = Robolectric.buildActivity(SettingsActivity::class.java, Intent(ctx, SettingsActivity::class.java)).setup().visible().get()
         val t = texts(a)
         // Connections → "Cloud: OpenRouter · no key · $0 this month" (D78).
-        assertTrue(t.toString(), OpenRouterActivity.TITLE in t)
+        assertTrue(t.toString(), CloudActivity.TITLE in t)
         assertTrue(t.toString(), "OpenRouter · no key · \$0 this month" in t)
-        rowTitled(a, OpenRouterActivity.TITLE).performClick()
-        assertEquals(OpenRouterActivity::class.java.name, org.robolectric.Shadows.shadowOf(a).nextStartedActivity.component?.className)
+        rowTitled(a, CloudActivity.TITLE).performClick()
+        assertEquals(CloudActivity::class.java.name, org.robolectric.Shadows.shadowOf(a).nextStartedActivity.component?.className)
     }
 
-    private fun segment(a: OpenRouterActivity, label: String) =
+    private fun segment(a: CloudActivity, label: String) =
         walk(a.window.decorView).first { it is android.widget.TextView && it.isClickable && it.text.toString() == label }
 
     @Test fun pickingLiteLlmShowsTheProxyFieldsAndTurnsCloudSpeechOff() {
         // D78: one provider at a time. Cloud speech on with OpenRouter first.
         app.dev.saveCloud(allowCloud = true, cloud = app.dev.load().cloud.copy(stt = app.dev.load().cloud.stt.withConsent(1)))
         val a = launch()
-        assertTrue(switchOf(a, OpenRouterActivity.STT_SWITCH).isChecked)
+        assertTrue(switchOf(a, CloudActivity.STT_SWITCH).isChecked)
         assertFalse("proxy fields hidden for OpenRouter", "YOUR LITELLM PROXY" in texts(a))
         segment(a, "LiteLLM").performClick(); idle()
         val s = app.dev.load()
@@ -191,13 +191,13 @@ class OpenRouterUiTest {
             dev.murmur.data.CloudText.LITELLM_DESC, dev.murmur.data.CloudText.LITELLM_OFFERS, dev.murmur.data.CloudText.LITELLM_STT_OFF_NOTICE,
             dev.murmur.data.CloudText.STT_NOT_AVAILABLE)) assertTrue("$want in $t", want in t)
         for (gone in listOf("API KEY", "PRIVACY", "Test speech-to-text", "Load models")) assertFalse(gone, gone in t)
-        val stt = switchOf(a, OpenRouterActivity.STT_SWITCH)
+        val stt = switchOf(a, CloudActivity.STT_SWITCH)
         assertFalse(stt.isChecked); assertFalse("the speech switch refuses", stt.isEnabled)
         // Back to OpenRouter: its fields return, speech stays off until turned on again.
         segment(a, "OpenRouter").performClick(); idle()
         assertFalse(app.dev.load().cloud.customProvider); assertFalse(app.dev.load().allowCloud)
         assertTrue("API KEY" in texts(a))
-        assertTrue(switchOf(a, OpenRouterActivity.STT_SWITCH).isEnabled)
+        assertTrue(switchOf(a, CloudActivity.STT_SWITCH).isEnabled)
     }
 
     @Test fun aSavedMixIsFixedWhenThePageOpensWithANotice() {
@@ -213,7 +213,7 @@ class OpenRouterUiTest {
 
     @Test fun pagesHaveTheDesignTopBarWithALabelledBack() {
         val pages = listOf(
-            launch() to OpenRouterActivity.TITLE,
+            launch() to CloudActivity.TITLE,
             Robolectric.buildActivity(
                 ModelPickerActivity::class.java,
                 Intent(ctx, ModelPickerActivity::class.java).putExtra(ModelPickerActivity.EXTRA_USE, CloudCatalog.Use.CLEANUP.wire),
