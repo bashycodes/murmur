@@ -32,7 +32,7 @@ class SettingsStore(context: Context) {
         mockEngine = sp.getBoolean("mock_engine", false),
         userDenylist = sp.getStringSet("user_denylist", emptySet())?.toSet() ?: emptySet(),
         llmEnabled = sp.getBoolean("llm_enabled", false),
-        livePreview = sp.getBoolean("live_preview", true),
+        livePreview = sp.getBoolean("live_preview", Settings.DEFAULT_LIVE_PREVIEW),
         shakeToReveal = sp.getBoolean("shake_to_reveal", true),
         shrinkBubble = sp.getBoolean("shrink_bubble", true),
         shrinkToDot = loadShrinkToDot(),
