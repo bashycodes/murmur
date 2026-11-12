@@ -1761,7 +1761,9 @@ fn run_metered(
     // D65: a dictation is never translated. The one check on the answer
     // (otherwise used as given, D59) is its writing system: it keeps the
     // transcript's script and adds no other one, nor (Hebrew) a Latin word
-    // the transcript, dictionary or screen words do not have.
+    // it does not have in any spelling, nor in the whole dictionary
+    // vocabulary or screen words (`known`, not only the terms the prompt
+    // showed). Command Mode and transforms are not checked this way yet.
     if let Some(s) = script_kept(asr_text) {
         let why = if script_lock::drifted_from(s, asr_text, &out) {
             Some(format!("answer not in {}", s.language()))

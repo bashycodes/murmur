@@ -1,0 +1,15 @@
+# D65 mixed-script check over stored cleanup answers
+# (tools/probes/prototypes/hebrew_mixed_script_guard_2026_11_12).
+# Own workspace (like the other probe runners) so the product workspace is
+# untouched; uses this checkout's murmur-core.
+[package]
+name = "mixed-script-scan"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+murmur-core = { path = "../../../../crates/murmur-core" }
+serde_json = "1"
