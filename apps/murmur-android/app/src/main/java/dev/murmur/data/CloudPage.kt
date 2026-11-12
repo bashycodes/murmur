@@ -3,7 +3,7 @@ package dev.murmur.data
 import dev.murmur.data.DevSettings.Route
 
 /**
- * The Cloud page's state changes (ui/OpenRouterActivity, ui/ModelPickerActivity), pure for
+ * The Cloud page's state changes (ui/CloudActivity, ui/ModelPickerActivity), pure for
  * the JVM tests. Each use has its own opt-in and its own consent record: turning one on never
  * turns the other on, and turning a use off keeps its consent (turning it on again asks nothing).
  *
@@ -12,7 +12,7 @@ import dev.murmur.data.DevSettings.Route
  * app's settings rule, kept on [CloudSettings.sttAvailable] / [DevSettings.oneCloudProvider]; the
  * shared router still accepts the mix.
  */
-object OpenRouterPage {
+object CloudPage {
     /** Speech-to-text needs the consent dialog first. */
     fun sttNeedsConsent(s: DevSettings) = !s.cloud.stt.consentOk
     /** D52: the selected provider's own consent (a custom server's is bound to its host). */
@@ -65,8 +65,8 @@ object OpenRouterPage {
 
     /** What LiteLLM still needs before cleanup can use it, or null when it is ready. */
     fun customMissing(c: CustomCleanupSettings): String? = when {
-        CustomServer.normalizeBaseUrl(c.baseUrl) == null -> "Set the proxy address first"
-        !CustomServer.validModelId(c.model.trim()) -> "Set the model first"
+        LiteLLM.normalizeBaseUrl(c.baseUrl) == null -> "Set the proxy address first"
+        !LiteLLM.validModelId(c.model.trim()) -> "Set the model first"
         else -> null
     }
 

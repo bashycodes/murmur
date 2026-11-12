@@ -260,7 +260,7 @@ class MainActivity : Activity() {
 
     private fun openDest(d: ShellPages.Dest) = when (d) {
         is ShellPages.Dest.Page -> SettingsActivity.open(this, d.page)
-        ShellPages.Dest.OpenRouter -> OpenRouterActivity.open(this)
+        ShellPages.Dest.Cloud -> CloudActivity.open(this)
     }
 
     private fun dotColor(d: ShellPages.Dot) = when (d) {

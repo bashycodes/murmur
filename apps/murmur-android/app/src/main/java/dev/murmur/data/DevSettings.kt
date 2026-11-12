@@ -444,7 +444,7 @@ object DevSettingsForm {
         val healthTtlS: String,
         val keepLocalWarm: Boolean,
         val showEngineBadge: Boolean,
-        /** The cloud part is edited on the OpenRouter page (applies at once); the form passes it through. */
+        /** The cloud part is edited on the Cloud page (applies at once); the form passes it through. */
         val allowCloud: Boolean = false,
         val cloud: CloudSettings = CloudSettings(),
         val allowCloudCleanup: Boolean = false,

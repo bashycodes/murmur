@@ -78,20 +78,20 @@ object ShellPages {
     /** Status dot of an engine line: green = on the phone / your server, glow = cloud, grey = off, red = disabled or not set up. */
     enum class Dot { OK, CLOUD, OFF, BAD }
 
-    /** Where a drawer line opens: a Settings page, or OpenRouter's page (`remote`'s only AI cleanup, D28). */
+    /** Where a drawer line opens: a Settings page, or the Cloud page (`remote`'s only AI cleanup, D28). */
     sealed interface Dest {
         data class Page(val page: SettingsPages.Page) : Dest
-        data object OpenRouter : Dest
+        data object Cloud : Dest
     }
 
     /**
-     * Where AI cleanup is set: its Settings page where the build has one, else OpenRouter's page
+     * Where AI cleanup is set: its Settings page where the build has one, else the Cloud page
      * where the build has the cloud, else none (no row on the Settings hub). One answer for the
      * Settings hub's row and the drawer's line, so they cannot open different screens.
      */
     fun cleanupDest(caps: BuildCaps): Dest? = when {
         SettingsPages.visible(SettingsPages.Page.CLEANUP, caps) -> Dest.Page(SettingsPages.Page.CLEANUP)
-        caps.cloud -> Dest.OpenRouter
+        caps.cloud -> Dest.Cloud
         else -> null
     }
 

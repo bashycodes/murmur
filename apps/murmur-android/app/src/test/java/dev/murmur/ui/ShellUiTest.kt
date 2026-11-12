@@ -109,7 +109,7 @@ class ShellUiTest {
 
     @Test fun drawerEngineLinesOpenTheirSettingsPage() {
         // Owner report: both lines opened Developer settings. Runs in every flavor: the remote
-        // build has no AI cleanup page, so its line opens OpenRouter's page instead.
+        // build has no AI cleanup page, so its line opens the Cloud page instead.
         val a = launch()
         val cleanup = ShellPages.cleanupDest(MurmurApp.of(a).caps) ?: ShellPages.Dest.Page(SettingsPages.Page.HUB)
         val want = mapOf("Speech to text" to ShellPages.Dest.Page(SettingsPages.Page.SPEECH), "AI cleanup" to cleanup)
@@ -123,7 +123,7 @@ class ShellUiTest {
                     assertEquals(label, dest.page.name, i.getStringExtra(SettingsActivity.EXTRA_PAGE))
                     assertEquals(label, SettingsPages.TITLES.getValue(dest.page))
                 }
-                ShellPages.Dest.OpenRouter -> assertEquals(label, OpenRouterActivity::class.java.name, i.component?.className)
+                ShellPages.Dest.Cloud -> assertEquals(label, CloudActivity::class.java.name, i.component?.className)
             }
             assertFalse(a.frame.drawerOpen)
         }

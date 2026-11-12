@@ -85,22 +85,22 @@ class CleanupOrderTest {
     }
 
     @Test fun routerJsonAlwaysCarriesTheWholeOrderWithTheOffEntries() {
-        val s = OpenRouterPage.enableCleanup(DevSettings.defaults(BuildCaps.ALL), now)
+        val s = CloudPage.enableCleanup(DevSettings.defaults(BuildCaps.ALL), now)
             .copy(cleanupOrder = listOf(SERVER, CLOUD, LOCAL)).withCleanup(LOCAL, false)
         val j = JSONObject(s.routerConfigFor(BuildCaps.ALL))
         assertEquals("[\"server\",\"cloud\",\"local\"]", j.getJSONArray("cleanup_order").toString())
         assertEquals("[\"local\"]", j.getJSONArray("cleanup_off").toString())
         assertTrue(j.getBoolean("allow_cloud_cleanup"))
         // The cloud switched off: in `cleanup_off`, and `allow_cloud_cleanup` false.
-        val noCloud = JSONObject(OpenRouterPage.disableCleanup(s).routerConfigFor(BuildCaps.ALL))
+        val noCloud = JSONObject(CloudPage.disableCleanup(s).routerConfigFor(BuildCaps.ALL))
         assertEquals("[\"cloud\",\"local\"]", noCloud.getJSONArray("cleanup_off").toString())
         assertFalse(noCloud.getBoolean("allow_cloud_cleanup"))
         // Everything off is still the whole list (not the empty, pre-D36 order).
-        val allOff = JSONObject(OpenRouterPage.disableCleanup(s).withCleanup(SERVER, false).routerConfigFor(BuildCaps.ALL))
+        val allOff = JSONObject(CloudPage.disableCleanup(s).withCleanup(SERVER, false).routerConfigFor(BuildCaps.ALL))
         assertEquals(3, allOff.getJSONArray("cleanup_order").length()); assertEquals(3, allOff.getJSONArray("cleanup_off").length())
         // …and parses back to the same settings.
         assertEquals(s, DevSettings.fromRouterConfigJson(s.toRouterConfigJson().toString()))
-        assertEquals(OpenRouterPage.disableCleanup(s), DevSettings.fromRouterConfigJson(OpenRouterPage.disableCleanup(s).toRouterConfigJson().toString()))
+        assertEquals(CloudPage.disableCleanup(s), DevSettings.fromRouterConfigJson(CloudPage.disableCleanup(s).toRouterConfigJson().toString()))
     }
 
     @Test fun anEngineOffThePhoneRunsTheLlmStepWithThePhoneAiOff() {
@@ -111,7 +111,7 @@ class CleanupOrderTest {
         assertTrue(server.effective(caps).offPhoneCleanup)
         assertFalse(server.withCleanup(SERVER, false).effective(caps).offPhoneCleanup)
         assertFalse("a local build has no server", server.effective(BuildCaps.LOCAL).offPhoneCleanup)
-        assertTrue(OpenRouterPage.enableCleanup(d, now).effective(caps).offPhoneCleanup)
+        assertTrue(CloudPage.enableCleanup(d, now).effective(caps).offPhoneCleanup)
         val st = Settings(llmEnabled = false)
         assertEquals(CleanupLevel.LIGHT, st.toSessionConfig(emptyList(), cloudCleanup = server.effective(caps).offPhoneCleanup).cleanupLevel)
     }
@@ -149,7 +149,7 @@ class CleanupOrderTest {
         assertEquals("Not checked yet", CleanupEngines.serverLine(set, caps, null))
         assertEquals("Not reachable", CleanupEngines.serverLine(set, caps, true, circuitOpen = true))
         assertEquals("OpenRouter · Sends text · asks first", CleanupEngines.cloudLine(d, hasKey = false))
-        val on = OpenRouterPage.enableCleanup(d, now)
+        val on = CloudPage.enableCleanup(d, now)
         assertEquals("OpenRouter · Sends text · llama-3.3-70b-instruct · no key", CleanupEngines.cloudLine(on, hasKey = false))
         assertEquals("OpenRouter · Sends text · llama-3.3-70b-instruct", CleanupEngines.cloudLine(on, hasKey = true))
     }
@@ -249,8 +249,8 @@ class CleanupOrderTest {
         val cc = CustomCleanupSettings(baseUrl = "http://10.0.0.5:4000/v1", model = "", consentHost = "10.0.0.5", consentAtMs = 1)
         val c = d.copy(cloud = d.cloud.copy(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = cc), allowCloudCleanup = true)
         assertTrue(c.cloud.customNotSetUp)
-        assertEquals(CustomServer.NOT_SET_UP, CleanupEngines.cloudLine(c, hasKey = true))
-        assertEquals(CustomServer.NOT_SET_UP, c.cloud.cleanupProviderName)
+        assertEquals(LiteLLM.NOT_SET_UP, CleanupEngines.cloudLine(c, hasKey = true))
+        assertEquals(LiteLLM.NOT_SET_UP, c.cloud.cleanupProviderName)
         assertFalse(c.cloud.routerJson().has("cleanup_provider"))
         assertEquals(0L, c.cloud.routerJson().getJSONObject("openrouter").getJSONObject("cleanup").getLong("consent_at_ms"))
     }
