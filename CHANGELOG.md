@@ -16,6 +16,12 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Added
+
+- **Gemma 3 12B is a cleanup model for servers with a GPU.** A server with an NVIDIA GPU of 10 GB or more can now run Gemma 3 12B Instruct (Q4_K_M) for AI cleanup. It is in the server catalogue (`gemma-3-12b-it-q4_k_m`, pinned by SHA-256), and the Windows app lists it as a cleanup model, not a recommended one.
+  - It was benchmarked against Qwen2.5-7B and Qwen2.5-14B in English and Hebrew. It was the only one that made no harmful Hebrew edit; Qwen2.5-14B mixed Chinese, Cyrillic and Arabic into Hebrew lines.
+  - The GPU setup is in `docs/colleague-install.md` ("With a GPU"), and the results are in `docs/model-benchmarks.md`. Its licence (the Gemma Terms of Use) is in NOTICE and `third_party/licenses/`.
+
 ## [1.2.0] - 2026-11-12
 
 ### Added

@@ -160,6 +160,55 @@ public address, publish on its LAN address only
 (`-p 192.168.1.20:7313:7313`). More: `docs/server-setup.md` and
 `docs/container.md` in the source archive.
 
+### With a GPU: a larger cleanup model
+
+If the server has an NVIDIA GPU with 10 GB of memory or more, use
+**Gemma 3 12B** for AI cleanup. It is the most careful model for Hebrew and
+as good as the default in English (`docs/model-benchmarks.md`, "GPU cleanup
+model"). On a CPU it is far too slow, at about 6 s per dictation.
+
+You need the NVIDIA driver and the NVIDIA container toolkit on the host.
+
+1. Put the model in the library. It is 7.3 GB. Skip this if the bundle was
+   built with `--llm all`, because the model is then already in the
+   cleanup zip.
+
+   ```sh
+   d=~/murmur-models/library/gemma-3-12b-it-q4_k_m; mkdir -p $d
+   curl -L -o $d/google_gemma-3-12b-it-Q4_K_M.gguf \
+     https://huggingface.co/bartowski/google_gemma-3-12b-it-GGUF/resolve/648e3a36a77c8a9f12d86e741f9dcb9089c769c4/google_gemma-3-12b-it-Q4_K_M.gguf
+   echo "fc57f67efa46d711c346e587cbef7d049e95f3df8db2eb2271153343ef0acc7b  $d/google_gemma-3-12b-it-Q4_K_M.gguf" | sha256sum -c
+   printf 'kind = "llm"\ntitle = "Gemma 3 12B Instruct"\ncatalogue_id = "gemma-3-12b-it-q4_k_m"\n' > $d/model.toml
+   ```
+
+2. Build the CUDA image from the source. Set `CUDAARCHS` to your GPU's
+   compute capability, for example 86 for an RTX 30xx.
+
+   ```sh
+   docker build --target cuda --build-arg CUDAARCHS="86" -t murmur-server:cuda \
+     -f murmur-server-source-{{VERSION}}/deploy/docker/Dockerfile murmur-server-source-{{VERSION}}
+   ```
+
+3. Start the server with the GPU and the model.
+
+   ```sh
+   docker run -d --name murmur-server --restart unless-stopped --gpus all -p 0.0.0.0:7313:7313 \
+     -e MURMUR_LLM=gemma-3-12b-it-q4_k_m \
+     -v ~/murmur-models/library:/models:ro -v murmur_data:/data murmur-server:cuda
+   ```
+
+The first start loads the model, which takes a few minutes. Then
+`docker logs murmur-server` names `AI cleanup gemma-3-12b-it-q4_k_m`.
+
+Gemma is under the Gemma Terms of Use (NOTICE). Anyone who passes the
+model on must include those terms.
+
+Choose by GPU memory:
+
+* 6–8 GB: use `MURMUR_LLM=llama-3.2-3b-instruct-q4_k_m`. It is in the
+  cleanup zip with `--llm all`.
+* Less than 6 GB, or no GPU: keep the default.
+
 ### Without Docker
 
 For a server without Docker ({{GLIBC}} or newer, e.g. Ubuntu 24.04):

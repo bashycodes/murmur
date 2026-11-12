@@ -104,6 +104,7 @@ the server. Sizes in MB.
 | Language detection | `whisper-tiny-lid` | 32 | server; the PC takes it with any Hebrew model | recommended |
 | AI cleanup | `qwen2.5-1.5b-instruct-q4_k_m` | 1117 | server, PC without a GPU, flagship phones | recommended |
 | AI cleanup | `llama-3.2-3b-instruct-q4_k_m` | 2019 | PC with a GPU (most accurate cleanup) | recommended with a GPU |
+| AI cleanup | `gemma-3-12b-it-q4_k_m` | 7301 | server with a GPU (10 GB or more); best Hebrew | optional |
 | AI cleanup | `qwen2.5-0.5b-instruct-q4_k_m` | 491 | phones, slow PCs (fastest, misses fixes) | optional |
 
 Not on the list, and not needed:
