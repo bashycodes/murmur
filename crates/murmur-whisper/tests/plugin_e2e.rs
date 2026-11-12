@@ -120,11 +120,9 @@ fn murmur_core_loads_whisper_through_the_configured_plugin() {
     })
     .unwrap();
     let asr = &core.load_timings().models[0];
-    assert_eq!(
-        (asr.device.as_deref(), asr.gpu_error.as_deref()),
-        (Some("CPU"), None),
-        "{asr:?}"
-    );
+    // The CPU build of the plugin: on the CPU, no GPU error.
+    let on = asr.runs_on.as_ref().expect("a plugin was asked for");
+    assert!(!on.is_gpu() && on.gpu_error.is_none(), "{on:?}");
     // A synthetic tone decodes without an error (the words do not matter).
     core.start_session(SessionConfig::default()).unwrap();
     let tone: Vec<i16> = (0..16_000 * 2)
