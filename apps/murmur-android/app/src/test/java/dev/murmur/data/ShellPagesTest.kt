@@ -2,6 +2,7 @@ package dev.murmur.data
 
 import dev.murmur.core.CleanupLevel
 import dev.murmur.data.DevSettings.CleanupRoute
+import dev.murmur.data.ShellPages.Dest
 import dev.murmur.data.ShellPages.Dot
 import dev.murmur.data.ShellPages.Extra
 import dev.murmur.data.ShellPages.RouteKind
@@ -71,48 +72,75 @@ class ShellPagesTest {
         assertEquals("" to "Plain text", ShellPages.callout("Plain text"))
     }
 
+    private val speechPage = Dest.Page(SettingsPages.Page.SPEECH)
+    private val cleanupPage = Dest.Page(SettingsPages.Page.CLEANUP)
+
     @Test fun engineLinesAndDots() {
-        assertEquals(ShellPages.EngineLine("Speech to text", "Server first → Phone", Dot.OK), ShellPages.speechLine("Server first → Phone"))
+        assertEquals(ShellPages.EngineLine("Speech to text", "Server first → Phone", Dot.OK, speechPage), ShellPages.speechLine("Server first → Phone"))
         assertEquals(Dot.CLOUD, ShellPages.speechLine("Cloud (OpenRouter) first → Phone").dot)
         assertEquals(Dot.BAD, ShellPages.speechLine("Dictation disabled").dot)
         assertEquals("Speech to text: Phone only", ShellPages.speechLine("Phone only").description)
 
-        val base = DevSettings.defaults(BuildCaps.ALL)
+        val caps = BuildCaps.ALL
+        val base = DevSettings.defaults(caps)
         val ai = Settings(llmEnabled = true)
         val cloudFirst = OpenRouterPage.enableCleanup(base, NOW).copy(cleanupOrder = listOf(CleanupRoute.CLOUD, CleanupRoute.LOCAL, CleanupRoute.SERVER))
-        val cloud = ShellPages.cleanupLine(ai, cloudFirst, phoneAi = true)
-        assertEquals("OpenRouter (llama-3.3-70b-instruct), then this phone" to Dot.CLOUD, cloud.text to cloud.dot)
+        val cloud = ShellPages.cleanupLine(ai, cloudFirst, caps)
+        assertEquals("Light · OpenRouter, then this phone, then rules" to Dot.CLOUD, cloud.text to cloud.dot)
         // The dot is the first engine's: the phone first, the cloud only as a fallback.
-        val phoneFirst = ShellPages.cleanupLine(ai, OpenRouterPage.enableCleanup(base, NOW), phoneAi = true)
-        assertEquals("This phone, then OpenRouter (llama-3.3-70b-instruct)" to Dot.OK, phoneFirst.text to phoneFirst.dot)
-        assertEquals("This phone" to Dot.OK, ShellPages.cleanupLine(ai, base, phoneAi = true).let { it.text to it.dot })
+        val phoneFirst = ShellPages.cleanupLine(ai, OpenRouterPage.enableCleanup(base, NOW), caps)
+        assertEquals("Light · This phone, then OpenRouter, then rules" to Dot.OK, phoneFirst.text to phoneFirst.dot)
+        assertEquals("Light · This phone, then rules" to Dot.OK, ShellPages.cleanupLine(ai, base, caps).let { it.text to it.dot })
         // remote builds have no on-device LLM, whatever the stored switch says.
-        assertEquals("Off · formatting rules only", ShellPages.cleanupLine(ai, base, phoneAi = false).text)
-        assertEquals("Off" to Dot.OFF, ShellPages.cleanupLine(Settings(spokenCleanup = false), base, phoneAi = false).let { it.text to it.dot })
+        assertEquals("Rules only" to Dot.OFF, ShellPages.cleanupLine(ai, base.effective(BuildCaps.REMOTE), BuildCaps.REMOTE).let { it.text to it.dot })
+        assertEquals("Off" to Dot.OFF, ShellPages.cleanupLine(Settings(spokenCleanup = false), base, caps).let { it.text to it.dot })
         // The phone's model is off for the router when its cleanup switch is off.
-        assertEquals("Off · formatting rules only", ShellPages.cleanupLine(ai, base.withCleanup(CleanupRoute.LOCAL, false), phoneAi = true).text)
+        assertEquals("Rules only", ShellPages.cleanupLine(ai, base.withCleanup(CleanupRoute.LOCAL, false), caps).text)
     }
 
     private val serverOnly = DevSettings.defaults(BuildCaps.ALL).copy(host = "100.64.0.10").withCleanup(CleanupRoute.LOCAL, false)
 
     @Test fun serverOnlyCleanupShowsAsOn() {
         // Owner report: AI cleanup only on your server, everything else off -> the drawer said "Off".
-        val line = ShellPages.cleanupLine(Settings(llmEnabled = false), serverOnly, phoneAi = false)
-        assertEquals("Your server" to Dot.OK, line.text to line.dot)
-        assertEquals("Your server", ShellPages.cleanupLine(Settings(), serverOnly, phoneAi = false, serverLlm = true).text)
+        val line = ShellPages.cleanupLine(Settings(llmEnabled = false), serverOnly, BuildCaps.ALL)
+        assertEquals("Light · Your server, then rules" to Dot.OK, line.text to line.dot)
+        assertEquals("Light · Your server, then rules", ShellPages.cleanupLine(Settings(), serverOnly, BuildCaps.ALL, serverLlm = true).text)
         // A server that is not set up, or known to have no AI model, cleans nothing.
-        assertEquals("Off · formatting rules only", ShellPages.cleanupLine(Settings(), serverOnly.copy(host = ""), phoneAi = false).text)
-        assertEquals("Off · formatting rules only", ShellPages.cleanupLine(Settings(), serverOnly, phoneAi = false, serverLlm = false).text)
+        assertEquals("Rules only", ShellPages.cleanupLine(Settings(), serverOnly.copy(host = ""), BuildCaps.ALL).text)
+        assertEquals("Rules only", ShellPages.cleanupLine(Settings(), serverOnly, BuildCaps.ALL, serverLlm = false).text)
     }
 
     @Test fun storedLevelNoneStillCleansOnTheServer() {
-        // NONE is never picked since D27: with an engine off the phone it runs as LIGHT, so the line stays on
-        // (the LLM step only skips when the session's level is NONE, which then reads Off).
+        // NONE is never picked since D27: with an engine off the phone it runs as LIGHT, so the line stays on.
         val s = Settings(llmEnabled = false, cleanup = CleanupLevel.NONE)
         assertEquals(CleanupLevel.LIGHT, s.cleanupFor(serverOnly.offPhoneCleanup))
-        assertEquals("Your server", ShellPages.cleanupLine(s, serverOnly, phoneAi = false).text)
-        // phoneAi claimed without the phone's AI on: the session level is NONE, so nothing is named.
-        assertEquals("Off · formatting rules only", ShellPages.cleanupLine(s, DevSettings.defaults(BuildCaps.ALL), phoneAi = true).text)
+        assertEquals("Light · Your server, then rules", ShellPages.cleanupLine(s, serverOnly, BuildCaps.ALL).text)
+        // The phone's AI switch off: the phone is not named, whatever the build.
+        assertEquals("Rules only", ShellPages.cleanupLine(s, DevSettings.defaults(BuildCaps.ALL), BuildCaps.ALL).text)
+    }
+
+    @Test fun drawerCleanupLineMatchesTheSettingsRow() {
+        // Owner report: drawer "Off · formatting rules only" while Settings said "Light · Your server, then rules".
+        val caps = BuildCaps.ALL
+        val base = DevSettings.defaults(caps)
+        val ds = listOf(base, serverOnly, OpenRouterPage.enableCleanup(serverOnly, NOW), base.withCleanup(CleanupRoute.SERVER, false))
+        val ss = listOf(Settings(), Settings(llmEnabled = true), Settings(spokenCleanup = false), Settings(cleanup = CleanupLevel.HIGH, llmEnabled = true))
+        for (d in ds) for (s in ss) for (llm in listOf(null, true, false)) for (c in listOf(caps, BuildCaps.LOCAL, BuildCaps.REMOTE)) {
+            val e = d.effective(c)
+            assertEquals("$d $s $llm $c", SettingsSummary.cleanupRow(s, e, c, llm), ShellPages.cleanupLine(s, e, c, llm).text)
+        }
+    }
+
+    @Test fun drawerEngineLinesOpenTheirOwnSettingsPage() {
+        // Owner report: both lines opened Developer settings.
+        assertEquals(speechPage, ShellPages.speechLine("Phone only").dest)
+        assertEquals("Speech to text", SettingsPages.TITLES.getValue(SettingsPages.Page.SPEECH))
+        assertEquals(cleanupPage, ShellPages.cleanupLine(Settings(), serverOnly, BuildCaps.ALL).dest)
+        assertEquals("AI cleanup", SettingsPages.TITLES.getValue(SettingsPages.Page.CLEANUP))
+        // `remote` has no AI cleanup page: OpenRouter's, the Settings hub's AI cleanup row opens the same.
+        assertEquals(Dest.OpenRouter, ShellPages.cleanupLine(Settings(), serverOnly.effective(BuildCaps.REMOTE), BuildCaps.REMOTE).dest)
+        assertEquals(Dest.OpenRouter, ShellPages.cleanupDest(BuildCaps.REMOTE))
+        assertEquals(cleanupPage, ShellPages.cleanupDest(BuildCaps.LOCAL))
     }
 
     @Test fun customServerOnlyCleanupShowsAsOnAndNamesIt() {
@@ -121,11 +149,11 @@ class ShellPagesTest {
         val custom = CustomCleanupSettings(baseUrl = "http://10.0.0.5:4000/v1", model = "gpt-4o-mini")
         val s = OpenRouterPage.enableCleanup(base.copy(cloud = base.cloud.copy(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = custom)), NOW)
             .withCleanup(CleanupRoute.LOCAL, false).withCleanup(CleanupRoute.SERVER, false)
-        val line = ShellPages.cleanupLine(Settings(), s, phoneAi = false)
-        assertEquals("Custom server (10.0.0.5)" to Dot.CLOUD, line.text to line.dot)
+        val line = ShellPages.cleanupLine(Settings(), s, BuildCaps.ALL)
+        assertEquals("Light · Custom server (10.0.0.5), then rules" to Dot.CLOUD, line.text to line.dot)
         // Not usable (no model): sends nothing, so it is off, never "OpenRouter".
         val broken = OpenRouterPage.withCustom(s) { copy(model = "") }
-        assertEquals("Off · formatting rules only", ShellPages.cleanupLine(Settings(), broken, phoneAi = false).text)
+        assertEquals("Rules only", ShellPages.cleanupLine(Settings(), broken, BuildCaps.ALL).text)
     }
 
     @Test fun drawerExtrasOnlyWhereTheyExist() {

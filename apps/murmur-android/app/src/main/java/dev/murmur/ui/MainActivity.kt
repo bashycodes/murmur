@@ -20,6 +20,7 @@ import dev.murmur.R
 import dev.murmur.core.NativeMurmurCore
 import dev.murmur.data.AppVersion
 import dev.murmur.data.DevSummary
+import dev.murmur.data.SettingsPages
 import dev.murmur.data.SetupChecklist
 import dev.murmur.data.ShellPages
 import dev.murmur.data.ShellPages.Extra
@@ -199,7 +200,7 @@ class MainActivity : Activity() {
             enginesCard(
                 ShellPages.speechLine(DevSummary.routing(dev, app.caps)),
                 ShellPages.cleanupLine(
-                    settings, dev.effective(app.caps), phoneAi = settings.llmEnabled && app.caps.local,
+                    settings, dev.effective(app.caps), app.caps,
                     serverLlm = if (dev.serverConfigured) app.engine.router()?.cleanupStatus()?.serverLlm else null,
                 ),
             )
@@ -224,28 +225,40 @@ class MainActivity : Activity() {
         frame.drawerContent.addView(scroll, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
     }
 
-    /** "ENGINES" card: speech + cleanup lines with their status dots; opens where routing is set. */
+    /** "ENGINES" card: speech + cleanup lines with their status dots; each line opens its own page ([ShellPages.EngineLine.dest]). */
     private fun LinearLayout.enginesCard(vararg lines: ShellPages.EngineLine): Unit = with(ui) {
         val box = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            background = ripple(rounded(p.surface, 24), 24)
-            setPadding(dp(20), dp(16), dp(20), dp(16))
-            isClickable = true; isFocusable = true
-            minimumHeight = dp(48)
-            setOnClickListener { go(::openEngines) }
-            addView(tv("Engines", TypeScale.SECTION, p.muted, TypeScale.W_SEMIBOLD).apply { isAllCaps = true; letterSpacing = TypeScale.SECTION_TRACKING })
-            for (l in lines) {
-                addView(tv(l.label, TypeScale.META, p.muted), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
+            background = rounded(p.surface, 24)
+            setPadding(dp(8), dp(16), dp(8), dp(8))
+            addView(tv("Engines", TypeScale.SECTION, p.muted, TypeScale.W_SEMIBOLD).apply {
+                isAllCaps = true; letterSpacing = TypeScale.SECTION_TRACKING
+                setPadding(dp(12), 0, dp(12), 0)
+                isAccessibilityHeading = true
+            })
+            for (l in lines) addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                background = ripple(rounded(p.surface, 16), 16)
+                setPadding(dp(12), dp(8), dp(12), dp(8))
+                isClickable = true; isFocusable = true
+                minimumHeight = dp(48)
+                setOnClickListener { go { openDest(l.dest) } }
+                addView(tv(l.label, TypeScale.META, p.muted))
                 addView(LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                     addView(dot(dotColor(l.dot)).apply { (layoutParams as LinearLayout.LayoutParams).marginEnd = dp(8) })
                     addView(tv(l.text, 16f, p.text, TypeScale.W_MEDIUM))
                 })
-            }
-            contentDescription = "Engines. " + lines.joinToString(". ") { it.description }
-            for (i in 0 until childCount) getChildAt(i).importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+                contentDescription = l.description
+                for (i in 0 until childCount) getChildAt(i).importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(2) })
         }
         addView(box, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12); bottomMargin = dp(12) })
+    }
+
+    private fun openDest(d: ShellPages.Dest) = when (d) {
+        is ShellPages.Dest.Page -> SettingsActivity.open(this, d.page)
+        ShellPages.Dest.OpenRouter -> OpenRouterActivity.open(this)
     }
 
     private fun dotColor(d: ShellPages.Dot) = when (d) {
@@ -257,10 +270,8 @@ class MainActivity : Activity() {
 
     private fun openPermissions() = startActivity(PermissionsActivity.intent(this))
 
-    /** Routing lives in Developer settings while they are unlocked, else the Settings hub. */
-    private fun openEngines() = startActivity(
-        if (app.dev.visible) Intent(this, DeveloperActivity::class.java) else SettingsActivity.intent(this),
-    )
+    /** Speech engines are set in Settings → Speech to text (Developer settings keep only the server). */
+    private fun openEngines() = SettingsActivity.open(this, SettingsPages.Page.SPEECH)
 
     private fun extra(e: Extra) {
         when (e) {

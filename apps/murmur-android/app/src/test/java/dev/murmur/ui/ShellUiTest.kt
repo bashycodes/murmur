@@ -4,6 +4,7 @@ import android.content.Intent
 import android.view.View
 import dev.murmur.MurmurApp
 import dev.murmur.data.AppVersion
+import dev.murmur.data.SettingsPages
 import dev.murmur.data.ShellPages
 import dev.murmur.data.ShellPages.Tab
 import dev.murmur.ui.UiTestKit.idle
@@ -68,8 +69,8 @@ class ShellUiTest {
         // Main content is hidden from TalkBack while the drawer is open.
         val host = a.frame.host.parent as View
         assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS, host.importantForAccessibility)
-        val engines = walk(a.window.decorView).first { it.isClickable && it.contentDescription?.startsWith("Engines. Speech to text: ") == true }
-        assertTrue(engines.contentDescription.toString(), "AI cleanup: " in engines.contentDescription)
+        assertTrue(walk(a.window.decorView).any { it.isClickable && it.contentDescription?.startsWith("Speech to text: ") == true })
+        assertTrue(walk(a.window.decorView).any { it.isClickable && it.contentDescription?.startsWith("AI cleanup: ") == true })
         UiTestKit.assertTouchTargets(a, "drawer")
     }
 
@@ -98,6 +99,24 @@ class ShellUiTest {
         openDrawer(a)
         rowTitled(a, "Start / show bubble").performClick()
         assertTrue(ShadowToast.getTextOfLatestToast().startsWith("Allow Display over other apps first"))
+    }
+
+    private fun engineLine(a: MainActivity, label: String) =
+        walk(a.window.decorView).first { it.isClickable && it.contentDescription?.startsWith("$label: ") == true }
+
+    @Test fun drawerEngineLinesOpenTheirSettingsPage() {
+        // Owner report: both lines opened Developer settings.
+        val a = launch()
+        val want = mapOf("Speech to text" to SettingsPages.Page.SPEECH, "AI cleanup" to ShellPages.cleanupDest(MurmurApp.of(a).caps).let { (it as ShellPages.Dest.Page).page })
+        for ((label, page) in want) {
+            openDrawer(a)
+            engineLine(a, label).performClick()
+            val i = shadowOf(a).nextStartedActivity
+            assertEquals(label, SettingsActivity::class.java.name, i.component?.className)
+            assertEquals(label, page.name, i.getStringExtra(SettingsActivity.EXTRA_PAGE))
+            assertEquals(label, SettingsPages.TITLES.getValue(page))
+            assertFalse(a.frame.drawerOpen)
+        }
     }
 
     @Test fun backClosesTheDrawerFirst() {

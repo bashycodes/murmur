@@ -36,21 +36,19 @@ object CleanupEngines {
         }
     }
 
+    /**
+     * [planned] for these settings: the phone's AI counts only where the build has it and it is on.
+     * The one plan every cleanup summary (Settings row, drawer line) is formatted from.
+     */
+    fun plannedFor(s: Settings, d: DevSettings, caps: BuildCaps, serverLlm: Boolean? = null): List<CleanupRoute> =
+        planned(d, s.llmEnabled && caps.local, serverLlm)
+
     /** A [planned] engine in a summary line: "this phone" / "your server" / its provider ("OpenRouter", "Custom server (10.0.0.5)"). */
     fun planName(r: CleanupRoute, d: DevSettings): String = when (r) {
         CleanupRoute.LOCAL -> "this phone"
         CleanupRoute.SERVER -> "your server"
         CleanupRoute.CLOUD -> d.cloud.cleanupProviderName
     }
-
-    /**
-     * The drawer's AI cleanup line: the [planned] engines, OpenRouter with its model ("This phone,
-     * then your server, then OpenRouter (llama-3.3-70b-instruct)"); null when there are none.
-     */
-    fun engineLine(d: DevSettings, plan: List<CleanupRoute>): String? = plan.takeIf { it.isNotEmpty() }?.joinToString(", then ") {
-        if (it == CleanupRoute.CLOUD && !d.cloud.customProvider) "${OpenRouter.NAME} (${d.cloud.cleanup.model.substringAfter('/')})"
-        else planName(it, d)
-    }?.replaceFirstChar { it.uppercase() }
 
     /** "Change order": [r] swapped with its listed neighbour; engines this build lacks keep their place. */
     fun reorder(d: DevSettings, caps: BuildCaps, r: CleanupRoute, dir: Int): List<CleanupRoute> {
