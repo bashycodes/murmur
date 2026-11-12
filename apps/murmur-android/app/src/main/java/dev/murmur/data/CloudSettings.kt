@@ -495,7 +495,7 @@ object CloudText {
         if (c.sendSurroundingText) items += "the text around the cursor"
         if (c.sendScreenWords) items += "words on your screen"
         if (c.sendAppName) items += "the app's name"
-        return items.dropLast(1).joinToString(", ") + " and " + items.last()
+        return Prose.list(items)
     }
 
     /** `••••abcd` for a stored key; never more than the last 4 characters. */

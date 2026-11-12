@@ -85,7 +85,7 @@ object SetupChecklist {
                 return Banner("Dictation stopped: the Accessibility service stopped responding. Fix it below.", true)
             }
             val names = b.map { it.title }
-            val list = if (names.size == 1) names[0] else names.dropLast(1).joinToString(", ") + " and " + names.last()
+            val list = Prose.list(names)
             return Banner("Dictation can't start yet: allow $list below.", true)
         }
         val rec = rows(s).filter { !it.ok && it.need == Need.RECOMMENDED }

@@ -31,6 +31,7 @@ import dev.murmur.data.DevSettings
 import dev.murmur.data.DevSettingsForm
 import dev.murmur.data.DevSettingsForm.Field
 import dev.murmur.data.DevSummary
+import dev.murmur.data.SettingsSummary
 import java.text.DateFormat
 import java.util.Date
 import kotlin.concurrent.thread
@@ -130,14 +131,13 @@ class DeveloperActivity : Activity() {
     // ---- top bar (back, Save on the Server page) ----
 
     private fun page(build: LinearLayout.() -> Unit): LinearLayout = with(ui) {
-        screen {
+        screen(header = {
             val bar = topBar(
                 TITLES.getValue(page), DevUi.TopNav.BACK, onNav = { if (hasForm) confirmLeave() else finish() },
                 actions = if (hasForm) listOf(DevUi.TopAction(R.drawable.ic_lw_check, "Save ${TITLES.getValue(page)}") { onSave() }) else emptyList(),
             )
             saveButton = bar.actions.firstOrNull()
-            build()
-        }
+        }, build = build)
     }
 
     /** Back: valid edits are saved on the way out; ones that cannot be saved yet are asked about. */
@@ -172,7 +172,7 @@ class DeveloperActivity : Activity() {
                 navRow(R.drawable.ic_dev_status, "Status & server info", "Engines, circuits, last probe") { open(Page.STATUS) }
                 refreshers += {
                     val s = app.dev.load()
-                    route.text = DevSummary.routing(s, caps)
+                    route.text = SettingsSummary.speech(s, caps, app.engine.phoneSpeechReady())
                     val l = app.lastRoute.value
                     last.text = l?.let { d ->
                         DevSummary.lastShort(d.result) + " · " +
@@ -189,7 +189,7 @@ class DeveloperActivity : Activity() {
                 val speech = navRow(R.drawable.ic_dev_route, "Speech to text", "") { SettingsActivity.open(this@DeveloperActivity, dev.murmur.data.SettingsPages.Page.SPEECH) }
                 val engines = navRow(R.drawable.ic_dev_engine, TITLES.getValue(Page.ENGINES)) { open(Page.ENGINES) }
                 refreshers += {
-                    speech.setSubtitle("Engines and order · " + DevSummary.routing(app.dev.load(), caps))
+                    speech.setSubtitle("Engines and order · " + SettingsSummary.speech(app.dev.load(), caps, app.engine.phoneSpeechReady()))
                     engines.setSubtitle(DevSummary.engineOptions(app.dev.load().showEngineBadge, if (caps.local) decodingLabel(app.dev.parakeetDecodingOverride) else null))
                 }
             }
@@ -336,7 +336,9 @@ class DeveloperActivity : Activity() {
         val s = app.dev.load()
         val edit = { if (::draft.isInitialized && fieldRows.isNotEmpty()) validate(); Unit }
         page {
-            banner = banner()
+            // Fixed height: its lines come and go while you type (no host yet, no token), and a
+            // banner that grew and shrank above the fields moved them under your finger.
+            banner = fixedBanner(BANNER_LINES)
             if (!caps.remote) note("This build has no network code: the server route is not available.", p.danger, 14f)
             sectionLabel("ADDRESS")
             card {
@@ -349,7 +351,7 @@ class DeveloperActivity : Activity() {
             }
             sectionLabel("AUTHENTICATION")
             card {
-                token = secretRow("Token", s.token, "From `murmur-server gen-token`, at least ${DevSettings.MIN_TOKEN_LEN} characters", "token", onEdit = edit)
+                token = secretRow("Token", s.token, TOKEN_HELP, "token", onEdit = edit)
             }
             sectionLabel("TIMEOUTS")
             card {
@@ -370,6 +372,20 @@ class DeveloperActivity : Activity() {
             Field.CONNECT_TIMEOUT to connectTimeout, Field.COMMIT_TIMEOUT to commitTimeout, Field.HEALTH_TTL to healthTtl,
         )
         tls.onChange { validate() }
+        chainAddress()
+        imeChain(connectTimeout, commitTimeout, healthTtl)
+    }
+
+    private var chainedTls: Boolean? = null
+
+    /**
+     * Keyboard Next: host → port → (pin, while TLS is on) → token → Done; never the TLS switch,
+     * which Enter would toggle. Re-chained when TLS flips.
+     */
+    private fun chainAddress() {
+        if (chainedTls == tls.isChecked) return
+        chainedTls = tls.isChecked
+        ui.imeChain(*listOfNotNull(host, port, pin.takeIf { tls.isChecked }, token).toTypedArray())
     }
 
     private fun onTestConnection() {
@@ -385,9 +401,15 @@ class DeveloperActivity : Activity() {
         val json = s.effective(caps).toServerConfigJson().toString()
         thread(name = "dev-probe") {
             val h = NativeMurmurCore.probeServer(json)
-            if (!h.ok) app.debugLog.event("server_probe", DevText.probe(h)) else rememberServerModel(h)
+            probed(s, h)
             runOnUiThread { lastProbe = h; probeResult?.show(DevText.probe(h), if (h.ok) Tone.OK else Tone.BAD); refresh() }
         }
+    }
+
+    /** A probe of [s] finished: log a failure, keep the server's model, and share the result with the Settings pages. */
+    private fun probed(s: DevSettings, h: HealthReport) {
+        if (!h.ok) app.debugLog.event("server_probe", DevText.probe(h)) else rememberServerModel(h)
+        app.serverHealth.record(s.effective(caps), h, System.currentTimeMillis())
     }
 
     /** The debug log's `model` for server dictations: what the server says it runs. */
@@ -618,10 +640,12 @@ class DeveloperActivity : Activity() {
             tls.setDescription(if (r.tlsLocked) "Required for a public address" else "Encrypt the connection")
             pin.edit.isEnabled = tls.isChecked
             pin.edit.alpha = if (tls.isChecked) 1f else 0.5f
+            chainAddress()
         }
         val off = DevPages.offPageErrors(r, page)
         val lines = DevPages.warningsFor(page, r.warnings) + off.map { (f, e) -> "$e (on the ${TITLES.getValue(DevPages.pageOf(f))} page)" }
-        banner?.show(lines.joinToString("\n"), if (off.isNotEmpty() || DevSettingsForm.BOTH_OFF in lines) Tone.BAD else Tone.WARN)
+        if (lines.isEmpty()) banner?.show(NO_WARNINGS)
+        else banner?.show(lines.joinToString("\n"), if (off.isNotEmpty() || DevSettingsForm.BOTH_OFF in lines) Tone.BAD else Tone.WARN)
         val can = draft.canSave(caps)
         for (b in listOfNotNull(saveButton, saveAction)) if (b.isEnabled != can) { b.isEnabled = can; b.alpha = if (can) 1f else 0.35f }
         return r
@@ -644,7 +668,7 @@ class DeveloperActivity : Activity() {
                 probeResult?.show("Probing ${s.host}:${s.port}…")
                 thread(name = "dev-probe-saved") {
                     val h = runCatching { router.probeSaved() }.getOrElse { HealthReport(ok = false, error = "error", message = it.message) }
-                    if (!h.ok) app.debugLog.event("server_probe", DevText.probe(h)) else rememberServerModel(h)
+                    probed(s, h)
                     runOnUiThread { lastProbe = h; probeResult?.show(DevText.probe(h), if (h.ok) Tone.OK else Tone.BAD); refresh() }
                 }
             }
@@ -673,6 +697,12 @@ class DeveloperActivity : Activity() {
 
     companion object {
         const val EXTRA_PAGE = "page"
+        /** The server CLI command that makes a key (crates/murmur-server `keys add`). */
+        const val TOKEN_HELP = "Run `murmur-server keys add <name>` on your server and paste the key it prints (at least ${DevSettings.MIN_TOKEN_LEN} characters)."
+        /** The Server page banner's fixed height: room for the no-address warning on a phone. */
+        private const val BANNER_LINES = 3
+        /** The banner's line while nothing needs fixing (it keeps its height either way). */
+        const val NO_WARNINGS = "Nothing to fix here. Changes apply from the next dictation."
         private const val STATE_DRAFT = "server_draft"
         private const val PROBE_ACTIVITY = "dev.murmur.probe.EnglishProbeActivity"
 
