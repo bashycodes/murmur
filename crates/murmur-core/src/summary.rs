@@ -593,7 +593,7 @@ fn call(
             continue;
         }
         return match r {
-            Some((Ok(t), u)) => Ok((crate::cleanup::strip_think(&t).into_owned(), u)),
+            Some((Ok(t), u)) => Ok((t, u)),
             Some((Err(CleanError::Backend(e) | CleanError::Unavailable(e)), _)) => {
                 Err(SummaryError::Failed(e))
             }

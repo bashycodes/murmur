@@ -2803,7 +2803,7 @@ fn test_cleanup(router: &RouterAdapter, cfg: &murmur_router::OpenRouterConfig) -
         match r {
             Ok(text) => CleanupTest {
                 ok: true,
-                text: Some(text),
+                text: Some(murmur_core::cleanup::strip_think(&text).trim().into()),
                 latency_ms,
                 cost_usd: call.cost_usd,
                 model,

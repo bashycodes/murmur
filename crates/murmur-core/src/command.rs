@@ -247,9 +247,9 @@ fn quoted(s: &str) -> Option<(char, char)> {
 }
 
 /// Clean an LLM answer to the text that should replace the selection:
-/// no reasoning (`<think>`), no code fence, no echoed tags, no "Here's …:" preamble, no trailing
-/// notes, no wrapping quotes. Fences / quotes / a leading phrase that the
-/// selection itself has are kept. A trailing newline of the selection
+/// no leading reasoning (`<think>`), no code fence, no echoed tags, no
+/// "Here's …:" preamble, no trailing notes, no wrapping quotes. Fences /
+/// quotes / a leading phrase that the selection itself has are kept. A trailing newline of the selection
 /// (a whole line selected) is kept, so the layout around it survives.
 pub fn sanitize(raw: &str, selected: Option<&str>) -> String {
     let sel = non_empty(selected).unwrap_or("");
@@ -473,13 +473,9 @@ mod tests {
             ),
             "Dear team, thank you."
         );
-        assert_eq!(
-            sanitize(
-                "Dear team, thank you.\n<think>Should I sign it",
-                Some("thx all")
-            ),
-            "Dear team, thank you."
-        );
+        // A tag the selection itself has is text, not reasoning.
+        let html = "<p>Press <think>here</think> to start.</p>";
+        assert_eq!(sanitize(html, Some("<p>press think here</p>")), html);
     }
 
     #[test]

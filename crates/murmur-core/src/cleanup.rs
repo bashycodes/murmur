@@ -1557,20 +1557,43 @@ static POSTAMBLE: LazyLock<regex::Regex> = LazyLock::new(|| {
         .unwrap()
 });
 
-/// A reasoning model's `<think>…</think>` block, or an unterminated one that
-/// runs to the end of the answer (cut off by the token cap or the deadline).
-static THINK: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"(?is)<think>.*?(?:</think>|\z)").unwrap());
-
-/// A raw model answer without its reasoning: every `<think>…</think>`
-/// block and an unterminated trailing `<think>…` are removed. Servers that
-/// pass reasoning through as text (a custom server or LiteLLM in front of a
-/// reasoning model) put it in the answer; OpenRouter is asked not to
-/// (`include_reasoning: false`), and stripping there too is harmless. Used
-/// by every path that takes a model answer as text: dictation cleanup
-/// ([`unwrap_output`]), Command Mode and summaries.
-pub fn strip_think(s: &str) -> std::borrow::Cow<'_, str> {
-    THINK.replace_all(s, "")
+/// A raw model answer without its leading reasoning. Only reasoning at the
+/// start goes, so a `<think>` tag the text itself has (HTML or prompt text
+/// in a Command Mode selection) survives:
+/// - `<think>…</think>` blocks at the start (after whitespace), as many as
+///   there are;
+/// - a `<think>` at the start that never closes (cut off by the token cap
+///   or the deadline): the whole answer is reasoning;
+/// - everything up to the first `</think>` when no `<think>` comes before
+///   it (Qwen3, QwQ and R1 templates open the block in the prompt).
+///
+/// Servers that pass reasoning through as text (a custom server or LiteLLM
+/// in front of a reasoning model) put it in the answer; OpenRouter is asked
+/// not to (`include_reasoning: false`), and stripping there too is
+/// harmless. Used by every path that takes a model answer as text:
+/// dictation cleanup ([`unwrap_output`]), Command Mode and summaries
+/// (`command::sanitize`), and the custom-server and OpenRouter "Test
+/// cleanup" text.
+pub fn strip_think(s: &str) -> &str {
+    const OPEN: &str = "<think>";
+    const CLOSE: &str = "</think>";
+    // ASCII lowercasing keeps byte offsets, so indices map back onto `s`.
+    let lower = s.to_ascii_lowercase();
+    let mut at = match lower.find(CLOSE) {
+        Some(i) if !lower[..i].contains(OPEN) => i + CLOSE.len(),
+        _ => 0,
+    };
+    loop {
+        let rest = &lower[at..];
+        let lead = rest.len() - rest.trim_start().len();
+        if !rest[lead..].starts_with(OPEN) {
+            return &s[at..];
+        }
+        match rest[lead..].find(CLOSE) {
+            Some(i) => at += lead + i + CLOSE.len(),
+            None => return "",
+        }
+    }
 }
 
 /// Strip preamble/commentary, then one layer of wrapping quotes or guillemets.
@@ -2460,14 +2483,16 @@ mod tests {
                 "<think>The user wants filler removed.</think>Meet at 3 PM.",
                 "Meet at 3 PM.",
             ),
-            // Closed block in the middle, any case, across lines.
+            // Any case, across lines, after leading whitespace; two blocks.
             (
-                "Bring the cups.<THINK>\nmaybe a list?\n</Think> Bring the ice.",
-                "Bring the cups. Bring the ice.",
+                "\n <THINK>\nmaybe a list?\n</Think><think>no</think> Bring the ice.",
+                "Bring the ice.",
             ),
-            // Unterminated trailing block (cut off mid-thought).
+            // Unterminated block at the start: all reasoning.
+            ("<think>Should I add a", ""),
+            // Orphan close: the template opened the block in the prompt.
             (
-                "Water the plants.<think>Should I add a",
+                "The speaker wants a short note.\n</think>\n\nWater the plants.",
                 "Water the plants.",
             ),
             // Nothing to strip.
@@ -2480,16 +2505,23 @@ mod tests {
     }
 
     #[test]
+    fn a_literal_think_tag_in_the_text_is_kept() {
+        for raw in [
+            "Wrap the draft in <think>…</think> tags before sending.",
+            "Water the plants.<think>Should I add a",
+            "Use a <think> tag here.",
+        ] {
+            assert_eq!(strip_think(raw), raw);
+        }
+    }
+
+    #[test]
     fn a_think_block_at_the_start_never_reaches_the_answer() {
         let raw =
             "<think>\nThe speaker said um twice. Remove them.\n</think>\n\n\"Lunch is at noon.\"";
         assert_eq!(unwrap_output(raw), "Lunch is at noon.");
         assert_eq!(
             unwrap_output_for(raw, "um lunch is um at noon"),
-            "Lunch is at noon."
-        );
-        assert_eq!(
-            unwrap_output("Lunch is at noon.<think>or 1 PM"),
             "Lunch is at noon."
         );
     }
