@@ -523,7 +523,7 @@
       return structuredClone(prefs);
     },
     // Shortcut recording (src/app.rs hotkey_capture_*): the hook's answer
-    // is simulated with window.__capture("Right Alt") / __capture(null)
+    // is simulated with window.__capture("Ctrl+Win") / __capture(null)
     // (Esc) / __capture(null, "timeout"). __noHook = the hook isn't running.
     hotkey_capture_start: () => {
       if (window.__noHook) throw "The keyboard hook is not running: type the shortcut instead.";

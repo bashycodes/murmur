@@ -23,13 +23,18 @@ NOTETAKER_ON_LINE = b"export const NOTETAKER_ENABLED = true;"
 
 
 def notetaker_on_js():
-    """dist/pages/notetaker.js with the switch on. Fails loudly if the line
-    moved, so the Meetings probes never silently test the hidden UI."""
+    """dist/pages/notetaker.js with the switch on, or the reason it can't be
+    flipped. Checked once at startup, so the Meetings probes never silently
+    test the hidden UI."""
     js = (DIST / "pages" / "notetaker.js").read_bytes()
     if NOTETAKER_ON_LINE in js:
         return js
     if js.count(NOTETAKER_OFF_LINE) != 1:
-        raise RuntimeError("NOTETAKER_ENABLED line not found in dist/pages/notetaker.js")
+        raise SystemExit(
+            "serve.py: `export const NOTETAKER_ENABLED = false;` not found exactly once in "
+            "ui/dist/pages/notetaker.js, so /notetaker-on/ can't switch the Notetaker on. "
+            "Update NOTETAKER_OFF_LINE in serve.py."
+        )
     return js.replace(NOTETAKER_OFF_LINE, NOTETAKER_ON_LINE)
 
 
@@ -41,7 +46,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if self.path == NOTETAKER_ON or self.path.startswith(NOTETAKER_ON + "/"):
             self.path = self.path[len(NOTETAKER_ON):] or "/"
             if self.path.split("?")[0] == "/pages/notetaker.js":
-                return self.send_body(notetaker_on_js(), "text/javascript")
+                return self.send_body(self.server.notetaker_on_js, "text/javascript")
         if self.path.startswith("/mock-tauri.js") or self.path.startswith(
             "/mock-scratchpad.js"
         ) or self.path.startswith("/mock-overlay.js"):
@@ -82,4 +87,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
-    http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
+    notetaker_js = notetaker_on_js()  # exits non-zero with the reason if the line moved
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    server.notetaker_on_js = notetaker_js
+    server.serve_forever()
