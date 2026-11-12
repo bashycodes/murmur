@@ -4,6 +4,7 @@ import android.content.Intent
 import android.view.View
 import dev.murmur.MurmurApp
 import dev.murmur.data.AppVersion
+import dev.murmur.data.SettingsPages
 import dev.murmur.data.ShellPages
 import dev.murmur.data.ShellPages.Tab
 import dev.murmur.ui.UiTestKit.idle
@@ -64,12 +65,15 @@ class ShellUiTest {
         assertEquals(app.dev.visible, "Developer settings" in t)
         // Nothing granted under Robolectric: mic, overlay, a11y, battery, notifications.
         assertTrue(t.toString(), "5 to fix" in t)
-        assertEquals("Permissions, 5 to fix", rowTitled(a, "Permissions").contentDescription)
+        assertEquals(
+            "Permissions, 5 to fix: Microphone, Display over other apps, Accessibility service, Battery optimisation, Notifications",
+            rowTitled(a, "Permissions").contentDescription,
+        )
         // Main content is hidden from TalkBack while the drawer is open.
         val host = a.frame.host.parent as View
         assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS, host.importantForAccessibility)
-        val engines = walk(a.window.decorView).first { it.isClickable && it.contentDescription?.startsWith("Engines. Speech to text: ") == true }
-        assertTrue(engines.contentDescription.toString(), "AI cleanup: " in engines.contentDescription)
+        assertTrue(walk(a.window.decorView).any { it.isClickable && it.contentDescription?.startsWith("Speech to text: ") == true })
+        assertTrue(walk(a.window.decorView).any { it.isClickable && it.contentDescription?.startsWith("AI cleanup: ") == true })
         UiTestKit.assertTouchTargets(a, "drawer")
     }
 
@@ -98,6 +102,44 @@ class ShellUiTest {
         openDrawer(a)
         rowTitled(a, "Start / show bubble").performClick()
         assertTrue(ShadowToast.getTextOfLatestToast().startsWith("Allow Display over other apps first"))
+    }
+
+    private fun engineLine(a: MainActivity, label: String) =
+        walk(a.window.decorView).first { it.isClickable && it.contentDescription?.startsWith("$label: ") == true }
+
+    @Test fun drawerEngineLinesOpenTheirSettingsPage() {
+        // Owner report: both lines opened Developer settings. Runs in every flavor: the remote
+        // build has no AI cleanup page, so its line opens OpenRouter's page instead.
+        val a = launch()
+        val cleanup = ShellPages.cleanupDest(MurmurApp.of(a).caps) ?: ShellPages.Dest.Page(SettingsPages.Page.HUB)
+        val want = mapOf("Speech to text" to ShellPages.Dest.Page(SettingsPages.Page.SPEECH), "AI cleanup" to cleanup)
+        for ((label, dest) in want) {
+            openDrawer(a)
+            engineLine(a, label).performClick()
+            val i = shadowOf(a).nextStartedActivity
+            when (dest) {
+                is ShellPages.Dest.Page -> {
+                    assertEquals(label, SettingsActivity::class.java.name, i.component?.className)
+                    assertEquals(label, dest.page.name, i.getStringExtra(SettingsActivity.EXTRA_PAGE))
+                    assertEquals(label, SettingsPages.TITLES.getValue(dest.page))
+                }
+                ShellPages.Dest.OpenRouter -> assertEquals(label, OpenRouterActivity::class.java.name, i.component?.className)
+            }
+            assertFalse(a.frame.drawerOpen)
+        }
+    }
+
+    @Test fun permissionsCountRefreshesOnReturn() {
+        val c = Robolectric.buildActivity(MainActivity::class.java).setup().visible()
+        val a = c.get().also { idle() }
+        openDrawer(a)
+        assertTrue("5 to fix" in texts(a))
+        // Granted in system settings meanwhile; back in the app the open drawer re-reads.
+        shadowOf(a.application).grantPermissions(android.Manifest.permission.RECORD_AUDIO)
+        c.pause().resume(); idle()
+        val t = texts(a)
+        assertTrue(t.toString(), "4 to fix" in t)
+        assertFalse(rowTitled(a, "Permissions").contentDescription.toString().contains("Microphone"))
     }
 
     @Test fun backClosesTheDrawerFirst() {

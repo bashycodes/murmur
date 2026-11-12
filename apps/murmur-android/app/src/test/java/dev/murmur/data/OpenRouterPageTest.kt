@@ -15,7 +15,9 @@ class OpenRouterPageTest {
 
     private val base = DevSettings.defaults(BuildCaps.ALL)
     private val now = 1_792_540_800_000L
-    private fun line(d: DevSettings, phoneAi: Boolean) = CleanupEngines.engineLine(d, CleanupEngines.planned(d, phoneAi))
+    /** The AI cleanup summary without the rules ("Light · …"), null when no AI engine runs. */
+    private fun line(d: DevSettings, phoneAi: Boolean) =
+        SettingsSummary.cleanupRow(Settings(llmEnabled = phoneAi, spokenCleanup = false), d, BuildCaps.ALL).takeUnless { it == "Off" }
 
     @Test fun sttAndCleanupAreIndependent() {
         val stt = OpenRouterPage.enableStt(base, now)
@@ -43,12 +45,12 @@ class OpenRouterPageTest {
     @Test fun cleanupOrder() {
         val cl = OpenRouterPage.enableCleanup(base, now)
         val cloudFirst = cl.copy(cleanupOrder = listOf(CleanupRoute.CLOUD, CleanupRoute.LOCAL, CleanupRoute.SERVER))
-        assertEquals("This phone, then OpenRouter (llama-3.3-70b-instruct)", line(cl, phoneAi = true))
-        assertEquals("OpenRouter (llama-3.3-70b-instruct), then this phone", line(cloudFirst, phoneAi = true))
+        assertEquals("Light · This phone, then OpenRouter", line(cl, phoneAi = true))
+        assertEquals("Light · OpenRouter, then this phone", line(cloudFirst, phoneAi = true))
         // A configured server is named; a switched-off engine is not.
         val withServer = cl.copy(host = "100.64.0.10")
-        assertEquals("This phone, then your server, then OpenRouter (llama-3.3-70b-instruct)", line(withServer, phoneAi = true))
-        assertEquals("Your server, then OpenRouter (llama-3.3-70b-instruct)", line(withServer.withCleanup(CleanupRoute.LOCAL, false), phoneAi = true))
+        assertEquals("Light · This phone, then your server, then OpenRouter", line(withServer, phoneAi = true))
+        assertEquals("Light · Your server, then OpenRouter", line(withServer.withCleanup(CleanupRoute.LOCAL, false), phoneAi = true))
         // A chosen order survives off → on.
         assertEquals(cloudFirst.cleanupOrder, OpenRouterPage.enableCleanup(OpenRouterPage.disableCleanup(cloudFirst), now).cleanupOrder)
         assertNull(line(base, phoneAi = false))
