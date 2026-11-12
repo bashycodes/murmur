@@ -65,7 +65,10 @@ class ShellUiTest {
         assertEquals(app.dev.visible, "Developer settings" in t)
         // Nothing granted under Robolectric: mic, overlay, a11y, battery, notifications.
         assertTrue(t.toString(), "5 to fix" in t)
-        assertEquals("Permissions, 5 to fix", rowTitled(a, "Permissions").contentDescription)
+        assertEquals(
+            "Permissions, 5 to fix: Microphone, Display over other apps, Accessibility service, Battery optimisation, Notifications",
+            rowTitled(a, "Permissions").contentDescription,
+        )
         // Main content is hidden from TalkBack while the drawer is open.
         val host = a.frame.host.parent as View
         assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS, host.importantForAccessibility)
@@ -117,6 +120,19 @@ class ShellUiTest {
             assertEquals(label, SettingsPages.TITLES.getValue(page))
             assertFalse(a.frame.drawerOpen)
         }
+    }
+
+    @Test fun permissionsCountRefreshesOnReturn() {
+        val c = Robolectric.buildActivity(MainActivity::class.java).setup().visible()
+        val a = c.get().also { idle() }
+        openDrawer(a)
+        assertTrue("5 to fix" in texts(a))
+        // Granted in system settings meanwhile; back in the app the open drawer re-reads.
+        shadowOf(a.application).grantPermissions(android.Manifest.permission.RECORD_AUDIO)
+        c.pause().resume(); idle()
+        val t = texts(a)
+        assertTrue(t.toString(), "4 to fix" in t)
+        assertFalse(rowTitled(a, "Permissions").contentDescription.toString().contains("Microphone"))
     }
 
     @Test fun backClosesTheDrawerFirst() {

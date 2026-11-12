@@ -206,10 +206,13 @@ class MainActivity : Activity() {
             )
             card {
                 navRow(R.drawable.ic_lw_settings, "Settings", chevron = false) { go { startActivity(SettingsActivity.intent(this@MainActivity)) } }
-                val perm = navRow(R.drawable.ic_lw_check, "Permissions", chevron = false) { go(::openPermissions) }
-                ShellPages.toFix(SetupChecklist.rows(setup))?.let { fix ->
+                // Re-read on every drawer open and on resume while open (fillDrawer), so a grant made in
+                // system settings shows on return. The subtitle names what is missing.
+                val rows = SetupChecklist.rows(setup)
+                val perm = navRow(R.drawable.ic_lw_check, "Permissions", ShellPages.missing(rows), chevron = false) { go(::openPermissions) }
+                ShellPages.toFix(rows)?.let { fix ->
                     (perm.view as LinearLayout).addView(badge(fix, DevUi.BadgeTone.WARNING))
-                    perm.view.contentDescription = "Permissions, $fix"
+                    perm.view.contentDescription = "Permissions, $fix: ${ShellPages.missing(rows)}"
                 }
                 navRow(R.drawable.ic_lw_help, "Help", chevron = false) {
                     go { runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(ShellPages.HELP_URL))) } }
