@@ -110,7 +110,7 @@ class CloudSettingsTest {
         assertEquals("Speech \$0.50 · Cleanup \$0 · this month (2026-11)", lines[0])
         assertEquals("3 speech requests (0.0 min) · 0 cleanup requests", lines[1])
         assertEquals("Budget \$1.00/month: \$0.50 used", lines[2])
-        assertEquals("Custom server: 9 cleanup requests · reported \$4.00 (not in the budget)", lines[3])
+        assertEquals("Your proxy: 9 cleanup requests · reported \$4.00 (not in the budget)", lines[3])
         // The page header: OpenRouter only, against the budget.
         assertEquals(listOf("\$0.50" to "this month of \$1.00", "\$0.50" to "speech", "\$0" to "cleanup"),
             CloudText.usageStats(u, CloudSettings(monthlyBudgetUsd = 1.0)))
@@ -118,10 +118,10 @@ class CloudSettingsTest {
             """{"supported":true,"enabled":true,"provider":"custom","host":"10.0.0.5","model":"m","month_cost_usd":4.0,"custom_month_cost_usd":4.0}""")
         assertEquals(4.0, st.customMonthCostUsd, 1e-9)
         val line = dev.murmur.core.DevText.cleanupStatus(st)
-        assertEquals("On · Custom server (10.0.0.5) · m · \$4.00 on your server this month (not in budget)", line)
+        assertEquals("On · LiteLLM (10.0.0.5) · m · \$4.00 on your server this month (not in budget)", line)
         // Both providers this month: OpenRouter's part and the server's, never added together.
         val both = dev.murmur.core.DevText.cleanupStatus(st.copy(monthCostUsd = 4.5))
-        assertEquals("On · Custom server (10.0.0.5) · m · OpenRouter this month \$0.50 · \$4.00 on your server this month (not in budget)", both)
+        assertEquals("On · LiteLLM (10.0.0.5) · m · OpenRouter this month \$0.50 · \$4.00 on your server this month (not in budget)", both)
         val or = dev.murmur.core.DevText.cleanupStatus(st.copy(provider = "openrouter", host = "", monthCostUsd = 4.5))
         assertEquals("On · m · this month \$0.50 · \$4.00 on your server this month (not in budget)", or)
     }
@@ -135,9 +135,9 @@ class CloudSettingsTest {
         val lines = CloudText.usageLines(u, CloudSettings())
         assertEquals("Speech \$0 · Cleanup ≈ \$0.25 · this month (2026-11)", lines[0])
         assertEquals("0 speech requests (0.0 min) · 2 cleanup requests", lines[1])
-        assertEquals("Custom server: 1 cleanup request · no cost reported (not in the budget)", lines.last())
+        assertEquals("Your proxy: 1 cleanup request · no cost reported (not in the budget)", lines.last())
         assertEquals(listOf("\$0.25" to "this month", "\$0" to "speech", "≈\$0.25" to "cleanup"), CloudText.usageStats(u, CloudSettings()))
-        assertTrue("no custom line without custom usage", CloudText.usageLines(CloudUsage(), CloudSettings()).none { it.startsWith(CustomServer.NAME) })
+        assertTrue("no custom line without custom usage", CloudText.usageLines(CloudUsage(), CloudSettings()).none { it.startsWith(CustomServer.USAGE_LABEL) })
     }
 
     @Test fun routeWording() {
@@ -147,7 +147,7 @@ class CloudSettingsTest {
         assertEquals("AI cleanup: OpenRouter · llama-3.3-70b-instruct · \$0.0007", CloudText.cleanupRow(r))
         assertNull(CloudText.cleanupRow(RouteInfo("local")))
         // D52: named by the provider that cleaned.
-        assertEquals("AI cleanup: Custom server (10.0.0.5) · llama-3.3-70b-instruct · \$0.0007", CloudText.cleanupRow(r, "Custom server (10.0.0.5)"))
+        assertEquals("AI cleanup: LiteLLM (10.0.0.5) · llama-3.3-70b-instruct · \$0.0007", CloudText.cleanupRow(r, "LiteLLM (10.0.0.5)"))
         // D30: AI cleanup tried, the fallback pipeline produced the text.
         assertEquals("AI cleanup: on-device · qwen2.5-1.5b · OpenRouter not used (llm_timeout)",
             CloudText.cleanupRow(RouteInfo("local", llmEngine = "local", llmModel = "qwen2.5-1.5b", cleanupRoute = "local", cloudFallback = "llm_timeout")))
@@ -337,13 +337,13 @@ class CloudSettingsTest {
         val c = CloudSettings(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = custom)
         val (title, body, button) = CloudText.cleanupConsent(c)
         assertEquals("Send dictated text to 10.0.0.5?", title)
-        assertTrue(body, body.contains("10.0.0.5") && body.contains(CloudText.HTTP_WARNING) && body.contains("always uses OpenRouter"))
+        assertTrue(body, body.contains("10.0.0.5") && body.contains(CloudText.HTTP_WARNING) && body.contains("AI cleanup only"))
         assertFalse(body, body.contains("openrouter.ai"))
         assertEquals(CloudText.CUSTOM_CONSENT_BUTTON, button)
         val tls = CloudText.cleanupConsent(c.copy(customCleanup = custom.copy(baseUrl = "https://10.0.0.5/v1"))).second
         assertFalse(tls.contains(CloudText.HTTP_WARNING))
         assertEquals(CloudText.CLEANUP_CONSENT_TITLE, CloudText.cleanupConsent(CloudSettings()).first)
-        assertEquals("Custom server (10.0.0.5)", c.cleanupProviderName)
+        assertEquals("LiteLLM (10.0.0.5)", c.cleanupProviderName)
         assertEquals(CustomServer.NOT_SET_UP, CloudSettings(cleanupProvider = CleanupProvider.CUSTOM).cleanupProviderName)
         assertEquals("OpenRouter", CloudSettings().cleanupProviderName)
         assertEquals("Connected: 2 models", CloudText.customModelsLine(dev.murmur.core.CustomModels(listOf("a", "b"))))

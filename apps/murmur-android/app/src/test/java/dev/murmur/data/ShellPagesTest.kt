@@ -102,10 +102,10 @@ class ShellPagesTest {
         val ai = Settings(llmEnabled = true)
         val cloudFirst = OpenRouterPage.enableCleanup(base, NOW).copy(cleanupOrder = listOf(CleanupRoute.CLOUD, CleanupRoute.LOCAL, CleanupRoute.SERVER))
         val cloud = ShellPages.cleanupLine(ai, cloudFirst, caps)
-        assertEquals("Light · OpenRouter, then this phone, then rules" to Dot.CLOUD, cloud.text to cloud.dot)
+        assertEquals("Light · Cloud, then this phone, then rules" to Dot.CLOUD, cloud.text to cloud.dot)
         // The dot is the first engine's: the phone first, the cloud only as a fallback.
         val phoneFirst = ShellPages.cleanupLine(ai, OpenRouterPage.enableCleanup(base, NOW), caps)
-        assertEquals("Light · This phone, then OpenRouter, then rules" to Dot.OK, phoneFirst.text to phoneFirst.dot)
+        assertEquals("Light · This phone, then cloud, then rules" to Dot.OK, phoneFirst.text to phoneFirst.dot)
         assertEquals("Light · This phone, then rules" to Dot.OK, ShellPages.cleanupLine(ai, base, caps).let { it.text to it.dot })
         // remote builds have no on-device LLM, whatever the stored switch says.
         assertEquals("Rules only" to Dot.OFF, ShellPages.cleanupLine(ai, base.effective(BuildCaps.REMOTE), BuildCaps.REMOTE).let { it.text to it.dot })
@@ -187,7 +187,7 @@ class ShellPagesTest {
         val s = OpenRouterPage.enableCleanup(base.copy(cloud = base.cloud.copy(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = custom)), NOW)
             .withCleanup(CleanupRoute.LOCAL, false).withCleanup(CleanupRoute.SERVER, false)
         val line = ShellPages.cleanupLine(Settings(), s, BuildCaps.ALL)
-        assertEquals("Light · Custom server (10.0.0.5), then rules" to Dot.CLOUD, line.text to line.dot)
+        assertEquals("Light · Cloud, then rules" to Dot.CLOUD, line.text to line.dot)
         // Not usable (no model): sends nothing, so it is off, never "OpenRouter".
         val broken = OpenRouterPage.withCustom(s) { copy(model = "") }
         assertEquals("Rules only", ShellPages.cleanupLine(Settings(), broken, BuildCaps.ALL).text)

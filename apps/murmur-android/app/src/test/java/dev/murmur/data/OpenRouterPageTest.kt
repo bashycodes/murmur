@@ -45,12 +45,12 @@ class OpenRouterPageTest {
     @Test fun cleanupOrder() {
         val cl = OpenRouterPage.enableCleanup(base, now)
         val cloudFirst = cl.copy(cleanupOrder = listOf(CleanupRoute.CLOUD, CleanupRoute.LOCAL, CleanupRoute.SERVER))
-        assertEquals("Light · This phone, then OpenRouter", line(cl, phoneAi = true))
-        assertEquals("Light · OpenRouter, then this phone", line(cloudFirst, phoneAi = true))
+        assertEquals("Light · This phone, then cloud", line(cl, phoneAi = true))
+        assertEquals("Light · Cloud, then this phone", line(cloudFirst, phoneAi = true))
         // A configured server is named; a switched-off engine is not.
         val withServer = cl.copy(host = "100.64.0.10")
-        assertEquals("Light · This phone, then your server, then OpenRouter", line(withServer, phoneAi = true))
-        assertEquals("Light · Your server, then OpenRouter", line(withServer.withCleanup(CleanupRoute.LOCAL, false), phoneAi = true))
+        assertEquals("Light · This phone, then your server, then cloud", line(withServer, phoneAi = true))
+        assertEquals("Light · Your server, then cloud", line(withServer.withCleanup(CleanupRoute.LOCAL, false), phoneAi = true))
         // A chosen order survives off → on.
         assertEquals(cloudFirst.cleanupOrder, OpenRouterPage.enableCleanup(OpenRouterPage.disableCleanup(cloudFirst), now).cleanupOrder)
         assertNull(line(base, phoneAi = false))
@@ -103,16 +103,103 @@ class OpenRouterPageTest {
 
     private val server = CustomCleanupSettings(baseUrl = "http://10.0.0.5:4000/v1", model = "gpt-4o-mini")
 
-    @Test fun customProviderIsSelectableOnlyOnceReady() {
-        assertNull(OpenRouterPage.withProvider(base, CleanupProvider.CUSTOM))
-        assertEquals("Set the server address first", OpenRouterPage.customMissing(base.cloud.customCleanup))
-        val url = OpenRouterPage.withCustom(base) { copy(baseUrl = server.baseUrl) }
+    @Test fun liteLlmIsSavedWhenPickedAndSaysWhatItStillNeeds() {
+        // D78: the switch shows what dictation uses; an unready proxy sends nothing (routerJson).
+        val picked = OpenRouterPage.withProvider(base, CleanupProvider.CUSTOM)
+        assertTrue(picked.cloud.customProvider); assertTrue(picked.cloud.customNotSetUp)
+        assertFalse(picked.cloud.routerJson().has("cleanup_provider"))
+        assertEquals("Set the proxy address first", OpenRouterPage.customMissing(picked.cloud.customCleanup))
+        val url = OpenRouterPage.withCustom(picked) { copy(baseUrl = server.baseUrl) }
         assertEquals("Set the model first", OpenRouterPage.customMissing(url.cloud.customCleanup))
         val ready = OpenRouterPage.withCustom(url) { copy(model = server.model) }
         assertNull(OpenRouterPage.customMissing(ready.cloud.customCleanup))
-        val custom = OpenRouterPage.withProvider(ready, CleanupProvider.CUSTOM)!!
-        assertTrue(custom.cloud.customProvider)
-        assertFalse(OpenRouterPage.withProvider(custom, CleanupProvider.OPENROUTER)!!.cloud.customProvider)
+        assertFalse(ready.cloud.customNotSetUp)
+        assertEquals("custom", ready.cloud.routerJson().getString("cleanup_provider"))
+        val back = OpenRouterPage.withProvider(ready, CleanupProvider.OPENROUTER)
+        assertFalse(back.cloud.customProvider)
+        assertEquals("the proxy's fields are kept", server.baseUrl, back.cloud.customCleanup.baseUrl)
+    }
+
+    // ---- D78 one Cloud provider at a time ----
+
+    @Test fun pickingLiteLlmTurnsCloudSpeechOffAndKeepsItsConsent() {
+        val both = OpenRouterPage.enableStt(base, now)
+        assertTrue(OpenRouterPage.sttAvailable(both))
+        val ll = OpenRouterPage.withProvider(both, CleanupProvider.CUSTOM)
+        assertFalse(ll.allowCloud); assertFalse(OpenRouterPage.sttAvailable(ll))
+        assertTrue("OpenRouter's speech consent is kept", ll.cloud.stt.consentOk)
+        assertEquals("the route order is kept", both.routeOrder, ll.routeOrder)
+        // The speech switch refuses: enableStt changes nothing while LiteLLM is the provider.
+        assertEquals(ll, OpenRouterPage.enableStt(ll, now + 1))
+        // Back to OpenRouter: speech stays off until turned on again, then asks nothing.
+        val or = OpenRouterPage.withProvider(ll, CleanupProvider.OPENROUTER)
+        assertFalse(or.allowCloud); assertTrue(OpenRouterPage.enableStt(or, now + 2).allowCloud)
+        assertFalse(OpenRouterPage.sttNeedsConsent(or))
+    }
+
+    @Test fun aSavedMixNeverReachesTheRouterOrTheStore() {
+        val mix = base.copy(allowCloud = true, routeOrder = DevSettings.withCloudFirst(base.routeOrder),
+            cloud = OpenRouterPage.enableStt(base, now).cloud.copy(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = server))
+        assertEquals(mix.copy(allowCloud = false), OpenRouterPage.oneProvider(mix))
+        assertFalse("the router gets no cloud speech", mix.effective(BuildCaps.ALL).allowCloud)
+        assertFalse(mix.effective(BuildCaps.ALL).cloudRouted)
+        // The store never writes the mix, whichever save is used.
+        val kv = MemKV()
+        val store = DevStore(kv, BuildCaps.ALL, SecretVault("murmur_dev_token", FakeVaultKeys()))
+        store.save(mix)
+        assertFalse(store.load().allowCloud)
+        store.saveCloud(allowCloud = true, cloud = mix.cloud)
+        assertFalse(store.load().allowCloud)
+        store.saveCloud(allowCloud = true, cloud = CloudSettings())
+        assertTrue("OpenRouter speech is allowed again", store.load().allowCloud)
+    }
+
+    @Test fun aMixSavedBeforeD78IsFixedOnLoadWithOneNotice() {
+        val kv = MemKV()
+        val store = DevStore(kv, BuildCaps.ALL, SecretVault("murmur_dev_token", FakeVaultKeys()))
+        val cloud = OpenRouterPage.enableStt(base, now).cloud.copy(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = server)
+        // What an older app left: both switches on (written raw, as the old store did).
+        kv.edit { putBoolean("allow_cloud", true); putString("cloud", cloud.toJson().toString()) }
+        assertTrue(store.load().allowCloud)
+        assertTrue(CloudMigration.fixOneProvider(store))
+        val s = store.load()
+        assertFalse(s.allowCloud); assertTrue(s.cloud.customProvider); assertTrue(s.cloud.stt.consentOk)
+        assertEquals(CloudText.LITELLM_STT_OFF_NOTICE, store.cloudNotice)
+        // Once: nothing to fix next time, the notice stays until dismissed.
+        store.cloudNotice = null
+        assertFalse(CloudMigration.fixOneProvider(store))
+        assertNull(store.cloudNotice)
+        // OpenRouter with speech on is left alone.
+        store.saveCloud(allowCloud = true, cloud = cloud.copy(cleanupProvider = CleanupProvider.OPENROUTER))
+        assertFalse(CloudMigration.fixOneProvider(store)); assertTrue(store.load().allowCloud)
+    }
+
+    @Test fun theOneProviderNoticeKeepsANoticeNotYetDismissed() {
+        val kv = MemKV()
+        val store = DevStore(kv, BuildCaps.ALL, SecretVault("murmur_dev_token", FakeVaultKeys()))
+        val cloud = OpenRouterPage.enableStt(base, now).cloud.copy(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = server)
+        kv.edit { putBoolean("allow_cloud", true); putString("cloud", cloud.toJson().toString()) }
+        // A D28 migration notice written just before, on the same start.
+        store.addCloudNotice("Synthetic migration notice.")
+        assertTrue(CloudMigration.fixOneProvider(store))
+        assertEquals("Synthetic migration notice.\n\n" + CloudText.LITELLM_STT_OFF_NOTICE, store.cloudNotice)
+        // The router's notice later is added too, and a repeat is not doubled.
+        store.addCloudNotice("Synthetic router notice.")
+        store.addCloudNotice(CloudText.LITELLM_STT_OFF_NOTICE)
+        assertEquals(
+            listOf("Synthetic migration notice.", CloudText.LITELLM_STT_OFF_NOTICE, "Synthetic router notice."),
+            store.cloudNotice!!.split(DevStore.NOTICE_SEP),
+        )
+    }
+
+    @Test fun theOneProviderRuleLivesOnTheSettings() {
+        val ll = base.cloud.copy(cleanupProvider = CleanupProvider.CUSTOM)
+        assertTrue(base.cloud.sttAvailable); assertFalse(ll.sttAvailable)
+        assertEquals(true, base.cloud.sttAllowed(true)); assertNull(base.cloud.sttAllowed(null))
+        assertEquals(false, ll.sttAllowed(true)); assertEquals(false, ll.sttAllowed(null))
+        val mix = OpenRouterPage.enableStt(base, now).copy(cloud = ll)
+        assertEquals(mix.oneCloudProvider(), OpenRouterPage.oneProvider(mix))
+        assertFalse(mix.effective(BuildCaps.ALL).allowCloud)
     }
 
     @Test fun customConsentIsItsOwnAndFollowsTheHost() {
@@ -132,7 +219,7 @@ class OpenRouterPageTest {
     @Test fun customSummariesNameTheServerAndNeedNoKey() {
         val s = OpenRouterPage.enableCleanup(base.copy(cloud = base.cloud.copy(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = server)), now)
         assertEquals("Speech off · Cleanup on (gpt-4o-mini on 10.0.0.5)", OpenRouterPage.settingsSummary(s, hasKey = false))
-        assertTrue(line(s, phoneAi = false)!!.contains("Custom server (10.0.0.5)"))
+        assertEquals("Light · Cloud", line(s, phoneAi = false))
         val or = OpenRouterPage.enableCleanup(base, now)
         assertTrue(OpenRouterPage.settingsSummary(or, hasKey = false).endsWith("· no key"))
     }
@@ -141,7 +228,7 @@ class OpenRouterPageTest {
         val on = OpenRouterPage.enableCleanup(base.copy(cloud = base.cloud.copy(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = server)), now)
         val broken = OpenRouterPage.withCustom(on) { copy(model = "") }
         assertTrue(broken.cloud.customNotSetUp)
-        assertEquals("Speech off · Cleanup off (custom server not set up)", OpenRouterPage.settingsSummary(broken, hasKey = true))
+        assertEquals("Speech off · Cleanup off (LiteLLM not set up)", OpenRouterPage.settingsSummary(broken, hasKey = true))
         assertNull(line(broken, phoneAi = false))
         assertFalse(OpenRouterPage.settingsSummary(broken, hasKey = true).contains("OpenRouter"))
     }

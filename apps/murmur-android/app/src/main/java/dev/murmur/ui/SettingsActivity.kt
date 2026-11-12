@@ -315,7 +315,7 @@ class SettingsActivity : Activity() {
             if (caps.remote || caps.cloud) {
                 sectionLabel("Connections")
                 if (caps.remote) server = rowCard("Your server") { DeveloperActivity.open(this@SettingsActivity, DevPages.Page.SERVER) }
-                if (caps.cloud) openRouter = rowCard(OpenRouter.NAME) { OpenRouterActivity.open(this@SettingsActivity) }
+                if (caps.cloud) openRouter = rowCard(OpenRouterActivity.TITLE) { OpenRouterActivity.open(this@SettingsActivity) }
             }
 
             sectionLabel("Data & privacy")
@@ -347,7 +347,7 @@ class SettingsActivity : Activity() {
                 ))
                 server?.setSubtitle(SettingsSummary.server(d, caps, health, checking))
                 openRouter?.setSubtitle(
-                    SettingsSummary.openRouter(app.cloudKeys.has(OpenRouter.ID), CloudUsage.decode(app.engine.router()?.cloudUsageJson() ?: app.dev.cloudUsageJson)),
+                    SettingsSummary.cloud(d, app.cloudKeys.has(OpenRouter.ID), CloudUsage.decode(app.engine.router()?.cloudUsageJson() ?: app.dev.cloudUsageJson)),
                 )
                 history.setSubtitle(SettingsSummary.keepHistory(s.retention))
                 if (debug.isChecked != app.dev.debugLog) debug.isChecked = app.dev.debugLog

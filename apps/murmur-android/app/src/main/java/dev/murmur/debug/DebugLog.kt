@@ -311,7 +311,7 @@ object DebugFormat {
             (s("language")?.let { " · lang $it" + (s("language_source")?.let { src -> " ($src)" } ?: "") } ?: "") + (s("style")?.let { " · $it" } ?: "") +
             (dev.murmur.data.LlmOutcome.label(s("llm"))?.let { " · $it" } ?: "") +
             (dev.murmur.data.LlmOutcome.offLabel(s("llm_off"))?.let { " · $it" } ?: "") +
-            (s("llm_engine")?.let { e -> " · AI " + (if (e == "cloud") (if (s("llm_provider") == "custom") "custom server" else "OpenRouter") else e) + (s("llm_model")?.let { " ${it.substringAfter('/')}" } ?: "") } ?: "") +
+            (s("llm_engine")?.let { e -> " · AI " + (if (e == "cloud") (if (s("llm_provider") == "custom") "LiteLLM" else "OpenRouter") else e) + (s("llm_model")?.let { " ${it.substringAfter('/')}" } ?: "") } ?: "") +
             (s("cleanup_route")?.let { c -> " · text by $c" + (s("cloud_fallback")?.let { " (cloud: $it)" } ?: "") } ?: "") +
             (listOfNotNull(s("stt_cost_usd"), s("llm_cost_usd")).takeIf { it.isNotEmpty() }?.let { " · $" + it.sumOf { c -> c.toDoubleOrNull() ?: 0.0 }.let { v -> String.format(java.util.Locale.US, "%.4f", v) } } ?: "")
         val ms = listOfNotNull(

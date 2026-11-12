@@ -259,7 +259,8 @@ class DevStore(private val kv: KeyValue, private val caps: BuildCaps, private va
         putLong("server.health_ttl_s", s.healthTtlS)
         putBoolean("keep_local_warm", s.keepLocalWarm)
         putBoolean("show_engine_badge", s.showEngineBadge)
-        putBoolean("allow_cloud", s.allowCloud)
+        // D78: never cloud speech with LiteLLM as the Cloud provider.
+        putBoolean("allow_cloud", s.oneCloudProvider().allowCloud)
         putString("cloud", if (s.cloud.isDefault) null else s.cloud.toJson().toString())
         putCleanup(s.allowCloudCleanup, s.cleanupOrder, s.cleanupOff)
     }
@@ -272,7 +273,7 @@ class DevStore(private val kv: KeyValue, private val caps: BuildCaps, private va
         putString(CLEANUP_OFF, full.filter { it in off || (it == DevSettings.CleanupRoute.CLOUD && !allowCloudCleanup) }.joinToString(",") { it.wire })
     }
 
-    /** Only the cloud part (OpenRouter page, consent dialogs, migration), leaving unsaved form fields alone. */
+    /** Only the cloud part (Cloud page, consent dialogs, migration), leaving unsaved form fields alone. */
     fun saveCloud(
         allowCloud: Boolean? = null, cloud: CloudSettings, routeOrder: List<DevSettings.Route>? = null,
         allowCloudCleanup: Boolean? = null, cleanupOrder: List<DevSettings.CleanupRoute>? = null,
@@ -280,8 +281,10 @@ class DevStore(private val kv: KeyValue, private val caps: BuildCaps, private va
     ) {
         // Read before the edit: load() may write its own one-time migration flag.
         val cur = if (allowCloudCleanup != null || cleanupOrder != null || cleanupOff != null) load() else null
+        // D78: LiteLLM as the Cloud provider turns cloud speech off, whatever the caller passed.
+        val stt = cloud.sttAllowed(allowCloud)
         kv.edit {
-            allowCloud?.let { putBoolean("allow_cloud", it) }
+            stt?.let { putBoolean("allow_cloud", it) }
             // Always written once touched: a schema-2 value marks the D28 migration as done.
             putString("cloud", cloud.toJson().toString())
             routeOrder?.let { o -> putString("route_order", o.joinToString(",") { it.wire }) }
@@ -289,10 +292,20 @@ class DevStore(private val kv: KeyValue, private val caps: BuildCaps, private va
         }
     }
 
-    /** D28: the one-time migration notice, shown as a banner until dismissed. */
+    /** D28: the one-time migration notice, shown as a banner until dismissed. Use [addCloudNotice] to add one. */
     var cloudNotice: String?
         get() = kv.getString(CLOUD_NOTICE)
         set(v) = kv.edit { putString(CLOUD_NOTICE, v) }
+
+    /**
+     * Adds [n] to the banner without losing one not yet dismissed (D28 migration, D78 one-provider fix,
+     * the router's own): notices are kept in order, one per paragraph, each once.
+     */
+    fun addCloudNotice(n: String) {
+        val cur = cloudNotice
+        if (cur.isNullOrEmpty()) cloudNotice = n
+        else if (n !in cur.split(NOTICE_SEP)) cloudNotice = cur + NOTICE_SEP + n
+    }
 
     /**
      * "Reset to defaults": everything except the unlock flag and this month's cloud usage
@@ -354,6 +367,8 @@ class DevStore(private val kv: KeyValue, private val caps: BuildCaps, private va
         /** D36: `cleanup_order` entries switched off (csv). */
         const val CLEANUP_OFF = "cleanup_off"
         const val CLOUD_NOTICE = "cloud_notice"
+        /** Between [addCloudNotice]'s notices: one paragraph each in the banner. */
+        const val NOTICE_SEP = "\n\n"
         const val DEBUG_LOG = "debug_log"
         const val KEEP_DEBUG_AUDIO = "debug_keep_audio"
         const val SERVER_ASR_MODEL = "server.last_asr_model"
