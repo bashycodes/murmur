@@ -46,20 +46,20 @@ class OpenRouterUiTest {
         val a = launch()
         val t = texts(a)
         for (want in listOf(
-            "API KEY", "PRIVACY", "SPEECH-TO-TEXT", "TEXT CLEANUP", "WHAT CLEANUP SENDS", "USAGE",
+            "PROVIDER", "OpenRouter", "LiteLLM", "API KEY", "PRIVACY", "SPEECH-TO-TEXT", "TEXT CLEANUP", "WHAT CLEANUP SENDS", "USAGE",
             "Stored key", "Show", "Paste", "Clear", "Save key", "Check key",
-            "Zero-retention providers only", "Deny data collection", "Cloud speech-to-text", OpenRouterActivity.CLEANUP_SWITCH,
+            "Zero-retention providers only", "Deny data collection", OpenRouterActivity.STT_SWITCH, OpenRouterActivity.CLEANUP_SWITCH,
             "Model", "Send text around the cursor", "Send on-screen words", "Send app name", "Monthly budget", "Reset counters",
             "Test speech-to-text", "this month", "speech", "cleanup",
         )) assertTrue(want, want in t)
         assertTrue(switchOf(a, "Zero-retention providers only").isChecked)
         assertTrue(switchOf(a, "Deny data collection").isChecked)
-        for (off in listOf("Cloud speech-to-text", OpenRouterActivity.CLEANUP_SWITCH, "Send text around the cursor", "Send on-screen words", "Send app name")) {
+        for (off in listOf(OpenRouterActivity.STT_SWITCH, OpenRouterActivity.CLEANUP_SWITCH, "Send text around the cursor", "Send on-screen words", "Send app name")) {
             assertFalse(off, switchOf(a, off).isChecked)
         }
         assertTrue(t.any { it.startsWith(OpenRouter.DEFAULT_STT_MODEL) })
         assertTrue(t.any { it.startsWith(OpenRouter.DEFAULT_CLEANUP_MODEL) })
-        assertEquals(android.widget.Switch::class.java.name, rowTitled(a, "Cloud speech-to-text").createAccessibilityNodeInfo().className)
+        assertEquals(android.widget.Switch::class.java.name, rowTitled(a, OpenRouterActivity.STT_SWITCH).createAccessibilityNodeInfo().className)
         UiTestKit.assertTouchTargets(a, "openrouter")
     }
 
@@ -85,7 +85,7 @@ class OpenRouterUiTest {
 
     @Test fun speechToTextConsentNamesTheAudio() {
         val a = launch()
-        rowTitled(a, "Cloud speech-to-text").performClick(); idle()
+        rowTitled(a, OpenRouterActivity.STT_SWITCH).performClick(); idle()
         val d = ShadowAlertDialog.getLatestAlertDialog()
         val sd = org.robolectric.Shadows.shadowOf(d)
         assertEquals("Send your voice to OpenRouter?", sd.title.toString())
@@ -166,11 +166,49 @@ class OpenRouterUiTest {
     @Test fun settingsHubHasTheUserFacingEntry() {
         val a = Robolectric.buildActivity(SettingsActivity::class.java, Intent(ctx, SettingsActivity::class.java)).setup().visible().get()
         val t = texts(a)
-        // Connections → "OpenRouter · No key · $0 this month" (AndroidSettings.dc.html).
-        assertTrue(t.toString(), OpenRouter.NAME in t)
-        assertTrue(t.toString(), "No key · \$0 this month" in t)
-        rowTitled(a, OpenRouter.NAME).performClick()
+        // Connections → "Cloud: OpenRouter · no key · $0 this month" (D78).
+        assertTrue(t.toString(), OpenRouterActivity.TITLE in t)
+        assertTrue(t.toString(), "OpenRouter · no key · \$0 this month" in t)
+        rowTitled(a, OpenRouterActivity.TITLE).performClick()
         assertEquals(OpenRouterActivity::class.java.name, org.robolectric.Shadows.shadowOf(a).nextStartedActivity.component?.className)
+    }
+
+    private fun segment(a: OpenRouterActivity, label: String) =
+        walk(a.window.decorView).first { it is android.widget.TextView && it.isClickable && it.text.toString() == label }
+
+    @Test fun pickingLiteLlmShowsTheProxyFieldsAndTurnsCloudSpeechOff() {
+        // D78: one provider at a time. Cloud speech on with OpenRouter first.
+        app.dev.saveCloud(allowCloud = true, cloud = app.dev.load().cloud.copy(stt = app.dev.load().cloud.stt.withConsent(1)))
+        val a = launch()
+        assertTrue(switchOf(a, OpenRouterActivity.STT_SWITCH).isChecked)
+        assertFalse("proxy fields hidden for OpenRouter", "YOUR LITELLM PROXY" in texts(a))
+        segment(a, "LiteLLM").performClick(); idle()
+        val s = app.dev.load()
+        assertTrue(s.cloud.customProvider); assertFalse(s.allowCloud)
+        assertTrue("OpenRouter's speech consent is kept", s.cloud.stt.consentOk)
+        val t = texts(a)
+        for (want in listOf("YOUR LITELLM PROXY", "Address", "API key (optional)", "Test connection", "Model", "Time limit",
+            dev.murmur.data.CloudText.LITELLM_DESC, dev.murmur.data.CloudText.LITELLM_OFFERS, dev.murmur.data.CloudText.LITELLM_STT_OFF_NOTICE,
+            dev.murmur.data.CloudText.STT_NOT_AVAILABLE)) assertTrue("$want in $t", want in t)
+        for (gone in listOf("API KEY", "PRIVACY", "Test speech-to-text", "Load models")) assertFalse(gone, gone in t)
+        val stt = switchOf(a, OpenRouterActivity.STT_SWITCH)
+        assertFalse(stt.isChecked); assertFalse("the speech switch refuses", stt.isEnabled)
+        // Back to OpenRouter: its fields return, speech stays off until turned on again.
+        segment(a, "OpenRouter").performClick(); idle()
+        assertFalse(app.dev.load().cloud.customProvider); assertFalse(app.dev.load().allowCloud)
+        assertTrue("API KEY" in texts(a))
+        assertTrue(switchOf(a, OpenRouterActivity.STT_SWITCH).isEnabled)
+    }
+
+    @Test fun aSavedMixIsFixedWhenThePageOpensWithANotice() {
+        // Written raw, as an app from before D78 could: LiteLLM cleanup next to OpenRouter speech.
+        val cloud = app.dev.load().cloud.copy(stt = app.dev.load().cloud.stt.withConsent(1), cleanupProvider = dev.murmur.data.CleanupProvider.CUSTOM)
+        ctx.getSharedPreferences(dev.murmur.data.DevStore.FILE, android.content.Context.MODE_PRIVATE).edit()
+            .putBoolean("allow_cloud", true).putString("cloud", cloud.toJson().toString()).commit()
+        assertTrue(app.dev.load().allowCloud)
+        val a = launch()
+        assertFalse(app.dev.load().allowCloud)
+        assertTrue(texts(a).contains(dev.murmur.data.CloudText.LITELLM_STT_OFF_NOTICE))
     }
 
     @Test fun pagesHaveTheDesignTopBarWithALabelledBack() {

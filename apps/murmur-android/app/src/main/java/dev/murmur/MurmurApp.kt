@@ -265,15 +265,20 @@ class MurmurApp : Application() {
      * D28, once: stored D18 cloud settings (schema 1) become the one OpenRouter config. The rules
      * are the router's (`nativeMigrateCloud`, pure and fast); only runs (and only loads the native
      * library this early) while a schema-1 config is stored. A failure leaves it for the next start.
+     * Then D78's one-provider rule (a saved LiteLLM + cloud speech mix: speech off, one notice).
+     * Since D78 this loads the store on every call, not only while a schema-1 config is stored.
      */
     @Synchronized
     fun migrateCloud() {
-        if (dev.legacyCloudJson() == null) return
-        val r = runCatching {
-            CloudMigration.run(dev, cloudKeys) { NativeMurmurCore.migrateCloud(it) }
-        }.onFailure { Log.w("MurmurEngine", "cloud migration: ${it.message}") }.getOrNull() ?: return
-        // Ids and names only; never a key.
-        debugLog.event("cloud_migration", "migrated=${r.migrated} removed=${r.removedNames.size} key_moved=${r.keyFrom != null} cloud_disabled=${r.cloudDisabled}")
+        if (dev.legacyCloudJson() != null) {
+            runCatching {
+                CloudMigration.run(dev, cloudKeys) { NativeMurmurCore.migrateCloud(it) }
+            }.onFailure { Log.w("MurmurEngine", "cloud migration: ${it.message}") }.getOrNull()?.let { r ->
+                // Ids and names only; never a key.
+                debugLog.event("cloud_migration", "migrated=${r.migrated} removed=${r.removedNames.size} key_moved=${r.keyFrom != null} cloud_disabled=${r.cloudDisabled}")
+            }
+        }
+        if (runCatching { CloudMigration.fixOneProvider(dev) }.getOrDefault(false)) debugLog.event("cloud_one_provider", "cloud_stt=off")
     }
 
     /** Server token + the stored OpenRouter and custom-server keys (runs on the debug-log thread, never throws). */
@@ -689,7 +694,7 @@ class EngineHolder(
             runCatching { r.setCloudKey(id, key) }.onFailure { Log.w("MurmurEngine", "set_cloud_key: ${it.message}") }
         }
         app.dev.cloudUsageJson?.let { r.setCloudUsage(it) }
-        r.cloudNotice()?.let { app.dev.cloudNotice = it; r.ackCloudNotice() }
+        r.cloudNotice()?.let { app.dev.addCloudNotice(it); r.ackCloudNotice() }
     }
 
     /** A key was saved / cleared: tell the live router (D28 id `openrouter`, D52 `custom`). */

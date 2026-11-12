@@ -184,12 +184,17 @@ fun interface CustomAddressCheck {
 object CustomServer {
     /** Secure-storage id of its optional key (`SecretVault("murmur_cloud_custom")`, `set_cloud_key("custom")`). */
     const val ID = "custom"
-    const val NAME = "Custom server"
+    /** D78: the provider's name in the Cloud page's switch and in summaries. */
+    const val NAME = "LiteLLM"
+    /** D78: the provider's full name, under the switch. */
+    const val LONG_NAME = "LiteLLM (or any OpenAI-compatible server)"
+    /** D78: its line in the usage card. */
+    const val USAGE_LABEL = "Your proxy"
     const val TIMEOUT_MIN = 800L
     const val TIMEOUT_MAX = 30_000L
     const val DEFAULT_TIMEOUT_MS = 4_000L
-    /** Custom server selected but its address or model is unusable: the router gets no cleanup consent. */
-    const val NOT_SET_UP = "Custom server not set up — cloud cleanup off"
+    /** LiteLLM selected but its address or model is unusable: the router gets no cleanup consent. */
+    const val NOT_SET_UP = "LiteLLM not set up: add its address and model on the Cloud page"
     const val URL_HINT = "/v1 is added when no path is given; include the full path if your server uses a prefix."
 
     /** The router's reader; replaced in JVM tests. A library without D52 reads every address as unusable. */
@@ -272,6 +277,16 @@ data class CloudSettings(
     val isDefault: Boolean get() = this == CloudSettings()
     val customProvider: Boolean get() = cleanupProvider == CleanupProvider.CUSTOM
 
+    /**
+     * D78, the one-provider rule's home: cloud speech exists only with OpenRouter as the Cloud
+     * provider (LiteLLM does AI cleanup only). Applied by [DevStore], [DevSettings.effective] and
+     * [CloudMigration.fixOneProvider]; the shared router still accepts the mix.
+     */
+    val sttAvailable: Boolean get() = !customProvider
+
+    /** D78: the stored cloud-speech switch for a wanted value ([want] null = unchanged): never on without [sttAvailable]. */
+    fun sttAllowed(want: Boolean?): Boolean? = if (sttAvailable) want else false
+
     /** `CloudConfig::cleanup_consent_ok`: the selected provider's own consent. */
     val cleanupConsentOk: Boolean get() = if (customProvider) customCleanup.consentOk else cleanup.consentOk
     val cleanupModel: String get() = if (customProvider) customCleanup.model else cleanup.model
@@ -282,7 +297,7 @@ data class CloudSettings(
     /** Custom server selected but not usable: shown as [CustomServer.NOT_SET_UP], never as OpenRouter. */
     val customNotSetUp: Boolean get() = customProvider && !customCleanup.ready
 
-    /** "OpenRouter" / "Custom server (10.0.0.5)" / [CustomServer.NOT_SET_UP]: the cloud cleanup engine's name. */
+    /** "OpenRouter" / "LiteLLM (10.0.0.5)" / [CustomServer.NOT_SET_UP]: the cloud cleanup engine's name. */
     val cleanupProviderName: String
         get() = when {
             !customProvider -> OpenRouter.NAME
@@ -409,13 +424,28 @@ data class CloudUsage(val month: String = "", val providers: List<ProviderUsage>
     }
 }
 
-/** Cloud wording for the OpenRouter page, the Developer hub and the bubble; pure for the JVM tests. */
+/** Cloud wording for the Cloud page, the Developer hub and the bubble; pure for the JVM tests. */
 object CloudText {
     const val NOT_IN_BUILD = "not in this build"
 
-    /** The page's first line: nothing is sent until a use is turned on. */
-    const val INTRO = "OpenRouter (openrouter.ai) is the only cloud service this app can use. Nothing leaves this phone " +
-        "until you turn on speech-to-text or text cleanup below, each with its own consent."
+    /** The page's first line (D78): one provider; nothing is sent until a use is turned on. */
+    const val INTRO = "Bigger models that run somewhere else. Pick one provider: OpenRouter (openrouter.ai) or your own " +
+        "LiteLLM proxy. Nothing leaves this phone until you turn on speech-to-text or text cleanup below, each with its own consent."
+
+    /** D78 provider switch: what each provider is and what it does here. */
+    const val OPENROUTER_DESC = "openrouter.ai: hundreds of models from many companies. Pay per use with your own key."
+    const val OPENROUTER_OFFERS = "Speech to text: yes · AI cleanup: yes"
+    const val LITELLM_DESC = "Your own ${CustomServer.LONG_NAME}, on your network or wherever you run it."
+    const val LITELLM_OFFERS = "Speech to text: not yet · AI cleanup: yes"
+
+    /** D78: why cloud speech cannot be turned on while LiteLLM is the Cloud provider. */
+    const val LITELLM_NO_STT = "Your Cloud provider is LiteLLM, which this app uses for AI cleanup only. " +
+        "Pick OpenRouter on the Cloud page to send speech to the cloud."
+    /** D78: the cloud speech switch and Settings row while LiteLLM is the Cloud provider (as on Windows). */
+    const val STT_NOT_AVAILABLE = "Not available"
+    /** D78: the one-time notice when a saved LiteLLM + cloud speech mix is fixed on load, and when picking LiteLLM turns it off. */
+    const val LITELLM_STT_OFF_NOTICE = "Speech to text in the cloud is now off: your Cloud provider is LiteLLM, which " +
+        "this app uses for AI cleanup only. Speech stays on this phone and your server."
 
     const val PRIVACY_NOTE = "Zero-retention: OpenRouter only routes to providers that keep no copy of your audio or text. " +
         "Deny data collection: providers that may store or train on what you send are never used. OpenRouter itself keeps " +
@@ -447,15 +477,16 @@ object CloudText {
     /** D52: the consent of a custom server names the typed host, not OpenRouter. */
     fun customConsentTitle(host: String) = "Send dictated text to $host?"
     fun customConsentBody(cc: CustomCleanupSettings, c: CleanupSettings): String =
-        "After each dictation, the text (and your dictionary words) is sent to your server at ${cc.host}. Your voice is " +
-            "not sent: cloud speech-to-text always uses OpenRouter.\n\nWhat is sent: " + cleanupSends(c) + "." +
+        "After each dictation, the text (and your dictionary words) is sent to your LiteLLM proxy at ${cc.host}. Your " +
+            "voice is not sent: LiteLLM is used for AI cleanup only.\n\nWhat is sent: " + cleanupSends(c) + "." +
             (if (!cc.https) "\n\n$HTTP_WARNING" else "") +
             "\n\nPassword fields are never dictated into. You can turn this off at any time."
     const val CUSTOM_CONSENT_BUTTON = "Send text to this server"
 
     /** Shown under an http:// base URL and in its consent. */
     const val HTTP_WARNING = "This address uses http://: the key and the dictated text are sent unencrypted."
-    const val CUSTOM_STT_NOTE = "Only AI cleanup uses this server. Cloud speech-to-text always uses OpenRouter."
+    const val CUSTOM_STT_NOTE = "Your proxy has no speech model here, so speech stays on this phone and your server. " +
+        "Pick OpenRouter to send speech to the cloud."
 
     /** The consent dialog of the selected provider: (title, body, button). */
     fun cleanupConsent(s: CloudSettings): Triple<String, String, String> =
@@ -567,7 +598,7 @@ object CloudText {
         // D52: the owner's own server is never in the OpenRouter budget; its requests count even without a cost.
         if (u.customRequests > 0 || u.customCostUsd > 0) {
             val cost = u.customCostUsd.takeIf { it > 0 }?.let { "reported ${usd(it)}" } ?: "no cost reported"
-            lines += "${CustomServer.NAME}: ${count(u.customRequests, "cleanup request")} · $cost (not in the budget)"
+            lines += "${CustomServer.USAGE_LABEL}: ${count(u.customRequests, "cleanup request")} · $cost (not in the budget)"
         }
         return lines
     }

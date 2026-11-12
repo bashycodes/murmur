@@ -17,7 +17,7 @@ The language setting (Android default, Windows "Keyboard language" on) that make
 _Avoid_: input language, IME language, start language (as the result's language)
 
 **Cloud**:
-Online models the app can use, through one **Cloud provider** at a time (enforced by the Windows settings; Android still pairs the two): OpenRouter (speech to text and AI cleanup) or the user's LiteLLM proxy (AI cleanup only for now). The UI says "Cloud"; a provider's name appears only in the provider switch and its own fields (D78).
+Online models the app can use, through one **Cloud provider** at a time (enforced by each app's settings layer): OpenRouter (speech to text and AI cleanup) or the user's LiteLLM proxy (AI cleanup only for now). The UI says "Cloud"; a provider's name appears only in the provider switch and its own fields (D78).
 _Avoid_: OpenRouter (as the umbrella term), online service
 
 **LiteLLM proxy**:

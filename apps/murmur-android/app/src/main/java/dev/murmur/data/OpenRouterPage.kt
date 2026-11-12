@@ -3,9 +3,14 @@ package dev.murmur.data
 import dev.murmur.data.DevSettings.Route
 
 /**
- * The OpenRouter page's state changes (ui/OpenRouterActivity, ui/ModelPickerActivity), pure for
+ * The Cloud page's state changes (ui/OpenRouterActivity, ui/ModelPickerActivity), pure for
  * the JVM tests. Each use has its own opt-in and its own consent record: turning one on never
  * turns the other on, and turning a use off keeps its consent (turning it on again asks nothing).
+ *
+ * D78: one Cloud provider at a time, OpenRouter or LiteLLM ([CleanupProvider.CUSTOM], the D52
+ * server). LiteLLM does AI cleanup only, so cloud speech is off while it is picked. This is the
+ * app's settings rule, kept on [CloudSettings.sttAvailable] / [DevSettings.oneCloudProvider]; the
+ * shared router still accepts the mix.
  */
 object OpenRouterPage {
     /** Speech-to-text needs the consent dialog first. */
@@ -13,8 +18,17 @@ object OpenRouterPage {
     /** D52: the selected provider's own consent (a custom server's is bound to its host). */
     fun cleanupNeedsConsent(s: DevSettings) = !s.cloud.cleanupConsentOk
 
-    /** STT on (after its consent): the cloud goes first in the route order (§3.1 step 4). */
-    fun enableStt(s: DevSettings, nowMs: Long): DevSettings = s.copy(
+    /** D78: cloud speech exists only with OpenRouter as the Cloud provider. */
+    fun sttAvailable(s: DevSettings) = s.cloud.sttAvailable
+
+    /** D78: [s] with cloud speech off when LiteLLM is the provider ([DevSettings.oneCloudProvider]). */
+    fun oneProvider(s: DevSettings): DevSettings = s.oneCloudProvider()
+
+    /**
+     * STT on (after its consent): the cloud goes first in the route order (§3.1 step 4). D78: with
+     * LiteLLM as the provider nothing changes (the caller says [CloudText.LITELLM_NO_STT]).
+     */
+    fun enableStt(s: DevSettings, nowMs: Long): DevSettings = if (!sttAvailable(s)) s else s.copy(
         allowCloud = true,
         routeOrder = if (Route.CLOUD in s.routeOrder) s.routeOrder else DevSettings.withCloudFirst(s.routeOrder),
         cloud = if (s.cloud.stt.consentOk) s.cloud else s.cloud.copy(stt = s.cloud.stt.withConsent(nowMs)),
@@ -39,19 +53,19 @@ object OpenRouterPage {
     )
 
     /**
-     * D52 provider choice. A custom server is selectable only once [CustomCleanupSettings.ready]
-     * (the router refuses a config naming an unusable one); null = not yet.
+     * D78 provider switch. LiteLLM is saved as soon as it is picked, set up or not (the router is
+     * sent OpenRouter without cleanup consent until it is ready, [CloudSettings.routerJson]), and
+     * picking it turns cloud speech off ([oneProvider]).
      */
-    fun withProvider(s: DevSettings, p: CleanupProvider): DevSettings? =
-        if (p == CleanupProvider.CUSTOM && !s.cloud.customCleanup.ready) null
-        else s.copy(cloud = s.cloud.copy(cleanupProvider = p))
+    fun withProvider(s: DevSettings, p: CleanupProvider): DevSettings =
+        oneProvider(s.copy(cloud = s.cloud.copy(cleanupProvider = p)))
 
     fun withCustom(s: DevSettings, f: CustomCleanupSettings.() -> CustomCleanupSettings) =
         s.copy(cloud = s.cloud.copy(customCleanup = s.cloud.customCleanup.f()))
 
-    /** What the custom server still needs before it can be selected, or null when it is ready. */
+    /** What LiteLLM still needs before cleanup can use it, or null when it is ready. */
     fun customMissing(c: CustomCleanupSettings): String? = when {
-        CustomServer.normalizeBaseUrl(c.baseUrl) == null -> "Set the server address first"
+        CustomServer.normalizeBaseUrl(c.baseUrl) == null -> "Set the proxy address first"
         !CustomServer.validModelId(c.model.trim()) -> "Set the model first"
         else -> null
     }
@@ -95,7 +109,7 @@ object OpenRouterPage {
     fun settingsSummary(s: DevSettings, hasKey: Boolean): String {
         val speech = if (s.cloudRouted && s.cloud.stt.consentOk) "Speech on" else "Speech off"
         val cleanup = when {
-            s.cloud.customNotSetUp && s.allowCloudCleanup -> "Cleanup off (custom server not set up)"
+            s.cloud.customNotSetUp && s.allowCloudCleanup -> "Cleanup off (LiteLLM not set up)"
             s.cloudCleanupRouted && s.cloud.cleanupConsentOk -> "Cleanup on (${cleanupWho(s.cloud)})"
             else -> "Cleanup off"
         }
