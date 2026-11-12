@@ -1,6 +1,8 @@
 package dev.murmur
 
 import dev.murmur.core.RouterErrors
+import dev.murmur.bubble.DictationSurface
+import dev.murmur.bubble.OwnScreens
 import dev.murmur.debug.DebugAudioStore
 import dev.murmur.debug.DebugLogFile
 import dev.murmur.debug.DebugLogger
@@ -125,6 +127,9 @@ class MurmurApp : Application() {
      */
     @Volatile var dictationSurface: Any? = null
 
+    /** Which of our screens are in front, from the activity lifecycle: the bubble stays off them. */
+    val ownScreens = OwnScreens()
+
     /** Notes text (the Scratchpad / Quick note is one of them) + their index, app-private `files/notes/`. */
     val documents: NotesStore by lazy { NotesStore(File(filesDir, "notes")) }
 
@@ -192,6 +197,7 @@ class MurmurApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        registerActivityLifecycleCallbacks(OwnScreenCallbacks())
         // Review C2: a blocking native call on Main is a bug (ANR on the server route); say so loudly.
         BlockingCalls.isMainThread = { android.os.Looper.myLooper() == android.os.Looper.getMainLooper() }
         BlockingCalls.onViolation = { Log.e("MurmurEngine", "blocking native call on the main thread: $it", Throwable("C2")) }
@@ -279,6 +285,18 @@ class MurmurApp : Application() {
         runCatching { cloudKeys.get(OpenRouter.ID) }.getOrNull()?.let(out::add)
         runCatching { cloudKeys.get(CustomServer.ID) }.getOrNull()?.let(out::add)
         return out
+    }
+
+    /** Feeds [ownScreens]: every activity of ours, started to stopped. */
+    private inner class OwnScreenCallbacks : ActivityLifecycleCallbacks {
+        override fun onActivityStarted(a: android.app.Activity) =
+            ownScreens.started(a, surface = a is DictationSurface, splitScreen = a.isInMultiWindowMode)
+        override fun onActivityStopped(a: android.app.Activity) = ownScreens.stopped(a)
+        override fun onActivityCreated(a: android.app.Activity, state: android.os.Bundle?) = Unit
+        override fun onActivityResumed(a: android.app.Activity) = Unit
+        override fun onActivityPaused(a: android.app.Activity) = Unit
+        override fun onActivitySaveInstanceState(a: android.app.Activity, out: android.os.Bundle) = Unit
+        override fun onActivityDestroyed(a: android.app.Activity) = Unit
     }
 
     companion object {

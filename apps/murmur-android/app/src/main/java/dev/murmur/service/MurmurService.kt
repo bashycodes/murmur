@@ -164,10 +164,13 @@ class MurmurService : Service() {
             // "Bubble size" and "Shrink to a dot" ride along with repair, so either applies to the live bubble at once.
             // Command Mode's ✎ rides along too: shown per the "Command button" setting and the field's selection.
             val command = combine(app.settings.commandButton, app.fieldSelection) { mode, sel -> mode.shows(sel) }
-            val repairAndLook = combine(repair, app.settings.bubbleScale, app.settings.shrinkToDot, command) { r, scale, dot, cmd -> Look(r, scale, dot, cmd) }
+            // Our own screens in front ride along too: no bubble over them (OwnScreens).
+            val repairAndLook = combine(repair, app.settings.bubbleScale, app.settings.shrinkToDot, command, app.ownScreens.inFront) { r, scale, dot, cmd, own ->
+                Look(r, scale, dot, cmd, own)
+            }
             combine(controller.state, controller.level, showCopy, presence.presence, repairAndLook) { s, l, c, p, look ->
                 BubbleUi(
-                    s, c && s == DictationState.Ready, l, minimized = p.minimized, repair = look.repair, visible = presence.visible(s),
+                    s, c && s == DictationState.Ready, l, minimized = p.minimized, repair = look.repair, visible = presence.visible(s, look.ownScreen),
                     scale = look.scale, dot = look.dot, showCommand = look.command && s == DictationState.Ready,
                 )
             }.collect { if (::overlay.isInitialized) overlay.render(it) }
@@ -783,7 +786,7 @@ class MurmurService : Service() {
     @Volatile private var languageSource: String? = null
 
     /** Bubble look settings + Command Mode's ✎ (one flow, so the bubble combine stays at five inputs). */
-    private data class Look(val repair: Boolean, val scale: Float, val dot: Boolean, val command: Boolean)
+    private data class Look(val repair: Boolean, val scale: Float, val dot: Boolean, val command: Boolean, val ownScreen: Boolean)
 
     private inner class BubbleListener : BubbleView.Listener {
         override fun onTap(button: BubbleButton) {
