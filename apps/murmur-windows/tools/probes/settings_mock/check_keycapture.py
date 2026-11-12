@@ -45,7 +45,7 @@ with sync_playwright() as p:
 
     pg.evaluate("window.__goPage('settings-general')")
     pg.wait_for_timeout(200)
-    check("ptt keycaps", keys("ptt") == ["Ctrl", "Win"], keys("ptt"))
+    check("ptt keycaps (D57 default Right Alt)", keys("ptt") == ["Right Alt"], keys("ptt"))
 
     # Change → recording.
     pg.click(f"{box('ptt')} .lw-edit-btn")
@@ -57,11 +57,11 @@ with sync_playwright() as p:
     check("text field stays hidden", pg.is_hidden("#ptt"))
     pg.screenshot(path=str(out / "keycapture-recording.png"))
 
-    # The hook reports Right Alt → saved.
-    pg.evaluate("window.__capture('Right Alt')")
+    # The hook reports Ctrl+Win → saved.
+    pg.evaluate("window.__capture('Ctrl+Win')")
     pg.wait_for_timeout(200)
-    check("Right Alt saved", shortcuts()["ptt"] == "Right Alt", shortcuts()["ptt"])
-    check("keycaps show it", keys("ptt") == ["Right Alt"], keys("ptt"))
+    check("Ctrl+Win saved", shortcuts()["ptt"] == "Ctrl+Win", shortcuts()["ptt"])
+    check("keycaps show it", keys("ptt") == ["Ctrl", "Win"], keys("ptt"))
     check("back to Change", pg.inner_text(f"{box('ptt')} .lw-edit-btn") == "Change" and pg.is_hidden(f"{box('ptt')} .lw-edit-type"))
     check("saved status", "Saved" in pg.inner_text("#status"), pg.inner_text("#status"))
 
