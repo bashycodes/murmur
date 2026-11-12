@@ -54,6 +54,11 @@ def visible_step(pg):
     return pg.evaluate("[...document.querySelectorAll('#onboarding [data-ob-step]')].filter(p => !p.hidden).map(p => p.dataset.obStep).join(',')")
 
 
+def checked(pg, sel, attr):
+    """`attr` of each radio under `sel` that is aria-checked."""
+    return pg.eval_on_selector_all(sel, "(bs, a) => bs.filter(b => b.getAttribute('aria-checked') === 'true').map(b => b.getAttribute(a))", attr)
+
+
 def keys(pg):
     return pg.eval_on_selector_all("#ob_keys kbd", "ks => ks.map(k => k.textContent)")
 
@@ -80,7 +85,7 @@ def walk(pg, scheme):
     nxt(pg)
     check(tag + "engine step", visible_step(pg) == "engine")
     # D73: a clean install opens with Your server selected and Recommended.
-    check(tag + "your server preselected", pg.get_attribute("[data-ob-engine=server]", "aria-checked") == "true")
+    check(tag + "your server preselected", checked(pg, "[data-ob-engine]", "data-ob-engine") == ["server"])
     rec = pg.eval_on_selector_all("[data-ob-engine]", "bs => bs.filter(b => !b.querySelector('[data-ob-rec]').hidden).map(b => b.dataset.obEngine)")
     check(tag + "your server recommended", rec == ["server"], str(rec))
     check(tag + "server fields shown", pg.is_visible("#ob_host") and pg.is_visible("#ob_token") and pg.is_visible("#ob_test_conn"))
@@ -141,7 +146,7 @@ def walk(pg, scheme):
 
     # D79: a server was saved above, so downloads default to it; this walk
     # checks the Hugging Face path (check_download_source.py covers the server).
-    src = lambda: pg.eval_on_selector_all("[data-ob-step=model] [data-ob-src]", "bs => bs.filter(b => b.getAttribute('aria-checked') === 'true').map(b => b.dataset.obSrc)")
+    src = lambda: checked(pg, "[data-ob-step=model] [data-ob-src]", "data-ob-src")
     check(tag + "downloads from your server by default", src() == ["server"], str(src()))
     pg.click("[data-ob-step=model] [data-ob-src=huggingface]")
     pg.wait_for_timeout(150)
@@ -215,12 +220,12 @@ def walk(pg, scheme):
     check(tag + "cloud cleanup on", visible_step(pg) == "try" and o["cleanup"]["allow"] and o["cleanup"]["consent"], str(o["cleanup"]))
     back(pg)
     # D78: Cloud cleanup has an OpenRouter | LiteLLM switch (one provider).
-    prov = lambda: pg.eval_on_selector_all("#ob_cloud_prov_seg [data-ob-cloud-provider]", "bs => bs.filter(b => b.getAttribute('aria-checked') === 'true').map(b => b.dataset.obCloudProvider)")
+    prov = lambda: checked(pg, "#ob_cloud_prov_seg [data-ob-cloud-provider]", "data-ob-cloud-provider")
     check(tag + "cloud cleanup option", pg.inner_text("[data-ob-cleanup=cloud] .lw-ob-option-title").startswith("Cloud") and prov() == ["openrouter"], str(prov()))
     pg.click("#ob_cloud_prov_seg [data-ob-cloud-provider=custom]")
     pg.wait_for_timeout(100)
     check(tag + "litellm fields", prov() == ["custom"] and pg.is_visible("#ob_ll_url") and pg.is_hidden("#ob_or_key_row") and not pg.is_checked("#ob_clean_consent") and "my proxy" in pg.inner_text("#ob_clean_consent_title"))
-    pg.fill("#ob_ll_url", "http://10.0.0.5:4000/v1")
+    pg.fill("#ob_ll_url", "http://10.0.0.5:4000")  # saved with /v1 added
     pg.click("#ob_ll_test")
     pg.wait_for_timeout(200)
     check(tag + "litellm test lists models", "Connected · 1 model" in pg.inner_text("#ob_ll_test_out") and pg.input_value("#ob_ll_model") == "llama-3.1-8b-instruct", pg.inner_text("#ob_ll_test_out"))
@@ -229,7 +234,7 @@ def walk(pg, scheme):
     nxt(pg)
     o = orv(pg)
     cu = o["cleanup"]["custom"]
-    check(tag + "litellm cleanup saved", visible_step(pg) == "try" and o["cleanup"]["provider"] == "custom" and o["cleanup"]["allow"] and cu["host"] == "10.0.0.5:4000" and cu["model"] == "llama-3.1-8b-instruct" and cu["consent"], str(o["cleanup"]))
+    check(tag + "litellm cleanup saved", visible_step(pg) == "try" and o["cleanup"]["provider"] == "custom" and o["cleanup"]["allow"] and cu["host"] == "10.0.0.5" and cu["base_url"] == "http://10.0.0.5:4000/v1" and cu["model"] == "llama-3.1-8b-instruct" and cu["consent"], str(o["cleanup"]))
     check(tag + "litellm turns cloud speech off", not o["stt"]["allow"] and o["stt"]["available"] is False, str(o["stt"]))
     back(pg)
     pg.click("[data-ob-cleanup=pc]")
@@ -246,7 +251,7 @@ def walk(pg, scheme):
     check(tag + "rules only saved", not p["llm_enabled"] and p["cleanup_level"] == "none" and p["spoken_cleanup"])
 
     check(tag + "try step", visible_step(pg) == "try")
-    check(tag + "shortcut keys (D56 default)", keys(pg) == ["Right Alt"], str(keys(pg)))
+    check(tag + "shortcut keys (D57 default)", keys(pg) == ["Right Alt"], str(keys(pg)))
     check(tag + "practice box focused", pg.evaluate("document.activeElement.id") == "ob_try_box")
     pg.fill("#ob_try_box", "Hey, are we still on for Thursday? I'll bring the slides.")
     pg.evaluate("""window.__emit('dev:route', { last: { engine: 'local', asr_ms: 900, total_ms: 1100, status: 'FORMATTED',
@@ -275,7 +280,7 @@ def walk(pg, scheme):
     pg.wait_for_timeout(300)
     check(tag + "run setup again", pg.is_visible("#onboarding") and visible_step(pg) == "welcome" and pg.is_hidden("#settings"))
     nxt(pg)
-    check(tag + "re-run preselects saved engine", pg.get_attribute("[data-ob-engine=pc]", "aria-checked") == "true")
+    check(tag + "re-run preselects saved engine", checked(pg, "[data-ob-engine]", "data-ob-engine") == ["pc"])
     back(pg)
     pg.click("[data-ob=skip]")
     pg.wait_for_timeout(200)
