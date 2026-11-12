@@ -12,6 +12,7 @@ import android.widget.TextView
 import dev.murmur.EngineHolder
 import dev.murmur.MurmurApp
 import dev.murmur.R
+import dev.murmur.core.HealthReport
 import dev.murmur.data.EnginePlan
 import dev.murmur.data.CleanupEngines
 import dev.murmur.data.CloudText
@@ -40,6 +41,9 @@ internal class CleanupPage(
     private var orderRow: View? = null
     private var orderLabel: TextView? = null
     private var reordering = false
+    /** Set by the activity from its server health probe (as on Speech to text); [checking] while one runs. */
+    var health: HealthReport? = null
+    var checking = false
     /** What the rows show now; [refresh] rebuilds them only when it changes (polling keeps focus put). */
     private var shown: String? = null
 
@@ -112,10 +116,10 @@ internal class CleanupPage(
     }
 
     private fun subtitle(r: CleanupRoute, d: DevSettings, s: Settings): String = when (r) {
-        CleanupRoute.LOCAL -> CleanupEngines.phoneLine(s.llmEnabled, app.settings.llmModelPath?.let { java.io.File(it).name }, phoneLoaded())
+        CleanupRoute.LOCAL -> CleanupEngines.phoneLine(CleanupEngines.on(d, s, r), app.settings.llmModelPath?.let { java.io.File(it).name }, phoneLoaded())
         CleanupRoute.SERVER -> {
             val st = if (d.serverConfigured) app.engine.router()?.cleanupStatus() else null
-            CleanupEngines.serverLine(d, caps, st?.serverLlm, st?.serverCircuit?.open == true)
+            CleanupEngines.serverLine(d, caps, st?.serverLlm, st?.serverCircuit?.open == true, health, checking)
         }
         CleanupRoute.CLOUD -> CleanupEngines.cloudLine(d, app.cloudKeys.has(OpenRouter.ID))
     }
