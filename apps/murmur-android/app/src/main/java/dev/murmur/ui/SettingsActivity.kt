@@ -721,7 +721,7 @@ class SettingsActivity : Activity() {
                     s.commandButton,
                 ) { v -> applyNow { copy(commandButton = v) } }
             }
-            note("Command Mode uses AI cleanup: the on-device model, or OpenRouter only when \"send text around the cursor\" is on. Never in password, sensitive or banking fields.")
+            note("Command Mode uses AI cleanup: the on-device model, or the cloud only when \"send text around the cursor\" is on. Never in password, sensitive or banking fields.")
             note("Drag the bubble onto the target at the bottom of the screen to snooze it for 10 minutes. Changes apply at once.")
         }
     }

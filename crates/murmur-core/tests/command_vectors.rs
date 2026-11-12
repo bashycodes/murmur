@@ -26,7 +26,9 @@ fn input(v: &Value) -> Result<String, CommandError> {
             max: num("max") as usize,
         },
         "no_llm" => CommandError::NoLlm,
-        "selection_not_allowed" => CommandError::SelectionNotAllowed,
+        "selection_not_allowed" => CommandError::SelectionNotAllowed {
+            to: v.get("to").map(|t| t.as_str().unwrap().into()),
+        },
         "timeout" => CommandError::Timeout { secs: num("secs") },
         "empty" => CommandError::Empty,
         "language_changed" => CommandError::LanguageChanged,
