@@ -196,16 +196,21 @@ public address, publish on its LAN address only
 
 ### With a GPU: a larger cleanup model
 
-If the server has an NVIDIA GPU with 10 GB of memory or more, use
-**Gemma 3 12B** for AI cleanup. It is the most careful model for Hebrew and
-as good as the default in English (`docs/model-benchmarks.md`, "GPU cleanup
-model"). On a CPU it is far too slow, at about 6 s per dictation.
+If the server has an NVIDIA GPU with more than 10 GB of memory, use
+**Gemma 3 12B** for AI cleanup. It is the most careful model for Hebrew,
+and close to the default in English (`docs/model-benchmarks.md`, "GPU
+cleanup model"). On a CPU it is far too slow, at about 6 s per dictation.
 
-You need the NVIDIA driver and the NVIDIA container toolkit on the host.
+These steps are for NVIDIA GPUs with CUDA only. AMD and other GPUs (Vulkan)
+are not covered yet. The host needs the NVIDIA driver and the NVIDIA
+container toolkit.
 
-1. Put the model in the library. It is 7.3 GB. Skip this if the bundle was
-   built with `--llm all`, because the model is then already in the
-   cleanup zip.
+1. **Download Gemma yourself.** Murmur does not ship Gemma or hand it on;
+   it is not in any bundle or zip. Downloading it means you accept
+   Google's [Gemma Terms of Use](https://ai.google.dev/gemma/terms) and its
+   [Prohibited Use Policy](https://ai.google.dev/gemma/prohibited_use_policy),
+   so read them first. The model is 7.3 GB, pinned to one Hugging Face
+   commit and checked by its SHA-256:
 
    ```sh
    d=~/murmur-models/library/gemma-3-12b-it-q4_k_m; mkdir -p $d
@@ -215,7 +220,7 @@ You need the NVIDIA driver and the NVIDIA container toolkit on the host.
    printf 'kind = "llm"\ntitle = "Gemma 3 12B Instruct"\ncatalogue_id = "gemma-3-12b-it-q4_k_m"\n' > $d/model.toml
    ```
 
-2. Build the CUDA image from the source. Set `CUDAARCHS` to your GPU's
+2. **Build the CUDA image** from the source. Set `CUDAARCHS` to your GPU's
    compute capability, for example 86 for an RTX 30xx.
 
    ```sh
@@ -223,9 +228,11 @@ You need the NVIDIA driver and the NVIDIA container toolkit on the host.
      -f murmur-server-source-{{VERSION}}/deploy/docker/Dockerfile murmur-server-source-{{VERSION}}
    ```
 
-3. Start the server with the GPU and the model.
+3. **Replace the running server.** Remove the existing container first.
+   The keys stay safe in the `murmur_data` volume.
 
    ```sh
+   docker rm -f murmur-server
    docker run -d --name murmur-server --restart unless-stopped --gpus all -p 0.0.0.0:7313:7313 \
      -e MURMUR_LLM=gemma-3-12b-it-q4_k_m \
      -v ~/murmur-models/library:/models:ro -v murmur_data:/data murmur-server:cuda
@@ -234,13 +241,24 @@ You need the NVIDIA driver and the NVIDIA container toolkit on the host.
 The first start loads the model, which takes a few minutes. Then
 `docker logs murmur-server` names `AI cleanup gemma-3-12b-it-q4_k_m`.
 
-Gemma is under the Gemma Terms of Use (NOTICE). Anyone who passes the
-model on must include those terms.
+If you have saved your own `/data/config.toml`, the server ignores
+`MURMUR_LLM`. In that case, set the model in the file instead
+(`llm_path = "/models/gemma-3-12b-it-q4_k_m/google_gemma-3-12b-it-Q4_K_M.gguf"`)
+and run `docker restart murmur-server`.
+
+The apps list Gemma from your server as a custom model, because they have
+no pin for it, and they never fetch it from Hugging Face. If a teammate
+downloads it from your server, you are the one handing it on, so the
+Gemma terms apply to that copy too.
 
 Choose by GPU memory:
 
-* 6–8 GB: use `MURMUR_LLM=llama-3.2-3b-instruct-q4_k_m`. It is in the
-  cleanup zip with `--llm all`.
+* More than 10 GB: Gemma 3 12B, as above.
+* 8–10 GB: use `MURMUR_LLM=llama-3.2-3b-instruct-q4_k_m`. It is in the
+  cleanup zip of a bundle made with `--llm all`. Gemma does not fit fully:
+  the server would run part of it on the CPU, and how fast that is has not
+  been measured.
+* 6–8 GB: Llama 3.2 3B as well.
 * Less than 6 GB, or no GPU: keep the default.
 
 ### Without Docker
