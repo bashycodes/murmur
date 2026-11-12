@@ -46,7 +46,7 @@ pub enum CommandError {
     /// provider and host); `None` reads "the cloud".
     #[error(
         "Command Mode would send the selection to {}: allow surrounding text there, or use a local AI model",
-        destination_or_cloud(.to)
+        destination_or_cloud(.to.as_deref())
     )]
     SelectionNotAllowed { to: Option<String> },
     #[error("AI didn't answer within {secs} s")]
@@ -81,8 +81,8 @@ impl CommandError {
 
 /// How a refusal names where text would go: the backend's
 /// [`Cleaner::destination`], else "the cloud".
-pub fn destination_or_cloud(to: &Option<String>) -> &str {
-    to.as_deref().unwrap_or("the cloud")
+pub fn destination_or_cloud(to: Option<&str>) -> &str {
+    to.unwrap_or("the cloud")
 }
 
 /// The wire shape of a command's outcome (FFI `murmur_command`, JNI
@@ -619,6 +619,13 @@ mod tests {
                 ..Arc::try_unwrap(Fake::ok(reply)).ok().unwrap()
             })
         }
+        /// A cloud backend that names where it sends text (D52/D78).
+        fn cloud_to(destination: Option<&'static str>) -> Arc<Fake> {
+            Arc::new(Fake {
+                destination,
+                ..Arc::try_unwrap(Fake::cloud("x")).ok().unwrap()
+            })
+        }
         fn calls(&self) -> usize {
             self.prompts.lock().unwrap().len()
         }
@@ -741,10 +748,7 @@ mod tests {
     #[test]
     fn the_selection_refusal_names_the_active_cloud_provider() {
         let refusal = |destination: Option<&'static str>| {
-            let cloud = Arc::new(Fake {
-                destination,
-                ..Arc::try_unwrap(Fake::cloud("x")).ok().unwrap()
-            });
+            let cloud = Fake::cloud_to(destination);
             // Cloud-first route without a usable local part: the refusal
             // names the cloud part's destination.
             let routed: Arc<dyn Cleaner> =
