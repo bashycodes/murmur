@@ -1161,12 +1161,17 @@ mod tests {
 
     /// One list of catalogue ids for the server, Windows and Android:
     /// `murmur_protocol::library::CATALOGUE` (the server infers a tag's engine
-    /// from it) names exactly these ids, with the same engine and kind.
+    /// from it) names exactly these ids, with the same engine and kind, plus
+    /// the server-only ones (`SERVER_ONLY`).
     #[test]
     fn catalogue_ids_are_the_protocol_list() {
-        use murmur_protocol::library::{ModelKind, CATALOGUE};
+        use murmur_protocol::library::{ModelKind, CATALOGUE, SERVER_ONLY};
         let mine: Vec<_> = CATALOG.iter().map(|e| e.id).collect();
-        let shared: Vec<_> = CATALOGUE.iter().map(|c| c.id).collect();
+        let shared: Vec<_> = CATALOGUE
+            .iter()
+            .map(|c| c.id)
+            .filter(|id| !SERVER_ONLY.contains(id))
+            .collect();
         assert_eq!(
             mine.iter()
                 .copied()

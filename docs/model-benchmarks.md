@@ -8,6 +8,7 @@ Measured 2026-10-20 to check the defaults in `DECISIONS.md` D3–D5 against data
 |---|---|---|---|
 | **Desktop, CPU only** | **Parakeet-TDT-0.6B int8** (sherpa-onnx) for English. **whisper base q5_1** for other languages or auto-detect. whisper small q5_1 as an opt-in "accurate" mode. | **OFF** by default. Opt-in: Qwen2.5-3B-Instruct Q4_K_M with the few-shot prompt (Qwen2.5-1.5B on slower CPUs). | ASR ≈ 1.2 s (Parakeet) / 2 s (base). The LLM adds 2.5–4.5 s. |
 | **Desktop, GPU** (estimate) | whisper large-v3-turbo q5_0 (multilingual). Parakeet on CUDA for English. | **ON** is viable: Qwen2.5-3B, or Qwen2.5-7B, few-shot. | ≈ 0.3–0.6 s ASR plus ≈ 0.3–0.8 s LLM (estimate) |
+| **Server with an NVIDIA GPU > 10 GB** (2026-11-12; quality measured, latency estimate) | as the server default | **Gemma 3 12B Q4_K_M**: the only one tested with no harmful Hebrew edit. Avoid Qwen2.5-14B for Hebrew (mixed-script junk). See §GPU cleanup model. | LLM ≈ 0.2–0.8 s (estimate) |
 | **Android** (estimate) | whisper base q5_1 (D4 holds). tiny q5_1 on low-end phones. Parakeet int8 as an English option on flagships. | **OFF**. Opt-in Qwen2.5-1.5B only on phones with ≥ 8 GB RAM. | ≈ 1–2.5 s ASR on a flagship; the LLM adds 1.5–4 s |
 
 What this changes in DECISIONS:
@@ -265,3 +266,127 @@ server mode comes from running on a faster machine than the client (a phone),
 which this single-box test cannot show. After the run the server's state
 directory (its cwd, HOME and TMPDIR) was empty, and its log had 10 `result`
 lines with no transcript text.
+
+## GPU cleanup model for a server with a spare GPU (2026-11-12)
+
+Question: which larger cleanup model should a murmur-server with a spare
+NVIDIA GPU run, for English and Hebrew dictation? Candidates: Qwen2.5-7B
+Q4_K_M, Qwen2.5-14B Q4_K_M and Gemma 3 12B Q4_K_M (the strong alternative:
+Gemma 3 lists Hebrew among its trained languages). Qwen2.5-1.5B (the server
+default) is the baseline. Probe: `tools/probes/prototypes/gpu_cleanup_model_2026_11_12/`.
+
+**No GPU was reachable**, so quality is **measured** on the CPU (i7-6700, 4
+threads) and GPU latency is an **estimate**. We **assume** a GPU produces the
+same texts: decoding is greedy and deterministic, but CUDA kernels round
+differently from the CPU ones, so a token could occasionally differ. This
+has not been checked.
+
+### Method (measured)
+
+* The real commit path: `MurmurCore` in `server` mode with the shipped prompt
+  (v2, never skipped), the llama.cpp plugin (`libmurmur_llm.so`), and
+  prompt-lookup drafting at 4, as murmur-server runs it (`llm_draft`).
+* Suites, all synthetic:
+  * bench: the 19 cases of `tools/probes/bench/cleanup_cases.json`, formal style, English
+  * numbers: the 61 cases of `numbers_2026_11_06`, casual style, English
+  * Hebrew: the 28 dev and 14 holdout lines of `hebrew_stays_hebrew_2026_11_07`, casual style, `he`
+* Scoring (`score.py`) covers exact match, similarity to the expected text,
+  the numbers regexes, and the Hebrew checks: D65 script, words kept, leaks,
+  junk and rewording. For every reworded Hebrew line and every
+  bench/numbers miss, the output was read by hand (`score.py --fails`).
+
+### Results (measured on CPU, except the last column)
+
+The bench similarity of the raw input is 0.727.
+
+| model | file | bench exact | bench sim | numbers pass | HE stays Hebrew (D65) | HE words kept | HE junk lines | HE reworded | HE punctuated | fallbacks | CPU LLM p50 | GPU per dictation (**estimate**) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Qwen2.5-1.5B (default) | 1.1 GB | 11/19 | 0.956 | 61/61 | 42/42 | 0.97 | 2 | 21 | 23/42 | 0/122 | 1.0 s | < 0.2 s |
+| Qwen2.5-7B | 4.7 GB | **14/19** | 0.956 | 58/61 | 42/42 | 0.98 | 2 | 14 | 23/42 | 0/122 | 3.7 s | 0.15–0.4 s |
+| **Gemma 3 12B** | 7.3 GB | 11/19 | 0.953 | 58/61 | 42/42 | **0.99** | **0** | **8** | **32/42** | 0/122 | 6.1 s | 0.2–0.8 s |
+| Qwen2.5-14B | 9.0 GB | 12/19 | 0.959 | 60/61 | 42/42 | 0.96 | **7** | 20 | 25/42 | 0/122 | 9.2 s | 0.2–0.8 s |
+
+"Junk" means a Hebrew output with an English word the input does not have,
+or with any Arabic, Cyrillic, CJK or U+FFFD character. "Punctuated" means
+the model added punctuation to a Hebrew line; the inputs have none.
+
+What the hand check found:
+
+* **Qwen2.5-14B garbles Hebrew.** It produced junk in 7 lines, for
+  example:
+  * a Turkish word
+  * a Chinese instruction sentence
+  * a Russian instruction
+  * Arabic letters inside Hebrew words
+  * Cyrillic
+  * U+FFFD
+  * "ToUpdate"
+
+  The D65 script check passes all of them, because each line stays mostly
+  Hebrew. It is not yet known whether prompt-lookup drafting plays a part.
+  `control.sh` reruns 5 of these lines with drafting off, but it has not
+  been run, because the shared build lock was busy.
+* **Qwen2.5-7B** is best at the English bench (14/19), but in Hebrew it:
+  * changed a pronoun, which changes the meaning
+  * introduced a spelling error
+  * wrote an Arabic word
+  * appended an email sign-off ("תודה, [Your Name]")
+
+  It also trimmed one numbers case.
+* **Gemma 3 12B** made no harmful Hebrew edit. It produced no junk, made
+  the fewest rewordings (8, all minor: one dropped word and one typo fixed),
+  and punctuated the most lines. Its one English harm: "85 percent" became
+  "85".
+* All four left the prompt-injection cases unanswered (c15, c16).
+* **Qwen2.5-1.5B** inserted two words that were not in the input.
+
+### GPU latency (estimate)
+
+A dictation prefills about 40 new prompt tokens (the cached prefix is not
+counted) and generates about 22–25 tokens in about 6.5 decode steps, since
+prompt-lookup drafting accepts most tokens. On an RTX 3060 12 GB-class
+card, Q4_K_M decodes at about 50–70 tok/s for 7B and about 30–40 tok/s for
+12–14B. That gives the per-dictation column above. The first dictation also
+prefills the about 1.9k-token prompt prefix once (about 1 s).
+
+Gemma 3 12B needs about 9–10 GB of VRAM: 7.3 GB of weights plus the KV
+cache and compute buffers. On a card with less, the plugin offloads part
+of the model or falls back to the CPU (`backend::choose`), and a CPU
+cleanup takes about 6 s. Loading the model from an HDD took about 2 min
+for 7B, 3–4 min for Gemma and 4.5 min for 14B.
+
+### Recommendation
+
+**Gemma 3 12B Instruct Q4_K_M (`gemma-3-12b-it-q4_k_m`) for a server with an
+NVIDIA GPU of more than 10 GB** (a 12 GB card or larger). It is the only
+candidate with no harmful Hebrew edit, and its English is close to the
+others.
+
+* For a GPU of 6–10 GB, use Llama 3.2 3B, which is already in the catalogue, or Qwen2.5-7B. Qwen2.5-7B is not catalogued, and its Hebrew has the slips listed above. On 8–10 GB, Gemma would run partly on the CPU, which has not been measured.
+* Do not use Qwen2.5-14B for Hebrew.
+* Without a GPU, keep Qwen2.5-1.5B.
+
+The setup steps are in `docs/colleague-install.md` (§The server, "With a
+GPU"). The model is in the server catalogue only
+(`murmur_protocol::library::CATALOGUE`, listed in `SERVER_ONLY`). Its pin
+and SHA-256 are in the install note and in the probe's `fetch.sh`. Its
+licence is the Gemma Terms of Use (NOTICE §5).
+
+Murmur never redistributes Gemma: it is not in any bundle, image or zip
+(D80). Whoever runs the server downloads it from Hugging Face and accepts
+Google's terms.
+
+An earlier note said Qwen2.5-7B had never been run with few-shot turns.
+That is not quite right: the 2026-10-20 table above has a few-shot result
+for it (0.952), from the old llama-server bench. This run is the first
+through the shipped prompt v2 path, and the first in Hebrew.
+
+### Reproduce
+
+```sh
+P=tools/probes/prototypes/gpu_cleanup_model_2026_11_12
+$P/fetch.sh                     # 3 models, ~21 GB, pinned revisions + SHA-256, into ~/.cache/murmur/models
+# build the plugin and the runner (see $P/runner/Cargo.toml), then:
+BIN=…/gpu-model-clean LIB=…/libmurmur_llm.so $P/batch.sh
+python3 -I $P/score.py qwen2.5-1.5b qwen2.5-7b gemma-3-12b qwen2.5-14b [--fails]
+```

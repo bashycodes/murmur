@@ -74,6 +74,24 @@ get models/Llama-3.2-Acceptable-Use-Policy.md https://raw.githubusercontent.com/
 curl -fsSL --retry 3 https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/ |
   python3 -I "$ROOT/tools/notice/html_text.py" 'NVIDIA Open Model License Agreement' 'Version Release Date:' \
   > "$L/models/NVIDIA-Open-Model-License.txt"
+# Gemma 3 (the GPU server's cleanup model, D31/D80): the Terms of Use and the
+# Prohibited Use Policy they include. Murmur never hands Gemma on (whoever
+# runs the server downloads it and accepts these terms); the texts are here
+# for NOTICE. Google edits these pages in place, so they come from fixed
+# Wayback Machine captures of dated versions; a newer version means a new
+# capture and date here.
+gemma() { # DEST TITLE CAPTURE URL START END LAST_MODIFIED
+  { echo "$2"; echo
+    curl -fsSL --compressed --retry 3 "https://web.archive.org/web/${3}id_/$4" |
+      python3 -I "$ROOT/tools/notice/html_text.py" "$5" "$6" | sed '$d'
+  } > "$L/$1"
+  grep -qx "Last modified: $7" "$L/$1" || { echo "$1: not the $7 version" >&2; exit 1; }
+}
+gemma models/Gemma-Terms-of-Use.txt "Gemma Terms of Use" 20261106165500 \
+  https://ai.google.dev/gemma/terms 'The terms below apply' 'Note: Previous versions' "April 1, 2026"
+gemma models/Gemma-Prohibited-Use-Policy.txt "Gemma Prohibited Use Policy" 20261028145328 \
+  https://ai.google.dev/gemma/prohibited_use_policy 'Google reserves the right to update this Gemma' \
+  'Send feedback' "February 21, 2024"
 
 # Standard texts (SPDX license-list-data v3.25.0) for licences a component
 # declares without shipping its own file.
