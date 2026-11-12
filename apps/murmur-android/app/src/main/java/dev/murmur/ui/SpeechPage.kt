@@ -219,11 +219,11 @@ internal class SpeechPage(
         Route.CLOUD -> SettingsSummary.cloudEngine(d, app.cloudKeys.has(OpenRouter.ID))
     }
 
-    /** `use your server` / `use this phone` / `use OpenRouter for speech` (the design's switch labels). */
+    /** `use your server` / `use this phone` / `use the cloud for speech` (the design's switch labels, D78). */
     private fun useLabel(r: Route) = when (r) {
         Route.SERVER -> "Use your server"
         Route.CLIENT -> "Use this phone"
-        Route.CLOUD -> "Use ${OpenRouter.NAME} for speech"
+        Route.CLOUD -> "Use the cloud for speech"
     }
 
     private fun LinearLayout.engineRow(i: Int, n: Int, r: Route, on: Boolean, sub: String) = with(ui) {
@@ -287,8 +287,13 @@ internal class SpeechPage(
         saveDev(DevPages.withEngine(app.dev.load(), r, on))
     }
 
-    /** Same consent as the OpenRouter page; the engine starts at its listed place. */
+    /** Same consent as the Cloud page; the engine starts at its listed place. D78: refused while LiteLLM is the provider. */
     private fun enableCloud() {
+        if (!OpenRouterPage.sttAvailable(app.dev.load())) {
+            android.widget.Toast.makeText(activity, CloudText.LITELLM_NO_STT, android.widget.Toast.LENGTH_LONG).show()
+            refresh()
+            return
+        }
         val s = DevPages.placeCloud(app.dev.load(), caps)
         val go = {
             val n = OpenRouterPage.enableStt(s, System.currentTimeMillis())
@@ -296,7 +301,7 @@ internal class SpeechPage(
             app.engine.applyDevSettings(app.dev.load())
             refresh()
             if (!app.cloudKeys.has(OpenRouter.ID)) {
-                android.widget.Toast.makeText(activity, "Add your OpenRouter API key on the OpenRouter page: nothing is sent without one.", android.widget.Toast.LENGTH_LONG).show()
+                android.widget.Toast.makeText(activity, "Add your OpenRouter API key on the Cloud page: nothing is sent without one.", android.widget.Toast.LENGTH_LONG).show()
             }
         }
         if (!OpenRouterPage.sttNeedsConsent(s)) { go(); return }

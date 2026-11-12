@@ -227,7 +227,7 @@ class SettingsPagesTest {
         assertEquals("This phone, then your server", SettingsSummary.speech(dev.copy(routeOrder = listOf(DevSettings.Route.CLIENT, DevSettings.Route.SERVER)), caps))
         assertEquals("This phone only", SettingsSummary.speech(dev.copy(allowServer = false), caps))
         assertEquals("Off: no engine is on", SettingsSummary.speech(dev.copy(allowServer = false, allowClient = false), caps))
-        assertEquals("OpenRouter, then your server, then this phone", SettingsSummary.speech(OpenRouterPage.enableStt(dev, 1), caps))
+        assertEquals("Cloud, then your server, then this phone", SettingsSummary.speech(OpenRouterPage.enableStt(dev, 1), caps))
         // A build without the server sees only the phone, whatever is stored.
         assertEquals("This phone only", SettingsSummary.speech(dev, BuildCaps.LOCAL))
     }
@@ -240,9 +240,9 @@ class SettingsPagesTest {
         assertEquals("Off", SettingsSummary.cleanupRow(s.copy(spokenCleanup = false), noServer, caps))
         assertEquals("Light · This phone, then rules", SettingsSummary.cleanupRow(s.copy(llmEnabled = true), noServer, caps))
         val cloud = OpenRouterPage.enableCleanup(noServer, 1).copy(cleanupOrder = listOf(r[2], r[0], r[1]))
-        assertEquals("Medium · OpenRouter, then rules", SettingsSummary.cleanupRow(s.copy(cleanup = CleanupLevel.MEDIUM), cloud, caps))
-        assertEquals("High · OpenRouter, then this phone, then rules", SettingsSummary.cleanupRow(s.copy(llmEnabled = true, cleanup = CleanupLevel.HIGH), cloud, caps))
-        assertEquals("Light · This phone, then OpenRouter", SettingsSummary.cleanupRow(s.copy(llmEnabled = true, spokenCleanup = false), cloud.copy(cleanupOrder = DevSettings.DEFAULT_CLEANUP_ORDER), caps))
+        assertEquals("Medium · Cloud, then rules", SettingsSummary.cleanupRow(s.copy(cleanup = CleanupLevel.MEDIUM), cloud, caps))
+        assertEquals("High · Cloud, then this phone, then rules", SettingsSummary.cleanupRow(s.copy(llmEnabled = true, cleanup = CleanupLevel.HIGH), cloud, caps))
+        assertEquals("Light · This phone, then cloud", SettingsSummary.cleanupRow(s.copy(llmEnabled = true, spokenCleanup = false), cloud.copy(cleanupOrder = DevSettings.DEFAULT_CLEANUP_ORDER), caps))
         // No consent recorded: the cloud is not used, so not named.
         assertEquals("Rules only", SettingsSummary.cleanupRow(s, noServer.copy(allowCloudCleanup = true), caps))
         // D36: your server (on by default) cleans even with the phone's AI off; named only once set up.
@@ -260,7 +260,7 @@ class SettingsPagesTest {
         val noServer = dev.withCleanup(DevSettings.CleanupRoute.SERVER, false)
         val custom = CustomCleanupSettings(baseUrl = "http://10.0.0.5:4000/v1", model = "gpt-4o-mini")
         val on = OpenRouterPage.enableCleanup(noServer.copy(cloud = noServer.cloud.copy(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = custom)), 1)
-        assertEquals("Light · Custom server (10.0.0.5), then rules", SettingsSummary.cleanupRow(s, on, BuildCaps.ALL))
+        assertEquals("Light · Cloud, then rules", SettingsSummary.cleanupRow(s, on, BuildCaps.ALL))
         // D52: not set up (no model) sends nothing: neither named nor counted as an engine off the phone.
         val broken = OpenRouterPage.withCustom(on) { copy(model = "") }
         assertTrue(broken.cloud.customNotSetUp)
@@ -280,13 +280,29 @@ class SettingsPagesTest {
         assertEquals("Not in this build", SettingsSummary.server(dev, BuildCaps.LOCAL, ok))
     }
 
-    @Test fun openRouterRowShowsKeyAndThisMonthsCost() {
+    @Test fun cloudRowNamesTheProviderKeyAndThisMonthsCost() {
+        FakeCustomAddress.install()
+        val d = DevSettings.defaults(BuildCaps.ALL)
         val u = CloudUsage("2026-10", listOf(CloudUsage.ProviderUsage("openrouter", costUsd = 0.30), CloudUsage.ProviderUsage("openrouter", costUsd = 0.12, purpose = CloudUsage.PURPOSE_CLEANUP)))
-        assertEquals("Key saved · \$0.42 this month", SettingsSummary.openRouter(true, u))
-        assertEquals("No key · \$0 this month", SettingsSummary.openRouter(false, CloudUsage()))
-        // D52: the custom server's spend is not OpenRouter's.
+        assertEquals("OpenRouter · key saved · \$0.42 this month", SettingsSummary.cloud(d, true, u))
+        assertEquals("OpenRouter · no key · \$0 this month", SettingsSummary.cloud(d, false, CloudUsage()))
+        // D52: the proxy's spend is not OpenRouter's.
         val custom = u.copy(providers = u.providers + CloudUsage.ProviderUsage(CustomServer.ID, requests = 4, costUsd = 3.0, purpose = CloudUsage.PURPOSE_CLEANUP))
-        assertEquals("Key saved · \$0.42 this month", SettingsSummary.openRouter(true, custom))
+        assertEquals("OpenRouter · key saved · \$0.42 this month", SettingsSummary.cloud(d, true, custom))
+        // D78: LiteLLM is named with its host and the cost it reported (never OpenRouter's).
+        val ll = d.copy(cloud = d.cloud.copy(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = CustomCleanupSettings("http://10.0.0.5:4000/v1", "gpt-4o-mini")))
+        assertEquals("LiteLLM · 10.0.0.5 · \$3.00 this month", SettingsSummary.cloud(ll, false, custom))
+        assertEquals("LiteLLM · 10.0.0.5", SettingsSummary.cloud(ll, true, u))
+        assertEquals("LiteLLM · not set up", SettingsSummary.cloud(OpenRouterPage.withCustom(ll) { copy(model = "") }, true, u))
+    }
+
+    @Test fun cloudSpeechRowIsNotAvailableWithLiteLlm() {
+        val d = DevSettings.defaults(BuildCaps.ALL)
+        assertEquals("Sends audio · asks first", SettingsSummary.cloudEngine(d, hasKey = true))
+        val ll = OpenRouterPage.withProvider(OpenRouterPage.enableStt(d, 1), CleanupProvider.CUSTOM)
+        assertEquals(SettingsSummary.CLOUD_STT_NOT_AVAILABLE, SettingsSummary.cloudEngine(ll, hasKey = true))
+        assertTrue(SettingsSummary.CLOUD_STT_NOT_AVAILABLE.startsWith("Not available"))
+        assertEquals("Cloud", SettingsSummary.engineName(DevSettings.Route.CLOUD))
     }
 
     @Test fun engineLines() {

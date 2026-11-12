@@ -84,13 +84,14 @@ data class DevSettings(
 
     /**
      * Toggles AND build capability (§1.3 "effective flags"); public hosts force TLS (§2.6).
-     * A build without the cloud client sends the router no cloud settings at all (C2).
+     * A build without the cloud client sends the router no cloud settings at all (C2). D78: no
+     * cloud speech while LiteLLM is the Cloud provider ([OpenRouterPage.oneProvider]).
      */
     fun effective(caps: BuildCaps) = copy(
         allowServer = allowServer && caps.remote,
         allowClient = allowClient && caps.local,
         tls = tls || (host.isNotEmpty() && HostRules.classify(host) == HostRules.AddrClass.PUBLIC),
-        allowCloud = allowCloud && caps.cloud,
+        allowCloud = allowCloud && caps.cloud && OpenRouterPage.sttAvailable(this),
         routeOrder = if (caps.cloud) routeOrder else routeOrder - Route.CLOUD,
         cloud = if (caps.cloud) cloud else CloudSettings(),
         allowCloudCleanup = allowCloudCleanup && caps.cloud,

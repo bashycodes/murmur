@@ -125,7 +125,7 @@ internal class CleanupPage(
     }
 
     private fun LinearLayout.engineRow(i: Int, n: Int, r: CleanupRoute, on: Boolean, sub: String, d: DevSettings) = with(ui) {
-        val name = CleanupEngines.name(r, d)
+        val name = CleanupEngines.name(r)
         val title = tv(name, TypeScale.ROW, p.text, TypeScale.W_MEDIUM)
         val subtitle = tv(sub, TypeScale.SUB, p.muted).apply { setPadding(0, dp(2), 0, 0) }
         val texts = LinearLayout(ctx).apply {
@@ -158,7 +158,7 @@ internal class CleanupPage(
                     super.onInitializeAccessibilityNodeInfo(host, info)
                     info.className = Switch::class.java.name
                     info.isCheckable = true; info.isChecked = on
-                    info.text = "${i + 1}. ${CleanupEngines.useLabel(r, d)}. $sub"
+                    info.text = "${i + 1}. ${CleanupEngines.useLabel(r)}. $sub"
                 }
             }
         }
@@ -197,7 +197,7 @@ internal class CleanupPage(
             saveCleanup(OpenRouterPage.enableCleanup(app.dev.load(), System.currentTimeMillis()))
             // A custom server's key is optional.
             if (!s.cloud.customProvider && !app.cloudKeys.has(OpenRouter.ID)) {
-                android.widget.Toast.makeText(activity, "Add your OpenRouter API key on the OpenRouter page: nothing is sent without one.", android.widget.Toast.LENGTH_LONG).show()
+                android.widget.Toast.makeText(activity, "Add your OpenRouter API key on the Cloud page: nothing is sent without one.", android.widget.Toast.LENGTH_LONG).show()
             }
         }
         if (!OpenRouterPage.cleanupNeedsConsent(s)) { go(); return }
@@ -208,6 +208,6 @@ internal class CleanupPage(
     private fun move(r: CleanupRoute, dir: Int) {
         val d = app.dev.load()
         saveCleanup(d.copy(cleanupOrder = CleanupEngines.reorder(d, caps, r, dir)))
-        ui.announce("${CleanupEngines.name(r, d)} is now number ${CleanupEngines.engines(app.dev.load(), caps).indexOf(r) + 1}")
+        ui.announce("${CleanupEngines.name(r)} is now number ${CleanupEngines.engines(app.dev.load(), caps).indexOf(r) + 1}")
     }
 }

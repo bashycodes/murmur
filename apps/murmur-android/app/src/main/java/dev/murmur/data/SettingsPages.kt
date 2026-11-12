@@ -259,8 +259,12 @@ object SettingsSummary {
     fun engineName(r: DevSettings.Route): String = when (r) {
         DevSettings.Route.SERVER -> "Your server"
         DevSettings.Route.CLIENT -> "This phone"
-        DevSettings.Route.CLOUD -> OpenRouter.NAME
+        // D78: "Cloud" everywhere; the provider is named only on the Cloud page.
+        DevSettings.Route.CLOUD -> CLOUD
     }
+
+    /** D78: the umbrella name of the online models (the Cloud page, engine rows, summaries). */
+    const val CLOUD = "Cloud"
 
     /** Speech to text row: the engines that are on, in try order ("Your server, then this phone"). */
     fun speech(d: DevSettings, caps: BuildCaps): String {
@@ -272,11 +276,11 @@ object SettingsSummary {
 
     /**
      * AI cleanup row: strength, then the engines in the order they are tried, then the formatting
-     * rules ("Medium · OpenRouter, then rules"). [d] = the effective DevSettings (D36 cleanup order);
+     * rules ("Medium · Cloud, then rules"). [d] = the effective DevSettings (D36 cleanup order);
      * [serverLlm] from `cleanup_status` ([CleanupEngines.planned]).
      */
     fun cleanupRow(s: Settings, d: DevSettings, caps: BuildCaps, serverLlm: Boolean? = null): String {
-        val engines = CleanupEngines.plannedFor(s, d, caps, serverLlm).map { CleanupEngines.planName(it, d) }
+        val engines = CleanupEngines.plannedFor(s, d, caps, serverLlm).map(CleanupEngines::planName)
         val chain = engines + listOfNotNull(if (s.spokenCleanup) "rules" else null)
         if (engines.isEmpty()) return if (s.spokenCleanup) "Rules only" else "Off"
         return levelName(s.cleanupFor(d.offPhoneCleanup)) + " · " + chain.mapIndexed { i, e -> if (i == 0) e.replaceFirstChar { it.uppercase() } else e }.joinToString(", then ")
@@ -296,11 +300,16 @@ object SettingsSummary {
     }
 
     /**
-     * OpenRouter row: "Key saved · $0.42 this month" (usage counted on this phone only). D52: OpenRouter's
-     * spend (what the budget counts), never the custom server's.
+     * D78 "Cloud" row, named by the provider (usage counted on this phone only):
+     * "OpenRouter · key saved · $0.42 this month" (OpenRouter's spend, what the budget counts) or
+     * "LiteLLM · 10.0.0.5 · $4.00 this month" (the proxy's reported cost, once it reported one).
      */
-    fun openRouter(hasKey: Boolean, usage: CloudUsage): String =
-        (if (hasKey) "Key saved" else "No key") + " · ${CloudText.usd(usage.budgetCostUsd)} this month"
+    fun cloud(d: DevSettings, hasKey: Boolean, usage: CloudUsage): String {
+        val c = d.cloud
+        if (!c.customProvider) return "${OpenRouter.NAME} · ${if (hasKey) "key saved" else "no key"} · ${CloudText.usd(usage.budgetCostUsd)} this month"
+        if (c.customNotSetUp) return "${CustomServer.NAME} · not set up"
+        return "${CustomServer.NAME} · ${c.customCleanup.host}" + if (usage.customCostUsd > 0) " · ${CloudText.usd(usage.customCostUsd)} this month" else ""
+    }
 
     /** "This phone" engine line: the on-device engine that runs ("Parakeet · works offline"). */
     fun phoneEngine(s: Settings, whisper: String?, parakeet: String?): String = when {
@@ -310,9 +319,13 @@ object SettingsSummary {
         else -> "No model imported"
     }
 
-    /** OpenRouter engine line: "Sends audio · asks first" until consent, then its model. */
+    /** D78: the Cloud speech row while LiteLLM is the Cloud provider. */
+    const val CLOUD_STT_NOT_AVAILABLE = "Not available: LiteLLM does AI cleanup only"
+
+    /** Cloud engine line: "Sends audio · asks first" until consent, then its model; D78: not available with LiteLLM. */
     fun cloudEngine(d: DevSettings, hasKey: Boolean): String =
-        "Sends audio · " + (if (!d.cloud.stt.consentOk) "asks first" else d.cloud.stt.model.substringAfter('/')) +
+        if (!OpenRouterPage.sttAvailable(d)) CLOUD_STT_NOT_AVAILABLE
+        else "Sends audio · " + (if (!d.cloud.stt.consentOk) "asks first" else d.cloud.stt.model.substringAfter('/')) +
             if (d.allowCloud && !hasKey) " · no key" else ""
 
     /** "English" for Parakeet and *.en whisper models, else "Many languages". */

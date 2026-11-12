@@ -148,10 +148,10 @@ class CleanupOrderTest {
         assertEquals("Connected · no AI model on the server", CleanupEngines.serverLine(set, caps, false))
         assertEquals("Not checked yet", CleanupEngines.serverLine(set, caps, null))
         assertEquals("Not reachable", CleanupEngines.serverLine(set, caps, true, circuitOpen = true))
-        assertEquals("Sends text · asks first", CleanupEngines.cloudLine(d, hasKey = false))
+        assertEquals("OpenRouter · Sends text · asks first", CleanupEngines.cloudLine(d, hasKey = false))
         val on = OpenRouterPage.enableCleanup(d, now)
-        assertEquals("Sends text · llama-3.3-70b-instruct · no key", CleanupEngines.cloudLine(on, hasKey = false))
-        assertEquals("Sends text · llama-3.3-70b-instruct", CleanupEngines.cloudLine(on, hasKey = true))
+        assertEquals("OpenRouter · Sends text · llama-3.3-70b-instruct · no key", CleanupEngines.cloudLine(on, hasKey = false))
+        assertEquals("OpenRouter · Sends text · llama-3.3-70b-instruct", CleanupEngines.cloudLine(on, hasKey = true))
     }
 
     @Test fun serverRowFallsBackToTheHealthProbeBeforeTheCleanupConnectionsHello() {
@@ -229,19 +229,17 @@ class CleanupOrderTest {
         assertTrue(store(kv).load().cleanupOn(SERVER))
     }
 
-    @Test fun cloudEngineIsNamedByItsProvider() {
+    @Test fun cloudEngineIsCloudAndItsLineNamesTheProvider() {
         val d = DevSettings.defaults(BuildCaps.ALL)
-        assertEquals("OpenRouter", CleanupEngines.name(CLOUD, d))
-        assertEquals("Clean up with OpenRouter", CleanupEngines.useLabel(CLOUD, d))
+        assertEquals("Cloud", CleanupEngines.name(CLOUD))
+        assertEquals("Clean up in the cloud", CleanupEngines.useLabel(CLOUD))
         val cc = CustomCleanupSettings(baseUrl = "http://10.0.0.5:4000/v1", model = "gpt-4o-mini")
         val c = d.copy(cloud = d.cloud.copy(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = cc), allowCloudCleanup = true)
-        assertEquals("Custom server (10.0.0.5)", CleanupEngines.name(CLOUD, c))
-        assertEquals("Clean up with Custom server (10.0.0.5)", CleanupEngines.useLabel(CLOUD, c))
-        assertEquals("This phone", CleanupEngines.name(LOCAL, c))
-        assertEquals("Sends text · asks first · unencrypted (http)", CleanupEngines.cloudLine(c, hasKey = false))
+        assertEquals("This phone", CleanupEngines.name(LOCAL))
+        assertEquals("LiteLLM (10.0.0.5) · Sends text · asks first · unencrypted (http)", CleanupEngines.cloudLine(c, hasKey = false))
         val ok = c.copy(cloud = c.cloud.copy(customCleanup = cc.copy(baseUrl = "https://10.0.0.5/v1").withConsent(1)))
-        assertEquals("Sends text · gpt-4o-mini", CleanupEngines.cloudLine(ok, hasKey = false))
-        assertEquals("Sends text · asks first · no key", CleanupEngines.cloudLine(d.copy(allowCloudCleanup = true), hasKey = false))
+        assertEquals("LiteLLM (10.0.0.5) · Sends text · gpt-4o-mini", CleanupEngines.cloudLine(ok, hasKey = false))
+        assertEquals("OpenRouter · Sends text · asks first · no key", CleanupEngines.cloudLine(d.copy(allowCloudCleanup = true), hasKey = false))
     }
 
     @Test fun anUnusableCustomServerSaysCloudCleanupIsOff() {
@@ -251,8 +249,6 @@ class CleanupOrderTest {
         val cc = CustomCleanupSettings(baseUrl = "http://10.0.0.5:4000/v1", model = "", consentHost = "10.0.0.5", consentAtMs = 1)
         val c = d.copy(cloud = d.cloud.copy(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = cc), allowCloudCleanup = true)
         assertTrue(c.cloud.customNotSetUp)
-        assertEquals("Custom server", CleanupEngines.name(CLOUD, c))
-        assertEquals("Clean up with Custom server", CleanupEngines.useLabel(CLOUD, c))
         assertEquals(CustomServer.NOT_SET_UP, CleanupEngines.cloudLine(c, hasKey = true))
         assertEquals(CustomServer.NOT_SET_UP, c.cloud.cleanupProviderName)
         assertFalse(c.cloud.routerJson().has("cleanup_provider"))

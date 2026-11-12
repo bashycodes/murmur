@@ -245,7 +245,7 @@ class DeveloperActivity : Activity() {
         val b = banner()
         b.show(text, Tone.WARN)
         chipRow(
-            chip("Open OpenRouter") { OpenRouterActivity.open(this@DeveloperActivity) },
+            chip("Open Cloud") { OpenRouterActivity.open(this@DeveloperActivity) },
             chip("Dismiss") { app.dev.cloudNotice = null; b.show(""); (it.parent as? View)?.visibility = View.GONE }.apply { contentDescription = "Dismiss the cloud notice" },
         )
     }
