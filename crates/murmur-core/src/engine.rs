@@ -465,6 +465,8 @@ fn load_asr(
     use crate::config::AsrBackend;
     let t = Instant::now();
     let threads = m.threads.unwrap_or(cfg.threads).max(1);
+    #[cfg_attr(not(feature = "whisper"), allow(unused_mut))]
+    let mut placed = Placement::default();
     let (engine, backend, phases): (Arc<dyn AsrEngine>, LoadBackend, Vec<Phase>) = match &m
         .asr_backend
     {
@@ -475,15 +477,9 @@ fn load_asr(
         ),
         #[cfg(feature = "whisper")]
         AsrBackend::Whisper => {
-            require_file(&m.asr_path)?;
-            let mut w = crate::whisper::WhisperEngine::load(&m.asr_path, threads)
-                .map_err(|e| CoreError::Load(e.to_string()))?
-                .with_fit_ctx(cfg.whisper_fit_ctx);
-            if let Some(v) = cfg.vad_model_path.as_deref().filter(|v| !v.is_empty()) {
-                require_file(v)?;
-                w = w.with_silero_vad(v);
-            }
-            (Arc::new(w), LoadBackend::Whisper, Vec::new())
+            let (w, p) = load_whisper(&m.asr_path, cfg, threads)?;
+            placed = p;
+            (w, LoadBackend::Whisper, Vec::new())
         }
         #[cfg(not(feature = "whisper"))]
         AsrBackend::Whisper => {
@@ -523,8 +519,89 @@ fn load_asr(
         ms: ms_since(t),
         phases,
         reused: false,
+        device: placed.device,
+        gpu_error: placed.gpu_error,
     };
     Ok((engine, timing))
+}
+
+/// Where an ASR model was placed ([`ModelTiming::device`], `gpu_error`).
+#[derive(Debug, Default)]
+struct Placement {
+    device: Option<String>,
+    gpu_error: Option<String>,
+}
+
+/// A whisper ASR model: through the GPU plugin when
+/// [`ModelConfig::whisper_lib`] names one (D84), else, or when the plugin
+/// does not load, on the built-in CPU whisper.cpp.
+#[cfg(feature = "whisper")]
+fn load_whisper(
+    path: &str,
+    cfg: &ModelConfig,
+    threads: usize,
+) -> Result<(Arc<dyn AsrEngine>, Placement), CoreError> {
+    require_file(path)?;
+    let vad = cfg.vad_model_path.as_deref().filter(|v| !v.is_empty());
+    if let Some(v) = vad {
+        require_file(v)?;
+    }
+    let mut placed = Placement::default();
+    if let Some(lib) = cfg.whisper_lib.as_deref().filter(|l| !l.is_empty()) {
+        match load_whisper_plugin(lib, path, cfg, threads, vad) {
+            Ok(loaded) => return Ok(loaded),
+            Err(e) => {
+                placed.device = Some("CPU".into());
+                placed.gpu_error = Some(e);
+            }
+        }
+    }
+    let mut w = crate::whisper::WhisperEngine::load(path, threads)
+        .map_err(|e| CoreError::Load(e.to_string()))?
+        .with_fit_ctx(cfg.whisper_fit_ctx);
+    if let Some(v) = vad {
+        w = w.with_silero_vad(v);
+    }
+    Ok((Arc::new(w), placed))
+}
+
+/// The plugin's engine and where it put the model, or why it did not load.
+#[cfg(all(feature = "whisper", feature = "whisper-plugin"))]
+fn load_whisper_plugin(
+    lib: &str,
+    path: &str,
+    cfg: &ModelConfig,
+    threads: usize,
+    vad: Option<&str>,
+) -> Result<(Arc<dyn AsrEngine>, Placement), String> {
+    use crate::whisper_plugin::{PluginOptions, PluginWhisper};
+    let opts = PluginOptions {
+        threads,
+        fit_ctx: cfg.whisper_fit_ctx,
+        vad_model: vad.map(str::to_string),
+    };
+    let p = PluginWhisper::load(path, &opts, Some(lib)).map_err(|e| e.to_string())?;
+    let b = p.backend();
+    let placed = Placement {
+        device: Some(if b.is_gpu() {
+            format!("{}: {}", b.backend, b.device)
+        } else {
+            "CPU".into()
+        }),
+        gpu_error: b.gpu_error,
+    };
+    Ok((Arc::new(p), placed))
+}
+
+#[cfg(all(feature = "whisper", not(feature = "whisper-plugin")))]
+fn load_whisper_plugin(
+    _lib: &str,
+    _path: &str,
+    _cfg: &ModelConfig,
+    _threads: usize,
+    _vad: Option<&str>,
+) -> Result<(Arc<dyn AsrEngine>, Placement), String> {
+    Err("whisper_lib is set, but this build has no `whisper-plugin` feature".into())
 }
 
 /// The language identifier of `cfg` ([`ModelConfig::lid_model`]): `None`
@@ -545,6 +622,8 @@ fn load_lid(cfg: &ModelConfig) -> Result<Option<WithTiming<Arc<dyn LanguageId>>>
             ms: ms_since(t),
             phases: Vec::new(),
             reused: false,
+            device: None,
+            gpu_error: None,
         };
         Ok(Some((Arc::new(lid), timing)))
     }
@@ -629,6 +708,8 @@ fn llm_timing(ms: u64, phases: Vec<Phase>, reused: bool) -> ModelTiming {
         ms,
         phases,
         reused,
+        device: None,
+        gpu_error: None,
     }
 }
 

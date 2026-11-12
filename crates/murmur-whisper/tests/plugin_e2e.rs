@@ -93,3 +93,44 @@ fn plugin_transcribes_like_the_built_in_engine() {
         assert!(!o.text.contains("country can do for you"), "{o:?}");
     }
 }
+
+/// D84: `ModelConfig::whisper_lib` makes MurmurCore load whisper models
+/// through the plugin (murmur-server's CUDA image), and the load says where
+/// the model runs. The CPU build here finds no GPU: on the CPU, no error.
+#[test]
+fn murmur_core_loads_whisper_through_the_configured_plugin() {
+    use murmur_core::config::{AsrBackend, ModelConfig, SessionConfig};
+    use murmur_core::{CommitStatus, MurmurCore};
+    let model = models_dir().join("ggml-tiny.en.bin");
+    let lib = plugin();
+    if !model.exists() || !lib.exists() {
+        eprintln!(
+            "SKIP: {} or {} missing (cargo build -p murmur-whisper)",
+            model.display(),
+            lib.display()
+        );
+        return;
+    }
+    let core = MurmurCore::load_models(&ModelConfig {
+        asr_backend: AsrBackend::Whisper,
+        asr_path: model.to_string_lossy().into(),
+        threads: 2,
+        whisper_lib: Some(lib.display().to_string()),
+        ..Default::default()
+    })
+    .unwrap();
+    let asr = &core.load_timings().models[0];
+    assert_eq!(
+        (asr.device.as_deref(), asr.gpu_error.as_deref()),
+        (Some("CPU"), None),
+        "{asr:?}"
+    );
+    // A synthetic tone decodes without an error (the words do not matter).
+    core.start_session(SessionConfig::default()).unwrap();
+    let tone: Vec<i16> = (0..16_000 * 2)
+        .map(|i| ((i as f32 * 440.0 * std::f32::consts::TAU / 16_000.0).sin() * 8_000.0) as i16)
+        .collect();
+    core.push_audio(&tone);
+    let r = core.commit();
+    assert_ne!(r.status, CommitStatus::Error, "{r:?}");
+}
