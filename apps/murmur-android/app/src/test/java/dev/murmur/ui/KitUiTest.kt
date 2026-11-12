@@ -171,6 +171,9 @@ class KitUiTest {
         val scroll = col.parent as android.widget.ScrollView
         assertSame(scroll, ui.currentScroll())
         assertSame("header and scroll share one parent", scroll.parent, head.parent)
+        // A rebuilt page (no header) finds its new scroll view, not the replaced one.
+        val again = ui.rebuild { }
+        assertSame(again.parent, ui.currentScroll())
     }
 
     /** A row and its chips form one card item: the hairline goes between items, not under a row's own button. */

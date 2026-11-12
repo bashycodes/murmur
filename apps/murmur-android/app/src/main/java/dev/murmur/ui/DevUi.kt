@@ -122,23 +122,23 @@ internal class DevUi(val activity: Activity) {
             build()
         }
         val scroll = ScrollView(ctx).apply {
+            id = R.id.screen_scroll
             setBackgroundColor(background)
             isFillViewport = true
             clipToPadding = false
             addView(col, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
         val head = header?.let { h -> LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; h() } }
+        val content: View = head?.let {
+            LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(it, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+            }
+        } ?: scroll
         val frame = FrameLayout(ctx).apply {
             setBackgroundColor(background)
-            if (head == null) {
-                addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-            } else {
-                addView(LinearLayout(ctx).apply {
-                    orientation = LinearLayout.VERTICAL
-                    addView(head, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-                    addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-                }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-            }
+            addView(content, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             setOnApplyWindowInsetsListener { v, insets ->
                 val i = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout() or WindowInsets.Type.ime())
                 val pad = ScreenPadding.of(i.left, i.top, i.right, i.bottom, ::dp)
@@ -158,11 +158,7 @@ internal class DevUi(val activity: Activity) {
     }
 
     /** The current [screen]'s scroll view (null if this activity shows something else). */
-    fun currentScroll(): ScrollView? {
-        val frame = activity.findViewById<ViewGroup>(android.R.id.content)?.getChildAt(0) as? ViewGroup ?: return null
-        val first = frame.getChildAt(0)
-        return first as? ScrollView ?: (first as? LinearLayout)?.let { it.getChildAt(it.childCount - 1) as? ScrollView }
-    }
+    fun currentScroll(): ScrollView? = activity.findViewById(R.id.screen_scroll)
 
     /**
      * A scrolling column that is not attached (a shell tab's content, the drawer): 16 dp side
@@ -623,10 +619,11 @@ internal class DevUi(val activity: Activity) {
         return b
     }
 
-    class Result(val view: TextView, private val p: DevPalette) {
+    /** [fixed]: a [fixedBanner], always shown at the same height. */
+    class Result(val view: TextView, private val p: DevPalette, private val fixed: Boolean = false) {
         fun show(text: CharSequence, tone: Tone = Tone.NEUTRAL) {
             view.text = text
-            view.visibility = if (text.isEmpty()) View.GONE else View.VISIBLE
+            view.visibility = if (text.isEmpty() && !fixed) View.GONE else View.VISIBLE
             view.setTextColor(when (tone) { Tone.OK -> p.ok; Tone.BAD -> p.danger; Tone.WARN -> p.t.onPeach; else -> p.text })
             (view.background as? GradientDrawable)?.setColor(when (tone) { Tone.BAD -> p.dangerBg; Tone.WARN -> p.t.peach; else -> p.surface })
         }
@@ -648,6 +645,21 @@ internal class DevUi(val activity: Activity) {
 
     /** Warning / error banner at the top of a page; hidden while empty. */
     fun LinearLayout.banner(): Result = result()
+
+    /**
+     * [banner] for a page whose warnings change while you type: always shown and exactly [lines]
+     * lines tall (longer text ends in "…"; TalkBack still reads all of it), so the fields below
+     * it never move. The page shows a neutral line when there is nothing to warn about.
+     */
+    fun LinearLayout.fixedBanner(lines: Int): Result {
+        val v = result().view.apply {
+            setTextIsSelectable(false)
+            minLines = lines; maxLines = lines
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            visibility = View.VISIBLE
+        }
+        return Result(v, p, fixed = true)
+    }
 
     // =====================================================================================
     // Screens beyond Settings (main screen, Dictionary & snippets, History, model import)
