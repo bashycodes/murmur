@@ -277,6 +277,16 @@ data class CloudSettings(
     val isDefault: Boolean get() = this == CloudSettings()
     val customProvider: Boolean get() = cleanupProvider == CleanupProvider.CUSTOM
 
+    /**
+     * D78, the one-provider rule's home: cloud speech exists only with OpenRouter as the Cloud
+     * provider (LiteLLM does AI cleanup only). Applied by [DevStore], [DevSettings.effective] and
+     * [CloudMigration.fixOneProvider]; the shared router still accepts the mix.
+     */
+    val sttAvailable: Boolean get() = !customProvider
+
+    /** D78: the stored cloud-speech switch for a wanted value ([want] null = unchanged): never on without [sttAvailable]. */
+    fun sttAllowed(want: Boolean?): Boolean? = if (sttAvailable) want else false
+
     /** `CloudConfig::cleanup_consent_ok`: the selected provider's own consent. */
     val cleanupConsentOk: Boolean get() = if (customProvider) customCleanup.consentOk else cleanup.consentOk
     val cleanupModel: String get() = if (customProvider) customCleanup.model else cleanup.model
@@ -431,7 +441,9 @@ object CloudText {
     /** D78: why cloud speech cannot be turned on while LiteLLM is the Cloud provider. */
     const val LITELLM_NO_STT = "Your Cloud provider is LiteLLM, which this app uses for AI cleanup only. " +
         "Pick OpenRouter on the Cloud page to send speech to the cloud."
-    /** D78: the one-time notice when a saved LiteLLM + cloud speech mix is fixed on load. */
+    /** D78: the cloud speech switch and Settings row while LiteLLM is the Cloud provider (as on Windows). */
+    const val STT_NOT_AVAILABLE = "Not available"
+    /** D78: the one-time notice when a saved LiteLLM + cloud speech mix is fixed on load, and when picking LiteLLM turns it off. */
     const val LITELLM_STT_OFF_NOTICE = "Speech to text in the cloud is now off: your Cloud provider is LiteLLM, which " +
         "this app uses for AI cleanup only. Speech stays on this phone and your server."
 

@@ -18,7 +18,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Changed
 
-- **Android: the OpenRouter page is now "Cloud", with an OpenRouter | LiteLLM switch** (D78, as on Windows). One Cloud provider at a time: picking LiteLLM (or any OpenAI-compatible server) shows its address, optional key and Test connection, which also fills its model list; it does AI cleanup only, so cloud speech turns off and its switch reads "Not available". Settings saved with LiteLLM cleanup next to cloud speech are fixed once on start, with a notice on the Cloud page. Settings shows "Cloud: OpenRouter · key saved · $0.42 this month", AI cleanup reads "… · Cloud, then rules", the usage card names the proxy "Your proxy" with the cost it reported, and the debug log says "LiteLLM".
+- **Android: the OpenRouter page is now "Cloud", with an OpenRouter | LiteLLM switch** (D78, as on Windows). One Cloud provider at a time: picking LiteLLM (or any OpenAI-compatible server) is saved at once, even before its address and model are set (it sends nothing until then), and shows its address, optional key and Test connection, which also fills its model list; it does AI cleanup only, so cloud speech turns off and its switch reads "Not available". Settings saved with LiteLLM cleanup next to cloud speech are fixed once on start, with a notice on the Cloud page that no longer replaces a notice not yet dismissed (the D28 migration's or the router's). Settings shows "Cloud: OpenRouter · key saved · $0.42 this month", AI cleanup reads "… · Cloud, then rules", the usage card names the proxy "Your proxy" with the cost it reported, and the debug log says "LiteLLM".
 
 ### Fixed
 

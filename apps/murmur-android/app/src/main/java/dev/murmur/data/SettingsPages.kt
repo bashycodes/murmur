@@ -328,12 +328,9 @@ object SettingsSummary {
         else -> "No model imported"
     }
 
-    /** D78: the Cloud speech row while LiteLLM is the Cloud provider. */
-    const val CLOUD_STT_NOT_AVAILABLE = "Not available: LiteLLM does AI cleanup only"
-
-    /** Cloud engine line: "Sends audio · asks first" until consent, then its model; D78: not available with LiteLLM. */
+    /** Cloud engine line: "Sends audio · asks first" until consent, then its model; D78: [CloudText.STT_NOT_AVAILABLE] with LiteLLM. */
     fun cloudEngine(d: DevSettings, hasKey: Boolean): String =
-        if (!OpenRouterPage.sttAvailable(d)) CLOUD_STT_NOT_AVAILABLE
+        if (!d.cloud.sttAvailable) CloudText.STT_NOT_AVAILABLE
         else "Sends audio · " + (if (!d.cloud.stt.consentOk) "asks first" else d.cloud.stt.model.substringAfter('/')) +
             if (d.allowCloud && !hasKey) " · no key" else ""
 

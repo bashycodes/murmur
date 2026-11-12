@@ -161,17 +161,45 @@ class OpenRouterPageTest {
         // What an older app left: both switches on (written raw, as the old store did).
         kv.edit { putBoolean("allow_cloud", true); putString("cloud", cloud.toJson().toString()) }
         assertTrue(store.load().allowCloud)
-        assertTrue(CloudMigration.oneProvider(store))
+        assertTrue(CloudMigration.fixOneProvider(store))
         val s = store.load()
         assertFalse(s.allowCloud); assertTrue(s.cloud.customProvider); assertTrue(s.cloud.stt.consentOk)
         assertEquals(CloudText.LITELLM_STT_OFF_NOTICE, store.cloudNotice)
         // Once: nothing to fix next time, the notice stays until dismissed.
         store.cloudNotice = null
-        assertFalse(CloudMigration.oneProvider(store))
+        assertFalse(CloudMigration.fixOneProvider(store))
         assertNull(store.cloudNotice)
         // OpenRouter with speech on is left alone.
         store.saveCloud(allowCloud = true, cloud = cloud.copy(cleanupProvider = CleanupProvider.OPENROUTER))
-        assertFalse(CloudMigration.oneProvider(store)); assertTrue(store.load().allowCloud)
+        assertFalse(CloudMigration.fixOneProvider(store)); assertTrue(store.load().allowCloud)
+    }
+
+    @Test fun theOneProviderNoticeKeepsANoticeNotYetDismissed() {
+        val kv = MemKV()
+        val store = DevStore(kv, BuildCaps.ALL, SecretVault("murmur_dev_token", FakeVaultKeys()))
+        val cloud = OpenRouterPage.enableStt(base, now).cloud.copy(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = server)
+        kv.edit { putBoolean("allow_cloud", true); putString("cloud", cloud.toJson().toString()) }
+        // A D28 migration notice written just before, on the same start.
+        store.addCloudNotice("Synthetic migration notice.")
+        assertTrue(CloudMigration.fixOneProvider(store))
+        assertEquals("Synthetic migration notice.\n\n" + CloudText.LITELLM_STT_OFF_NOTICE, store.cloudNotice)
+        // The router's notice later is added too, and a repeat is not doubled.
+        store.addCloudNotice("Synthetic router notice.")
+        store.addCloudNotice(CloudText.LITELLM_STT_OFF_NOTICE)
+        assertEquals(
+            listOf("Synthetic migration notice.", CloudText.LITELLM_STT_OFF_NOTICE, "Synthetic router notice."),
+            store.cloudNotice!!.split(DevStore.NOTICE_SEP),
+        )
+    }
+
+    @Test fun theOneProviderRuleLivesOnTheSettings() {
+        val ll = base.cloud.copy(cleanupProvider = CleanupProvider.CUSTOM)
+        assertTrue(base.cloud.sttAvailable); assertFalse(ll.sttAvailable)
+        assertEquals(true, base.cloud.sttAllowed(true)); assertNull(base.cloud.sttAllowed(null))
+        assertEquals(false, ll.sttAllowed(true)); assertEquals(false, ll.sttAllowed(null))
+        val mix = OpenRouterPage.enableStt(base, now).copy(cloud = ll)
+        assertEquals(mix.oneCloudProvider(), OpenRouterPage.oneProvider(mix))
+        assertFalse(mix.effective(BuildCaps.ALL).allowCloud)
     }
 
     @Test fun customConsentIsItsOwnAndFollowsTheHost() {

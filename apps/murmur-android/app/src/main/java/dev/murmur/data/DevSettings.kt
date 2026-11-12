@@ -82,16 +82,19 @@ data class DevSettings(
     val prefer: Prefer
         get() = if (routeOrder.firstOrNull { it == Route.SERVER || it == Route.CLIENT } == Route.CLIENT) Prefer.CLIENT else Prefer.SERVER
 
+    /** D78: these settings with cloud speech off when LiteLLM is the Cloud provider ([CloudSettings.sttAvailable]; its consent is kept). */
+    fun oneCloudProvider(): DevSettings = if (allowCloud && !cloud.sttAvailable) copy(allowCloud = false) else this
+
     /**
      * Toggles AND build capability (§1.3 "effective flags"); public hosts force TLS (§2.6).
      * A build without the cloud client sends the router no cloud settings at all (C2). D78: no
-     * cloud speech while LiteLLM is the Cloud provider ([OpenRouterPage.oneProvider]).
+     * cloud speech while LiteLLM is the Cloud provider ([oneCloudProvider]).
      */
     fun effective(caps: BuildCaps) = copy(
         allowServer = allowServer && caps.remote,
         allowClient = allowClient && caps.local,
         tls = tls || (host.isNotEmpty() && HostRules.classify(host) == HostRules.AddrClass.PUBLIC),
-        allowCloud = allowCloud && caps.cloud && OpenRouterPage.sttAvailable(this),
+        allowCloud = oneCloudProvider().allowCloud && caps.cloud,
         routeOrder = if (caps.cloud) routeOrder else routeOrder - Route.CLOUD,
         cloud = if (caps.cloud) cloud else CloudSettings(),
         allowCloudCleanup = allowCloudCleanup && caps.cloud,
