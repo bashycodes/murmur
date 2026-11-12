@@ -17,11 +17,11 @@ The language setting (Android default, Windows "Keyboard language" on) that make
 _Avoid_: input language, IME language, start language (as the result's language)
 
 **Cloud**:
-Online models the app can use, through one **Cloud provider** at a time (enforced by the Windows settings; Android still pairs the two): OpenRouter (speech to text and AI cleanup) or the user's LiteLLM proxy (AI cleanup only for now). The UI says "Cloud"; a provider's name appears only in the provider switch and its own fields (D78).
+Online models the app can use, through one **Cloud provider** at a time (enforced by the Windows settings; Android still pairs the two): OpenRouter (speech to text and AI cleanup) or the user's LiteLLM proxy (AI cleanup, and speech to text once a speech model is set for it, D84). The UI says "Cloud"; a provider's name appears only in the provider switch and its own fields (D78).
 _Avoid_: OpenRouter (as the umbrella term), online service
 
 **LiteLLM proxy**:
-The Cloud provider that is the user's own OpenAI-compatible server (typically LiteLLM; vLLM or Ollama work too). In code and settings it is still `custom` (`cloud.cleanup_provider = "custom"`, `cloud.custom_cleanup`, key id `custom`; D52, D78).
+The Cloud provider that is the user's own OpenAI-compatible server (typically LiteLLM; vLLM or Ollama work too). In code and settings it is still `custom` (`cloud.cleanup_provider = "custom"`, `cloud.custom_cleanup`, key id `custom`; its speech model is `cloud.custom_cleanup.stt_model`; D52, D78, D84).
 _Avoid_: custom server (in UI copy), local server (that is murmur-server), your server (that is murmur-server)
 
 **Fallback rules**:

@@ -16,6 +16,10 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Added
+
+- **Cloud speech to text on your LiteLLM proxy** (Windows; D84). With LiteLLM as the Cloud provider, Test connection on the Cloud page now finds the proxy's speech models (LiteLLM's `audio_transcription` models, or names like whisper on other OpenAI-compatible servers) and offers them in a new Speech model list. With one set, the Speech page's cloud card is no longer "Not available": switching it on asks once to send audio to that proxy's host, and dictations go to `/audio/transcriptions` there. Cost comes from LiteLLM's cost header and is never counted in the OpenRouter budget. A LiteLLM-only Cloud setup now works end to end. Android is unchanged (cleanup on the proxy, speech on OpenRouter).
+
 ## [1.2.0] - 2026-11-12
 
 ### Added
