@@ -99,6 +99,13 @@ pub const CATALOGUE: &[CatalogueModel] = &[
     cat("gemma-3-12b-it-q4_k_m", ModelKind::Llm, "gguf"),
 ];
 
+/// Catalogue ids only a server runs, so no app catalogue pins them: Gemma 3
+/// 12B, the cleanup model for a server with a GPU of more than 10 GB (D31).
+/// Its pin is in `docs/colleague-install.md`. Whoever runs the server
+/// downloads it under the Gemma Terms of Use, and Murmur never hands it on
+/// (D80).
+pub const SERVER_ONLY: &[&str] = &["gemma-3-12b-it-q4_k_m"];
+
 /// The catalogue model `id` names, if any.
 pub fn catalogue(id: &str) -> Option<&'static CatalogueModel> {
     CATALOGUE.iter().find(|c| c.id == id)
@@ -197,6 +204,9 @@ mod tests {
             assert!(ids.insert(c.id), "duplicate {}", c.id);
             assert!(is_safe_name(c.id), "{}", c.id);
             assert!(ENGINES.contains(&c.engine), "{}: {}", c.id, c.engine);
+        }
+        for id in SERVER_ONLY {
+            assert!(catalogue(id).is_some(), "{id}");
         }
         assert_eq!(catalogue("whisper-base").unwrap().engine, "whisper");
         assert!(catalogue("nope").is_none());
