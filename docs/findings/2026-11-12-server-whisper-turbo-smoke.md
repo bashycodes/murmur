@@ -118,6 +118,9 @@ CUDAARCHS=86 --build-arg CARGO_BUILD_JOBS=2`, on an isolated buildx builder
   INFO murmur_server: ready version="1.2.0+d84test" workers=1 asr=whisper ...
   ```
 
+CI: the `server-image-cuda` workflow's first run (43237829908, GitHub
+`ubuntu-24.04` runner, `CUDAARCHS=86`, cold) was **green in 53 min**.
+
 Not covered: the CUDA plugin on a GPU (no NVIDIA GPU here), so GPU
 latency is still the estimate in `docs/container.md` §7. ivrit.ai turbo on
 the Hebrew route was not run either; only the entrypoint's stub test picks
