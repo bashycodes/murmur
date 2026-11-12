@@ -81,14 +81,18 @@ object ModelPages {
 
     /** [server]: this build can also download from the set server's library (D41, hybrid / remote). */
     fun intro(s: Screen, server: Boolean = false) = when (s) {
-        Screen.WHISPER -> if (server) "Copy a whisper.cpp model file (ggml-*.bin) to this phone and import it, or download one from your own server. Nothing ever comes from the internet."
+        Screen.WHISPER -> if (server) "Copy a whisper.cpp model file (ggml-*.bin) to this phone and import it, or download one from your own server. " +
+            "The app downloads only from your server; the links under Recommended are for a computer."
         else "Copy a whisper.cpp model file (ggml-*.bin) to this phone, then import it. Murmur never downloads anything."
         Screen.PARAKEET -> "English only and more accurate than whisper base. Copy the unpacked model folder to the phone, then pick that folder. Recommended on phones with 6–8 GB RAM."
         Screen.HEBREW -> "Used only when the dictation language is Hebrew; the phone then loads this model instead of the English one " +
             "(switching language reloads, a few seconds). Put the four files in one folder (or one .zip), copy it to the phone and import it. " +
             "Files are checked against the pinned sizes and SHA-256."
-        Screen.LLM -> "Optional. A small local language model polishes each transcript (punctuation, fillers, \"scratch that\" corrections, lists). " +
-            "It runs only on this phone and is off until you turn it on in Settings → AI cleanup. Expect 1–3 s extra per dictation; " +
+        Screen.LLM -> "Optional. The model the \"This phone\" cleanup engine runs: a small language model that polishes each transcript " +
+            "on the phone itself (punctuation, fillers, \"scratch that\" corrections, lists). " +
+            (if (server) "Import a GGUF file you copied to the phone, or download one from your own server. "
+            else "Import a GGUF file you copied to the phone (the links under Recommended are for a computer). ") +
+            "Turn \"This phone\" on under Settings → AI cleanup → Engines to use it. Expect 1–3 s extra per dictation; " +
             "if cleanup takes longer than 3 s the formatted transcript is inserted instead."
     }
 }
