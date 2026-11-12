@@ -123,20 +123,21 @@ object CloudMigration {
             allowCloud = next.allowCloud, cloud = next.cloud, routeOrder = next.routeOrder,
             allowCloudCleanup = next.allowCloudCleanup, cleanupOrder = next.cleanupOrder, cleanupOff = next.cleanupOff,
         )
-        r.notice?.let { store.cloudNotice = it }
+        r.notice?.let { store.addCloudNotice(it) }
         return r
     }
 
     /**
      * D78, on every load: one Cloud provider at a time. Settings saved before D78 may pair LiteLLM
      * cleanup with OpenRouter speech; cloud speech is then turned off (its consent kept) and the
-     * Cloud page shows [CloudText.LITELLM_STT_OFF_NOTICE] once. True when something changed.
+     * Cloud page shows [CloudText.LITELLM_STT_OFF_NOTICE] once, next to any notice not yet dismissed
+     * ([DevStore.addCloudNotice]). True when something changed.
      */
-    fun oneProvider(store: DevStore): Boolean {
+    fun fixOneProvider(store: DevStore): Boolean {
         val s = store.load()
-        if (OpenRouterPage.oneProvider(s) == s) return false
+        if (s.oneCloudProvider() == s) return false
         store.saveCloud(allowCloud = false, cloud = s.cloud)
-        store.cloudNotice = CloudText.LITELLM_STT_OFF_NOTICE
+        store.addCloudNotice(CloudText.LITELLM_STT_OFF_NOTICE)
         return true
     }
 }

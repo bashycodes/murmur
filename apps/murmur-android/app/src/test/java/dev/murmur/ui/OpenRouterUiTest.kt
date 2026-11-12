@@ -188,8 +188,8 @@ class OpenRouterUiTest {
         assertTrue("OpenRouter's speech consent is kept", s.cloud.stt.consentOk)
         val t = texts(a)
         for (want in listOf("YOUR LITELLM PROXY", "Address", "API key (optional)", "Test connection", "Model", "Time limit",
-            dev.murmur.data.CloudText.LITELLM_DESC, dev.murmur.data.CloudText.LITELLM_OFFERS, OpenRouterActivity.SPEECH_TURNED_OFF,
-            dev.murmur.data.SettingsSummary.CLOUD_STT_NOT_AVAILABLE)) assertTrue("$want in $t", want in t)
+            dev.murmur.data.CloudText.LITELLM_DESC, dev.murmur.data.CloudText.LITELLM_OFFERS, dev.murmur.data.CloudText.LITELLM_STT_OFF_NOTICE,
+            dev.murmur.data.CloudText.STT_NOT_AVAILABLE)) assertTrue("$want in $t", want in t)
         for (gone in listOf("API KEY", "PRIVACY", "Test speech-to-text", "Load models")) assertFalse(gone, gone in t)
         val stt = switchOf(a, OpenRouterActivity.STT_SWITCH)
         assertFalse(stt.isChecked); assertFalse("the speech switch refuses", stt.isEnabled)

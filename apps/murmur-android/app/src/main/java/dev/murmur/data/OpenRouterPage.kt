@@ -9,7 +9,7 @@ import dev.murmur.data.DevSettings.Route
  *
  * D78: one Cloud provider at a time, OpenRouter or LiteLLM ([CleanupProvider.CUSTOM], the D52
  * server). LiteLLM does AI cleanup only, so cloud speech is off while it is picked. This is the
- * app's settings rule ([oneProvider], also applied by [DevStore] and [DevSettings.effective]); the
+ * app's settings rule, kept on [CloudSettings.sttAvailable] / [DevSettings.oneCloudProvider]; the
  * shared router still accepts the mix.
  */
 object OpenRouterPage {
@@ -19,10 +19,10 @@ object OpenRouterPage {
     fun cleanupNeedsConsent(s: DevSettings) = !s.cloud.cleanupConsentOk
 
     /** D78: cloud speech exists only with OpenRouter as the Cloud provider. */
-    fun sttAvailable(s: DevSettings) = !s.cloud.customProvider
+    fun sttAvailable(s: DevSettings) = s.cloud.sttAvailable
 
-    /** D78: [s] with cloud speech off when LiteLLM is the provider (OpenRouter's speech consent is kept). */
-    fun oneProvider(s: DevSettings): DevSettings = if (s.allowCloud && !sttAvailable(s)) s.copy(allowCloud = false) else s
+    /** D78: [s] with cloud speech off when LiteLLM is the provider ([DevSettings.oneCloudProvider]). */
+    fun oneProvider(s: DevSettings): DevSettings = s.oneCloudProvider()
 
     /**
      * STT on (after its consent): the cloud goes first in the route order (§3.1 step 4). D78: with

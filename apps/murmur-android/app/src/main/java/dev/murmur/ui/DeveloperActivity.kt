@@ -240,7 +240,7 @@ class DeveloperActivity : Activity() {
      * A router that migrated a legacy config itself hands its notice over here too.
      */
     private fun LinearLayout.cloudNotice() = with(ui) {
-        app.engine.router()?.let { r -> r.cloudNotice()?.let { n -> app.dev.cloudNotice = n; r.ackCloudNotice() } }
+        app.engine.router()?.let { r -> r.cloudNotice()?.let { n -> app.dev.addCloudNotice(n); r.ackCloudNotice() } }
         val text = app.dev.cloudNotice ?: return@with
         val b = banner()
         b.show(text, Tone.WARN)

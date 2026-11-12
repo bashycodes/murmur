@@ -339,8 +339,7 @@ class SettingsPagesTest {
         val d = DevSettings.defaults(BuildCaps.ALL)
         assertEquals("Sends audio · asks first", SettingsSummary.cloudEngine(d, hasKey = true))
         val ll = OpenRouterPage.withProvider(OpenRouterPage.enableStt(d, 1), CleanupProvider.CUSTOM)
-        assertEquals(SettingsSummary.CLOUD_STT_NOT_AVAILABLE, SettingsSummary.cloudEngine(ll, hasKey = true))
-        assertTrue(SettingsSummary.CLOUD_STT_NOT_AVAILABLE.startsWith("Not available"))
+        assertEquals("Not available", SettingsSummary.cloudEngine(ll, hasKey = true))
         assertEquals("Cloud", SettingsSummary.engineName(DevSettings.Route.CLOUD))
     }
 

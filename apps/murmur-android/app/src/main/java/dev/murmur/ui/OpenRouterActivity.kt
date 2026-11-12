@@ -200,7 +200,7 @@ class OpenRouterActivity : Activity() {
                 val available = OpenRouterPage.sttAvailable(s)
                 quietly { on.isChecked = s.allowCloud && available; dict.isChecked = s.cloud.stt.sendDictionary }
                 on.isEnabled = available
-                on.setDescription(if (available) STT_DESC else SettingsSummary.CLOUD_STT_NOT_AVAILABLE)
+                on.setDescription(if (available) STT_DESC else CloudText.STT_NOT_AVAILABLE)
                 notAvailable.visibility = if (available) View.GONE else View.VISIBLE
                 for (row in listOf(model.view, lang.view, dict.row, consent.parent as View)) row.visibility = if (available) View.VISIBLE else View.GONE
                 model.setSubtitle(CloudCatalog.modelSummary(s.cloud.stt.model, s.cloud.stt.sttPath))
@@ -359,7 +359,7 @@ class OpenRouterActivity : Activity() {
         if (cur.cloud.cleanupProvider == p) return
         val next = OpenRouterPage.withProvider(cur, p)
         change { next }
-        providerResult.show(if (cur.allowCloud && !next.allowCloud) SPEECH_TURNED_OFF else "", Tone.WARN)
+        providerResult.show(if (cur.allowCloud && !next.allowCloud) CloudText.LITELLM_STT_OFF_NOTICE else "", Tone.WARN)
         customResult.show(
             if (next.cloud.customNotSetUp) (OpenRouterPage.customMissing(next.cloud.customCleanup) ?: "Check the time limit") + " below; cleanup uses the proxy once its address and model are set."
             else "",
@@ -599,7 +599,6 @@ class OpenRouterActivity : Activity() {
         /** The cleanup switch keeps one title whichever provider is picked. */
         const val CLEANUP_SWITCH = "Use the cloud for cleanup"
         private const val STT_DESC = "Sends the audio of your dictations to OpenRouter; off by default"
-        const val SPEECH_TURNED_OFF = "Cloud speech is now off: LiteLLM does AI cleanup only. Speech stays on this phone and your server."
         private const val TYPE_MODEL = "Type a model id…"
         /** The switch's segments, in order. */
         val PROVIDERS = listOf(CleanupProvider.OPENROUTER to OpenRouter.NAME, CleanupProvider.CUSTOM to CustomServer.NAME)
