@@ -105,10 +105,14 @@ ARG CARGO_BUILD_JOBS=2
 # (whisper-rs-sys passes CMAKE_*/GGML_* variables to CMake; ggml ignores
 # CUDAARCHS) and GGML_NATIVE=OFF, so its CPU fallback runs on any x86-64 CPU
 # with AVX2, not only the build machine's.
+# CUDAFLAGS (CMake's initial CMAKE_CUDA_FLAGS): nvcc's host objects must be
+# position-independent to link into the plugins (.so); the cmake crate adds
+# -fPIC to the C/C++ flags only, and without it rust-lld refuses ggml-cuda's
+# objects ("relocation R_X86_64_PC32 ... recompile with -fPIC").
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
     set -eu; \
-    export CUDAARCHS MURMUR_GIT_SHA MURMUR_GIT_DIRTY=0; \
+    export CUDAARCHS MURMUR_GIT_SHA MURMUR_GIT_DIRTY=0 CUDAFLAGS="-Xcompiler=-fPIC"; \
     BINDGEN_EXTRA_CLANG_ARGS="-I$(gcc -print-file-name=include)"; export BINDGEN_EXTRA_CLANG_ARGS; \
     export LIBRARY_PATH=/usr/local/cuda/lib64/stubs; \
     cargo build --release --locked -j "$CARGO_BUILD_JOBS" -p murmur-llm --features cuda; \
