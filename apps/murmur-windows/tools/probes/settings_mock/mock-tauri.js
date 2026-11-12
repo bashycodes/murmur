@@ -50,7 +50,11 @@
   };
   // D28 OpenRouter: one key (never returned), two consented uses, a catalogue.
   let orKey = "";
-  const keyState = () => (orKey ? { set: true, masked: "••••" + orKey.slice(-4) } : { set: false, masked: "" });
+  const maskState = (k) => (k ? { set: true, masked: "••••" + k.slice(-4) } : { set: false, masked: "" });
+  const keyState = () => maskState(orKey);
+  // D52/D78: the LiteLLM (custom) cleanup server's optional key.
+  let customKey = "";
+  const customKeyState = () => maskState(customKey);
   const row = (id, name, o) => ({
     id, name, context_length: 0, input: ["text"], output: ["text"], stt_path: null, price: {}, zdr: true,
     zdr_providers: ["groq"], fast_zdr_providers: [], reasoning_mandatory: false, free: false, allowed_by_account: null,
@@ -71,7 +75,10 @@
   let or = {
     privacy: { zdr: true, data_collection: "deny" },
     stt: { allow: false, consent: false, consent_at_ms: 0, model: "openai/whisper-large-v3-turbo", stt_path: "auto", language: "", send_dictionary: true },
-    cleanup: { allow: false, consent: false, consent_at_ms: 0, engines: [{ route: "local", enabled: true }, { route: "server", enabled: true }, { route: "cloud", enabled: false }], model: "meta-llama/llama-3.3-70b-instruct", sort: "latency", timeout_ms: 2500, send_surrounding_text: false, send_screen_words: false, send_app_name: false },
+    cleanup: { allow: false, consent: false, consent_at_ms: 0, engines: [{ route: "local", enabled: true }, { route: "server", enabled: true }, { route: "cloud", enabled: false }], model: "meta-llama/llama-3.3-70b-instruct", sort: "latency", timeout_ms: 2500, send_surrounding_text: false, send_screen_words: false, send_app_name: false,
+      // D78: one Cloud provider, OpenRouter (default) or LiteLLM (wire: "custom").
+      provider: "openrouter",
+      custom: { base_url: "", model: "", timeout_ms: 4000, consent_host: "", consent_at_ms: 0 } },
     budget: null,
     notice: "Cloud speech now runs only through OpenRouter. Your Groq provider was removed; your OpenRouter key was kept. Cloud speech was turned off: turn it on again in this tab.",
   };
@@ -91,9 +98,33 @@
     month_cost_usd: 0.014,
   });
   const info = (id) => catalog.find((r) => r.id === id) ?? null;
+  // murmur_router::cloud::parse_base_url's host: no port, no IPv6
+  // brackets, lower case ("" when the address does not parse).
+  const hostOf = (u) => {
+    try {
+      const p = new URL(u.trim());
+      return /^https?:$/.test(p.protocol) ? p.hostname.replace(/^\[|\]$/g, "").toLowerCase() : "";
+    } catch { return ""; }
+  };
+  // normalize_custom_base_url: "/v1" when there is no path, no trailing slash,
+  // host lower-cased (URL does that). null when it does not parse.
+  const normalizeBase = (u) => {
+    if (!hostOf(u)) return null;
+    const p = new URL(u.trim());
+    if (p.pathname.replace(/\/+$/, "") === "") p.pathname = "/v1";
+    return p.href.replace(/\/+$/, "");
+  };
+  // CustomCleanupConfig::consent_ok / saved_key_allowed_for: consent given and
+  // bound to `host` (default: the saved address's host).
+  const consentOk = (c, host = hostOf(c.base_url)) =>
+    c.consent_at_ms > 0 && c.consent_host !== "" && host !== "" && c.consent_host === host;
+  const customView = () => {
+    const c = or.cleanup.custom;
+    return { ...c, host: hostOf(c.base_url), consent: consentOk(c), plain_http: c.base_url.startsWith("http:"), key: customKeyState() };
+  };
   const orView = () => ({
-    supported: true, key: keyState(), privacy: { ...or.privacy }, stt: { ...or.stt },
-    cleanup: { ...or.cleanup, status: cleanupStatus() }, budget: or.budget, usage: usage(), catalog: { ...catStatus },
+    supported: true, key: keyState(), privacy: { ...or.privacy }, stt: { ...or.stt, available: or.cleanup.provider === "openrouter" },
+    cleanup: { ...or.cleanup, status: cleanupStatus(), custom: customView() }, budget: or.budget, usage: usage(), catalog: { ...catStatus },
     notice: or.notice,
     warnings: [!orKey && (or.stt.allow || or.cleanup.allow) ? "OpenRouter is on but no key is saved." : "", or.privacy.zdr ? "" : "Zero retention is off: providers may keep your audio/text."].filter(Boolean),
     stt_model_info: info(or.stt.model), cleanup_model_info: info(or.cleanup.model),
@@ -571,6 +602,47 @@
     dev_cloud_usage: usage,
     dev_cloud_reset_usage: usage,
     dev_or_get: orView,
+    dev_cloud_set_custom_key: ({ key }) => { customKey = key.trim(); return customKeyState(); },
+    dev_cloud_clear_custom_key: () => { customKey = ""; return customKeyState(); },
+    // D52/D78 (openrouter::apply_custom_cleanup): the provider switch and the
+    // proxy's address, model and time limit; consent binds to the typed host.
+    // LiteLLM has no speech, so picking it turns cloud speech off (Windows rule).
+    dev_or_set_custom_cleanup: ({ form }) => {
+      const custom = form.provider === "custom";
+      const url = form.base_url.trim();
+      const base = url === "" ? "" : normalizeBase(url);
+      if (base === null) throw "Base URL: base URL must be http(s)://host[:port][/path]";
+      const cc = { ...or.cleanup.custom, base_url: base, model: form.model.trim(), timeout_ms: form.timeout_ms };
+      const host = hostOf(base);
+      if (form.consent && custom && !host) throw "Enter your proxy's address";
+      // record_cleanup_consent: consent goes to the selected provider.
+      if (form.consent && custom) Object.assign(cc, { consent_host: host, consent_at_ms: Date.now() });
+      if (form.consent && !custom) Object.assign(or.cleanup, { consent: true, consent_at_ms: Date.now() });
+      or.cleanup.custom = cc;
+      or.cleanup.provider = form.provider;
+      if (custom) or.stt.allow = false;
+      return orView();
+    },
+    // GET {base_url}/models (app.rs dev_or_custom_models): a saved key goes
+    // only to the consented host; `consent` records it first
+    // (openrouter::apply_custom_key_consent).
+    dev_or_custom_models: ({ baseUrl, key, consent }) => {
+      const typed = !!key && key.trim() !== "";
+      const host = hostOf(baseUrl);
+      if (consent === true && !typed && customKey) {
+        const url = normalizeBase(baseUrl);
+        if (url === null) throw "Base URL: base URL must be http(s)://host[:port][/path]";
+        const c = or.cleanup.custom;
+        const saved = hostOf(c.base_url);
+        if (or.cleanup.provider === "openrouter" || !saved) c.base_url = url;
+        else if (saved !== host) throw "Save this server address first: cleanup still goes to your saved server";
+        Object.assign(c, { consent_host: host, consent_at_ms: Date.now() });
+      }
+      if (!typed && customKey && !consentOk(or.cleanup.custom, host))
+        return { error: "consent_needed", message: "your saved key only goes to a server you agreed to send text to" };
+      if (!host) return { error: "bad_config", message: "not a valid address" };
+      return { models: ["llama-3.1-8b-instruct"] };
+    },
     dev_or_ack_notice: () => { or.notice = null; return orView(); },
     dev_or_key_info: () => orKey
       ? { label: "murmur", limit: null, limit_remaining: null, limit_reset: null, usage: 1.23, usage_daily: 0.02, usage_weekly: 0.2, usage_monthly: 0.84, is_free_tier: false, free_requests_remaining: null, checked_at_ms: Date.now(), warn_no_limit: true }
