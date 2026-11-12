@@ -34,6 +34,7 @@ import dev.murmur.data.SettingsPages
 import dev.murmur.data.SettingsPages.Field
 import dev.murmur.data.SettingsPages.Page
 import dev.murmur.data.SettingsSummary
+import dev.murmur.data.ShellPages
 import java.io.File
 import kotlin.concurrent.thread
 
@@ -285,10 +286,10 @@ class SettingsActivity : Activity() {
             sectionLabel("Models")
             val speechRow = rowCard("Speech to text") { open(Page.SPEECH) }
             // `remote` has no on-device AI: its cleanup is OpenRouter's (D28).
-            val cleanup = when {
-                SettingsPages.visible(Page.CLEANUP, caps) -> rowCard("AI cleanup") { open(Page.CLEANUP) }
-                caps.cloud -> rowCard("AI cleanup") { OpenRouterActivity.open(this@SettingsActivity) }
-                else -> null
+            val cleanup = when (val d = ShellPages.cleanupDest(caps)) {
+                is ShellPages.Dest.Page -> rowCard("AI cleanup") { open(d.page) }
+                ShellPages.Dest.OpenRouter -> rowCard("AI cleanup") { OpenRouterActivity.open(this@SettingsActivity) }
+                null -> null
             }
 
             var server: DevUi.NavRow? = null
