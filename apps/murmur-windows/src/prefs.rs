@@ -227,7 +227,8 @@ pub struct Prefs {
     /// Deterministic spoken cleanup in the core (core-p1, D15): spoken
     /// punctuation, fillers, "scratch that", money/time/date formatting.
     pub spoken_cleanup: bool,
-    /// Show the live partial transcript above the pill.
+    /// Show the live partial transcript above the pill. Off by default:
+    /// a fresh install shows no words while you speak.
     pub live_preview: bool,
     pub live_preview_interval_ms: u32,
     /// Hands-free dictation stops by itself after this much silence
@@ -301,7 +302,7 @@ impl Default for Prefs {
             model_source: ModelSource::Server,
             lid_model_path: None,
             spoken_cleanup: true,
-            live_preview: true,
+            live_preview: false,
             live_preview_interval_ms: 1500,
             hands_free_silence_ms: murmur_core::endpoint::RECOMMENDED_SILENCE_MS,
             llm_enabled: false,
@@ -739,6 +740,26 @@ mod tests {
     }
 
     #[test]
+    fn live_preview_defaults_off_and_a_saved_on_survives() {
+        // A fresh install shows no words in the Murmur bar while you speak.
+        assert!(!Prefs::default().live_preview);
+        let d = tmpdir("live-preview-default");
+        let path = d.join(FILE_NAME);
+        assert!(!Prefs::load(&path).0.live_preview);
+        // A file without the key (older or partial) also gets Off.
+        let p: Prefs = serde_json::from_str("{}").unwrap();
+        assert!(!p.live_preview);
+        // An existing user's saved choice (On) is kept.
+        let mut p = Prefs::default();
+        p.live_preview = true;
+        p.save(&path).unwrap();
+        let (q, o) = Prefs::load(&path);
+        assert_eq!(o, LoadOutcome::Loaded);
+        assert!(q.live_preview);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
     fn partial_file_fills_defaults() {
         let d = tmpdir("partial");
         std::fs::create_dir_all(&d).unwrap();
@@ -870,12 +891,14 @@ mod tests {
         assert_eq!(c.dictionary[0].word, "Korra");
         assert_eq!(c.dictionary[1].replacement.as_deref(), Some("GitHub"));
         assert!(c.dictionary[2].is_snippet);
-        assert_eq!(c.partial_interval_ms, Some(1500));
+        assert_eq!(c.partial_interval_ms, None, "live preview off by default");
         assert_eq!(c.max_samples, p.policy().max_samples());
         assert_eq!(c.cleanup_level, CleanupLevel::Light);
         assert!(c.spoken_cleanup, "core-p1 default on");
         p.spoken_cleanup = false;
         assert!(!p.session_config().spoken_cleanup);
+        p.live_preview = true;
+        assert_eq!(p.session_config().partial_interval_ms, Some(1500));
     }
 
     #[test]

@@ -85,7 +85,7 @@ the PolicyLists header document the method and sources).
   Minimise and shake are settings (default on). The accelerometer is only registered while
   the screen is on. Sounds use `ToneGenerator` beeps instead of bundled samples.
 - The bubble position is persisted; a snooze puts it back on its saved anchor.
-- Live preview: a click-through window above the bubble shows the core's partial
+- Live preview (off by default, `Settings.DEFAULT_LIVE_PREVIEW`): a click-through window above the bubble shows the core's partial
   (`partial_interval_ms` 1500, polled every 250 ms) plus "can't hear you" after 3 s of
   leading silence and "no speech detected" on EMPTY.
 - LLM cleanup is opt-in (default off), with a 3 s budget on Android (desktop 1.5 s). If the
