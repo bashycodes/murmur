@@ -1,6 +1,7 @@
 package dev.murmur.data
 
 import dev.murmur.core.CleanupLevel
+import dev.murmur.core.HealthReport
 import dev.murmur.data.DevSettings.CleanupRoute
 import dev.murmur.data.DevSettings.CleanupRoute.CLOUD
 import dev.murmur.data.DevSettings.CleanupRoute.LOCAL
@@ -143,14 +144,33 @@ class CleanupOrderTest {
         val set = d.copy(host = "100.64.0.10")
         assertEquals("Not set up", CleanupEngines.serverLine(d, caps, true))
         assertEquals("Not in this build", CleanupEngines.serverLine(set, BuildCaps.LOCAL, true))
-        assertEquals("Has an AI model", CleanupEngines.serverLine(set, caps, true))
-        assertEquals("No AI model on the server", CleanupEngines.serverLine(set, caps, false))
-        assertEquals("Not connected yet", CleanupEngines.serverLine(set, caps, null))
+        assertEquals("Ready · has an AI model", CleanupEngines.serverLine(set, caps, true))
+        assertEquals("Connected · no AI model on the server", CleanupEngines.serverLine(set, caps, false))
+        assertEquals("Not checked yet", CleanupEngines.serverLine(set, caps, null))
         assertEquals("Not reachable", CleanupEngines.serverLine(set, caps, true, circuitOpen = true))
         assertEquals("Sends text · asks first", CleanupEngines.cloudLine(d, hasKey = false))
         val on = OpenRouterPage.enableCleanup(d, now)
         assertEquals("Sends text · llama-3.3-70b-instruct · no key", CleanupEngines.cloudLine(on, hasKey = false))
         assertEquals("Sends text · llama-3.3-70b-instruct", CleanupEngines.cloudLine(on, hasKey = true))
+    }
+
+    @Test fun serverRowFallsBackToTheHealthProbeBeforeTheCleanupConnectionsHello() {
+        // Test connection passed, no dictation yet (cleanup_status has no hello): not "not connected".
+        val caps = BuildCaps.ALL
+        val set = DevSettings.defaults(caps).copy(host = "100.64.0.10")
+        fun line(h: HealthReport?, checking: Boolean = false, serverLlm: Boolean? = null, circuit: Boolean = false) =
+            CleanupEngines.serverLine(set, caps, serverLlm, circuit, h, checking)
+        assertEquals("Ready · has an AI model", line(HealthReport(ok = true, llm = true)))
+        assertEquals("Connected · no AI model on the server", line(HealthReport(ok = true, llm = false)))
+        assertEquals("Connected", line(HealthReport(ok = true)))
+        assertEquals("Not reachable", line(HealthReport(ok = false, error = "connect_failed")))
+        assertEquals("Checking…", line(null, checking = true))
+        assertEquals("Not checked yet", line(null))
+        // The cleanup connection's own answer and an open circuit win over an older probe.
+        assertEquals("Connected · no AI model on the server", line(HealthReport(ok = true, llm = true), serverLlm = false))
+        assertEquals("Not reachable", line(HealthReport(ok = true, llm = true), circuit = true))
+        // Not set up stays that, whatever was probed.
+        assertEquals("Not set up", CleanupEngines.serverLine(DevSettings.defaults(caps), caps, null, h = HealthReport(ok = true)))
     }
 
     @Test fun anUpgradeWithAiCleanupOffKeepsItOffButAFreshInstallHasTheServerOn() {
