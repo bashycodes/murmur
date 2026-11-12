@@ -12,16 +12,23 @@
 //! dictation through the router's cloud cleanup route, and the plain-words
 //! errors for a wrong key and an unknown model. It prints latencies and
 //! the shape of the answers, never the key.
+//!
+//! D84: with `MURMUR_LITELLM_STT_MODEL=<audio_transcription model>` also
+//! `litellm_proxy_speech_to_text`: speech-model detection from
+//! `/model/info`, a transcription of the bundled public-domain clip, the
+//! Speech page's Test, and a whole dictation on the proxy's speech route
+//! (`--ignored litellm_proxy_speech_to_text`).
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use murmur_cloud::custom;
+use murmur_cloud::{custom, CloudAsr, TEST_CLIP};
 use murmur_core::asr::MockAsr;
+use murmur_core::asr::{AsrEngine, AsrPurpose, AsrRequest};
 use murmur_core::MurmurCore;
 use murmur_router::cloud::{custom_server_address, CustomCleanupConfig};
 use murmur_router::{
-    Backend, CleanupRoute, CloudProvider, Router, RouterConfig, SecretString, SessionConfig,
+    Backend, CleanupRoute, CloudProvider, Route, Router, RouterConfig, SecretString, SessionConfig,
 };
 
 /// A made-up dictation with fillers and a self-correction.
@@ -205,4 +212,115 @@ fn litellm_proxy_end_to_end() {
     );
     // Whatever the proxy reports is its own; none of it is OpenRouter's.
     assert_eq!(st.month_cost_usd.0, st.custom_month_cost_usd.0);
+}
+
+fn clip() -> Vec<i16> {
+    TEST_CLIP
+        .chunks_exact(2)
+        .map(|b| i16::from_le_bytes([b[0], b[1]]))
+        .collect()
+}
+
+#[test]
+#[ignore = "needs a LiteLLM proxy with a speech model (MURMUR_LITELLM_STT_MODEL)"]
+fn litellm_proxy_speech_to_text() {
+    let l = live();
+    let stt = std::env::var("MURMUR_LITELLM_STT_MODEL").expect("MURMUR_LITELLM_STT_MODEL");
+    let secret = l.key.as_ref().map(|k| k.expose().to_string());
+    let no_secret = |s: &str| {
+        if let Some(k) = &secret {
+            assert!(!s.contains(k.as_str()), "the key leaked into output");
+        }
+    };
+    let mut c = cfg(&l, &l.model);
+    c.stt_model = stt.clone();
+    c.stt_consent_host = c.consent_host.clone();
+    c.stt_consent_at_ms = 1;
+
+    // 1. Test connection: the speech model is found by its mode.
+    let j = custom::models_with_speech_json(&l.url, l.key.as_ref(), Duration::from_secs(10));
+    println!("speech models: {}", j["speech_models"]);
+    assert!(
+        j["speech_models"]
+            .as_array()
+            .is_some_and(|a| a.iter().any(|m| m == stt.as_str())),
+        "{j}"
+    );
+    if l.key.is_some() {
+        let j = custom::models_with_speech_json(&l.url, None, Duration::from_secs(10));
+        assert_eq!(j["error"], "auth_failed", "{j}");
+    }
+
+    // 2. One transcription of the public-domain clip.
+    let asr = CloudAsr::litellm(&c, l.key.clone());
+    let pcm: Vec<f32> = clip().iter().map(|s| *s as f32 / 32768.0).collect();
+    let req = AsrRequest {
+        language: Some("en".into()),
+        purpose: AsrPurpose::Final,
+        dictionary_terms: vec!["Americans".into()],
+        ..Default::default()
+    };
+    let t0 = Instant::now();
+    let out = asr.transcribe(&pcm, &req).expect("the proxy transcribes");
+    let info = asr.last_call().unwrap();
+    no_secret(&format!("{info:?}"));
+    println!(
+        "transcription: {} ms, cost {:?} (estimated {}), request id {}, text: {:?}",
+        t0.elapsed().as_millis(),
+        info.cost_usd,
+        info.cost_estimated,
+        info.request_id.is_some(),
+        out.text
+    );
+    assert!(out.text.to_lowercase().contains("fellow"), "{:?}", out.text);
+    assert_eq!(info.provider_id, "custom");
+
+    // 3. An unknown speech model: a plain-words error.
+    let mut bad = c.clone();
+    bad.stt_model = "no-such-model-d84".into();
+    let e = CloudAsr::litellm(&bad, l.key.clone())
+        .transcribe(&pcm, &req)
+        .unwrap_err();
+    println!("unknown speech model: {e}");
+
+    // 4. A whole dictation on the proxy's speech route, and the Speech
+    // page's Test.
+    let mut rc = RouterConfig {
+        allow_cloud: true,
+        allow_server: false,
+        order: vec![Route::Cloud],
+        ..Default::default()
+    };
+    rc.cloud.provider = CloudProvider::LiteLlm;
+    rc.cloud.custom_cleanup = c.clone();
+    rc.validate().unwrap();
+    let router = murmur_cloud::attach(Router::new(rc, None, None), None);
+    router.set_cloud_key("custom", l.key.clone());
+    let h = router.probe_custom_stt(&c, None);
+    println!(
+        "speech test: ok={} {:?} ms {:?}",
+        h.ok, h.latency_ms, h.transcript
+    );
+    assert!(h.ok, "{h:?}");
+    router.start_session(SessionConfig::default()).unwrap();
+    for ch in clip().chunks(1600) {
+        router.push_audio(ch);
+    }
+    let r = router.commit();
+    let rt = r.route.clone().unwrap();
+    no_secret(&format!("{r:?}"));
+    println!(
+        "dictation: engine {} provider {:?} model {:?} cost {:?}, asr: {:?}",
+        rt.engine, rt.provider, rt.model, rt.cost_usd, r.asr_text
+    );
+    assert_eq!(rt.engine, "cloud");
+    assert_eq!(rt.provider.as_deref(), Some("custom"));
+    assert!(r.asr_text.to_lowercase().contains("fellow"), "{r:?}");
+    let u = router.cloud_usage();
+    println!(
+        "usage: proxy {} USD, OpenRouter budget {} USD",
+        u.custom_cost(),
+        u.budget_cost()
+    );
+    assert_eq!(u.budget_cost(), 0.0);
 }

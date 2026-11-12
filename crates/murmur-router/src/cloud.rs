@@ -157,10 +157,10 @@ pub struct CloudConfig {
     /// was spent.
     pub monthly_budget_usd: Option<Usd>,
     /// D78: the one Cloud provider, OpenRouter or LiteLLM, that every cloud
-    /// use goes to. Cleanup calls it; cloud speech-to-text runs only while
-    /// it is OpenRouter (no LiteLLM speech path yet). Stored under its D52
-    /// name `cleanup_provider`, so saved settings read unchanged; omitted
-    /// while OpenRouter.
+    /// use goes to. Cleanup calls it; cloud speech-to-text goes to it too
+    /// once LiteLLM has a speech model (D84, [`Self::speech_provider`]).
+    /// Stored under its D52 name `cleanup_provider`, so saved settings read
+    /// unchanged; omitted while OpenRouter.
     #[serde(
         rename = "cleanup_provider",
         skip_serializing_if = "CloudProvider::is_openrouter"
@@ -227,6 +227,27 @@ impl CloudConfig {
             }
         }
         Ok(())
+    }
+
+    /// D84: who cloud speech-to-text goes to. LiteLLM when it is the
+    /// provider and has a speech model, else OpenRouter: a LiteLLM setup
+    /// without one (Android's custom cleanup server paired with OpenRouter
+    /// speech, D78) keeps its OpenRouter speech unchanged.
+    pub fn speech_provider(&self) -> CloudProvider {
+        if self.provider == CloudProvider::LiteLlm
+            && !self.custom_cleanup.stt_model.trim().is_empty()
+        {
+            CloudProvider::LiteLlm
+        } else {
+            CloudProvider::OpenRouter
+        }
+    }
+
+    /// The selected Cloud provider can do speech to text: OpenRouter
+    /// always, LiteLLM once a speech model is set (D84). The Windows
+    /// settings keep cloud speech off otherwise (D78's one-provider rule).
+    pub fn offers_stt(&self) -> bool {
+        self.provider.is_openrouter() || !self.custom_cleanup.stt_model.trim().is_empty()
     }
 
     /// The cleanup consent for the selected provider: openrouter.ai, or
@@ -321,8 +342,9 @@ pub struct CleanupView {
 
 /// The Cloud provider (D78; D52's cleanup provider): who the `cloud`
 /// cleanup route calls. The Windows pages call both "Cloud" and keep one
-/// provider for every cloud use; cloud speech-to-text itself always runs on
-/// OpenRouter, whatever this says (Android still pairs the two).
+/// provider for every cloud use; cloud speech-to-text follows it once
+/// LiteLLM has a speech model ([`CloudConfig::speech_provider`], D84), else
+/// runs on OpenRouter (Android still pairs the two).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum CloudProvider {
     /// OpenRouter (default; D28): speech to text and cleanup.
@@ -330,7 +352,8 @@ pub enum CloudProvider {
     #[serde(rename = "openrouter")]
     OpenRouter,
     /// The user's LiteLLM proxy or other OpenAI-compatible server
-    /// ([`CustomCleanupConfig`], D52): cleanup only. On the wire it keeps
+    /// ([`CustomCleanupConfig`], D52): cleanup, and speech to text when it
+    /// has a speech model (D84). On the wire it keeps
     /// its D52 id `custom` (settings files, key id, usage rows, shell
     /// JSON); `litellm` is read too.
     #[serde(rename = "custom", alias = "litellm")]
@@ -340,13 +363,6 @@ pub enum CloudProvider {
 impl CloudProvider {
     pub fn is_openrouter(&self) -> bool {
         *self == CloudProvider::OpenRouter
-    }
-
-    /// Cloud speech-to-text can run on this provider (OpenRouter only).
-    /// The router does not enforce it (Android pairs LiteLLM cleanup with
-    /// OpenRouter speech); the Windows settings do (D78).
-    pub fn offers_stt(self) -> bool {
-        self.is_openrouter()
     }
 
     pub fn as_str(self) -> &'static str {
@@ -384,6 +400,23 @@ pub struct CustomCleanupConfig {
     /// URL to another host voids the consent.
     pub consent_host: String,
     pub consent_at_ms: u64,
+    /// D84: the proxy's speech-to-text model (`/audio/transcriptions`).
+    /// Empty = no speech on the proxy: cloud speech-to-text then stays on
+    /// OpenRouter ([`CloudConfig::speech_provider`]). Omitted while empty,
+    /// so D52/D78 settings files read and write unchanged.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub stt_model: String,
+    /// Host the user consented to send **audio** to: its own consent, like
+    /// OpenRouter's (text consent is not audio consent). A base URL on
+    /// another host voids it.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub stt_consent_host: String,
+    #[serde(skip_serializing_if = "is_zero")]
+    pub stt_consent_at_ms: u64,
+}
+
+fn is_zero(v: &u64) -> bool {
+    *v == 0
 }
 
 impl Default for CustomCleanupConfig {
@@ -395,6 +428,9 @@ impl Default for CustomCleanupConfig {
             connect_timeout_ms: 1500,
             consent_host: String::new(),
             consent_at_ms: 0,
+            stt_model: String::new(),
+            stt_consent_host: String::new(),
+            stt_consent_at_ms: 0,
         }
     }
 }
@@ -418,6 +454,19 @@ impl CustomCleanupConfig {
             let h = self.host();
             !h.is_empty() && self.consent_host.eq_ignore_ascii_case(&h)
         }
+    }
+
+    /// D84: the user consented to send audio to this server's host.
+    pub fn stt_consent_ok(&self) -> bool {
+        self.stt_consent_at_ms > 0 && !self.stt_consent_host.is_empty() && {
+            let h = self.host();
+            !h.is_empty() && self.stt_consent_host.eq_ignore_ascii_case(&h)
+        }
+    }
+
+    /// D84: address and speech model are set, so the proxy can transcribe.
+    pub fn stt_ready(&self) -> bool {
+        self.api_base().is_ok() && valid_custom_model_id(self.stt_model.trim())
     }
 
     /// The API root requests go to (`…/chat/completions`, `…/models`).
@@ -460,6 +509,13 @@ impl CustomCleanupConfig {
         if !model.is_empty() && !valid_custom_model_id(model) {
             return Err(format!(
                 "The AI cleanup server's model name {model:?} is not valid: \
+                 use the name the server lists, without spaces, up to 256 characters."
+            ));
+        }
+        let stt = self.stt_model.trim();
+        if !stt.is_empty() && !valid_custom_model_id(stt) {
+            return Err(format!(
+                "The proxy's speech model name {stt:?} is not valid: \
                  use the name the server lists, without spaces, up to 256 characters."
             ));
         }
@@ -1306,7 +1362,8 @@ mod tests {
         });
         let c: CloudConfig = serde_json::from_value(or_json.clone()).unwrap();
         assert_eq!(c.provider, CloudProvider::OpenRouter);
-        assert!(c.provider.offers_stt());
+        assert!(c.offers_stt());
+        assert_eq!(c.speech_provider(), CloudProvider::OpenRouter);
         assert_eq!(serde_json::to_value(&c).unwrap(), or_json);
 
         let d52 = serde_json::json!({
@@ -1322,7 +1379,12 @@ mod tests {
         });
         let c: CloudConfig = serde_json::from_value(d52.clone()).unwrap();
         assert_eq!(c.provider, CloudProvider::LiteLlm);
-        assert!(!c.provider.offers_stt());
+        assert!(!c.offers_stt());
+        assert_eq!(
+            c.speech_provider(),
+            CloudProvider::OpenRouter,
+            "no speech model: speech stays on OpenRouter (D84)"
+        );
         assert_eq!(
             c.cleanup_key_id(),
             CUSTOM_CLEANUP_ID,
@@ -1387,6 +1449,42 @@ mod tests {
         let mut o = CloudConfig::default();
         o.custom_cleanup.base_url = "not a url".into();
         assert_eq!(o.validate(), Ok(()));
+    }
+
+    /// D84: a speech model on the LiteLLM proxy moves cloud speech there,
+    /// with its own audio consent bound to the proxy's host.
+    #[test]
+    fn litellm_speech_model_and_audio_consent() {
+        let mut c = CloudConfig::default();
+        c.custom_cleanup.stt_model = "local-whisper".into();
+        assert_eq!(
+            c.speech_provider(),
+            CloudProvider::OpenRouter,
+            "only while LiteLLM is the provider"
+        );
+        c.provider = CloudProvider::LiteLlm;
+        assert_eq!(c.speech_provider(), CloudProvider::LiteLlm);
+        assert!(c.offers_stt());
+        let cc = &mut c.custom_cleanup;
+        assert!(!cc.stt_ready(), "no address yet");
+        cc.base_url = "http://10.0.0.5:4000".into();
+        assert!(cc.stt_ready());
+        assert!(!cc.stt_consent_ok());
+        cc.consent_host = "10.0.0.5".into();
+        cc.consent_at_ms = 1;
+        assert!(!cc.stt_consent_ok(), "text consent is not audio consent");
+        cc.stt_consent_host = "10.0.0.5".into();
+        cc.stt_consent_at_ms = 2;
+        assert!(cc.stt_consent_ok());
+        cc.base_url = "http://10.0.0.6:4000".into();
+        assert!(!cc.stt_consent_ok(), "another host voids it");
+        cc.stt_model = "two words".into();
+        assert!(c.validate().unwrap_err().contains("speech model"));
+        // Empty fields are not written: D52/D78 files round-trip unchanged.
+        let j = serde_json::to_value(CustomCleanupConfig::default()).unwrap();
+        for k in ["stt_model", "stt_consent_host", "stt_consent_at_ms"] {
+            assert!(j.get(k).is_none(), "{k}");
+        }
     }
 
     /// D76: a fresh install has no custom cleanup model. With Custom picked
