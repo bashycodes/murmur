@@ -26,7 +26,7 @@ import java.util.Date
  * before Notes) is one of them, pinned by default. Reloaded on every resume, so an edit shows
  * when you come back. All store calls run on [MurmurApp.documentsIo], in order with the editor's saves.
  *
- * Not a dictation surface: like every other screen of ours the bubble stays hidden here (the
+ * Not a dictation screen: like every other screen of ours the bubble stays hidden here (the
  * search box included); it appears in the editor.
  */
 class NotesActivity : Activity() {

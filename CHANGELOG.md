@@ -16,6 +16,10 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Fixed
+
+- **Android: the bubble no longer covers Murmur's own screens** (such as the reorder arrows under Settings → Speech to text → Change order): it hides on every Murmur screen in full screen, except the note editor and a dictation already running.
+
 ## [1.2.0] - 2026-11-12
 
 ### Added
