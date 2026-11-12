@@ -13,7 +13,7 @@ import android.widget.ScrollView
 object ScrollReveal {
     /**
      * How far to scroll (positive = down) so `[top, bottom]` fits in the visible window
-     * `[visibleTop, visibleBottom]`, all in the scroll view's coordinates. A rect taller
+     * `[visibleTop, visibleBottom]`, all in the scroll view's content coordinates. A rect taller
      * than the window is aligned to its top; one already inside does not move.
      */
     fun delta(top: Int, bottom: Int, visibleTop: Int, visibleBottom: Int): Int = when {
@@ -25,12 +25,22 @@ object ScrollReveal {
 
     /** Scrolls [scroll] so its focused descendant, plus [belowPx] (its help / error line), is visible. */
     fun focused(scroll: ScrollView, belowPx: Int) {
-        val f = scroll.findFocus() ?: return
-        if (f === scroll) return
+        val d = focusedDelta(scroll, belowPx)
+        if (d != 0) scroll.smoothScrollBy(0, d)
+    }
+
+    /**
+     * The [delta] [focused] scrolls by. `offsetDescendantRectToMyCoords` gives the field in
+     * content coordinates (scrollY not subtracted), so the visible window is shifted by
+     * scrollY too, as ScrollView.scrollToChild does.
+     */
+    fun focusedDelta(scroll: ScrollView, belowPx: Int): Int {
+        val f = scroll.findFocus() ?: return 0
+        if (f === scroll) return 0
         val r = Rect(0, 0, f.width, f.height)
         scroll.offsetDescendantRectToMyCoords(f, r)
-        val d = delta(r.top, r.bottom + belowPx, scroll.paddingTop, scroll.height - scroll.paddingBottom)
-        if (d != 0) scroll.smoothScrollBy(0, d)
+        val y = scroll.scrollY
+        return delta(r.top, r.bottom + belowPx, y + scroll.paddingTop, y + scroll.height - scroll.paddingBottom)
     }
 
     /** Reveals on each focus change and after each layout whose bottom padding (the keyboard) changed. */
