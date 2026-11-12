@@ -112,6 +112,12 @@ fi
 # "unconfirmed", not given a licence.
 MN="$H/model_notice.py"
 python3 -I "$MN" --check-catalog "$RS" || fail "catalogue licences != tools/notice/models.tsv"
+# Gemma (server-only cleanup model) is never handed on: not in the list,
+# refused by the bundle, and its notice is still right should a zip name it.
+! cut -f1 "$T/m.tsv" | grep -qx 'gemma-3-12b-it-q4_k_m' || fail "Gemma is in the bundle model list"
+grep -q 'Gemma is never bundled (D80)' "$B" || fail "colleague-bundle.sh does not refuse Gemma"
+python3 -I "$MN" gemma-3-12b-it-q4_k_m | grep -q 'Gemma is provided under and subject to the Gemma Terms of Use' ||
+  fail "Gemma notice"
 cut -f1 "$T/m.tsv" | sort -u > "$T/folders"
 while read -r f; do
   grep -q "^$f"$'\t' "$ROOT/tools/notice/models.tsv" || fail "model folder $f has no licence row"
