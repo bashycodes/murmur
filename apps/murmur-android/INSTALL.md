@@ -584,9 +584,9 @@ keyboard:
   what you describe at the cursor. Refused in password / number / phone / URL fields, banking and
   excluded apps.
 
-While you speak, the line above the bubble shows the live transcript (*Settings → Bubble → Live
-preview*). "Can't hear you" means 3 s of silence; "No speech detected" means nothing was
-inserted. Menu ☰ → *History* lists dictations by day; tap one for the full text,
+With *Settings → Bubble → Live preview* on (off by default), the line above the bubble shows
+the live transcript while you speak. "Can't hear you" means 3 s of silence; "No speech detected"
+means nothing was inserted. Menu ☰ → *History* lists dictations by day; tap one for the full text,
 the raw transcript and per-stage timings. A dictation that never reached its field (you switched
 fields, a protected field) says **Not inserted — tap to copy**: tap the row to copy it. Its detail
 page says why (*You switched apps*, *Protected field*, *Couldn't paste*) and offers *Insert with
@@ -749,6 +749,7 @@ latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CO
       respect it); *Start / show bubble* brings it back.
 
 **Live preview / silence**
+- [ ] Fresh install: *Live preview* is off and no transcript shows while speaking; turn it on.
 - [ ] While speaking for 5+ s, the preview line fills with words (1.5 s cadence) and
       dims while processing; the final insert can differ from it.
 - [ ] Note the extra CPU: with preview on, commit latency rises slightly (partial decode
