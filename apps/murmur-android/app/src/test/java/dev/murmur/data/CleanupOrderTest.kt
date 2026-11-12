@@ -169,6 +169,10 @@ class CleanupOrderTest {
         // The cleanup connection's own answer and an open circuit win over an older probe.
         assertEquals("Connected · no AI model on the server", line(HealthReport(ok = true, llm = true), serverLlm = false))
         assertEquals("Not reachable", line(HealthReport(ok = true, llm = true), circuit = true))
+        // A failed probe wins over an old hello: the router keeps "has a model" with no expiry, so a
+        // server that went down after one dictation must not stay "Ready".
+        assertEquals("Not reachable", line(HealthReport(ok = false, error = "connect_failed"), serverLlm = true))
+        assertEquals("Not reachable", line(HealthReport(ok = false, error = "connect_failed"), serverLlm = false))
         // Not set up stays that, whatever was probed.
         assertEquals("Not set up", CleanupEngines.serverLine(DevSettings.defaults(caps), caps, null, h = HealthReport(ok = true)))
     }
