@@ -298,6 +298,17 @@ impl CloudConfig {
         }
     }
 
+    /// Where cleanup text goes, as messages name it (D52 binds consent to
+    /// the provider and host, D78): "OpenRouter", "LiteLLM (10.0.0.5)",
+    /// or "LiteLLM" while no host is set.
+    pub fn cleanup_destination(&self) -> String {
+        let label = self.provider.label();
+        match self.cleanup_host() {
+            h if h.is_empty() => label.into(),
+            h => format!("{label} ({h})"),
+        }
+    }
+
     /// The part of the config the cleanup gate depends on (a change resets
     /// its circuit and rebuilds the cleaner; STT edits do not).
     pub fn cleanup_view(&self) -> CleanupView {
@@ -353,6 +364,14 @@ impl CloudProvider {
         match self {
             CloudProvider::OpenRouter => "openrouter",
             CloudProvider::LiteLlm => "custom",
+        }
+    }
+
+    /// The provider's name as the user reads it (D78).
+    pub fn label(self) -> &'static str {
+        match self {
+            CloudProvider::OpenRouter => "OpenRouter",
+            CloudProvider::LiteLlm => "LiteLLM",
         }
     }
 }

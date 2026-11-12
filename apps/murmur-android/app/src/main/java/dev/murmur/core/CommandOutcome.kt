@@ -26,8 +26,11 @@ sealed interface CommandOutcome {
         const val LANGUAGE_CHANGED = "language_changed"
         const val BACKEND = "backend"
 
-        /** Same wording as the core's `CommandError::NoLlm` (engines / libraries without Command Mode). */
-        const val NO_LLM_MESSAGE = "Command Mode needs AI: turn on AI cleanup (local model) or OpenRouter text cleanup"
+        /**
+         * Same wording as the core's `CommandError::NoLlm` (engines / libraries without Command Mode).
+         * Says "cloud", not a provider: the Cloud provider may be OpenRouter or LiteLLM (D78).
+         */
+        const val NO_LLM_MESSAGE = "Command Mode needs AI: turn on AI cleanup (local model) or cloud text cleanup"
 
         val noLlm: Failed get() = Failed(NO_LLM, NO_LLM_MESSAGE)
 
