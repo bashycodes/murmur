@@ -8,7 +8,7 @@ Measured 2026-10-20 to check the defaults in `DECISIONS.md` D3–D5 against data
 |---|---|---|---|
 | **Desktop, CPU only** | **Parakeet-TDT-0.6B int8** (sherpa-onnx) for English. **whisper base q5_1** for other languages or auto-detect. whisper small q5_1 as an opt-in "accurate" mode. | **OFF** by default. Opt-in: Qwen2.5-3B-Instruct Q4_K_M with the few-shot prompt (Qwen2.5-1.5B on slower CPUs). | ASR ≈ 1.2 s (Parakeet) / 2 s (base). The LLM adds 2.5–4.5 s. |
 | **Desktop, GPU** (estimate) | whisper large-v3-turbo q5_0 (multilingual). Parakeet on CUDA for English. | **ON** is viable: Qwen2.5-3B, or Qwen2.5-7B, few-shot. | ≈ 0.3–0.6 s ASR plus ≈ 0.3–0.8 s LLM (estimate) |
-| **Server with a GPU ≥ 10 GB** (2026-11-12; quality measured, latency estimate) | as the server default | **Gemma 3 12B Q4_K_M**: the only one tested with no harmful Hebrew edit. Avoid Qwen2.5-14B for Hebrew (mixed-script junk). See §GPU cleanup model. | LLM ≈ 0.2–0.8 s (estimate) |
+| **Server with an NVIDIA GPU > 10 GB** (2026-11-12; quality measured, latency estimate) | as the server default | **Gemma 3 12B Q4_K_M**: the only one tested with no harmful Hebrew edit. Avoid Qwen2.5-14B for Hebrew (mixed-script junk). See §GPU cleanup model. | LLM ≈ 0.2–0.8 s (estimate) |
 | **Android** (estimate) | whisper base q5_1 (D4 holds). tiny q5_1 on low-end phones. Parakeet int8 as an English option on flagships. | **OFF**. Opt-in Qwen2.5-1.5B only on phones with ≥ 8 GB RAM. | ≈ 1–2.5 s ASR on a flagship; the LLM adds 1.5–4 s |
 
 What this changes in DECISIONS:
@@ -276,8 +276,10 @@ Gemma 3 lists Hebrew among its trained languages). Qwen2.5-1.5B (the server
 default) is the baseline. Probe: `tools/probes/prototypes/gpu_cleanup_model_2026_11_12/`.
 
 **No GPU was reachable**, so quality is **measured** on the CPU (i7-6700, 4
-threads) and GPU latency is an **estimate**. Decoding is deterministic, so a
-GPU produces the same texts.
+threads) and GPU latency is an **estimate**. We **assume** a GPU produces the
+same texts: decoding is greedy and deterministic, but CUDA kernels round
+differently from the CPU ones, so a token could occasionally differ. This
+has not been checked.
 
 ### Method (measured)
 
@@ -355,19 +357,24 @@ for 7B, 3–4 min for Gemma and 4.5 min for 14B.
 
 ### Recommendation
 
-**Gemma 3 12B Instruct Q4_K_M (`gemma-3-12b-it-q4_k_m`) for a server with a
-GPU of 10 GB or more.** It is the only candidate with no harmful Hebrew
-edit, and its English matches the others.
+**Gemma 3 12B Instruct Q4_K_M (`gemma-3-12b-it-q4_k_m`) for a server with an
+NVIDIA GPU of more than 10 GB** (a 12 GB card or larger). It is the only
+candidate with no harmful Hebrew edit, and its English is close to the
+others.
 
-* For a GPU of 6–8 GB, use Llama 3.2 3B, which is already in the catalogue, or Qwen2.5-7B. Qwen2.5-7B is not catalogued, and its Hebrew has the slips listed above.
+* For a GPU of 6–10 GB, use Llama 3.2 3B, which is already in the catalogue, or Qwen2.5-7B. Qwen2.5-7B is not catalogued, and its Hebrew has the slips listed above. On 8–10 GB, Gemma would run partly on the CPU, which has not been measured.
 * Do not use Qwen2.5-14B for Hebrew.
 * Without a GPU, keep Qwen2.5-1.5B.
 
 The setup steps are in `docs/colleague-install.md` (§The server, "With a
-GPU"). The model is in the catalogue
-(`murmur_protocol::library::CATALOGUE`, the Windows catalogue, and
-`docs/air-gapped-models.txt`) with its SHA-256. Its licence is the Gemma
-Terms of Use (NOTICE §5).
+GPU"). The model is in the server catalogue only
+(`murmur_protocol::library::CATALOGUE`, listed in `SERVER_ONLY`). Its pin
+and SHA-256 are in the install note and in the probe's `fetch.sh`. Its
+licence is the Gemma Terms of Use (NOTICE §5).
+
+Murmur never redistributes Gemma: it is not in any bundle, image or zip
+(D80). Whoever runs the server downloads it from Hugging Face and accepts
+Google's terms.
 
 An earlier note said Qwen2.5-7B had never been run with few-shot turns.
 That is not quite right: the 2026-10-20 table above has a few-shot result
