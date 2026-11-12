@@ -101,7 +101,7 @@ class SettingsPagesTest {
     @Test fun savingAPageOnlyWritesThatPagesFields() {
         // Another page / an immediate switch changed the store meanwhile: Save must not undo it.
         val d = draft(Page.TIMING).edit { copy(capMinutes = "7") }
-        val stored = s.copy(livePreview = false, userDenylist = setOf("com.x.y"), language = "de")
+        val stored = s.copy(livePreview = true, userDenylist = setOf("com.x.y"), language = "de")
         val out = d.result(stored).settings!!
         assertEquals(7, out.capMinutes)
         assertEquals(stored.copy(capMinutes = 7), out)
@@ -121,7 +121,7 @@ class SettingsPagesTest {
         assertTrue(SettingsPages.effects(s, s.copy(mockEngine = true)).reloadEngine)
         assertTrue(SettingsPages.effects(s, s.copy(llmEnabled = true)).reloadEngine)
         assertTrue(SettingsPages.effects(s, s.copy(asrEngine = AsrEngine.PARAKEET)).reloadEngine)
-        assertFalse(SettingsPages.effects(s, s.copy(livePreview = false)).reloadEngine)
+        assertFalse(SettingsPages.effects(s, s.copy(livePreview = true)).reloadEngine)
         assertFalse("strength is read per session", SettingsPages.effects(s, s.copy(cleanup = CleanupLevel.HIGH)).reloadEngine)
         assertTrue(SettingsPages.effects(s, s.copy(retention = Retention.DAY)).purgeHistory)
         assertFalse(SettingsPages.effects(s, s).purgeHistory)
@@ -203,9 +203,10 @@ class SettingsPagesTest {
         assertEquals("Stops after a 1.5 s pause · 5 min max", SettingsSummary.timing(s))
         assertEquals("Stops when you tap · 20 min max", SettingsSummary.timing(s.copy(endpointSilenceMs = 0, capMinutes = 20)))
         assertEquals("Stops after a 2 s pause · 1 min max", SettingsSummary.timing(s.copy(endpointSilenceMs = 2000, capMinutes = 1)))
-        assertEquals("100% · live preview · shrinks to a dot · shake to restore", SettingsSummary.bubble(s))
-        assertEquals("100% · shake to restore", SettingsSummary.bubble(s.copy(livePreview = false, shrinkBubble = false)))
-        assertEquals("100% · live preview · shrinks when idle · shake to restore", SettingsSummary.bubble(s.copy(shrinkToDot = false)))
+        assertEquals("100% · shrinks to a dot · shake to restore", SettingsSummary.bubble(s))
+        assertEquals("100% · live preview · shrinks to a dot · shake to restore", SettingsSummary.bubble(s.copy(livePreview = true)))
+        assertEquals("100% · shake to restore", SettingsSummary.bubble(s.copy(shrinkBubble = false)))
+        assertEquals("100% · shrinks when idle · shake to restore", SettingsSummary.bubble(s.copy(shrinkToDot = false)))
         assertEquals("75%", SettingsSummary.bubble(s.copy(livePreview = false, shrinkBubble = false, shakeToReveal = false, bubbleScale = 0.75f)))
         assertEquals("Banking apps", SettingsSummary.apps(s))
         assertEquals("Banking apps and 1 more", SettingsSummary.apps(s.copy(userDenylist = setOf("a.b"))))

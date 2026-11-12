@@ -29,10 +29,12 @@ class LlmSettingsTest {
         assertEquals(Settings.ANDROID_LLM_TIMEOUT_MS, c.llmTimeoutMs)
     }
 
-    @Test fun defaultsAreLlmOffPreviewOnShakeOnMinimiseOn() {
+    @Test fun defaultsAreLlmOffPreviewOffShakeOnMinimiseOn() {
         val s = Settings()
         assertFalse(s.llmEnabled)
-        assertTrue(s.livePreview && s.shakeToReveal && s.shrinkBubble && s.shrinkToDot)
+        assertFalse("live preview is off on a fresh install", s.livePreview)
+        assertNull("so no partial decodes by default", s.toSessionConfig(emptyList()).partialIntervalMs)
+        assertTrue(s.shakeToReveal && s.shrinkBubble && s.shrinkToDot)
     }
 
     @Test fun livePreviewSetsPartialInterval() {
