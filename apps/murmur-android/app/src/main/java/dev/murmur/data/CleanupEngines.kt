@@ -82,18 +82,28 @@ object CleanupEngines {
     }
 
     /**
-     * Phone row: [model] = the imported GGUF file name (null = none); [loaded] = the engine has it
-     * loaded now (null = the engine is still loading).
+     * Phone row: [on] = the row's switch ([on] LOCAL); [model] = the imported GGUF file name (null =
+     * none); [loaded] = the engine has it loaded now (null = the engine is still loading). Off says
+     * so, and that the switch turns it on: a model alone does nothing while the row is off.
      */
-    fun phoneLine(llmEnabled: Boolean, model: String?, loaded: Boolean?): String {
+    fun phoneLine(on: Boolean, model: String?, loaded: Boolean?): String {
         val m = SettingsSummary.shortModel(model) ?: return "No model imported"
         return when {
-            !llmEnabled -> "$m · not loaded"
+            !on -> "$m · off, tap to use it"
             loaded == null -> "$m · loading…"
             loaded -> "$m · loaded"
             else -> "$m · failed to load"
         }
     }
+
+    /**
+     * A cleanup model made active when [hadModel] was false (none before): the phone engine is switched
+     * on, both its row ([DevSettings.cleanupOff]) and the on-device AI ([Settings.llmEnabled]). Null
+     * when it is on already or a model was there before (a switch turned off with a model stays off).
+     */
+    fun phoneOnForFirstModel(hadModel: Boolean, s: Settings, d: DevSettings): Pair<Settings, Set<CleanupRoute>>? =
+        if (hadModel || (s.llmEnabled && d.cleanupOn(CleanupRoute.LOCAL))) null
+        else s.copy(llmEnabled = true) to d.withCleanup(CleanupRoute.LOCAL, true).cleanupOff
 
     /**
      * Server row. `cleanup_status` first ([serverLlm]: the cleanup connection's hello, null = none yet;
