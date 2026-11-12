@@ -22,6 +22,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Fixed
 
+- **Windows: browser tabs on a site the app groups don't list now get their style from the tab title**, and a host that carries a known site's name as a whole label (`outlook.example.org`, `mail.example.org`) counts as that site; lookalikes such as `slackware.example.org` stay "other".
 - **Android: Developer settings → Status & server info: the cleanup section is "Cloud cleanup"**, not "Cloud cleanup (OpenRouter)", since its status covers LiteLLM too.
 - **Android: the Speech to text warning for cloud speech without consent points to the Cloud page** (it said "OpenRouter page").
 - **Android: the bubble no longer covers Murmur's own screens** (such as the reorder arrows under Settings → Speech to text → Change order): it hides on every Murmur screen in full screen, except the note editor and a dictation already running.
