@@ -381,12 +381,12 @@ data class CloudUsage(val month: String = "", val providers: List<ProviderUsage>
      * D52: one use's OpenRouter part (what the budget counts), the custom server left out; counters
      * of removed providers count as speech-to-text.
      */
-    fun openRouterCostFor(purpose: String): Double = cloudRow(purpose).sumOf { it.costUsd }
-    fun openRouterEstimated(purpose: String): Boolean = cloudRow(purpose).any { it.costEstimated }
-    fun openRouterRequests(purpose: String): Long = cloudRow(purpose).sumOf { it.requests }
+    fun openRouterCostFor(purpose: String): Double = openRouterUsage(purpose).sumOf { it.costUsd }
+    fun openRouterEstimated(purpose: String): Boolean = openRouterUsage(purpose).any { it.costEstimated }
+    fun openRouterRequests(purpose: String): Long = openRouterUsage(purpose).sumOf { it.requests }
     /** D52: cleanup requests sent to the custom server this month (counted even when it reports no cost). */
     val customRequests: Long get() = providers.filter { it.isCustom }.sumOf { it.requests }
-    private fun cloudRow(purpose: String) = providers.filter { it.purpose == purpose && !it.isCustom }
+    private fun openRouterUsage(purpose: String) = providers.filter { it.purpose == purpose && !it.isCustom }
     fun billedAudioMs(): Long = providers.filter { it.purpose == PURPOSE_STT }.sumOf { it.billedAudioMs }
 
     fun toJson(): JSONObject = JSONObject().apply {

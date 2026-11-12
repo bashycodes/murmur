@@ -454,8 +454,9 @@ LiteLLM's consent is tied to the host you typed. No extra permission: it uses `I
 `local` flavour has no cloud at all.
 
 The steps below are for OpenRouter. With LiteLLM picked, the page hides OpenRouter's *API key*
-and *Privacy* cards and its cleanup model rows, and shows *Your LiteLLM proxy* instead
-(*Address*, optional *API key*, *Test connection*, *Model*, *Time limit*).
+and *Privacy* cards and, under *Text cleanup*, the *Model*, *Provider choice* and *Time limit*
+rows, and shows *Your LiteLLM proxy* instead (*Address*, optional *API key*, *Test connection*,
+*Model*, *Time limit*).
 
 Open it from *Settings → Cloud* (under *Connections*) or *Developer settings → Cloud*:
 

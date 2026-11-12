@@ -331,9 +331,9 @@ object DevText {
         }
         // D52: month_cost_usd counts both providers; OpenRouter's part and the custom server's are shown apart.
         val usd = dev.murmur.data.CloudText::usd
-        val cloudRow = (c.monthCostUsd - c.customMonthCostUsd).coerceAtLeast(0.0)
+        val openRouter = (c.monthCostUsd - c.customMonthCostUsd).coerceAtLeast(0.0)
         val isCustom = c.provider == "custom"
-        val orLine = if (!isCustom) "this month ${usd(cloudRow)}" else cloudRow.takeIf { it > 0 }?.let { "OpenRouter this month ${usd(it)}" }
+        val orLine = if (!isCustom) "this month ${usd(openRouter)}" else openRouter.takeIf { it > 0 }?.let { "OpenRouter this month ${usd(it)}" }
         val custom = c.customMonthCostUsd.takeIf { it > 0 }?.let { "${usd(it)} on your server this month (not in budget)" }
         val who = if (isCustom) dev.murmur.data.LiteLLM.NAME + (if (c.host.isEmpty()) "" else " (${c.host})") else null
         return listOfNotNull("On", who, c.model, why, last, orLine, custom).joinToString(" · ")

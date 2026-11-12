@@ -22,6 +22,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Fixed
 
+- **Android: Developer settings → Status & server info: the cleanup section is "Cloud cleanup"**, not "Cloud cleanup (OpenRouter)", since its status covers LiteLLM too.
 - **Android: the Speech to text warning for cloud speech without consent points to the Cloud page** (it said "OpenRouter page").
 - **Android: the bubble no longer covers Murmur's own screens** (such as the reorder arrows under Settings → Speech to text → Change order): it hides on every Murmur screen in full screen, except the note editor and a dictation already running.
 - **Android: Settings → Speech to text rows open their engine's page.** Tapping "Your server" (or OpenRouter, or the phone's engine) opens that engine's settings; only the switch at the end of the row turns it on or off. Before, tapping anywhere on the row toggled it and nothing on the page led to the server's address and key.

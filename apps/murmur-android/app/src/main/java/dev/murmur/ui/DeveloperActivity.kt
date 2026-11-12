@@ -556,7 +556,7 @@ class DeveloperActivity : Activity() {
                 if (caps.cloud) cleanupCircuit = infoRow("Cloud cleanup circuit")
             }
             if (caps.cloud) {
-                sectionLabel("CLOUD CLEANUP (OPENROUTER)")
+                sectionLabel("CLOUD CLEANUP")
                 card { cleanup = infoRow("Status") }
             }
             chipRow(chip("Reset circuit") { onResetCircuit() })
