@@ -57,9 +57,14 @@ object ShellPages {
 
     /** Permissions row badge: "2 to fix" (missing steps that have an action), null when all is done. */
     fun toFix(rows: List<SetupChecklist.Row>): String? {
-        val n = rows.count { !it.ok && it.action != null }
+        val n = fixable(rows).size
         return if (n == 0) null else "$n to fix"
     }
+
+    /** Permissions row subtitle: which steps are missing ("Microphone"; "Microphone, Accessibility service"), "" when none. */
+    fun missing(rows: List<SetupChecklist.Row>): String = fixable(rows).joinToString(", ") { it.title }
+
+    private fun fixable(rows: List<SetupChecklist.Row>) = rows.filter { !it.ok && it.action != null }
 
     /** Permissions progress bar: share of rows done (0..1). */
     fun doneFraction(rows: List<SetupChecklist.Row>): Float = if (rows.isEmpty()) 1f else rows.count { it.ok }.toFloat() / rows.size

@@ -72,6 +72,18 @@ class ShellPagesTest {
         assertEquals("" to "Plain text", ShellPages.callout("Plain text"))
     }
 
+    @Test fun permissionsRowNamesWhatIsMissing() {
+        assertEquals("", ShellPages.missing(SetupChecklist.rows(allOk)))
+        assertEquals("Accessibility service", ShellPages.missing(SetupChecklist.rows(allOk.copy(a11y = Status.DISABLED))))
+        assertEquals("Microphone, Display over other apps", ShellPages.missing(SetupChecklist.rows(allOk.copy(mic = false, overlay = false))))
+        // Re-read after a grant (drawer refill on return): the count and the name go away.
+        val before = allOk.copy(mic = false)
+        assertEquals("1 to fix" to "Microphone", ShellPages.toFix(SetupChecklist.rows(before)) to ShellPages.missing(SetupChecklist.rows(before)))
+        val after = before.copy(mic = true)
+        assertNull(ShellPages.toFix(SetupChecklist.rows(after)))
+        assertEquals("", ShellPages.missing(SetupChecklist.rows(after)))
+    }
+
     private val speechPage = Dest.Page(SettingsPages.Page.SPEECH)
     private val cleanupPage = Dest.Page(SettingsPages.Page.CLEANUP)
 
