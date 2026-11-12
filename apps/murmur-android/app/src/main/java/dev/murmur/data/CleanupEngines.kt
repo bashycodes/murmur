@@ -1,5 +1,6 @@
 package dev.murmur.data
 
+import dev.murmur.core.HealthReport
 import dev.murmur.data.DevSettings.CleanupRoute
 
 /**
@@ -79,28 +80,54 @@ object CleanupEngines {
     }
 
     /**
-     * Phone row: [model] = the imported GGUF file name (null = none); [loaded] = the engine has it
-     * loaded now (null = the engine is still loading).
+     * Phone row: [on] = the row's switch ([on] LOCAL); [model] = the imported GGUF file name (null =
+     * none); [loaded] = the engine has it loaded now (null = the engine is still loading). Off says
+     * so, and that the switch turns it on: a model alone does nothing while the row is off.
      */
-    fun phoneLine(llmEnabled: Boolean, model: String?, loaded: Boolean?): String {
+    fun phoneLine(on: Boolean, model: String?, loaded: Boolean?): String {
         val m = SettingsSummary.shortModel(model) ?: return "No model imported"
         return when {
-            !llmEnabled -> "$m · not loaded"
+            !on -> "$m · off, tap to use it"
             loaded == null -> "$m · loading…"
             loaded -> "$m · loaded"
             else -> "$m · failed to load"
         }
     }
 
-    /** Server row from `cleanup_status` ([serverLlm] null = not connected yet; [circuitOpen] = recently failing). */
-    fun serverLine(d: DevSettings, caps: BuildCaps, serverLlm: Boolean?, circuitOpen: Boolean = false): String = when {
+    /**
+     * A cleanup model made active when [hadModel] was false (none before): the phone engine is switched
+     * on, both its row ([DevSettings.cleanupOff]) and the on-device AI ([Settings.llmEnabled]). Null
+     * when it is on already or a model was there before (a switch turned off with a model stays off).
+     */
+    fun phoneOnForFirstModel(hadModel: Boolean, s: Settings, d: DevSettings): Pair<Settings, Set<CleanupRoute>>? =
+        if (hadModel || (s.llmEnabled && d.cleanupOn(CleanupRoute.LOCAL))) null
+        else s.copy(llmEnabled = true) to d.withCleanup(CleanupRoute.LOCAL, true).cleanupOff
+
+    /**
+     * Server row: not set up / not reachable / connected / ready. Unreachable first: an open circuit
+     * ([circuitOpen] = recently failing) or a failed health probe ([h]: Server → Test connection's or the
+     * settings pages', fresh on page open). The hello's "has a model" ([serverLlm], null = none yet) is
+     * kept by the router with no expiry, so it must not hide a server that is down now. Then the hello,
+     * else the probe ([checking] while one runs).
+     */
+    fun serverLine(
+        d: DevSettings, caps: BuildCaps, serverLlm: Boolean?, circuitOpen: Boolean = false,
+        h: HealthReport? = null, checking: Boolean = false,
+    ): String = when {
         !caps.remote -> "Not in this build"
         !d.serverConfigured -> "Not set up"
-        circuitOpen -> "Not reachable"
-        serverLlm == true -> "Has an AI model"
-        serverLlm == false -> "No AI model on the server"
-        else -> "Not connected yet"
+        circuitOpen || h?.ok == false -> NOT_REACHABLE
+        serverLlm == true -> READY
+        serverLlm == false -> NO_LLM
+        h == null -> if (checking) "Checking…" else "Not checked yet"
+        h.llm == true -> READY
+        h.llm == false -> NO_LLM
+        else -> "Connected"
     }
+
+    private const val READY = "Ready · has an AI model"
+    private const val NO_LLM = "Connected · no AI model on the server"
+    private const val NOT_REACHABLE = "Not reachable"
 
     /**
      * Cloud row: "Sends text · asks first" until consent, then its model; "· no key" ([hasKey]: the
