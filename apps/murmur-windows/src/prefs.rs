@@ -695,6 +695,7 @@ mod tests {
                 model: String::new(),
                 timeout_ms: 4000,
                 consent: false,
+                stt_model: None,
             },
             5,
         )

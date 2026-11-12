@@ -182,9 +182,9 @@ impl Default for ServerSettings {
     }
 }
 
-/// D78: shown once when [`DevSettings::one_cloud_provider`] turns cloud
+/// D78/D84: shown once when [`DevSettings::one_cloud_provider`] turns cloud
 /// speech off.
-pub const LITELLM_STT_OFF_NOTICE: &str = "Speech to text in the cloud is now off: your Cloud provider is LiteLLM, which this app uses for AI cleanup only. Speech stays on this PC and your server.";
+pub const LITELLM_STT_OFF_NOTICE: &str = "Speech to text in the cloud is now off: your Cloud provider is LiteLLM and no speech model is set for your proxy. Speech stays on this PC and your server.";
 
 /// `prefs.json` → `"developer"`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -203,8 +203,8 @@ pub struct DevSettings {
     /// Overlay pill shows S/L (+ red dot on fallback). UI only. The cloud
     /// badge `C` shows regardless (C7).
     pub show_engine_badge: bool,
-    /// Opt-in OpenRouter speech-to-text (D18 C1). Off by default; always
-    /// off while LiteLLM is the Cloud provider (D78).
+    /// Opt-in cloud speech-to-text (D18 C1). Off by default; off while
+    /// LiteLLM is the Cloud provider without a speech model (D78, D84).
     pub allow_cloud: bool,
     /// OpenRouter settings, schema 2, without the key (router
     /// `RouterConfig.cloud`). A schema-1 (D18 provider list) value is
@@ -329,12 +329,12 @@ impl DevSettings {
         rep
     }
 
-    /// D78: one Cloud provider at a time. LiteLLM does cleanup only, so a
-    /// saved file with LiteLLM as the provider and cloud speech on (made
+    /// D78/D84: one Cloud provider at a time. A saved file with LiteLLM as
+    /// the provider, no speech model for it and cloud speech on (made
     /// before D78) has that switch turned off, with a one-time notice.
     /// `true` when something changed (the caller saves prefs.json).
     pub fn one_cloud_provider(&mut self) -> bool {
-        if self.cloud.provider.offers_stt() || !self.allow_cloud {
+        if self.cloud.offers_stt() || !self.allow_cloud {
             return false;
         }
         self.allow_cloud = false;

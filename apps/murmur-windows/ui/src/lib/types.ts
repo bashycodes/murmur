@@ -246,11 +246,19 @@ export interface OrView {
   key: KeyState;
   privacy: { zdr: boolean; data_collection: "deny" | "allow" };
   stt: {
-    /** D78: the Cloud provider can do speech to text (OpenRouter only). */
+    /** D78/D84: the Cloud provider can do speech to text (OpenRouter, or
+     *  LiteLLM with a speech model set). */
     available?: boolean;
+    /** D84: who cloud speech goes to. */
+    provider?: CloudProvider;
+    /** D84: the proxy's speech model ("" = none). */
+    custom_model?: string;
     allow: boolean;
+    /** Consent of the speech provider (openrouter.ai or the proxy's host). */
     consent: boolean;
     consent_at_ms: number;
+    consent_host?: string;
+    /** OpenRouter's speech model. */
     model: string;
     stt_path: "auto" | SttPath;
     language: string;

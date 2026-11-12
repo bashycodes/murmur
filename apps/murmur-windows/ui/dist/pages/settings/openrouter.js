@@ -33,6 +33,9 @@ ${group("Your LiteLLM proxy", row("Address", `Any OpenAI-compatible server works
        <span id="cu_key_entry"><input id="cu_key" class="fl-input lw-w160 lw-mono-input" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…" aria-label="API key (optional)" />
        <button type="button" class="fl-btn fl-btn-primary" id="cu_key_save">Save</button></span>`) +
         row("Connection", `<span id="cu_test_out"></span>`, `<button type="button" class="fl-btn fl-btn-secondary" id="cu_test">Test connection</button>`) +
+        row("Speech model", "For speech to text on your proxy. Test connection lists the ones it has and picks the first.", `<select id="cu_stt_model" class="fl-select lw-w220" aria-label="Speech model">
+        <option value="">None: speech stays on this PC and your server</option>
+      </select>`) +
         `<div class="fl-callout fl-callout-peach" id="cu_http_warn" hidden><div class="fl-grow"><div class="fl-callout-body">This address starts with http, so your key and your words cross the network unencrypted. Use https if your proxy supports it.</div></div></div>`, `data-cloud="custom"`)}
 ${group("API key", row(`<span id="or_key_state" class="lw-key-state">No key saved</span>`, "Saved in Windows Credential Manager. Never written to settings files or logs; only ever sent to openrouter.ai.", `<span class="lw-key-saved" id="or_key_saved_ctl" hidden>
        <button type="button" class="fl-btn fl-btn-ghost" id="or_key_clear">Remove</button>
@@ -75,6 +78,17 @@ ${group("Privacy", row(`Sent only to <span id="cloud_ll_host" class="lw-mono"></
   <div class="lw-dialog-actions">
     <button type="button" class="fl-btn fl-btn-secondary" id="or_stt_consent_cancel">Cancel</button>
     <button type="button" class="fl-btn fl-btn-primary" id="or_stt_consent_ok">Send audio to OpenRouter</button>
+  </div>
+</dialog>
+
+<dialog id="cu_stt_consent_dlg" class="fl-dialog">
+  <h3>Send audio to <span id="cu_stt_consent_host_title"></span>?</h3>
+  <p>When on, the audio of your dictations leaves this PC and is sent to your own proxy at <strong id="cu_stt_consent_host"></strong>, along with your dictionary words, and to whatever model it forwards to.</p>
+  <p class="hint warn" id="cu_stt_consent_http" hidden>This address uses http://: the key and the audio cross the network unencrypted.</p>
+  <p class="hint">Pointing the address at another server asks again. You can turn this off at any time.</p>
+  <div class="lw-dialog-actions">
+    <button type="button" class="fl-btn fl-btn-secondary" id="cu_stt_consent_cancel">Cancel</button>
+    <button type="button" class="fl-btn fl-btn-primary" id="cu_stt_consent_ok">Send audio to this proxy</button>
   </div>
 </dialog>
 
