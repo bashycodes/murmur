@@ -2,11 +2,11 @@
 //! (D18, D28; `docs/cloud-stt.md`, `docs/proposals/openrouter-only-cloud.md`).
 //!
 //! The only crate in the product that sends audio or text to a third
-//! party. Audio only ever goes to OpenRouter: the API root is the constant
-//! [`api::BASE_URL`], no other speech adapter exists, and
-//! `tools/check-build-matrix.sh` fails if another provider host string is
-//! compiled into a cloud build. D52: text cleanup may instead go to a
-//! server the user typed in ([`custom`]; never a compiled-in host). It is
+//! party. The one compiled-in host is OpenRouter: the API root is the
+//! constant [`api::BASE_URL`], and `tools/check-build-matrix.sh` fails if
+//! another provider host string is compiled into a cloud build. D52/D85:
+//! text cleanup and speech may instead go to a LiteLLM proxy the user typed
+//! in ([`custom`], [`adapters::litellm`]; never a compiled-in host). It is
 //! linked only into builds that enable the shell's `cloud` feature (C2).
 //!
 //! * [`CloudAsr`] is a `murmur_core::asr::AsrEngine`: it uploads the
@@ -50,10 +50,12 @@ use murmur_core::cleanup::Cleaner;
 use murmur_core::config::{FieldContext, SessionConfig, SAMPLE_RATE};
 use murmur_core::{CommitResult, CommitStatus, MurmurCore, RouteInfo};
 use murmur_router::{
-    Backend, BackendError, CleanupFactory, CleanupPlan, CloudFactory, CustomCleanupFactory,
-    EngineKind, Failure, HealthReport, OpenRouterConfig, Router, SecretString, StartInfo, Usd,
+    Backend, BackendError, CleanupFactory, CleanupPlan, CloudFactory, CustomCleanupConfig,
+    CustomCleanupFactory, CustomSttFactory, EngineKind, Failure, HealthReport, OpenRouterConfig,
+    Router, SecretString, StartInfo, Usd,
 };
 
+pub use adapters::litellm::LiteLlmStt;
 pub use adapters::openrouter::{OpenRouterStt, TRANSCRIBE_PROMPT};
 pub use adapters::{CloudAdapter, CloudRequest, CloudTranscript, TermBudget};
 pub use api::{Api, BASE_URL, HOST};
@@ -70,7 +72,8 @@ pub use settings::{
     DEFAULT_CLEANUP_MODEL, DEFAULT_STT_MODEL,
 };
 
-/// Adapters compiled into this crate (`Router::cloud_capabilities`): one.
+/// Adapters compiled into this crate (`Router::cloud_capabilities`): one
+/// compiled-in provider (D85's LiteLLM proxy is user-typed, not listed).
 pub const ADAPTERS: [&str; 1] = ["openrouter"];
 /// The provider id of the one OpenRouter entry.
 pub const PROVIDER_ID: &str = "openrouter";
@@ -110,6 +113,16 @@ pub fn cleanup_factory() -> CleanupFactory {
     })
 }
 
+/// D85: `murmur_router::CustomSttFactory` building a [`CloudBackend`] on the
+/// LiteLLM proxy. `cleaner` as for [`factory_with`].
+pub fn custom_stt_factory_with(
+    cleaner: impl Fn() -> Option<Arc<dyn Cleaner>> + Send + Sync + 'static,
+) -> CustomSttFactory {
+    Box::new(move |c: &CustomCleanupConfig, key: Option<SecretString>| {
+        Arc::new(CloudBackend::from_asr(CloudAsr::litellm(c, key), cleaner())) as Arc<dyn Backend>
+    })
+}
+
 /// `murmur_router::CustomCleanupFactory` building a [`CustomCleaner`] (D52).
 pub fn custom_cleanup_factory() -> CustomCleanupFactory {
     Box::new(|c, scope, key| Arc::new(CustomCleaner::new(c, scope, key)) as Arc<dyn Cleaner>)
@@ -120,8 +133,11 @@ pub fn attach_with(
     router: Router,
     cleaner: impl Fn() -> Option<Arc<dyn Cleaner>> + Send + Sync + 'static,
 ) -> Router {
+    let cleaner = Arc::new(cleaner);
+    let c2 = cleaner.clone();
     router
-        .with_cloud(factory_with(cleaner))
+        .with_cloud(factory_with(move || (*cleaner)()))
+        .with_custom_stt(custom_stt_factory_with(move || (*c2)()))
         .with_cleanup_factory(cleanup_factory())
         .with_custom_cleanup_factory(custom_cleanup_factory())
         .with_cloud_adapters(ADAPTERS.iter().map(|s| s.to_string()).collect())
@@ -163,10 +179,42 @@ struct CallSlot {
     info: Option<CallInfo>,
 }
 
-/// `AsrEngine` that sends the utterance to OpenRouter.
+/// The speech adapter of a [`CloudAsr`].
+enum Stt {
+    OpenRouter(Box<OpenRouterStt>),
+    /// D85: the user's LiteLLM proxy.
+    LiteLlm(LiteLlmStt),
+}
+
+impl Stt {
+    fn get(&self) -> &dyn CloudAdapter {
+        match self {
+            Stt::OpenRouter(a) => a.as_ref(),
+            Stt::LiteLlm(a) => a,
+        }
+    }
+
+    fn path(&self) -> SttPath {
+        match self {
+            Stt::OpenRouter(a) => a.path(),
+            Stt::LiteLlm(_) => SttPath::Transcriptions,
+        }
+    }
+
+    /// Usage-counter / route provider id: `openrouter` or `custom`.
+    fn provider_id(&self) -> &'static str {
+        match self {
+            Stt::OpenRouter(_) => PROVIDER_ID,
+            Stt::LiteLlm(_) => murmur_router::cloud::CUSTOM_CLEANUP_ID,
+        }
+    }
+}
+
+/// `AsrEngine` that sends the utterance to OpenRouter, or (D85) to the
+/// user's LiteLLM proxy.
 pub struct CloudAsr {
     settings: SttSettings,
-    adapter: OpenRouterStt,
+    adapter: Stt,
     api: Api,
     key: SecretString,
     info: Option<ModelInfo>,
@@ -183,9 +231,33 @@ impl CloudAsr {
         Self::build(settings, key, Api::new(), info)
     }
 
+    /// D85: speech on the LiteLLM proxy `c` (address, `stt_model`, connect
+    /// limit) with its optional key. No catalogue, no budget estimate and
+    /// no deferred cost lookup: the cost is the proxy's header, or unknown.
+    pub fn litellm(c: &CustomCleanupConfig, key: Option<SecretString>) -> Self {
+        let settings = SttSettings {
+            model: c.stt_model.trim().to_string(),
+            ..Default::default()
+        };
+        Self {
+            adapter: Stt::LiteLlm(LiteLlmStt::new(c)),
+            settings,
+            api: Api::new(),
+            key: key.unwrap_or_default(),
+            info: None,
+            slot: Mutex::new(CallSlot::default()),
+            cost_sink: None,
+            lookup_delay: generation::LOOKUP_DELAY,
+        }
+    }
+
     fn build(settings: SttSettings, key: SecretString, api: Api, info: Option<ModelInfo>) -> Self {
         Self {
-            adapter: OpenRouterStt::new(api.clone(), &settings, info.clone()),
+            adapter: Stt::OpenRouter(Box::new(OpenRouterStt::new(
+                api.clone(),
+                &settings,
+                info.clone(),
+            ))),
             settings,
             api,
             key,
@@ -196,8 +268,12 @@ impl CloudAsr {
         }
     }
 
-    /// Replace the catalogue entry (re-picks the path).
+    /// Replace the catalogue entry (re-picks the path). OpenRouter only: a
+    /// LiteLLM engine is returned as it is.
     pub fn with_model_info(self, info: Option<ModelInfo>) -> Self {
+        if matches!(self.adapter, Stt::LiteLlm(_)) {
+            return self;
+        }
         let (sink, delay) = (self.cost_sink.clone(), self.lookup_delay);
         let mut a = Self::build(self.settings, self.key, self.api, info);
         a.cost_sink = sink;
@@ -223,6 +299,21 @@ impl CloudAsr {
 
     pub fn path(&self) -> SttPath {
         self.adapter.path()
+    }
+
+    /// `openrouter` or (D85) `custom`, the LiteLLM proxy.
+    pub fn provider_id(&self) -> &'static str {
+        self.adapter.provider_id()
+    }
+
+    /// The error line users see: [`CloudError`]'s `Display` names
+    /// OpenRouter, so a proxy error gets [`custom::describe`]'s neutral
+    /// words (D85).
+    fn describe(&self, e: &CloudError) -> String {
+        match self.adapter {
+            Stt::OpenRouter(_) => e.to_string(),
+            Stt::LiteLlm(_) => custom::describe(e),
+        }
     }
 
     /// Deadline for the next call (set by `CloudBackend::commit`).
@@ -257,7 +348,7 @@ impl CloudAsr {
         if !self.settings.send_dictionary {
             return Vec::new();
         }
-        self.adapter.term_budget().cap(&req.dictionary_terms)
+        self.adapter.get().term_budget().cap(&req.dictionary_terms)
     }
 
     /// Encode, chunk, upload; join the chunk texts with one space. The call
@@ -270,13 +361,14 @@ impl CloudAsr {
         deadline: Instant,
     ) -> (Result<CloudTranscript, CloudError>, CallInfo) {
         let t0 = Instant::now();
-        let max_by_ms = self.adapter.max_chunk_ms() as usize * SAMPLE_RATE / 1000;
+        let adapter = self.adapter.get();
+        let max_by_ms = adapter.max_chunk_ms() as usize * SAMPLE_RATE / 1000;
         // FLAC is never larger than PCM16 + headers; plan with 2 B/sample.
-        let max_by_bytes = self.adapter.max_upload_bytes().saturating_sub(4096) / 2;
+        let max_by_bytes = adapter.max_upload_bytes().saturating_sub(4096) / 2;
         let ranges = encode::chunk_ranges(pcm, max_by_ms.min(max_by_bytes));
         let mut info = CallInfo {
-            provider_id: PROVIDER_ID.into(),
-            adapter: self.adapter.id(),
+            provider_id: self.provider_id().into(),
+            adapter: adapter.id(),
             model: self.settings.model.trim().to_string(),
             stt_path: self.adapter.path().as_str(),
             audio_ms: (pcm.len() * 1000 / SAMPLE_RATE) as u32,
@@ -292,7 +384,7 @@ impl CloudAsr {
             let mut retried_format = false;
             let out = loop {
                 let te = Instant::now();
-                let audio = encode::encode(&pcm[r.clone()], self.adapter.preferred_format());
+                let audio = encode::encode(&pcm[r.clone()], adapter.preferred_format());
                 encode_ms += te.elapsed().as_millis();
                 info.bytes += audio.bytes.len();
                 let req = CloudRequest {
@@ -302,10 +394,10 @@ impl CloudAsr {
                     deadline,
                 };
                 info.requests += 1;
-                match self.adapter.transcribe(&self.key, &req) {
+                match adapter.transcribe(&self.key, &req) {
                     Ok(o) => break Ok((o, audio.audio_ms)),
                     Err(CloudError::UnsupportedFormat)
-                        if !retried_format && self.adapter.format_rejected(audio.format) =>
+                        if !retried_format && adapter.format_rejected(audio.format) =>
                     {
                         retried_format = true;
                     }
@@ -319,7 +411,7 @@ impl CloudAsr {
                     info.encode_ms = encode_ms as u32;
                     info.latency_ms = t0.elapsed().as_millis() as u32;
                     info.error = Some(e.code().into());
-                    info.message = Some(e.to_string());
+                    info.message = Some(self.describe(&e));
                     return (Err(e), info);
                 }
             };
@@ -348,7 +440,12 @@ impl CloudAsr {
                     .info
                     .as_ref()
                     .and_then(|m| budget::estimate_stt(m, billed as f64 / 1000.0));
-                if let Some(sink) = &self.cost_sink {
+                // Deferred `/generation` lookups exist on OpenRouter only.
+                let sink = self
+                    .cost_sink
+                    .as_ref()
+                    .filter(|_| matches!(self.adapter, Stt::OpenRouter(_)));
+                if let Some(sink) = sink {
                     let n = unpriced_ids.len().max(1) as f64;
                     for id in unpriced_ids {
                         generation::schedule(
@@ -424,8 +521,12 @@ impl AsrEngine for CloudAsr {
                 no_speech_prob: None,
             }),
             Err(e) => {
-                s.error = Some(e.to_backend());
-                Err(AsrError::Transcribe(format!("{}: {e}", e.code())))
+                s.error = Some(BackendError::new(e.failure(), self.describe(&e)));
+                Err(AsrError::Transcribe(format!(
+                    "{}: {}",
+                    e.code(),
+                    self.describe(&e)
+                )))
             }
         }
     }
@@ -471,7 +572,7 @@ impl CloudBackend {
     fn not_configured() -> BackendError {
         BackendError::new(
             Failure::CloudNotConfigured,
-            "cloud speech-to-text uses OpenRouter only",
+            "cloud speech-to-text is not configured",
         )
     }
 
@@ -482,7 +583,7 @@ impl CloudBackend {
     fn route(asr: &CloudAsr, info: Option<&CallInfo>) -> RouteInfo {
         RouteInfo {
             engine: EngineKind::Cloud.as_str().into(),
-            provider: Some(PROVIDER_ID.into()),
+            provider: Some(asr.provider_id().into()),
             model: Some(asr.settings().model.trim().to_string()),
             billed_audio_ms: info.map(|i| i.billed_audio_ms),
             cost_usd: info.and_then(|i| i.cost_usd).map(Usd),
@@ -608,13 +709,13 @@ impl Backend for CloudBackend {
             Err(e) => HealthReport {
                 ok: false,
                 error: Some(e.code().into()),
-                message: Some(e.to_string()),
+                message: Some(asr.describe(&e)),
                 latency_ms: Some(info.latency_ms),
                 ..Default::default()
             },
         };
         h.engine = EngineKind::Cloud;
-        h.provider = Some(PROVIDER_ID.into());
+        h.provider = Some(asr.provider_id().into());
         h.model = Some(p.model.trim().to_string());
         h.checked_at_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

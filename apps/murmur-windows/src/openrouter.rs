@@ -14,7 +14,8 @@
 //! D52: text cleanup can go to the user's own OpenAI-compatible server
 //! (LiteLLM, vLLM, Ollama, …) instead ([`apply_custom_cleanup`]). Its
 //! consent is bound to the host of the typed base URL: pointing the URL at
-//! another host voids it. Cloud speech-to-text always stays on OpenRouter.
+//! another host voids it. D85: with a speech model set for the proxy, cloud
+//! speech-to-text goes there too, with its own audio consent for that host.
 
 use crate::credentials::KeyState;
 use crate::dev_settings::{full_cleanup_order, BuildCaps, CleanupEngine, DevSettings, Route};
@@ -25,18 +26,28 @@ use murmur_router::cloud::{
 use murmur_router::{CleanupRoute, CleanupStatus, CloudProvider, CloudUsage, Usd};
 use serde::{Deserialize, Serialize};
 
-/// D78: why cloud speech can't be switched on while LiteLLM is the Cloud
-/// provider.
-pub const LITELLM_NO_STT: &str = "Your Cloud provider is LiteLLM, which this app uses for AI cleanup only. Pick OpenRouter on the Cloud page to send speech to the cloud";
+/// D78/D85: why cloud speech can't be switched on while LiteLLM is the
+/// Cloud provider without a speech model.
+pub const LITELLM_NO_STT: &str = "Your LiteLLM proxy has no speech model set. Press Test connection on the Cloud page to find one, or pick OpenRouter";
 
 /// Speech-to-text card.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SttView {
-    /// D78: the Cloud provider can do speech to text (OpenRouter only).
+    /// D78/D85: the Cloud provider can do speech to text (OpenRouter, or
+    /// LiteLLM with a speech model).
     pub available: bool,
+    /// D85: who cloud speech goes to (`openrouter` | `custom`).
+    pub provider: CloudProvider,
+    /// D85: the proxy's speech model (`""` = none).
+    pub custom_model: String,
     pub allow: bool,
+    /// Consent for the speech provider: openrouter.ai, or the proxy's
+    /// current host (D85).
     pub consent: bool,
     pub consent_at_ms: u64,
+    /// `openrouter.ai` or the proxy's host.
+    pub consent_host: String,
+    /// OpenRouter's speech model.
     pub model: String,
     pub stt_path: String,
     pub language: String,
@@ -131,10 +142,16 @@ pub fn view(dev: &DevSettings, i: ViewInputs) -> OrView {
         supported: i.caps.cloud,
         privacy: or.privacy.clone(),
         stt: SttView {
-            available: dev.cloud.provider.offers_stt(),
+            available: dev.cloud.offers_stt(),
+            provider: dev.cloud.speech_provider(),
+            custom_model: dev.cloud.custom_cleanup.stt_model.clone(),
             allow: dev.allow_cloud,
-            consent: or.stt.consent_ok(),
-            consent_at_ms: or.stt.consent_at_ms,
+            consent: stt_consent_ok(&dev.cloud),
+            consent_at_ms: match dev.cloud.speech_provider() {
+                CloudProvider::OpenRouter => or.stt.consent_at_ms,
+                CloudProvider::LiteLlm => dev.cloud.custom_cleanup.stt_consent_at_ms,
+            },
+            consent_host: stt_host(&dev.cloud),
             model: or.stt.model.clone(),
             stt_path: or.stt.stt_path.clone(),
             language: or.stt.language.clone(),
@@ -164,6 +181,30 @@ pub fn view(dev: &DevSettings, i: ViewInputs) -> OrView {
         key: i.key,
         stt_model_info: i.stt_model_info,
         cleanup_model_info: i.cleanup_model_info,
+    }
+}
+
+/// The speech provider's consent (D85: the proxy's own audio consent).
+fn stt_consent_ok(c: &murmur_router::cloud::CloudConfig) -> bool {
+    match c.speech_provider() {
+        CloudProvider::OpenRouter => c.openrouter.stt.consent_ok(),
+        CloudProvider::LiteLlm => c.custom_cleanup.stt_consent_ok(),
+    }
+}
+
+/// Where cloud speech goes: `openrouter.ai` or the proxy's host.
+fn stt_host(c: &murmur_router::cloud::CloudConfig) -> String {
+    match c.speech_provider() {
+        CloudProvider::OpenRouter => OPENROUTER_HOST.into(),
+        CloudProvider::LiteLlm => c.custom_cleanup.host(),
+    }
+}
+
+/// D78/D85: cloud speech stays on only while the Cloud provider offers it
+/// and its audio consent holds (a new provider or proxy host asks again).
+fn keep_speech_consistent(dev: &mut DevSettings) {
+    if dev.allow_cloud && (!dev.cloud.offers_stt() || !stt_consent_ok(&dev.cloud)) {
+        dev.allow_cloud = false;
     }
 }
 
@@ -231,6 +272,8 @@ pub struct CustomCleanupForm {
     pub timeout_ms: i64,
     /// The consent dialog naming the typed host was accepted just now.
     pub consent: bool,
+    /// D85: the proxy's speech model; `None` = keep, `""` = none.
+    pub stt_model: Option<String>,
 }
 
 /// `""` or an ISO-639-1/-3 code (`en`, `de`, `yue`).
@@ -258,15 +301,41 @@ pub fn apply_stt(dev: &mut DevSettings, f: &SttForm, now_ms: u64) -> Result<(), 
     if !f.stt_path.is_empty() {
         stt.stt_path = f.stt_path.clone();
     }
+    let speech = next.cloud.speech_provider();
+    let stt = &mut next.cloud.openrouter.stt;
     if f.consent {
-        stt.consent_host = OPENROUTER_HOST.into();
-        stt.consent_at_ms = now_ms.max(1);
+        match speech {
+            CloudProvider::OpenRouter => {
+                stt.consent_host = OPENROUTER_HOST.into();
+                stt.consent_at_ms = now_ms.max(1);
+            }
+            // D85: audio consent for the proxy's current host.
+            CloudProvider::LiteLlm => {
+                let cc = &mut next.cloud.custom_cleanup;
+                let host = cc.host();
+                if !host.is_empty() {
+                    cc.stt_consent_host = host;
+                    cc.stt_consent_at_ms = now_ms.max(1);
+                }
+            }
+        }
     }
-    if f.allow && !next.cloud.provider.offers_stt() {
+    if f.allow && !next.cloud.offers_stt() {
         return Err(LITELLM_NO_STT.into());
     }
-    if f.allow && !next.cloud.openrouter.stt.consent_ok() {
-        return Err("Accept sending audio to OpenRouter before turning this on".into());
+    if f.allow && !stt_consent_ok(&next.cloud) {
+        return Err(match next.cloud.speech_provider() {
+            CloudProvider::OpenRouter => {
+                "Accept sending audio to OpenRouter before turning this on".into()
+            }
+            CloudProvider::LiteLlm => format!(
+                "Accept sending audio to {} before turning this on",
+                match next.cloud.custom_cleanup.host() {
+                    h if h.is_empty() => "your proxy".into(),
+                    h => h,
+                }
+            ),
+        });
     }
     if f.allow && !dev.allow_cloud {
         let mut order: Vec<Route> = vec![Route::Cloud];
@@ -359,12 +428,14 @@ pub fn apply_custom_cleanup(
     let mut next = dev.clone();
     next.cloud.provider = f.provider;
     let custom = !f.provider.is_openrouter();
-    // D78: one Cloud provider at a time. LiteLLM does cleanup only, so
-    // picking it turns cloud speech off (OpenRouter's consent is kept).
-    if custom {
-        next.allow_cloud = false;
-    }
     let cc = &mut next.cloud.custom_cleanup;
+    if let Some(m) = &f.stt_model {
+        let m = m.trim();
+        if !m.is_empty() && !valid_custom_model_id(m) {
+            return Err("Speech model id: up to 256 characters, no spaces".into());
+        }
+        cc.stt_model = m.to_string();
+    }
     let url = f.base_url.trim();
     cc.base_url = if url.is_empty() {
         String::new()
@@ -387,6 +458,10 @@ pub fn apply_custom_cleanup(
         }
         record_cleanup_consent(&mut next.cloud, now_ms);
     }
+    // D78/D85: one Cloud provider at a time. A provider switch, a proxy
+    // without a speech model or a new proxy host turns cloud speech off
+    // (each provider's consent is kept for a switch back).
+    keep_speech_consistent(&mut next);
     // A custom server without its address or model yet is saved but not
     // used (the router skips it); consent is asked once it could be used.
     if next.cleanup_on(CleanupRoute::Cloud)
@@ -765,7 +840,64 @@ mod tests {
             model: model.into(),
             timeout_ms: 4000,
             consent,
+            stt_model: None,
         }
+    }
+
+    #[test]
+    fn litellm_with_a_speech_model_offers_cloud_speech_with_its_own_consent() {
+        // D85: the proxy has a speech model: speech can go there.
+        let mut d = dev();
+        apply_stt(&mut d, &stt(true, true), 7).unwrap();
+        let mut f = custom("custom", "http://10.0.0.5:4000", "local-cleanup", false);
+        f.stt_model = Some("local-whisper".into());
+        apply_custom_cleanup(&mut d, &f, 8).unwrap();
+        assert!(
+            !d.allow_cloud,
+            "OpenRouter's audio consent does not carry over"
+        );
+        let v = view(&d, inputs());
+        assert!(v.stt.available);
+        assert_eq!(v.stt.provider, CloudProvider::LiteLlm);
+        assert_eq!(v.stt.custom_model, "local-whisper");
+        assert!(!v.stt.consent);
+        assert_eq!(v.stt.consent_host, "10.0.0.5");
+        assert_eq!(
+            apply_stt(&mut d, &stt(true, false), 9),
+            Err("Accept sending audio to 10.0.0.5 before turning this on".into())
+        );
+        apply_stt(&mut d, &stt(true, true), 10).unwrap();
+        assert!(d.allow_cloud);
+        assert!(d.cloud.custom_cleanup.stt_consent_ok());
+        assert_eq!(d.cloud.speech_provider(), CloudProvider::LiteLlm);
+        assert!(
+            !d.cloud.custom_cleanup.consent_ok(),
+            "audio consent is not text consent"
+        );
+        assert!(
+            !d.one_cloud_provider(),
+            "a LiteLLM speech setup is kept on load"
+        );
+        // Another host voids the audio consent: speech turns off.
+        let mut f2 = custom("custom", "http://10.0.0.6:4000", "local-cleanup", false);
+        f2.stt_model = None;
+        apply_custom_cleanup(&mut d, &f2, 11).unwrap();
+        assert_eq!(d.cloud.custom_cleanup.stt_model, "local-whisper", "kept");
+        assert!(!d.allow_cloud);
+        // No speech model: back to D78's "not available".
+        apply_stt(&mut d, &stt(true, true), 12).unwrap();
+        let mut f3 = custom("custom", "http://10.0.0.6:4000", "local-cleanup", false);
+        f3.stt_model = Some(String::new());
+        apply_custom_cleanup(&mut d, &f3, 13).unwrap();
+        assert!(!d.allow_cloud);
+        assert!(!view(&d, inputs()).stt.available);
+        assert_eq!(
+            apply_stt(&mut d, &stt(true, true), 14),
+            Err(LITELLM_NO_STT.into())
+        );
+        let mut bad = custom("custom", "http://10.0.0.6:4000", "local-cleanup", false);
+        bad.stt_model = Some("has space".into());
+        assert!(apply_custom_cleanup(&mut d, &bad, 15).is_err());
     }
 
     #[test]

@@ -12,6 +12,9 @@ Deepgram, AssemblyAI, generic OpenAI-compatible, presets, custom base URLs) is
 OpenAI-compatible server, typically a LiteLLM proxy: §6.5. C8 below then holds for
 OpenRouter and speech-to-text; the custom server's host is the one the user typed.
 
+**D85 (2026-11-12):** with a speech model set for it, the LiteLLM proxy also does
+speech-to-text (`/audio/transcriptions`): §6.6.
+
 **Goal.** In Developer settings the user may attach an OpenRouter API key and opt in,
 separately, to (1) cloud speech-to-text and (2) cloud text cleanup. OpenRouter is the only
 third party the product can reach, and every OpenRouter model that can do the job is
@@ -246,6 +249,29 @@ OpenRouter with its own settings, consent and key, and the pages say so.
 * No `stream_options.include_usage`: some OpenAI-compatible servers refuse unknown
   parameters, and the cost comes from the header anyway.
 * Prompt scope switches are shared with OpenRouter (stored under `openrouter.cleanup`).
+
+### 6.6 LiteLLM speech-to-text (D85)
+
+* **Who**: `CloudConfig::speech_provider()` is LiteLLM when the Cloud provider is LiteLLM
+  **and** `custom_cleanup.stt_model` is set; otherwise OpenRouter (so Android, which never
+  sets it, keeps pairing custom cleanup with OpenRouter speech). `offers_stt()` is false for
+  LiteLLM without a speech model (D78's "Not available").
+* **Wire**: `murmur_cloud::LiteLlmStt`, multipart `POST {base}/audio/transcriptions`
+  (`file` = `audio.flac`, `model`, `response_format=json`, `temperature=0`, `language`
+  when set, `prompt` = `Vocabulary: …` from the dictionary); one retry as WAV on a format
+  400; same chunking and upload cap as OpenRouter's transcriptions path. Key optional, as
+  for cleanup (key id `custom`; a new key rebuilds the speech backend).
+* **Consent**: its own audio consent, `custom_cleanup.stt_consent_host/at_ms`, bound to the
+  host of the current base URL; neither the text consent nor OpenRouter's audio consent
+  counts. A new host turns cloud speech off (Windows) and the router skips it.
+* **Cost**: `x-litellm-response-cost` (else `-original`), else unknown; no `/generation`
+  lookup. Usage id `custom`, purpose `stt`; never in the OpenRouter budget.
+* **Speech models**: `custom::models_with_speech_json` lists `/models` plus
+  `speech_models`: LiteLLM's `GET {base}/model/info` entries with
+  `mode = audio_transcription`, else (a server without it) ids that look like speech
+  (`whisper`, `transcribe`). The Windows Cloud page's Test connection fills the Speech model
+  list and saves the first one when none is saved; the Speech page's Test sends the public
+  clip to the proxy (`Router::probe_custom_stt`).
 
 ---
 
