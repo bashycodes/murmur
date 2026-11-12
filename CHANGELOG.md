@@ -19,6 +19,9 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 ### Fixed
 
 - **Android: the bubble no longer covers Murmur's own screens** (such as the reorder arrows under Settings → Speech to text → Change order): it hides on every Murmur screen in full screen, except the note editor and a dictation already running.
+- **Android: Settings → Speech to text rows open their engine's page.** Tapping "Your server" (or OpenRouter, or the phone's engine) opens that engine's settings; only the switch at the end of the row turns it on or off. Before, tapping anywhere on the row toggled it and nothing on the page led to the server's address and key.
+- **Android: the Server page is easier to fill in.** Keyboard Next goes host → port → (certificate pin, while TLS is on) → token → Done and never lands on the TLS switch (Enter used to turn TLS on); the warning box at the top keeps one height so it no longer pushes the fields around while you type, and its warnings say "this phone" instead of "the client"; the token help now points to `murmur-server keys add <name>`, the command that makes a key for the phone.
+- **Android: settings top bars stay put.** Back and Save no longer scroll away with a long page (Settings, Developer settings, OpenRouter pages).
 
 ## [1.2.0] - 2026-11-12
 

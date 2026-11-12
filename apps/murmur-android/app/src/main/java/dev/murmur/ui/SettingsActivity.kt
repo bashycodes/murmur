@@ -140,18 +140,18 @@ class SettingsActivity : Activity() {
     private fun fileName(path: String?) = path?.let { File(it).name }
 
     /**
-     * This page's column under the top bar: back (asks first with unsaved edits) and, on a form
-     * page, Save as the trailing action (enabled once something changed and everything validates).
+     * This page's column under the top bar, which stays put while the column scrolls: back (asks
+     * first with unsaved edits) and, on a form page, Save as the trailing action (enabled once
+     * something changed and everything validates).
      */
     private fun page(build: LinearLayout.() -> Unit): LinearLayout = with(ui) {
-        screen {
+        screen(header = {
             val bar = topBar(
                 SettingsPages.TITLES.getValue(page), DevUi.TopNav.BACK, onNav = ::onBack,
                 actions = if (draft != null) listOf(DevUi.TopAction(R.drawable.ic_lw_check, "Save ${SettingsPages.TITLES.getValue(page)}") { onSave() }) else emptyList(),
             )
             saveButton = bar.actions.firstOrNull()
-            build()
-        }
+        }, build = build)
     }
 
     private fun onBack() { if (draft != null) confirmLeave() else finish() }
