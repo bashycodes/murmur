@@ -116,7 +116,7 @@ internal class CleanupPage(
     }
 
     private fun subtitle(r: CleanupRoute, d: DevSettings, s: Settings): String = when (r) {
-        CleanupRoute.LOCAL -> CleanupEngines.phoneLine(s.llmEnabled, app.settings.llmModelPath?.let { java.io.File(it).name }, phoneLoaded())
+        CleanupRoute.LOCAL -> CleanupEngines.phoneLine(CleanupEngines.on(d, s, r), app.settings.llmModelPath?.let { java.io.File(it).name }, phoneLoaded())
         CleanupRoute.SERVER -> {
             val st = if (d.serverConfigured) app.engine.router()?.cleanupStatus() else null
             CleanupEngines.serverLine(d, caps, st?.serverLlm, st?.serverCircuit?.open == true, health, checking)

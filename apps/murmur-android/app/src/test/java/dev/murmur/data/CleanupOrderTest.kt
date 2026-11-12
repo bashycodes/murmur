@@ -139,7 +139,7 @@ class CleanupOrderTest {
         assertEquals("qwen2.5-1.5b · loaded", CleanupEngines.phoneLine(true, m, true))
         assertEquals("qwen2.5-1.5b · loading…", CleanupEngines.phoneLine(true, m, null))
         assertEquals("qwen2.5-1.5b · failed to load", CleanupEngines.phoneLine(true, m, false))
-        assertEquals("qwen2.5-1.5b · not loaded", CleanupEngines.phoneLine(false, m, true))
+        assertEquals("qwen2.5-1.5b · off, tap to use it", CleanupEngines.phoneLine(false, m, true))
         val d = DevSettings.defaults(caps)
         val set = d.copy(host = "100.64.0.10")
         assertEquals("Not set up", CleanupEngines.serverLine(d, caps, true))
@@ -171,6 +171,24 @@ class CleanupOrderTest {
         assertEquals("Not reachable", line(HealthReport(ok = true, llm = true), circuit = true))
         // Not set up stays that, whatever was probed.
         assertEquals("Not set up", CleanupEngines.serverLine(DevSettings.defaults(caps), caps, null, h = HealthReport(ok = true)))
+    }
+
+    @Test fun theFirstCleanupModelSwitchesThePhoneEngineOn() {
+        val d = DevSettings.defaults(BuildCaps.ALL)
+        // Fresh install: the phone first in the order, but the on-device AI off.
+        val off = Settings(llmEnabled = false)
+        assertFalse(CleanupEngines.on(d, off, LOCAL))
+        val (s, cleanupOff) = CleanupEngines.phoneOnForFirstModel(hadModel = false, off, d)!!
+        assertTrue(CleanupEngines.on(d.copy(cleanupOff = cleanupOff), s, LOCAL))
+        // The row was switched off too: both come on.
+        val rowOff = d.withCleanup(LOCAL, false)
+        val (s2, off2) = CleanupEngines.phoneOnForFirstModel(hadModel = false, off, rowOff)!!
+        assertTrue(CleanupEngines.on(rowOff.copy(cleanupOff = off2), s2, LOCAL))
+        // The server's switch is left as it was.
+        assertFalse(CleanupEngines.phoneOnForFirstModel(false, off, d.withCleanup(SERVER, false))!!.second.let { SERVER !in it })
+        // Already on, or a model was there before (the user's off stays off): nothing to change.
+        assertEquals(null, CleanupEngines.phoneOnForFirstModel(false, Settings(llmEnabled = true), d))
+        assertEquals(null, CleanupEngines.phoneOnForFirstModel(hadModel = true, off, d))
     }
 
     @Test fun anUpgradeWithAiCleanupOffKeepsItOffButAFreshInstallHasTheServerOn() {
