@@ -469,7 +469,7 @@ Open it from *Settings → OpenRouter* (under *Connections*) or *Developer setti
    formatted text is pasted and the request is cancelled). It runs on phone and cloud dictations,
    never on your own server's. With it on, the cleanup step runs even when the local AI is off.
 5. **Model picker**: every OpenRouter model that can do the job, from the list OpenRouter
-   publishes (cached 24 h; an offline list is built in; refreshed only when the OpenRouter page
+   publishes (cached 24 h; an offline list is built in; refreshed only when the Cloud page
    or the picker opens, or a use is switched on). Search by name or id; chips *Transcription* /
    *Chat audio* (speech) or *Text* (cleanup), *Zero-retention only* (on), *Fast providers*,
    *Free*. Each row: name (★ = recommended), id, price (per hour of audio, or ≈ per dictation),
@@ -482,7 +482,7 @@ Open it from *Settings → OpenRouter* (under *Connections*) or *Developer setti
 Upgrading from 0.4.0 or older: on the first start the old provider list is converted once. An
 OpenRouter entry keeps its key, model and consent; every other provider and its stored key is
 deleted. If another provider was the active one, cloud speech-to-text is switched off (not moved
-to OpenRouter). A banner on *Developer settings* and on the OpenRouter page says what changed
+to OpenRouter). A banner on *Developer settings* and on the Cloud page says what changed
 until you tap *Dismiss*.
 
 ## Settings layout
@@ -502,7 +502,7 @@ current value and open a page:
 | Models · *Speech to text* | *Engines*: one switch per engine (Use your server / Use this phone / Use OpenRouter for speech; OpenRouter asks for consent) in try order, *Change order* (↑ / ↓). *On this phone* (local / hybrid): the model in use → *Model on this phone* (Whisper or Parakeet, *Speech model (whisper)* / *Parakeet model folder* imports), *Import another model*, *Keep loaded while the server is used* (hybrid); *Transcribe while I speak* | at once (reloads) |
 | Models · *AI cleanup* | Clean up with local AI; *Clean up with OpenRouter* (hybrid, → the Cloud page); *AI cleanup model* import; strength. The row says "OpenRouter (<model>), then on-device" while cloud cleanup is on. In `remote` it opens the Cloud page | at once (reloads) |
 | Connections · *Your server* (hybrid / remote) | Developer settings' *Server* page; the row shows the last check ("Connected · 41 ms") | top bar |
-| Connections · *OpenRouter* (hybrid / remote) | The OpenRouter page (§5c); the row shows this month's cost | at once |
+| Connections · *Cloud* (hybrid / remote) | The Cloud page (§5c); the row shows this month's cost | at once |
 | Data & privacy | *Keep history* (Keep / 24 hours / Never save, asks before deleting); *Learn from my edits*; *Debug log* | at once |
 | Back up & restore | *Export all data*, *Restore from a backup* | – |
 | Advanced | *Developer settings* (when visible), *Mock engine* switch | at once |
@@ -523,7 +523,7 @@ A hub with grouped cards; each row shows its current value and opens a focused p
 | *Speech to text* | Opens *Settings → Speech to text* (engines on/off and their order moved there) | at once |
 | *Engine options* | Engine badge, Parakeet decoding (both apply at once); *Test session* | – |
 | *Server* | host, port, Use TLS, certificate pin, token (masked; Show / Paste / Clear), timeouts; *Test connection* | top bar |
-| *OpenRouter (cloud)* | The OpenRouter page (§5c); the row says "Speech on/off · Cleanup on/off" (+ "no key", budget). A one-time migration notice sits on top of the hub until dismissed | at once |
+| *Cloud* | The Cloud page (§5c); the row says "Speech on/off · Cleanup on/off" (+ "no key", budget). A one-time migration notice sits on top of the hub until dismissed | at once |
 | *Debug log & audio* | Debug log, Keep last dictation audio (apply at once); View / Share / Clear | – |
 | *Build* | flavour + native library, *Reset to defaults* (asks first), *Lock* (local) | – |
 
