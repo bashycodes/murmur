@@ -16,10 +16,6 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
-### Added
-
-- **Windows: Ctrl+, opens Settings** from the Murmur window. It works only while that window has focus, so it never takes the keys from another app, and Settings → General lists it under Shortcuts.
-
 ### Changed
 
 - **Android: the OpenRouter page is now "Cloud", with an OpenRouter | LiteLLM switch** (D78, as on Windows). One Cloud provider at a time: picking LiteLLM (or any OpenAI-compatible server) is saved at once, even before its address and model are set (it sends nothing until then), and shows its address, optional key and Test connection, which also fills its model list; it does AI cleanup only, so cloud speech turns off and its switch reads "Not available". Settings saved with LiteLLM cleanup next to cloud speech are fixed once on start, with a notice on the Cloud page that no longer replaces a notice not yet dismissed (the D28 migration's or the router's). Settings shows "Cloud: OpenRouter · key saved · $0.42 this month", AI cleanup reads "… · Cloud, then rules", the usage card names the proxy "Your proxy" with the cost it reported, and the debug log says "LiteLLM".
@@ -38,6 +34,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 - **murmur-server's NVIDIA (CUDA) image runs Whisper on the graphics card** (D84). Whisper speech models, the main one and per-language ones such as Hebrew, now load on the GPU in the CUDA image (until now only AI cleanup did). Without a GPU or the NVIDIA driver the server runs them on the processor and the log says why. The CPU image behaves the same. Parakeet stays the English default.
 - **Stock Whisper large-v3 turbo in the model list** (`whisper-large-v3-turbo-q5_0`, 574 MB; D84): the most accurate model for any language when it runs on a graphics card. On the server's CUDA image, `MURMUR_STT=whisper-large-v3-turbo-q5_0` makes it the main speech engine, and `MURMUR_HEBREW=ivrit-whisper-large-v3-turbo-q5_0` puts Hebrew on ivrit.ai's turbo. On a PC it downloads like the other models and runs through the Vulkan GPU engine. On a processor it is slow (about 13 s per dictation), so the colleague bundle leaves it out unless `tools/colleague-bundle.sh --gpu-models` asks for it.
+- **Windows: Ctrl+, opens Settings** from the Murmur window. It works only while that window has focus, so it never takes the keys from another app, and Settings → General lists it under Shortcuts.
 
 ## [1.2.0] - 2026-11-12
 
