@@ -335,6 +335,13 @@ impl Prefs {
         base.join(APP_DIR).join(FILE_NAME)
     }
 
+    /// Whether the app opens its window by itself at start: while first-run
+    /// setup is not finished. A missing file is a fresh install, and setup
+    /// saves each step as it goes, so a file can exist before setup is done.
+    pub fn opens_window_at_start(&self) -> bool {
+        !self.onboarded
+    }
+
     pub fn load(path: &Path) -> (Prefs, LoadOutcome) {
         let text = match std::fs::read_to_string(path) {
             Ok(t) => t,
@@ -814,6 +821,30 @@ mod tests {
         assert!(old.onboarded, "an upgrader skips first-run setup");
         let (mid, _) = load_str("onboard-mid", r#"{"onboarded": false}"#);
         assert!(!mid.onboarded, "setup left unfinished stays unfinished");
+    }
+
+    /// The window opens by itself at start exactly while setup is not
+    /// finished: with no prefs file, and also with a file that setup saved
+    /// before it was finished (a step's choice, then the app quit; or such
+    /// a file copied from the old folder, D83). Before this, only a missing
+    /// file opened it, and an unfinished setup waited in a hidden window.
+    #[test]
+    fn window_opens_at_start_until_setup_is_finished() {
+        let d = tmpdir("start-fresh");
+        let (fresh, _) = Prefs::load(&d.join(FILE_NAME));
+        assert!(fresh.opens_window_at_start(), "no prefs file");
+        let (mid, o) = load_str(
+            "start-mid",
+            r#"{"onboarded": false, "asr_engine": "whisper"}"#,
+        );
+        assert_eq!(o, LoadOutcome::Loaded);
+        assert!(mid.opens_window_at_start(), "setup saved a step, then quit");
+        let (done, _) = load_str("start-done", r#"{"onboarded": true}"#);
+        assert!(!done.opens_window_at_start(), "set up: starts in the tray");
+        let (old, _) = load_str("start-old", r#"{"enable_sounds": true}"#);
+        assert!(!old.opens_window_at_start(), "upgrader: starts in the tray");
+        let (bad, _) = load_str("start-corrupt", "{not json");
+        assert!(!bad.opens_window_at_start(), "corrupt file: set up before");
     }
 
     #[test]
