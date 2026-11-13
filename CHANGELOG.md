@@ -16,6 +16,10 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Changed
+
+- **Docs: measured GPU needs for the server's cleanup models.** The colleague install note's "Choose by GPU memory" list now gives each model's measured memory: Gemma 3 12B 9.8 GB, so a card with more than 10 GB, and Llama 3.2 3B 2.9 GB. It also warns that Llama 3.2 3B sometimes changes the meaning of Hebrew dictations and long spoken numbers. On an Intel Arc 140V laptop GPU, Gemma takes 1.5 s per dictation at the median (`docs/findings/2026-11-14-gpu-cleanup-bench.md`).
+
 ## [1.4.0] - 2026-11-13
 
 ### Added
