@@ -4,7 +4,7 @@
 // Settings → AI cleanup's switch. Runs on the built dist: `npm test`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { enginesFor, initialCleanup, recommendedCleanup, serverOption } from "../dist/lib/setup-cleanup.js";
+import { cloudMissingLine, enginesFor, initialCleanup, recommendedCleanup, serverOption } from "../dist/lib/setup-cleanup.js";
 import { withEngine } from "../dist/lib/cleanup-order.js";
 
 const D36 = [
@@ -93,4 +93,14 @@ test("selection when the step opens follows the saved settings", () => {
   assert.equal(initialCleanup({ ...base, engines: withEngine(D36, "server", false) }, true), "rules");
   assert.equal(initialCleanup({ ...base, aiLevel: false }, true), "rules");
   assert.equal(initialCleanup({ ...base, cloudAllow: true }, true), "cloud");
+});
+
+test("Cloud cleanup says what is missing before it can start", () => {
+  const or = { provider: "openrouter", keySet: false, baseUrl: "", model: "" };
+  assert.equal(cloudMissingLine(or), "Cloud cleanup starts once you add a key in Settings → Cloud.");
+  assert.equal(cloudMissingLine({ ...or, keySet: true }), null);
+  const ll = { provider: "custom", keySet: false, baseUrl: "http://10.0.0.5:4000/v1", model: "" };
+  assert.match(cloudMissingLine(ll), /address in Settings → Cloud/);
+  assert.equal(cloudMissingLine({ ...ll, model: "some-model" }), null);
+  assert.match(cloudMissingLine({ ...ll, baseUrl: " ", model: "some-model" }), /address/);
 });

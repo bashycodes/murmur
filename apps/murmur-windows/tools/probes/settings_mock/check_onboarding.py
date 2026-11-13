@@ -123,6 +123,8 @@ def walk(pg, scheme):
     # D79: Optional badge, "Skip — use my server only" until a model is ready.
     check(tag + "model optional for server", pg.is_visible("#ob_model_optional") and pg.is_visible("[data-ob=skip-model]"))
     back(pg)
+    rec = pg.eval_on_selector_all("[data-ob-engine]", "bs => bs.filter(b => !b.querySelector('[data-ob-rec]').hidden).map(b => b.dataset.obEngine)")
+    check(tag + "Recommended stays put once a server is saved mid-run", rec == ["pc"], str(rec))
 
     # OpenRouter: key + consent before it is turned on.
     pg.click("[data-ob-engine=cloud]")
@@ -221,6 +223,7 @@ def walk(pg, scheme):
     shot("4b-cleanup-pc")
     pg.click("[data-ob-cleanup=cloud]")
     check(tag + "cloud: consent and one line, no provider fields", pg.is_visible("#ob_clean_consent") and "Add details later in Settings → Cloud" in pg.inner_text("#ob_or_detail") and pg.eval_on_selector_all("#ob_or_detail input", "is => is.length") == 1)
+    check(tag + "key saved on step 2: nothing missing", not pg.is_visible("#ob_cloud_missing"))
     check(tag + "no jargon on step 4", not [w for w in ("GGUF", "Q4_K_M", "without a GPU", "LiteLLM") if w in pg.inner_text("[data-ob-step=cleanup]")])
     nxt(pg)
     check(tag + "cleanup needs consent", visible_step(pg) == "cleanup" and "Tick" in pg.inner_text("#ob_cleanup_status"))
@@ -339,6 +342,7 @@ def layout(pg, scheme):
     consent = box(pg, "#ob_or_detail")
     foot = box(pg, "[data-ob-step=cleanup] .lw-ob-foot")
     check(tag + "Continue never covers the consent", consent["b"] <= foot["y"], f"{consent} {foot}")
+    check(tag + "no key yet: says Cloud waits for one", pg.is_visible("#ob_cloud_missing") and "add a key in Settings → Cloud" in pg.inner_text("#ob_cloud_missing"), pg.inner_text("#ob_cloud_missing"))
 
 
 with sync_playwright() as p:

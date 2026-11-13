@@ -27,7 +27,7 @@ import { prefsStore, type Prefs } from "../lib/prefs-store.js";
 import { pillLine, readinessErrorLine, readinessLine, RECHECK_MS, type PillState, type Readiness, type TryLine, type TryLineSource } from "../lib/setup-try.js";
 import type { DevForm, DevView, FieldError, Health, KeyState, OrView, Route, RouteView } from "../lib/types.js";
 import { initialEngine, recommendedEngine } from "../lib/setup-engine.js";
-import { enginesFor, initialCleanup, recommendedCleanup, serverOption, type ServerFacts, type SetupCleanup } from "../lib/setup-cleanup.js";
+import { cloudMissingLine, enginesFor, initialCleanup, recommendedCleanup, serverOption, type ServerFacts, type SetupCleanup } from "../lib/setup-cleanup.js";
 import { views } from "../lib/views.js";
 import { engines as cleanupEngines, pollCleanupStatus } from "../features/ai.js";
 import { TEMPLATE } from "./templates.js";
@@ -76,6 +76,8 @@ const st = {
   cleanupPicked: false,
   /** Step 2's "I already have a server" is open (the address and token show). */
   serverOpen: false,
+  /** Step 2's Recommended card, decided when setup opens (setup-engine.ts). */
+  recEngine: null as Engine | null,
   model: null as ModelStatus | null,
   info: null as ModelInfo | null,
   openedAt: 0,
@@ -207,7 +209,7 @@ function renderEngine(): void {
     b.classList.toggle("is-on", on);
     b.disabled = !has(id);
     (b.querySelector("[data-ob-na]") as HTMLElement).hidden = has(id);
-    (b.querySelector("[data-ob-rec]") as HTMLElement).hidden = id !== recommendedEngine(has, hasServer());
+    (b.querySelector("[data-ob-rec]") as HTMLElement).hidden = id !== st.recEngine;
   }
   placeServerForm();
   $<HTMLElement>("ob_cloud_detail").hidden = st.engine !== "cloud";
@@ -233,7 +235,7 @@ async function saveServer(patch: Partial<DevForm>): Promise<boolean> {
   const host = $<HTMLInputElement>("ob_host").value.trim();
   if (!host) {
     st.serverOpen = true;
-    placeServerForm();
+    renderServerFold(st.step === "engine");
     $<HTMLElement>("ob_host_err").textContent = "Type your server's address.";
     return false;
   }
@@ -265,17 +267,23 @@ function placeServerForm(): void {
   const slot = document.querySelector<HTMLElement>(`#onboarding [data-ob-server-slot="${here}"]`);
   if (slot && form.parentElement !== slot) slot.append(form);
   form.hidden = here === "engine" ? st.engine !== "server" : !srcView().serverForm;
-  // On step 2 the address and token sit behind "I already have a server"
-  // (open when one is saved); on steps 3/4 they are what the form is for.
-  const more = $<HTMLButtonElement>("ob_server_more");
-  const open = here !== "engine" || st.serverOpen || hasServer();
-  more.hidden = here !== "engine" || hasServer();
-  more.setAttribute("aria-expanded", String(open));
-  (more.querySelector(".lw-ob-chev") as HTMLElement).textContent = open ? "▾" : "▸";
-  $<HTMLElement>("ob_server_fields").hidden = !open;
+  renderServerFold(here === "engine");
   $<HTMLButtonElement>("ob_test_conn").textContent = here === "engine" ? "Test" : "Connect";
   $<HTMLElement>("ob_server_help").textContent =
     here === "engine" ? "No server yet? Pick This PC above, or" : "No server yet? Download from Hugging Face, or";
+}
+
+/**
+ * "I already have a server ▸": on step 2 the address and token sit behind it
+ * (open when one is saved); on steps 3/4 they are what the form is for.
+ */
+function renderServerFold(onEngineStep: boolean): void {
+  const more = $<HTMLButtonElement>("ob_server_more");
+  const open = !onEngineStep || st.serverOpen || hasServer();
+  more.hidden = !onEngineStep || hasServer();
+  more.setAttribute("aria-expanded", String(open));
+  (more.querySelector(".lw-ob-chev") as HTMLElement).textContent = open ? "▾" : "▸";
+  $<HTMLElement>("ob_server_fields").hidden = !open;
 }
 
 /** Continue on the engine step: turn the picked engine on and put it first. */
@@ -598,6 +606,7 @@ function rerender(): void {
   else if (st.step === "engine") placeServerForm();
   else if (st.step === "cleanup") {
     renderCleanupOptions();
+    renderCloudConsent();
     renderLlmModel();
   }
 }
@@ -617,6 +626,23 @@ function renderCloudConsent(): void {
   $<HTMLElement>("ob_clean_consent_desc").textContent = custom
     ? `Your words go to ${host || "the address you set in Settings → Cloud"} as text. A new address asks again.`
     : "Your words go to openrouter.ai as text, to zero-retention providers only. Your voice is not sent unless Cloud speech to text is also on.";
+  // Shown with the option, before Continue moves on: Cloud would be on but
+  // skipped until then, and the next cleaner would run instead.
+  const missing = $<HTMLElement>("ob_cloud_missing");
+  const line = cloudMissing();
+  missing.textContent = line ?? "";
+  missing.hidden = !line;
+}
+
+/** What setup's Cloud option would still need before it cleans (null = nothing). */
+function cloudMissing(): string | null {
+  const c = views.or?.cleanup;
+  return cloudMissingLine({
+    provider: c?.provider === "custom" ? "custom" : "openrouter",
+    keySet: keySet(),
+    baseUrl: c?.custom.base_url ?? "",
+    model: c?.custom.model ?? "",
+  });
 }
 
 function urlHost(url: string): string {
@@ -928,7 +954,10 @@ function initialChoices(): void {
     r === "client" ? dev.allow_client : r === "server" ? dev.allow_server && !!dev.host : !!or?.stt.allow,
   );
   const p = prefsStore.get();
-  st.engine = initialEngine(first ? ENGINE_OF[first] : null, !!p?.onboarded, has, hasServer());
+  // Once per run: a server saved on this run (Test / Connect) doesn't move the badge.
+  const facts = { has, serverSaved: hasServer() };
+  st.recEngine = recommendedEngine(facts);
+  st.engine = initialEngine(first ? ENGINE_OF[first] : null, !!p?.onboarded, facts);
   st.cleanup = savedCleanup();
   st.cleanupPicked = false;
   $<HTMLInputElement>("ob_host").value = dev?.host ?? "";
@@ -982,7 +1011,7 @@ export const onboarding = {
     $<HTMLInputElement>("ob_clean_consent").addEventListener("change", () => status("ob_cleanup_status", ""));
     $<HTMLButtonElement>("ob_server_more").addEventListener("click", () => {
       st.serverOpen = !st.serverOpen;
-      placeServerForm();
+      renderServerFold(true);
       if (st.serverOpen) $<HTMLInputElement>("ob_host").focus();
     });
     $<HTMLButtonElement>("ob_test_conn").addEventListener("click", () => void (st.step === "engine" ? testServer() : connectServer()));

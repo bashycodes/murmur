@@ -25,7 +25,7 @@ import { modelStepFoot, sourceHint, sourceView } from "../lib/model-source.js";
 import { prefsStore } from "../lib/prefs-store.js";
 import { pillLine, readinessErrorLine, readinessLine, RECHECK_MS } from "../lib/setup-try.js";
 import { initialEngine, recommendedEngine } from "../lib/setup-engine.js";
-import { enginesFor, initialCleanup, recommendedCleanup, serverOption } from "../lib/setup-cleanup.js";
+import { cloudMissingLine, enginesFor, initialCleanup, recommendedCleanup, serverOption } from "../lib/setup-cleanup.js";
 import { views } from "../lib/views.js";
 import { engines as cleanupEngines, pollCleanupStatus } from "../features/ai.js";
 import { TEMPLATE } from "./templates.js";
@@ -50,6 +50,8 @@ const st = {
     cleanupPicked: false,
     /** Step 2's "I already have a server" is open (the address and token show). */
     serverOpen: false,
+    /** Step 2's Recommended card, decided when setup opens (setup-engine.ts). */
+    recEngine: null,
     model: null,
     info: null,
     openedAt: 0,
@@ -168,7 +170,7 @@ function renderEngine() {
         b.classList.toggle("is-on", on);
         b.disabled = !has(id);
         b.querySelector("[data-ob-na]").hidden = has(id);
-        b.querySelector("[data-ob-rec]").hidden = id !== recommendedEngine(has, hasServer());
+        b.querySelector("[data-ob-rec]").hidden = id !== st.recEngine;
     }
     placeServerForm();
     $("ob_cloud_detail").hidden = st.engine !== "cloud";
@@ -195,7 +197,7 @@ async function saveServer(patch) {
     const host = $("ob_host").value.trim();
     if (!host) {
         st.serverOpen = true;
-        placeServerForm();
+        renderServerFold(st.step === "engine");
         $("ob_host_err").textContent = "Type your server's address.";
         return false;
     }
@@ -232,17 +234,22 @@ function placeServerForm() {
     if (slot && form.parentElement !== slot)
         slot.append(form);
     form.hidden = here === "engine" ? st.engine !== "server" : !srcView().serverForm;
-    // On step 2 the address and token sit behind "I already have a server"
-    // (open when one is saved); on steps 3/4 they are what the form is for.
-    const more = $("ob_server_more");
-    const open = here !== "engine" || st.serverOpen || hasServer();
-    more.hidden = here !== "engine" || hasServer();
-    more.setAttribute("aria-expanded", String(open));
-    more.querySelector(".lw-ob-chev").textContent = open ? "▾" : "▸";
-    $("ob_server_fields").hidden = !open;
+    renderServerFold(here === "engine");
     $("ob_test_conn").textContent = here === "engine" ? "Test" : "Connect";
     $("ob_server_help").textContent =
         here === "engine" ? "No server yet? Pick This PC above, or" : "No server yet? Download from Hugging Face, or";
+}
+/**
+ * "I already have a server ▸": on step 2 the address and token sit behind it
+ * (open when one is saved); on steps 3/4 they are what the form is for.
+ */
+function renderServerFold(onEngineStep) {
+    const more = $("ob_server_more");
+    const open = !onEngineStep || st.serverOpen || hasServer();
+    more.hidden = !onEngineStep || hasServer();
+    more.setAttribute("aria-expanded", String(open));
+    more.querySelector(".lw-ob-chev").textContent = open ? "▾" : "▸";
+    $("ob_server_fields").hidden = !open;
 }
 /** Continue on the engine step: turn the picked engine on and put it first. */
 async function applyEngine() {
@@ -560,6 +567,7 @@ function rerender() {
         placeServerForm();
     else if (st.step === "cleanup") {
         renderCleanupOptions();
+        renderCloudConsent();
         renderLlmModel();
     }
 }
@@ -578,6 +586,22 @@ function renderCloudConsent() {
     $("ob_clean_consent_desc").textContent = custom
         ? `Your words go to ${host || "the address you set in Settings → Cloud"} as text. A new address asks again.`
         : "Your words go to openrouter.ai as text, to zero-retention providers only. Your voice is not sent unless Cloud speech to text is also on.";
+    // Shown with the option, before Continue moves on: Cloud would be on but
+    // skipped until then, and the next cleaner would run instead.
+    const missing = $("ob_cloud_missing");
+    const line = cloudMissing();
+    missing.textContent = line ?? "";
+    missing.hidden = !line;
+}
+/** What setup's Cloud option would still need before it cleans (null = nothing). */
+function cloudMissing() {
+    const c = views.or?.cleanup;
+    return cloudMissingLine({
+        provider: c?.provider === "custom" ? "custom" : "openrouter",
+        keySet: keySet(),
+        baseUrl: c?.custom.base_url ?? "",
+        model: c?.custom.model ?? "",
+    });
 }
 function urlHost(url) {
     try {
@@ -893,7 +917,10 @@ function initialChoices() {
     const or = views.or;
     const first = dev?.route_order.find((r) => r === "client" ? dev.allow_client : r === "server" ? dev.allow_server && !!dev.host : !!or?.stt.allow);
     const p = prefsStore.get();
-    st.engine = initialEngine(first ? ENGINE_OF[first] : null, !!p?.onboarded, has, hasServer());
+    // Once per run: a server saved on this run (Test / Connect) doesn't move the badge.
+    const facts = { has, serverSaved: hasServer() };
+    st.recEngine = recommendedEngine(facts);
+    st.engine = initialEngine(first ? ENGINE_OF[first] : null, !!p?.onboarded, facts);
     st.cleanup = savedCleanup();
     st.cleanupPicked = false;
     $("ob_host").value = dev?.host ?? "";
@@ -957,7 +984,7 @@ export const onboarding = {
         $("ob_clean_consent").addEventListener("change", () => status("ob_cleanup_status", ""));
         $("ob_server_more").addEventListener("click", () => {
             st.serverOpen = !st.serverOpen;
-            placeServerForm();
+            renderServerFold(true);
             if (st.serverOpen)
                 $("ob_host").focus();
         });

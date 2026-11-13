@@ -502,6 +502,9 @@ body.lw-ob-open .lw-settings {
 .lw-ob-later {
   padding: 0 0 14px;
 }
+.lw-ob-missing {
+  color: var(--foreground);
+}
 
 /* ---- model rows: picker, Download / Cancel, progress (3b) ---- */
 

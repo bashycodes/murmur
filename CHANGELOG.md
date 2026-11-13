@@ -25,7 +25,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 ### Changed
 
 - **Windows setup tells one story about where speech runs, in plain words** (steps 1, 2 and 4). A new install now recommends and preselects This PC, as step 1 promises; Your server is recommended only once a server is saved. The cards read "Private, works offline.", "Use a faster computer you own." and "Best accuracy. Audio is sent online.", and setup no longer mentions murmur-server, VPN, LiteLLM, ws://, gen-token, GGUF or Q4_K_M. Your server's address and token sit behind "I already have a server ▸", and the token field no longer cuts off its hint. Step 1 no longer names OpenRouter.
-- **Windows setup's Cloud cleanup asks only for consent** (step 4). The provider switch and the LiteLLM address, key and model fields are gone, replaced by "Add details later in Settings → Cloud"; the consent box stays, naming where the text goes, because Cloud is never turned on without it (D28, D52). Setup turns Cloud cleanup on with the provider already saved in Settings → Cloud.
+- **Windows setup's Cloud cleanup asks only for consent** (step 4). The provider switch and the LiteLLM address, key and model fields are gone, replaced by "Add details later in Settings → Cloud"; the consent box stays, naming where the text goes, because Cloud is never turned on without it (D28, D52). Setup turns Cloud cleanup on with the provider already saved in Settings → Cloud; when that provider has no key or address yet, the option says Cloud cleanup starts once you add it there.
 
 ### Fixed
 

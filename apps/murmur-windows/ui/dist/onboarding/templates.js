@@ -270,7 +270,7 @@ const cleanup = stepPanel("cleanup", 4, `
           <input type="checkbox" id="ob_clean_consent" />
           <span class="fl-row-text"><span class="fl-row-title" id="ob_clean_consent_title">Send my dictated text to OpenRouter</span><span class="fl-row-desc" id="ob_clean_consent_desc"></span></span>
         </label>
-        <p class="lw-ob-small lw-ob-later">Add details later in Settings → Cloud.</p>
+        <p class="lw-ob-small lw-ob-later">Add details later in Settings → Cloud. <span class="lw-ob-missing" id="ob_cloud_missing" hidden></span></p>
       </div>
       <div class="lw-ob-status" id="ob_cleanup_status"></div>
     </div>

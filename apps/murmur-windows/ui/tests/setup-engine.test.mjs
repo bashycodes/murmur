@@ -7,45 +7,46 @@ import { initialEngine, recommendedEngine } from "../dist/lib/setup-engine.js";
 
 const build = (...on) => (e) => on.includes(e);
 const full = build("pc", "server", "cloud");
+const f = (has, serverSaved) => ({ has, serverSaved });
 
 test("new install, no server saved: This PC is recommended", () => {
-  assert.equal(recommendedEngine(full, false), "pc");
+  assert.equal(recommendedEngine(f(full, false)), "pc");
 });
 
 test("a saved server: Your server is recommended", () => {
-  assert.equal(recommendedEngine(full, true), "server");
+  assert.equal(recommendedEngine(f(full, true)), "server");
 });
 
 test("build without a server engine: This PC, even with an address saved", () => {
-  assert.equal(recommendedEngine(build("pc", "cloud"), true), "pc");
-  assert.equal(recommendedEngine(build("cloud"), false), null);
+  assert.equal(recommendedEngine(f(build("pc", "cloud"), true)), "pc");
+  assert.equal(recommendedEngine(f(build("cloud"), false)), null);
 });
 
 test("build without This PC recommends a saved server only", () => {
-  assert.equal(recommendedEngine(build("server", "cloud"), false), null);
-  assert.equal(recommendedEngine(build("server", "cloud"), true), "server");
+  assert.equal(recommendedEngine(f(build("server", "cloud"), false)), null);
+  assert.equal(recommendedEngine(f(build("server", "cloud"), true)), "server");
 });
 
 test("clean install (this PC on by default, never chosen): This PC is pre-selected", () => {
-  assert.equal(initialEngine("pc", false, full, false), "pc");
-  assert.equal(initialEngine(null, false, full, false), "pc");
+  assert.equal(initialEngine("pc", false, f(full, false)), "pc");
+  assert.equal(initialEngine(null, false, f(full, false)), "pc");
 });
 
 test("clean install with a server address saved: Your server is pre-selected", () => {
-  assert.equal(initialEngine("pc", false, full, true), "server");
+  assert.equal(initialEngine("pc", false, f(full, true)), "server");
 });
 
 test("a server or OpenRouter already in use stays picked", () => {
-  assert.equal(initialEngine("server", false, full, true), "server");
-  assert.equal(initialEngine("cloud", true, full, false), "cloud");
+  assert.equal(initialEngine("server", false, f(full, true)), "server");
+  assert.equal(initialEngine("cloud", true, f(full, false)), "cloud");
 });
 
 test("setup re-run after choosing This PC keeps This PC", () => {
-  assert.equal(initialEngine("pc", true, full, true), "pc");
+  assert.equal(initialEngine("pc", true, f(full, true)), "pc");
 });
 
 test("builds without This PC fall back to Your server, then the cloud", () => {
-  assert.equal(initialEngine(null, false, build("server", "cloud"), false), "server");
-  assert.equal(initialEngine(null, false, build("cloud"), false), "cloud");
-  assert.equal(initialEngine("pc", false, build("pc", "cloud"), false), "pc");
+  assert.equal(initialEngine(null, false, f(build("server", "cloud"), false)), "server");
+  assert.equal(initialEngine(null, false, f(build("cloud"), false)), "cloud");
+  assert.equal(initialEngine("pc", false, f(build("pc", "cloud"), false)), "pc");
 });

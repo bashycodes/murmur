@@ -95,6 +95,28 @@ export function enginesFor(choice: SetupCleanup, list: CleanupEngine[]): Cleanup
   return null;
 }
 
+/** The saved Cloud provider, as setup's Cloud option sees it (D78). */
+export interface CloudFacts {
+  provider: "openrouter" | "custom";
+  /** An OpenRouter key is saved. */
+  keySet: boolean;
+  /** LiteLLM: the saved address and model. */
+  baseUrl: string;
+  model: string;
+}
+
+/**
+ * Why Cloud cleanup would be on but skipped (null = ready to clean): setup
+ * asks only for consent; the key or the address is added in Settings → Cloud.
+ * Shown with the option, so the fallback to the next cleaner is not silent.
+ */
+export function cloudMissingLine(c: CloudFacts): string | null {
+  if (c.provider === "custom") {
+    return c.baseUrl.trim() && c.model.trim() ? null : "Cloud cleanup starts once you add your server's address in Settings → Cloud.";
+  }
+  return c.keySet ? null : "Cloud cleanup starts once you add a key in Settings → Cloud.";
+}
+
 function same(a: CleanupEngine[], b: CleanupEngine[]): boolean {
   return a.length === b.length && a.every((e, i) => e.route === b[i].route && e.enabled === b[i].enabled);
 }

@@ -3,28 +3,33 @@
 // review: step 1 promises "Runs on this PC", so a new install is pointed at
 // it). Pure, so `npm test` runs it on the built dist without a page.
 /**
- * The engine setup recommends: your server once one is saved (the user
- * already has one), else this PC. A build without either recommends nothing.
+ * Setup's one order of preference, limited to the build's engines: a saved
+ * server, then this PC, then a server still to be set up, then the cloud.
  */
-export function recommendedEngine(has, serverSaved) {
-    if (has("server") && serverSaved)
-        return "server";
-    if (has("pc"))
-        return "pc";
-    return null;
+function ranked(f) {
+    const order = f.serverSaved ? ["server", "pc", "cloud"] : ["pc", "server", "cloud"];
+    return order.filter((e) => f.has(e));
+}
+/**
+ * The engine setup recommends: the top of that order when it is this PC or
+ * a saved server. A server nobody set up yet, or the cloud, is never
+ * recommended.
+ */
+export function recommendedEngine(f) {
+    const top = ranked(f)[0];
+    return top === "pc" || (top === "server" && f.serverSaved) ? top : null;
 }
 /**
  * The card selected when the step opens. `first` is the first engine the saved
  * settings would use (null: none set up). A server or OpenRouter already in use
  * stays picked, and so does this PC once setup has been finished (re-run from
  * Settings). On a clean install this PC is on by default but was never chosen,
- * so the recommended engine is picked; a build with neither engine it could
- * recommend starts on your server, else the cloud.
+ * so the top of the order is picked.
  */
-export function initialEngine(first, onboarded, has, serverSaved) {
+export function initialEngine(first, onboarded, f) {
     if (first === "server" || first === "cloud")
         return first;
     if (first === "pc" && onboarded)
         return "pc";
-    return recommendedEngine(has, serverSaved) ?? (has("server") ? "server" : "cloud");
+    return ranked(f)[0] ?? "cloud";
 }
