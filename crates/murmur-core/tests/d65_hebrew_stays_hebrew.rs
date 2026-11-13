@@ -75,6 +75,24 @@ fn a_translated_hebrew_dictation_keeps_the_hebrew_rules_text() {
 }
 
 #[test]
+fn a_hebrew_answer_with_another_script_or_a_new_english_word_keeps_the_rules_text() {
+    for junk in [
+        "תזכיר לי לקנות לחם וחלב בדרך הביתה, ואם יש זמן גם לעבור בדואר לאסוף את посылку.",
+        "תזכיר לי לקנות לחם וחלב בדרך הביתה, ואם יש זמן גם לעבור בדואר לאסוף את 包裹.",
+        "תזכיר לי לקנות לחם וחלב on the way הביתה, ואם יש זמן גם לעבור בדואר לאסוף את החבילה.",
+    ] {
+        let (r, _) = dictate(HE, "he", Some(junk));
+        assert_eq!(
+            r.fallback_reason.as_deref(),
+            Some("llm_language_changed"),
+            "{junk}"
+        );
+        assert_eq!(r.status, CommitStatus::RawTranscript);
+        assert!(r.final_text.contains("לאסוף את החבילה"), "{}", r.final_text);
+    }
+}
+
+#[test]
 fn a_hebrew_answer_is_used_and_the_prompt_has_a_hebrew_turn() {
     let (r, p) = dictate(HE, "he", None);
     assert_eq!(r.status, CommitStatus::Formatted, "{:?}", r.fallback_reason);
