@@ -14,7 +14,7 @@ export const settingsServerPage = {
     area: "settings",
     template: `
 ${heading("Your server", `Run murmur-server on a faster computer you own, at home or on a VPN like Tailscale, and this PC sends it the audio. It keeps nothing, and nothing goes to a third party. ${extLink(SERVER_HELP, "Set up a server →")}`)}
-${group("Connection", row(`<label for="dev_host">Address</label>`, `A name or IP address, without ws:// or a port. ${err("host")}${err("port")}`, `<input id="dev_host" class="fl-input lw-w220" data-dev-field spellcheck="false" placeholder="100.64.0.10 or mybox.local" />
+${group("Connection", row(`<label for="dev_host">Address</label>`, `Name or IP address only, e.g. homeserver. ${err("host")}${err("port")}`, `<input id="dev_host" class="fl-input lw-w220" data-dev-field spellcheck="false" placeholder="100.64.0.10 or mybox.local" />
      <input id="dev_port" class="fl-input lw-w72" data-dev-field type="number" min="1" max="65535" aria-label="Port" />`) +
         row(`<label for="dev_token">Access token</label>`, `From <code>murmur-server gen-token</code>. Stored encrypted for your Windows account; never logged. ${err("token")}`, `<input id="dev_token" class="fl-input lw-w180" data-dev-field type="password" autocomplete="off" spellcheck="false" placeholder="from murmur-server gen-token" />
        <button type="button" class="fl-btn fl-btn-secondary" id="dev_token_paste">Paste</button>

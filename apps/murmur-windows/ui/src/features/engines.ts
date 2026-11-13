@@ -10,6 +10,7 @@ import { $, el, setStatus } from "../lib/dom.js";
 import { devStore } from "../lib/dev-store.js";
 import { cloudHint } from "../lib/format.js";
 import { invoke, onEvent } from "../lib/ipc.js";
+import { engineWord, HISTORY_PEEK, historyLastText, latestOnly, pickDictation, type HistoryHead } from "../lib/last-dictation.js";
 import { prefsStore } from "../lib/prefs-store.js";
 import { router, type Feature } from "../lib/router.js";
 import { moveShown, onMove, rankRows } from "../lib/ranked-list.js";
@@ -427,14 +428,27 @@ function timingLine(l: LastDictation): string {
   return parts.join(" · ");
 }
 
+const lastGuard = latestOnly();
+/** No dictation since the app started: show history's newest dictation (what Home lists). */
+async function showHistoryLast(e: HTMLElement, t: number): Promise<void> {
+  let rows: HistoryHead[] = [];
+  try {
+    rows = await invoke<HistoryHead[]>("history_list", { query: "", limit: HISTORY_PEEK });
+  } catch {
+    /* history unreadable: keep the empty text */
+  }
+  if (!lastGuard.isLatest(t)) return; // a dictation (or a newer view) came in meanwhile
+  e.textContent = historyLastText(pickDictation(rows));
+}
+
 function showRoute(r: RouteView): void {
   const last = r.last;
   const e = $<HTMLElement>("dev_last");
+  const t = lastGuard.next();
   if (!last) {
-    e.textContent = "No dictation yet";
+    void showHistoryLast(e, t);
   } else {
-    const engine =
-      last.engine === "remote" ? "server" : last.engine === "local" ? "client" : (last.engine ?? "none");
+    const engine = engineWord(last.engine);
     const bits = [
       last.row ?? engine,
       last.notice ?? "",

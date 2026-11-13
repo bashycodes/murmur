@@ -104,6 +104,7 @@ fn candidate(block: &[Step], sentence_initial: bool, dict: &Dictionary) -> Optio
             .any(|s| s.contains(['\'', '’']))
         || in_dictionary(&corrected, dict)
         || !corrected.chars().any(char::is_alphabetic)
+        || switches_script(&original, &corrected)
     {
         return None;
     }
@@ -112,6 +113,50 @@ fn candidate(block: &[Step], sentence_initial: bool, dict: &Dictionary) -> Optio
         original,
         corrected,
     })
+}
+
+/// A writing system, for telling a correction from a switch of language.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Script {
+    Latin,
+    Greek,
+    Cyrillic,
+    Hebrew,
+    Arabic,
+    Devanagari,
+    Thai,
+    Cjk,
+    Hangul,
+}
+
+/// The script of letter `c`; `None` for non-letters and scripts not listed.
+fn script(c: char) -> Option<Script> {
+    if !c.is_alphabetic() {
+        return None;
+    }
+    Some(match u32::from(c) {
+        0x41..=0x5A | 0x61..=0x7A | 0xC0..=0x24F | 0x1E00..=0x1EFF => Script::Latin,
+        0x370..=0x3FF | 0x1F00..=0x1FFF => Script::Greek,
+        0x400..=0x52F => Script::Cyrillic,
+        0x590..=0x5FF | 0xFB1D..=0xFB4F => Script::Hebrew,
+        0x600..=0x6FF | 0x750..=0x77F | 0xFB50..=0xFDFF | 0xFE70..=0xFEFF => Script::Arabic,
+        0x900..=0x97F => Script::Devanagari,
+        0xE00..=0xE7F => Script::Thai,
+        0x3040..=0x30FF | 0x3400..=0x4DBF | 0x4E00..=0x9FFF => Script::Cjk,
+        0x1100..=0x11FF | 0xAC00..=0xD7AF => Script::Hangul,
+        _ => return None,
+    })
+}
+
+/// A Latin original corrected into another script only, sharing none
+/// (e.g. "Tidy" → "בעברית"): a switch of language, not a misheard word.
+/// The other way round is kept: a brand heard in Hebrew letters and
+/// corrected to its Latin spelling ("סלאק" → "Slack") is vocabulary.
+/// Sides with no known script are kept.
+fn switches_script(original: &str, corrected: &str) -> bool {
+    let scripts = |s: &str| -> Vec<Script> { s.chars().filter_map(script).collect() };
+    let (a, b) = (scripts(original), scripts(corrected));
+    a.contains(&Script::Latin) && !b.is_empty() && !a.iter().any(|x| b.contains(x))
 }
 
 /// The word ends in `.`, `!` or `?`: the next word starts a sentence.
@@ -372,6 +417,54 @@ mod tests {
     fn numbers_are_not_vocabulary() {
         // Change: a correction without a letter is dropped.
         assert!(learn("room 42 is free", "room 43 is free").is_empty());
+    }
+
+    #[test]
+    fn script_switches_are_not_vocabulary() {
+        // Change: a correction into another script is a language switch.
+        assert!(learn("please tidy it", "please שלום it").is_empty());
+        assert!(learn("say privet now", "say привет now").is_empty());
+        assert_eq!(
+            words(&learn("פה lumo שם", "פה Lumio שם")),
+            vec![("lumo", "Lumio")]
+        );
+        // Same script, or a run that keeps one of its scripts, is kept.
+        assert_eq!(
+            words(&learn("ask שלם now", "ask שלום now")),
+            vec![("שלם", "שלום")]
+        );
+        assert_eq!(
+            words(&learn("ask lumo now", "ask Lumio שלום now")),
+            vec![("lumo", "Lumio שלום")]
+        );
+        assert_eq!(
+            words(&learn("visit cafe now", "visit Café now")),
+            vec![("cafe", "Café")]
+        );
+    }
+
+    #[test]
+    fn non_latin_to_latin_brand_is_kept() {
+        // A brand heard in Hebrew letters, corrected to its Latin spelling.
+        assert_eq!(
+            words(&learn("שלח בזנטריקס עכשיו", "שלח Zentrix עכשיו")),
+            vec![("בזנטריקס", "Zentrix")]
+        );
+        assert_eq!(
+            words(&learn("say лумио now", "say Lumio now")),
+            vec![("лумио", "Lumio")]
+        );
+    }
+
+    #[test]
+    fn script_of_letters() {
+        assert!(switches_script("Tidy", "שלום"));
+        assert!(!switches_script("שלום", "Tidy"));
+        assert!(!switches_script("שלום", "привет"));
+        assert!(switches_script("zentra", "ζέντρα"));
+        assert!(!switches_script("zentra", "Zentra"));
+        assert!(!switches_script("42", "שלום"));
+        assert!(!switches_script("lumo", "Lumio 42"));
     }
 
     #[test]
