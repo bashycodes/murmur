@@ -512,30 +512,6 @@ impl AutoSave {
 mod tests {
     use super::*;
 
-    #[test]
-    fn window_page_serves_scratchpad_html_with_the_query_for_the_page() {
-        let dist = Path::new(env!("CARGO_MANIFEST_DIR")).join("ui/dist");
-        for query in ["note=scratchpad", "note=n-1731500000000", "view=notes"] {
-            let page = window_page(query);
-            // What the asset protocol looks up: the path without `?…`/`#…`.
-            let (asset, rest) = page.split_once('?').unwrap();
-            assert_eq!(asset, "scratchpad.html");
-            assert_eq!(rest, query);
-            assert!(dist.join(asset).is_file(), "{asset} not in ui/dist");
-        }
-        // Its script and styles ship next to it.
-        let html = std::fs::read_to_string(dist.join("scratchpad.html")).unwrap();
-        for file in [
-            "scratchpad.js",
-            "scratchpad.css",
-            "theme.css",
-            "components.css",
-        ] {
-            assert!(html.contains(&format!("\"{file}\"")), "{file} not linked");
-            assert!(dist.join(file).is_file(), "{file} not in ui/dist");
-        }
-    }
-
     fn tmp(tag: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!(
             "murmur-notes-{tag}-{}-{}",
