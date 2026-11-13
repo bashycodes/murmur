@@ -195,13 +195,7 @@ pub fn fallback_pieces(pcm: &[f32]) -> Vec<std::ops::Range<usize>> {
 /// Recover the phrase list from [`crate::asr::build_initial_prompt`]'s
 /// `"a, b c, d."` rendering, so this backend needs no new `AsrRequest` field.
 pub fn hotwords_from_prompt(prompt: &str) -> Vec<String> {
-    let p = prompt.trim();
-    let p = p.strip_suffix('.').unwrap_or(p);
-    p.split(", ")
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
-        .collect()
+    crate::asr::prompt_phrases(prompt)
 }
 
 impl AsrEngine for ParakeetAsr {
@@ -260,7 +254,7 @@ mod tests {
         let p = build_initial_prompt(&d, &["Alice".into()]);
         assert_eq!(
             hotwords_from_prompt(&p),
-            ["Kubernetes", "Zephyr Cloud", "Alice"]
+            ["Alice", "Kubernetes", "Zephyr Cloud"]
         );
         assert!(hotwords_from_prompt("").is_empty());
     }

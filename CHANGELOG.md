@@ -22,6 +22,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Fixed
 
+- **Local Whisper no longer types out your dictionary.** When Whisper writes back the dictionary and screen words it was primed with (on a near-silent recording, or after you stop talking), Murmur decodes once more without them, or cuts the recited list off the end of what you said. The prompt now puts your dictionary last, where Whisper weighs it most, and keeps it to 900 characters so a long screen list never pushes it out. Windows, Android and murmur-server.
 - **AI cleanup, Command Mode, summaries and Test cleanup drop a reasoning model's leading `<think>…</think>` text** (also an unfinished `<think>…`, or reasoning that ends in `</think>` because the model's template opened the block) before using the answer, so a LiteLLM or custom server in front of a reasoning model no longer types its reasoning into the field. A `<think>` tag inside the text itself is kept.
 
 ## [1.3.0] - 2026-11-13

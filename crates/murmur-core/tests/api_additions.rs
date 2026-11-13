@@ -268,8 +268,8 @@ fn asr_request_carries_dictionary_and_screen_terms_separately() {
     assert_eq!(req.dictionary_terms, ["Kubernetes", "Zephyr"]);
     assert_eq!(req.screen_terms, ["Alice"]);
     assert_eq!(req.purpose, AsrPurpose::Final);
-    // The whisper prompt is unchanged.
-    assert_eq!(req.initial_prompt, "Kubernetes, Zephyr, Alice.");
+    // The whisper prompt: screen words, then the dictionary last (D87).
+    assert_eq!(req.initial_prompt, "Alice, Kubernetes, Zephyr.");
 }
 
 #[test]

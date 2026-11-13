@@ -15,6 +15,7 @@ use whisper_rs::{
 
 use crate::asr::{AsrEngine, AsrError, AsrOutput, AsrRequest};
 use crate::config::SAMPLE_RATE;
+use crate::recital::{self, Recital};
 
 /// whisper.cpp refuses (< 1 s) input; pad with silence.
 pub const MIN_SAMPLES: usize = SAMPLE_RATE + SAMPLE_RATE / 10;
@@ -153,7 +154,7 @@ pub struct WhisperEngine {
     /// Shrink the encoder window to the clip (`audio_ctx`), with a
     /// repetition guard that re-decodes with the full window.
     fit_ctx: bool,
-    /// Full-window re-decodes caused by the guard (tests, benchmarks).
+    /// Re-decodes by [`decode_guarded`] (tests, benchmarks).
     redecodes: std::sync::atomic::AtomicU64,
     // Keep the context alive for the state's lifetime.
     _ctx: WhisperContext,
@@ -211,7 +212,8 @@ impl WhisperEngine {
         self
     }
 
-    /// How many decodes the repetition guard re-ran with the full window.
+    /// How many decodes were run again: with the full window (repetition
+    /// guard, D20) or without the prompt (recital, D87).
     pub fn redecodes(&self) -> u64 {
         self.redecodes.load(std::sync::atomic::Ordering::Relaxed)
     }
@@ -237,25 +239,68 @@ impl WhisperEngine {
             0
         };
         let secs = audio.len() as f32 / SAMPLE_RATE as f32;
-        fit_then_full(ctx, secs, &self.redecodes, |c| {
-            self.decode(pcm, &audio, req, c, abort)
+        decode_guarded(ctx, secs, &req.initial_prompt, &self.redecodes, |pass| {
+            self.decode(pcm, &audio, req, pass, abort)
         })
     }
 }
 
-/// D20: decode with encoder window `ctx` (0 = full), and once more with
-/// the full window when a fitted result [`looks_degenerate`] over `secs`
-/// of audio (counted in `redecodes`). The full-window result is used as is.
-fn fit_then_full(
+/// One whisper.cpp run of [`decode_guarded`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Pass {
+    /// Encoder window; 0 = the full 30 s.
+    audio_ctx: i32,
+    /// Whether `initial_prompt` (the dictionary and screen words) is used;
+    /// D22's `prior_text` always is.
+    prompt: bool,
+}
+
+/// Decode with encoder window `ctx` (0 = full) and `prompt`, then at most
+/// once more (counted in `redecodes`):
+/// - D87: without the prompt when the result recites it
+///   ([`recital::check`]), with the full window if it also
+///   [`looks_degenerate`];
+/// - D20: else with the full window when a fitted result
+///   [`looks_degenerate`] over `secs` of audio.
+///
+/// A recited list after real speech is cut off, on either decode. The
+/// second result is otherwise used as is.
+fn decode_guarded(
     ctx: i32,
     secs: f32,
+    prompt: &str,
     redecodes: &std::sync::atomic::AtomicU64,
-    mut decode: impl FnMut(i32) -> Result<AsrOutput, AsrError>,
+    mut decode: impl FnMut(Pass) -> Result<AsrOutput, AsrError>,
 ) -> Result<AsrOutput, AsrError> {
-    let out = decode(ctx)?;
+    let strip_tail = |mut out: AsrOutput| {
+        if let Recital::Tail(speech) = recital::check(&out.text, prompt) {
+            out.text = speech;
+        }
+        out
+    };
+    let mut out = decode(Pass {
+        audio_ctx: ctx,
+        prompt: true,
+    })?;
+    match recital::check(&out.text, prompt) {
+        Recital::Whole => {
+            redecodes.fetch_add(1, Ordering::Relaxed);
+            let degenerate = ctx > 0 && looks_degenerate(&out.text, secs);
+            return decode(Pass {
+                audio_ctx: if degenerate { 0 } else { ctx },
+                prompt: false,
+            });
+        }
+        Recital::Tail(speech) => out.text = speech,
+        Recital::None => {}
+    }
     if ctx > 0 && looks_degenerate(&out.text, secs) {
         redecodes.fetch_add(1, Ordering::Relaxed);
-        return decode(0);
+        return decode(Pass {
+            audio_ctx: 0,
+            prompt: true,
+        })
+        .map(strip_tail);
     }
     Ok(out)
 }
@@ -268,15 +313,16 @@ impl AsrEngine for WhisperEngine {
 
 impl WhisperEngine {
     /// One whisper.cpp run; `pcm` is the unpadded input (silence gate),
-    /// `audio` the padded one; `audio_ctx` 0 = full window.
+    /// `audio` the padded one.
     fn decode(
         &self,
         pcm: &[f32],
         audio: &[f32],
         req: &AsrRequest,
-        audio_ctx: i32,
+        pass: Pass,
         abort: Option<&AtomicBool>,
     ) -> Result<AsrOutput, AsrError> {
+        let Pass { audio_ctx, prompt } = pass;
         let lang = if self.multilingual {
             req.language.clone()
         } else {
@@ -303,7 +349,12 @@ impl WhisperEngine {
             p.set_audio_ctx(audio_ctx);
         }
         // D22: the previous segments' last words follow the dictionary.
-        let prompt = crate::asr::compose_prompt(&req.initial_prompt, req.prior_text.as_deref());
+        let initial = if prompt {
+            req.initial_prompt.as_str()
+        } else {
+            ""
+        };
+        let prompt = crate::asr::compose_prompt(initial, req.prior_text.as_deref());
         if !prompt.is_empty() {
             p.set_initial_prompt(&prompt);
         }
@@ -412,10 +463,10 @@ mod tests {
         let clean = "we moved the meeting to the blue room on the third floor";
         let n = std::sync::atomic::AtomicU64::new(0);
         let mut seen = Vec::new();
-        let out = fit_then_full(500, 9.0, &n, |c| {
-            seen.push(c);
+        let out = decode_guarded(500, 9.0, "", &n, |p| {
+            seen.push(p.audio_ctx);
             Ok(AsrOutput {
-                text: if c > 0 { looped } else { clean }.into(),
+                text: if p.audio_ctx > 0 { looped } else { clean }.into(),
                 ..Default::default()
             })
         })
@@ -425,8 +476,8 @@ mod tests {
         assert_eq!(n.load(Ordering::Relaxed), 1);
         // A clean fitted result is kept: one decode, no re-decode.
         seen.clear();
-        let out = fit_then_full(500, 9.0, &n, |c| {
-            seen.push(c);
+        let out = decode_guarded(500, 9.0, "", &n, |p| {
+            seen.push(p.audio_ctx);
             Ok(AsrOutput {
                 text: clean.into(),
                 ..Default::default()
@@ -436,8 +487,8 @@ mod tests {
         assert_eq!((seen.as_slice(), out.text.as_str()), (&[500][..], clean));
         // The full window (ctx 0) is never re-decoded, looped or not.
         seen.clear();
-        fit_then_full(0, 9.0, &n, |c| {
-            seen.push(c);
+        decode_guarded(0, 9.0, "", &n, |p| {
+            seen.push(p.audio_ctx);
             Ok(AsrOutput {
                 text: looped.into(),
                 ..Default::default()
@@ -446,6 +497,72 @@ mod tests {
         .unwrap();
         assert_eq!(seen, [0]);
         assert_eq!(n.load(Ordering::Relaxed), 1);
+    }
+
+    /// Fake decoder for the recital guard: `with` while the prompt is
+    /// used, `without` once it is dropped; records each pass.
+    fn fake<'a>(
+        seen: &'a mut Vec<Pass>,
+        with: &'a str,
+        without: &'a str,
+    ) -> impl FnMut(Pass) -> Result<AsrOutput, AsrError> + 'a {
+        move |p| {
+            seen.push(p);
+            Ok(AsrOutput {
+                text: if p.prompt { with } else { without }.into(),
+                ..Default::default()
+            })
+        }
+    }
+
+    #[test]
+    fn a_recited_prompt_is_decoded_again_without_it() {
+        // Synthetic dictionary; Whisper recites it on a near-silent clip.
+        let prompt = "Quorvel, Tamsik, Brennolt, Vexmoor, Lintrava.";
+        let recited = "Quorvel, Tamsik, Brennolt, Vexmoor.";
+        let n = std::sync::atomic::AtomicU64::new(0);
+        let mut seen = Vec::new();
+        let out = decode_guarded(0, 9.0, prompt, &n, fake(&mut seen, recited, "")).unwrap();
+        let pass = |audio_ctx, prompt| Pass { audio_ctx, prompt };
+        assert_eq!(seen, [pass(0, true), pass(0, false)]);
+        assert_eq!(out.text, "");
+        assert_eq!(n.load(Ordering::Relaxed), 1);
+        // On a fitted window the retry keeps it, unless the recital also
+        // looks degenerate (4 list words on a 0.2 s clip).
+        seen.clear();
+        decode_guarded(500, 9.0, prompt, &n, fake(&mut seen, recited, "")).unwrap();
+        assert_eq!(seen, [pass(500, true), pass(500, false)]);
+        seen.clear();
+        decode_guarded(500, 0.2, prompt, &n, fake(&mut seen, recited, "")).unwrap();
+        assert_eq!(seen, [pass(500, true), pass(0, false)]);
+        assert_eq!(n.load(Ordering::Relaxed), 3);
+        // Speech that uses the list is kept, in one decode.
+        seen.clear();
+        let said = "Ask Quorvel and Tamsik about the draft.";
+        let out = decode_guarded(500, 9.0, prompt, &n, fake(&mut seen, said, "x")).unwrap();
+        assert_eq!((seen.len(), out.text.as_str()), (1, said));
+        assert_eq!(n.load(Ordering::Relaxed), 3);
+    }
+
+    #[test]
+    fn a_recited_list_after_speech_is_cut_without_a_redecode() {
+        let prompt = "Quorvel, Tamsik, Brennolt, Vexmoor, Lintrava.";
+        let n = std::sync::atomic::AtomicU64::new(0);
+        let mut seen = Vec::new();
+        let out = decode_guarded(
+            500,
+            9.0,
+            prompt,
+            &n,
+            fake(
+                &mut seen,
+                "Move the review to Friday. Quorvel, Tamsik, Brennolt, Vexmoor.",
+                "x",
+            ),
+        )
+        .unwrap();
+        assert_eq!(out.text, "Move the review to Friday.");
+        assert_eq!((seen.len(), n.load(Ordering::Relaxed)), (1, 0));
     }
 
     #[test]
