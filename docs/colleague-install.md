@@ -42,6 +42,12 @@ the apps.
 Windows 10 PCs without WebView2 download it during install; Windows 11
 always has it.
 
+Updates install over the old version and keep your settings, history and
+models. To start fresh, uninstall and tick *Delete the application data*:
+that removes `%APPDATA%\Murmur` (settings, history, notes, downloaded
+models) and the older `%APPDATA%\FlowClone`. Left unticked, everything
+stays for the next install.
+
 <!-- notetaker -->
 ### Meetings (Notetaker)
 
