@@ -27,6 +27,7 @@ import { changesLine, savedEngine, setupChanges, STEP_OF } from "../lib/setup-di
 import { pillLine, readinessErrorLine, readinessLine, RECHECK_MS } from "../lib/setup-try.js";
 import { initialEngine, recommendedEngine } from "../lib/setup-engine.js";
 import { cloudMissingLine, enginesFor, initialCleanup, recommendedCleanup, serverOption } from "../lib/setup-cleanup.js";
+import { cloudWhere, providerOf, setupCloudCopy } from "../lib/provider-names.js";
 import { views } from "../lib/views.js";
 import { engines as cleanupEngines, pollCleanupStatus } from "../features/ai.js";
 import { TEMPLATE } from "./templates.js";
@@ -176,6 +177,14 @@ function renderEngine() {
         b.disabled = !has(id);
         b.querySelector("[data-ob-na]").hidden = has(id);
         b.querySelector("[data-ob-rec]").hidden = id !== st.recEngine;
+    }
+    // D96: the cloud card names your own AI server when that is the provider.
+    const copy = setupCloudCopy(providerOf(views.or));
+    const card = document.querySelector('#onboarding [data-ob-engine="cloud"]');
+    if (card) {
+        card.querySelector(".lw-ob-card-title").textContent = copy.sttTitle;
+        card.querySelector(".lw-ob-card-desc").textContent = copy.sttDesc;
+        card.querySelector(".lw-ob-facts").replaceChildren(...copy.sttFacts.map((f) => el("span", undefined, f)));
     }
     placeServerForm();
     $("ob_cloud_detail").hidden = st.engine !== "cloud";
@@ -499,6 +508,12 @@ function renderCleanupOptions() {
         // "Not in this build" is for a missing engine; the server option says why instead.
         b.querySelector("[data-ob-na]").hidden = id === "server" || hasCleanup(id);
         b.querySelector("[data-ob-rec]").hidden = id !== rec || !hasCleanup(id);
+        if (id === "cloud") {
+            // D96: named by the saved provider.
+            const copy = setupCloudCopy(providerOf(views.or));
+            b.querySelector("[data-ob-title]").textContent = copy.cleanTitle;
+            b.querySelector("[data-ob-desc]").textContent = copy.cleanDesc;
+        }
         if (id !== "server")
             continue;
         b.hidden = server.hidden;
@@ -742,8 +757,9 @@ const WHERE = {
     client: "on this PC",
     remote: "by your server",
     server: "by your server",
-    cloud: "in the cloud",
 };
+/** Where the try-it dictation ran; the cloud route by the saved provider (D96). */
+const whereRan = (engine) => (engine === "cloud" ? cloudWhere(providerOf(views.or)) : WHERE[engine]);
 function setResult(line) {
     const r = $("ob_result");
     r.hidden = false;
@@ -759,7 +775,7 @@ function showResult(v) {
         return;
     st.resultAt = Date.now();
     const good = last.status === "FORMATTED" || last.status === "RAW_TRANSCRIPT";
-    const where = WHERE[last.engine ?? ""] ?? (last.engine ? `by ${last.engine}` : "");
+    const where = whereRan(last.engine ?? "") ?? (last.engine ? `by ${last.engine}` : "");
     const secs = (ms) => `${(ms / 1000).toFixed(1)} s`;
     pressLine({
         bad: !good,
@@ -923,6 +939,9 @@ function savedSpeech() {
 /** Names for the line only; choices are compared as saved. */
 const LABELS = {
     modelName: (m) => (m.asr_engine === "parakeet" ? PARAKEET_TITLE : whisperRow(m.model_path, models.catalog()).title),
+    get provider() {
+        return providerOf(views.or);
+    },
 };
 /** Setup's choices as the saved settings have them now. */
 function savedConfig() {

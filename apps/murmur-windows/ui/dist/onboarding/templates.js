@@ -195,7 +195,7 @@ const cleanupOption = (id, title, desc) => `
 <button type="button" role="radio" class="lw-ob-option" data-ob-cleanup="${id}" aria-checked="false">
   <span class="lw-ob-radio"></span>
   <span class="lw-ob-option-text">
-    <span class="lw-ob-option-title">${title}<span class="fl-badge fl-badge-dark" data-ob-rec hidden>Recommended</span><span class="fl-badge fl-badge-light" data-ob-na hidden>Not in this build</span></span>
+    <span class="lw-ob-option-title"><span data-ob-title>${title}</span><span class="fl-badge fl-badge-dark" data-ob-rec hidden>Recommended</span><span class="fl-badge fl-badge-light" data-ob-na hidden>Not in this build</span></span>
     <span class="lw-ob-option-desc" data-ob-desc>${desc}</span>
     <span class="lw-ob-option-desc" data-ob-reason hidden></span>
   </span>

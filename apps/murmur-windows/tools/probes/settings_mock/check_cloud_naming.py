@@ -83,6 +83,35 @@ with sync_playwright() as p:
     print(f"  openrouter transforms line: {tf}")
     if check_mode:
         check("OpenRouter keeps 'Cloud'", or_title.startswith("Cloud"), or_title)
+
+    # Setup: the speech card (step 2) and the cleanup option (step 4).
+    flat = "e => e.textContent.replace(/\\s+/g, ' ').trim()"
+    for q, own in [("onboard=1&cloud=custom", True), ("onboard=1", False)]:
+        pg.goto(f"http://127.0.0.1:{port}/settings.html?{q}")
+        pg.wait_for_timeout(700)
+        pg.click("#onboarding [data-ob-step]:not([hidden]) [data-ob=next]")
+        pg.wait_for_timeout(300)
+        card = pg.eval_on_selector("[data-ob-engine=cloud]", flat)
+        pg.evaluate("window.__obCleanupText = () => document.querySelector('[data-ob-cleanup=cloud] [data-ob-title]').textContent + ' | ' + document.querySelector('[data-ob-cleanup=cloud] [data-ob-desc]').textContent")
+        # Fastest way to step 4: your server (address + Test), then skip the model.
+        pg.click("[data-ob-engine=server]")
+        pg.click("#ob_server_more")
+        pg.fill("#ob_host", "100.64.0.10")
+        pg.fill("#ob_token", "abcdefghijklmnop1234")
+        pg.click("#ob_test_conn")
+        pg.wait_for_timeout(200)
+        pg.click("#onboarding [data-ob-step]:not([hidden]) [data-ob=next]")
+        pg.wait_for_timeout(300)
+        pg.click("[data-ob=skip-model]")
+        pg.wait_for_timeout(300)
+        opt = pg.evaluate("window.__obCleanupText()")
+        print(f"  setup ({'own' if own else 'openrouter'}): card: {card}  ||  cleanup: {opt}")
+        pg.screenshot(path=str(out / f"{label}-naming-setup-{'own' if own else 'or'}.png"), full_page=True)
+        if check_mode and own:
+            check("setup card not 'Cloud'/'online' for own server", "Your own AI server" in card and "online" not in card and "Cloud" not in card, card)
+            check("setup cleanup option not 'Cloud'/'online'", opt.startswith("Your own AI server") and "online" not in opt, opt)
+        if check_mode and not own:
+            check("setup keeps 'Cloud' for OpenRouter", "Cloud" in card and opt.startswith("Cloud"), f"{card} / {opt}")
     b.close()
 
 if fails:

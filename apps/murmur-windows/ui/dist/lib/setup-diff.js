@@ -5,6 +5,7 @@
 // setup silently, D95). Choices are compared as saved (paths, addresses),
 // never by their display names; names are only for the line. Pure, so
 // `npm test` runs it on the built dist without a page.
+import { cloudShortName } from "./provider-names.js";
 import { ENGINE_LABEL } from "./setup-engine.js";
 const WHAT = {
     engine: "Speech",
@@ -28,12 +29,12 @@ const sameModel = (a, b) => a === b ||
         (a.asr_engine === "parakeet" ? (a.parakeet_model_dir ?? "") === (b.parakeet_model_dir ?? "") : (a.model_path ?? "") === (b.model_path ?? "")));
 /** Each choice: whether two configs differ, and how one reads. */
 const CHOICES = {
-    engine: { same: (a, b) => a.engine === b.engine, label: (c) => (c.engine ? ENGINE_LABEL[c.engine] : "Not set up") },
+    engine: { same: (a, b) => a.engine === b.engine, label: (c, l) => (c.engine === "cloud" ? cloudShortName(l.provider) : c.engine ? ENGINE_LABEL[c.engine] : "Not set up") },
     host: { same: (a, b) => a.host.trim() === b.host.trim(), label: (c) => c.host.trim() || "None" },
     token: { same: (a, b) => a.tokenSaves === b.tokenSaves, label: (c) => (c.tokenSaves ? "Replaced" : "As it was") },
     model: { same: (a, b) => sameModel(a.model, b.model), label: (c, l) => (c.model ? l.modelName(c.model) : "None") },
     source: { same: (a, b) => a.source === b.source, label: (c) => SOURCE[c.source] ?? c.source },
-    cleanup: { same: (a, b) => a.cleanup === b.cleanup, label: (c) => CLEANUP[c.cleanup] },
+    cleanup: { same: (a, b) => a.cleanup === b.cleanup, label: (c, l) => (c.cleanup === "cloud" ? cloudShortName(l.provider) : CLEANUP[c.cleanup]) },
     llmPath: { same: (a, b) => (a.llmPath ?? "") === (b.llmPath ?? ""), label: (c) => (c.llmPath ? fileName(c.llmPath) : "None") },
     ptt: { same: (a, b) => a.ptt === b.ptt, label: (c) => c.ptt.replace(/\+/g, " + ") },
     mic: { same: (a, b) => (a.mic || "") === (b.mic || ""), label: (c) => c.mic || "System default" },

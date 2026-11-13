@@ -2,6 +2,7 @@
 // your own AI server): plain sentences, never a backend code. Pure, so `npm test` runs
 // it on the built dist without a page.
 import { cloudHint } from "./format.js";
+import { ownServerOr } from "./provider-names.js";
 /** The words for a backend code; unknown codes get a generic phrase, never the code. */
 export function plainHint(code) {
     return cloudHint(code, "something went wrong");
@@ -16,7 +17,7 @@ export function plainHint(code) {
  */
 export function cleanupBlockedLine(st, v) {
     const custom = st.provider === "custom";
-    const where = custom ? st.host || "your own AI server" : "OpenRouter";
+    const where = custom ? ownServerOr(st.host) : "OpenRouter";
     if (!st.supported)
         return { text: "Not in this build.", cls: "hint" };
     if (!st.enabled) {
@@ -44,7 +45,7 @@ export function cleanupBlockedLine(st, v) {
 /** Who cleaned the last dictation, for the row's "last:" part. */
 export function cleanupEngineName(engine, provider, host) {
     if (engine === "cloud")
-        return provider === "custom" ? host || "your own AI server" : "OpenRouter";
+        return provider === "custom" ? ownServerOr(host) : "OpenRouter";
     if (engine === "local")
         return "this PC";
     if (engine === "server")

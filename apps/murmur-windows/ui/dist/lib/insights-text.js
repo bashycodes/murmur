@@ -1,9 +1,14 @@
 // Insights words that need no DOM: route names and shares, the words-bar
 // key, the heatmap legend, the streak pair, and backend ISO days in the
 // app's date format. Tested in tests/insights-text.test.mjs.
-import { ENGINE_LABEL } from "./setup-engine.js";
+import { cloudShortName } from "./provider-names.js";
 export const ROUTES = ["pc", "server", "cloud"];
-export const ROUTE_LABEL = ENGINE_LABEL;
+/** A route's name; the cloud route by the saved provider (D96: "Cloud" is OpenRouter only). */
+export function routeLabel(r, provider) {
+    if (r === "cloud")
+        return cloudShortName(provider);
+    return r === "pc" ? "This PC" : "Your server";
+}
 /** Percent per known route (unknown left out); null when none is known. */
 export function routeShare(r) {
     const known = r.pc + r.server + r.cloud;
@@ -14,11 +19,11 @@ export function routeShare(r) {
 }
 /** The words-bar key: every route used, in bar order, named with its share
  *  ("This PC 62%"); empty when no route is known. */
-export function splitKey(r) {
+export function splitKey(r, provider) {
     const share = routeShare(r);
     if (!share)
         return [];
-    return ROUTES.filter((x) => r[x] > 0).map((x) => ({ route: x, text: `${ROUTE_LABEL[x]} ${share[x]}%` }));
+    return ROUTES.filter((x) => r[x] > 0).map((x) => ({ route: x, text: `${routeLabel(x, provider)} ${share[x]}%` }));
 }
 /** Heat levels in legend order, lightest first: "Less ■■■■ More". */
 export const LEGEND_LEVELS = ["h1", "h2", "h3", "h4"];

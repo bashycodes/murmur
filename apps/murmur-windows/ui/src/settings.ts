@@ -32,7 +32,7 @@ import { settingsGeneralPage } from "./pages/settings/general.js";
 import { adminStore, settingsKeysPage } from "./pages/settings/keys.js";
 import { settingsOpenrouterPage } from "./pages/settings/openrouter.js";
 import { settingsPrivacyPage } from "./pages/settings/privacy.js";
-import { PROVIDER_PAGE } from "./lib/engine-names.js";
+import { PROVIDER_PAGE } from "./lib/provider-names.js";
 import { settingsServerPage } from "./pages/settings/server.js";
 import { settingsSpeechPage } from "./pages/settings/speech.js";
 import { settingsSystemPage } from "./pages/settings/system.js";

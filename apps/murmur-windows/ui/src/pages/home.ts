@@ -13,8 +13,9 @@ import { ICON, iconEl } from "../lib/icons.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { prefsStore } from "../lib/prefs-store.js";
 import { router, type Page } from "../lib/router.js";
+import { providerOf } from "../lib/provider-names.js";
 import { views } from "../lib/views.js";
-import { ROUTE_LABEL, ROUTES, routeShare, type InsightsView, type Route } from "./insights.js";
+import { routeLabel, ROUTES, routeShare, type InsightsView, type Route } from "./insights.js";
 
 interface HistoryItem {
   id: number;
@@ -265,7 +266,7 @@ function historyRow(h: HistoryItem): HTMLElement {
   const app = h.app.replace(/\.exe$/i, "");
   time.title = `${app ? `${app}, ` : ""}${h.words} ${h.words === 1 ? "word" : "words"}`;
   row.append(time, body, actions);
-  if (h.route) row.append(el("span", `lw-route is-${h.route}`, ROUTE_LABEL[h.route]));
+  if (h.route) row.append(el("span", `lw-route is-${h.route}`, routeLabel(h.route, providerOf(views.or))));
   return row;
 }
 
@@ -280,7 +281,7 @@ function versionTabs(versions: HistoryVersion[], text: HTMLElement): HTMLElement
     const b = el("button", "lw-ver-tab", String(v.n));
     b.type = "button";
     b.setAttribute("role", "tab");
-    b.title = `${v.n === 0 ? "Original" : `Retry ${v.n}`}, ${timeText(v.ts)}${v.route ? `, ${ROUTE_LABEL[v.route]}` : ""}${i === newest ? " (current)" : ""}`;
+    b.title = `${v.n === 0 ? "Original" : `Retry ${v.n}`}, ${timeText(v.ts)}${v.route ? `, ${routeLabel(v.route, providerOf(views.or))}` : ""}${i === newest ? " (current)" : ""}`;
     b.addEventListener("click", () => {
       text.textContent = v.text;
       text.classList.toggle("is-old", i !== newest);
@@ -439,7 +440,7 @@ function showRoutes(): void {
       ? ROUTES.filter((r) => lastRoutes![r] > 0).map((r) => {
           const seg = el("span", `is-${r}`);
           seg.style.flex = String(Math.max(share[r], 2));
-          seg.title = `${ROUTE_LABEL[r]}: ${share[r]}%`;
+          seg.title = `${routeLabel(r, providerOf(views.or))}: ${share[r]}%`;
           return seg;
         })
       : [el("span", "is-none")]),
@@ -450,7 +451,7 @@ function showRoutes(): void {
       const line = el("span", "lw-home-route");
       const off = r === "cloud" && cloudOff && lastRoutes!.cloud === 0;
       const dot = el("span", `lw-dot is-${off ? "off" : r}`);
-      line.append(dot, el("span", "lw-grow", ROUTE_LABEL[r]), el("span", undefined, off ? "Off" : share ? `${share[r]}%` : "–"));
+      line.append(dot, el("span", "lw-grow", routeLabel(r, providerOf(views.or))), el("span", undefined, off ? "Off" : share ? `${share[r]}%` : "–"));
       return line;
     }),
   );

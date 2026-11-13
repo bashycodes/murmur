@@ -3,7 +3,8 @@
 // engine and OpenRouter switches, changed on their own pages), history
 // retention, and the opt-in debug log (README "Debug log").
 import { $, askDialog, setStatus } from "../../lib/dom.js";
-import { cloudLeaves, serverCleanupOn, serverTextLeave } from "../../lib/engine-names.js";
+import { serverCleanupOn } from "../../lib/cleanup-order.js";
+import { cloudLeaves, serverTextLeave } from "../../lib/privacy-rows.js";
 import { invoke, onEvent } from "../../lib/ipc.js";
 import { ICON, iconSvg } from "../../lib/icons.js";
 import { group, heading, row, toggle } from "../../lib/markup.js";
@@ -92,16 +93,7 @@ function showLeaves() {
         showLeave("leave_server_cleanup", serverTextLeave(serverCleanupOn(engines, f.host, remote, or?.cleanup.status.server_llm), f.host, f.tls));
     }
     if (cloud && or) {
-        const own = or.cleanup.provider === "custom";
-        const rows = cloudLeaves({
-            provider: or.cleanup.provider,
-            host: or.cleanup.custom.host,
-            sttAllow: or.stt.allow,
-            sttModel: own ? or.stt.custom_model ?? "" : or.stt.model,
-            cleanupAllow: or.cleanup.allow,
-            cleanupModel: own ? or.cleanup.custom.model : or.cleanup.model,
-            zdr: or.privacy.zdr,
-        });
+        const rows = cloudLeaves(or);
         showLeave("leave_or_audio", rows.audio);
         showLeave("leave_or_text", rows.text);
     }

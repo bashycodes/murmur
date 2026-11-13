@@ -12,7 +12,9 @@ import { invoke } from "../lib/ipc.js";
 import { captureChord, RECORDING_TEXT, stopCapture } from "../lib/keycapture.js";
 import { prefsStore, type Prefs, type TransformItem, type TransformPrefs } from "../lib/prefs-store.js";
 import type { Page } from "../lib/router.js";
-import { cloudCleanupUsable, serverCleanupOn, transformsEngineLine } from "../lib/engine-names.js";
+import { serverCleanupOn } from "../lib/cleanup-order.js";
+import { providerOf } from "../lib/provider-names.js";
+import { cloudCleanupAllowed, transformsEngineLine } from "../lib/transforms-line.js";
 import { views } from "../lib/views.js";
 
 /** murmur_core::transform limits (the backend checks them again). */
@@ -377,8 +379,8 @@ function renderEngines(): void {
   ];
   $<HTMLElement>("tf_engines").textContent = transformsEngineLine({
     engines,
-    cloud: cloudCleanupUsable(or),
-    provider: or?.cleanup.provider,
+    cloudAllowed: cloudCleanupAllowed(or),
+    provider: providerOf(or),
     local: !!prefsStore.get()?.llm_enabled && !!dv?.caps.local,
     server: serverCleanupOn(engines, dv?.form.host ?? "", !!dv?.caps.remote, or?.cleanup.status.server_llm),
   });

@@ -3,6 +3,7 @@
 // it on the built dist without a page.
 
 import { cloudHint } from "./format.js";
+import { ownServerOr } from "./provider-names.js";
 import type { CloudProvider, CleanupStatus, OrView } from "./types.js";
 
 /** What the row says; `turnOn` = offer a button that switches cloud cleanup on under Engines. */
@@ -27,7 +28,7 @@ export function plainHint(code: string | null | undefined): string {
  */
 export function cleanupBlockedLine(st: CleanupStatus, v: OrView | null): CleanupStateLine | null {
   const custom = st.provider === "custom";
-  const where = custom ? st.host || "your own AI server" : "OpenRouter";
+  const where = custom ? ownServerOr(st.host) : "OpenRouter";
   if (!st.supported) return { text: "Not in this build.", cls: "hint" };
   if (!st.enabled) {
     const what = custom ? "Cleanup on your own AI server" : "Cloud cleanup";
@@ -48,7 +49,7 @@ export function cleanupBlockedLine(st: CleanupStatus, v: OrView | null): Cleanup
 
 /** Who cleaned the last dictation, for the row's "last:" part. */
 export function cleanupEngineName(engine: string, provider: CloudProvider | undefined, host?: string): string {
-  if (engine === "cloud") return provider === "custom" ? host || "your own AI server" : "OpenRouter";
+  if (engine === "cloud") return provider === "custom" ? ownServerOr(host) : "OpenRouter";
   if (engine === "local") return "this PC";
   if (engine === "server") return "your server";
   return "another engine";

@@ -8,7 +8,7 @@
 import { ICON, iconSvg } from "../../lib/icons.js";
 import { group, heading, row, toggle } from "../../lib/markup.js";
 import { extLink } from "../../features/models.js";
-import { PROVIDER_PAGE, providerName } from "../../lib/engine-names.js";
+import { PROVIDER_PAGE, providerName } from "../../lib/provider-names.js";
 export const settingsOpenrouterPage = {
     id: "settings-openrouter",
     area: "settings",

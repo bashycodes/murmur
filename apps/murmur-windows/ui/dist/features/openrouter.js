@@ -11,7 +11,7 @@
 import { $, askDialog, el, setStatus, setValue, when } from "../lib/dom.js";
 import { iconEl } from "../lib/icons.js";
 import { cleanupBlockedLine, cleanupEngineName, cleanupTestFailText, plainHint } from "../lib/cleanup-state.js";
-import { cloudRouteInSentence, cloudRouteTitle } from "../lib/engine-names.js";
+import { cloudRouteInSentence, cloudRouteTitle, ownServerOr, providerModelLabel } from "../lib/provider-names.js";
 import { cleanupMonthCost, failText, money, usd } from "../lib/format.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { cloudTimeout } from "../lib/model-pages.js";
@@ -70,7 +70,7 @@ async function showNormalisedUrl() {
 export function cleanupTarget(v) {
     if (v?.cleanup.provider !== "custom")
         return "openrouter.ai";
-    return v.cleanup.custom.host || "your own AI server";
+    return ownServerOr(v.cleanup.custom.host);
 }
 /** "Transcription model · $0.04/h audio" (+ this month's cleanup spend). */
 function modelDesc(info, extra) {
@@ -163,10 +163,9 @@ export function showOr(v) {
     $("or_cleanup_send_screen_words").checked = c.send_screen_words;
     $("or_cleanup_send_app_name").checked = c.send_app_name;
     showCleanupStatus(c.status);
-    const short = (id) => id.split("/").pop() ?? id;
     // D78/D85: LiteLLM does speech only with a speech model set for the proxy.
     const sttAvailable = s.available ?? !custom;
-    const sttModel = s.provider === "custom" ? s.custom_model : short(s.model);
+    const sttModel = providerModelLabel(v, "stt");
     $("or_used_stt").textContent = !sttAvailable
         ? "Your own AI server has no speech model set, so speech stays on this PC and your server. Press Test connection to find one, or pick OpenRouter."
         : s.allow
@@ -175,7 +174,7 @@ export function showOr(v) {
     showSttProvider(v);
     // D36: the cloud's place among the engines that are on.
     const firstOn = c.engines.find((e) => e.enabled)?.route;
-    const cleanupModel = custom ? c.custom.model || "no model picked yet" : short(c.model);
+    const cleanupModel = providerModelLabel(v, "cleanup") || "no model picked yet";
     $("or_used_cleanup").textContent = `${c.allow ? "Sends" : "Would send"} text · ${cleanupModel}${c.allow ? ` · ${firstOn === "cloud" ? "first" : "as a fallback"}` : ""}`;
     setBadge("or_used_stt_badge", s.allow && sttAvailable);
     if (!sttAvailable) {
@@ -188,7 +187,7 @@ export function showOr(v) {
     sttLink.hidden = !sttAvailable;
     sttLink.textContent = s.allow ? "Manage →" : "Set up →";
     $("or_used_cleanup_link").textContent = c.allow ? "Manage →" : "Set up →";
-    $("cloud_ll_host").textContent = c.custom.host || "your own AI server";
+    $("cloud_ll_host").textContent = ownServerOr(c.custom.host);
     $("cloud_ll_consent").textContent = c.custom.consent
         ? `You agreed on ${new Date(c.custom.consent_at_ms).toLocaleDateString()} to send dictated text here.`
         : "Asks before the first dictation is sent.";
@@ -458,7 +457,7 @@ async function orSttToggled() {
     if (!s?.consent) {
         consent = litellm
             ? await askDialog("cu_stt_consent_dlg", "cu_stt_consent_ok", "cu_stt_consent_cancel", () => {
-                const host = s?.consent_host || "your own AI server";
+                const host = ownServerOr(s?.consent_host);
                 $("cu_stt_consent_host_title").textContent = host;
                 $("cu_stt_consent_host").textContent = host;
                 $("cu_stt_consent_http").hidden = !views.or?.cleanup.custom.plain_http;
@@ -488,12 +487,12 @@ function showSttProvider(v) {
         r.hidden = r.dataset.sttProvider !== p;
     }
     $("cu_stt_model_name").textContent = v.stt.custom_model || "none";
-    $("cu_stt_host").textContent = v.cleanup.custom.host || "your own AI server";
+    $("cu_stt_host").textContent = ownServerOr(v.cleanup.custom.host);
 }
 async function orTestStt() {
     const out = $("or_stt_test_out");
     const s = views.or?.stt;
-    const host = s?.provider === "custom" ? s.consent_host || "your own AI server" : "openrouter.ai";
+    const host = s?.provider === "custom" ? ownServerOr(s.consent_host) : "openrouter.ai";
     out.textContent = `Sending a 3 s public-domain clip to ${host}…`;
     out.className = "hint";
     try {
@@ -728,7 +727,7 @@ async function cuModelsNow(outId, fill) {
         out.className = "hint err";
         return;
     }
-    out.textContent = `Asking ${(await hostOf(baseUrl)) || "your own AI server"} for its models…`;
+    out.textContent = `Asking ${ownServerOr(await hostOf(baseUrl))} for its models…`;
     out.className = "hint";
     try {
         const typed = $("cu_key").value.trim();

@@ -29,6 +29,7 @@ import { pillLine, readinessErrorLine, readinessLine, RECHECK_MS, type PillState
 import type { CleanupEngine, DevForm, DevView, FieldError, Health, KeyState, ModelStatus, OrView, Route, RouteView } from "../lib/types.js";
 import { initialEngine, recommendedEngine } from "../lib/setup-engine.js";
 import { cloudMissingLine, enginesFor, initialCleanup, recommendedCleanup, serverOption, type ServerFacts, type SetupCleanup } from "../lib/setup-cleanup.js";
+import { cloudWhere, providerOf, setupCloudCopy } from "../lib/provider-names.js";
 import { views } from "../lib/views.js";
 import { engines as cleanupEngines, pollCleanupStatus } from "../features/ai.js";
 import { TEMPLATE } from "./templates.js";
@@ -222,6 +223,14 @@ function renderEngine(): void {
     b.disabled = !has(id);
     (b.querySelector("[data-ob-na]") as HTMLElement).hidden = has(id);
     (b.querySelector("[data-ob-rec]") as HTMLElement).hidden = id !== st.recEngine;
+  }
+  // D96: the cloud card names your own AI server when that is the provider.
+  const copy = setupCloudCopy(providerOf(views.or));
+  const card = document.querySelector<HTMLElement>('#onboarding [data-ob-engine="cloud"]');
+  if (card) {
+    (card.querySelector(".lw-ob-card-title") as HTMLElement).textContent = copy.sttTitle;
+    (card.querySelector(".lw-ob-card-desc") as HTMLElement).textContent = copy.sttDesc;
+    (card.querySelector(".lw-ob-facts") as HTMLElement).replaceChildren(...copy.sttFacts.map((f) => el("span", undefined, f)));
   }
   placeServerForm();
   $<HTMLElement>("ob_cloud_detail").hidden = st.engine !== "cloud";
@@ -547,6 +556,12 @@ function renderCleanupOptions(): void {
     // "Not in this build" is for a missing engine; the server option says why instead.
     (b.querySelector("[data-ob-na]") as HTMLElement).hidden = id === "server" || hasCleanup(id);
     (b.querySelector("[data-ob-rec]") as HTMLElement).hidden = id !== rec || !hasCleanup(id);
+    if (id === "cloud") {
+      // D96: named by the saved provider.
+      const copy = setupCloudCopy(providerOf(views.or));
+      (b.querySelector("[data-ob-title]") as HTMLElement).textContent = copy.cleanTitle;
+      (b.querySelector("[data-ob-desc]") as HTMLElement).textContent = copy.cleanDesc;
+    }
     if (id !== "server") continue;
     b.hidden = server.hidden;
     const reason = b.querySelector("[data-ob-reason]") as HTMLElement;
@@ -790,8 +805,10 @@ const WHERE: Record<string, string> = {
   client: "on this PC",
   remote: "by your server",
   server: "by your server",
-  cloud: "in the cloud",
 };
+
+/** Where the try-it dictation ran; the cloud route by the saved provider (D96). */
+const whereRan = (engine: string): string | undefined => (engine === "cloud" ? cloudWhere(providerOf(views.or)) : WHERE[engine]);
 
 function setResult(line: TryLine): void {
   const r = $<HTMLElement>("ob_result");
@@ -809,7 +826,7 @@ function showResult(v: RouteView): void {
   if (!last || last.at_ms < st.openedAt || !tryOpen()) return;
   st.resultAt = Date.now();
   const good = last.status === "FORMATTED" || last.status === "RAW_TRANSCRIPT";
-  const where = WHERE[last.engine ?? ""] ?? (last.engine ? `by ${last.engine}` : "");
+  const where = whereRan(last.engine ?? "") ?? (last.engine ? `by ${last.engine}` : "");
   const secs = (ms: number): string => `${(ms / 1000).toFixed(1)} s`;
   pressLine({
     bad: !good,
@@ -963,6 +980,9 @@ function savedSpeech(): Engine | null {
 /** Names for the line only; choices are compared as saved. */
 const LABELS: Labels = {
   modelName: (m: SpeechModel) => (m.asr_engine === "parakeet" ? PARAKEET_TITLE : whisperRow(m.model_path, models.catalog()).title),
+  get provider() {
+    return providerOf(views.or);
+  },
 };
 
 /** Setup's choices as the saved settings have them now. */
