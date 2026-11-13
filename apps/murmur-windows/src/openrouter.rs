@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 
 /// D78/D85: why cloud speech can't be switched on while LiteLLM is the
 /// Cloud provider without a speech model.
-pub const LITELLM_NO_STT: &str = "Your LiteLLM proxy has no speech model set. Press Test connection on the Cloud page to find one, or pick OpenRouter";
+pub const LITELLM_NO_STT: &str = "Your own AI server has no speech model set. Press Test connection on the AI provider page to find one, or pick OpenRouter";
 
 /// Speech-to-text card.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -363,7 +363,7 @@ pub fn apply_stt(dev: &mut DevSettings, f: &SttForm, now_ms: u64) -> Result<(), 
             CloudProvider::LiteLlm => format!(
                 "Accept sending audio to {} before turning this on",
                 match next.cloud.custom_cleanup.host() {
-                    h if h.is_empty() => "your proxy".into(),
+                    h if h.is_empty() => "your own AI server".into(),
                     h => h,
                 }
             ),
@@ -439,7 +439,7 @@ fn cleanup_host_name(cloud: &murmur_router::cloud::CloudConfig) -> String {
     match cloud.provider {
         CloudProvider::OpenRouter => "OpenRouter".into(),
         CloudProvider::LiteLlm => match cloud.cleanup_host() {
-            h if h.is_empty() => "your proxy".into(),
+            h if h.is_empty() => "your own AI server".into(),
             h => h,
         },
     }
@@ -486,7 +486,7 @@ pub fn apply_custom_cleanup(
     cc.timeout_ms = f.timeout_ms as u64;
     if f.consent {
         if custom && cc.host().is_empty() {
-            return Err("Enter your proxy's address".into());
+            return Err("Enter your own AI server's address".into());
         }
         record_cleanup_consent(&mut next.cloud, now_ms);
     }

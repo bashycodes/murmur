@@ -618,7 +618,7 @@ function rerender(): void {
 }
 
 /**
- * The Cloud option's consent, for the provider saved in Settings → Cloud
+ * The Cloud option's consent, for the provider saved in Settings → AI provider
  * (D78): setup asks only for consent; the provider, key and address are set
  * there. Consent is bound to the destination's host (D28/D52), so it names it.
  */
@@ -630,7 +630,7 @@ function renderCloudConsent(): void {
     ? "Send my dictated text to my own AI server"
     : "Send my dictated text to OpenRouter";
   $<HTMLElement>("ob_clean_consent_desc").textContent = custom
-    ? `Your words go to ${host || "the address you set in Settings → Cloud"} as text. A new address asks again.`
+    ? `Your words go to ${host || "the address you set in Settings → AI provider"} as text. A new address asks again.`
     : "Your words go to openrouter.ai as text, to zero-retention providers only. Your voice is not sent unless Cloud speech to text is also on.";
   // Shown with the option, before Continue moves on: Cloud would be on but
   // skipped until then, and the next cleaner would run instead.
@@ -695,7 +695,7 @@ async function applyCleanup(): Promise<boolean> {
         status("ob_cleanup_status", `Tick “${$<HTMLElement>("ob_clean_consent_title").textContent ?? ""}” to use it.`, false);
         return false;
       }
-      // The saved provider; a missing key or address is added in Settings → Cloud
+      // The saved provider; a missing key or address is added in Settings → AI provider
       // (until then Cloud is on but skipped, and the next cleaner runs).
       views.setOr(await invoke<OrView>("dev_or_set_cleanup", { form: cleanupForm(true, true) }));
       await prefsStore.save({ cleanup_level: level, spoken_cleanup: true, raw_mode: false });

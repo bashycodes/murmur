@@ -12,7 +12,7 @@ This PC: step 3 is one recommended row + "More languages", each with an
 Installed / Downloading % / Not installed chip and no paths (UX review on
 1.3.0), a download (D31: confirm dialog, cancel, progress, done -> prefs
 and Installed), each cleanup choice (Cloud: the
-consent only, details later in Settings → Cloud), then the
+consent only, details later in Settings → AI provider), then the
 practice box (a
 dictation result arrives through dev:route), changes the shortcut and
 finishes. Asserts what reached dev_set / dev_or_set_* / set_prefs, that
@@ -229,7 +229,7 @@ def walk(pg, scheme):
     check(tag + "local model row", pg.is_visible("#ob_llm_detail") and pg.inner_text("#ob_sample") == "Lunch is on Thursday.")
     shot("4b-cleanup-pc")
     pg.click("[data-ob-cleanup=cloud]")
-    check(tag + "cloud: consent and one line, no provider fields", pg.is_visible("#ob_clean_consent") and "Add details later in Settings → Cloud" in pg.inner_text("#ob_or_detail") and pg.eval_on_selector_all("#ob_or_detail input", "is => is.length") == 1)
+    check(tag + "cloud: consent and one line, no provider fields", pg.is_visible("#ob_clean_consent") and "Add details later in Settings → AI provider" in pg.inner_text("#ob_or_detail") and pg.eval_on_selector_all("#ob_or_detail input", "is => is.length") == 1)
     check(tag + "key saved on step 2: nothing missing", not pg.is_visible("#ob_cloud_missing"))
     check(tag + "no jargon on step 4", not [w for w in ("GGUF", "Q4_K_M", "without a GPU", "LiteLLM") if w in pg.inner_text("[data-ob-step=cleanup]")])
     nxt(pg)
@@ -500,7 +500,7 @@ def layout(pg, scheme):
     scroll = box(pg, "[data-ob-step=cleanup] [data-ob-scroll]")
     check(tag + "picking Cloud shows the consent fully", consent["y"] >= scroll["y"] and consent["b"] <= foot["y"], f"{consent} {foot}")
     check(tag + "and the missing-key line", missing["y"] >= scroll["y"] and missing["b"] <= foot["y"], f"{missing} {foot}")
-    check(tag + "no key yet: says Cloud waits for one", pg.is_visible("#ob_cloud_missing") and "add a key in Settings → Cloud" in pg.inner_text("#ob_cloud_missing"), pg.inner_text("#ob_cloud_missing"))
+    check(tag + "no key yet: says Cloud waits for one", pg.is_visible("#ob_cloud_missing") and "add a key in Settings → AI provider" in pg.inner_text("#ob_cloud_missing"), pg.inner_text("#ob_cloud_missing"))
 
 
 with sync_playwright() as p:

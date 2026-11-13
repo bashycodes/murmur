@@ -5,6 +5,7 @@
 
 import { cleanupTarget } from "./features/openrouter.js";
 import { $ } from "./lib/dom.js";
+import { cloudLiveLabel } from "./lib/engine-names.js";
 import { invoke, onEvent } from "./lib/ipc.js";
 import { prefsStore } from "./lib/prefs-store.js";
 import type { CleanupEngine, OrView, Route } from "./lib/types.js";
@@ -59,7 +60,9 @@ function routeLabel(r: Route): [string, string] {
     const engine = prefsStore.get()?.asr_engine === "parakeet" ? "Parakeet" : "Whisper";
     return [`This PC · ${engine}`, DOT[model.state] ?? DOT.off];
   }
-  return [`Cloud · ${shortModel(views.or?.stt.model ?? "")}`, "var(--glow-300)"];
+  const s = views.or?.stt;
+  const own = s?.provider === "custom";
+  return [cloudLiveLabel(s?.provider, own ? s?.custom_model ?? "" : shortModel(s?.model ?? "")), "var(--glow-300)"];
 }
 
 const FALLBACK: Record<Route, string> = {
@@ -68,16 +71,21 @@ const FALLBACK: Record<Route, string> = {
   cloud: "Falls back to the cloud",
 };
 
+/** D96: the cloud fallback names your own AI server when that is the provider. */
+function fallbackText(r: Route): string {
+  return r === "cloud" && views.or?.stt.provider === "custom" ? "Falls back to your own AI server" : FALLBACK[r];
+}
+
 /**
  * The cloud cleanup engine's label when the router can use it: consent
  * given (`consent` is the backend's `consent_ok()`, bound to the custom
  * server's current host); D52: a custom server with a model, named by its
- * host, never "OpenRouter".
+ * host, never "OpenRouter"; D96: "Your own AI server", never "Cloud".
  */
 function cloudCleanup(or: OrView): string | null {
   const c = or.cleanup;
-  if (c.provider === "custom") return c.custom.consent && c.custom.model ? `Cloud · ${cleanupTarget(or)}` : null;
-  return c.consent ? `Cloud · ${shortModel(c.model)}` : null;
+  if (c.provider === "custom") return c.custom.consent && c.custom.model ? cloudLiveLabel(c.provider, cleanupTarget(or)) : null;
+  return c.consent ? cloudLiveLabel(c.provider, shortModel(c.model)) : null;
 }
 
 function cleanupLabel(): [string, string] {
@@ -119,7 +127,7 @@ function render(): void {
   $<HTMLElement>("eng_ai_dot").style.background = aiDot;
   const fb = $<HTMLElement>("eng_fallback");
   fb.hidden = order.length < 2;
-  fb.textContent = order.length > 1 ? FALLBACK[order[1]] : "";
+  fb.textContent = order.length > 1 ? fallbackText(order[1]) : "";
 }
 
 export const enginesCard = {

@@ -1,6 +1,6 @@
-// Settings → Cloud (D78; design: SettingsOpenRouter.dc.html "Settings ·
+// Settings → AI provider (D78, named in D96; design: SettingsOpenRouter.dc.html "Settings ·
 // Cloud", the model picker: ModelPicker.dc.html): one Cloud provider at a
-// time, OpenRouter or the user's LiteLLM proxy (any OpenAI-compatible
+// time, OpenRouter (the cloud) or the user's own AI server (any OpenAI-compatible
 // server, D52), its account or address, what it is used for, privacy and
 // this month's spend (features/openrouter.ts). Markup only; the speech and
 // cleanup switches and models are on those pages. `data-cloud` parts show
@@ -10,36 +10,37 @@ import { ICON, iconSvg } from "../../lib/icons.js";
 import { group, heading, row, toggle } from "../../lib/markup.js";
 import type { Page } from "../../lib/router.js";
 import { extLink } from "../../features/models.js";
+import { PROVIDER_PAGE, providerName } from "../../lib/engine-names.js";
 
 export const settingsOpenrouterPage: Page = {
   id: "settings-openrouter",
   area: "settings",
   template: `
 ${heading(
-  "Cloud",
-  "Bigger models that run somewhere else. Pick one provider. Nothing is sent until you turn on speech or cleanup below, and each asks for permission first.",
+  PROVIDER_PAGE,
+  "Bigger AI models that run somewhere else: OpenRouter in the cloud, or your own AI server (LiteLLM or any OpenAI-compatible one). Pick one. Nothing is sent until you turn on speech or cleanup below, and each asks for permission first.",
 )}
 <ul id="or_warnings" class="lw-warnings"></ul>
 <div class="fl-callout fl-callout-peach lw-section" id="or_notice_box" hidden>
-  <div class="fl-grow"><div class="fl-callout-title">Cloud settings changed</div><div class="fl-callout-body" id="or_notice"></div></div>
+  <div class="fl-grow"><div class="fl-callout-title">AI provider settings changed</div><div class="fl-callout-body" id="or_notice"></div></div>
   <button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" id="or_notice_ok">OK</button>
 </div>
 <section class="lw-section">
   <div class="fl-group lw-pad">
-    <div class="lw-seg" role="radiogroup" aria-label="Cloud provider" id="cloud_provider_seg">
+    <div class="lw-seg" role="radiogroup" aria-label="AI provider" id="cloud_provider_seg">
       <button type="button" role="radio" data-cloud-provider="openrouter">OpenRouter</button>
-      <button type="button" role="radio" data-cloud-provider="custom">LiteLLM</button>
+      <button type="button" role="radio" data-cloud-provider="custom">Your own AI server</button>
     </div>
     <p class="fl-row-desc" id="cloud_provider_desc"></p>
     <p class="fl-row-desc" id="cloud_provider_offers"></p>
   </div>
 </section>
 ${group(
-  "Your LiteLLM proxy",
+  providerName("custom"),
   row(
     "Address",
     `Any OpenAI-compatible server works. We add <code class="lw-mono">/v1</code> if you leave it off. <span id="cu_url_norm" class="hint lw-mono"></span>`,
-    `<input id="cu_base_url" class="fl-input lw-w220 lw-mono-input" spellcheck="false" autocomplete="off" placeholder="http://192.168.1.20:4000" aria-label="Proxy address" />`,
+    `<input id="cu_base_url" class="fl-input lw-w220 lw-mono-input" spellcheck="false" autocomplete="off" placeholder="http://192.168.1.20:4000" aria-label="AI server address" />`,
   ) +
     row(
       "API key",
@@ -55,12 +56,12 @@ ${group(
     ) +
     row(
       "Speech model",
-      "For speech to text on your proxy. Test connection lists the ones it has and picks the first.",
+      "For speech to text on your own AI server. Test connection lists the ones it has and picks the first.",
       `<select id="cu_stt_model" class="fl-select lw-w220" aria-label="Speech model">
         <option value="">None: speech stays on this PC and your server</option>
       </select>`,
     ) +
-    `<div class="fl-callout fl-callout-peach" id="cu_http_warn" hidden><div class="fl-grow"><div class="fl-callout-body">This address starts with http, so your key and your words cross the network unencrypted. Use https if your proxy supports it.</div></div></div>`,
+    `<div class="fl-callout fl-callout-peach" id="cu_http_warn" hidden><div class="fl-grow"><div class="fl-callout-body">This address starts with http, so your key and your words cross the network unencrypted. Use https if your AI server supports it.</div></div></div>`,
   `data-cloud="custom"`,
 )}
 ${group(
@@ -106,7 +107,7 @@ ${group(
   "Privacy",
   row(
     `Sent only to <span id="cloud_ll_host" class="lw-mono"></span>`,
-    `<span id="cloud_ll_consent"></span> Pointing the address at another server asks again. Where the proxy sends it next is up to how you set it up.`,
+    `<span id="cloud_ll_consent"></span> Pointing the address at another server asks again. Where your AI server sends it next is up to how you set it up.`,
     "",
     `data-cloud="custom"`,
   ) +
@@ -131,7 +132,7 @@ ${group(
       <div class="lw-meter" id="or_usage_meter" hidden><span id="or_usage_bar"></span></div>
       <div class="lw-usage-split"><span id="or_usage_total"></span></div>
       <ul id="or_usage_rows" class="lw-plain lw-usage-rows"></ul>
-      <p class="fl-row-desc" data-cloud="custom">Shown when your proxy reports a cost. Your own proxy has no budget here; the OpenRouter budget never counts it.</p>
+      <p class="fl-row-desc" data-cloud="custom">Shown when your own AI server reports a cost. It has no budget here; the OpenRouter budget never counts it.</p>
     </div>
     ${row(
       "Monthly budget",
@@ -165,12 +166,12 @@ ${group(
 
 <dialog id="cu_stt_consent_dlg" class="fl-dialog">
   <h3>Send audio to <span id="cu_stt_consent_host_title"></span>?</h3>
-  <p>When on, the audio of your dictations leaves this PC and is sent to your own proxy at <strong id="cu_stt_consent_host"></strong>, along with your dictionary words, and to whatever model it forwards to.</p>
+  <p>When on, the audio of your dictations leaves this PC and is sent to your own AI server at <strong id="cu_stt_consent_host"></strong>, along with your dictionary words, and to whatever model it forwards to.</p>
   <p class="hint warn" id="cu_stt_consent_http" hidden>This address uses http://: the key and the audio cross the network unencrypted.</p>
   <p class="hint">Pointing the address at another server asks again. You can turn this off at any time.</p>
   <div class="lw-dialog-actions">
     <button type="button" class="fl-btn fl-btn-secondary" id="cu_stt_consent_cancel">Cancel</button>
-    <button type="button" class="fl-btn fl-btn-primary" id="cu_stt_consent_ok">Send audio to this proxy</button>
+    <button type="button" class="fl-btn fl-btn-primary" id="cu_stt_consent_ok">Send audio to this server</button>
   </div>
 </dialog>
 
@@ -186,12 +187,12 @@ ${group(
 
 <dialog id="cu_consent_dlg" class="fl-dialog">
   <h3>Send dictated text to <span id="cu_consent_host_title"></span>?</h3>
-  <p>After each dictation, the text (and your dictionary words) is sent to your own proxy at <strong id="cu_consent_host"></strong>, and to whatever model it forwards to. Your voice is not sent.</p>
+  <p>After each dictation, the text (and your dictionary words) is sent to your own AI server at <strong id="cu_consent_host"></strong>, and to whatever model it forwards to. Your voice is not sent.</p>
   <p class="hint warn" id="cu_consent_http" hidden>This address uses http://: the key and the text cross the network unencrypted.</p>
   <p class="hint">Pointing the address at another server asks again. You can turn this off at any time.</p>
   <div class="lw-dialog-actions">
     <button type="button" class="fl-btn fl-btn-secondary" id="cu_consent_cancel">Cancel</button>
-    <button type="button" class="fl-btn fl-btn-primary" id="cu_consent_ok">Send text to this proxy</button>
+    <button type="button" class="fl-btn fl-btn-primary" id="cu_consent_ok">Send text to this server</button>
   </div>
 </dialog>
 

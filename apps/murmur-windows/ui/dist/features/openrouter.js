@@ -11,6 +11,7 @@
 import { $, askDialog, el, setStatus, setValue, when } from "../lib/dom.js";
 import { iconEl } from "../lib/icons.js";
 import { cleanupBlockedLine, cleanupEngineName, cleanupTestFailText, plainHint } from "../lib/cleanup-state.js";
+import { cloudRouteInSentence, cloudRouteTitle } from "../lib/engine-names.js";
 import { cleanupMonthCost, failText, money, usd } from "../lib/format.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { cloudTimeout } from "../lib/model-pages.js";
@@ -69,7 +70,7 @@ async function showNormalisedUrl() {
 export function cleanupTarget(v) {
     if (v?.cleanup.provider !== "custom")
         return "openrouter.ai";
-    return v.cleanup.custom.host || "your proxy";
+    return v.cleanup.custom.host || "your own AI server";
 }
 /** "Transcription model · $0.04/h audio" (+ this month's cleanup spend). */
 function modelDesc(info, extra) {
@@ -167,7 +168,7 @@ export function showOr(v) {
     const sttAvailable = s.available ?? !custom;
     const sttModel = s.provider === "custom" ? s.custom_model : short(s.model);
     $("or_used_stt").textContent = !sttAvailable
-        ? "No speech model is set for your proxy, so speech stays on this PC and your server. Press Test connection to find one, or pick OpenRouter."
+        ? "Your own AI server has no speech model set, so speech stays on this PC and your server. Press Test connection to find one, or pick OpenRouter."
         : s.allow
             ? `Sends audio · ${sttModel}`
             : `Would send audio · ${sttModel}`;
@@ -187,7 +188,7 @@ export function showOr(v) {
     sttLink.hidden = !sttAvailable;
     sttLink.textContent = s.allow ? "Manage →" : "Set up →";
     $("or_used_cleanup_link").textContent = c.allow ? "Manage →" : "Set up →";
-    $("cloud_ll_host").textContent = c.custom.host || "your proxy";
+    $("cloud_ll_host").textContent = c.custom.host || "your own AI server";
     $("cloud_ll_consent").textContent = c.custom.consent
         ? `You agreed on ${new Date(c.custom.consent_at_ms).toLocaleDateString()} to send dictated text here.`
         : "Asks before the first dictation is sent.";
@@ -457,7 +458,7 @@ async function orSttToggled() {
     if (!s?.consent) {
         consent = litellm
             ? await askDialog("cu_stt_consent_dlg", "cu_stt_consent_ok", "cu_stt_consent_cancel", () => {
-                const host = s?.consent_host || "your proxy";
+                const host = s?.consent_host || "your own AI server";
                 $("cu_stt_consent_host_title").textContent = host;
                 $("cu_stt_consent_host").textContent = host;
                 $("cu_stt_consent_http").hidden = !views.or?.cleanup.custom.plain_http;
@@ -475,17 +476,24 @@ async function orSttToggled() {
  *  model, path, language and dictionary rows, or the proxy's speech model. */
 function showSttProvider(v) {
     const p = v.stt.provider ?? "openrouter";
-    $("or_stt_provider_name").textContent = p === "custom" ? "LiteLLM" : "OpenRouter";
+    // D96: the speech heading and the cloud rows of both engine lists.
+    $("or_stt_provider_name").textContent = cloudRouteTitle(p);
+    for (const id of ["eng_row_cloud", "meet_row_cloud"]) {
+        const t = document.getElementById(id)?.querySelector(".fl-row-title");
+        if (t)
+            t.textContent = cloudRouteTitle(p);
+    }
+    $("or_stt_allow").setAttribute("aria-label", `Use ${cloudRouteInSentence(p)} for speech`);
     for (const r of $("or_stt_box").querySelectorAll("[data-stt-provider]")) {
         r.hidden = r.dataset.sttProvider !== p;
     }
     $("cu_stt_model_name").textContent = v.stt.custom_model || "none";
-    $("cu_stt_host").textContent = v.cleanup.custom.host || "your proxy";
+    $("cu_stt_host").textContent = v.cleanup.custom.host || "your own AI server";
 }
 async function orTestStt() {
     const out = $("or_stt_test_out");
     const s = views.or?.stt;
-    const host = s?.provider === "custom" ? s.consent_host || "your proxy" : "openrouter.ai";
+    const host = s?.provider === "custom" ? s.consent_host || "your own AI server" : "openrouter.ai";
     out.textContent = `Sending a 3 s public-domain clip to ${host}…`;
     out.className = "hint";
     try {
@@ -597,21 +605,19 @@ function showCustom(v) {
     $("cu_key_saved_ctl").hidden = !cu.key.set;
     $("cu_key_entry").hidden = cu.key.set;
 }
-/** D78 provider texts on the Cloud page (design: provDesc / offers). */
+/** D78 provider texts on the AI provider page (design: provDesc / offers). */
 const PROVIDER_TEXT = {
     openrouter: {
-        name: "OpenRouter",
         desc: "openrouter.ai: hundreds of models from many companies. Pay per use with your own key.",
         offers: "Speech to text: yes · AI cleanup: yes",
     },
     custom: {
-        name: "LiteLLM",
-        desc: "Your own LiteLLM proxy (or any OpenAI-compatible server), on your network or wherever you run it.",
-        offers: "Speech to text: yes, with a speech model on your proxy · AI cleanup: yes",
+        desc: "Any OpenAI-compatible server you run, such as a LiteLLM proxy, on your network or wherever you run it.",
+        offers: "Speech to text: yes, with a speech model on your own AI server · AI cleanup: yes",
     },
 };
-/** The parts of the Cloud and AI cleanup pages for the saved `provider`
- *  (`data-cloud` on the Cloud page, `data-provider` in the cleanup card). */
+/** The parts of the AI provider and AI cleanup pages for the saved `provider`
+ *  (`data-cloud` on the AI provider page, `data-provider` in the cleanup card). */
 function showProviderRows(provider) {
     for (const b of document.querySelectorAll("#cloud_provider_seg [data-cloud-provider]")) {
         const on = b.dataset.cloudProvider === provider;
@@ -621,8 +627,12 @@ function showProviderRows(provider) {
     const t = PROVIDER_TEXT[provider];
     $("cloud_provider_desc").textContent = t.desc;
     $("cloud_provider_offers").textContent = t.offers;
-    for (const n of document.querySelectorAll("[data-cloud-name]"))
-        n.textContent = t.name;
+    // D96: "Cloud" only for OpenRouter; the other provider is "Your own AI server".
+    $("or_cleanup_title_name").textContent = cloudRouteTitle(provider);
+    const title = document.getElementById("aieng_row_cloud")?.querySelector(".fl-row-title");
+    if (title)
+        title.textContent = cloudRouteTitle(provider);
+    $("or_cleanup_allow").setAttribute("aria-label", `Use ${cloudRouteInSentence(provider)} for cleanup`);
     for (const r of document.querySelectorAll("[data-cloud]")) {
         r.hidden = r.dataset.cloud !== provider;
     }
@@ -650,7 +660,7 @@ async function cuApply(provider, consent) {
         showOr(r);
         const cu = r.cleanup.custom;
         if (r.cleanup.provider === "custom" && (cu.base_url === "" || cu.model === "")) {
-            setStatus("or_cleanup_msg", cu.base_url === "" ? "Saved — enter your proxy's address, then pick a model on the AI cleanup page" : "Saved — pick a model on the AI cleanup page to use your proxy", false);
+            setStatus("or_cleanup_msg", cu.base_url === "" ? "Saved — enter your own AI server's address, then pick a model on the AI cleanup page" : "Saved — pick a model on the AI cleanup page to use your own AI server", false);
         }
     }
     else if (views.or)
@@ -714,11 +724,11 @@ async function cuModelsNow(outId, fill) {
     const out = $(outId);
     const baseUrl = $("cu_base_url").value.trim();
     if (baseUrl === "") {
-        out.textContent = "Enter your proxy's address on the Cloud page first.";
+        out.textContent = "Enter your own AI server's address on the AI provider page first.";
         out.className = "hint err";
         return;
     }
-    out.textContent = `Asking ${(await hostOf(baseUrl)) || "your proxy"} for its models…`;
+    out.textContent = `Asking ${(await hostOf(baseUrl)) || "your own AI server"} for its models…`;
     out.className = "hint";
     try {
         const typed = $("cu_key").value.trim();

@@ -83,6 +83,17 @@
     budget: null,
     notice: "Cloud speech now runs only through OpenRouter. Your Groq provider was removed; your OpenRouter key was kept. Cloud speech was turned off: turn it on again in this tab.",
   };
+  // ?cloud=custom: the user's own AI server (D52, wire "custom") picked, with
+  // an address, a model and consent, cleanup on, order your server -> it ->
+  // this PC (D96 naming, check_cloud_naming.py).
+  if (new URLSearchParams(location.search).get("cloud") === "custom") {
+    Object.assign(or.cleanup, {
+      allow: true, provider: "custom",
+      engines: [{ route: "server", enabled: true }, { route: "cloud", enabled: true }, { route: "local", enabled: true }],
+      custom: { base_url: "http://10.0.0.5:4000/v1", model: "gpt-4o-mini", timeout_ms: 4000, consent_host: "10.0.0.5", consent_at_ms: Date.now() },
+    });
+    or.notice = null;
+  }
   const usage = () => ({
     month: "2026-10", speech: "$0.0234", cleanup: "$0.0140", total: "$0.0374", budget: or.budget, budget_reached: false,
     rows: [
@@ -124,7 +135,7 @@
     return { ...c, host: hostOf(c.base_url), consent: consentOk(c), plain_http: c.base_url.startsWith("http:"), key: customKeyState() };
   };
   const orView = () => ({
-    supported: true, key: keyState(), privacy: { ...or.privacy }, stt: { ...or.stt, available: or.cleanup.provider === "openrouter" },
+    supported: true, key: keyState(), privacy: { ...or.privacy }, stt: { ...or.stt, available: or.cleanup.provider === "openrouter", provider: or.cleanup.provider },
     cleanup: { ...or.cleanup, status: cleanupStatus(), custom: customView() }, budget: or.budget, usage: usage(), catalog: { ...catStatus },
     notice: or.notice,
     warnings: [!orKey && (or.stt.allow || or.cleanup.allow) ? "OpenRouter is on but no key is saved." : "", or.privacy.zdr ? "" : "Zero retention is off: providers may keep your audio/text."].filter(Boolean),

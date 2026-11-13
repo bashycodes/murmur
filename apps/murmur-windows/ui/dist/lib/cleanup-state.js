@@ -1,5 +1,5 @@
-// The cloud cleanup "Try it" row's words (Settings → AI cleanup → Cloud
-// server): plain sentences, never a backend code. Pure, so `npm test` runs
+// The cloud cleanup "Try it" row's words (Settings → AI cleanup → Cloud or
+// your own AI server): plain sentences, never a backend code. Pure, so `npm test` runs
 // it on the built dist without a page.
 import { cloudHint } from "./format.js";
 /** The words for a backend code; unknown codes get a generic phrase, never the code. */
@@ -16,11 +16,12 @@ export function plainHint(code) {
  */
 export function cleanupBlockedLine(st, v) {
     const custom = st.provider === "custom";
-    const where = custom ? st.host || "your proxy" : "OpenRouter";
+    const where = custom ? st.host || "your own AI server" : "OpenRouter";
     if (!st.supported)
         return { text: "Not in this build.", cls: "hint" };
     if (!st.enabled) {
-        return { text: `Cloud cleanup is off under Engines: ${where} gets no text.`, cls: "hint", turnOn: true };
+        const what = custom ? "Cleanup on your own AI server" : "Cloud cleanup";
+        return { text: `${what} is off under Engines: ${where} gets no text.`, cls: "hint", turnOn: true };
     }
     if (!st.blocked)
         return null;
@@ -29,7 +30,7 @@ export function cleanupBlockedLine(st, v) {
     }
     let why;
     if (custom && !v?.cleanup.custom.base_url)
-        why = "enter your proxy's address on the Cloud page";
+        why = "enter your own AI server's address on the AI provider page";
     else if (custom && !v?.cleanup.custom.model)
         why = "pick a model";
     else if (!st.consent)
@@ -43,7 +44,7 @@ export function cleanupBlockedLine(st, v) {
 /** Who cleaned the last dictation, for the row's "last:" part. */
 export function cleanupEngineName(engine, provider, host) {
     if (engine === "cloud")
-        return provider === "custom" ? host || "your proxy" : "OpenRouter";
+        return provider === "custom" ? host || "your own AI server" : "OpenRouter";
     if (engine === "local")
         return "this PC";
     if (engine === "server")
@@ -61,7 +62,7 @@ const CODE_LIKE = /\b[a-z0-9]+(?:_[a-z0-9]+)+\b/;
 export function cleanupTestFailText(code, message, provider) {
     let why;
     if (code === "cloud_not_configured") {
-        why = provider === "custom" ? "this build can't reach your proxy" : "save an OpenRouter key first";
+        why = provider === "custom" ? "this build can't reach your own AI server" : "save an OpenRouter key first";
     }
     else {
         why = plainHint(code ?? "error");
