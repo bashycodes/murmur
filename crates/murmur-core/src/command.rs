@@ -257,14 +257,17 @@ fn quoted(s: &str) -> Option<(char, char)> {
 }
 
 /// Clean an LLM answer to the text that should replace the selection:
-/// no code fence, no echoed tags, no "Here's …:" preamble, no trailing
-/// notes, no wrapping quotes. Fences / quotes / a leading phrase that the
-/// selection itself has are kept. A trailing newline of the selection
+/// no leading reasoning (`<think>`), no code fence, no echoed tags, no
+/// "Here's …:" preamble, no trailing notes, no wrapping quotes. Fences /
+/// quotes / a leading phrase that the selection itself has are kept. A trailing newline of the selection
 /// (a whole line selected) is kept, so the layout around it survives.
 pub fn sanitize(raw: &str, selected: Option<&str>) -> String {
     let sel = non_empty(selected).unwrap_or("");
     let sel_t = sel.trim();
-    let mut t = raw.replace("\r\n", "\n").trim().to_string();
+    let mut t = crate::cleanup::strip_think(raw)
+        .replace("\r\n", "\n")
+        .trim()
+        .to_string();
     if !sel_t.starts_with("```") {
         if let Some(c) = FENCE.captures(&t) {
             t = c[1].trim().to_string();
@@ -475,6 +478,20 @@ mod tests {
     }
 
     // ---------------------------------------------------------- sanitise
+
+    #[test]
+    fn reasoning_is_not_part_of_the_replacement() {
+        assert_eq!(
+            sanitize(
+                "<think>Make it formal.</think>\nDear team, thank you.",
+                Some("thx all")
+            ),
+            "Dear team, thank you."
+        );
+        // A tag the selection itself has is text, not reasoning.
+        let html = "<p>Press <think>here</think> to start.</p>";
+        assert_eq!(sanitize(html, Some("<p>press think here</p>")), html);
+    }
 
     #[test]
     fn plain_answers_pass_through() {

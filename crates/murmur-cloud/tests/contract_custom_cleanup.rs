@@ -318,6 +318,19 @@ fn test_cleanup_runs_one_chat_completion_on_the_custom_server() {
 }
 
 #[test]
+fn test_cleanup_drops_leading_reasoning() {
+    let srv = MockServer::fixed(Reply::json(
+        200,
+        serde_json::json!({"id": "chatcmpl-3", "choices": [
+            {"message": {"role": "assistant", "content": "<think>Fix the day.</think>\nLet's meet at noon."}, "finish_reason": "stop"}
+        ]}),
+    ));
+    let t = custom::test_cleanup(&cfg(&srv.url("")), None);
+    assert!(t.ok, "{t:?}");
+    assert_eq!(t.text.as_deref(), Some("Let's meet at noon."));
+}
+
+#[test]
 fn models_json_is_the_shared_shape() {
     let v = custom::models_json(Ok(vec!["a".into()]));
     assert_eq!(v, serde_json::json!({"models": ["a"]}));

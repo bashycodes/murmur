@@ -34,6 +34,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Fixed
 
+- **AI cleanup, Command Mode, summaries and Test cleanup drop a reasoning model's leading `<think>…</think>` text** (also an unfinished `<think>…`, or reasoning that ends in `</think>` because the model's template opened the block) before using the answer, so a LiteLLM or custom server in front of a reasoning model no longer types its reasoning into the field. A `<think>` tag inside the text itself is kept.
 - **Android: Developer settings → Status & server info: the cleanup section is "Cloud cleanup"**, not "Cloud cleanup (OpenRouter)", since its status covers LiteLLM too.
 - **Android: the Speech to text warning for cloud speech without consent points to the Cloud page** (it said "OpenRouter page").
 - **Command Mode and Transforms no longer say "OpenRouter" while your Cloud provider is LiteLLM** (D78, Android and Windows). A selection that may not leave the device is refused with the real destination ("… would send the selection to LiteLLM (10.0.0.5)" or "… to OpenRouter"), and "needs AI" reads "… or cloud text cleanup". On Windows the Murmur bar's Fix link for that refusal opens the AI cleanup page, where the "Text around the cursor" switch is, for either provider.
