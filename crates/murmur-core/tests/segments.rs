@@ -338,6 +338,7 @@ impl AsrEngine for ThanksAsr {
             text,
             language: Some("en".into()),
             no_speech_prob: Some(0.9),
+            avg_logprob: Some(-1.4),
         })
     }
 }
@@ -551,6 +552,7 @@ impl AsrEngine for SentenceCaseAsr {
             text,
             language: Some("en".into()),
             no_speech_prob: None,
+            avg_logprob: None,
         })
     }
 }

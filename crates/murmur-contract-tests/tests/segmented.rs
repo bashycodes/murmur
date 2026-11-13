@@ -135,6 +135,7 @@ impl AsrEngine for OldServerAsr {
             text: BurstEchoAsr::words(pcm),
             language: Some("en".into()),
             no_speech_prob: None,
+            avg_logprob: None,
         })
     }
     fn segmentable(&self) -> bool {

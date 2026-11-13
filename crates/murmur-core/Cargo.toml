@@ -25,7 +25,8 @@ regex = "1"
 fancy-regex = "0.14"
 unicode-normalization = "0.1"
 rtrb = "0.3"
-whisper-rs = { version = "0.16", optional = true }
+# raw-api: whisper.cpp calls in the D91 no-speech probe (whisper.rs).
+whisper-rs = { version = "0.16", optional = true, features = ["raw-api"] }
 hound = { version = "3", optional = true }
 libloading = { version = "0.8", optional = true }
 murmur-asr-sherpa = { path = "../murmur-asr-sherpa", optional = true }
@@ -48,6 +49,10 @@ required-features = ["wav"]
 
 [[test]]
 name = "audio_ctx_bench"
+required-features = ["whisper", "wav"]
+
+[[test]]
+name = "whisper_no_speech"
 required-features = ["whisper", "wav"]
 
 [[test]]
