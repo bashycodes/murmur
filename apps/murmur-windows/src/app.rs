@@ -3019,40 +3019,64 @@ fn show_scratchpad(app: &AppHandle) {
     show_notes_window(app, format!("note={}", notes::SCRATCHPAD));
 }
 
-/// Show the notes window on `scratchpad.html?<query>` (`note=<id>` = that
+/// The notes window's first-frame colour: the page's `--background-tertiary`
+/// in the app window's theme (dark unless the app window is light), so the
+/// window never flashes white before scratchpad.css applies.
+fn notes_window_background(theme: Option<tauri::Theme>) -> tauri::window::Color {
+    match theme {
+        Some(tauri::Theme::Light) => tauri::window::Color(0xf5, 0xf4, 0xf0, 0xff),
+        _ => tauri::window::Color(0x20, 0x20, 0x20, 0xff),
+    }
+}
+
+/// Show the notes window on `notes::window_page(query)` (`note=<id>` = that
 /// note in the editor, `view=notes` = the Notes list), creating it if it is
 /// closed and navigating it if it shows something else (the page flushes
-/// its note on the way out). Always on the main thread (the shortcuts
-/// arrive on the controller thread).
+/// its note on the way out).
+///
+/// Always from the event loop, never inline: `run_on_main_thread` runs its
+/// closure at once when the caller is already on the main thread, and a
+/// sync command (`note_open`) is, inside the app window's WebView2 request
+/// callback. Building a WebView2 there waits on a callback WebView2 never
+/// delivers re-entrantly, so the window stayed `about:blank` and the event
+/// loop stopped (dead ✕, no typing). A worker thread posts the closure to
+/// the loop instead, as the shortcuts (controller thread) already did.
 fn show_notes_window(app: &AppHandle, query: String) {
-    let h = app.clone();
-    let _ = app.run_on_main_thread(move || {
-        let page = format!("scratchpad.html?{query}");
-        if let Some(w) = h.get_webview_window(SCRATCHPAD) {
-            if let Ok(cur) = w.url() {
-                if cur.query() != Some(query.as_str()) {
-                    if let Ok(url) = cur.join(&page) {
-                        let _ = w.navigate(url);
-                    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let h = app.clone();
+        let _ = app.run_on_main_thread(move || build_or_show_notes_window(&h, &query));
+    });
+}
+
+fn build_or_show_notes_window(h: &AppHandle, query: &str) {
+    let page = notes::window_page(query);
+    if let Some(w) = h.get_webview_window(SCRATCHPAD) {
+        if let Ok(cur) = w.url() {
+            if cur.query() != Some(query) {
+                if let Ok(url) = cur.join(&page) {
+                    let _ = w.navigate(url);
                 }
             }
-            let _ = w.show();
-            let _ = w.unminimize();
-            let _ = w.set_focus();
-            return;
         }
-        let built = WebviewWindowBuilder::new(&h, SCRATCHPAD, WebviewUrl::App(page.into()))
-            .title("Notes — Murmur")
-            .inner_size(520.0, 560.0)
-            .min_inner_size(320.0, 240.0)
-            .center()
-            .focused(true)
-            .build();
-        if let Err(e) = built {
-            eprintln!("[scratchpad] {e}");
-            debug_log::event("scratchpad", &e.to_string());
-        }
-    });
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+        return;
+    }
+    let theme = h.get_webview_window(SETTINGS).and_then(|w| w.theme().ok());
+    let built = WebviewWindowBuilder::new(h, SCRATCHPAD, WebviewUrl::App(page.into()))
+        .title("Notes — Murmur")
+        .inner_size(520.0, 560.0)
+        .min_inner_size(320.0, 240.0)
+        .background_color(notes_window_background(theme))
+        .center()
+        .focused(true)
+        .build();
+    if let Err(e) = built {
+        eprintln!("[scratchpad] {e}");
+        debug_log::event("scratchpad", &e.to_string());
+    }
 }
 
 /// Never take focus from the app being dictated into; never show in
@@ -3736,5 +3760,36 @@ mod tests {
         assert!(overlay_settings_page(Some("settings-developer")).is_err());
         assert!(overlay_settings_page(Some("")).is_err());
         assert!(overlay_settings_page(None).is_err());
+    }
+
+    #[test]
+    fn notes_window_url_is_scratchpad_html_with_the_note_in_the_query() {
+        // What tauri does with `WebviewUrl::App`: the app URL (on Windows
+        // http://tauri.localhost/) joined with the page.
+        let base = tauri::Url::parse("http://tauri.localhost/").unwrap();
+        let dist = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("ui/dist");
+        for query in ["note=scratchpad", "note=n-1731500000000", "view=notes"] {
+            let url = base.join(&notes::window_page(query)).unwrap();
+            assert_eq!(url.path(), "/scratchpad.html");
+            assert_eq!(url.query(), Some(query));
+            assert!(
+                dist.join(&url.path()[1..]).is_file(),
+                "{url} not in ui/dist"
+            );
+        }
+    }
+
+    #[test]
+    fn notes_window_starts_in_the_app_window_theme() {
+        use tauri::window::Color;
+        assert_eq!(notes_window_background(None), Color(0x20, 0x20, 0x20, 0xff));
+        assert_eq!(
+            notes_window_background(Some(tauri::Theme::Dark)),
+            Color(0x20, 0x20, 0x20, 0xff)
+        );
+        assert_eq!(
+            notes_window_background(Some(tauri::Theme::Light)),
+            Color(0xf5, 0xf4, 0xf0, 0xff)
+        );
     }
 }

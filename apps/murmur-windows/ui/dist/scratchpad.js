@@ -296,6 +296,18 @@
         }
         void init();
     }
+    // Esc closes the window (the shell writes the note on close), unless it
+    // first clears a non-empty search or an IME is composing.
+    document.addEventListener("keydown", (e) => {
+        if (e.key !== "Escape" || e.isComposing || e.ctrlKey || e.altKey || e.shiftKey || e.metaKey) {
+            return;
+        }
+        const t = e.target;
+        if (t instanceof HTMLInputElement && t.type === "search" && t.value !== "")
+            return;
+        e.preventDefault();
+        void tauri.window.getCurrentWindow().close();
+    });
     if (params.get("view") === "notes") {
         listView();
     }

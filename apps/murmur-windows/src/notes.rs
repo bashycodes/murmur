@@ -36,6 +36,14 @@ pub fn valid_id(id: &str) -> bool {
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
 }
 
+/// The notes window's page (`WebviewUrl::App`): `scratchpad.html?<query>`,
+/// `note=<id>` = that note's editor, `view=notes` = the Notes list. The
+/// app's asset protocol drops `?…` before the lookup, so `scratchpad.html`
+/// loads and the page reads the query itself.
+pub fn window_page(query: &str) -> String {
+    format!("scratchpad.html?{query}")
+}
+
 /// `%APPDATA%\Murmur` (next to `prefs.json`).
 pub fn app_dir(appdata: Option<&str>) -> PathBuf {
     appdata
@@ -503,6 +511,30 @@ impl AutoSave {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn window_page_serves_scratchpad_html_with_the_query_for_the_page() {
+        let dist = Path::new(env!("CARGO_MANIFEST_DIR")).join("ui/dist");
+        for query in ["note=scratchpad", "note=n-1731500000000", "view=notes"] {
+            let page = window_page(query);
+            // What the asset protocol looks up: the path without `?…`/`#…`.
+            let (asset, rest) = page.split_once('?').unwrap();
+            assert_eq!(asset, "scratchpad.html");
+            assert_eq!(rest, query);
+            assert!(dist.join(asset).is_file(), "{asset} not in ui/dist");
+        }
+        // Its script and styles ship next to it.
+        let html = std::fs::read_to_string(dist.join("scratchpad.html")).unwrap();
+        for file in [
+            "scratchpad.js",
+            "scratchpad.css",
+            "theme.css",
+            "components.css",
+        ] {
+            assert!(html.contains(&format!("\"{file}\"")), "{file} not linked");
+            assert!(dist.join(file).is_file(), "{file} not in ui/dist");
+        }
+    }
 
     fn tmp(tag: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!(
