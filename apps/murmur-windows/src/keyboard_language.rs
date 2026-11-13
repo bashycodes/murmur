@@ -141,6 +141,23 @@ pub fn resolve(
     (languages.to_vec(), source)
 }
 
+/// D90: the languages of the installed keyboard layouts (HKL values in
+/// the system's order), each once; layouts of unknown languages are left
+/// out. The default translation target is the first one that is not the
+/// dictation's language.
+pub fn languages_of_hkls(hkls: &[usize]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for l in hkls
+        .iter()
+        .filter_map(|h| language_for_langid(langid_of_hkl(*h)))
+    {
+        if !out.iter().any(|o| o == l) {
+            out.push(l.to_string());
+        }
+    }
+    out
+}
+
 /// Win32: the foreground window's keyboard layout.
 #[cfg(windows)]
 pub mod win {
@@ -169,11 +186,38 @@ pub mod win {
     pub fn foreground_language() -> Option<&'static str> {
         foreground_langid().and_then(super::language_for_langid)
     }
+
+    /// D90: [`super::languages_of_hkls`] of the installed layouts
+    /// (`GetKeyboardLayoutList`). Cheap; any thread.
+    pub fn installed_languages() -> Vec<String> {
+        use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyboardLayoutList, HKL};
+        unsafe {
+            let n = GetKeyboardLayoutList(None);
+            if n <= 0 {
+                return Vec::new();
+            }
+            let mut list = vec![HKL::default(); n as usize];
+            let got = GetKeyboardLayoutList(Some(&mut list)).max(0) as usize;
+            let hkls: Vec<usize> = list[..got.min(list.len())]
+                .iter()
+                .map(|h| h.0 as usize)
+                .collect();
+            super::languages_of_hkls(&hkls)
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn installed_layouts_give_each_language_once_in_order() {
+        // he-IL, en-US, en-GB, an unknown language.
+        let hkls = [0x040D_040D, 0x0409_0409, 0x0809_0809, 0x007F_007F];
+        assert_eq!(languages_of_hkls(&hkls), ["he", "en"]);
+        assert!(languages_of_hkls(&[]).is_empty());
+    }
 
     #[test]
     fn langid_maps_by_primary_language() {

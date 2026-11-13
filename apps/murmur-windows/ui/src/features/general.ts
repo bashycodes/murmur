@@ -100,6 +100,8 @@ function fill(prefs: Prefs): void {
   setValue("ptt", prefs.shortcuts.ptt);
   setValue("hands_free", prefs.shortcuts.hands_free);
   setValue("command", prefs.shortcuts.command);
+  setValue("translate", prefs.shortcuts.translate ?? "Ctrl+Win+Shift");
+  pick("translate_to", prefs.translate_to ?? "", (v) => v);
   setValue("cancel", prefs.shortcuts.cancel);
   setValue("paste_last", prefs.shortcuts.paste_last);
   setValue("copy_last", prefs.shortcuts.copy_last);
@@ -344,6 +346,7 @@ export function collectGeneral(): Partial<Prefs> {
       ptt: $<HTMLInputElement>("ptt").value.trim(),
       hands_free: $<HTMLInputElement>("hands_free").value.trim(),
       command: $<HTMLInputElement>("command").value.trim(),
+      translate: $<HTMLInputElement>("translate").value.trim(),
       cancel: $<HTMLInputElement>("cancel").value.trim(),
       paste_last: $<HTMLInputElement>("paste_last").value.trim(),
       copy_last: $<HTMLInputElement>("copy_last").value.trim(),
@@ -363,6 +366,7 @@ export function collectGeneral(): Partial<Prefs> {
   for (const f of BOOL_FIELDS) next[f] = $<HTMLInputElement>(f).checked;
   next.paste_method = $<HTMLSelectElement>("paste_method").value;
   next.keyboard_language = $<HTMLSelectElement>("language_pick").value === "keyboard";
+  next.translate_to = $<HTMLSelectElement>("translate_to").value;
   next.languages = $<HTMLInputElement>("languages")
     .value.split(",")
     .map((s) => s.trim())

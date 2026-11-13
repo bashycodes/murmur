@@ -18,6 +18,8 @@ export interface Prefs {
     ptt: string;
     hands_free: string;
     command: string;
+    /** D90: hold to paste the dictation translated (older backends: absent). */
+    translate?: string;
     cancel: string;
     paste_last: string;
     copy_last: string;
@@ -29,6 +31,8 @@ export interface Prefs {
   languages: string[];
   /** D37 "Keyboard language": each dictation uses the foreground window's layout language. */
   keyboard_language?: boolean;
+  /** D90: the Translate shortcut's language ("" = the other keyboard language). */
+  translate_to?: string;
   enable_sounds: boolean;
   mute_audio_while_dictating: boolean;
   launch_at_login: boolean;

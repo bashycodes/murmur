@@ -16,6 +16,12 @@
 //! `Input::AutoTransformFinished`); on failure the untransformed text is
 //! pasted with a "Transform skipped" notice, so a dictation is never lost.
 //!
+//! Translation (D90): a `translate` session records like push-to-talk;
+//! its transcript goes through `Effect::Translate` (one LLM call that
+//! cleans and translates) → `Input::TranslateFinished`. On failure the
+//! untranslated text is pasted with a "Not translated" notice, like a
+//! skipped auto-apply transform.
+//!
 //! Pure: inputs are hotkey actions, core/paste completions and clock ticks
 //! (`now_ms` is passed in); outputs are `Effect`s the shell executes. Session
 //! ids let late completions from a cancelled session be dropped.
@@ -31,6 +37,8 @@ pub enum Mode {
     Locked,
     /// Command chord held: release = run the spoken instruction.
     Command,
+    /// Translate chord held (D90): release = paste the dictation translated.
+    Translate,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -154,6 +162,13 @@ pub enum Input {
         session: SessionId,
         answer: String,
     },
+    /// D90: a translation ran on a dictation's `original` text: the
+    /// translated text, or why there is none.
+    TranslateFinished {
+        session: SessionId,
+        original: String,
+        result: Result<String, String>,
+    },
     /// The auto-apply transform ran on a dictation's `original` text:
     /// the transformed text, or why it was skipped.
     AutoTransformFinished {
@@ -201,6 +216,12 @@ pub enum Effect {
     /// Run the auto-apply transform on a dictation's `text` before it is
     /// pasted (off-thread; reply = `AutoTransformFinished`).
     AutoTransform {
+        session: SessionId,
+        text: String,
+    },
+    /// D90: translate a dictation's `text` before it is pasted
+    /// (off-thread; reply = `TranslateFinished`).
+    Translate {
         session: SessionId,
         text: String,
     },
@@ -279,6 +300,10 @@ pub const TRANSFORM_NO_SELECTION: &str = "Select text to transform";
 /// was pasted.
 pub const TRANSFORM_SKIPPED: &str = "Transform skipped";
 
+/// D90: notice after a translation failed and the untranslated text was
+/// pasted.
+pub const TRANSLATE_SKIPPED: &str = "Not translated";
+
 #[derive(Debug, Clone)]
 pub struct Dictation {
     phase: Phase,
@@ -291,6 +316,8 @@ pub struct Dictation {
     /// D58: this session is transcribed again in its stop language
     /// (processing gets `rerun_timeout_ms`).
     rerun: Option<SessionId>,
+    /// D90: this session's text is translated before the paste.
+    translate: Option<SessionId>,
 }
 
 impl Dictation {
@@ -302,6 +329,7 @@ impl Dictation {
             auto_transform: false,
             after_paste: None,
             rerun: None,
+            translate: None,
         }
     }
 
@@ -350,6 +378,7 @@ impl Dictation {
             (_, Input::Hotkey(HotkeyAction::PttDown)) => self.begin(Mode::Ptt, now_ms),
             (_, Input::Hotkey(HotkeyAction::HandsFreeToggle)) => self.begin(Mode::Locked, now_ms),
             (_, Input::Hotkey(HotkeyAction::CommandDown)) => self.begin(Mode::Command, now_ms),
+            (_, Input::Hotkey(HotkeyAction::TranslateDown)) => self.begin(Mode::Translate, now_ms),
             (_, Input::Hotkey(HotkeyAction::Transform(index))) => {
                 self.begin_transform(index, now_ms)
             }
@@ -394,7 +423,7 @@ impl Dictation {
         let elapsed = now_ms.saturating_sub(l.since_ms);
         match (l.mode, input) {
             (_, Input::Hotkey(Cancel)) => self.cancel_listening(l.session),
-            (_, Input::Finish) => self.stop(l.session, l.mode == Mode::Command, now_ms),
+            (_, Input::Finish) => self.stop_listening(&l, now_ms),
             (_, Input::StartFailed { session, message }) if session == l.session => {
                 let mut fx = self.cancel_listening(l.session);
                 fx.pop(); // replace the "resting" overlay with the error
@@ -439,6 +468,23 @@ impl Dictation {
             }
             (Mode::Command, Input::Hotkey(PttAborted)) => self.cancel_listening(l.session),
 
+            // ---- translate (held like push-to-talk, D90) ----
+            // Ctrl+Win, then Shift: the push-to-talk becomes a translation.
+            (Mode::Ptt, Input::Hotkey(TranslateDown)) => {
+                l.mode = Mode::Translate;
+                l.early_release = false;
+                self.phase = Phase::Listening(l);
+                vec![Effect::Overlay(OverlayState::ActiveCommand)]
+            }
+            (Mode::Translate, Input::Hotkey(TranslateUp)) => {
+                if elapsed < p.debounce_ms {
+                    self.cancel_listening(l.session) // a tap: nothing said
+                } else {
+                    self.stop_listening(&l, now_ms)
+                }
+            }
+            (Mode::Translate, Input::Hotkey(PttAborted)) => self.cancel_listening(l.session),
+
             // ---- locked (hands-free) ----
             (Mode::Locked, Input::Hotkey(PttDown)) => {
                 let since_lock = now_ms.saturating_sub(l.locked_at.unwrap_or(l.since_ms));
@@ -461,7 +507,7 @@ impl Dictation {
                 if l.early_release && elapsed >= p.debounce_ms {
                     self.cancel_listening(l.session)
                 } else if elapsed >= p.max_ms {
-                    self.stop(l.session, l.mode == Mode::Command, now_ms)
+                    self.stop_listening(&l, now_ms)
                 } else if elapsed >= p.warn_ms && !l.warned {
                     l.warned = true;
                     self.phase = Phase::Listening(l);
@@ -531,6 +577,26 @@ impl Dictation {
             Input::Committed {
                 session: s,
                 outcome: CommitOutcome::Text(text),
+            } if s == session && self.translate == Some(session) => {
+                vec![Effect::Translate { session, text }]
+            }
+            Input::TranslateFinished {
+                session: s,
+                original,
+                result,
+            } if s == session && self.translate == Some(session) => match result {
+                Ok(text) => vec![Effect::Paste { session, text }],
+                Err(_) => {
+                    self.after_paste = Some((session, TRANSLATE_SKIPPED.into()));
+                    vec![Effect::Paste {
+                        session,
+                        text: original,
+                    }]
+                }
+            },
+            Input::Committed {
+                session: s,
+                outcome: CommitOutcome::Text(text),
             } if s == session && self.auto_transform => {
                 vec![Effect::AutoTransform { session, text }]
             }
@@ -582,6 +648,8 @@ impl Dictation {
                 let mut fx = vec![Effect::CancelSession(session)];
                 let why = if command {
                     "Command timed out"
+                } else if self.translate == Some(session) {
+                    "Translation timed out"
                 } else {
                     "Transcription timed out"
                 };
@@ -606,7 +674,7 @@ impl Dictation {
         let (sound, overlay) = match mode {
             Mode::Ptt => (Sound::Start, OverlayState::ActivePtt),
             Mode::Locked => (Sound::Lock, OverlayState::ActiveLocked),
-            Mode::Command => (Sound::Start, OverlayState::ActiveCommand),
+            Mode::Command | Mode::Translate => (Sound::Start, OverlayState::ActiveCommand),
         };
         vec![
             Effect::Sound(sound),
@@ -640,6 +708,19 @@ impl Dictation {
             Effect::Sound(Sound::Lock),
             Effect::Overlay(OverlayState::ActiveLocked),
         ]
+    }
+
+    /// Stop listening and commit, as the session's mode wants it.
+    fn stop_listening(&mut self, l: &Listening, now_ms: u64) -> Vec<Effect> {
+        if l.mode == Mode::Translate {
+            self.translate = Some(l.session);
+            let mut fx = self.stop(l.session, false, now_ms);
+            if let Some(Effect::Overlay(o)) = fx.last_mut() {
+                *o = OverlayState::CommandProcessing;
+            }
+            return fx;
+        }
+        self.stop(l.session, l.mode == Mode::Command, now_ms)
     }
 
     fn stop(&mut self, session: SessionId, command: bool, now_ms: u64) -> Vec<Effect> {
@@ -1845,5 +1926,174 @@ mod tests {
             assert!(!fx.iter().any(|e| matches!(e, Effect::Commit(_))));
             assert_eq!(d.phase(), &Phase::Idle);
         }
+    }
+
+    // ---- D90: translation ----
+
+    /// A translate session held past the debounce and released.
+    fn translated(d: &mut Dictation) -> SessionId {
+        let s = session_of(&hk(d, TranslateDown, 0));
+        assert_eq!(listening(d).mode, Mode::Translate);
+        let fx = hk(d, TranslateUp, 1000);
+        assert!(fx.contains(&Effect::Commit(s)));
+        assert_eq!(
+            fx.last(),
+            Some(&Effect::Overlay(OverlayState::CommandProcessing))
+        );
+        s
+    }
+
+    #[test]
+    fn a_translation_pastes_the_translated_text() {
+        let mut d = d();
+        d.set_auto_transform(true); // a translation is never auto-transformed
+        let s = translated(&mut d);
+        let fx = d.handle(
+            Input::Committed {
+                session: s,
+                outcome: CommitOutcome::Text("the demo is on thursday".into()),
+            },
+            1100,
+        );
+        assert_eq!(
+            fx,
+            vec![Effect::Translate {
+                session: s,
+                text: "the demo is on thursday".into()
+            }]
+        );
+        let fx = d.handle(
+            Input::TranslateFinished {
+                session: s,
+                original: "the demo is on thursday".into(),
+                result: Ok("translated".into()),
+            },
+            3000,
+        );
+        assert_eq!(
+            fx,
+            vec![Effect::Paste {
+                session: s,
+                text: "translated".into()
+            }]
+        );
+        let fx = d.handle(
+            Input::PasteFinished {
+                session: s,
+                result: Ok(()),
+            },
+            3100,
+        );
+        assert_eq!(
+            fx,
+            vec![
+                Effect::Sound(Sound::Paste),
+                Effect::Overlay(OverlayState::Resting)
+            ]
+        );
+    }
+
+    #[test]
+    fn a_failed_translation_pastes_the_dictation_then_says_so() {
+        let mut d = d();
+        let s = translated(&mut d);
+        d.handle(
+            Input::Committed {
+                session: s,
+                outcome: CommitOutcome::Text("keep me".into()),
+            },
+            1100,
+        );
+        let fx = d.handle(
+            Input::TranslateFinished {
+                session: s,
+                original: "keep me".into(),
+                result: Err("needs AI".into()),
+            },
+            2000,
+        );
+        assert_eq!(
+            fx,
+            vec![Effect::Paste {
+                session: s,
+                text: "keep me".into()
+            }],
+            "never lose a dictation"
+        );
+        let fx = d.handle(
+            Input::PasteFinished {
+                session: s,
+                result: Ok(()),
+            },
+            2100,
+        );
+        assert_eq!(
+            fx,
+            vec![
+                Effect::Sound(Sound::Paste),
+                Effect::Overlay(OverlayState::Notice {
+                    message: TRANSLATE_SKIPPED.into()
+                })
+            ]
+        );
+    }
+
+    #[test]
+    fn translate_extends_a_push_to_talk_and_a_tap_or_abort_cancels() {
+        let mut d = d();
+        let s = session_of(&hk(&mut d, PttDown, 0));
+        assert_eq!(
+            hk(&mut d, TranslateDown, 100),
+            vec![Effect::Overlay(OverlayState::ActiveCommand)]
+        );
+        assert_eq!(listening(&d).session, s, "same recording");
+        assert!(hk(&mut d, TranslateUp, 900).contains(&Effect::Commit(s)));
+
+        let mut d = self::d();
+        let s = session_of(&hk(&mut d, TranslateDown, 0));
+        assert_eq!(hk(&mut d, TranslateUp, 200), cancel_fx(s), "tap");
+        let s = session_of(&hk(&mut d, TranslateDown, 1000));
+        assert_eq!(hk(&mut d, PttAborted, 1100), cancel_fx(s));
+    }
+
+    #[test]
+    fn a_plain_dictation_after_a_translation_is_not_translated() {
+        let mut d = d();
+        let s = translated(&mut d);
+        d.handle(
+            Input::Committed {
+                session: s,
+                outcome: CommitOutcome::Empty,
+            },
+            1100,
+        );
+        assert_eq!(d.phase(), &Phase::Idle);
+        let s = session_of(&hk(&mut d, PttDown, 5000));
+        hk(&mut d, PttUp, 6000);
+        let fx = d.handle(
+            Input::Committed {
+                session: s,
+                outcome: CommitOutcome::Text("plain".into()),
+            },
+            6100,
+        );
+        assert_eq!(
+            fx,
+            vec![Effect::Paste {
+                session: s,
+                text: "plain".into()
+            }]
+        );
+    }
+
+    #[test]
+    fn a_stuck_translation_times_out_with_its_own_message() {
+        let mut d = d();
+        let s = translated(&mut d);
+        let fx = d.handle(Input::Tick, 1000 + Policy::default().processing_timeout_ms);
+        assert_eq!(fx[0], Effect::CancelSession(s));
+        assert!(fx.contains(&Effect::Overlay(OverlayState::Error {
+            message: "Translation timed out".into()
+        })));
     }
 }

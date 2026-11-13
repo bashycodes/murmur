@@ -162,6 +162,9 @@ pub struct Prefs {
     /// foreground window's keyboard layout (Hebrew layout → Hebrew model);
     /// an unknown layout falls back to `languages` ([`crate::keyboard_language`]).
     pub keyboard_language: bool,
+    /// D90: the language the Translate shortcut pastes in (`he`, `en`, …);
+    /// empty = automatic: the other installed keyboard language (D58).
+    pub translate_to: String,
     pub enable_sounds: bool,
     /// Mute other apps while dictating (on by default).
     pub mute_audio_while_dictating: bool,
@@ -274,6 +277,7 @@ impl Default for Prefs {
             microphone: None,
             languages: Vec::new(),
             keyboard_language: true,
+            translate_to: String::new(),
             enable_sounds: true,
             mute_audio_while_dictating: true,
             launch_at_login: false,
@@ -455,6 +459,14 @@ impl Prefs {
             check("meeting", c, false)?;
         }
         check("command", &s.command, false)?;
+        check("translate", &s.translate, false)?;
+        let t = &self.translate_to;
+        let code = (2..=3).contains(&t.len()) && t.chars().all(|c| c.is_ascii_lowercase());
+        if !t.is_empty() && !code {
+            return Err(format!(
+                "translate to: \"{t}\" is not a language code (he, en, …)"
+            ));
+        }
         self.transforms.validate()?;
         if !self.shortcuts_distinct() {
             return Err("shortcuts must differ from each other".into());
@@ -490,6 +502,7 @@ impl Prefs {
             &s.paste_last,
             &s.copy_last,
             &s.command,
+            &s.translate,
         ];
         all.extend(s.scratchpad.as_ref());
         all.extend(s.new_note.as_ref());
@@ -527,7 +540,10 @@ impl Prefs {
         let mut c = self.session_config();
         match mode {
             crate::dictation::Mode::Locked => c.endpoint_silence_ms = self.hands_free_endpoint(),
-            crate::dictation::Mode::Command => c.raw_mode = true,
+            // D90: the translation call cleans and translates in one go.
+            crate::dictation::Mode::Command | crate::dictation::Mode::Translate => {
+                c.raw_mode = true
+            }
             crate::dictation::Mode::Ptt => {}
         }
         c
@@ -1397,5 +1413,24 @@ mod tests {
             "no LLM on the instruction"
         );
         assert!(!p.session_config_for(Mode::Ptt).raw_mode);
+    }
+
+    #[test]
+    fn translate_defaults_and_its_target_language() {
+        let p = Prefs::default();
+        assert_eq!(p.shortcuts.translate.to_string(), "Ctrl+Win+Shift");
+        assert_eq!(p.translate_to, "", "automatic");
+        let q: Prefs = serde_json::from_str(r#"{"shortcuts":{"ptt":"Ctrl+Shift"}}"#).unwrap();
+        assert_eq!(q.shortcuts.translate, p.shortcuts.translate, "old prefs");
+        use crate::dictation::Mode;
+        assert!(p.session_config_for(Mode::Translate).raw_mode);
+        let mut q = p.clone();
+        q.translate_to = "he".into();
+        assert!(q.validate().is_ok());
+        q.translate_to = "Hebrew".into();
+        assert!(q.validate().is_err());
+        let mut q = p.clone();
+        q.shortcuts.translate = q.shortcuts.command.clone();
+        assert!(q.validate().is_err(), "shortcuts must differ");
     }
 }

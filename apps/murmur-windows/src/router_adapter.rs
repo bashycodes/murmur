@@ -899,6 +899,27 @@ impl CoreApi for RouterAdapter {
         murmur_core::transform::run_transform(cleaner, instruction, text, source, timeout)
             .map_err(|e| e.to_string())
     }
+
+    /// D90: on the AI cleanup route (this PC's LLM, the server, OpenRouter
+    /// under the cleanup consent, each hop's own checks), reordered so the
+    /// server and the cloud are tried before this PC's small model.
+    fn translate(
+        &self,
+        text: &str,
+        source: Option<&str>,
+        target: &str,
+        dictionary: &[crate::core_api::DictEntry],
+        timeout: std::time::Duration,
+    ) -> Result<String, String> {
+        let base = self.local.as_ref().and_then(|a| a.cleaner());
+        let cleaner = self.router.cleanup_cleaner(base);
+        if cleaner.is_none() && self.local_llm_loading() && !text.trim().is_empty() {
+            return Err(LLM_LOADING_MSG.into());
+        }
+        let dict = crate::core_adapter::to_core_dict(dictionary);
+        murmur_core::translate::run(cleaner, text, source, target, &dict, timeout)
+            .map_err(|e| e.to_string())
+    }
 }
 
 impl RouterAdapter {
@@ -1198,6 +1219,10 @@ mod tests {
             p: &murmur_core::cleanup::CleanPrompt,
             _deadline: Instant,
         ) -> Result<String, murmur_core::cleanup::CleanError> {
+            // D90: a translation's transcript, upper-cased.
+            if let Some(t) = p.user.split("TRANSCRIPT: \u{ab}").nth(1) {
+                return Ok(t.trim_end_matches('\u{bb}').to_uppercase());
+            }
             // Upper-case the selection (a transform's text) out of the
             // user message.
             let tag = if p.user.contains("<selected_text>") {
@@ -1268,6 +1293,21 @@ mod tests {
             .transform("polish", "hey", Source::Selection, t)
             .unwrap_err();
         assert!(e.starts_with("Transforms need AI"), "{e}");
+    }
+
+    #[test]
+    fn translate_runs_on_the_cleanup_route_with_this_pcs_llm() {
+        let r = command_rig(true);
+        let t = std::time::Duration::from_secs(5);
+        assert_eq!(
+            r.translate("hello there", Some("en"), "fr", &[], t)
+                .as_deref(),
+            Ok("HELLO THERE")
+        );
+        let e = command_rig(false)
+            .translate("hello there", Some("en"), "fr", &[], t)
+            .unwrap_err();
+        assert!(e.contains("needs AI"), "{e}");
     }
 
     #[test]

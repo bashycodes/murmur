@@ -319,6 +319,10 @@ pub struct Bindings {
     /// way: Right Alt held, then Ctrl+Win (or a Ctrl+Win push-to-talk, then
     /// Alt) turns that dictation into a command.
     pub command: Chord,
+    /// Hold to dictate text that is pasted translated (D90; default
+    /// Ctrl+Win+Shift). Like the Command chord it may extend a
+    /// push-to-talk on the way (a Ctrl+Win push-to-talk, then Shift).
+    pub translate: Chord,
     /// Open the Scratchpad window. Unset by default; `""` in prefs = unset.
     #[serde(
         skip_serializing_if = "Option::is_none",
@@ -370,6 +374,7 @@ impl Default for Bindings {
             new_note: None,
             meeting: None,
             command: Chord::new([Key::Ctrl, Key::Win, Key::Alt]),
+            translate: Chord::new([Key::Ctrl, Key::Win, Key::Shift]),
             transforms: Vec::new(),
             view_changes: None,
         }
@@ -406,6 +411,11 @@ pub enum HotkeyAction {
     CommandDown,
     /// Command chord released (after a `CommandDown`).
     CommandUp,
+    /// Translate chord became fully held (D90; supersedes a push-to-talk
+    /// that started on the way).
+    TranslateDown,
+    /// Translate chord released (after a `TranslateDown`).
+    TranslateUp,
     /// The shortcut of the transform at this index was pressed.
     Transform(u8),
     /// Transforms' "view changes" shortcut was pressed.
@@ -446,6 +456,8 @@ pub struct ChordMatcher {
     ptt_active: bool,
     /// The Command chord fired and none of its keys was released yet.
     command_active: bool,
+    /// The Translate chord fired and none of its keys was released yet.
+    translate_active: bool,
     /// Keys whose key-down we swallowed: their key-up must be swallowed
     /// too, so it outlives [`reset`](Self::reset) (the app never saw the
     /// key go down). Only [`forget`](Self::forget) clears it: after missed
@@ -470,6 +482,7 @@ impl ChordMatcher {
             pressed: BTreeSet::new(),
             ptt_active: false,
             command_active: false,
+            translate_active: false,
             swallowed: BTreeSet::new(),
             needs_mask: BTreeSet::new(),
             altgr_ctrl: false,
@@ -581,7 +594,7 @@ impl ChordMatcher {
         if b == self.bindings {
             return Vec::new();
         }
-        let held = self.ptt_active || self.command_active;
+        let held = self.ptt_active || self.command_active || self.translate_active;
         self.bindings = b;
         self.reset();
         if held {
@@ -597,6 +610,7 @@ impl ChordMatcher {
         self.pressed.clear();
         self.ptt_active = false;
         self.command_active = false;
+        self.translate_active = false;
         self.needs_mask.clear();
         self.altgr_ctrl = false;
     }
@@ -682,6 +696,16 @@ impl ChordMatcher {
                 if !ev.key.is_modifier() {
                     d.suppress = true;
                 }
+            } else if self.newly_matches(&self.bindings.translate, ev.key) {
+                // Translate supersedes a PTT that started on the way
+                // (Ctrl+Win, then Shift).
+                self.ptt_active = false;
+                self.translate_active = true;
+                d.actions.push(HotkeyAction::TranslateDown);
+                self.chord_fired();
+                if !ev.key.is_modifier() {
+                    d.suppress = true;
+                }
             } else if self.newly_matches(&self.bindings.ptt, ev.key) {
                 self.ptt_active = true;
                 d.actions.push(HotkeyAction::PttDown);
@@ -760,11 +784,15 @@ impl ChordMatcher {
                 && !self.bindings.ptt.covers(ev.key)
                 && !self.bindings.hands_free.covers(ev.key)
                 && !self.bindings.command.covers(ev.key)
+                && !self.bindings.translate.covers(ev.key)
             {
                 self.ptt_active = false;
                 d.actions.push(HotkeyAction::PttAborted);
             } else if self.command_active && !self.bindings.command.covers(ev.key) {
                 self.command_active = false;
+                d.actions.push(HotkeyAction::PttAborted);
+            } else if self.translate_active && !self.bindings.translate.covers(ev.key) {
+                self.translate_active = false;
                 d.actions.push(HotkeyAction::PttAborted);
             }
             if ev.key == Key::RAlt && self.swallows_right_alt() {
@@ -790,6 +818,10 @@ impl ChordMatcher {
             if self.command_active && self.bindings.command.covers(ev.key) {
                 self.command_active = false;
                 d.actions.push(HotkeyAction::CommandUp);
+            }
+            if self.translate_active && self.bindings.translate.covers(ev.key) {
+                self.translate_active = false;
+                d.actions.push(HotkeyAction::TranslateUp);
             }
             // A swallowed key-up needs no mask: the app never saw it down.
             let mask = self.needs_mask.remove(&ev.key);
@@ -899,6 +931,46 @@ mod tests {
         assert!(
             feed(&mut m, &[KeyEvent::up(Key::Win), KeyEvent::up(Key::LCtrl)]).is_empty(),
             "the superseded push-to-talk never reports a release"
+        );
+    }
+
+    #[test]
+    fn translate_chord_extends_a_push_to_talk_and_reports_its_release() {
+        let mut m = ctrl_win_ptt();
+        let a = feed(
+            &mut m,
+            &[
+                KeyEvent::down(Key::LCtrl),
+                KeyEvent::down(Key::Win),
+                KeyEvent::down(Key::LShift),
+            ],
+        );
+        assert_eq!(a, vec![PttDown, TranslateDown], "Shift is no foreign key");
+        let up = m.handle(KeyEvent::up(Key::LShift), false);
+        assert_eq!(up.actions, vec![TranslateUp]);
+        assert!(
+            feed(&mut m, &[KeyEvent::up(Key::Win), KeyEvent::up(Key::LCtrl)]).is_empty(),
+            "the superseded push-to-talk never reports a release"
+        );
+    }
+
+    #[test]
+    fn translate_chord_alone_and_its_foreign_key_abort() {
+        let mut m = ChordMatcher::new(Bindings::default());
+        let a = feed(
+            &mut m,
+            &[
+                KeyEvent::down(Key::LShift),
+                KeyEvent::down(Key::LCtrl),
+                KeyEvent::down(Key::Win),
+            ],
+        );
+        assert_eq!(a, vec![TranslateDown]);
+        let s = Key::Vk(b'S' as u16);
+        assert_eq!(m.handle(KeyEvent::down(s), false).actions, vec![PttAborted]);
+        assert!(
+            feed(&mut m, &[KeyEvent::up(s), KeyEvent::up(Key::Win)]).is_empty(),
+            "an aborted translation reports no release"
         );
     }
 
@@ -1494,6 +1566,7 @@ mod tests {
         assert_eq!(b.ptt.to_string(), "Right Alt");
         assert_eq!(b.hands_free.to_string(), "Ctrl+Win+Space");
         assert_eq!(b.command.to_string(), "Ctrl+Win+Alt");
+        assert_eq!(b.translate.to_string(), "Ctrl+Win+Shift");
         let mut m = default_bindings();
         let d = m.handle_raw(LALT_VK, ALT_SCAN, true, false);
         assert_eq!(d, Decision::default(), "Left Alt is not push-to-talk");
@@ -1967,7 +2040,13 @@ mod tests {
 
     #[test]
     fn superset_chord_does_not_fire_ptt() {
-        let mut m = ctrl_win_ptt();
+        // Ctrl+Win+Shift is the default Translate chord (D90); keep this
+        // about a plain superset of push-to-talk.
+        let mut m = ChordMatcher::new(Bindings {
+            ptt: "Ctrl+Win".parse().unwrap(),
+            translate: "Ctrl+Alt+T".parse().unwrap(),
+            ..Bindings::default()
+        });
         let a = feed(
             &mut m,
             &[
@@ -2039,7 +2118,7 @@ mod tests {
         let j = serde_json::to_string(&Bindings::default()).unwrap();
         assert_eq!(
             j,
-            r#"{"ptt":"Right Alt","hands_free":"Ctrl+Win+Space","cancel":"Esc","paste_last":"Alt+Shift+Z","copy_last":"Alt+Shift+X","command":"Ctrl+Win+Alt"}"#
+            r#"{"ptt":"Right Alt","hands_free":"Ctrl+Win+Space","cancel":"Esc","paste_last":"Alt+Shift+Z","copy_last":"Alt+Shift+X","command":"Ctrl+Win+Alt","translate":"Ctrl+Win+Shift"}"#
         );
         let b: Bindings = serde_json::from_str(r#"{"ptt":"Ctrl+Shift"}"#).unwrap();
         assert_eq!(b.ptt.to_string(), "Ctrl+Shift");

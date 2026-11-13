@@ -432,6 +432,23 @@ pub trait CoreApi: Send + Sync {
         murmur_core::transform::run_transform(None, instruction, text, source, timeout)
             .map_err(|e| e.to_string())
     }
+    /// D90: clean and translate a dictation's `text` (spoken in `source`,
+    /// when known) into `target` with the cleanup route, off-device first
+    /// (`murmur_core::translate`), blocking up to `timeout`. `dictionary` =
+    /// the user's, for the terms the prompt names. `Ok` = the text to
+    /// paste, `Err` = why not. Default: no LLM available.
+    fn translate(
+        &self,
+        text: &str,
+        source: Option<&str>,
+        target: &str,
+        dictionary: &[DictEntry],
+        timeout: std::time::Duration,
+    ) -> Result<String, String> {
+        let dict = crate::core_adapter::to_core_dict(dictionary);
+        murmur_core::translate::run(None, text, source, target, &dict, timeout)
+            .map_err(|e| e.to_string())
+    }
 }
 
 /// Model-free stand-in for `murmur-core`: counts samples and returns
@@ -460,6 +477,10 @@ struct StubState {
     /// triples it was asked.
     transform_reply: Option<Result<String, String>>,
     transforms: Vec<(String, String, murmur_core::transform::Source)>,
+    /// Scripted translation answer and the (text, source, target) triples
+    /// it was asked.
+    translate_reply: Option<Result<String, String>>,
+    translations: Vec<(String, Option<String>, String)>,
 }
 
 impl StubCore {
@@ -520,6 +541,16 @@ impl StubCore {
     pub fn transforms(&self) -> Vec<(String, String, murmur_core::transform::Source)> {
         self.inner.lock().unwrap().transforms.clone()
     }
+
+    /// Script what `translate()` answers.
+    pub fn set_translate_reply(&self, reply: Result<String, String>) {
+        self.inner.lock().unwrap().translate_reply = Some(reply);
+    }
+
+    /// (text, source, target) of every `translate()` call.
+    pub fn translations(&self) -> Vec<(String, Option<String>, String)> {
+        self.inner.lock().unwrap().translations.clone()
+    }
 }
 
 impl CoreApi for StubCore {
@@ -537,6 +568,8 @@ impl CoreApi for StubCore {
             commands: old.commands,
             transform_reply: old.transform_reply,
             transforms: old.transforms,
+            translate_reply: old.translate_reply,
+            translations: old.translations,
             ..StubState::default()
         };
         Ok(())
@@ -632,6 +665,33 @@ impl CoreApi for StubCore {
             Some(r) => r,
             None => murmur_core::transform::run_transform(None, instruction, text, source, timeout)
                 .map_err(|e| e.to_string()),
+        }
+    }
+
+    fn translate(
+        &self,
+        text: &str,
+        source: Option<&str>,
+        target: &str,
+        dictionary: &[DictEntry],
+        timeout: std::time::Duration,
+    ) -> Result<String, String> {
+        let reply = {
+            let mut s = self.inner.lock().unwrap();
+            s.translations.push((
+                text.to_string(),
+                source.map(str::to_string),
+                target.to_string(),
+            ));
+            s.translate_reply.clone()
+        };
+        match reply {
+            Some(r) => r,
+            None => {
+                let dict = crate::core_adapter::to_core_dict(dictionary);
+                murmur_core::translate::run(None, text, source, target, &dict, timeout)
+                    .map_err(|e| e.to_string())
+            }
         }
     }
 }
