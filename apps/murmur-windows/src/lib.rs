@@ -19,6 +19,7 @@ pub mod dev_settings;
 pub mod dictation;
 pub mod dictionary;
 pub mod ducking;
+pub mod foreground;
 pub mod history;
 pub mod hotkeys;
 pub mod input;

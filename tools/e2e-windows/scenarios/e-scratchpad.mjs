@@ -50,8 +50,9 @@ export default {
         return { status: "fail", summary: `the notes window opens but its page never loads (url ${details.page.href}, body ${details.page.body_len} chars): nothing to dictate into`, details, evidence };
       }
       // Dictate into the note.
-      const focused = win ? (await agent.call("focus", { hwnd: win.hwnd })).focused : false;
-      if (!focused) return { status: "aborted", summary: "the notes window would not come to the foreground: nothing pressed", details, evidence };
+      const f = win ? await agent.call("focus", { hwnd: win.hwnd }) : { focused: false };
+      details.foreground = f.fg?.process ?? null;
+      if (!f.focused) return { status: "aborted", summary: `the notes window would not come to the foreground (fg=${details.foreground}): nothing pressed`, details, evidence };
       await np.eval(`document.getElementById("editor").focus()`);
       const clip = clips["en-short"];
       const said = await talk(ctx, "en-short", { guard: win.hwnd });

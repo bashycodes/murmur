@@ -51,6 +51,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 - **Windows: the Scratchpad / Notes window works again.** Opening a note from Settings → Scratchpad (New note, Quick note, a note in the list) built the window inside the app window's request handler, where WebView2 cannot finish creating it: the window stayed blank and white, ignored typing and could not be closed. It now opens from the app's event loop, and so does the "Record this meeting?" prompt.
 - **Windows: the notes window no longer flashes white when it opens.** It starts in the colour of the Theme setting (Settings → General → Theme; System follows Windows), and the page uses that theme too.
 - **Windows: Esc closes the notes window.** In the Notes list, Esc with text in Search clears the search first.
+- **Windows: the notes window comes to the front with the caret in the note.** Opened while another app had the foreground (the new-note shortcut), Windows kept it behind that app, so typing went elsewhere. The app now brings it to the front itself, without sending a key, and the editor takes the caret whenever the window gets focus.
 
 ## [1.3.0] - 2026-11-13
 

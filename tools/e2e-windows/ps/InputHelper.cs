@@ -302,13 +302,31 @@ namespace MurmurE2E
         }
 
         /// False while the lock screen / UAC desktop has the input.
+        /// False while the PC is locked: the input desktop is then Winlogon
+        /// (OpenInputDesktop can still succeed), or the lock screen
+        /// (LogonUI) runs in our session. Nothing can take the foreground
+        /// then (GetForegroundWindow = 0, shown as fg=Idle).
         public static bool InputDesktopUsable()
         {
             var d = OpenInputDesktop(0, false, 0x0100); // DESKTOP_SWITCHDESKTOP
             if (d == IntPtr.Zero) return false;
-            CloseDesktop(d);
+            try
+            {
+                var name = new StringBuilder(256);
+                int needed;
+                if (GetUserObjectInformation(d, 2 /* UOI_NAME */, name, name.Capacity * 2, out needed)
+                    && !string.Equals(name.ToString(), "Default", StringComparison.OrdinalIgnoreCase)) return false;
+            }
+            finally { CloseDesktop(d); }
+            int session = Process.GetCurrentProcess().SessionId;
+            foreach (var p in Process.GetProcessesByName("LogonUI"))
+            {
+                if (p.SessionId == session) return false;
+            }
             return true;
         }
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern bool GetUserObjectInformation(IntPtr h, int index, StringBuilder info, int len, out int needed);
 
         [DllImport("user32.dll")] static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags);
 

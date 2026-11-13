@@ -208,7 +208,9 @@ new folder is made per run.
 | `app-data/` | From the test profile: `dictations.jsonl` debug log, `history.sqlite`, notes. |
 
 The laptop must be unlocked: the agent checks that the input desktop is
-usable and aborts otherwise.
+usable (it is `Default`, not Winlogon, and no lock screen runs in its
+session) and aborts otherwise. On a locked laptop no window can take the
+foreground (`fg=Idle`), so every scenario that types would abort.
 
 ## Scenarios
 
