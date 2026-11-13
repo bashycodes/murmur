@@ -3299,6 +3299,7 @@ pub fn run() {
     if let LoadOutcome::Corrupt(bak) = &outcome {
         eprintln!("[prefs] corrupt prefs moved to {}", bak.display());
     }
+    let open_window = prefs.opens_window_at_start();
     let creds = credentials::system_store();
     let usage_path = crate::cloud::usage_path(appdata.as_deref());
     // D28, once: a D18 provider list becomes the single OpenRouter config,
@@ -3778,7 +3779,7 @@ pub fn run() {
 
             spawn_note_saver(handle.clone());
             platform.overlay(&OverlayState::Resting);
-            if matches!(outcome, LoadOutcome::Missing) {
+            if open_window {
                 show_settings(&handle);
             }
             Ok(())

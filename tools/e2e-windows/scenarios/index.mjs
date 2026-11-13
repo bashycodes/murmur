@@ -7,5 +7,7 @@ import c from "./c-hold-to-talk.mjs";
 import d from "./d-double-alt.mjs";
 import e from "./e-scratchpad.mjs";
 import f from "./f-language.mjs";
+import g from "./g-unfinished-setup.mjs";
 
-export const SCENARIOS = [a, b, c, d, e, f];
+// g restarts the fresh install with setup left half way; b then walks it.
+export const SCENARIOS = [a, g, b, c, d, e, f];
