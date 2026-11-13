@@ -261,6 +261,9 @@ class BubbleOverlay(
         fun show(line: PreviewContent.Line) {
             text.text = line.text
             text.alpha = if (line.dim) 0.6f else 1f
+            // A command's answer reads from its start (up to CARD_LINES); a live line keeps its newest words.
+            text.maxLines = if (line.card) PreviewContent.CARD_LINES else 3
+            text.ellipsize = if (line.card) TextUtils.TruncateAt.END else TextUtils.TruncateAt.START
             if (!shown) { runCatching { wm.addView(text, lp) }.onSuccess { shown = true } }
         }
 

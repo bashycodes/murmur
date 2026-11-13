@@ -869,7 +869,7 @@ impl CoreApi for RouterAdapter {
         instruction: &str,
         selected: Option<&str>,
         timeout: std::time::Duration,
-    ) -> Result<String, String> {
+    ) -> Result<murmur_core::command::CommandOutput, String> {
         let base = self.local.as_ref().and_then(|a| a.cleaner());
         let cleaner = self.router.command_cleaner(base);
         let loading = self.local_llm_loading();
@@ -1246,8 +1246,10 @@ mod tests {
         let r = command_rig(true);
         let t = std::time::Duration::from_secs(5);
         assert_eq!(
-            r.command("shout it", Some("hello there"), t).as_deref(),
-            Ok("HELLO THERE")
+            r.command("shout it", Some("hello there"), t),
+            Ok(murmur_core::command::CommandOutput::Text(
+                "HELLO THERE".into()
+            ))
         );
     }
 

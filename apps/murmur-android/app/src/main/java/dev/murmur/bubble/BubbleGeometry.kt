@@ -45,13 +45,17 @@ object BubbleGeometry {
     private fun extras(u: BubbleUi): List<BubbleButton> =
         listOfNotNull(BubbleButton.COMMAND.takeIf { u.showCommand }, BubbleButton.COPY.takeIf { u.showCopy })
 
-    /** Widths (56 circle, +64 per resting extra (copy, command), 230 tap row, 160 hold row; 176 paste/copy/dismiss), unscaled. */
+    /** Widths (56 circle, +64 per resting extra (copy, command), 230 tap row, 160 hold row; 176 paste/copy/dismiss, 116 copy/dismiss), unscaled. */
     fun baseWidthDp(u: BubbleUi): Float = if (u.resting && u.repair) 56f else if (isMinimisedLook(u)) 36f else when (val s = u.state) {
         DictationState.Idle -> 56f
         DictationState.Ready -> 56f + 64f * extras(u).size
         is DictationState.Recording -> if (s.hold) 160f else 230f
         is DictationState.Processing -> if (s.hold) 160f else 230f
-        is DictationState.Error -> if (s.kind is ErrorKind.FailedToPaste) 176f else 56f
+        is DictationState.Error -> when (s.kind) {
+            is ErrorKind.FailedToPaste -> 176f
+            is ErrorKind.CommandAnswer -> 116f
+            else -> 56f
+        }
     }
 
     fun baseHeightDp(u: BubbleUi): Float = if (isMinimisedLook(u)) 36f else 56f
@@ -91,6 +95,8 @@ object BubbleGeometry {
                 if (!s.hold || processingCancel) listOf(at(0f, BubbleButton.CANCEL)) else emptyList()
             is DictationState.Error -> when (s.kind) {
                 is ErrorKind.FailedToPaste -> listOf(at(0f, BubbleButton.PASTE), at(px(60f), BubbleButton.COPY), at(px(120f), BubbleButton.DISMISS))
+                // A command's answer: nothing to paste, the card shows it.
+                is ErrorKind.CommandAnswer -> listOf(at(0f, BubbleButton.COPY), at(px(60f), BubbleButton.DISMISS))
                 else -> listOf(at(0f, BubbleButton.DISMISS))
             }
         }

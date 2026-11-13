@@ -23,6 +23,7 @@ class BubbleGeometryTest {
     private val procHold = BubbleUi(DictationState.Processing(hold = true, since = 0))
     private val failedPaste = BubbleUi(DictationState.Error(ErrorKind.FailedToPaste("hi")))
     private val otherError = BubbleUi(DictationState.Error(ErrorKind.MicUnavailable))
+    private val answer = BubbleUi(DictationState.Error(ErrorKind.CommandAnswer("It means hello.")))
 
     /** Width × height in dp at 100 % (the values the bubble had before "Bubble size"). */
     private val today = listOf(
@@ -96,6 +97,14 @@ class BubbleGeometryTest {
         assertEquals(COPY, hit(failedPaste, 90f))
         assertEquals(DISMISS, hit(failedPaste, 150f))
         assertEquals(DISMISS, hit(otherError, 28f))
+    }
+
+    @Test fun aCommandsAnswerOffersCopyAndDismissButNoPaste() {
+        assertEquals(116f to 56f, size(answer))
+        assertEquals(COPY, hit(answer, 30f))
+        assertEquals(DISMISS, hit(answer, 90f))
+        val buttons = BubbleGeometry.slots(answer, 116f, 56f, { it }).map { it.button }
+        assertEquals(listOf(COPY, DISMISS), buttons)
     }
 
     @Test fun at150PercentButtonsGrowWithTheBubble() {

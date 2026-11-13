@@ -1071,7 +1071,7 @@ impl Router {
         instruction: &str,
         selected: Option<&str>,
         timeout: std::time::Duration,
-    ) -> Result<String, murmur_core::command::CommandError> {
+    ) -> Result<murmur_core::command::CommandOutput, murmur_core::command::CommandError> {
         let (warm, cold) = {
             let st = self.state.lk();
             (st.warm_local(), st.cold_local())
