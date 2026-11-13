@@ -664,6 +664,14 @@
       or.cleanup.engines = or.cleanup.engines.map((e) => (e.route === "cloud" ? { ...e, enabled: form.allow } : e));
       return orView();
     },
+    // openrouter::apply_cleanup_timeouts: both limits, each in its range; nothing else.
+    dev_or_set_cleanup_timeouts: ({ form }) => {
+      if (form.openrouter_ms < 800 || form.openrouter_ms > 8000) throw "Cleanup time limit must be 800-8000 ms";
+      if (form.custom_ms < 800 || form.custom_ms > 30000) throw "Cleanup time limit must be 800-30000 ms";
+      or.cleanup.timeout_ms = form.openrouter_ms;
+      or.cleanup.custom = { ...or.cleanup.custom, timeout_ms: form.custom_ms };
+      return orView();
+    },
     // D36: order + this PC / server switches; OpenRouter keeps its switch (consent).
     // D47: OpenRouter needs the speech consent (DevSettings::set_meeting_order).
     dev_meeting_routes_set: ({ routes }) => {

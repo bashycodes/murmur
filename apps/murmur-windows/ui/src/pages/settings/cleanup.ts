@@ -19,9 +19,6 @@ import { engineRow } from "./speech.js";
 const small = (id: string, label: string): string =>
   `<label class="lw-small-switch">${label}${toggle(id, label).replace('class="fl-toggle"', 'class="fl-toggle is-small"')}</label>`;
 
-/** A cloud time limit the one "Give up after" sets (features/ai.ts); its saved value is kept as an option. */
-const cloudLimit = (id: string): string => `<select id="${id}" hidden aria-hidden="true" tabindex="-1"></select>`;
-
 export const settingsCleanupPage: Page = {
   id: "settings-cleanup",
   area: "settings",
@@ -117,8 +114,7 @@ ${advanced(
       <option value="5000">5 seconds</option>
       <option value="8000">8 seconds</option>
       <option value="15000">15 seconds</option>
-    </select>
-    ${cloudLimit("or_cleanup_timeout_ms")}${cloudLimit("cu_timeout_ms")}`,
+    </select>`,
   ) +
     row(
       "Use text on screen",
@@ -127,7 +123,7 @@ ${advanced(
     ) +
     row(
       "Also send to the cloud",
-      "Words on screen also needs Use text on screen.",
+      "Needs Use text on screen.",
       `<div class="lw-switch-stack">
         ${small("or_cleanup_send_app_name", "App name")}
         ${small("or_cleanup_send_surrounding_text", "Text around the cursor")}

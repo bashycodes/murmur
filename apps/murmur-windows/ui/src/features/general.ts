@@ -410,6 +410,7 @@ export const general: Feature = {
     ]);
     defaults = { whisper: model.default_path, parakeet: model.default_parakeet_dir };
     showModel(model.status);
+    for (const c of document.querySelectorAll<HTMLElement>("[data-models-dir]")) c.textContent = model.models_dir;
     $<HTMLInputElement>("model_path").placeholder = model.default_path;
     $<HTMLInputElement>("parakeet_model_dir").placeholder = model.default_parakeet_dir;
     const mic = $<HTMLSelectElement>("microphone");

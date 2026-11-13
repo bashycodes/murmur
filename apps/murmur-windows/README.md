@@ -341,7 +341,9 @@ Settings → AI cleanup:
 * **Advanced → Give up after** (`llm_timeout_ms`) default 3000 ms (was 1500,
   which timed out on nearly every dictation; a stored 1500 moves to 3000
   once, `prefs_rev` 3). It is the one limit for every engine: picking a time
-  also sets the cloud engine's own limit (within what its provider accepts).
+  also sets both cloud providers' own limits, each clamped to its range
+  (OpenRouter 0.8-8 s, LiteLLM 0.8-30 s; `dev_or_set_cleanup_timeouts`, which
+  saves nothing else).
 * **Cleanup level** *Rules only* (was "None — exactly
   what you said"; since D27 the core still formats at `none`), Light /
   Medium / High, or *Verbatim* = `cleanup_level: none` + formatting rules

@@ -31,6 +31,16 @@ export function pcModelChip(o) {
         return chip("Missing", "destructive");
     return o.entry ? chip("Installed", "light") : chip("", "light");
 }
+/**
+ * The chip next to AI cleanup's "This PC model": shown only for a model
+ * that is here and not downloading ("In use" when cleanup loads it); a
+ * model not here yet gets Download / Import buttons instead (null).
+ */
+export function llmModelChip(o) {
+    if (!o.installed || o.busy)
+        return null;
+    return o.inUse ? { text: "In use", kind: "success", download: false } : { text: "Installed", kind: "light", download: false };
+}
 /** Levels that run no AI model (D27): Verbatim and Rules only. */
 export const noAiLevel = (level) => level === "verbatim" || level === "none";
 /** The inline warning under the cleanup order: an AI engine is on but the level runs no AI. */

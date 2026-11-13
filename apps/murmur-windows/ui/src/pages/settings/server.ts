@@ -3,7 +3,7 @@
 // the models in its library (features/models.ts).
 // Markup only.
 
-import { group, heading, row, toggle } from "../../lib/markup.js";
+import { advanced, group, heading, row, toggle } from "../../lib/markup.js";
 import type { Page } from "../../lib/router.js";
 import { extLink, SERVER_HELP, SERVER_MODELS_GROUP } from "../../features/models.js";
 
@@ -72,8 +72,7 @@ ${group(
   `id="srv_keys" hidden`,
 )}
 ${SERVER_MODELS_GROUP}
-${group(
-  "Advanced",
+${advanced(
   row(
     "Give up connecting after",
     `Then the next engine takes over. ${err("connect_timeout_ms")}`,

@@ -133,11 +133,15 @@ with sync_playwright() as p:
         pg.evaluate("document.getElementById('cleanup_advanced').open = true")
         note = pg.inner_text("#cleanup_timeout_note")
         check(tag + "note names the cloud's own limit", "2.5 seconds" in note, note)
-        pg.select_option("#llm_timeout_ms", "5000")
+        before = pg.evaluate("window.__mockCalls.filter(x => x[0].startsWith('dev_or_set')).length")
+        pg.select_option("#llm_timeout_ms", "15000")
         pg.wait_for_timeout(400)
-        cloud = pg.evaluate("window.__TAURI__.core.invoke('dev_or_get')")["cleanup"]["timeout_ms"]
+        cu = pg.evaluate("window.__TAURI__.core.invoke('dev_or_get')")["cleanup"]
         local = pg.evaluate("window.__TAURI__.core.invoke('get_prefs')")["llm_timeout_ms"]
-        check(tag + "Give up after sets this PC and the cloud", (local, cloud) == (5000, 5000), f"{local} {cloud}")
+        got = (local, cu["timeout_ms"], cu["custom"]["timeout_ms"])
+        check(tag + "Give up after sets this PC and both clouds, each clamped", got == (15000, 8000, 15000), str(got))
+        sets = pg.evaluate("window.__mockCalls.filter(x => x[0].startsWith('dev_or_set')).map(x => x[0])")[before:]
+        check(tag + "only the two time limits are saved", sets == ["dev_or_set_cleanup_timeouts"], str(sets))
         check(tag + "note gone once they match", not pg.is_visible("#cleanup_timeout_note"))
         pg.screenshot(path=str(out / f"cleanup-order-moved-{scheme}.png"), full_page=True)
 

@@ -14,6 +14,7 @@
 import { $, askDialog, html } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { onServer, type ModelSource } from "../lib/model-source.js";
+import { llmModelChip } from "../lib/model-pages.js";
 import { prefsStore } from "../lib/prefs-store.js";
 import type { Feature } from "../lib/router.js";
 import { views } from "../lib/views.js";
@@ -579,9 +580,12 @@ function renderLlmRow(): void {
   const missing = models.notOnServer(e);
   $<HTMLElement>("llm_dl_missing").hidden = !e || e.installed || busy || !missing;
   const chip = $<HTMLElement>("llm_dl_chip");
-  chip.hidden = !e || !e.installed || busy;
-  chip.textContent = inUse ? "In use" : "Installed";
-  chip.className = `fl-badge fl-badge-${inUse ? "success" : "light"}`;
+  const c = llmModelChip({ installed: Boolean(e?.installed), inUse, busy });
+  chip.hidden = !c;
+  if (c) {
+    chip.textContent = c.text;
+    chip.className = `fl-badge fl-badge-${c.kind}`;
+  }
   start.hidden = !e || e.installed || busy || !models.canStart(e);
   start.disabled = models.busy();
   if (e) start.textContent = `Download ${mb(e.size)}…`;

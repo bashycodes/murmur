@@ -80,6 +80,7 @@
     "allow-dev-or-set-stt",
     "allow-dev-or-set-cleanup",
     "allow-dev-or-set-custom-cleanup",
+    "allow-dev-or-set-cleanup-timeouts",
     "allow-dev-cleanup-set-engines",
     "allow-dev-meeting-routes-set",
     "allow-dev-or-set-privacy",

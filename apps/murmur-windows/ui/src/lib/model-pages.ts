@@ -55,6 +55,16 @@ export function pcModelChip(o: {
   return o.entry ? chip("Installed", "light") : chip("", "light");
 }
 
+/**
+ * The chip next to AI cleanup's "This PC model": shown only for a model
+ * that is here and not downloading ("In use" when cleanup loads it); a
+ * model not here yet gets Download / Import buttons instead (null).
+ */
+export function llmModelChip(o: { installed: boolean; inUse: boolean; busy: boolean }): PcModelChip | null {
+  if (!o.installed || o.busy) return null;
+  return o.inUse ? { text: "In use", kind: "success", download: false } : { text: "Installed", kind: "light", download: false };
+}
+
 /** Levels that run no AI model (D27): Verbatim and Rules only. */
 export const noAiLevel = (level: string): boolean => level === "verbatim" || level === "none";
 

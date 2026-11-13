@@ -16,7 +16,7 @@ import { withEngine } from "../lib/cleanup-order.js";
 import { cloudTimeout, noAiLevel, rulesAfterLevel, seconds, skippedWarning, timeoutNote } from "../lib/model-pages.js";
 import type { CleanupEngine, CleanupRoute, CleanupStatus, CloudProvider, OrView } from "../lib/types.js";
 import { views } from "../lib/views.js";
-import { cleanupTarget, showOr } from "./openrouter.js";
+import { cleanupTarget, setCloudTimeouts, showOr } from "./openrouter.js";
 
 type LlmStatus =
   | { state: "off" }
@@ -257,30 +257,25 @@ function showLevelState(): void {
 }
 
 /** The cloud engine's own time limit and provider (null: no cloud cleanup in this build). */
-function cloudLimit(): { provider: CloudProvider; id: string; ms: number; on: boolean } | null {
+function cloudLimit(): { provider: CloudProvider; ms: number; on: boolean } | null {
   const v = views.or;
   if (!v?.supported) return null;
   const custom = v.cleanup.provider === "custom";
   return {
     provider: v.cleanup.provider,
-    id: custom ? "cu_timeout_ms" : "or_cleanup_timeout_ms",
     ms: custom ? v.cleanup.custom.timeout_ms : v.cleanup.timeout_ms,
     on: v.cleanup.allow,
   };
 }
 
-/** One "Give up after" for every engine: the cloud's limit follows it
- *  (features/openrouter.ts saves the hidden field it reads). */
+/** One "Give up after" for every engine: both cloud providers' limits
+ *  follow it (each within its range; only those two are saved). */
 function timeoutPicked(): void {
-  const c = cloudLimit();
+  const v = views.or;
   const ms = parseInt($<HTMLSelectElement>("llm_timeout_ms").value, 10);
-  if (!c || !Number.isFinite(ms)) return;
-  const want = cloudTimeout(c.provider, ms);
-  if (want === c.ms) return;
-  const sel = $<HTMLSelectElement>(c.id);
-  if (![...sel.options].some((o) => o.value === String(want))) sel.add(new Option(seconds(want), String(want)));
-  sel.value = String(want);
-  sel.dispatchEvent(new Event("change"));
+  if (!v?.supported || !Number.isFinite(ms)) return;
+  if (cloudTimeout("openrouter", ms) === v.cleanup.timeout_ms && cloudTimeout("custom", ms) === v.cleanup.custom.timeout_ms) return;
+  void setCloudTimeouts(ms);
 }
 
 /** "The cloud still waits …" while its limit differs from the one shown. */

@@ -42,8 +42,8 @@
   max-width: 100%;
 }
 
-/* The Advanced fold (Speech to text, AI cleanup): Your server's Advanced
-   group behind a ▸ title. */
+/* The Advanced fold (lib/markup.ts advanced(): Speech to text, AI cleanup,
+   Your server): a group behind a ▸ title. */
 details.lw-fold > summary {
   display: flex;
   align-items: center;

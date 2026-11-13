@@ -6,6 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   cloudTimeout,
+  llmModelChip,
   pcModelChip,
   pcModelEntry,
   rulesAfterLevel,
@@ -49,6 +50,13 @@ test("chip: a custom file shows only a problem", () => {
   assert.equal(pcModelChip({ status: "loading", canDownload: false, busy: false }).text, "");
   assert.equal(pcModelChip({ status: "missing", canDownload: false, busy: false }).kind, "destructive");
   assert.equal(pcModelChip({ status: "failed", canDownload: false, busy: false }).text, "Failed");
+});
+
+test("cleanup chip: In use or Installed for a model here; none while downloading or not here", () => {
+  assert.deepEqual(llmModelChip({ installed: true, inUse: true, busy: false }), { text: "In use", kind: "success", download: false });
+  assert.deepEqual(llmModelChip({ installed: true, inUse: false, busy: false }), { text: "Installed", kind: "light", download: false });
+  assert.equal(llmModelChip({ installed: true, inUse: true, busy: true }), null);
+  assert.equal(llmModelChip({ installed: false, inUse: false, busy: false }), null);
 });
 
 test("warning: an AI engine on at a level without AI is skipped", () => {

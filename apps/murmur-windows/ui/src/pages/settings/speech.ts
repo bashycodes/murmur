@@ -148,13 +148,13 @@ ${advanced(
     DOWNLOAD_ROW +
     row(
       "Model file",
-      "Empty = the default model.",
+      `Empty = the default. Your models folder: <code class="lw-mono" data-models-dir></code>`,
       `<input id="model_path" class="fl-input is-wide lw-mono-input" data-save="prefs" spellcheck="false" aria-label="Whisper model file" />${browseButton("model_path")}`,
       `data-engine="whisper"`,
     ) +
     row(
       "Model folder",
-      "Empty = the default model.",
+      `Empty = the default. Your models folder: <code class="lw-mono" data-models-dir></code>`,
       `<input id="parakeet_model_dir" class="fl-input is-wide lw-mono-input" data-save="prefs" spellcheck="false" aria-label="Parakeet model folder" />${browseButton("parakeet_model_dir")}`,
       `data-engine="parakeet"`,
     ),

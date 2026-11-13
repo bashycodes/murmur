@@ -296,7 +296,12 @@ function showCheck(c: DevCheck): void {
   for (const i of document.querySelectorAll<HTMLInputElement>("[data-dev-field]")) i.classList.remove("invalid");
   for (const e of c.errors) {
     const slot = document.querySelector<HTMLElement>(`[data-err="${e.field}"]`);
-    if (slot) slot.textContent = e.message;
+    if (slot) {
+      slot.textContent = e.message;
+      // A field in a closed Advanced fold: open it so the error is seen.
+      const fold = slot.closest("details");
+      if (fold) fold.open = true;
+    }
     $<HTMLInputElement>(`dev_${e.field}`)?.classList.add("invalid");
   }
   devValid = c.errors.length === 0;

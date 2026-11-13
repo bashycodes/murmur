@@ -97,6 +97,7 @@ fn main() {
             "dev_or_set_stt",
             "dev_or_set_cleanup",
             "dev_or_set_custom_cleanup",
+            "dev_or_set_cleanup_timeouts",
             "dev_cleanup_set_engines",
             "dev_meeting_routes_set",
             "dev_or_set_privacy",

@@ -13,7 +13,7 @@ import { moveShown, onMove, rankRows } from "../lib/ranked-list.js";
 import { withEngine } from "../lib/cleanup-order.js";
 import { cloudTimeout, noAiLevel, rulesAfterLevel, seconds, skippedWarning, timeoutNote } from "../lib/model-pages.js";
 import { views } from "../lib/views.js";
-import { cleanupTarget, showOr } from "./openrouter.js";
+import { cleanupTarget, setCloudTimeouts, showOr } from "./openrouter.js";
 /** What each cleanup level does (D27), with the design's example of what is pasted. */
 const LEVELS = {
     verbatim: [
@@ -251,26 +251,20 @@ function cloudLimit() {
     const custom = v.cleanup.provider === "custom";
     return {
         provider: v.cleanup.provider,
-        id: custom ? "cu_timeout_ms" : "or_cleanup_timeout_ms",
         ms: custom ? v.cleanup.custom.timeout_ms : v.cleanup.timeout_ms,
         on: v.cleanup.allow,
     };
 }
-/** One "Give up after" for every engine: the cloud's limit follows it
- *  (features/openrouter.ts saves the hidden field it reads). */
+/** One "Give up after" for every engine: both cloud providers' limits
+ *  follow it (each within its range; only those two are saved). */
 function timeoutPicked() {
-    const c = cloudLimit();
+    const v = views.or;
     const ms = parseInt($("llm_timeout_ms").value, 10);
-    if (!c || !Number.isFinite(ms))
+    if (!v?.supported || !Number.isFinite(ms))
         return;
-    const want = cloudTimeout(c.provider, ms);
-    if (want === c.ms)
+    if (cloudTimeout("openrouter", ms) === v.cleanup.timeout_ms && cloudTimeout("custom", ms) === v.cleanup.custom.timeout_ms)
         return;
-    const sel = $(c.id);
-    if (![...sel.options].some((o) => o.value === String(want)))
-        sel.add(new Option(seconds(want), String(want)));
-    sel.value = String(want);
-    sel.dispatchEvent(new Event("change"));
+    void setCloudTimeouts(ms);
 }
 /** "The cloud still waits …" while its limit differs from the one shown. */
 function showTimeoutNote() {

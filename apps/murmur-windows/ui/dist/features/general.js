@@ -399,6 +399,8 @@ export const general = {
         ]);
         defaults = { whisper: model.default_path, parakeet: model.default_parakeet_dir };
         showModel(model.status);
+        for (const c of document.querySelectorAll("[data-models-dir]"))
+            c.textContent = model.models_dir;
         $("model_path").placeholder = model.default_path;
         $("parakeet_model_dir").placeholder = model.default_parakeet_dir;
         const mic = $("microphone");

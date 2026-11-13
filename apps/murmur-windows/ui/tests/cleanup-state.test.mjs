@@ -25,16 +25,16 @@ const view = ({ keySet = true, baseUrl = "", model = "" } = {}) => ({
   cleanup: { custom: { base_url: baseUrl, model, host: "", key: { set: false, masked: "" } } },
 });
 
-test("off in Cleanup order with a key saved: says it is off, offers to turn it on", () => {
+test("off under Engines with a key saved: says it is off, offers to turn it on", () => {
   // The router reports the D28 code whenever cleanup is not wanted.
   const l = cleanupBlockedLine(status({ enabled: false, blocked: "cloud_cleanup_not_configured" }), view());
   assert.ok(l);
-  assert.match(l.text, /off in Cleanup order/);
+  assert.match(l.text, /off under Engines/);
   assert.doesNotMatch(l.text, /cloud_cleanup_not_configured|key/);
   assert.equal(l.turnOn, true);
 });
 
-test("on in Cleanup order but no key: asks for a key, no turn-on offer", () => {
+test("on under Engines but no key: asks for a key, no turn-on offer", () => {
   const l = cleanupBlockedLine(status({ blocked: "cloud_cleanup_not_configured" }), view({ keySet: false }));
   assert.ok(l);
   assert.match(l.text, /save an OpenRouter key/);
@@ -64,10 +64,10 @@ test("custom server without a model: asks for one", () => {
   assert.equal(l.text, "Not used: pick a model.");
 });
 
-test("the Cleanup order switch wins over any other block", () => {
+test("the Engines switch wins over any other block", () => {
   for (const blocked of ["cloud_cleanup_not_configured", "budget_exceeded", "circuit_open"]) {
     const l = cleanupBlockedLine(status({ enabled: false, consent: false, blocked }), view({ keySet: false }));
-    assert.match(l.text, /off in Cleanup order/, blocked);
+    assert.match(l.text, /off under Engines/, blocked);
     assert.equal(l.turnOn, true);
   }
 });

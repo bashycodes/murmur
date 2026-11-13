@@ -82,6 +82,6 @@ ${advanced(HEBREW_ROW +
         row("Use dictionary words when listening", "Better at names; uses about 0.6 GB more memory.", toggle("dev_parakeet_decoding", "Use dictionary words when listening"), `data-needs="dev" id="dict_words_row"`) +
         SOURCE_ROW +
         DOWNLOAD_ROW +
-        row("Model file", "Empty = the default model.", `<input id="model_path" class="fl-input is-wide lw-mono-input" data-save="prefs" spellcheck="false" aria-label="Whisper model file" />${browseButton("model_path")}`, `data-engine="whisper"`) +
-        row("Model folder", "Empty = the default model.", `<input id="parakeet_model_dir" class="fl-input is-wide lw-mono-input" data-save="prefs" spellcheck="false" aria-label="Parakeet model folder" />${browseButton("parakeet_model_dir")}`, `data-engine="parakeet"`), `id="stt_advanced" data-needs="local"`)}`,
+        row("Model file", `Empty = the default. Your models folder: <code class="lw-mono" data-models-dir></code>`, `<input id="model_path" class="fl-input is-wide lw-mono-input" data-save="prefs" spellcheck="false" aria-label="Whisper model file" />${browseButton("model_path")}`, `data-engine="whisper"`) +
+        row("Model folder", `Empty = the default. Your models folder: <code class="lw-mono" data-models-dir></code>`, `<input id="parakeet_model_dir" class="fl-input is-wide lw-mono-input" data-save="prefs" spellcheck="false" aria-label="Parakeet model folder" />${browseButton("parakeet_model_dir")}`, `data-engine="parakeet"`), `id="stt_advanced" data-needs="local"`)}`,
 };

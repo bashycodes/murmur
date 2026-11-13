@@ -276,6 +276,38 @@ pub struct CustomCleanupForm {
     pub stt_model: Option<String>,
 }
 
+/// `dev_or_set_cleanup_timeouts`: the AI cleanup page's one "Give up after",
+/// as each cloud provider's own limit (each within its range).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(default)]
+pub struct CleanupTimeoutsForm {
+    /// i64 so 0 or 99999 reach validation instead of a parse error.
+    pub openrouter_ms: i64,
+    pub custom_ms: i64,
+}
+
+/// Only the two cloud cleanup time limits: the provider, the custom
+/// server's address and model, the switches and every consent are kept.
+pub fn apply_cleanup_timeouts(
+    dev: &mut DevSettings,
+    f: &CleanupTimeoutsForm,
+) -> Result<(), String> {
+    for ((lo, hi), ms) in [
+        (CLEANUP_TIMEOUT_RANGE_MS, f.openrouter_ms),
+        (CUSTOM_CLEANUP_TIMEOUT_RANGE_MS, f.custom_ms),
+    ] {
+        if !(lo as i64..=hi as i64).contains(&ms) {
+            return Err(format!("Cleanup time limit must be {lo}-{hi} ms"));
+        }
+    }
+    let mut next = dev.clone();
+    next.cloud.openrouter.cleanup.timeout_ms = f.openrouter_ms as u64;
+    next.cloud.custom_cleanup.timeout_ms = f.custom_ms as u64;
+    check(&next)?;
+    *dev = next;
+    Ok(())
+}
+
 /// `""` or an ISO-639-1/-3 code (`en`, `de`, `yue`).
 fn normalize_language(raw: &str) -> Result<String, String> {
     let l = raw.trim().to_ascii_lowercase();
@@ -1110,6 +1142,35 @@ mod tests {
         f.timeout_ms = 30_000;
         apply_custom_cleanup(&mut d, &f, 5).unwrap();
         assert_eq!(d.cloud.custom_cleanup.timeout_ms, 30_000);
+    }
+
+    #[test]
+    fn cleanup_timeouts_change_only_the_two_limits() {
+        let mut d = dev();
+        apply_custom_cleanup(
+            &mut d,
+            &custom("custom", "http://10.0.0.5:4000", "m", false),
+            5,
+        )
+        .unwrap();
+        let before = d.clone();
+        for (or, cu) in [(799, 4000), (8001, 4000), (2500, 799), (2500, 30_001)] {
+            let f = CleanupTimeoutsForm {
+                openrouter_ms: or,
+                custom_ms: cu,
+            };
+            assert!(apply_cleanup_timeouts(&mut d, &f).is_err(), "{or} {cu}");
+        }
+        assert_eq!(d, before);
+        let f = CleanupTimeoutsForm {
+            openrouter_ms: 8000,
+            custom_ms: 15_000,
+        };
+        apply_cleanup_timeouts(&mut d, &f).unwrap();
+        let mut want = before;
+        want.cloud.openrouter.cleanup.timeout_ms = 8000;
+        want.cloud.custom_cleanup.timeout_ms = 15_000;
+        assert_eq!(d, want);
     }
 
     #[test]

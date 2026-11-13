@@ -24,7 +24,16 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Changed
 
-- **Windows: Speech to text and AI cleanup settings are shorter.** Each page shows its engines, a "This PC model" picker with its status (Ready, Installed, or a Download button) and its main switches; the rest is under a closed **Advanced** fold: on Speech to text the Hebrew model, Keep model loaded, dictionary words, Download from, other models and the model file; on AI cleanup Give up after, Use text on screen, Also send to the cloud, Formatting rules first and the model file. **Give up after** is now one time for every engine: picking it also sets the cloud's own limit, within that provider's range. Cleanup models are no longer listed on Speech to text, the server's library moved to Settings → Your server → **Models on your server**, and the cleanup Engine library field moved to Settings → Developer. With an AI engine on at Verbatim or Rules only, AI cleanup says "AI engines are skipped at …". Going from Verbatim back to an AI level turns the formatting rules back on. Model pickers no longer get cut off in a narrow window.
+- **Windows: Speech to text and AI cleanup show only the main settings.** Each page shows its engines, a **This PC model** picker with its status (Ready, Installed, In use, or a Download button) and its main switches. Everything else is in a closed **Advanced** fold, and every helper text is one line.
+- **Windows: Speech to text → Advanced** holds the Hebrew model, Keep model loaded, dictionary words, Download from, other models and the model file or folder. Cleanup models are no longer listed on this page.
+- **Windows: AI cleanup → Advanced** holds Give up after, Use text on screen, Also send to the cloud, Formatting rules first and the model file.
+- **Windows: one Give up after for every cleanup engine.** Picking a time also sets the OpenRouter and LiteLLM limits, each within its provider's range, and changes nothing else.
+- **Windows: the server's model library moved** to Settings → Your server → **Models on your server**.
+- **Windows: Engine library** (the cleanup engine DLL) moved to Settings → Developer.
+- **Windows: Your server → Advanced is a closed fold too.** It opens by itself when one of its fields has an error.
+- **Windows: AI cleanup says "AI engines are skipped at …"** when an AI engine is on at Verbatim or Rules only.
+- **Windows: going from Verbatim back to an AI level turns the formatting rules back on.**
+- **Windows: model pickers no longer get cut off** in a narrow window.
 
 ### Fixed
 

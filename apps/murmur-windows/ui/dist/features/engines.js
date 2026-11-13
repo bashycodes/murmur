@@ -283,8 +283,13 @@ function showCheck(c) {
         i.classList.remove("invalid");
     for (const e of c.errors) {
         const slot = document.querySelector(`[data-err="${e.field}"]`);
-        if (slot)
+        if (slot) {
             slot.textContent = e.message;
+            // A field in a closed Advanced fold: open it so the error is seen.
+            const fold = slot.closest("details");
+            if (fold)
+                fold.open = true;
+        }
         $(`dev_${e.field}`)?.classList.add("invalid");
     }
     devValid = c.errors.length === 0;
