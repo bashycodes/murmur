@@ -470,6 +470,10 @@ function pickCleanup(c) {
     st.cleanup = c;
     st.cleanupPicked = true;
     renderCleanup();
+    // The consent (and what's missing) sits under the options: bring it into
+    // view, or at 1040 x 675 it stays below the footer unseen.
+    if (c === "cloud")
+        $("ob_or_detail").scrollIntoView({ block: "nearest" });
 }
 function llmLine(s) {
     switch (s?.state) {

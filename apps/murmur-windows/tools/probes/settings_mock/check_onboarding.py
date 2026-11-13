@@ -325,7 +325,8 @@ def layout(pg, scheme):
     for c in ("rules", "pc", "cloud", "server", "rules"):
         pg.click(f"[data-ob-cleanup={c}]")
         pg.wait_for_timeout(50)
-        tops.append(round(box(pg, rules)["y"]))
+        # In the scrolled content: picking Cloud scrolls to its consent on purpose.
+        tops.append(round(box(pg, rules)["y"] + pg.eval_on_selector("[data-ob-step=cleanup] [data-ob-scroll]", "e => e.scrollTop")))
     check(tag + "step 4 options stay put across picks", len(set(tops)) == 1, str(tops))
     check(tag + "one selection style", ring("[data-ob-cleanup].is-on") == card_ring, ring("[data-ob-cleanup].is-on"))
     for c in ("pc", "cloud"):
@@ -334,14 +335,18 @@ def layout(pg, scheme):
         over = box(pg, "[data-ob-step=cleanup] .lw-ob-head .fl-overline")
         foot = box(pg, "[data-ob-step=cleanup] .lw-ob-foot")
         scroll = box(pg, "[data-ob-step=cleanup] [data-ob-scroll]")
-        check(tag + f"{c}: step counter on screen", over["y"] >= 0 and over["b"] <= foot["y"], str(over))
+        if c == "pc":  # picking Cloud scrolls down to its consent (below)
+            check(tag + f"{c}: step counter on screen", over["y"] >= 0 and over["b"] <= foot["y"], str(over))
         check(tag + f"{c}: footer below the scrolling content", scroll["b"] <= foot["y"] + 1 and foot["b"] <= pg.viewport_size["height"], f"{scroll} {foot}")
         shot(f"4-{c}")
-    pg.eval_on_selector("#ob_or_detail", "e => e.scrollIntoView({ block: 'end' })")
-    pg.wait_for_timeout(50)
+    # No manual scroll: picking Cloud must bring the consent and the
+    # missing-key line fully into view, above the footer.
     consent = box(pg, "#ob_or_detail")
+    missing = box(pg, "#ob_cloud_missing")
     foot = box(pg, "[data-ob-step=cleanup] .lw-ob-foot")
-    check(tag + "Continue never covers the consent", consent["b"] <= foot["y"], f"{consent} {foot}")
+    scroll = box(pg, "[data-ob-step=cleanup] [data-ob-scroll]")
+    check(tag + "picking Cloud shows the consent fully", consent["y"] >= scroll["y"] and consent["b"] <= foot["y"], f"{consent} {foot}")
+    check(tag + "and the missing-key line", missing["y"] >= scroll["y"] and missing["b"] <= foot["y"], f"{missing} {foot}")
     check(tag + "no key yet: says Cloud waits for one", pg.is_visible("#ob_cloud_missing") and "add a key in Settings → Cloud" in pg.inner_text("#ob_cloud_missing"), pg.inner_text("#ob_cloud_missing"))
 
 

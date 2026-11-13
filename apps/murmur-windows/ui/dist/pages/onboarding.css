@@ -53,6 +53,8 @@ body.lw-ob-open .lw-settings {
   min-height: 0;
   overflow-y: auto;
   scrollbar-gutter: stable;
+  /* Room between something scrolled into view and the footer bar. */
+  scroll-padding-bottom: 16px;
 }
 .lw-ob-frame {
   box-sizing: border-box;
