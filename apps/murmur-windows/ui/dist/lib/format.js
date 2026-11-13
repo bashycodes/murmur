@@ -42,3 +42,14 @@ export function cleanupMonthCost(st) {
 export function usd(v) {
     return v == null ? "" : ` · $${v.toFixed(v < 0.01 ? 5 : 4)}`;
 }
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/**
+ * One date format for tables: "11 Nov 2026, 22:51" in local time, today or
+ * not, so a column never mixes "12:04" with full dates.
+ */
+export function dateTime(ms) {
+    const d = new Date(ms);
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}, ${hh}:${mm}`;
+}

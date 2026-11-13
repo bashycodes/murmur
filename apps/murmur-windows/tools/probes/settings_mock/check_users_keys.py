@@ -5,7 +5,9 @@ Probe (Playwright + its bundled Chromium):
     python3 tools/probes/settings_mock/check_users_keys.py [port]
 The page shows only when this app's saved server key is an admin key
 (`admin_status`): nav item + a "Manage keys" group on Your server. Covers the
-key list (usage, badges, revoked rows, the last admin key's Revoke disabled),
+key list (Name / Last used / Dictations / Revoke, the build string
+and usage on hover, revoked keys folded under "Show revoked (N)", no
+horizontal scroll at 1040px, the solid header under the close button, the last admin key's Revoke disabled),
 create (empty / bad / duplicate names refused; the secret shown once in a copy
 box, copied through `clipboard_copy`, gone from the page after Done or Esc),
 revoke with a confirm (cancel = no call), revoking this app's own key (warning,
@@ -13,6 +15,7 @@ then the page goes away), a non-admin key (?admin=0) and an unreachable server
 (?admin=down). Writes shots/keys-*.png (gitignored).
 """
 import pathlib
+import re
 import sys
 
 from playwright.sync_api import sync_playwright
@@ -65,20 +68,38 @@ with sync_playwright() as p:
         pg.wait_for_timeout(300)
         check(tag + "Manage keys opens the page", pg.is_visible("#page_settings-keys") and len(calls(pg, "admin_list_keys")) == 1)
         r = rows(pg)
-        check(tag + "three keys, revoked last", len(r) == 3 and "old-tablet" in r[2], str(r))
+        check(tag + "two active keys listed", len(r) == 2 and "owner" in r[0] and "phone" in r[1], str(r))
         owner = pg.inner_text(row_of(pg, "owner"))
-        check(tag + "owner row: badges and usage", "admin" in owner and "this app" in owner and "412" in owner and "66.0" in owner and "murmur-windows 0.12.0" in owner, owner)
-        dl = pg.locator(row_of(pg, "owner") + " td.num").nth(2)
-        check(tag + "owner row: downloads, bytes on hover", dl.inner_text().strip() == "3" and dl.get_attribute("title") == "1620.0 MB", dl.inner_text())
+        check(tag + "owner row: badges and dictations", "admin" in owner and "this app" in owner and "412" in owner, owner)
+        tip = pg.get_attribute(row_of(pg, "owner") + " td.name", "title") or ""
+        check(tag + "build string and usage on hover, not in the row", tip.startswith("murmur-windows 0.12.0") and "Audio 66.0 min" in tip and "1620.0 MB" in tip and "murmur-windows" not in owner, tip)
         heads = pg.eval_on_selector_all("#keys_table thead th", "hs => hs.map(h => h.innerText.trim())")
-        check(tag + "last used and last connected columns", heads[2:4] == ["Last used", "Last connected"], str(heads))
+        check(tag + "columns: Name, Last used, Dictations, Revoke", heads == ["Name", "Last used", "Dictations", ""] and pg.get_attribute("#keys_table thead th.act", "aria-label") == "Revoke", str(heads))
         cells = lambda n: pg.eval_on_selector_all(row_of(pg, n) + " td", "ts => ts.map(t => t.innerText.trim())")
-        check(tag + "owner: used and connected times", all(c not in ("never", "unknown") for c in cells("owner")[2:4]) and cells("owner")[2] != cells("owner")[3], str(cells("owner")))
-        old = cells("old-tablet")
-        check(tag + "pre-split key: last used unknown, last_seen as connected", old[2] == "unknown" and old[3] not in ("never", "unknown"), str(old))
-        check(tag + "table fits the page", pg.evaluate("() => { const t = document.querySelector('#keys_rows').closest('table'); return t.scrollWidth <= t.parentElement.clientWidth + 1; }"))
-        check(tag + "revoked row: no button, says revoked", pg.locator(row_of(pg, "old-tablet") + " button").count() == 0 and "Revoked" in pg.inner_text(row_of(pg, "old-tablet")) and "is-revoked" in pg.get_attribute(row_of(pg, "old-tablet"), "class"))
+        date_re = r"^\d{1,2} [A-Z][a-z]{2} \d{4}, \d{2}:\d{2}$"
+        check(tag + "owner: last used in the one date format", re.match(date_re, cells("owner")[1]) is not None, str(cells("owner")))
+        # Revoked keys fold away under "Show revoked (N)".
+        check(tag + "revoked folded: summary with count, closed", pg.inner_text("#keys_revoked_sum") == "Show revoked (1)" and not pg.is_visible("#keys_revoked_rows tr") and not pg.evaluate("document.getElementById('keys_revoked').open"))
+        pg.click("#keys_revoked_sum")
+        pg.wait_for_timeout(100)
+        old = pg.eval_on_selector_all("#keys_revoked_rows tr td", "ts => ts.map(t => t.innerText.trim())")
+        check(tag + "pre-split revoked key: last used a dash, revoked date, no button", old[0] == "old-tablet" and old[1] == "—" and re.match(date_re, old[3]) is not None and pg.locator("#keys_revoked_rows button").count() == 0, str(old))
         check(tag + "last admin: Revoke disabled with a reason", pg.is_disabled(row_of(pg, "owner") + " button") and "last admin" in (pg.get_attribute(row_of(pg, "owner") + " button", "title") or ""))
+        # At about 1040px the settings body has no horizontal scroll and names don't break mid-word.
+        pg.set_viewport_size({"width": 1040, "height": 760})
+        pg.wait_for_timeout(150)
+        check(tag + "1040px: no horizontal scroll", pg.evaluate("() => { const b = document.getElementById('settings_body'); return b.scrollWidth <= b.clientWidth; }"), pg.evaluate("() => { const b = document.getElementById('settings_body'); return b.scrollWidth + '>' + b.clientWidth; }"))
+        check(tag + "1040px: names on one line", pg.evaluate("() => [...document.querySelectorAll('#page_settings-keys .lw-key-name')].every(n => n.getClientRects().length === 1)"))
+        # The solid header: scrolled content passes under it, not under the close button.
+        pg.evaluate("document.getElementById('settings_body').scrollTop = 200")
+        pg.wait_for_timeout(100)
+        under = pg.evaluate("() => { const r = document.getElementById('settings_close').getBoundingClientRect(); const e = document.elementFromPoint(r.left - 4, r.top + r.height / 2); return e === document.getElementById('settings_body'); }")
+        check(tag + "scrolled: the header covers the strip by the close button", under)
+        if scheme == "light":
+            pg.screenshot(path=str(out / "keys-1040-scrolled.png"))
+        pg.evaluate("document.getElementById('settings_body').scrollTop = 0")
+        pg.set_viewport_size({"width": 1280, "height": 900})
+        pg.wait_for_timeout(100)
         if scheme == "light":
             pg.locator("#page_settings-keys").screenshot(path=str(out / "keys-page.png"))
         else:
@@ -115,7 +136,7 @@ with sync_playwright() as p:
         pg.wait_for_timeout(150)
         html = pg.evaluate("document.documentElement.outerHTML + [...document.querySelectorAll('input')].map(i => i.value).join(' ')")
         check(tag + "Done: secret gone from the page", not pg.is_visible("#keys_secret_dlg") and SECRET not in html)
-        check(tag + "form cleared, list reloaded", pg.input_value("#keys_name") == "" and not pg.is_checked("#keys_admin") and len(rows(pg)) == 4)
+        check(tag + "form cleared, list reloaded", pg.input_value("#keys_name") == "" and not pg.is_checked("#keys_admin") and len(rows(pg)) == 3)
         check(tag + "two admins: owner's Revoke enabled", pg.is_enabled(row_of(pg, "owner") + " button"))
         # Esc closes the secret box too, and still drops the secret.
         pg.fill("#keys_name", "desk")
@@ -137,7 +158,7 @@ with sync_playwright() as p:
         pg.click("#keys_revoke_ok")
         pg.wait_for_timeout(250)
         check(tag + "revoked by id", calls(pg, "admin_revoke_key") == [{"id": "k-1b2c3d4e5f607182"}], str(calls(pg, "admin_revoke_key")))
-        check(tag + "phone now revoked", "is-revoked" in pg.get_attribute(row_of(pg, "phone"), "class") and "Revoked phone" in pg.inner_text("#keys_status"))
+        check(tag + "phone moves to the revoked list", pg.locator(row_of(pg, "phone")).count() == 0 and pg.locator("#keys_revoked_rows tr:has(.lw-key-name:text-is('phone'))").count() == 1 and pg.inner_text("#keys_revoked_sum") == "Show revoked (2)" and "Revoked phone" in pg.inner_text("#keys_status"))
 
         # --- revoking this app's own key
         pg.click(row_of(pg, "owner") + " button")
