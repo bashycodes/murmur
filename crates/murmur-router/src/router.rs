@@ -1062,30 +1062,31 @@ impl Router {
     /// names (D64). Additive.
     pub fn translate(
         &self,
-        text: &str,
-        source: Option<&str>,
-        target: &str,
-        dictionary: &murmur_core::dictionary::Dictionary,
+        req: &murmur_core::translate::Request,
         timeout: std::time::Duration,
-    ) -> Result<String, murmur_core::translate::TranslateError> {
+    ) -> Result<murmur_core::translate::Translation, murmur_core::translate::TranslateError> {
+        let base = self.one_off_llm(&req.text, |b| self.cleanup_cleaner(b));
+        murmur_core::translate::run(self.cleanup_cleaner(base), req, timeout)
+    }
+
+    /// The on-device LLM for a one-off request outside a dictation
+    /// (Command Mode, translation): the warm local engine's; a cold
+    /// on-demand engine (D24) is loaded only when `route(None)` (the route
+    /// without it) has nothing to run on and there is `input` to work on.
+    fn one_off_llm(
+        &self,
+        input: &str,
+        route: impl Fn(Option<Arc<dyn Cleaner>>) -> Option<Arc<dyn Cleaner>>,
+    ) -> Option<Arc<dyn Cleaner>> {
         let (warm, cold) = {
             let st = self.state.lk();
             (st.warm_local(), st.cold_local())
         };
-        let mut base = warm.and_then(|l| l.llm_cleaner());
-        if base.is_none() && self.cleanup_cleaner(None).is_none() && !text.trim().is_empty() {
-            if let Some(z) = cold {
-                base = z.ensure().0.ok().and_then(|l| l.llm_cleaner());
-            }
+        let base = warm.and_then(|l| l.llm_cleaner());
+        if base.is_some() || route(None).is_some() || input.trim().is_empty() {
+            return base;
         }
-        murmur_core::translate::run(
-            self.cleanup_cleaner(base),
-            text,
-            source,
-            target,
-            dictionary,
-            timeout,
-        )
+        cold.and_then(|z| z.ensure().0.ok().and_then(|l| l.llm_cleaner()))
     }
 
     /// Load 3: hold the warm local engine's on-device LLM for the next
@@ -1110,17 +1111,7 @@ impl Router {
         selected: Option<&str>,
         timeout: std::time::Duration,
     ) -> Result<murmur_core::command::CommandOutput, murmur_core::command::CommandError> {
-        let (warm, cold) = {
-            let st = self.state.lk();
-            (st.warm_local(), st.cold_local())
-        };
-        let mut base = warm.and_then(|l| l.llm_cleaner());
-        if base.is_none() && self.command_cleaner(None).is_none() && !instruction.trim().is_empty()
-        {
-            if let Some(z) = cold {
-                base = z.ensure().0.ok().and_then(|l| l.llm_cleaner());
-            }
-        }
+        let base = self.one_off_llm(instruction, |b| self.command_cleaner(b));
         murmur_core::command::run(self.command_cleaner(base), instruction, selected, timeout)
     }
 

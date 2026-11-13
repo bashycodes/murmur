@@ -826,8 +826,10 @@ pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeCommand(
 }
 
 /// Translation (D90, JNI_CONTRACT.md "Translation"): blocking, off Main.
-/// `request` = `{"text","source"?,"target","dictionary"?}`. Never null:
-/// failures are `{"ok":false,"kind":…,"error":…}` JSON.
+/// `request` = `{"text","source"?,"target"?,"installed"?,"dictionary"?}`
+/// (`target` missing or blank = automatic: the first of `installed` that is
+/// not the dictation's language). Never null: `{"ok":true,"text","target",
+/// "on_device"}`, or a failure as `{"ok":false,"kind":…,"error":…}` JSON.
 #[no_mangle]
 pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeTranslate(
     mut env: JNIEnv,

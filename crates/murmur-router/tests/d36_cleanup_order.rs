@@ -891,19 +891,31 @@ fn no_engine_on_means_no_summary() {
 const HE_IN: &str = "תזכיר לי לקנות חלב מחר בבוקר";
 
 fn translate(k: &Rig) -> Result<String, murmur_core::translate::TranslateError> {
-    k.router.translate(
-        HE_IN,
-        Some("he"),
-        "en",
-        &Default::default(),
-        Duration::from_secs(5),
-    )
+    translated(k).map(|t| t.text)
+}
+
+fn translated(
+    k: &Rig,
+) -> Result<murmur_core::translate::Translation, murmur_core::translate::TranslateError> {
+    let req = murmur_core::translate::Request {
+        text: HE_IN.into(),
+        source: Some("he".into()),
+        target: Some("en".into()),
+        ..Default::default()
+    };
+    k.router.translate(&req, Duration::from_secs(5))
 }
 
 #[test]
 fn a_translation_goes_to_the_server_before_the_local_model() {
     let k = rig(cfg(&[L, S, C]));
-    assert_eq!(translate(&k).unwrap(), SERVER_OUT);
+    // A Hebrew dictation, an English answer from the server: D65's guards
+    // (script kept, no foreign words added) would refuse it for a cleanup.
+    let t = translated(&k).unwrap();
+    assert_eq!(
+        (t.text.as_str(), t.target.as_str(), t.on_device),
+        (SERVER_OUT, "en", false)
+    );
     let req = k.server.cleans.lock().unwrap()[0].clone();
     assert_eq!(req.task, CleanTask::Translate);
     assert_eq!(req.target_language.as_deref(), Some("en"));
@@ -933,11 +945,13 @@ fn translations_keep_the_cloud_consent_gate() {
     let mut c = cfg(&[C, L]);
     c.cloud.openrouter.cleanup.consent_at_ms = 0;
     let k = rig(c.clone());
-    let r = translate(&k);
+    let r = translated(&k);
     assert_eq!(k.cloud_calls(), 0, "nothing sent without consent");
     assert_eq!(k.local_calls(), 1);
-    // The fake local model answers in English: used.
-    assert_eq!(r.unwrap(), LOCAL_OUT);
+    // The fake local model answers in English: used, and flagged as the
+    // on-device fallback (the shells say the quality is lower).
+    let t = r.unwrap();
+    assert_eq!((t.text.as_str(), t.on_device), (LOCAL_OUT, true));
     // Cloud alone without consent: refused, nothing sent.
     c.cleanup_order = vec![C];
     let k = rig(c);

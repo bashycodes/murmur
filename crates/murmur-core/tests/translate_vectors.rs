@@ -4,7 +4,7 @@
 //! so the JNI wire shape and the pill texts can't drift from the Kotlin side
 //! unnoticed. Every `TranslateError` kind is covered.
 
-use murmur_core::translate::{result_json, TranslateError};
+use murmur_core::translate::{result_json, TranslateError, Translation};
 use serde_json::Value;
 
 fn fixture() -> Value {
@@ -15,9 +15,13 @@ fn fixture() -> Value {
     serde_json::from_str(&std::fs::read_to_string(p).unwrap()).unwrap()
 }
 
-fn input(v: &Value) -> Result<String, TranslateError> {
+fn input(v: &Value) -> Result<Translation, TranslateError> {
     if let Some(t) = v.get("ok") {
-        return Ok(t.as_str().unwrap().to_string());
+        return Ok(Translation {
+            text: t.as_str().unwrap().to_string(),
+            target: v["target"].as_str().unwrap().to_string(),
+            on_device: v["on_device"].as_bool().unwrap(),
+        });
     }
     let num = |k: &str| v[k].as_u64().unwrap();
     Err(match v["err"].as_str().unwrap() {

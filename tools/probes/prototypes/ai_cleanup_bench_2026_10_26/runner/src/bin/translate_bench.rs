@@ -15,7 +15,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use murmur_core::cleanup::Cleaner;
-use murmur_core::dictionary::Dictionary;
 use murmur_core::script_lock;
 use murmur_core::translate;
 use serde_json::{json, Value};
@@ -59,7 +58,6 @@ fn main() {
     let cases = std::fs::read_to_string(arg("--cases").expect("--cases")).unwrap();
     let timeout = Duration::from_millis(arg("--timeout-ms").map_or(25_000, |t| t.parse().unwrap()));
     let cl = cleaner(timeout);
-    let dict = Dictionary::default();
     let (mut pass, mut n) = (0, 0);
     for line in cases.lines().filter(|l| !l.trim().is_empty()) {
         let c: Value = serde_json::from_str(line).unwrap();
@@ -69,10 +67,16 @@ fn main() {
             c["target"].as_str().unwrap(),
         );
         let t0 = Instant::now();
-        let r = translate::run(Some(cl.clone()), text, source, target, &dict, timeout);
+        let req = translate::Request {
+            text: text.into(),
+            source: source.map(str::to_string),
+            target: Some(target.into()),
+            ..Default::default()
+        };
+        let r = translate::run(Some(cl.clone()), &req, timeout);
         let ms = t0.elapsed().as_millis();
         let (answer, err) = match &r {
-            Ok(t) => (t.as_str(), None),
+            Ok(t) => (t.text.as_str(), None),
             Err(e) => ("", Some(e.kind())),
         };
         let want = translate::script_of(target);

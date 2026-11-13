@@ -22,6 +22,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use serde::{Deserialize, Serialize};
+
 use crate::cleanup::{self, terms, CleanOutcome, CleanPrompt, CleanRequest, CleanTask, Cleaner};
 use crate::cleanup::{FallbackReason, PromptScope};
 use crate::config::{language_name, primary_language};
@@ -83,14 +85,56 @@ impl TranslateError {
     }
 }
 
-/// The wire shape of a translation's outcome (JNI `nativeTranslate`), the
-/// same as Command Mode's ([`crate::command::result_json`]):
-/// `{"ok":true,"text":…}` or `{"ok":false,"kind":…,"error":…}`. Pinned by
+/// What a shell asks to translate (JNI `nativeTranslate`'s request, the
+/// Windows controller's call): the dictation's `text` (spoken in `source`,
+/// when known) into `target`; `None` / blank = automatic, the first of the
+/// `installed` keyboard languages that is not the dictation's (D58,
+/// [`default_target`]). `dictionary` = the user's, for the terms the prompt
+/// names (D64).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Request {
+    pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+    pub installed: Vec<String>,
+    pub dictionary: Dictionary,
+}
+
+impl Request {
+    /// The language to translate into: the chosen one, else automatic.
+    pub fn resolved_target(&self) -> Option<String> {
+        self.target
+            .as_deref()
+            .and_then(primary_language)
+            .or_else(|| default_target(self.source.as_deref(), &self.text, &self.installed))
+    }
+}
+
+/// A translation to paste.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Translation {
+    pub text: String,
+    /// The language it is in (ISO 639-1).
+    pub target: String,
+    /// The on-device model answered (no server or cloud could): the shells
+    /// say the quality is lower.
+    pub on_device: bool,
+}
+
+/// The wire shape of a translation's outcome (JNI `nativeTranslate`), like
+/// Command Mode's ([`crate::command::result_json`]):
+/// `{"ok":true,"text":…,"target":…,"on_device":…}` or
+/// `{"ok":false,"kind":…,"error":…}`. Pinned by
 /// `fixtures/translate/translate_results.json`, which the Android shell's
 /// decoder is checked against too.
-pub fn result_json(r: &Result<String, TranslateError>) -> serde_json::Value {
+pub fn result_json(r: &Result<Translation, TranslateError>) -> serde_json::Value {
     match r {
-        Ok(text) => serde_json::json!({"ok": true, "text": text}),
+        Ok(t) => serde_json::json!({
+            "ok": true, "text": t.text, "target": t.target, "on_device": t.on_device,
+        }),
         Err(e) => serde_json::json!({"ok": false, "kind": e.kind(), "error": e.to_string()}),
     }
 }
@@ -152,7 +196,7 @@ pub fn build_prompt(
     target: &str,
     dictionary: &Dictionary,
 ) -> CleanPrompt {
-    let target = primary_language(target).unwrap_or_else(|| "en".into());
+    let target = primary_language(target).unwrap_or_else(|| target.to_string());
     let source = source.and_then(primary_language);
     let vocab = dictionary.vocabulary();
     let terms = terms::select_terms(&vocab, text, terms::MAX_PROMPT_TERMS).join(", ");
@@ -200,26 +244,19 @@ pub fn script_of(language: &str) -> Option<Script> {
 }
 
 /// D90 default target, from D58's keyboard languages: the first of
-/// `installed` (keyboard languages, in the system's order) whose language
-/// differs from the dictation's `source`. Without a known source, the
-/// text's script stands in for it (Hebrew letters: Hebrew, Latin: English).
-/// `None` when every installed language is the source's.
+/// `installed` (keyboard languages, in the system's order) that is not the
+/// dictation's language. Without a known `source`, the first one written in
+/// another script than `text` ([`script_of`]). `None` (no target: the shell
+/// asks to pick one) when there is no such language; never a guess.
 pub fn default_target(source: Option<&str>, text: &str, installed: &[String]) -> Option<String> {
-    let src = source
-        .and_then(primary_language)
-        .or_else(|| match script_lock::dominant(text) {
-            Some(Script::Hebrew) => Some("he".into()),
-            Some(Script::Latin) => Some("en".into()),
-            _ => None,
-        });
-    let mut seen = Vec::new();
-    for l in installed.iter().filter_map(|l| primary_language(l)) {
-        if Some(&l) != src.as_ref() && !seen.contains(&l) {
-            return Some(l);
+    let mut langs = installed.iter().filter_map(|l| primary_language(l));
+    match source.and_then(primary_language) {
+        Some(src) => langs.find(|l| *l != src),
+        None => {
+            let from = script_lock::dominant(text)?;
+            langs.find(|l| script_of(l).is_some_and(|s| s != from))
         }
-        seen.push(l);
     }
-    None
 }
 
 /// The answer is still in the text's own script while `target` is written
@@ -231,19 +268,15 @@ fn not_translated(text: &str, target: &str, answer: &str) -> bool {
     want != from && script_lock::dominant(answer) == Some(from)
 }
 
-/// Clean and translate `text` (spoken in `source`, when known) into
-/// `target` with `cleaner`, the user's cleanup route (`None` = no AI),
-/// under a hard `timeout`. Server and cloud hops go first
-/// ([`cleanup::off_device_first`]). Returns the text to paste.
+/// Clean and translate `req` with `cleaner`, the user's cleanup route
+/// (`None` = no AI), under a hard `timeout`. Server and cloud hops go first
+/// ([`cleanup::off_device_first`]).
 pub fn run(
     cleaner: Option<Arc<dyn Cleaner>>,
-    text: &str,
-    source: Option<&str>,
-    target: &str,
-    dictionary: &Dictionary,
+    req: &Request,
     timeout: Duration,
-) -> Result<String, TranslateError> {
-    let text = text.trim();
+) -> Result<Translation, TranslateError> {
+    let text = req.text.trim();
     if text.is_empty() {
         return Err(TranslateError::NoText);
     }
@@ -252,27 +285,29 @@ pub fn run(
             max: MAX_TEXT_CHARS,
         });
     }
-    let target = primary_language(target).ok_or(TranslateError::NoTarget)?;
+    let target = req.resolved_target().ok_or(TranslateError::NoTarget)?;
     let cl = cleaner
         .filter(|c| c.available())
         .ok_or(TranslateError::NoLlm)?;
     let cl = cleanup::off_device_first(&cl);
-    let prompt = build_prompt(text, source, &target, dictionary).with_timeout(HOP_TIMEOUT_MS);
-    let (outcome, _usage, _detail) =
+    let prompt = build_prompt(text, req.source.as_deref(), &target, &req.dictionary)
+        .with_timeout(HOP_TIMEOUT_MS);
+    let (outcome, usage, _detail) =
         cleanup::run_ai_cleanup_for(cl, prompt, text, timeout, Some(&target));
+    let timed_out = || TranslateError::Timeout {
+        secs: timeout.as_secs().max(1),
+    };
     match outcome {
         CleanOutcome::Formatted(t) if not_translated(text, &target, &t) => {
             Err(TranslateError::NotTranslated)
         }
-        CleanOutcome::Formatted(t) => Ok(t),
-        CleanOutcome::Fallback(FallbackReason::Timeout) => Err(TranslateError::Timeout {
-            secs: timeout.as_secs().max(1),
+        CleanOutcome::Formatted(text) => Ok(Translation {
+            text,
+            target,
+            on_device: usage.engine.as_deref() == Some("local"),
         }),
-        CleanOutcome::Fallback(FallbackReason::Error(e)) if e == "timeout" => {
-            Err(TranslateError::Timeout {
-                secs: timeout.as_secs().max(1),
-            })
-        }
+        CleanOutcome::Fallback(FallbackReason::Timeout) => Err(timed_out()),
+        CleanOutcome::Fallback(FallbackReason::Error(e)) if e == "timeout" => Err(timed_out()),
         CleanOutcome::Fallback(FallbackReason::Error(e)) => Err(TranslateError::Backend(e)),
         CleanOutcome::Fallback(FallbackReason::Empty | FallbackReason::LanguageChanged) => {
             Err(TranslateError::Empty)
@@ -322,22 +357,36 @@ mod tests {
     const HE: &str = "תזכיר לי לקנות חלב מחר בבוקר";
     const EN_OUT: &str = "Remind me to buy milk tomorrow morning.";
 
+    fn req(text: &str, source: Option<&str>, target: &str) -> Request {
+        Request {
+            text: text.into(),
+            source: source.map(str::to_string),
+            target: Some(target.into()),
+            ..Default::default()
+        }
+    }
+
     fn go(cl: Arc<dyn Cleaner>, text: &str, target: &str) -> Result<String, TranslateError> {
-        run(
-            Some(cl),
-            text,
-            None,
-            target,
-            &Dictionary::default(),
-            Duration::from_secs(5),
-        )
+        run(Some(cl), &req(text, None, target), Duration::from_secs(5)).map(|t| t.text)
     }
 
     #[test]
     fn a_hebrew_dictation_comes_back_in_english() {
-        // D65's script check would refuse this answer for a cleanup.
         let cl = Fixed::new("cloud", Ok(EN_OUT));
-        assert_eq!(go(cl.clone(), HE, "en").unwrap(), EN_OUT);
+        let t = run(
+            Some(cl.clone()),
+            &req(HE, None, "en"),
+            Duration::from_secs(5),
+        )
+        .unwrap();
+        assert_eq!(
+            t,
+            Translation {
+                text: EN_OUT.into(),
+                target: "en".into(),
+                on_device: false
+            }
+        );
         let p = &cl.seen.lock().unwrap()[0];
         assert!(
             p.user.starts_with("TARGET LANGUAGE: English\n"),
@@ -348,6 +397,65 @@ mod tests {
         let src = p.source.as_ref().unwrap();
         assert_eq!(src.task, CleanTask::Translate);
         assert_eq!(src.target_language.as_deref(), Some("en"));
+    }
+
+    /// D65's guards on a cleanup answer (the script kept, no foreign word
+    /// added) would refuse every answer here; a translation skips the whole
+    /// block, on the on-device model as through any other hop.
+    #[test]
+    fn the_language_guards_are_off_for_a_translation() {
+        for engine in ["local", "server"] {
+            // Hebrew → English: the script changes.
+            let cl = Fixed::new(engine, Ok(EN_OUT));
+            let t = run(Some(cl), &req(HE, Some("he"), "en"), Duration::from_secs(5)).unwrap();
+            assert_eq!(
+                (t.text.as_str(), t.on_device),
+                (EN_OUT, engine == "local"),
+                "{engine}"
+            );
+            // Hebrew → Yiddish: the same script, plus a Latin word the
+            // dictation does not have (D65's `added_foreign`).
+            let out = "דער Zoom טרעף איז מארגן";
+            let cl = Fixed::new(engine, Ok(out));
+            let t = run(Some(cl), &req(HE, Some("he"), "yi"), Duration::from_secs(5)).unwrap();
+            assert_eq!(t.text, out, "{engine}");
+        }
+        // The same answers as a cleanup: both guards refuse them.
+        for out in [EN_OUT, "תזכיר לי Zoom לקנות חלב מחר בבוקר"] {
+            let p = cleanup::build_prompt(
+                HE,
+                crate::config::CleanupLevel::Light,
+                crate::config::Style::Default,
+                &crate::config::FieldContext::default(),
+                &Dictionary::default(),
+            );
+            let (o, _, why) = cleanup::run_ai_cleanup_for(
+                Fixed::new("local", Ok(out)),
+                p,
+                HE,
+                Duration::from_secs(5),
+                Some("he"),
+            );
+            assert_eq!(
+                o,
+                CleanOutcome::Fallback(FallbackReason::LanguageChanged),
+                "{out}: {why:?}"
+            );
+        }
+    }
+
+    /// The server's side of the server hop (murmur-server's `clean`): the
+    /// request rebuilt and answered as given; the client's `run_metered`
+    /// above is where the guards would run.
+    #[test]
+    fn the_server_answers_a_translation_request_as_given() {
+        let p = build_prompt(HE, Some("he"), "en", &Dictionary::default());
+        let llm = Fixed::new("local", Ok(EN_OUT));
+        let (r, _, _) = cleanup::clean_text(llm.clone(), p.source.as_deref().unwrap(), 5_000);
+        assert_eq!(r.as_deref(), Ok(EN_OUT));
+        assert!(llm.seen.lock().unwrap()[0]
+            .user
+            .starts_with("TARGET LANGUAGE: English"));
     }
 
     #[test]
@@ -379,19 +487,34 @@ mod tests {
             server.clone(),
             cloud.clone(),
         ]);
-        assert_eq!(
-            run(
-                chain,
-                HE,
-                Some("he"),
-                "en",
-                &Dictionary::default(),
-                Duration::from_secs(5)
-            )
-            .unwrap(),
-            EN_OUT
-        );
+        let t = run(chain, &req(HE, Some("he"), "en"), Duration::from_secs(5)).unwrap();
+        assert_eq!((t.text.as_str(), t.on_device), (EN_OUT, false));
         assert_eq!((server.calls(), cloud.calls(), local.calls()), (1, 1, 0));
+    }
+
+    #[test]
+    fn reordering_keeps_the_chains_fallback_floor() {
+        let mut chain = cleanup::ChainCleaner::new(vec![
+            Fixed::new("local", Ok(EN_OUT)) as Arc<dyn Cleaner>,
+            Fixed::new("cloud", Ok(EN_OUT)),
+        ]);
+        chain.min_fallback_ms = 1234;
+        let chain: Arc<dyn Cleaner> = Arc::new(chain);
+        let r = cleanup::off_device_first(&chain);
+        assert_eq!(r.chain_min_fallback_ms(), Some(1234));
+        let engines: Vec<_> = r.chain_hops().unwrap().iter().map(|h| h.engine()).collect();
+        assert_eq!(engines, ["cloud", "local"]);
+    }
+
+    #[test]
+    fn only_the_local_model_answering_is_flagged() {
+        let local = Fixed::new("local", Ok(EN_OUT));
+        let server = Fixed::new("server", Err("connect_failed"));
+        let chain =
+            cleanup::ChainCleaner::build(vec![local.clone() as Arc<dyn Cleaner>, server.clone()]);
+        let t = run(chain, &req(HE, Some("he"), "en"), Duration::from_secs(5)).unwrap();
+        assert_eq!((t.text.as_str(), t.on_device), (EN_OUT, true));
+        assert_eq!((server.calls(), local.calls()), (1, 1));
     }
 
     #[test]
@@ -401,14 +524,7 @@ mod tests {
         assert_eq!(go(cl.clone(), HE, ""), Err(TranslateError::NoTarget));
         assert_eq!(go(cl.clone(), HE, "auto"), Err(TranslateError::NoTarget));
         assert_eq!(
-            run(
-                None,
-                HE,
-                None,
-                "en",
-                &Dictionary::default(),
-                Duration::from_secs(1)
-            ),
+            run(None, &req(HE, None, "en"), Duration::from_secs(1)),
             Err(TranslateError::NoLlm)
         );
         let long = "a ".repeat(MAX_TEXT_CHARS);
@@ -465,13 +581,40 @@ mod tests {
         let both = vec!["he-IL".to_string(), "en-US".to_string()];
         assert_eq!(default_target(Some("he"), "", &both).as_deref(), Some("en"));
         assert_eq!(default_target(Some("en"), "", &both).as_deref(), Some("he"));
-        // Source unknown: the text's script decides.
+        // Source unknown: the first language in another script than the text.
         assert_eq!(default_target(None, HE, &both).as_deref(), Some("en"));
         assert_eq!(
             default_target(None, "hello there", &both).as_deref(),
             Some("he")
         );
+        let ru = vec!["en-US".to_string(), "ru-RU".to_string()];
+        assert_eq!(
+            default_target(None, "hello there", &ru).as_deref(),
+            Some("ru")
+        );
+        // No other keyboard language: no target, never a guess.
         assert_eq!(default_target(Some("en"), "", &["en-GB".into()]), None);
         assert_eq!(default_target(Some("en"), "", &[]), None);
+        assert_eq!(default_target(None, "hello there", &[]), None);
+        assert_eq!(default_target(None, "hello there", &["en-US".into()]), None);
+        assert_eq!(default_target(None, "123", &both), None);
+    }
+
+    #[test]
+    fn an_automatic_target_comes_from_the_request() {
+        let cl = Fixed::new("cloud", Ok(EN_OUT));
+        let mut r = req(HE, None, "");
+        r.target = None;
+        r.installed = vec!["he".into(), "en".into()];
+        let t = run(Some(cl.clone()), &r, Duration::from_secs(5)).unwrap();
+        assert_eq!(t.target, "en");
+        r.installed = vec!["he".into()];
+        assert_eq!(
+            run(Some(cl), &r, Duration::from_secs(5)),
+            Err(TranslateError::NoTarget)
+        );
+        // The wire request: missing fields are defaults.
+        let q: Request = serde_json::from_str(r#"{"text":"hi","target":" "}"#).unwrap();
+        assert_eq!((q.resolved_target(), q.installed.len()), (None, 0));
     }
 }

@@ -761,52 +761,27 @@ pub mod json_api {
         murmur_core::command::result_json(&r).to_string()
     }
 
-    /// D90: a translation request (JNI `nativeTranslate`): the text, the
-    /// spoken language when known, the target (missing or empty = the
-    /// first of `installed`, the keyboard languages, that is not the
-    /// spoken one), the user's dictionary.
-    #[derive(serde::Deserialize)]
-    struct TranslateReq {
-        text: String,
-        #[serde(default)]
-        source: Option<String>,
-        #[serde(default)]
-        target: Option<String>,
-        #[serde(default)]
-        installed: Vec<String>,
-        #[serde(default)]
-        dictionary: murmur_core::dictionary::Dictionary,
-    }
-
-    /// D90: clean and translate `req_json` ([`TranslateReq`]) on the
-    /// cleanup route, server and cloud first (`murmur_core::translate`).
-    /// Blocking. Always a `translate::result_json` object.
+    /// D90: clean and translate `req_json` (a `murmur_core::translate::Request`:
+    /// `text`, `source`?, `target`? (missing or blank = automatic, from
+    /// `installed`), `installed`, `dictionary`) on the cleanup route, server
+    /// and cloud first. Blocking. Always a `translate::result_json` object.
     pub fn translate(h: &MurmurHandle, req_json: &str) -> String {
-        use murmur_core::translate::{self, TranslateError};
-        let r = match serde_json::from_str::<TranslateReq>(req_json) {
+        use murmur_core::translate::{self, Request, TranslateError};
+        let r = match serde_json::from_str::<Request>(req_json) {
             Err(e) => Err(TranslateError::Backend(format!("bad request: {e}"))),
-            Ok(q) => {
-                let timeout = translate::DEFAULT_TIMEOUT;
-                let source = q.source.as_deref().filter(|s| !s.is_empty());
-                let target = q
-                    .target
-                    .filter(|t| !t.trim().is_empty())
-                    .or_else(|| translate::default_target(source, &q.text, &q.installed));
-                match (target, h) {
-                    (None, _) => Err(TranslateError::NoTarget),
-                    (Some(t), MurmurHandle::Router(r)) => {
-                        r.translate(&q.text, source, &t, &q.dictionary, timeout)
-                    }
-                    (Some(t), MurmurHandle::Core(c)) => {
-                        translate::run(c.cleaner(), &q.text, source, &t, &q.dictionary, timeout)
-                    }
+            Ok(q) => match h {
+                MurmurHandle::Router(r) => r.translate(&q, translate::DEFAULT_TIMEOUT),
+                MurmurHandle::Core(c) => {
+                    translate::run(c.cleaner(), &q, translate::DEFAULT_TIMEOUT)
                 }
-            }
+            },
         };
         translate_json(r)
     }
 
-    pub fn translate_json(r: Result<String, murmur_core::translate::TranslateError>) -> String {
+    pub fn translate_json(
+        r: Result<murmur_core::translate::Translation, murmur_core::translate::TranslateError>,
+    ) -> String {
         murmur_core::translate::result_json(&r).to_string()
     }
 

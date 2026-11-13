@@ -425,6 +425,12 @@ pub trait Cleaner: Send + Sync {
         None
     }
 
+    /// A [`ChainCleaner`]'s `min_fallback_ms` (`None` for anything else),
+    /// so a reordered copy ([`off_device_first`]) keeps it.
+    fn chain_min_fallback_ms(&self) -> Option<u64> {
+        None
+    }
+
     /// [`Cleaner::clean_cancellable`] plus metering. Backends with a cost
     /// override it and report usage even on error / cancel. Default: the
     /// plain call, usage = engine + model.
@@ -599,14 +605,17 @@ pub fn off_device(cl: &Arc<dyn Cleaner>) -> Option<Arc<dyn Cleaner>> {
 /// D90: `cl` with its on-device hops (engine `"local"`) moved after the
 /// others, keeping each group's order: the server and the cloud are tried
 /// first, the on-device LLM only when they cannot answer. A single backend
-/// is returned as it is.
+/// is returned as it is; a chain keeps its `min_fallback_ms`.
 pub fn off_device_first(cl: &Arc<dyn Cleaner>) -> Arc<dyn Cleaner> {
-    let Some(hops) = cl.chain_hops() else {
+    let (Some(hops), Some(min_fallback_ms)) = (cl.chain_hops(), cl.chain_min_fallback_ms()) else {
         return cl.clone();
     };
     let (local, other): (Vec<_>, Vec<_>) =
         hops.iter().cloned().partition(|h| h.engine() == "local");
-    ChainCleaner::build(other.into_iter().chain(local).collect()).unwrap_or_else(|| cl.clone())
+    Arc::new(ChainCleaner {
+        hops: other.into_iter().chain(local).collect(),
+        min_fallback_ms,
+    })
 }
 
 /// D36: the user's cleanup order as one cleaner: hops (on-device LLM,
@@ -812,6 +821,10 @@ impl Cleaner for ChainCleaner {
 
     fn chain_hops(&self) -> Option<&[Arc<dyn Cleaner>]> {
         Some(&self.hops)
+    }
+
+    fn chain_min_fallback_ms(&self) -> Option<u64> {
+        Some(self.min_fallback_ms)
     }
 
     /// Cloud first → D30 (AI cleanup on the raw transcript, the hops after
