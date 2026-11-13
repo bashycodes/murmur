@@ -5,7 +5,7 @@
 //
 // The box is only on the uninstaller's confirm page, which /S never shows,
 // so both uninstalls run the uninstaller in the interactive session and
-// drive the page through UI Automation (agent `nsis_uninstall`).
+// drive the page through Win32 messages (agent `nsis_uninstall`).
 //
 // Steps (dummy data only: the owner's is in this run's backup, and the
 // seed refuses otherwise):
