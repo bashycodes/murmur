@@ -15,6 +15,7 @@ import { pcModelChip, pcModelEntry } from "../lib/model-pages.js";
 import { setTheme } from "../lib/theme.js";
 
 type ModelStatus =
+  | { state: "idle"; path: string }
   | { state: "loading"; path: string }
   | { state: "ready"; path: string; load_ms: number }
   | { state: "missing"; path: string; engine?: string }

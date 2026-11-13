@@ -599,8 +599,13 @@ impl RouterAdapter {
         for check in self.router.route_checks() {
             let reason = match check.kind {
                 EngineKind::Local => match self.local.as_ref().map(|l| l.status()) {
-                    // Loading also covers a cold slot loaded on demand (D24).
-                    Some(ModelStatus::Ready { .. } | ModelStatus::Loading { .. }) => None,
+                    // A start waits for a load, and a cold slot (Idle) is
+                    // loaded on demand (D24).
+                    Some(
+                        ModelStatus::Ready { .. }
+                        | ModelStatus::Loading { .. }
+                        | ModelStatus::Idle { .. },
+                    ) => None,
                     Some(ModelStatus::Missing { path, .. }) => Some(format!(
                         "There's no speech model on this PC yet (nothing at {path}). \
                          Go back to the speech model step and download or choose one."

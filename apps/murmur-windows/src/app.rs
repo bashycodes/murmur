@@ -370,6 +370,10 @@ fn apply_model_status(app: &AppHandle, item: &MenuItem<tauri::Wry>, st: &ModelSt
             .unwrap_or_default()
     };
     let (line, tip) = match st {
+        ModelStatus::Idle { .. } => (
+            "Speech model: loads on demand if the server is unreachable".to_string(),
+            tray_tip(app),
+        ),
         ModelStatus::Loading { path } => (
             format!("Speech model: loading {}…", file(path)),
             tray_tip(app),
@@ -390,7 +394,7 @@ fn apply_model_status(app: &AppHandle, item: &MenuItem<tauri::Wry>, st: &ModelSt
     }
     let _ = app.emit_to(SETTINGS, "model:status", st);
     if let Some(problem) = st.problem() {
-        if !matches!(st, ModelStatus::Loading { .. }) {
+        if !matches!(st, ModelStatus::Loading { .. } | ModelStatus::Idle { .. }) {
             eprintln!("[model] {problem}");
             debug_log::event("engine_load", &problem);
             show_settings(app);
@@ -1766,14 +1770,21 @@ struct ModelInfo {
 #[tauri::command]
 fn get_model_status(state: tauri::State<'_, AppState>) -> ModelInfo {
     let ad = state.appdata.as_deref();
+    // A slot nobody loaded (this PC as a cold fallback, D24) says which model
+    // the prefs point at and whether it is there, instead of an empty
+    // "Loading" that never resolves.
+    let status = match state.core.get().map(|c| c.status()) {
+        Some(ModelStatus::Idle { .. }) => {
+            core_adapter::idle_status(&ModelSpec::from_prefs(&state.prefs.read().unwrap(), ad))
+        }
+        Some(st) => st,
+        // No model slot in this build (server only).
+        None => ModelStatus::Idle {
+            path: String::new(),
+        },
+    };
     ModelInfo {
-        status: state
-            .core
-            .get()
-            .map(|c| c.status())
-            .unwrap_or(ModelStatus::Loading {
-                path: String::new(),
-            }),
+        status,
         hebrew: state.core.get().and_then(|c| c.language_status()),
         default_path: core_adapter::default_model_path(ad).display().to_string(),
         default_parakeet_dir: core_adapter::default_parakeet_dir(ad).display().to_string(),
@@ -1893,8 +1904,8 @@ fn ensure_local(state: &AppState, prefs: &Prefs) {
         return;
     }
     let ad = state.appdata.as_deref();
-    // A slot that never started a load reports `Loading` with no path.
-    if matches!(core.status(), ModelStatus::Loading { ref path } if path.is_empty()) {
+    // A slot that never started a load is `Idle`.
+    if matches!(core.status(), ModelStatus::Idle { .. }) {
         core.load(ModelSpec::from_prefs(prefs, ad));
         core.load_language(LanguageSpec::from_prefs(prefs, ad));
         core.load_llm(LlmSpec::from_prefs(prefs, ad));

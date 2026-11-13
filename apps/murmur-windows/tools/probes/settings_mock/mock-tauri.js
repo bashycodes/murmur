@@ -242,6 +242,19 @@
     modelStatus = { state: "missing", path: "C:\\Users\\u\\AppData\\Roaming\\Murmur\\models\\ggml-base.bin" };
   }
   const MODELS = "C:\\Users\\u\\AppData\\Roaming\\Murmur\\models\\";
+  // ?whisper=turbo: a whisper file the user chose that is not whisper base,
+  // on a PC whose speech runs on the server with this PC kept cold (D24
+  // keep_local_warm off): the slot was never loaded, so get_model_status
+  // reports it idle with the file the prefs point at (core_adapter::idle_status).
+  if (new URLSearchParams(location.search).get("whisper") === "turbo") {
+    prefs.model_path = MODELS + "ggml-large-v3-turbo.bin";
+    dev = { ...dev, keep_local_warm: false };
+    modelStatus = { state: "idle", path: prefs.model_path };
+  }
+  // ?cleanup=server: AI cleanup runs on your server (first in the D36 order).
+  if (new URLSearchParams(location.search).get("cleanup") === "server") {
+    or.cleanup.engines = [{ route: "server", enabled: true }, { route: "local", enabled: true }, { route: "cloud", enabled: false }];
+  }
   const hf = (repo, rev, name, size, sha256) => ({ name, url: `https://huggingface.co/${repo}/resolve/${rev}/${name}`, size, sha256 });
   const PK = ["csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8", "1ab9323565ddb038682214b292f588070a538ce2"];
   const WH = ["ggerganov/whisper.cpp", "5359861c739e955e79d9a303bcbc70fb988958b1"];

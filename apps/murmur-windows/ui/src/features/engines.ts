@@ -173,6 +173,8 @@ function describe(r: Route): void {
     if (!on) setBadge(r, "Off", "light");
     else if (st === "ready") setBadge(r, "Ready", "success");
     else if (st === "loading") setBadge(r, "Loading", "light");
+    // D24: kept cold behind the server, loaded when it is needed.
+    else if (st === "idle") setBadge(r, "On standby", "light");
     else if (st === "missing") setBadge(r, "Model missing", "destructive");
     else setBadge(r, "Failed", "destructive");
   } else {

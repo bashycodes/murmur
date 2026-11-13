@@ -50,6 +50,7 @@ test("chip: a custom file shows only a problem", () => {
   assert.equal(pcModelChip({ status: "loading", canDownload: false, busy: false }).text, "");
   assert.equal(pcModelChip({ status: "missing", canDownload: false, busy: false }).kind, "destructive");
   assert.equal(pcModelChip({ status: "failed", canDownload: false, busy: false }).text, "Failed");
+  assert.equal(pcModelChip({ status: "idle", entry: catalog[0], canDownload: true, busy: false }).text, "On standby");
 });
 
 test("cleanup chip: In use or Installed for a model here; none while downloading or not here", () => {

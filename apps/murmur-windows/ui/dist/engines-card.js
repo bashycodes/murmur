@@ -12,6 +12,8 @@ let llm = { state: "off" };
 const DOT = {
     ready: "var(--success-500)",
     loading: "var(--warning-400)",
+    // Not loaded, loaded when needed (D24).
+    idle: "var(--toggle-border)",
     missing: "var(--destructive-500)",
     failed: "var(--destructive-500)",
     plugin_missing: "var(--destructive-500)",
