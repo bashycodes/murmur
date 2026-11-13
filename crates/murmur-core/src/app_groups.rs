@@ -23,6 +23,7 @@ struct Apps {
 struct Hosts {
     suffixes: Vec<String>,
     prefixes: Vec<String>,
+    parts: Vec<String>,
 }
 
 /// One group: app-id rules plus web-host rules.
@@ -55,7 +56,9 @@ impl Group {
     }
 
     /// `host` (any case, `www.` ignored) equals or is a subdomain of a
-    /// suffix, or starts with a prefix.
+    /// suffix, starts with a prefix, or has a part as a whole dot-separated
+    /// label other than the last (`slack.example.org`; not `slackware.…`,
+    /// not a top-level domain).
     pub fn host(&self, host: &str) -> bool {
         let h = host.trim().to_lowercase();
         let h = h.strip_prefix("www.").unwrap_or(&h);
@@ -71,6 +74,11 @@ impl Group {
                 .prefixes
                 .iter()
                 .any(|p| h.starts_with(p.as_str()))
+            || h.rsplit_once('.').is_some_and(|(labels, _tld)| {
+                labels
+                    .split('.')
+                    .any(|l| self.hosts.parts.iter().any(|x| x == l))
+            })
     }
 
     /// [`Group::app`] or [`Group::host`].
@@ -101,6 +109,7 @@ fn data() -> &'static Data {
                 &mut a.words,
                 &mut h.suffixes,
                 &mut h.prefixes,
+                &mut h.parts,
             ] {
                 lower(list);
             }
@@ -176,6 +185,7 @@ mod tests {
                 .chain(&a.words)
                 .chain(&h.suffixes)
                 .chain(&h.prefixes)
+                .chain(&h.parts)
                 .chain(&raw.compose_placeholders)
             {
                 assert_eq!(*s, s.trim().to_lowercase(), "{s}");
@@ -209,6 +219,28 @@ mod tests {
         for p in &android("restart_prone").apps.exact {
             assert!(android("known_null").app(p), "{p}");
         }
+    }
+
+    #[test]
+    fn host_parts_are_windows_only() {
+        // PolicyLists.kt reads android hosts without `parts`; an android
+        // entry there would match in Rust only.
+        for (n, g) in &data().android {
+            assert!(
+                g.hosts.parts.is_empty(),
+                "android group {n} has hosts.parts"
+            );
+        }
+    }
+
+    #[test]
+    fn host_part_is_a_whole_label_before_the_tld() {
+        let g = windows("work");
+        assert!(g.host("slack.example.org"));
+        assert!(g.host("www.Team.Slack.Example.org"));
+        assert!(!g.host("slackware.example.org"));
+        assert!(!g.host("example-slack.test"));
+        assert!(!g.host("example.slack"));
     }
 
     #[test]

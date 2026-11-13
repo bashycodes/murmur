@@ -25,6 +25,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 - **AI cleanup, Command Mode, summaries and Test cleanup drop a reasoning model's leading `<think>…</think>` text** (also an unfinished `<think>…`, or reasoning that ends in `</think>` because the model's template opened the block) before using the answer, so a LiteLLM or custom server in front of a reasoning model no longer types its reasoning into the field. A `<think>` tag inside the text itself is kept.
 - **Hebrew dictations no longer get foreign words from AI cleanup** (every cleanup path, D65). An answer that stays mostly Hebrew but adds letters of another alphabet (Arabic, Cyrillic, Chinese, …), a broken character, or an English word that is not in what you said, your dictionary or the screen is not used: the text is pasted without AI cleanup instead (`llm_language_changed`). English words you said, and names and acronyms you said in Hebrew letters that the AI writes in English ("בסלאק" → "ב-Slack", "איי פי איי" → "API"), are kept. Upgrade murmur-server too.
+- **Windows: browser tabs on a site the app groups don't list now get their style from the tab title**, and a host that carries a known site's name as a whole label (`slack.example.org`, `outlook.example.org`, `discord.example.net`) counts as that site; lookalikes such as `slackware.example.org` stay "other". The site names are a `hosts.parts` rule in the app groups.
 
 ## [1.3.0] - 2026-11-13
 
