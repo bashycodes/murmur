@@ -17,7 +17,8 @@ import dev.murmur.session.DictationState.ErrorKind
 
 /**
  * Canvas-drawn bubble: circle (Ready), minimised dot or small circle, recording row X·waveform·✓ (tap mode),
- * mic+waveform (hold mode), paste/copy/dismiss (FailedToPaste), pulsing … (model still loading), alert (other errors).
+ * mic+waveform (hold mode), paste/copy/dismiss (FailedToPaste), copy/dismiss (a command's answer, shown in the
+ * preview card), pulsing … (model still loading), alert (other errors).
  * Gestures go through [BubbleGesture]; the host decides what each action means.
  */
 @SuppressLint("ViewConstructor")
@@ -138,6 +139,10 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
                 is ErrorKind.FailedToPaste -> {
                     // Paste here (the primary action: light disc, dark ✓) · Copy (2026-10-24: never lose a dictation) · Dismiss.
                     circleButton(canvas, primary, BubbleButton.PASTE) { cx, cy -> drawCheck(canvas, cx, cy, onSurface = false) }
+                    circleButton(canvas, null, BubbleButton.COPY) { cx, cy -> drawGlyph(canvas, "⧉", cx, cy) }
+                    circleButton(canvas, null, BubbleButton.DISMISS) { cx, cy -> drawCross(canvas, cx, cy, onSurface = true) }
+                }
+                is ErrorKind.CommandAnswer -> {
                     circleButton(canvas, null, BubbleButton.COPY) { cx, cy -> drawGlyph(canvas, "⧉", cx, cy) }
                     circleButton(canvas, null, BubbleButton.DISMISS) { cx, cy -> drawCross(canvas, cx, cy, onSurface = true) }
                 }

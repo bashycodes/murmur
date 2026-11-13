@@ -2,9 +2,10 @@
 //! (`fixtures/command/command_results.json`, also decoded by the Kotlin
 //! `CommandVectorsTest`) must match what `command::result_json` emits, so
 //! the JNI wire shape and the pill texts can't drift from the Kotlin side
-//! unnoticed. Every `CommandError` kind is covered.
+//! unnoticed. Every `CommandError` kind and the answer to a question are
+//! covered.
 
-use murmur_core::command::{result_json, CommandError};
+use murmur_core::command::{result_json, CommandError, CommandOutput};
 use serde_json::Value;
 
 fn fixture() -> Value {
@@ -15,9 +16,12 @@ fn fixture() -> Value {
     serde_json::from_str(&std::fs::read_to_string(p).unwrap()).unwrap()
 }
 
-fn input(v: &Value) -> Result<String, CommandError> {
+fn input(v: &Value) -> Result<CommandOutput, CommandError> {
     if let Some(t) = v.get("ok") {
-        return Ok(t.as_str().unwrap().to_string());
+        return Ok(CommandOutput::Text(t.as_str().unwrap().to_string()));
+    }
+    if let Some(a) = v.get("answer") {
+        return Ok(CommandOutput::Answer(a.as_str().unwrap().to_string()));
     }
     let num = |k: &str| v[k].as_u64().unwrap();
     Err(match v["err"].as_str().unwrap() {
@@ -42,14 +46,20 @@ fn result_json_matches_the_shared_vectors() {
     let f = fixture();
     let cases = f["cases"].as_array().unwrap();
     let mut kinds = std::collections::BTreeSet::new();
+    let mut answers = 0;
     for c in cases {
         let r = input(&c["input"]);
-        if let Err(e) = &r {
-            kinds.insert(e.kind());
+        match &r {
+            Err(e) => {
+                kinds.insert(e.kind());
+            }
+            Ok(CommandOutput::Answer(_)) => answers += 1,
+            Ok(CommandOutput::Text(_)) => {}
         }
         assert_eq!(result_json(&r), c["json"], "{}", c["input"]);
     }
     assert_eq!(kinds.len(), 8, "every CommandError kind has a vector");
+    assert!(answers > 0, "an answer has a vector");
 }
 
 #[test]

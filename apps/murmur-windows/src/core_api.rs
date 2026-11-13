@@ -407,14 +407,15 @@ pub trait CoreApi: Send + Sync {
     fn learn_edit(&self, pasted: &str, edited: &str) -> Vec<LearnCandidate>;
     /// Command Mode: run the spoken `instruction` on `selected` (`None` =
     /// write new text) with the cleanup LLM route (`murmur_core::command`),
-    /// blocking up to `timeout`. `Ok` = the text to paste, `Err` = pill
-    /// text. Default: no LLM available.
+    /// blocking up to `timeout`. `Ok` = the text to paste or the answer to
+    /// a question (shown, never pasted), `Err` = pill text. Default: no
+    /// LLM available.
     fn command(
         &self,
         instruction: &str,
         selected: Option<&str>,
         timeout: std::time::Duration,
-    ) -> Result<String, String> {
+    ) -> Result<murmur_core::command::CommandOutput, String> {
         murmur_core::command::run(None, instruction, selected, timeout).map_err(|e| e.to_string())
     }
     /// Transforms: run a saved `instruction` on `text` (a selection or a
@@ -453,7 +454,7 @@ struct StubState {
     starts: usize,
     /// Scripted Command Mode answer (`None` = the trait default, no LLM)
     /// and the (instruction, selection) pairs it was asked.
-    command_reply: Option<Result<String, String>>,
+    command_reply: Option<Result<murmur_core::command::CommandOutput, String>>,
     commands: Vec<(String, Option<String>)>,
     /// Scripted transform answer and the (instruction, text, source)
     /// triples it was asked.
@@ -492,9 +493,17 @@ impl StubCore {
         self.inner.lock().unwrap().starts
     }
 
-    /// Script what `command()` answers.
+    /// Script what `command()` answers (`Ok` = a rewrite).
     pub fn set_command_reply(&self, reply: Result<String, String>) {
-        self.inner.lock().unwrap().command_reply = Some(reply);
+        self.inner.lock().unwrap().command_reply =
+            Some(reply.map(murmur_core::command::CommandOutput::Text));
+    }
+
+    /// Script `command()` to answer a question.
+    pub fn set_command_answer(&self, answer: &str) {
+        self.inner.lock().unwrap().command_reply = Some(Ok(
+            murmur_core::command::CommandOutput::Answer(answer.into()),
+        ));
     }
 
     /// (instruction, selection) of every `command()` call.
@@ -592,7 +601,7 @@ impl CoreApi for StubCore {
         instruction: &str,
         selected: Option<&str>,
         timeout: std::time::Duration,
-    ) -> Result<String, String> {
+    ) -> Result<murmur_core::command::CommandOutput, String> {
         let reply = {
             let mut s = self.inner.lock().unwrap();
             s.commands

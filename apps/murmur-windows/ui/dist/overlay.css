@@ -372,6 +372,18 @@ body {
 .preview[data-kind="error"]::before {
   background: var(--error-dot);
 }
+/* Command Mode's answer to a question: a card of up to 12 lines, from the top. */
+.preview[data-kind="answer"] {
+  max-height: calc(12 * 18px + 16px + 2px);
+  justify-content: flex-start;
+  align-items: flex-start;
+}
+.preview[data-kind="answer"]::before {
+  display: none;
+}
+.preview[data-kind="answer"] .preview-text {
+  white-space: pre-wrap;
+}
 /* "Fix →" / "Choose a model →": opens the settings page that fixes it. */
 .fix {
   flex: none;

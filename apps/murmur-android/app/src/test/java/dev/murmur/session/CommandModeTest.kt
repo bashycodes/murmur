@@ -182,6 +182,25 @@ class CommandModeTest {
         assertEquals(listOf("Short." to InsertOutcome.TARGET_CHANGED), host.notInserted)
     }
 
+    @Test fun aQuestionAboutTheSelectionShowsTheAnswerAndTouchesNothing() = runTest {
+        core.transcript = "what does this mean"
+        core.commandReply = { _, _ -> CommandOutcome.Answer("It describes a long sentence.") }
+        val c = controller()
+        speakCommand(c)
+        assertEquals(listOf("what does this mean" to "A very long sentence."), core.commands)
+        assertEquals(DictationState.Error(ErrorKind.CommandAnswer("It describes a long sentence.")), c.state.value)
+        assertTrue("nothing written", host.applied.isEmpty() && host.inserted.isEmpty())
+        assertTrue("not a failure: no error tone", FeedbackEvent.CommandFailed !in host.events)
+        assertTrue("no not-inserted notification", host.notInserted.isEmpty())
+        assertEquals(
+            CommandRecord("what does this mean", "A very long sentence.", "It describes a long sentence.", "com.example.notes", InsertOutcome.ANSWERED),
+            host.records.single(),
+        )
+        assertEquals(InsertOutcome.ANSWERED, host.traces.single().insert.outcome)
+        c.dismissError()
+        assertEquals(DictationState.Ready, c.state.value)
+    }
+
     @Test fun aStaleSelectionKeepsTheAnswerRecoverable() = runTest {
         core.commandReply = { _, _ -> CommandOutcome.Text("Short.") }
         host.applyOk = false

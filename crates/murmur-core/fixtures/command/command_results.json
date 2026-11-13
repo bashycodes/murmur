@@ -1,5 +1,5 @@
 {
-  "_comment": "Command Mode outcome wire shape (murmur_core::command::result_json; FFI murmur_command, JNI nativeCommand). Checked by crates/murmur-core/tests/command_vectors.rs and the Android CommandVectorsTest. `input` names the Rust value: ok = the answer text, err = CommandError::kind() (+ its field).",
+  "_comment": "Command Mode outcome wire shape (murmur_core::command::result_json; FFI murmur_command, JNI nativeCommand). Checked by crates/murmur-core/tests/command_vectors.rs and the Android CommandVectorsTest. `input` names the Rust value: ok = CommandOutput::Text, answer = CommandOutput::Answer (a question about the selection, shown and never written), err = CommandError::kind() (+ its field).",
   "cases": [
     {
       "input": {"ok": "Meeting moved to Friday."},
@@ -8,6 +8,14 @@
     {
       "input": {"ok": "- one\n- two \"quoted\" é\n"},
       "json": {"ok": true, "text": "- one\n- two \"quoted\" é\n"}
+    },
+    {
+      "input": {"answer": "It asks to move the meeting to Friday."},
+      "json": {"ok": true, "answer": "It asks to move the meeting to Friday."}
+    },
+    {
+      "input": {"answer": "Two meanings:\n- a \"date\"\n- a fruit é"},
+      "json": {"ok": true, "answer": "Two meanings:\n- a \"date\"\n- a fruit é"}
     },
     {
       "input": {"err": "no_instruction"},

@@ -19,6 +19,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 ### Added
 
 - **Windows: Ctrl+, opens Settings** from the Murmur window. It works only while that window has focus, so it never takes the keys from another app, and Settings → General lists it under Shortcuts.
+- **Command Mode answers questions about the selection** (D86, Android and Windows). Select text, hold the Command shortcut and ask "explain this" or "what does this mean": the answer shows in a card (Windows: above the Murmur bar, until Esc or up to a minute; Android: next to the bubble, with Copy and Dismiss) and the selected text is left as it was. A question with nothing selected is answered the same way. On Windows a rewrite now reads the selection again before replacing it and, if it changed meanwhile, pastes nothing ("Selection changed: text left unchanged"), as Android already did.
 
 ### Fixed
 

@@ -739,7 +739,9 @@ pub mod json_api {
     /// Command Mode (`murmur_core::command`): `instruction` applied to
     /// `selected` (`None` / blank = write at the cursor) on the cleanup
     /// route ([`Router::command`]; a core handle uses its own on-device
-    /// LLM only). `{"ok":true,"text":…}` or `{"ok":false,"kind":…,"error":…}`
+    /// LLM only). `{"ok":true,"text":…}`, `{"ok":true,"answer":…}` (a
+    /// question about the selection: show it, write nothing) or
+    /// `{"ok":false,"kind":…,"error":…}`
     /// (`kind` = `CommandError::kind`, `error` = the pill text). Blocking
     /// (LLM call, at most `command::DEFAULT_TIMEOUT` plus a model load).
     pub fn command(h: &MurmurHandle, instruction: &str, selected: Option<&str>) -> String {
@@ -753,7 +755,9 @@ pub mod json_api {
         command_json(r)
     }
 
-    pub fn command_json(r: Result<String, murmur_core::command::CommandError>) -> String {
+    pub fn command_json(
+        r: Result<murmur_core::command::CommandOutput, murmur_core::command::CommandError>,
+    ) -> String {
         murmur_core::command::result_json(&r).to_string()
     }
 

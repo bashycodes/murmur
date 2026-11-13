@@ -80,4 +80,15 @@ class PreviewLogicTest {
         assertEquals("Loading phone model… · server unreachable", RouteLabel.of(dev.murmur.core.SessionRoute("local", fallback = "connect_failed", loading = true)))
         assertEquals("Loading phone model… · paused after failures", RouteLabel.of(dev.murmur.core.SessionRoute("local", fallback = "circuit_open", loading = true)))
     }
+
+    @Test fun aCommandsAnswerIsTheCardWhateverThePreviewSetting() {
+        val answer = DictationState.Error(DictationState.ErrorKind.CommandAnswer("It asks to move the meeting.\nTo Friday."))
+        for (enabled in listOf(true, false)) {
+            assertEquals(
+                PreviewContent.Line("It asks to move the meeting.\nTo Friday.", dim = false, card = true),
+                PreviewContent.line(answer, "stale partial", null, enabled, badge = "L"),
+            )
+        }
+        assertNull("other errors have no card", PreviewContent.line(DictationState.Error(DictationState.ErrorKind.MicUnavailable), null, null, true))
+    }
 }

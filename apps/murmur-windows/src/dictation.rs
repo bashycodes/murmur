@@ -4,7 +4,9 @@
 //! Command Mode: a `command` session's transcript is an
 //! instruction, not text to paste. Processing then asks the controller to
 //! run it on the selection (`Effect::Command`) and pastes the answer that
-//! comes back (`Input::CommandFinished`); a failure pastes nothing.
+//! comes back (`Input::CommandFinished`); a failure pastes nothing. An
+//! instruction that asks a question about the selection comes back as
+//! `Input::CommandAnswered`: the answer card shows it and nothing is pasted.
 //!
 //! Transforms (docs/proposals/transforms.md): a transform shortcut goes
 //! straight from rest to processing (`Effect::Transform`; nothing is
@@ -62,6 +64,12 @@ pub enum Phase {
         since_ms: u64,
         linger_ms: u64,
     },
+    /// Command Mode answered a question: the answer card shows for
+    /// `linger_ms` or until Esc. Nothing was pasted.
+    Answer {
+        since_ms: u64,
+        linger_ms: u64,
+    },
 }
 
 /// Visual state of the overlay pill (the five states that matter).
@@ -81,6 +89,11 @@ pub enum OverlayState {
     },
     /// Informational pill text (no error sound), e.g. "No speech heard".
     Notice {
+        message: String,
+    },
+    /// Command Mode's answer to a question about the selection, in a card
+    /// above the pill (the selection is untouched).
+    Answer {
         message: String,
     },
 }
@@ -134,6 +147,12 @@ pub enum Input {
     CommandFinished {
         session: SessionId,
         result: Result<String, String>,
+    },
+    /// A Command Mode instruction asked a question: its answer, shown
+    /// and never pasted.
+    CommandAnswered {
+        session: SessionId,
+        answer: String,
     },
     /// The auto-apply transform ran on a dictation's `original` text:
     /// the transformed text, or why it was skipped.
@@ -211,6 +230,9 @@ pub struct Policy {
     pub error_linger_ms: u64,
     /// Notice pill ("No speech heard") shows this long.
     pub notice_linger_ms: u64,
+    /// A Command Mode answer card shows at least this long (longer
+    /// answers get reading time, see [`Policy::answer_linger_ms`]).
+    pub answer_min_ms: u64,
 }
 
 impl Default for Policy {
@@ -224,6 +246,7 @@ impl Default for Policy {
             pasted_linger_ms: 0,
             error_linger_ms: 500,
             notice_linger_ms: 1500,
+            answer_min_ms: 8000,
         }
     }
 }
@@ -233,7 +256,21 @@ impl Policy {
     pub fn max_samples(&self) -> u64 {
         self.max_ms * 16
     }
+
+    /// How long the card for `answer` stays up: reading time at
+    /// [`READ_CHARS_PER_SEC`], between [`Policy::answer_min_ms`] and
+    /// [`ANSWER_MAX_MS`].
+    pub fn answer_linger_ms(&self, answer: &str) -> u64 {
+        let read = answer.chars().count() as u64 * 1000 / READ_CHARS_PER_SEC;
+        read.clamp(self.answer_min_ms, ANSWER_MAX_MS.max(self.answer_min_ms))
+    }
 }
+
+/// Longest an answer card stays up on its own (Esc closes it sooner).
+pub const ANSWER_MAX_MS: u64 = 60_000;
+
+/// Reading speed an answer card allows for (characters a second).
+pub const READ_CHARS_PER_SEC: u64 = 15;
 
 /// Pill text of a transform shortcut pressed with nothing selected.
 pub const TRANSFORM_NO_SELECTION: &str = "Select text to transform";
@@ -295,7 +332,7 @@ impl Dictation {
 
     pub fn handle(&mut self, input: Input, now_ms: u64) -> Vec<Effect> {
         match self.phase.clone() {
-            Phase::Idle | Phase::Pasted { .. } | Phase::Error { .. } => {
+            Phase::Idle | Phase::Pasted { .. } | Phase::Error { .. } | Phase::Answer { .. } => {
                 self.handle_resting(input, now_ms)
             }
             Phase::Listening(l) => self.handle_listening(l, input, now_ms),
@@ -329,6 +366,21 @@ impl Dictation {
                 },
                 Input::Tick,
             ) if now_ms.saturating_sub(*since_ms) >= *linger_ms => {
+                self.phase = Phase::Idle;
+                vec![Effect::Overlay(OverlayState::Resting)]
+            }
+            (
+                Phase::Answer {
+                    since_ms,
+                    linger_ms,
+                },
+                Input::Tick,
+            ) if now_ms.saturating_sub(*since_ms) >= *linger_ms => {
+                self.phase = Phase::Idle;
+                vec![Effect::Overlay(OverlayState::Resting)]
+            }
+            // Esc closes the answer card (the key still reaches the app).
+            (Phase::Answer { .. }, Input::Hotkey(HotkeyAction::Cancel)) => {
                 self.phase = Phase::Idle;
                 vec![Effect::Overlay(OverlayState::Resting)]
             }
@@ -468,6 +520,13 @@ impl Dictation {
                     }
                     Err(message) => self.fail(message, now_ms),
                 }
+            }
+            Input::CommandAnswered { session: s, answer } if s == session && command => {
+                self.phase = Phase::Answer {
+                    since_ms: now_ms,
+                    linger_ms: self.policy.answer_linger_ms(&answer),
+                };
+                vec![Effect::Overlay(OverlayState::Answer { message: answer })]
             }
             Input::Committed {
                 session: s,
@@ -1263,6 +1322,111 @@ mod tests {
             ]
         );
         assert!(matches!(d.phase(), Phase::Error { .. }));
+    }
+
+    #[test]
+    fn a_command_answer_shows_the_card_and_pastes_nothing() {
+        let mut d = d();
+        let s = command_session(&mut d);
+        hk(&mut d, CommandUp, 1000);
+        d.handle(
+            Input::Committed {
+                session: s,
+                outcome: CommitOutcome::Text("what does this mean".into()),
+            },
+            1100,
+        );
+        let fx = d.handle(
+            Input::CommandAnswered {
+                session: s,
+                answer: "It asks to move the meeting.".into(),
+            },
+            1200,
+        );
+        assert_eq!(
+            fx,
+            vec![Effect::Overlay(OverlayState::Answer {
+                message: "It asks to move the meeting.".into()
+            })],
+            "no paste, no error sound"
+        );
+        let linger = Policy::default().answer_min_ms;
+        assert_eq!(
+            d.phase(),
+            &Phase::Answer {
+                since_ms: 1200,
+                linger_ms: linger
+            }
+        );
+        assert!(!d.is_active(), "Esc is not swallowed");
+        assert!(d.handle(Input::Tick, 1200 + linger - 1).is_empty());
+        assert_eq!(
+            d.handle(Input::Tick, 1200 + linger),
+            vec![Effect::Overlay(OverlayState::Resting)]
+        );
+        assert_eq!(d.phase(), &Phase::Idle);
+    }
+
+    #[test]
+    fn esc_or_a_new_dictation_replaces_the_answer_card() {
+        let mut d = d();
+        let s = command_session(&mut d);
+        hk(&mut d, CommandUp, 1000);
+        d.handle(
+            Input::Committed {
+                session: s,
+                outcome: CommitOutcome::Text("explain this".into()),
+            },
+            1100,
+        );
+        d.handle(
+            Input::CommandAnswered {
+                session: s,
+                answer: "An answer.".into(),
+            },
+            1200,
+        );
+        assert_eq!(
+            hk(&mut d, Cancel, 1300),
+            vec![Effect::Overlay(OverlayState::Resting)]
+        );
+        assert_eq!(d.phase(), &Phase::Idle);
+        // A late answer of a finished session is dropped.
+        assert!(d
+            .handle(
+                Input::CommandAnswered {
+                    session: s,
+                    answer: "late".into()
+                },
+                1400
+            )
+            .is_empty());
+        let s = command_session(&mut d);
+        hk(&mut d, CommandUp, 3000);
+        d.handle(
+            Input::Committed {
+                session: s,
+                outcome: CommitOutcome::Text("explain this".into()),
+            },
+            3100,
+        );
+        d.handle(
+            Input::CommandAnswered {
+                session: s,
+                answer: "An answer.".into(),
+            },
+            3200,
+        );
+        let fx = hk(&mut d, PttDown, 3300);
+        assert!(fx.contains(&Effect::Overlay(OverlayState::ActivePtt)));
+    }
+
+    #[test]
+    fn long_answers_stay_up_long_enough_to_read() {
+        let p = Policy::default();
+        assert_eq!(p.answer_linger_ms("Short."), p.answer_min_ms);
+        assert_eq!(p.answer_linger_ms(&"a".repeat(300)), 20_000);
+        assert_eq!(p.answer_linger_ms(&"a".repeat(5000)), ANSWER_MAX_MS);
     }
 
     #[test]

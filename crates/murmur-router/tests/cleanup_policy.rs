@@ -721,17 +721,27 @@ fn the_key_never_appears_in_router_output() {
 
 // ---- Command Mode: one-off LLM requests take the cleanup route ------------
 
+/// A command's rewrite (these tests ask no questions).
+fn text(
+    r: Result<murmur_core::command::CommandOutput, murmur_core::command::CommandError>,
+) -> Result<String, murmur_core::command::CommandError> {
+    r.map(|o| match o {
+        murmur_core::command::CommandOutput::Text(t) => t,
+        murmur_core::command::CommandOutput::Answer(a) => panic!("unexpected answer {a:?}"),
+    })
+}
+
 fn command(
     r: &Router,
     base: Option<Arc<dyn Cleaner>>,
     selected: Option<&str>,
 ) -> Result<String, murmur_core::command::CommandError> {
-    murmur_core::command::run(
+    text(murmur_core::command::run(
         r.command_cleaner(base),
         "make it formal",
         selected,
         Duration::from_secs(5),
-    )
+    ))
 }
 
 #[test]
@@ -812,7 +822,12 @@ fn command_cleaner_rechecks_consent_per_call() {
     let mut c = cfg();
     c.cloud.openrouter.cleanup.consent_at_ms = 0;
     k.router.update_config(c);
-    let r = murmur_core::command::run(cl, "write hello", None, Duration::from_secs(5));
+    let r = text(murmur_core::command::run(
+        cl,
+        "write hello",
+        None,
+        Duration::from_secs(5),
+    ));
     assert!(r.is_err(), "{r:?}");
     assert_eq!(k.cloud.calls(), 0, "consent revoked: nothing sent");
 }
@@ -829,9 +844,7 @@ fn router_command_uses_the_local_engines_llm() {
         ..cfg()
     });
     assert_eq!(
-        k.router
-            .command("make it shorter", Some("a long text"), T)
-            .as_deref(),
+        text(k.router.command("make it shorter", Some("a long text"), T)).as_deref(),
         Ok(LOCAL_OUT)
     );
     assert_eq!((k.cloud.calls(), local_calls(&k)), (0, 1));
@@ -839,9 +852,11 @@ fn router_command_uses_the_local_engines_llm() {
     // Cloud first, a selection, surrounding text not allowed: the on-device part.
     let k = rig(cfg());
     assert_eq!(
-        k.router
-            .command("make it shorter", Some("SELECTEDSECRET"), T)
-            .as_deref(),
+        text(
+            k.router
+                .command("make it shorter", Some("SELECTEDSECRET"), T)
+        )
+        .as_deref(),
         Ok(LOCAL_OUT)
     );
     assert_eq!(k.cloud.calls(), 0, "the selection never reached OpenRouter");
@@ -853,13 +868,13 @@ fn router_command_uses_the_local_engines_llm() {
     };
     let k = rig_opts(no_cloud, true, false, true);
     assert_eq!(
-        k.router.command("make it shorter", Some("x"), T),
+        text(k.router.command("make it shorter", Some("x"), T)),
         Err(CommandError::NoLlm)
     );
     // No local LLM, cloud only, a selection without surrounding-text consent.
     let k = rig_opts(cfg(), true, false, true);
     assert_eq!(
-        k.router.command("make it shorter", Some("x"), T),
+        text(k.router.command("make it shorter", Some("x"), T)),
         Err(CommandError::SelectionNotAllowed {
             to: Some("OpenRouter".into())
         })
@@ -867,7 +882,7 @@ fn router_command_uses_the_local_engines_llm() {
     assert_eq!(k.cloud.calls(), 0);
     // ... while generating at the cursor may use the cloud.
     assert_eq!(
-        k.router.command("write hello", None, T).as_deref(),
+        text(k.router.command("write hello", None, T)).as_deref(),
         Ok(CLOUD_OUT)
     );
 }
