@@ -25,7 +25,7 @@ class TranslateVectorsTest {
             val want = c.getJSONObject("json")
             val got = TranslateOutcome.decode(want.toString())
             if (input.has("ok")) {
-                assertEquals(TranslateOutcome.Text(input.getString("ok")), got)
+                assertEquals(TranslateOutcome.Text(input.getString("ok"), input.getString("target"), input.getBoolean("on_device")), got)
             } else {
                 got as TranslateOutcome.Failed
                 assertEquals(input.getString("err"), got.kind)

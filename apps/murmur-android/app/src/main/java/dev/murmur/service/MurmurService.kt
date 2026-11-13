@@ -164,9 +164,9 @@ class MurmurService : Service() {
         scope.launch {
             // "Bubble size" and "Shrink to a dot" ride along with repair, so either applies to the live bubble at once.
             // Command Mode's ✎ rides along too: shown per the "Command button" setting and the field's selection.
-            // D90: and the ⇄ (Translate button setting).
+            // D90: and the ⇄ (Translate button setting; unset = while 2+ keyboard languages are enabled).
             val command = combine(app.settings.commandButton, app.settings.translateButton, app.fieldSelection) { mode, tr, sel ->
-                Extras(mode.shows(sel), tr)
+                Extras(mode.shows(sel), tr ?: (app.keyboardLanguages().size >= 2))
             }
             // Our own screens in front ride along too: no resting bubble over them (OwnScreens). An Error
             // raised meanwhile stays in the state, so leaving the app shows it unless it timed out.
@@ -605,6 +605,7 @@ class MurmurService : Service() {
                 0, System.currentTimeMillis(), appId, result.status.name, result.asrText, result.historyText, inserted, t.audioMs,
                 fallbackReason = result.fallbackReason, asrMs = t.asrMs, llmMs = t.llmMs, totalMs = t.totalMs,
                 insertOutcome = outcome, route = result.route?.engine, appCategory = recording?.appCategory,
+                transform = result.applied?.name, transformed = result.applied?.text,
             )
             // D35: never from a password / sensitive field, a banking or denylisted app, or a protected target.
             val keep = recording?.takeIf {

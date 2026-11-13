@@ -52,6 +52,8 @@ object PreviewContent {
     const val COMMAND_WORKING = "Command: rewriting…"
     /** D90: the translation failed; the dictation went in as said. */
     const val NOT_TRANSLATED = "Not translated. Typed as said."
+    /** D90: no server or cloud could, so the phone's own model translated. */
+    const val TRANSLATED_ON_DEVICE = "Translated on this phone: lower quality"
 
     /** [card]: a command's answer, shown whole in a larger card instead of one clipped line. */
     data class Line(val text: String, val dim: Boolean, val card: Boolean = false)
@@ -79,6 +81,7 @@ object PreviewContent {
             DictationHint.NoSpeechDetected -> return Line(NO_SPEECH, dim = false)
             DictationHint.OnlyFiller -> return Line(ONLY_FILLER, dim = false)
             DictationHint.NotTranslated -> return Line(NOT_TRANSLATED, dim = false)
+            DictationHint.TranslatedOnDevice -> return Line(TRANSLATED_ON_DEVICE, dim = false)
             DictationHint.NoSpeechYet -> if (state is DictationState.Recording) return Line(CANT_HEAR, dim = false)
             null -> Unit
         }

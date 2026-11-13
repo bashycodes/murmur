@@ -124,6 +124,8 @@ object RetryLogic {
         status = r.status.name, asrText = r.asrText, finalText = r.historyText,
         fallbackReason = r.fallbackReason, route = r.route?.engine,
         asrMs = r.timings.asrMs, llmMs = r.timings.llmMs, totalMs = r.timings.totalMs,
+        // D90: the new text was not translated; the old translation no longer belongs to it.
+        transform = null, transformed = null,
     )
 
     /** Version 0 of a row retried for the first time: its text as it was. */

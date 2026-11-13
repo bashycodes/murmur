@@ -470,6 +470,8 @@ data class CommitResult(
     val route: RouteInfo? = null,
     /** D28: the LLM step's usage (engine, model, cost, ttft); null = LLM off, skipped or refused up front. */
     val llm: CleanUsage? = null,
+    /** D90: a transform applied after the commit (the translation); not from the core's JSON. */
+    val applied: AppliedTransform? = null,
 ) {
     /** What to paste: [segments] when the core sent them, else the pre-core-p1 fields. */
     fun pastePlan(): List<PasteSegment> = segments.ifEmpty {
@@ -481,7 +483,16 @@ data class CommitResult(
 
     /** History / copy text: [plainText], else [finalText] (older libs). */
     val historyText: String get() = plainText.ifEmpty { finalText }
+
+    /** What was typed: the [applied] transform's text, else [historyText]. */
+    val typedText: String get() = applied?.text ?: historyText
 }
+
+/**
+ * D90: what replaced the dictation when it was typed ([name] e.g. "Translate to French"). History
+ * keeps the dictation itself and shows this beside it (Windows' `AppliedTransform`).
+ */
+data class AppliedTransform(val name: String, val text: String)
 
 /** murmur_core `learn::Candidate`; [looksLikeName]: the correction reads as a name (D68, `learn::looks_like_name`). */
 data class LearnCandidate(val original: String, val corrected: String, val looksLikeName: Boolean = false)

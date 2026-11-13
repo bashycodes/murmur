@@ -73,9 +73,10 @@ object HistoryPages {
 
     /**
      * What Copy puts on the clipboard: the saved text ([CommitResult.historyText] at save time,
-     * line breaks included). The "Dictation not inserted" notification copies the same text.
+     * line breaks included), or what was typed instead of it (D90's translation). The
+     * "Dictation not inserted" notification copies the same text.
      */
-    fun copyText(r: HistoryRow): String = HistoryView.text(r, raw = false)
+    fun copyText(r: HistoryRow): String = r.transformed ?: HistoryView.text(r, raw = false)
 
     private fun hasText(r: HistoryRow) = r.finalText.isNotBlank() || r.asrText.isNotBlank()
 

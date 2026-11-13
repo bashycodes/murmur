@@ -18,6 +18,7 @@ import dev.murmur.MurmurApp
 import dev.murmur.R
 import dev.murmur.core.AsrEngine
 import dev.murmur.core.HealthReport
+import dev.murmur.data.showsTranslate
 import dev.murmur.data.Backup
 import dev.murmur.data.BackupIo
 import dev.murmur.data.CloudUsage
@@ -724,18 +725,21 @@ class SettingsActivity : Activity() {
             note("Command Mode uses AI cleanup: the on-device model, or the cloud only when \"send text around the cursor\" is on. Never in password, sensitive or banking fields.")
             sectionLabel("TRANSLATE")
             card {
-                toggleRow("Translate button", "Shows ⇄ next to the mic: tap it, speak, and what you said is typed cleaned up and translated", s.translateButton)
+                // D90: unset = on while two or more keyboard languages are enabled; a flip makes it explicit.
+                toggleRow("Translate button", "Shows ⇄ next to the mic: tap it, speak, and what you said is typed cleaned up and translated", s.showsTranslate(app.keyboardLanguages().size))
                     .onChange { on -> applyNow { copy(translateButton = on) } }
             }
             card {
                 choiceRows(
                     listOf(
-                        DevUi.Choice("", "Your other keyboard language", "Hebrew dictation types English, English types Hebrew"),
+                        DevUi.Choice("", "Your other keyboard language", "What you say in one keyboard language is typed in the other"),
                         DevUi.Choice("en", "English", ""),
                         DevUi.Choice("he", "Hebrew", ""),
                         DevUi.Choice("ar", "Arabic", ""),
                         DevUi.Choice("ru", "Russian", ""),
                         DevUi.Choice("fr", "French", ""),
+                        DevUi.Choice("de", "German", ""),
+                        DevUi.Choice("es", "Spanish", ""),
                     ),
                     s.translateTo,
                 ) { v -> applyNow { copy(translateTo = v) } }

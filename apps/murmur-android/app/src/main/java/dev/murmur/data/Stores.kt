@@ -104,7 +104,7 @@ class SettingsStore(context: Context) {
             .putBoolean("shrink_to_dot", s.shrinkToDot)
             .putFloat("bubble_scale", s.bubbleScale)
             .putString("command_button", s.commandButton.key)
-            .putBoolean("translate_button", s.translateButton)
+            .also { e -> s.translateButton?.let { e.putBoolean("translate_button", it) } ?: e.remove("translate_button") }
             .putString("translate_to", s.translateTo)
             .putBoolean("spoken_cleanup", s.spokenCleanup)
             .putString("asr_engine", s.asrEngine.wire)
@@ -127,10 +127,11 @@ class SettingsStore(context: Context) {
         _translateButton.value = s.translateButton
     }
 
-    private fun loadTranslateButton() = sp.getBoolean("translate_button", false)
+    /** null = never set: automatic (D90, [Settings.showsTranslate]). */
+    private fun loadTranslateButton(): Boolean? = if (sp.contains("translate_button")) sp.getBoolean("translate_button", false) else null
     private val _translateButton = kotlinx.coroutines.flow.MutableStateFlow(loadTranslateButton())
     /** D90: the saved "Translate button", so the running bubble shows / hides ⇄ the moment it changes. */
-    val translateButton: kotlinx.coroutines.flow.StateFlow<Boolean> = _translateButton
+    val translateButton: kotlinx.coroutines.flow.StateFlow<Boolean?> = _translateButton
 
     private fun loadCommandButton() = CommandButton.fromKey(sp.getString("command_button", null))
     private val _commandButton = kotlinx.coroutines.flow.MutableStateFlow(loadCommandButton())
@@ -274,6 +275,12 @@ data class HistoryRow(
      * of the dictation's app, so a retry picks the same style; null = saved before v5.
      */
     val appCategory: String? = null,
+    /**
+     * v6 (D90): the transform that replaced the dictation when it was typed (e.g. "Translate to
+     * French") and its text; [finalText] keeps the dictation itself. Null = typed as dictated.
+     */
+    val transform: String? = null,
+    val transformed: String? = null,
 ) {
     val isCommand: Boolean get() = status == COMMAND
 
@@ -307,7 +314,7 @@ object HistoryHygiene {
 class HistoryStore(
     context: Context,
     val audio: RetryAudioStore = RetryAudioStore(File(context.filesDir, "retry_audio")),
-) : SQLiteOpenHelper(context, "history.db", null, 5) {
+) : SQLiteOpenHelper(context, "history.db", null, 6) {
     override fun onConfigure(db: SQLiteDatabase) {
         super.onConfigure(db)
         db.rawQuery(HistoryHygiene.ON_OPEN, null).use { it.moveToFirst() }
@@ -333,6 +340,12 @@ class HistoryStore(
         addV3Columns(db)
         addV4Columns(db)
         addV5(db)
+        addV6(db)
+    }
+
+    /** v6 (D90): the applied transform (the translation) beside the dictation. */
+    private fun addV6(db: SQLiteDatabase) {
+        for (c in listOf("transform", "transformed")) db.execSQL("ALTER TABLE history ADD COLUMN $c TEXT")
     }
 
     /** v5 (D35): the app's style bucket, and the earlier texts of retried rows (0 = the original). */
@@ -366,6 +379,7 @@ class HistoryStore(
         if (oldVersion < 3) addV3Columns(db)
         if (oldVersion < 4) addV4Columns(db)
         if (oldVersion < 5) addV5(db)
+        if (oldVersion < 6) addV6(db)
     }
 
     /** The new row's id, or null when [retention] saves nothing (or the insert failed). */
@@ -384,6 +398,7 @@ class HistoryStore(
         put("insert_outcome", row.insertOutcome); put("route", row.route)
         put("command_original", row.commandOriginal)
         put("app_category", row.appCategory)
+        put("transform", row.transform); put("transformed", row.transformed)
     }
 
     fun purge(retention: Retention, now: Long = System.currentTimeMillis()) {
@@ -465,7 +480,7 @@ class HistoryStore(
      * row's text. Returns the row as it was, or null when the row is gone or [text] is no change.
      */
     fun applyCorrection(id: Long, text: String, now: Long = System.currentTimeMillis()): HistoryRow? =
-        addVersion(id, now) { old -> old.copy(finalText = text).takeIf { text.isNotBlank() && text != old.finalText } }?.first
+        addVersion(id, now) { old -> old.copy(finalText = text, transform = null, transformed = null).takeIf { text.isNotBlank() && text != old.finalText } }?.first
 
     /** [applyRetry] / [applyCorrection]: [next] turns the row into its new version (null = no change). */
     private fun addVersion(id: Long, now: Long, next: (HistoryRow) -> HistoryRow?): Pair<HistoryRow, Int>? {
@@ -517,6 +532,8 @@ class HistoryStore(
                         route = c.getString(c.getColumnIndexOrThrow("route")),
                         commandOriginal = c.getString(c.getColumnIndexOrThrow("command_original")),
                         appCategory = c.getString(c.getColumnIndexOrThrow("app_category")),
+                        transform = c.getString(c.getColumnIndexOrThrow("transform")),
+                        transformed = c.getString(c.getColumnIndexOrThrow("transformed")),
                     ),
                 )
             }

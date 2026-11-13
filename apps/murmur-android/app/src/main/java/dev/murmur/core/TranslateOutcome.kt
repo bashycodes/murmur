@@ -5,12 +5,15 @@ import org.json.JSONObject
 
 /**
  * D90 translation: what `nativeTranslate` answered, i.e. murmur-core `translate::result_json`
- * (`{"ok":true,"text"}` / `{"ok":false,"kind","error"}`, the same shape as Command Mode's). The
+ * (`{"ok":true,"text","target","on_device"}` / `{"ok":false,"kind","error"}`). The
  * wire shape is pinned by crates/murmur-core/fixtures/translate/translate_results.json.
  */
 sealed interface TranslateOutcome {
-    /** The cleaned, translated text to type instead of the dictation. */
-    data class Text(val text: String) : TranslateOutcome
+    /**
+     * The cleaned, translated text to type instead of the dictation; [target] = the language it
+     * is in ("" from an older library); [onDevice] = the phone's own model answered (lower quality).
+     */
+    data class Text(val text: String, val target: String = "", val onDevice: Boolean = false) : TranslateOutcome
 
     /** [kind] = `TranslateError::kind()`; [message] = its user-facing text. The dictation is typed as said. */
     data class Failed(val kind: String, val message: String) : TranslateOutcome
@@ -36,7 +39,7 @@ sealed interface TranslateOutcome {
             val o = JSONObject(json ?: "{}")
             val text = o.optString("text", "")
             if (o.optBoolean("ok") && text.isNotEmpty()) {
-                Text(text)
+                Text(text, o.optString("target", ""), o.optBoolean("on_device"))
             } else if (o.optBoolean("ok")) {
                 Failed(EMPTY, "AI returned no translation")
             } else {

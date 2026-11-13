@@ -106,6 +106,8 @@ enum class DictationHint {
     OnlyFiller,
     /** D90: the translation failed, so the dictation was typed as said. */
     NotTranslated,
+    /** D90: no server or cloud could, so the phone's own model translated (lower quality). */
+    TranslatedOnDevice,
 }
 
 /** Idle → Ready → Recording(hold|tap) → Processing → Ready | Error. */
@@ -447,7 +449,7 @@ class DictationController(
                     waitMs = t?.waitMs, segments = t?.segments, preAsrMs = t?.preAsrMs, clientMs = result?.route?.clientMs,
                     connectMs = diag?.connectMs, localCold = diag?.localCold?.takeIf { it }, localLoadMs = diag?.localLoadMs,
                     target = s.appId?.ifEmpty { null }, insert = InsertOutcome(outcome),
-                    raw = result?.asrText?.ifEmpty { null }, text = text ?: result?.historyText?.ifEmpty { null },
+                    raw = result?.asrText?.ifEmpty { null }, text = text ?: result?.typedText?.ifEmpty { null },
                     error = error ?: result?.error, stack = DebugLogger.stackOf(cause),
                     style = s.style, llm = dev.murmur.data.LlmOutcome.code(result),
                     speechMs = t?.speechMs, peakDbfs = t?.peakDbfs,
@@ -1089,9 +1091,7 @@ class DictationController(
             if (result.status == CommitStatus.EMPTY || plan.none { it is PasteSegment.Text && it.text.isNotBlank() }) {
                 if (cmd == null) host.recordHistory(result, false, appId, InsertOutcome.EMPTY, recording)
                 host.feedback(FeedbackEvent.NoSpeech)
-                val h = if (result.emptyReason == "only_filler") DictationHint.OnlyFiller else DictationHint.NoSpeechDetected
-                _hint.value = h
-                hintJob = scope.launch { delay(HINT_MS); if (_hint.value == h) _hint.value = null }
+                showHint(if (result.emptyReason == "only_filler") DictationHint.OnlyFiller else DictationHint.NoSpeechDetected)
                 _state.value = restingState()
                 done(InsertOutcome.EMPTY, result, error = result.emptyReason?.let { "empty_reason=$it" })
                 return@launch
@@ -1102,6 +1102,7 @@ class DictationController(
             }
             // D90: a translation types the translated text (the dictation as said when it fails).
             val (res, typed) = if (tr) translated(c, result, plan, gen) ?: return@launch else result to plan
+            val wasTranslated = res.applied != null
             // S12: only into the field focused at dictation start, and only while it is still allowed.
             when (host.insertTarget(explicit = false)) {
                 InsertTarget.OK -> Unit
@@ -1123,7 +1124,7 @@ class DictationController(
             host.recordHistory(res, inserted, appId, if (inserted) InsertOutcome.INSERTED else InsertOutcome.PASTE_FAILED, recording)
             if (!inserted) notInserted(res, unpasted!!, InsertOutcome.PASTE_FAILED)
             // D90: a translation is the AI's wording: nothing to learn from.
-            else if (res === result) try {
+            else if (!wasTranslated) try {
                 host.onInserted(
                     typed.filterIsInstance<PasteSegment.Text>().joinToString("") { it.text }, ctx,
                     typed.any { it is PasteSegment.Key && it.key == PasteKey.ENTER },
@@ -1242,15 +1243,22 @@ class DictationController(
             is TranslateOutcome.Text -> {
                 val enter = plan.filter { it is PasteSegment.Key && it.key == PasteKey.ENTER }
                 val typed = listOf(PasteSegment.Text(answer.text)) + enter
-                result.copy(finalText = answer.text, plainText = answer.text, segments = typed) to typed
+                // History keeps the dictation; the translation rides along as the applied transform.
+                val name = answer.target.ifEmpty { target.orEmpty() }
+                    .let { if (it.isEmpty()) "Translate" else "Translate to ${dev.murmur.data.LanguageDefault.name(it)}" }
+                if (answer.onDevice) showHint(DictationHint.TranslatedOnDevice)
+                result.copy(applied = dev.murmur.core.AppliedTransform(name, answer.text)) to typed
             }
             is TranslateOutcome.Failed -> {
-                val h = DictationHint.NotTranslated
-                _hint.value = h
-                hintJob = scope.launch { delay(HINT_MS); if (_hint.value == h) _hint.value = null }
+                showHint(DictationHint.NotTranslated)
                 result to plan
             }
         }
+    }
+
+    private fun showHint(h: DictationHint) {
+        _hint.value = h
+        hintJob = scope.launch { delay(HINT_MS); if (_hint.value == h) _hint.value = null }
     }
 
     /**
@@ -1259,7 +1267,7 @@ class DictationController(
      * when the result has no history text.
      */
     private fun notInserted(result: CommitResult, runs: String, outcome: String) {
-        val text = result.historyText.ifBlank { runs }
+        val text = result.typedText.ifBlank { runs }
         if (text.isBlank()) return
         try { host.onNotInserted(text, outcome) } catch (_: Throwable) { }
     }

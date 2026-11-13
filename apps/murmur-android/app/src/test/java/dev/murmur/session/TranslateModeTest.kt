@@ -5,6 +5,7 @@ import dev.murmur.core.FakeMurmurCore
 import dev.murmur.core.FieldContext
 import dev.murmur.core.SessionConfig
 import dev.murmur.core.TranslateOutcome
+import dev.murmur.data.showsTranslate
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -64,7 +65,7 @@ class TranslateModeTest {
     }
 
     @Test fun theTranslationIsTypedInsteadOfTheDictation() = runTest {
-        core.translateReply = { _, _ -> TranslateOutcome.Text("translated words") }
+        core.translateReply = { _, _ -> TranslateOutcome.Text("translated words", "en") }
         val c = controller()
         c.toggleTranslate()
         val rec = c.state.value as DictationState.Recording
@@ -78,7 +79,10 @@ class TranslateModeTest {
         assertEquals("automatic target", null, call[2])
         assertEquals(listOf("he", "en"), call[3])
         assertEquals(listOf("translated words"), host.inserted)
-        assertEquals("translated words", host.history.single().historyText)
+        val saved = host.history.single()
+        assertTrue("History keeps the dictation", saved.historyText.contains("demo"))
+        assertEquals(dev.murmur.core.AppliedTransform("Translate to English", "translated words"), saved.applied)
+        assertEquals(null, c.hint.value)
         assertTrue("the AI's wording is not learned from", host.learned.isEmpty())
         assertEquals(DictationState.Ready, c.state.value)
     }
@@ -90,6 +94,26 @@ class TranslateModeTest {
         speakTranslated(c)
         assertEquals("fr", core.translations.single()[2])
         assertEquals(listOf("des mots en fr"), host.inserted)
+    }
+
+    @Test fun anOnDeviceTranslationIsTypedAndSaysItsLowerQuality() = runTest {
+        core.translateReply = { _, _ -> TranslateOutcome.Text("translated words", "en", onDevice = true) }
+        val c = controller()
+        speakTranslated(c)
+        assertEquals(listOf("translated words"), host.inserted)
+        assertEquals(DictationHint.TranslatedOnDevice, c.hint.value)
+        assertEquals(
+            dev.murmur.bubble.PreviewContent.TRANSLATED_ON_DEVICE,
+            dev.murmur.bubble.PreviewContent.line(DictationState.Ready, null, c.hint.value, enabled = false)?.text,
+        )
+    }
+
+    @Test fun theButtonShowsByItselfOnlyWithTwoKeyboardLanguages() {
+        val auto = dev.murmur.data.Settings()
+        assertFalse(auto.showsTranslate(1))
+        assertTrue(auto.showsTranslate(2))
+        assertFalse("the setting overrides", auto.copy(translateButton = false).showsTranslate(2))
+        assertTrue(auto.copy(translateButton = true).showsTranslate(0))
     }
 
     @Test fun aFailedTranslationTypesTheDictationAndSaysSo() = runTest {
