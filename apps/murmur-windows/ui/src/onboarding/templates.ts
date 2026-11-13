@@ -224,7 +224,8 @@ const cleanupOption = (id: string, title: string, desc: string): string => `
   <span class="lw-ob-radio"></span>
   <span class="lw-ob-option-text">
     <span class="lw-ob-option-title">${title}<span class="fl-badge fl-badge-dark" data-ob-rec hidden>Recommended</span><span class="fl-badge fl-badge-light" data-ob-na hidden>Not in this build</span></span>
-    <span class="lw-ob-option-desc">${desc}</span>
+    <span class="lw-ob-option-desc" data-ob-desc>${desc}</span>
+    <span class="lw-ob-option-desc" data-ob-reason hidden></span>
   </span>
 </button>`;
 
@@ -245,6 +246,7 @@ const cleanup = `
     <div role="radiogroup" aria-label="AI cleanup" class="lw-ob-main">
       ${cleanupOption("rules", "Rules only", 'Instant. Punctuation, numbers and "scratch that" by fixed rules. No model needed.')}
       ${cleanupOption("pc", "On this PC", "A small model on this PC. Private, adds about a second. Needs a 0.4–1 GB GGUF file.")}
+      ${cleanupOption("server", "Your server", "Your server's AI model cleans the text. Nothing to download here, and the text goes only to your server.")}
       ${cleanupOption("cloud", "Cloud", "A large model from OpenRouter or your own LiteLLM proxy. Best quality. Sends text, never audio.")}
       <div class="lw-ob-llm" id="ob_llm_detail" hidden>
         ${source("cleanup")}
