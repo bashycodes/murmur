@@ -2,9 +2,10 @@
 //!
 //! NeMo transducer through sherpa-onnx (English Parakeet, or a
 //! language fine-tune such as Parakeet-v3-he; see [`ParakeetAsr::with_language`]). `ModelConfig.asr_path`
-//! is the model *directory*. Bias: the vocabulary that the whisper backend
-//! receives as `initial_prompt` is fed to sherpa as per-decode hotwords
-//! (modified beam search + context graph); see docs/core-architecture.md.
+//! is the model *directory*. Bias: the dictionary terms, then the rest of
+//! the whisper `initial_prompt` vocabulary ([`crate::asr::hotword_phrases`]),
+//! are fed to sherpa as per-decode hotwords (modified beam search + context
+//! graph); see docs/core-architecture.md.
 //! Decodes without hotwords use greedy search, and an empty or implausibly
 //! short beam result is re-decoded greedy, then in pieces
 //! (`ModelConfig.parakeet_decoding`, docs/proposals/stt-model-survey.md).
@@ -192,18 +193,6 @@ pub fn fallback_pieces(pcm: &[f32]) -> Vec<std::ops::Range<usize>> {
     segment::split_long(pcm, FALLBACK_PIECE_SAMPLES.min(pcm.len().div_ceil(2)))
 }
 
-/// Recover the phrase list from [`crate::asr::build_initial_prompt`]'s
-/// `"a, b c, d."` rendering, so this backend needs no new `AsrRequest` field.
-pub fn hotwords_from_prompt(prompt: &str) -> Vec<String> {
-    let p = prompt.trim();
-    let p = p.strip_suffix('.').unwrap_or(p);
-    p.split(", ")
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
-        .collect()
-}
-
 impl AsrEngine for ParakeetAsr {
     fn transcribe(&self, pcm: &[f32], req: &AsrRequest) -> Result<AsrOutput, AsrError> {
         // sherpa-onnx decodes cannot be interrupted; honour an abort that
@@ -211,7 +200,7 @@ impl AsrEngine for ParakeetAsr {
         if req.abort.is_set() {
             return Err(AsrError::Transcribe("aborted".into()));
         }
-        let hotwords = hotwords_from_prompt(&req.initial_prompt);
+        let hotwords = crate::asr::hotword_phrases(req);
         // One long decode loses whole utterances (v2 greedy: the 17 s third
         // sentence of a 30 s clip, 22 words at 42.8 s; sherpa-onnx PR
         // #4084), and beam search returns nothing for some (41.7 s 3/3,
@@ -245,23 +234,28 @@ impl AsrEngine for ParakeetAsr {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::asr::build_initial_prompt;
+    use crate::asr::{build_initial_prompt, hotword_phrases, AsrRequest};
     use crate::dictionary::{DictEntry, Dictionary};
+    use murmur_asr_sherpa::{hotwords_arg, MAX_HOTWORDS};
 
     #[test]
-    fn prompt_round_trips_to_hotwords() {
+    fn a_long_screen_list_keeps_the_dictionary_in_the_hotwords() {
+        // Synthetic terms; more screen words than sherpa keeps.
         let d = Dictionary {
             entries: vec![
-                DictEntry::word("Kubernetes"),
-                DictEntry::replacement("zephyr", "Zephyr Cloud"),
+                DictEntry::word("Quorvel"),
+                DictEntry::replacement("tamsik", "Tamsik Lintrava"),
             ],
         };
-        let p = build_initial_prompt(&d, &["Alice".into()]);
-        assert_eq!(
-            hotwords_from_prompt(&p),
-            ["Kubernetes", "Zephyr Cloud", "Alice"]
-        );
-        assert!(hotwords_from_prompt("").is_empty());
+        let screen: Vec<String> = (0..2 * MAX_HOTWORDS).map(|i| format!("sw{i}")).collect();
+        let req = AsrRequest {
+            initial_prompt: build_initial_prompt(&d, &screen),
+            dictionary_terms: vec!["Quorvel".into(), "Tamsik Lintrava".into()],
+            ..Default::default()
+        };
+        let arg = hotwords_arg(&hotword_phrases(&req));
+        let kept: Vec<&str> = arg.split('/').collect();
+        assert_eq!(kept.len(), MAX_HOTWORDS);
+        assert_eq!(kept[..3], ["Quorvel", "Tamsik Lintrava", "sw0"]);
     }
 }

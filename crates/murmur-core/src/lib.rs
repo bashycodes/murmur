@@ -24,6 +24,7 @@ pub mod meeting;
 pub mod parakeet;
 pub mod paste;
 pub mod postprocess;
+pub mod recital;
 pub mod script_lock;
 pub mod segment;
 #[cfg(feature = "parakeet")]

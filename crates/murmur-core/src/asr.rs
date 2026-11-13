@@ -11,6 +11,9 @@ use crate::dictionary::Dictionary;
 
 /// Whisper's prompt window is ~224 tokens; 200 words keeps the dictionary inside it.
 pub const MAX_PROMPT_WORDS: usize = 200;
+/// Character cap on [`build_initial_prompt`] (D87; OpenWhispr's Whisper
+/// cap): whisper keeps only the prompt's last ~224 tokens.
+pub const MAX_PROMPT_CHARS: usize = 900;
 
 /// Cooperative cancellation for best-effort decodes (live partials): the
 /// engine should stop as soon as it observes `true`.
@@ -73,8 +76,8 @@ pub struct AsrRequest {
 /// Words of earlier pieces passed as `prior_text`.
 pub const PRIOR_WORDS: usize = 30;
 /// No `prior_text` when the dictionary/screen prompt already has this many
-/// words (whisper keeps only the last ~224 prompt tokens, so the
-/// dictionary terms, which come first, would be lost).
+/// words (whisper keeps only the last ~224 prompt tokens, so the start of
+/// the prompt would be lost).
 pub const PRIOR_MAX_PROMPT_WORDS: usize = 120;
 
 /// The whisper prompt for a request: `initial_prompt`, then `prior_text`
@@ -230,34 +233,80 @@ impl AsrEngine for BurstEchoAsr {
     }
 }
 
-/// Comma-separated vocabulary: dictionary first (user intent), then screen
-/// words; case-insensitive dedupe; capped at [`MAX_PROMPT_WORDS`].
+/// Comma-separated vocabulary, screen words first and the dictionary last
+/// (D87): whisper attends most to the end of its prompt. The dictionary is
+/// picked first, so it is what fits under the caps ([`MAX_PROMPT_WORDS`],
+/// [`MAX_PROMPT_CHARS`]); screen words fill what is left. Case-insensitive
+/// dedupe; a screen word that is also a dictionary term is dropped.
+/// [`prompt_phrases`] reads the list back.
 pub fn build_initial_prompt(dict: &Dictionary, screen_words: &[String]) -> String {
-    let mut seen: Vec<String> = Vec::new();
-    let mut phrases: Vec<&str> = Vec::new();
-    let mut words = 0;
-    let candidates = dict
-        .vocabulary()
-        .into_iter()
-        .chain(screen_words.iter().map(String::as_str));
-    for p in candidates {
-        let p = p.trim();
-        if p.is_empty() || seen.contains(&p.to_lowercase()) {
-            continue;
-        }
-        let n = p.split_whitespace().count();
-        if words + n > MAX_PROMPT_WORDS {
-            break;
-        }
-        words += n;
-        seen.push(p.to_lowercase());
-        phrases.push(p);
-    }
+    let mut budget = PromptBudget::default();
+    let dict_phrases = budget.pick(dict.vocabulary());
+    let screen_phrases = budget.pick(screen_words.iter().map(String::as_str));
+    let phrases: Vec<&str> = screen_phrases.into_iter().chain(dict_phrases).collect();
     if phrases.is_empty() {
         String::new()
     } else {
         format!("{}.", phrases.join(", "))
     }
+}
+
+/// What [`build_initial_prompt`] has taken so far.
+#[derive(Default)]
+struct PromptBudget {
+    seen: Vec<String>,
+    words: usize,
+    chars: usize,
+}
+
+impl PromptBudget {
+    /// The phrases of `candidates` that still fit, in order, up to the
+    /// first that does not.
+    fn pick<'a>(&mut self, candidates: impl IntoIterator<Item = &'a str>) -> Vec<&'a str> {
+        let mut out = Vec::new();
+        for p in candidates {
+            let p = p.trim();
+            if p.is_empty() || self.seen.contains(&p.to_lowercase()) {
+                continue;
+            }
+            let n = p.split_whitespace().count();
+            // The phrase plus its ", " (or the closing ".").
+            let c = p.chars().count() + 2;
+            if self.words + n > MAX_PROMPT_WORDS || self.chars + c > MAX_PROMPT_CHARS {
+                break;
+            }
+            self.words += n;
+            self.chars += c;
+            self.seen.push(p.to_lowercase());
+            out.push(p);
+        }
+        out
+    }
+}
+
+/// Phrases for an engine that biases by phrase list (Parakeet and sherpa
+/// online hotwords), most important first: `dictionary_terms`, then the
+/// rest of `initial_prompt`'s phrases (screen words; all of it when the
+/// caller set no terms). Sherpa keeps only the first
+/// `murmur_asr_sherpa::MAX_HOTWORDS`, and the prompt lists the dictionary
+/// last (D87). Duplicates are left for sherpa's case-insensitive dedupe.
+pub fn hotword_phrases(req: &AsrRequest) -> Vec<String> {
+    req.dictionary_terms
+        .iter()
+        .cloned()
+        .chain(prompt_phrases(&req.initial_prompt))
+        .collect()
+}
+
+/// The phrase list of a [`build_initial_prompt`] string (`"a, b c, d."`).
+pub fn prompt_phrases(prompt: &str) -> Vec<String> {
+    let p = prompt.trim();
+    let p = p.strip_suffix('.').unwrap_or(p);
+    p.split(", ")
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 /// Deterministic engine for tests and shell development.
@@ -328,7 +377,7 @@ mod tests {
     use crate::dictionary::{DictEntry, Dictionary};
 
     #[test]
-    fn initial_prompt_lists_dictionary_then_screen_words() {
+    fn initial_prompt_lists_screen_words_then_dictionary() {
         let d = Dictionary {
             entries: vec![
                 DictEntry::word("Kubernetes"),
@@ -336,7 +385,36 @@ mod tests {
             ],
         };
         let p = build_initial_prompt(&d, &["Alice".into(), "Zephyr".into()]);
-        assert_eq!(p, "Kubernetes, Zephyr, Alice.");
+        assert_eq!(p, "Alice, Kubernetes, Zephyr.");
+        assert_eq!(prompt_phrases(&p), ["Alice", "Kubernetes", "Zephyr"]);
+        assert!(prompt_phrases("").is_empty());
+    }
+
+    #[test]
+    fn hotwords_put_the_dictionary_first() {
+        // Synthetic terms; a screen list long enough to fill sherpa's cap
+        // of 100 phrases before the dictionary.
+        let d = Dictionary {
+            entries: vec![
+                DictEntry::word("Quorvel"),
+                DictEntry::replacement("tamsik", "Tamsik Lintrava"),
+            ],
+        };
+        let screen: Vec<String> = (0..150).map(|i| format!("sw{i}")).collect();
+        let req = AsrRequest {
+            initial_prompt: build_initial_prompt(&d, &screen),
+            dictionary_terms: vec!["Quorvel".into(), "Tamsik Lintrava".into()],
+            ..Default::default()
+        };
+        let h = hotword_phrases(&req);
+        assert_eq!(h[..3], ["Quorvel", "Tamsik Lintrava", "sw0"]);
+        assert!(prompt_phrases(&req.initial_prompt).len() > 100);
+        // Without terms (a caller that sets only the prompt): the prompt.
+        let req = AsrRequest {
+            initial_prompt: "Alice, Kubernetes.".into(),
+            ..Default::default()
+        };
+        assert_eq!(hotword_phrases(&req), ["Alice", "Kubernetes"]);
     }
 
     #[test]
@@ -346,9 +424,48 @@ mod tests {
 
     #[test]
     fn initial_prompt_caps_word_count() {
-        let screen: Vec<String> = (0..500).map(|i| format!("w{i}")).collect();
+        // 500 distinct two-letter words: the word cap binds first.
+        let screen: Vec<String> = (0..500)
+            .map(|i| {
+                format!(
+                    "{}{}",
+                    (b'a' + (i / 26) as u8) as char,
+                    (b'a' + (i % 26) as u8) as char
+                )
+            })
+            .collect();
         let p = build_initial_prompt(&Dictionary::default(), &screen);
         assert_eq!(p.split_whitespace().count(), MAX_PROMPT_WORDS);
+        assert!(p.len() <= MAX_PROMPT_CHARS);
+    }
+
+    #[test]
+    fn a_long_screen_list_never_crowds_out_the_dictionary() {
+        // Synthetic terms; the screen list alone is over the character cap.
+        let d = Dictionary {
+            entries: vec![
+                DictEntry::word("Quorvel"),
+                DictEntry::replacement("tamsik", "Tamsik Lintrava"),
+            ],
+        };
+        let screen: Vec<String> = (0..300).map(|i| format!("Screenword{i}")).collect();
+        let p = build_initial_prompt(&d, &screen);
+        assert!(p.chars().count() <= MAX_PROMPT_CHARS, "{}", p.len());
+        assert!(p.starts_with("Screenword0, "), "{p}");
+        assert!(p.ends_with(", Quorvel, Tamsik Lintrava."), "{p}");
+        // A dictionary over the cap keeps its first terms and leaves no
+        // room for screen words.
+        let big = Dictionary {
+            entries: (0..300)
+                .map(|i| DictEntry::word(&format!("Dictword{i}")))
+                .collect(),
+        };
+        let p = build_initial_prompt(&big, &screen);
+        assert!(
+            p.starts_with("Dictword0, ") && !p.contains("Screenword"),
+            "{p}"
+        );
+        assert!(p.chars().count() <= MAX_PROMPT_CHARS);
     }
 
     #[test]
