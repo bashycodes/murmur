@@ -13,9 +13,11 @@
 //!   own checks (the cloud gate's per-destination consent, D52/D78; nothing
 //!   new reaches a destination cleanup does not already reach).
 //! * Guards: the language guards on a cleanup answer are off for this task
-//!   ([`CleanTask::keeps_language`]); instead an answer still in the
-//!   dictation's script when the target is written in another one is
-//!   refused ([`TranslateError::NotTranslated`]).
+//!   ([`CleanTask::keeps_language`]); instead an answer whose letters are
+//!   not overwhelmingly in the target's script (more than
+//!   [`MAX_FOREIGN_SHARE`] foreign letters, names carried over excepted) is
+//!   refused ([`TranslateError::NotTranslated`]): small models leave words
+//!   untranslated or drift into other scripts mid-sentence.
 //! * Default target: the other installed keyboard language (D58), see
 //!   [`default_target`].
 
@@ -61,9 +63,9 @@ pub enum TranslateError {
     Timeout { secs: u64 },
     #[error("AI returned no translation")]
     Empty,
-    /// The answer is still in the dictation's script although the target
-    /// is written in another one.
-    #[error("AI didn't translate the text")]
+    /// The answer is not (all) in the target's script: left untranslated,
+    /// or drifting into other scripts ([`off_target`]).
+    #[error("Couldn't translate the text")]
     NotTranslated,
     #[error("Translation failed: {0}")]
     Backend(String),
@@ -259,13 +261,60 @@ pub fn default_target(source: Option<&str>, text: &str, installed: &[String]) ->
     }
 }
 
-/// The answer is still in the text's own script while `target` is written
-/// in another: the model cleaned instead of translating.
-fn not_translated(text: &str, target: &str, answer: &str) -> bool {
-    let (Some(want), Some(from)) = (script_of(target), script_lock::dominant(text)) else {
+/// Most letters of a translation outside the target's script it may have
+/// (tuned on the D90 bench: the cloud's answers have none, the on-device
+/// model's broken ones 15-60 %).
+pub const MAX_FOREIGN_SHARE: f32 = 0.05;
+
+/// The answer is not a clean translation into `target`: more than
+/// [`MAX_FOREIGN_SHARE`] of its letters are outside the target's script
+/// (left untranslated, or other scripts: Arabic, CJK …). Digits and
+/// punctuation don't count. Into a non-Latin script, a Latin word carried
+/// over as a name is fine: capitalised in the dictation (not as its first
+/// word), or one of the user's dictionary terms. Targets whose script the
+/// check doesn't know pass.
+fn off_target(text: &str, target: &str, answer: &str, dictionary: &Dictionary) -> bool {
+    let Some(want) = script_of(target) else {
         return false;
     };
-    want != from && script_lock::dominant(answer) == Some(from)
+    let vocab: Vec<String> = dictionary
+        .vocabulary()
+        .iter()
+        .flat_map(|t| t.split_whitespace())
+        .map(str::to_lowercase)
+        .collect();
+    let name = |w: &str| {
+        want != Script::Latin
+            && (vocab.iter().any(|v| v.eq_ignore_ascii_case(w))
+                || text
+                    .split(|c: char| !c.is_alphanumeric())
+                    .filter(|t| !t.is_empty())
+                    .skip(1)
+                    .any(|t| t == w && t.starts_with(char::is_uppercase)))
+    };
+    // Runs of letters outside the target's script ("הBuild" → "Build").
+    let (mut letters, mut foreign) = (0usize, 0usize);
+    let mut run = String::new();
+    let flush = |run: &mut String, foreign: &mut usize| {
+        if !run.is_empty() && !name(run) {
+            *foreign += run.chars().count();
+        }
+        run.clear();
+    };
+    for c in answer.chars() {
+        if !c.is_alphabetic() {
+            flush(&mut run, &mut foreign);
+            continue;
+        }
+        letters += 1;
+        if Script::of(c) == Some(want) {
+            flush(&mut run, &mut foreign);
+        } else {
+            run.push(c);
+        }
+    }
+    flush(&mut run, &mut foreign);
+    letters > 0 && foreign as f32 / letters as f32 > MAX_FOREIGN_SHARE
 }
 
 /// Clean and translate `req` with `cleaner`, the user's cleanup route
@@ -298,7 +347,7 @@ pub fn run(
         secs: timeout.as_secs().max(1),
     };
     match outcome {
-        CleanOutcome::Formatted(t) if not_translated(text, &target, &t) => {
+        CleanOutcome::Formatted(t) if off_target(text, &target, &t, &req.dictionary) => {
             Err(TranslateError::NotTranslated)
         }
         CleanOutcome::Formatted(text) => Ok(Translation {
@@ -414,8 +463,9 @@ mod tests {
                 "{engine}"
             );
             // Hebrew → Yiddish: the same script, plus a Latin word the
-            // dictation does not have (D65's `added_foreign`).
-            let out = "דער Zoom טרעף איז מארגן";
+            // dictation does not have (D65's `added_foreign`), under the
+            // translation's own foreign-letter cap ([`MAX_FOREIGN_SHARE`]).
+            let out = "דער Zoom טרעף מיט דער גאנצער משפחה איז מארגן אינדערפרי אום צען אזייגער, ביטע געדענקט צו ברענגען די בילדער פון דער חתונה";
             let cl = Fixed::new(engine, Ok(out));
             let t = run(Some(cl), &req(HE, Some("he"), "yi"), Duration::from_secs(5)).unwrap();
             assert_eq!(t.text, out, "{engine}");
@@ -475,6 +525,52 @@ mod tests {
         // Target in the same script (English → Spanish): not judged.
         let cl = Fixed::new("cloud", Ok("Recuérdame comprar leche."));
         assert!(go(cl, "remind me to buy milk", "es").is_ok());
+    }
+
+    /// D90 bench (on-device 1.5B, synthetic cases): answers that drift
+    /// into other scripts or leave words untranslated are refused; the
+    /// dictation is then typed as said.
+    #[test]
+    fn a_mixed_script_answer_is_not_pasted() {
+        let src = "the Zephyr build is green you can merge it now";
+        for bad in [
+            "הBuild Zephyr הוא ירוק,你可以現在進行合併.",
+            "הפגישה עם דנה נמצאת בثلاث ביום רביעי.",
+            "אני מגיע ל pocchenta דקות מהירה אז תתחיל בלי אותי.",
+            "זכור לי להתקשר אל המזונן tomorrow.",
+        ] {
+            let cl = Fixed::new("local", Ok(bad));
+            assert_eq!(
+                go(cl, src, "he"),
+                Err(TranslateError::NotTranslated),
+                "{bad}"
+            );
+        }
+        // Names carried over, digits and punctuation are fine.
+        for good in [
+            "הבנייה של Zephyr ירוקה, אפשר למזג אותה עכשיו.",
+            "הפגישה עם Dana נדחתה ל-15:00.",
+        ] {
+            let cl = Fixed::new("cloud", Ok(good));
+            let text = "um the meeting with Dana and the Zephyr build moved to 15:00";
+            assert_eq!(go(cl, text, "he").as_deref(), Ok(good));
+        }
+        // A dictionary term counts as a name, even lower-case in the text.
+        let r = Request {
+            dictionary: Dictionary {
+                entries: vec![crate::dictionary::DictEntry::word("kubectl")],
+            },
+            ..req("run kubectl now", Some("en"), "he")
+        };
+        let t = run(
+            Some(Fixed::new("cloud", Ok("הרץ את kubectl עכשיו."))),
+            &r,
+            Duration::from_secs(5),
+        );
+        assert_eq!(t.map(|t| t.text).as_deref(), Ok("הרץ את kubectl עכשיו."));
+        // Into English, Hebrew left in the answer is foreign too.
+        let cl = Fixed::new("local", Ok("Remind me to buy חלב tomorrow morning."));
+        assert_eq!(go(cl, HE, "en"), Err(TranslateError::NotTranslated));
     }
 
     #[test]

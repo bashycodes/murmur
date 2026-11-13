@@ -35,7 +35,7 @@
     },
     {
       "input": {"err": "not_translated"},
-      "json": {"ok": false, "kind": "not_translated", "error": "AI didn't translate the text"}
+      "json": {"ok": false, "kind": "not_translated", "error": "Couldn't translate the text"}
     },
     {
       "input": {"err": "backend", "detail": "cloud_consent_required"},
