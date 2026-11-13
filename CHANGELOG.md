@@ -16,6 +16,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-13
+
 ### Added
 
 - **Windows setup offers "Your server" for AI cleanup** (step 4, D36). With a server saved in step 2 it is a choice next to Rules only, On this PC and Cloud, and it is recommended over On this PC unless the server is known to have no AI cleanup model. Picking it turns on the same switch as Settings → AI cleanup → Your server and puts the server first in the cleanup order. Without a saved server the choice is greyed out and says to set the server up in step 2 first.
@@ -1436,7 +1438,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   adaptive connect timeout, connection pre-warm.
 - All P1/P2 findings of the 2026-10-22 review (`docs/reviews/2026-10-22-integration.md`).
 
-[Unreleased]: https://github.com/bashycodes/murmur/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/bashycodes/murmur/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/bashycodes/murmur/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/bashycodes/murmur/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/bashycodes/murmur/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/bashycodes/murmur/compare/v1.1.1...v1.1.2
