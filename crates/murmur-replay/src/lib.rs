@@ -15,7 +15,7 @@
 //! Cleanup slots mirror the phone's cleaner: `cloud` (AI cleanup, D30)
 //! wrapped in a `RoutedCleaner` with the on-device `local` LLM when there
 //! is one, `local` alone (today's pipeline: rules, prompt v2), or neither
-//! (fallback rules). The product sends prompt v5 to
+//! (fallback rules). The product sends prompt v6 to
 //! the cloud; other versions are swapped in by [`PromptOverride`], which
 //! rebuilds the prompt with the engine's `session_prompt` and changes nothing
 //! else.
@@ -155,7 +155,8 @@ pub fn parse_prompt(s: &str) -> Result<PromptVersion, String> {
         "v2" => Ok(PromptVersion::V2),
         "v4c" => Ok(PromptVersion::V4c),
         "v5" => Ok(PromptVersion::V5),
-        o => Err(format!("unknown prompt version {o:?} (v2, v4c, v5)")),
+        "v6" => Ok(PromptVersion::V6),
+        o => Err(format!("unknown prompt version {o:?} (v2, v4c, v5, v6)")),
     }
 }
 
@@ -164,6 +165,7 @@ pub fn prompt_name(v: PromptVersion) -> &'static str {
         PromptVersion::V2 => "v2",
         PromptVersion::V4c => "v4c",
         PromptVersion::V5 => "v5",
+        PromptVersion::V6 => "v6",
     }
 }
 
@@ -571,7 +573,7 @@ mod tests {
             ..ctx.clone()
         };
         let text = "so the quill mate notes went out";
-        for (v, lang) in [(PromptVersion::V5, None), (PromptVersion::V2, Some("he"))] {
+        for (v, lang) in [(PromptVersion::V6, None), (PromptVersion::V2, Some("he"))] {
             let sent = session_prompt(text, &session, &engine_ctx, PromptScope::FULL, v, lang);
             let o = PromptOverride::new(Arc::new(Echo), v, session.clone(), ctx.clone());
             assert_eq!(o.rewrite(&sent), sent, "{v:?}");
