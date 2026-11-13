@@ -14,7 +14,7 @@ import {
   timeoutNote,
 } from "../dist/lib/model-pages.js";
 
-const DIR = "C:\\Users\\someone\\AppData\\Roaming\\Murmur\\models";
+const DIR = "C:\\Users\\you\\AppData\\Roaming\\Murmur\\models";
 const catalog = [
   { id: "pk", engine: "parakeet", dest: `${DIR}\\parakeet-folder`, installed: true, size: 661e6 },
   { id: "wb", engine: "whisper", dest: `${DIR}\\ggml-base.bin`, installed: false, size: 148e6 },
