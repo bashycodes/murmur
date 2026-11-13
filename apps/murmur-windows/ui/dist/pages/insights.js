@@ -4,19 +4,10 @@
 // `insights_reset`; kept apart from History, never sent anywhere).
 import { $, askDialog, el, setStatus } from "../lib/dom.js";
 import { ICON, iconEl } from "../lib/icons.js";
-import { dayText, legendHtml, streakText } from "../lib/insights-text.js";
+import { dayText, legendHtml, ROUTE_LABEL, ROUTES, routeShare, splitKey, streakText, } from "../lib/insights-text.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { router } from "../lib/router.js";
-export const ROUTES = ["pc", "server", "cloud"];
-export const ROUTE_LABEL = { pc: "This PC", server: "Your server", cloud: "Cloud" };
-/** Percent per known route (unknown left out); null when none is known. */
-export function routeShare(r) {
-    const known = r.pc + r.server + r.cloud;
-    if (known === 0)
-        return null;
-    const pct = (n) => Math.round((100 * n) / known);
-    return { pc: pct(r.pc), server: pct(r.server), cloud: pct(r.cloud) };
-}
+export { ROUTE_LABEL, ROUTES, routeShare } from "../lib/insights-text.js";
 const TEMPLATE = `
 <div class="lw-ins">
   <div class="lw-ins-head">
@@ -119,8 +110,8 @@ function showSplit(s) {
         return;
     const used = ROUTES.filter((r) => s.routes_7d[r] > 0);
     // Every part is named in the key below; wide parts also carry the name.
-    key.replaceChildren(...used.map((r) => {
-        const item = el("span", `is-${r}`, `${ROUTE_LABEL[r]} ${share[r]}%`);
+    key.replaceChildren(...splitKey(s.routes_7d).map((k) => {
+        const item = el("span", `is-${k.route}`, k.text);
         item.prepend(el("i"));
         return item;
     }));

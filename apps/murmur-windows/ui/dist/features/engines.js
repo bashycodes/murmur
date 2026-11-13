@@ -9,6 +9,7 @@ import { $, el, setStatus } from "../lib/dom.js";
 import { devStore } from "../lib/dev-store.js";
 import { cloudHint } from "../lib/format.js";
 import { invoke, onEvent } from "../lib/ipc.js";
+import { engineWord, HISTORY_PEEK, historyLastText, latestOnly, pickDictation } from "../lib/last-dictation.js";
 import { prefsStore } from "../lib/prefs-store.js";
 import { router } from "../lib/router.js";
 import { moveShown, onMove, rankRows } from "../lib/ranked-list.js";
@@ -405,40 +406,29 @@ function timingLine(l) {
         parts.push(`engine ${l.total_ms}`);
     return parts.join(" · ");
 }
-let lastSeq = 0;
-/** No dictation since the app started: show the newest history row instead. */
-async function showHistoryLast(e, seq) {
+const lastGuard = latestOnly();
+/** No dictation since the app started: show history's newest dictation (what Home lists). */
+async function showHistoryLast(e, t) {
     let rows = [];
     try {
-        rows = await invoke("history_list", { query: "", limit: 1 });
+        rows = await invoke("history_list", { query: "", limit: HISTORY_PEEK });
     }
     catch {
         /* history unreadable: keep the empty text */
     }
-    if (seq !== lastSeq)
+    if (!lastGuard.isLatest(t))
         return; // a dictation (or a newer view) came in meanwhile
-    const h = rows[0];
-    e.textContent = h
-        ? [
-            new Date(h.ts).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }),
-            h.app.replace(/\.exe$/i, "") || "unknown app",
-            `${h.words.toLocaleString()} words`,
-            h.route ?? "",
-            "timings show after the next dictation",
-        ]
-            .filter(Boolean)
-            .join(" · ")
-        : "No dictation yet";
+    e.textContent = historyLastText(pickDictation(rows));
 }
 function showRoute(r) {
     const last = r.last;
     const e = $("dev_last");
-    const seq = ++lastSeq;
+    const t = lastGuard.next();
     if (!last) {
-        void showHistoryLast(e, seq);
+        void showHistoryLast(e, t);
     }
     else {
-        const engine = last.engine === "remote" ? "server" : last.engine === "local" ? "client" : (last.engine ?? "none");
+        const engine = engineWord(last.engine);
         const bits = [
             last.row ?? engine,
             last.notice ?? "",

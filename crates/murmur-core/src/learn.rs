@@ -148,12 +148,15 @@ fn script(c: char) -> Option<Script> {
     })
 }
 
-/// The two sides share no script (e.g. "Tidy" → "בעברית"): a switch of
-/// language, not a misheard word. Sides with no known script are kept.
+/// A Latin original corrected into another script only, sharing none
+/// (e.g. "Tidy" → "בעברית"): a switch of language, not a misheard word.
+/// The other way round is kept: a brand heard in Hebrew letters and
+/// corrected to its Latin spelling ("סלאק" → "Slack") is vocabulary.
+/// Sides with no known script are kept.
 fn switches_script(original: &str, corrected: &str) -> bool {
     let scripts = |s: &str| -> Vec<Script> { s.chars().filter_map(script).collect() };
     let (a, b) = (scripts(original), scripts(corrected));
-    !a.is_empty() && !b.is_empty() && !a.iter().any(|x| b.contains(x))
+    a.contains(&Script::Latin) && !b.is_empty() && !a.iter().any(|x| b.contains(x))
 }
 
 /// The word ends in `.`, `!` or `?`: the next word starts a sentence.
@@ -441,9 +444,23 @@ mod tests {
     }
 
     #[test]
+    fn non_latin_to_latin_brand_is_kept() {
+        // A brand heard in Hebrew letters, corrected to its Latin spelling.
+        assert_eq!(
+            words(&learn("שלח בזנטריקס עכשיו", "שלח Zentrix עכשיו")),
+            vec![("בזנטריקס", "Zentrix")]
+        );
+        assert_eq!(
+            words(&learn("say лумио now", "say Lumio now")),
+            vec![("лумио", "Lumio")]
+        );
+    }
+
+    #[test]
     fn script_of_letters() {
         assert!(switches_script("Tidy", "שלום"));
-        assert!(switches_script("שלום", "Tidy"));
+        assert!(!switches_script("שלום", "Tidy"));
+        assert!(!switches_script("שלום", "привет"));
         assert!(switches_script("zentra", "ζέντρα"));
         assert!(!switches_script("zentra", "Zentra"));
         assert!(!switches_script("42", "שלום"));

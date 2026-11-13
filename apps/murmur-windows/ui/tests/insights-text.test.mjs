@@ -1,9 +1,10 @@
 // Insights words (UX review on 1.3.0): the heatmap legend reads Less → More,
 // "Longest" shows only when it beats the current streak, and backend ISO days
-// use the app's date format. Runs on the built dist: `npm test`.
+// use the app's date format, and every words-bar part is named in its key.
+// Runs on the built dist: `npm test`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dayText, legendHtml, LEGEND_LEVELS, streakText } from "../dist/lib/insights-text.js";
+import { dayText, legendHtml, LEGEND_LEVELS, splitKey, streakText } from "../dist/lib/insights-text.js";
 
 test("legend reads Less, lightest to darkest, More", () => {
   const html = legendHtml();
@@ -33,4 +34,21 @@ test("anything that isn't an ISO day passes through", () => {
   assert.equal(dayText(""), "");
   assert.equal(dayText("yesterday"), "yesterday");
   assert.equal(dayText("2026-11-03T10:00:00Z"), "2026-11-03T10:00:00Z");
+});
+
+test("impossible days pass through unformatted", () => {
+  for (const d of ["2026-13-01", "2026-00-10", "2026-02-30", "2026-11-00", "2026-04-31"]) {
+    assert.equal(dayText(d, "en-US"), d);
+  }
+  assert.equal(dayText("2028-02-29", "en-US"), "Feb 29, 2028");
+});
+
+test("the words-bar key names every used route with its share, in bar order", () => {
+  assert.deepEqual(splitKey({ pc: 6, server: 3, cloud: 1, unknown: 5 }), [
+    { route: "pc", text: "This PC 60%" },
+    { route: "server", text: "Your server 30%" },
+    { route: "cloud", text: "Cloud 10%" },
+  ]);
+  assert.deepEqual(splitKey({ pc: 0, server: 1, cloud: 0, unknown: 0 }), [{ route: "server", text: "Your server 100%" }]);
+  assert.deepEqual(splitKey({ pc: 0, server: 0, cloud: 0, unknown: 4 }), []);
 });

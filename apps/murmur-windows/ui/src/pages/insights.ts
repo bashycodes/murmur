@@ -5,7 +5,16 @@
 
 import { $, askDialog, el, setStatus } from "../lib/dom.js";
 import { ICON, iconEl } from "../lib/icons.js";
-import { dayText, legendHtml, streakText } from "../lib/insights-text.js";
+import {
+  dayText,
+  legendHtml,
+  ROUTE_LABEL,
+  ROUTES,
+  routeShare,
+  splitKey,
+  streakText,
+  type RouteCounts,
+} from "../lib/insights-text.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { router, type Page } from "../lib/router.js";
 
@@ -25,27 +34,15 @@ export interface InsightsSummary {
   since: string | null;
 }
 
-/** Where speech was turned into text (`history::route_label`). */
-export type Route = "pc" | "server" | "cloud";
+export { ROUTE_LABEL, ROUTES, routeShare, type Route } from "../lib/insights-text.js";
 
 /** What `insights_get` returns: the summary plus the desktop extras. */
 export interface InsightsView extends InsightsSummary {
   /** 18 Monday-first weeks × 7 days, oldest first; `words: null` = after today. */
   heatmap: { date: string; words: number | null }[];
   /** Dictations per route, today and the 6 days before. */
-  routes_7d: Record<Route | "unknown", number>;
+  routes_7d: RouteCounts;
   fixes: { ai: number; dictionary: number; total: number };
-}
-
-export const ROUTES: Route[] = ["pc", "server", "cloud"];
-export const ROUTE_LABEL: Record<Route, string> = { pc: "This PC", server: "Your server", cloud: "Cloud" };
-
-/** Percent per known route (unknown left out); null when none is known. */
-export function routeShare(r: InsightsView["routes_7d"]): Record<Route, number> | null {
-  const known = r.pc + r.server + r.cloud;
-  if (known === 0) return null;
-  const pct = (n: number): number => Math.round((100 * n) / known);
-  return { pc: pct(r.pc), server: pct(r.server), cloud: pct(r.cloud) };
 }
 
 const TEMPLATE = `
@@ -150,8 +147,8 @@ function showSplit(s: InsightsView): void {
   const used = ROUTES.filter((r) => s.routes_7d[r] > 0);
   // Every part is named in the key below; wide parts also carry the name.
   key.replaceChildren(
-    ...used.map((r) => {
-      const item = el("span", `is-${r}`, `${ROUTE_LABEL[r]} ${share[r]}%`);
+    ...splitKey(s.routes_7d).map((k) => {
+      const item = el("span", `is-${k.route}`, k.text);
       item.prepend(el("i"));
       return item;
     }),
