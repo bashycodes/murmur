@@ -4,13 +4,15 @@
 // as the speech-to-text order (features/engines.ts). The order and the
 // server switch save with `dev_cleanup_set_engines`; this PC's switch is
 // the `llm_enabled` pref; OpenRouter's switch (with its consent) belongs to
-// features/openrouter.ts.
+// features/openrouter.ts. Setup's "Your server" cleanup choice
+// (onboarding/index.ts) saves the same order with the same command.
 
 import { $, el, setStatus } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { prefsStore, type Prefs } from "../lib/prefs-store.js";
 import { moveShown, onMove, rankRows } from "../lib/ranked-list.js";
 import type { Feature } from "../lib/router.js";
+import { withEngine } from "../lib/cleanup-order.js";
 import type { CleanupEngine, CleanupRoute, CleanupStatus, OrView } from "../lib/types.js";
 import { views } from "../lib/views.js";
 import { cleanupTarget, showOr } from "./openrouter.js";
@@ -118,7 +120,8 @@ const DEFAULT_ENGINES: CleanupEngine[] = [
   { route: "cloud", enabled: false },
 ];
 
-function engines(): CleanupEngine[] {
+/** The D36 cleanup order as the backend last sent it (setup reads it too). */
+export function engines(): CleanupEngine[] {
   return views.or?.cleanup.engines ?? DEFAULT_ENGINES;
 }
 
@@ -232,7 +235,7 @@ function moveEngine(r: CleanupRoute, dir: -1 | 1): void {
 
 function serverToggled(): void {
   const on = $<HTMLInputElement>("aieng_server_on").checked;
-  void saveEngines(engines().map((e) => (e.route === "server" ? { ...e, enabled: on } : { ...e })));
+  void saveEngines(withEngine(engines(), "server", on));
 }
 
 /** D27: cleanup "None" = No AI (formatting still runs); Verbatim = Auto-format off too. */
@@ -316,7 +319,8 @@ export function collectAi(): Partial<Prefs> {
 const STATUS_POLL_MS = 10_000;
 let statusPoll: ReturnType<typeof setInterval> | undefined;
 
-async function pollCleanupStatus(): Promise<void> {
+/** Re-read the cleanup status (does the server have an AI model?); setup's cleanup step calls it too. */
+export async function pollCleanupStatus(): Promise<void> {
   const v = views.or;
   if (!v || document.hidden) return;
   let st: CleanupStatus;
