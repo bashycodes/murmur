@@ -326,7 +326,7 @@ const tryIt = stepPanel(
     "",
     `<span class="lw-ob-summary" id="ob_summary" hidden>
       <span id="ob_summary_text"></span>
-      <button type="button" class="lw-link lw-ob-copy" id="ob_summary_keep" title="Put back what you had before this run">Keep</button>
+      <button type="button" class="lw-link lw-ob-copy" id="ob_summary_keep" title="Put back the settings you had before this run">Keep my old setup</button>
       <button type="button" class="lw-link lw-ob-copy" id="ob_summary_change">Change</button>
     </span>`,
   ),

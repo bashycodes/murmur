@@ -786,6 +786,17 @@ impl MurmurCoreAdapter {
         self.slot.lock().unwrap().status.clone()
     }
 
+    /// The status the UI and setup's readiness report: a slot nobody loaded
+    /// (`Idle`) says whether the file of `spec` (the model a load would use)
+    /// is there, through [`idle_status`]; any other state as it is. `None`:
+    /// no model would be loaded, so `Idle` stays as it is.
+    pub fn reported_status(&self, spec: Option<&ModelSpec>) -> ModelStatus {
+        match (self.status(), spec) {
+            (ModelStatus::Idle { .. }, Some(spec)) => idle_status(spec),
+            (st, _) => st,
+        }
+    }
+
     pub fn llm_status(&self) -> LlmStatus {
         self.slot.lock().unwrap().llm_status.clone()
     }
@@ -1810,6 +1821,10 @@ mod tests {
         std::fs::write(&file, b"x").unwrap();
         let there = ModelSpec::Whisper { path: file.clone(), threads: None };
         assert_eq!(idle_status(&there), ModelStatus::Idle { path: file.display().to_string() });
+        // The adapter reports the same for a slot nobody loaded.
+        let a = MurmurCoreAdapter::new();
+        assert_eq!(a.reported_status(Some(&there)), idle_status(&there));
+        assert!(matches!(a.reported_status(None), ModelStatus::Idle { ref path } if path.is_empty()));
         let gone = ModelSpec::Whisper { path: dir.join("nope.bin"), threads: None };
         assert!(matches!(idle_status(&gone), ModelStatus::Missing { ref engine, .. } if engine == "whisper"));
         let pk = ModelSpec::Parakeet { dir: dir.join("no-dir"), threads: None, decoding: fc::ParakeetDecoding::default() };

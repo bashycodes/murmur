@@ -1,8 +1,9 @@
 // Insights words that need no DOM: route names and shares, the words-bar
 // key, the heatmap legend, the streak pair, and backend ISO days in the
 // app's date format. Tested in tests/insights-text.test.mjs.
+import { ENGINE_LABEL } from "./setup-engine.js";
 export const ROUTES = ["pc", "server", "cloud"];
-export const ROUTE_LABEL = { pc: "This PC", server: "Your server", cloud: "Cloud" };
+export const ROUTE_LABEL = ENGINE_LABEL;
 /** Percent per known route (unknown left out); null when none is known. */
 export function routeShare(r) {
     const known = r.pc + r.server + r.cloud;

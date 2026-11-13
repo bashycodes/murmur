@@ -51,6 +51,8 @@ struct AppState {
     hook: Mutex<Option<HookHandle>>,
     /// The local model slot; empty in server-only builds.
     core: OnceLock<Arc<MurmurCoreAdapter>>,
+    /// Setup re-run (D95): the server as saved when setup opened.
+    setup_server: Mutex<Option<crate::dev_settings::ServerSnapshot>>,
     /// Every dictation goes through this (D17, invariant I1).
     router: OnceLock<Arc<RouterAdapter>>,
     /// Controller's "dictation running" flag (Test session must not race it).
@@ -1773,11 +1775,8 @@ fn get_model_status(state: tauri::State<'_, AppState>) -> ModelInfo {
     // A slot nobody loaded (this PC as a cold fallback, D24) says which model
     // the prefs point at and whether it is there, instead of an empty
     // "Loading" that never resolves.
-    let status = match state.core.get().map(|c| c.status()) {
-        Some(ModelStatus::Idle { .. }) => {
-            core_adapter::idle_status(&ModelSpec::from_prefs(&state.prefs.read().unwrap(), ad))
-        }
-        Some(st) => st,
+    let status = match state.core.get() {
+        Some(c) => c.reported_status(Some(&ModelSpec::from_prefs(&state.prefs.read().unwrap(), ad))),
         // No model slot in this build (server only).
         None => ModelStatus::Idle {
             path: String::new(),
@@ -2180,6 +2179,28 @@ fn dev_set(
         }]
     })?;
     save_dev(&app, &state, dev).map_err(as_error)?;
+    Ok(dev_view(&state))
+}
+
+/// Setup re-run (D95): remember the saved server (address and token).
+#[tauri::command]
+fn setup_server_snapshot(state: tauri::State<'_, AppState>) {
+    let snap = crate::dev_settings::ServerSnapshot::of(&state.prefs.read().unwrap().developer);
+    *state.setup_server.lock().unwrap() = Some(snap);
+}
+
+/// Setup re-run "Keep my old setup" (D95): save the server remembered by
+/// [`setup_server_snapshot`] again. The token is never sent to the page.
+#[tauri::command]
+fn setup_server_restore(app: AppHandle, state: tauri::State<'_, AppState>) -> Result<DevView, String> {
+    let snap = state
+        .setup_server
+        .lock()
+        .unwrap()
+        .clone()
+        .ok_or("Nothing to put back: setup was not opened again.")?;
+    let dev = snap.restore(&state.prefs.read().unwrap().developer);
+    save_dev(&app, &state, dev)?;
     Ok(dev_view(&state))
 }
 
@@ -3397,6 +3418,7 @@ pub fn run() {
             appdata: appdata.clone(),
             hook: Mutex::new(None),
             core: OnceLock::new(),
+            setup_server: Mutex::new(None),
             router: OnceLock::new(),
             dictating: OnceLock::new(),
             input: OnceLock::new(),
@@ -3427,6 +3449,8 @@ pub fn run() {
             set_prefs,
             list_microphones,
             get_model_status,
+            setup_server_snapshot,
+            setup_server_restore,
             overlay_action,
             overlay_theme,
             history_list,

@@ -3,7 +3,7 @@
 // file it points at. Runs on the built dist: `npm test`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chip, filePresent, initialModel, setupSteps, whisperName, whisperRow } from "../dist/lib/setup-model.js";
+import { chip, fileState, initialModel, PARAKEET_TITLE, setupSteps, whisperName, whisperRow } from "../dist/lib/setup-model.js";
 
 test("the model step is there only when this PC does the listening", () => {
   assert.deepEqual(setupSteps(true, "pc"), ["welcome", "engine", "model", "cleanup", "try"]);
@@ -12,29 +12,35 @@ test("the model step is there only when this PC does the listening", () => {
   assert.deepEqual(setupSteps(false, "pc"), ["welcome", "engine", "cleanup", "try"]);
 });
 
-test("chip: a download wins, then the file being there", () => {
-  assert.deepEqual(chip(false, 34), { state: "downloading", text: "Downloading 34%", kind: "light" });
-  assert.deepEqual(chip(true, 0), { state: "downloading", text: "Downloading 0%", kind: "light" });
-  assert.deepEqual(chip(true, null), { state: "installed", text: "Installed", kind: "success" });
-  assert.deepEqual(chip(false, null), { state: "missing", text: "Not installed", kind: "warning" });
+test("chip: a download wins, then the file; unknown shows none", () => {
+  assert.deepEqual(chip("missing", 34), { state: "downloading", text: "Downloading 34%", kind: "light" });
+  assert.deepEqual(chip("present", 0), { state: "downloading", text: "Downloading 0%", kind: "light" });
+  assert.deepEqual(chip("present", null), { state: "installed", text: "Installed", kind: "success" });
+  assert.deepEqual(chip("missing", null), { state: "missing", text: "Not installed", kind: "warning" });
+  // Nothing says the file is there: never "Installed" on a guess.
+  assert.equal(chip("unknown", null), null);
 });
 
-test("filePresent: only missing says no; a never-loaded slot with no path says nothing", () => {
-  assert.equal(filePresent(null), undefined);
-  assert.equal(filePresent({ state: "missing", path: "C:\\m\\a.bin" }), false);
-  assert.equal(filePresent({ state: "idle", path: "" }), undefined);
-  assert.equal(filePresent({ state: "loading", path: "" }), undefined);
-  assert.equal(filePresent({ state: "idle", path: "C:\\m\\a.bin" }), true);
-  assert.equal(filePresent({ state: "ready", path: "C:\\m\\a.bin" }), true);
-  assert.equal(filePresent({ state: "failed", path: "C:\\m\\a.bin" }), true);
+test("fileState: only missing says no; a never-loaded slot with no path says nothing", () => {
+  assert.equal(fileState(null), "unknown");
+  assert.equal(fileState({ state: "missing", path: "C:\\m\\a.bin" }), "missing");
+  assert.equal(fileState({ state: "idle", path: "" }), "unknown");
+  assert.equal(fileState({ state: "loading", path: "" }), "unknown");
+  assert.equal(fileState({ state: "idle", path: "C:\\m\\a.bin" }), "present");
+  assert.equal(fileState({ state: "ready", path: "C:\\m\\a.bin" }), "present");
+  assert.equal(fileState({ state: "failed", path: "C:\\m\\a.bin" }), "present");
 });
 
 test("initialModel: a re-run or a file that is there keeps the model in use", () => {
-  assert.equal(initialModel("whisper", true, undefined), "whisper");
-  assert.equal(initialModel("whisper", false, true), "whisper");
+  assert.equal(initialModel("whisper", true, "unknown"), "whisper");
+  assert.equal(initialModel("whisper", false, "present"), "whisper");
   // A new install's built-in Whisper default was never chosen.
-  assert.equal(initialModel("whisper", false, false), "parakeet");
-  assert.equal(initialModel("whisper", false, undefined), "parakeet");
+  assert.equal(initialModel("whisper", false, "missing"), "parakeet");
+  assert.equal(initialModel("whisper", false, "unknown"), "parakeet");
+});
+
+test("the recommended row's name", () => {
+  assert.equal(PARAKEET_TITLE, "English — fast");
 });
 
 const catalog = [

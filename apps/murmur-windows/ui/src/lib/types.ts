@@ -236,6 +236,14 @@ export type Purpose = "stt" | "cleanup";
 export type CleanupRoute = "local" | "server" | "cloud";
 
 /** One entry of the D36 cleanup order (all three engines, in order). */
+/** The speech model on this PC (`get_model_status`, `model:status`). `idle`: not loaded, loaded when needed (D24); its path names the file. */
+export type ModelStatus =
+  | { state: "idle"; path: string }
+  | { state: "loading"; path: string }
+  | { state: "ready"; path: string; load_ms: number }
+  | { state: "missing"; path: string; engine?: string }
+  | { state: "failed"; path: string; message: string };
+
 export interface CleanupEngine {
   route: CleanupRoute;
   enabled: boolean;

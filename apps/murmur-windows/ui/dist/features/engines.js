@@ -22,7 +22,7 @@ const SRV_NUM = ["port", "connect_timeout_ms", "commit_timeout_base_ms", "health
 const SRV_TEXT = ["host", "tls_pin_sha256", "token"];
 let devOrder = ["server", "client", "cloud"];
 /** The speech model on this PC (get_model_status / `model:status`), for its engine badge. */
-let pcModel = { state: "loading" };
+let pcModel = { state: "loading", path: "" };
 /** A Test button's result is on screen: the last known health must not replace it. */
 let testShown = false;
 let devValid = true;

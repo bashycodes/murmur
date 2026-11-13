@@ -3,6 +3,8 @@
 // Not installed). Paths, the drop zone and "Download from" live in Settings
 // → Speech to text (UX review on 1.3.0). Pure, so `npm test` runs it on the
 // built dist without a page.
+/** The recommended row's name. */
+export const PARAKEET_TITLE = "English — fast";
 /**
  * The steps setup walks. The speech-model step only when speech runs on this
  * PC: with your server or the cloud doing the listening there is nothing to
@@ -12,19 +14,20 @@ export function setupSteps(hasPc, engine) {
     return hasPc && engine === "pc" ? ["welcome", "engine", "model", "cleanup", "try"] : ["welcome", "engine", "cleanup", "try"];
 }
 /**
- * The model file the prefs point at is on this PC: loaded, loading, failed to
- * load (it is there but broken) or `idle` (there, loaded when needed, D24).
- * Only `missing` says it is not. An `idle` or `loading` with no path is the
- * old "never loaded" report, which says nothing about the file.
+ * The model file the prefs point at, from `get_model_status`: loaded,
+ * loading, failed to load (it is there but broken) or `idle` with its path
+ * (there, loaded when needed, D24) is present; `missing` is not. An `idle`
+ * or `loading` with no path is the old "never loaded" report, which says
+ * nothing about the file.
  */
-export function filePresent(s) {
+export function fileState(s) {
     if (!s)
-        return undefined;
+        return "unknown";
     if (s.state === "missing")
-        return false;
+        return "missing";
     if ((s.state === "idle" || s.state === "loading") && !s.path)
-        return undefined;
-    return true;
+        return "unknown";
+    return "present";
 }
 /**
  * The row picked when the step opens: the model in use once setup has been
@@ -32,16 +35,18 @@ export function filePresent(s) {
  * on a new install with nothing there yet, the recommended one (the
  * built-in default is Whisper, which a new install never chose).
  */
-export function initialModel(active, onboarded, present) {
-    return onboarded || present === true ? active : "parakeet";
+export function initialModel(active, onboarded, file) {
+    return onboarded || file === "present" ? active : "parakeet";
 }
-/** The row's chip: a download in progress wins, then the file being there. */
-export function chip(installed, downloading) {
+/** The row's chip: a download in progress wins, then the file. Unknown: no chip (never "Installed" on a guess). */
+export function chip(file, downloading) {
     if (downloading !== null)
         return { state: "downloading", text: `Downloading ${downloading}%`, kind: "light" };
-    if (installed)
+    if (file === "present")
         return { state: "installed", text: "Installed", kind: "success" };
-    return { state: "missing", text: "Not installed", kind: "warning" };
+    if (file === "missing")
+        return { state: "missing", text: "Not installed", kind: "warning" };
+    return null;
 }
 /** "C:\…\ggml-large-v3-turbo.bin" -> "Whisper large-v3-turbo". */
 export function whisperName(path) {
@@ -49,16 +54,18 @@ export function whisperName(path) {
     const stem = file.replace(/\.bin$/i, "").replace(/^ggml-/i, "");
     return stem ? `Whisper ${stem}` : "Whisper";
 }
+/** The catalogue model the Whisper row offers when no file is set. */
+const WHISPER_BASE = "whisper-base";
 /**
  * Which Whisper model the row shows: the file the prefs point at, so its name
- * always matches the file. No file set (or whisper base's own file): the
- * catalogue's whisper base, which Download fetches. Another catalogue file:
- * that model. Any other file: named after the file, nothing to download.
+ * always matches the file. No file set: the catalogue's whisper base, which
+ * Download fetches. A catalogue file: that model. Any other file: named
+ * after the file, nothing to download.
  */
-export function whisperRow(modelPath, catalog, fallbackId = "whisper-base") {
+export function whisperRow(modelPath, catalog) {
     const speech = catalog.filter((c) => c.engine === "whisper" && !c.language);
     const path = (modelPath ?? "").trim();
-    const byDest = path ? speech.find((c) => sameFile(c.dest, path)) : speech.find((c) => c.id === fallbackId);
+    const byDest = path ? speech.find((c) => sameFile(c.dest, path)) : speech.find((c) => c.id === WHISPER_BASE);
     if (byDest)
         return { id: byDest.id, title: byDest.title };
     if (!path)

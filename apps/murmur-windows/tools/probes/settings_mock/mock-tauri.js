@@ -42,6 +42,7 @@
     const dup = all.find((c, n) => all.indexOf(c) !== n);
     if (dup) throw `shortcut ${dup} is used twice`;
   };
+  let setupServer = null;
   let dev = {
     allow_server: true, allow_client: true, route_order: ["server", "client", "cloud"], host: "100.64.0.10", port: 7313,
     tls: false, tls_pin_sha256: "", token: "dev-token-0123456789abcdef", connect_timeout_ms: 800,
@@ -250,6 +251,12 @@
     prefs.model_path = MODELS + "ggml-large-v3-turbo.bin";
     dev = { ...dev, keep_local_warm: false };
     modelStatus = { state: "idle", path: prefs.model_path };
+  }
+  // ?whisper=own: Parakeet in use, and a Whisper file of the user's own (not
+  // in the catalogue) that nothing has checked: setup must not call it installed.
+  if (new URLSearchParams(location.search).get("whisper") === "own") {
+    prefs.asr_engine = "parakeet";
+    prefs.model_path = "D:\\own\\ggml-custom.bin";
   }
   // ?cleanup=server: AI cleanup runs on your server (first in the D36 order).
   if (new URLSearchParams(location.search).get("cleanup") === "server") {
@@ -603,6 +610,9 @@
     dictionary_export_text: ({ entries }) => JSON.stringify(entries, null, 2),
     dev_get: devView,
     dev_validate: ({ form }) => devCheck(form),
+    // D95 setup re-run: the backend keeps the saved server (and token) for "Keep my old setup".
+    setup_server_snapshot: () => { setupServer = { host: dev.host, port: dev.port, tls: dev.tls, tls_pin_sha256: dev.tls_pin_sha256, token: dev.token }; return null; },
+    setup_server_restore: () => { if (!setupServer) throw "Nothing to put back"; dev = { ...dev, ...setupServer }; return devView(); },
     dev_set: ({ form }) => { const c = devCheck(form); if (c.errors.length) throw c.errors; dev = structuredClone(form); return devView(); },
     dev_test_connection: () => health,
     dev_test_session: () => ({ status: "EMPTY", empty_reason: "no_speech", error: null, engine: "remote", fallback: null, total_ms: 212 }),

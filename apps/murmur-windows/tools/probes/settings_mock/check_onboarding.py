@@ -362,6 +362,81 @@ def rerun(pg, scheme):
         check(tag + f"Keep: {k} as before", not diff, str(diff))
     check(tag + "server still first in the cleanup order", after["or"]["cleanup"]["engines"][0] == {"route": "server", "enabled": True}, str(after["or"]["cleanup"]["engines"]))
 
+    def to_try():
+        n = 0
+        while visible_step(pg) != "try" and n < 6:
+            nxt(pg, 400)
+            n += 1
+
+    def same(before, after, what):
+        for k in ("prefs", "dev", "or"):
+            diff = sorted(x for x in set(before[k]) | set(after[k]) if before[k].get(x) != after[k].get(x))
+            check(tag + f"{what}: {k} as before", not diff, str(diff))
+
+    # Your server stays the engine, its address and token change: both named
+    # (the token never shown); Keep puts back the address and the token.
+    before = rerun_open(pg)
+    nxt(pg)
+    check(tag + "saved server preselected", checked(pg, "[data-ob-engine]", "data-ob-engine") == ["server"])
+    if not pg.is_visible("#ob_host"):
+        pg.click("#ob_server_more")
+    pg.fill("#ob_host", "100.64.0.20")
+    pg.fill("#ob_token", "abcdefghijklmnop9999")
+    to_try()
+    line = summary(pg) or ""
+    check(tag + "address change named", "Server address: 100.64.0.10 → 100.64.0.20" in line, line)
+    check(tag + "token change named, never shown", "Server token replaced" in line and "abcdefghijklmnop9999" not in line and "dev-token" not in line, line)
+    check(tag + "Keep is labelled clearly", pg.inner_text("#ob_summary_keep").strip() == "Keep my old setup")
+    shot("server")
+    pg.click("#ob_summary_keep")
+    pg.wait_for_timeout(500)
+    check(tag + "Keep: server back", summary(pg) == "Nothing changes. Finish keeps your setup as it was.", str(summary(pg)))
+    nxt(pg, 400)
+    same(before, state(pg), "Keep server")
+
+    # Cleanup stays On this PC with another model file, and downloads switch
+    # to Hugging Face: both named; Keep puts both back.
+    before = rerun_open(pg)
+    while visible_step(pg) != "cleanup":
+        nxt(pg, 400)
+    check(tag + "cleanup on this PC preselected", checked(pg, "[data-ob-cleanup]", "data-ob-cleanup") == ["pc"], str(checked(pg, "[data-ob-cleanup]", "data-ob-cleanup")))
+    pg.click("[data-ob-step=cleanup] [data-ob-src=huggingface]")
+    pg.wait_for_timeout(300)
+    pg.fill("#ob_llm_path", "D:\\models\\other.gguf")
+    to_try()
+    line = summary(pg) or ""
+    check(tag + "cleanup model change named", "Cleanup model: None → other.gguf" in line, line)
+    check(tag + "download source change named", "Download from: Your server → Hugging Face" in line, line)
+    pg.click("#ob_summary_change")
+    pg.wait_for_timeout(300)
+    check(tag + "Change goes to step 4 (Download from)", visible_step(pg) == "cleanup", visible_step(pg))
+    to_try()
+    pg.click("#ob_summary_keep")
+    pg.wait_for_timeout(500)
+    check(tag + "Keep: cleanup model and source back", summary(pg) == "Nothing changes. Finish keeps your setup as it was.", str(summary(pg)))
+    nxt(pg, 400)
+    same(before, state(pg), "Keep cleanup")
+
+
+def unknown_file(pg):
+    """A Whisper file nothing has checked (no catalogue entry, not in use):
+    no Installed chip, and Continue does not switch to it on a guess."""
+    tag = "[unknown file] "
+    pg.goto(f"http://127.0.0.1:{port}/settings.html?onboard=1&whisper=own")
+    pg.wait_for_timeout(600)
+    nxt(pg)
+    pg.click("[data-ob-engine=pc]")
+    nxt(pg)
+    check(tag + "model step", visible_step(pg) == "model")
+    pg.click("#ob_model_more")
+    pg.wait_for_timeout(100)
+    check(tag + "named after the file", pg.inner_text("[data-ob-model=whisper] [data-ob-model-title]").strip() == "Whisper custom")
+    check(tag + "no chip", not pg.is_visible("[data-ob-model=whisper] [data-ob-chip]"))
+    pg.click("[data-ob-model=whisper]")
+    pg.wait_for_timeout(100)
+    nxt(pg, 400)
+    check(tag + "Continue did not switch to it", prefs(pg)["asr_engine"] == "parakeet", prefs(pg)["asr_engine"])
+
 
 def box(pg, sel):
     return pg.eval_on_selector(sel, "e => { const r = e.getBoundingClientRect(); return { x: r.left, y: r.top, r: r.right, b: r.bottom }; }")
@@ -445,6 +520,10 @@ with sync_playwright() as p:
         pg.on("pageerror", lambda e: errors.append(str(e)))
         layout(pg, scheme)
         pg.close()
+    pg = b.new_page(viewport={"width": 1040, "height": 675})
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    unknown_file(pg)
+    pg.close()
     # ?dlfail=1: a fingerprint mismatch is shown and can be retried.
     pg = b.new_page(viewport={"width": 1280, "height": 800})
     pg.on("pageerror", lambda e: errors.append(str(e)))

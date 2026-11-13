@@ -22,8 +22,8 @@ import { invoke, onEvent } from "../lib/ipc.js";
 import { captureChord, stopCapture } from "../lib/keycapture.js";
 import { sourceHint, sourceView } from "../lib/model-source.js";
 import { prefsStore } from "../lib/prefs-store.js";
-import { chip, filePresent, initialModel, setupSteps, whisperRow } from "../lib/setup-model.js";
-import { changesLine, savedEngine, setupChanges, stepOf } from "../lib/setup-diff.js";
+import { chip, fileState, initialModel, PARAKEET_TITLE, setupSteps, whisperRow } from "../lib/setup-model.js";
+import { changesLine, savedEngine, setupChanges, STEP_OF } from "../lib/setup-diff.js";
 import { pillLine, readinessErrorLine, readinessLine, RECHECK_MS } from "../lib/setup-try.js";
 import { initialEngine, recommendedEngine } from "../lib/setup-engine.js";
 import { cloudMissingLine, enginesFor, initialCleanup, recommendedCleanup, serverOption } from "../lib/setup-cleanup.js";
@@ -31,7 +31,6 @@ import { views } from "../lib/views.js";
 import { engines as cleanupEngines, pollCleanupStatus } from "../features/ai.js";
 import { TEMPLATE } from "./templates.js";
 const ENGINE_ROUTE = { pc: "client", server: "server", cloud: "cloud" };
-const ENGINE_OF = { client: "pc", server: "server", cloud: "cloud" };
 const SAMPLE = {
     rules: "So lunch is Thursday.",
     pc: "Lunch is on Thursday.",
@@ -65,7 +64,9 @@ const st = {
     /** Step 3's "More languages" is open. */
     moreOpen: false,
     /** A re-run (setup was finished before): the settings it opened with (null: a first run). */
-    before: null,
+    rerunSnapshot: null,
+    /** Server tokens saved on this run (D95 says "Server token replaced"; the token is never read back). */
+    tokenSaves: 0,
 };
 let onDone = () => { };
 // ------------------------------------------------------------ capabilities
@@ -207,7 +208,10 @@ async function saveServer(patch) {
         return false;
     }
     try {
-        await devStore.save({ ...patch, host, token: $("ob_token").value.trim() });
+        const token = $("ob_token").value.trim();
+        await devStore.save({ ...patch, host, token });
+        if (token)
+            st.tokenSaves += 1;
         $("ob_token").value = "";
         return true;
     }
@@ -299,20 +303,27 @@ async function applyEngine() {
 function activeModel() {
     return prefsStore.get()?.asr_engine === "parakeet" ? "parakeet" : "whisper";
 }
+/** The Whisper row: the model the prefs' file stands for. */
+function whisper() {
+    return whisperRow(prefsStore.get()?.model_path, models.catalog());
+}
 /** The catalogue model behind a row (the Whisper row follows the prefs' file). */
-function rowEntry(id) {
+function rowEntry(id, w = whisper()) {
     if (id === "parakeet")
         return models.entry(PARAKEET_ID);
-    const w = whisperRow(prefsStore.get()?.model_path, models.catalog());
     return w.id ? models.entry(w.id) : undefined;
 }
-/** The row's model is on this PC: downloaded, or (the one in use) the backend found its file. */
-function rowInstalled(id, e) {
-    const present = id === activeModel() ? filePresent(st.model) : undefined;
-    if (present !== undefined)
-        return present;
-    // A file of the user's own that is not in use: it was chosen, take it as there.
-    return e ? e.installed : id === "whisper";
+/**
+ * Whether the row's model is on this PC: the one in use as the backend
+ * found its file, else the catalogue's `installed`. A file nothing knows
+ * about (the backend said nothing, no catalogue entry) is "unknown": never
+ * shown Installed or saved on a guess.
+ */
+function rowFile(id, e) {
+    const known = id === activeModel() ? fileState(st.model) : "unknown";
+    if (known !== "unknown")
+        return known;
+    return e ? (e.installed ? "present" : "missing") : "unknown";
 }
 /** Percent of a running download (or check) of `e`, else null. */
 function downloadPct(e) {
@@ -326,7 +337,7 @@ function pickModelRow(id) {
     renderModel();
 }
 function renderModel() {
-    const w = whisperRow(prefsStore.get()?.model_path, models.catalog());
+    const w = whisper();
     const other = $("ob_model_other");
     const more = $("ob_model_more");
     // The Whisper row picked (a re-run with Whisper in use) keeps "More languages" open.
@@ -338,22 +349,24 @@ function renderModel() {
     let picked = { installed: false, busy: false, canDownload: false, why: "" };
     for (const r of document.querySelectorAll("#onboarding [data-ob-model]")) {
         const id = r.dataset.obModel;
-        const e = rowEntry(id);
+        const e = rowEntry(id, w);
         const on = id === st.modelPick;
         r.classList.toggle("is-on", on);
         r.setAttribute("aria-checked", String(on));
         r.querySelector("[data-ob-rec]").hidden = id !== "parakeet";
-        r.querySelector("[data-ob-model-title]").textContent = id === "parakeet" ? "English — fast" : w.title;
+        r.querySelector("[data-ob-model-title]").textContent = id === "parakeet" ? PARAKEET_TITLE : w.title;
         const size = e ? `${mb(e.size)} · ` : "";
         r.querySelector("[data-ob-model-desc]").textContent =
             id === "parakeet" ? `${size}English only, the quickest` : `${size}Many languages${e ? "" : " · your own file"}`;
         const pct = downloadPct(e);
-        const installed = rowInstalled(id, e);
-        const c = chip(installed, pct);
+        const file = rowFile(id, e);
+        const installed = file === "present";
+        const c = chip(file, pct);
         const badge = r.querySelector("[data-ob-chip]");
-        badge.textContent = c.text;
-        badge.className = `fl-badge fl-badge-${c.kind}`;
-        badge.dataset.state = c.state;
+        badge.hidden = !c;
+        badge.textContent = c?.text ?? "";
+        badge.className = `fl-badge fl-badge-${c?.kind ?? "light"}`;
+        badge.dataset.state = c?.state ?? "unknown";
         const busy = pct !== null;
         const canStart = !!e && models.canStart(e);
         const dl = r.querySelector("[data-ob-dl]");
@@ -387,7 +400,7 @@ function renderModel() {
 /** Continue on the model step: the picked model becomes the one in use (a download sets it when done). */
 async function applyModel() {
     const pick = st.modelPick;
-    if (pick === activeModel() || !rowInstalled(pick, rowEntry(pick)))
+    if (pick === activeModel() || rowFile(pick, rowEntry(pick)) !== "present")
         return true;
     try {
         await prefsStore.save({ asr_engine: pick });
@@ -404,9 +417,9 @@ function srcView() {
     return sourceView({ pick: st.pick, effective: downloadSource(), remote: !!views.dev?.caps.remote, serverSet: hasServer() });
 }
 /** Step 4's "Download from: Your server | Hugging Face" (D79) and the server fields under it. */
-function renderSource(step, dl) {
+function renderSource(dl) {
     const v = srcView();
-    const box = panel(step).querySelector("[data-ob-src-box]");
+    const box = panel("cleanup").querySelector("[data-ob-src-box]");
     box.hidden = !dl && !v.serverButton;
     for (const b of box.querySelectorAll("[data-ob-src]")) {
         const on = b.dataset.obSrc === v.shown;
@@ -522,7 +535,7 @@ function llmEntry() {
 /** Step 4's "Download from" and Download row for the cleanup model (D79), as on step 3. */
 function renderLlmDownload() {
     const e = llmEntry();
-    const v = renderSource("cleanup", !!e?.available);
+    const v = renderSource(!!e?.available);
     $("ob_llm_hf").hidden = !v.hfLinks;
     const row = $("ob_llm_dl");
     row.hidden = !e;
@@ -900,30 +913,39 @@ async function finish() {
     onDone();
 }
 // ------------------------------------------------------------ re-run: what Finish changes (D95)
-/** The speech model's name as step 3 shows it (null: this build has no model on this PC). */
-function modelName() {
-    if (!has("pc"))
+/** The engine the saved settings would use first (an address counts trimmed, as everywhere). */
+function savedSpeech() {
+    const dev = views.dev?.form;
+    if (!dev)
         return null;
-    return activeModel() === "parakeet" ? "English — fast" : whisperRow(prefsStore.get()?.model_path, models.catalog()).title;
+    return savedEngine({ route_order: dev.route_order, allow_client: dev.allow_client, allow_server: dev.allow_server, host: dev.host, cloudStt: !!views.or?.stt.allow });
 }
+/** Names for the line only; choices are compared as saved. */
+const LABELS = {
+    modelName: (m) => (m.asr_engine === "parakeet" ? PARAKEET_TITLE : whisperRow(m.model_path, models.catalog()).title),
+};
 /** Setup's choices as the saved settings have them now. */
 function savedConfig() {
-    const dev = views.dev?.form;
     const p = prefsStore.get();
     return {
-        engine: dev
-            ? savedEngine({ route_order: dev.route_order, allow_client: dev.allow_client, allow_server: dev.allow_server, host: dev.host, cloudStt: !!views.or?.stt.allow })
-            : null,
-        model: modelName(),
+        engine: savedSpeech(),
+        host: views.dev?.form.host.trim() ?? "",
+        tokenSaves: st.tokenSaves,
+        model: has("pc") && p ? { asr_engine: p.asr_engine, model_path: p.model_path, parakeet_model_dir: p.parakeet_model_dir } : null,
+        source: p?.model_source ?? "",
         cleanup: savedCleanup(),
+        llmPath: p?.llm_model_path ?? null,
         ptt: p?.shortcuts.ptt || "Right Alt",
         mic: p?.microphone ?? null,
     };
 }
-function snapshot() {
+async function snapshot() {
     const dev = views.dev?.form;
     const or = views.or;
     const p = prefsStore.get();
+    // The saved server (address and token) is kept by the backend, so Keep can put it back without the token ever reaching this page.
+    if (has("server"))
+        await invoke("setup_server_snapshot").catch((e) => console.error("setup_server_snapshot", e));
     return {
         cfg: savedConfig(),
         dev: { allow_client: !!dev?.allow_client, allow_server: !!dev?.allow_server, route_order: [...(dev?.route_order ?? [])] },
@@ -934,6 +956,7 @@ function snapshot() {
                 asr_engine: p.asr_engine,
                 model_path: p.model_path,
                 parakeet_model_dir: p.parakeet_model_dir,
+                model_source: p.model_source,
                 llm_enabled: p.llm_enabled,
                 cleanup_level: p.cleanup_level,
                 spoken_cleanup: p.spoken_cleanup,
@@ -947,11 +970,11 @@ function snapshot() {
 }
 /** Step 2 on a re-run with the saved engine still picked and nothing new typed: Continue saves nothing. */
 function engineKept() {
-    const b = st.before;
+    const b = st.rerunSnapshot;
     if (!b || st.engine !== b.cfg.engine)
         return false;
     if (st.engine === "server") {
-        return $("ob_host").value.trim() === (views.dev?.form.host ?? "") && !$("ob_token").value.trim();
+        return $("ob_host").value.trim() === (views.dev?.form.host.trim() ?? "") && !$("ob_token").value.trim();
     }
     if (st.engine === "cloud")
         return !$("ob_stt_key").value.trim() && $("ob_stt_consent").checked;
@@ -959,7 +982,7 @@ function engineKept() {
 }
 /** Step 4 on a re-run with the saved option still picked (and, on this PC, the same model file): Continue saves nothing. */
 function cleanupKept() {
-    const b = st.before;
+    const b = st.rerunSnapshot;
     if (!b || st.cleanup !== b.cfg.cleanup)
         return false;
     if (st.cleanup === "pc")
@@ -969,13 +992,13 @@ function cleanupKept() {
     return true;
 }
 function changes() {
-    return st.before ? setupChanges(st.before.cfg, savedConfig()) : [];
+    return st.rerunSnapshot ? setupChanges(st.rerunSnapshot.cfg, savedConfig(), LABELS) : [];
 }
 /** Step 5 on a re-run: the line saying what Finish leaves changed, with Keep / Change. */
 function renderSummary() {
     const box = $("ob_summary");
-    box.hidden = !st.before;
-    if (!st.before)
+    box.hidden = !st.rerunSnapshot;
+    if (!st.rerunSnapshot)
         return;
     const list = changes();
     $("ob_summary_text").textContent = changesLine(list);
@@ -984,12 +1007,18 @@ function renderSummary() {
 }
 /** Keep: put back what each changed choice had when setup opened. */
 async function keepBefore() {
-    const b = st.before;
+    const b = st.rerunSnapshot;
     if (!b)
         return;
     const keys = new Set(changes().map((c) => c.key));
-    const pick = (...ks) => Object.fromEntries(ks.filter((k) => k in b.prefs).map((k) => [k, b.prefs[k]]));
+    const savedPrefs = (...ks) => Object.fromEntries(ks.filter((k) => k in b.prefs).map((k) => [k, b.prefs[k]]));
     try {
+        // The server first: the route order below may name it.
+        if (keys.has("host") || keys.has("token")) {
+            views.setDev(await invoke("setup_server_restore"));
+            st.tokenSaves = 0;
+            $("ob_host").value = views.dev?.form.host ?? "";
+        }
         if (keys.has("engine")) {
             if (b.stt && views.or && views.or.stt.allow !== b.stt.allow) {
                 const s = b.stt;
@@ -999,24 +1028,26 @@ async function keepBefore() {
             }
             await devStore.save(b.dev);
         }
+        const back = {};
         if (keys.has("model"))
-            await prefsStore.save(pick("asr_engine", "model_path", "parakeet_model_dir"));
-        if (keys.has("cleanup")) {
-            if (b.cleanup && views.or) {
+            Object.assign(back, savedPrefs("asr_engine", "model_path", "parakeet_model_dir"));
+        if (keys.has("source"))
+            Object.assign(back, savedPrefs("model_source"));
+        if (keys.has("cleanup") || keys.has("llmPath")) {
+            if (keys.has("cleanup") && b.cleanup && views.or) {
                 if (views.or.cleanup.allow !== b.cleanup.allow) {
                     views.setOr(await invoke("dev_or_set_cleanup", { form: cleanupForm(b.cleanup.allow, b.cleanup.consent) }));
                 }
                 views.setOr(await invoke("dev_cleanup_set_engines", { engines: b.cleanup.engines }));
             }
-            await prefsStore.save(pick("llm_enabled", "cleanup_level", "spoken_cleanup", "raw_mode", "llm_model_path"));
+            Object.assign(back, savedPrefs("llm_enabled", "cleanup_level", "spoken_cleanup", "raw_mode", "llm_model_path"));
         }
-        const rest = {};
         if (keys.has("ptt"))
-            Object.assign(rest, pick("shortcuts"));
+            Object.assign(back, savedPrefs("shortcuts"));
         if (keys.has("mic"))
-            Object.assign(rest, pick("microphone"));
-        if (Object.keys(rest).length)
-            await prefsStore.save(rest);
+            Object.assign(back, savedPrefs("microphone"));
+        if (Object.keys(back).length)
+            await prefsStore.save(back);
     }
     catch (e) {
         $("ob_summary_text").textContent = errText(e);
@@ -1026,6 +1057,7 @@ async function keepBefore() {
     st.cleanup = b.cfg.cleanup;
     st.cleanupPicked = false;
     st.modelPick = activeModel();
+    st.pick = null;
     renderTry();
     renderSummary();
 }
@@ -1034,22 +1066,21 @@ function changeFirst() {
     const first = changes()[0];
     if (!first)
         return;
-    const to = stepOf(first.key);
+    const to = STEP_OF[first.key];
     show(steps().includes(to) ? to : "engine");
 }
 // ------------------------------------------------------------ choices from the saved settings
 function initialChoices() {
     const dev = views.dev?.form;
     const or = views.or;
-    const first = dev?.route_order.find((r) => r === "client" ? dev.allow_client : r === "server" ? dev.allow_server && !!dev.host : !!or?.stt.allow);
     const p = prefsStore.get();
     // Once per run: a server saved on this run (Test / Connect) doesn't move the badge.
     const facts = { has, serverSaved: hasServer() };
     st.recEngine = recommendedEngine(facts);
-    st.engine = initialEngine(first ? ENGINE_OF[first] : null, !!p?.onboarded, facts);
+    st.engine = initialEngine(savedSpeech(), !!p?.onboarded, facts);
     st.cleanup = savedCleanup();
     st.cleanupPicked = false;
-    st.modelPick = initialModel(activeModel(), !!p?.onboarded, filePresent(st.model));
+    st.modelPick = initialModel(activeModel(), !!p?.onboarded, fileState(st.model));
     st.moreOpen = false;
     $("ob_host").value = dev?.host ?? "";
     $("ob_token").placeholder = dev?.token_saved ? "Saved" : "Paste the token";
@@ -1231,7 +1262,8 @@ export const onboarding = {
         }
         initialChoices();
         // A re-run keeps the current setup and says before Finish what it changes (D95).
-        st.before = prefsStore.get()?.onboarded ? snapshot() : null;
+        st.tokenSaves = 0;
+        st.rerunSnapshot = prefsStore.get()?.onboarded ? await snapshot() : null;
         st.pick = null;
         $("onboarding").hidden = false;
         document.body.classList.add("lw-ob-open");

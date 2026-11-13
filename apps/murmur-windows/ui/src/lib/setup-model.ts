@@ -4,8 +4,13 @@
 // → Speech to text (UX review on 1.3.0). Pure, so `npm test` runs it on the
 // built dist without a page.
 
+import type { ModelStatus } from "./types.js";
+
 export type SetupStep = "welcome" | "engine" | "model" | "cleanup" | "try";
 export type SpeechRow = "parakeet" | "whisper";
+
+/** The recommended row's name. */
+export const PARAKEET_TITLE = "English — fast";
 
 /**
  * The steps setup walks. The speech-model step only when speech runs on this
@@ -16,23 +21,21 @@ export function setupSteps(hasPc: boolean, engine: "pc" | "server" | "cloud"): S
   return hasPc && engine === "pc" ? ["welcome", "engine", "model", "cleanup", "try"] : ["welcome", "engine", "cleanup", "try"];
 }
 
-/** The speech model's state as `get_model_status` / `model:status` report it. */
-export interface LoadState {
-  state: string;
-  path?: string;
-}
+/** Whether a model's file is on this PC; "unknown" when nothing says either way. */
+export type FileState = "present" | "missing" | "unknown";
 
 /**
- * The model file the prefs point at is on this PC: loaded, loading, failed to
- * load (it is there but broken) or `idle` (there, loaded when needed, D24).
- * Only `missing` says it is not. An `idle` or `loading` with no path is the
- * old "never loaded" report, which says nothing about the file.
+ * The model file the prefs point at, from `get_model_status`: loaded,
+ * loading, failed to load (it is there but broken) or `idle` with its path
+ * (there, loaded when needed, D24) is present; `missing` is not. An `idle`
+ * or `loading` with no path is the old "never loaded" report, which says
+ * nothing about the file.
  */
-export function filePresent(s: LoadState | null | undefined): boolean | undefined {
-  if (!s) return undefined;
-  if (s.state === "missing") return false;
-  if ((s.state === "idle" || s.state === "loading") && !s.path) return undefined;
-  return true;
+export function fileState(s: Pick<ModelStatus, "state" | "path"> | null | undefined): FileState {
+  if (!s) return "unknown";
+  if (s.state === "missing") return "missing";
+  if ((s.state === "idle" || s.state === "loading") && !s.path) return "unknown";
+  return "present";
 }
 
 /**
@@ -41,8 +44,8 @@ export function filePresent(s: LoadState | null | undefined): boolean | undefine
  * on a new install with nothing there yet, the recommended one (the
  * built-in default is Whisper, which a new install never chose).
  */
-export function initialModel(active: SpeechRow, onboarded: boolean, present: boolean | undefined): SpeechRow {
-  return onboarded || present === true ? active : "parakeet";
+export function initialModel(active: SpeechRow, onboarded: boolean, file: FileState): SpeechRow {
+  return onboarded || file === "present" ? active : "parakeet";
 }
 
 export interface Chip {
@@ -52,11 +55,12 @@ export interface Chip {
   kind: "success" | "light" | "warning";
 }
 
-/** The row's chip: a download in progress wins, then the file being there. */
-export function chip(installed: boolean, downloading: number | null): Chip {
+/** The row's chip: a download in progress wins, then the file. Unknown: no chip (never "Installed" on a guess). */
+export function chip(file: FileState, downloading: number | null): Chip | null {
   if (downloading !== null) return { state: "downloading", text: `Downloading ${downloading}%`, kind: "light" };
-  if (installed) return { state: "installed", text: "Installed", kind: "success" };
-  return { state: "missing", text: "Not installed", kind: "warning" };
+  if (file === "present") return { state: "installed", text: "Installed", kind: "success" };
+  if (file === "missing") return { state: "missing", text: "Not installed", kind: "warning" };
+  return null;
 }
 
 /** A catalogue speech model, as far as this step reads it. */
@@ -81,16 +85,19 @@ export function whisperName(path: string): string {
   return stem ? `Whisper ${stem}` : "Whisper";
 }
 
+/** The catalogue model the Whisper row offers when no file is set. */
+const WHISPER_BASE = "whisper-base";
+
 /**
  * Which Whisper model the row shows: the file the prefs point at, so its name
- * always matches the file. No file set (or whisper base's own file): the
- * catalogue's whisper base, which Download fetches. Another catalogue file:
- * that model. Any other file: named after the file, nothing to download.
+ * always matches the file. No file set: the catalogue's whisper base, which
+ * Download fetches. A catalogue file: that model. Any other file: named
+ * after the file, nothing to download.
  */
-export function whisperRow(modelPath: string | null | undefined, catalog: CatalogModel[], fallbackId = "whisper-base"): WhisperRow {
+export function whisperRow(modelPath: string | null | undefined, catalog: CatalogModel[]): WhisperRow {
   const speech = catalog.filter((c) => c.engine === "whisper" && !c.language);
   const path = (modelPath ?? "").trim();
-  const byDest = path ? speech.find((c) => sameFile(c.dest, path)) : speech.find((c) => c.id === fallbackId);
+  const byDest = path ? speech.find((c) => sameFile(c.dest, path)) : speech.find((c) => c.id === WHISPER_BASE);
   if (byDest) return { id: byDest.id, title: byDest.title };
   if (!path) return { id: null, title: "Whisper base" };
   return { id: null, title: whisperName(path) };
