@@ -12,7 +12,7 @@ import { invoke, onEvent } from "../lib/ipc.js";
 import { prefsStore, type Prefs } from "../lib/prefs-store.js";
 import { moveShown, onMove, rankRows } from "../lib/ranked-list.js";
 import type { Feature } from "../lib/router.js";
-import { withEngine } from "../lib/setup-cleanup.js";
+import { withEngine } from "../lib/cleanup-order.js";
 import type { CleanupEngine, CleanupRoute, CleanupStatus, OrView } from "../lib/types.js";
 import { views } from "../lib/views.js";
 import { cleanupTarget, showOr } from "./openrouter.js";

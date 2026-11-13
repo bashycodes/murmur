@@ -3,7 +3,7 @@
 // and the cleanup order a choice saves. Pure, so `npm test` runs it on the
 // built dist without a page.
 
-import type { CleanupEngine, CleanupRoute } from "./types.js";
+import type { CleanupEngine } from "./types.js";
 
 export type SetupCleanup = "rules" | "pc" | "server" | "cloud";
 
@@ -69,11 +69,6 @@ export function initialCleanup(saved: SavedCleanup, serverSaved: boolean): Setup
   return "rules";
 }
 
-/** The order with `route` switched on or off, the rest unchanged (Settings' switch). */
-export function withEngine(list: CleanupEngine[], route: CleanupRoute, enabled: boolean): CleanupEngine[] {
-  return list.map((e) => (e.route === route ? { ...e, enabled } : { ...e }));
-}
-
 /**
  * The cleanup order a setup choice saves, or null when it stays as it is.
  * Your server: its switch on and first, so it cleans before this PC (which
@@ -81,19 +76,18 @@ export function withEngine(list: CleanupEngine[], route: CleanupRoute, enabled: 
  * server was first. Rules and Cloud keep the order (Cloud saves its own).
  */
 export function enginesFor(choice: SetupCleanup, list: CleanupEngine[]): CleanupEngine[] | null {
-  const first = (r: CleanupRoute, on?: boolean): CleanupEngine[] => {
-    const e = list.find((x) => x.route === r) ?? { route: r, enabled: true };
-    return [{ ...e, enabled: on ?? e.enabled }, ...list.filter((x) => x.route !== r).map((x) => ({ ...x }))];
-  };
   if (choice === "server") {
-    const next = first("server", true);
+    const next: CleanupEngine[] = [
+      { route: "server", enabled: true },
+      ...list.filter((x) => x.route !== "server").map((x) => ({ ...x })),
+    ];
     return same(next, list) ? null : next;
   }
   if (choice === "pc") {
     const li = list.findIndex((e) => e.route === "local");
     const si = list.findIndex((e) => e.route === "server");
     if (li < 0 || si < 0 || li < si) return null;
-    const next = [...list.map((e) => ({ ...e }))];
+    const next = list.map((e) => ({ ...e }));
     const [local] = next.splice(li, 1);
     next.splice(si, 0, local);
     return next;

@@ -10,7 +10,7 @@ import { $, el, setStatus } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { prefsStore } from "../lib/prefs-store.js";
 import { moveShown, onMove, rankRows } from "../lib/ranked-list.js";
-import { withEngine } from "../lib/setup-cleanup.js";
+import { withEngine } from "../lib/cleanup-order.js";
 import { views } from "../lib/views.js";
 import { cleanupTarget, showOr } from "./openrouter.js";
 /** What each cleanup level does (D27), with the design's example of what is pasted. */

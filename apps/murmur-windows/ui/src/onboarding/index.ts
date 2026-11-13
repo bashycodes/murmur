@@ -33,7 +33,6 @@ import { engines as cleanupEngines, pollCleanupStatus } from "../features/ai.js"
 import { TEMPLATE } from "./templates.js";
 
 type Engine = "pc" | "server" | "cloud";
-type Cleanup = SetupCleanup;
 type Step = "welcome" | "engine" | "model" | "cleanup" | "try";
 
 interface ModelStatus {
@@ -57,7 +56,7 @@ interface ModelInfo {
 
 const ENGINE_ROUTE: Record<Engine, Route> = { pc: "client", server: "server", cloud: "cloud" };
 const ENGINE_OF: Record<Route, Engine> = { client: "pc", server: "server", cloud: "cloud" };
-const SAMPLE: Record<Cleanup, string> = {
+const SAMPLE: Record<SetupCleanup, string> = {
   rules: "So lunch is Thursday.",
   pc: "Lunch is on Thursday.",
   server: "Lunch is on Thursday.",
@@ -72,7 +71,7 @@ const CATALOG_ID: Record<"parakeet" | "whisper", string> = {
 const st = {
   step: "welcome" as Step,
   engine: "pc" as Engine,
-  cleanup: "rules" as Cleanup,
+  cleanup: "rules" as SetupCleanup,
   /** The user picked a cleanup option on this run (else it follows the saved settings and the server). */
   cleanupPicked: false,
   /** D78: which Cloud provider cleans up (speech is always OpenRouter). */
@@ -104,7 +103,7 @@ function serverFacts(): ServerFacts {
   return { build: has("server"), saved: hasServer(), llm: views.or?.cleanup.status.server_llm };
 }
 
-function hasCleanup(c: Cleanup): boolean {
+function hasCleanup(c: SetupCleanup): boolean {
   if (c === "rules") return true;
   if (c === "pc") return views.dev ? views.dev.caps.local || views.dev.capabilities.llm : true;
   if (c === "server") return !serverOption(serverFacts()).disabled;
@@ -112,7 +111,7 @@ function hasCleanup(c: Cleanup): boolean {
 }
 
 /** Step 4's selection from the saved settings (Cloud on, the level, the D36 order). */
-function savedCleanup(): Cleanup {
+function savedCleanup(): SetupCleanup {
   const p = prefsStore.get();
   const c = initialCleanup(
     {
@@ -486,7 +485,7 @@ async function useModel(id: "parakeet" | "whisper"): Promise<void> {
 
 // ------------------------------------------------------------ step: cleanup
 
-function pickCleanup(c: Cleanup): void {
+function pickCleanup(c: SetupCleanup): void {
   if (!hasCleanup(c)) return;
   st.cleanup = c;
   st.cleanupPicked = true;
@@ -517,7 +516,7 @@ function renderCleanupOptions(): void {
   const server = serverOption(facts);
   const rec = recommendedCleanup(facts, hasCleanup("pc"));
   for (const b of document.querySelectorAll<HTMLButtonElement>("#onboarding [data-ob-cleanup]")) {
-    const id = b.dataset.obCleanup as Cleanup;
+    const id = b.dataset.obCleanup as SetupCleanup;
     const on = id === st.cleanup;
     b.setAttribute("aria-checked", String(on));
     b.classList.toggle("is-on", on);
@@ -1064,7 +1063,7 @@ export const onboarding = {
       const eng = t.closest<HTMLElement>("[data-ob-engine]")?.dataset.obEngine;
       if (eng) pickEngine(eng as Engine);
       const cl = t.closest<HTMLElement>("[data-ob-cleanup]")?.dataset.obCleanup;
-      if (cl) pickCleanup(cl as Cleanup);
+      if (cl) pickCleanup(cl as SetupCleanup);
       const use = t.closest<HTMLElement>("[data-ob-use]")?.dataset.obUse;
       if (use) void useModel(use as "parakeet" | "whisper");
       const pick = t.closest<HTMLElement>("[data-ob-pick]")?.dataset.obPick;
