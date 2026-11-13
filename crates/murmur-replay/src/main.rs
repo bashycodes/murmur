@@ -66,6 +66,7 @@ impl Args {
     }
 }
 
+#[cfg(any(feature = "parakeet", feature = "whisper"))]
 fn env_or(arg: Option<&str>, var: &str, what: &str) -> String {
     arg.map(str::to_string)
         .or_else(|| std::env::var(var).ok().filter(|v| !v.is_empty()))
@@ -96,6 +97,11 @@ fn key_usage(key: &SecretString) -> Option<f64> {
     murmur_cloud::keyinfo::fetch(key).ok().and_then(|k| k.usage)
 }
 
+// `threads` sizes the local engines; a build without them only has cloud slots.
+#[cfg_attr(
+    not(any(feature = "parakeet", feature = "whisper")),
+    allow(unused_variables)
+)]
 fn asr_slot(spec: &str, threads: usize, key: &dyn Fn() -> SecretString) -> AsrSlot {
     let (kind, arg) = match spec.split_once('=') {
         Some((k, v)) => (k, Some(v)),
