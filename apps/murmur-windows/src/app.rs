@@ -13,7 +13,7 @@ use crate::dev_settings::{BuildCaps, DevForm, DevSettings, FieldError};
 use crate::dictation::{Input, OverlayState, Sound};
 use crate::ducking::win::Ducker;
 use crate::history::{self, History};
-use crate::hotkeys::{self, win::HookHandle};
+use crate::hotkeys::{self, raw_input, win::HookHandle};
 use crate::insights::{self, InsightsStore};
 use crate::meetings::{self, Meetings};
 use crate::notes::{self, AutoSave, NoteStore};
@@ -29,8 +29,8 @@ use std::time::{Duration, Instant};
 use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{
-    AppHandle, Emitter, Manager, PhysicalPosition, RunEvent, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder, WindowEvent,
+    AppHandle, DeviceEventFilter, Emitter, Manager, PhysicalPosition, RunEvent, WebviewUrl,
+    WebviewWindow, WebviewWindowBuilder, WindowEvent,
 };
 use windows::Win32::Foundation::{HWND, POINT, RECT};
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -3312,6 +3312,9 @@ pub fn run() {
     ))));
 
     tauri::Builder::default()
+        // No raw keyboard input in our process: likely why the hook missed
+        // keys going to our own windows (hotkeys::raw_input).
+        .device_event_filter(device_event_filter(raw_input::APP_DEVICE_EVENTS))
         .manage(AppState {
             prefs: prefs.clone(),
             path,
@@ -3717,6 +3720,7 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("failed to build Tauri app")
         .run(|app, event| match event {
+            RunEvent::Ready => check_raw_keyboard(),
             // Closing the settings window must not quit the tray app.
             RunEvent::ExitRequested {
                 api, code: None, ..
@@ -3737,9 +3741,36 @@ pub fn run() {
         });
 }
 
+/// Tauri's filter for a [`raw_input::DeviceEvents`] choice.
+fn device_event_filter(d: raw_input::DeviceEvents) -> DeviceEventFilter {
+    match d {
+        raw_input::DeviceEvents::Off => DeviceEventFilter::Always,
+        raw_input::DeviceEvents::WhileFocused => DeviceEventFilter::Unfocused,
+        raw_input::DeviceEvents::Always => DeviceEventFilter::Never,
+    }
+}
+
+/// Once the event loop runs: a raw keyboard registration in our process
+/// likely keeps the dictation key from working in our own windows; say so
+/// in the console and debug logs (hotkeys::raw_input).
+fn check_raw_keyboard() {
+    if hotkeys::win::raw_keyboard_registered() == Some(true) {
+        eprintln!("[hotkeys] {}", raw_input::KEYBOARD_REGISTERED);
+        debug_log::event("hotkeys", raw_input::KEYBOARD_REGISTERED);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_app_turns_device_events_off() {
+        assert_eq!(
+            device_event_filter(raw_input::APP_DEVICE_EVENTS),
+            DeviceEventFilter::Always
+        );
+    }
 
     #[test]
     fn overlay_may_open_only_the_listed_settings_pages() {
