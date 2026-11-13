@@ -1,6 +1,6 @@
 // (a) The first launch after a fresh install shows first-run setup.
 // Pass = a visible Murmur window AND the onboarding panel open in it.
-import { appWindows, pageShot, sleep, windowShot } from "../lib/steps.mjs";
+import { appWindows, onboardingDom, pageShot, sleep, windowShot } from "../lib/steps.mjs";
 
 export default {
   id: "a",
@@ -11,17 +11,7 @@ export default {
     // Give the app the time a person would: it should show setup by itself.
     await sleep(8000);
     const s = await app.settings();
-    const dom = await s.eval(`(() => {
-      const ob = document.getElementById("onboarding");
-      const step = ob && [...ob.querySelectorAll("[data-ob-step]")].find((p) => !p.hidden);
-      return {
-        onboarding_present: !!ob,
-        onboarding_open: !!ob && !ob.hidden,
-        step: step ? step.dataset.obStep : null,
-        visibility: document.visibilityState,
-        title: document.title,
-      };
-    })()`);
+    const dom = await onboardingDom(s);
     const prefs = await app.invoke("get_prefs").catch((e) => ({ error: e.message }));
     const onboarded = prefs?.onboarded ?? null;
     const prefsFile = remote.ssh("if exist %APPDATA%\\Murmur\\prefs.json (echo yes) else (echo no)", { check: false }).out.trim();
