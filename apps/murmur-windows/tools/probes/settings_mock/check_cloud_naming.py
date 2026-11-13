@@ -93,7 +93,7 @@ with sync_playwright() as p:
         pg.wait_for_timeout(300)
         card = pg.eval_on_selector("[data-ob-engine=cloud]", flat)
         pg.evaluate("window.__obCleanupText = () => document.querySelector('[data-ob-cleanup=cloud] [data-ob-title]').textContent + ' | ' + document.querySelector('[data-ob-cleanup=cloud] [data-ob-desc]').textContent")
-        # Fastest way to step 4: your server (address + Test), then skip the model.
+        # Fastest way to step 4: your server (address + Test); D94 skips the model step.
         pg.click("[data-ob-engine=server]")
         pg.click("#ob_server_more")
         pg.fill("#ob_host", "100.64.0.10")
@@ -101,8 +101,6 @@ with sync_playwright() as p:
         pg.click("#ob_test_conn")
         pg.wait_for_timeout(200)
         pg.click("#onboarding [data-ob-step]:not([hidden]) [data-ob=next]")
-        pg.wait_for_timeout(300)
-        pg.click("[data-ob=skip-model]")
         pg.wait_for_timeout(300)
         opt = pg.evaluate("window.__obCleanupText()")
         print(f"  setup ({'own' if own else 'openrouter'}): card: {card}  ||  cleanup: {opt}")
