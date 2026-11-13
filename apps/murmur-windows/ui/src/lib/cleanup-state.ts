@@ -1,8 +1,9 @@
-// The cloud cleanup "Try it" row's words (Settings → AI cleanup → Cloud
-// server): plain sentences, never a backend code. Pure, so `npm test` runs
+// The cloud cleanup "Try it" row's words (Settings → AI cleanup → Cloud or
+// your own AI server): plain sentences, never a backend code. Pure, so `npm test` runs
 // it on the built dist without a page.
 
 import { cloudHint } from "./format.js";
+import { ownServerOr } from "./provider-names.js";
 import type { CloudProvider, CleanupStatus, OrView } from "./types.js";
 
 /** What the row says; `turnOn` = offer a button that switches cloud cleanup on under Engines. */
@@ -27,17 +28,18 @@ export function plainHint(code: string | null | undefined): string {
  */
 export function cleanupBlockedLine(st: CleanupStatus, v: OrView | null): CleanupStateLine | null {
   const custom = st.provider === "custom";
-  const where = custom ? st.host || "your proxy" : "OpenRouter";
+  const where = custom ? ownServerOr(st.host) : "OpenRouter";
   if (!st.supported) return { text: "Not in this build.", cls: "hint" };
   if (!st.enabled) {
-    return { text: `Cloud cleanup is off under Engines: ${where} gets no text.`, cls: "hint", turnOn: true };
+    const what = custom ? "Cleanup on your own AI server" : "Cloud cleanup";
+    return { text: `${what} is off under Engines: ${where} gets no text.`, cls: "hint", turnOn: true };
   }
   if (!st.blocked) return null;
   if (st.blocked !== "cloud_cleanup_not_configured") {
     return { text: `Not used: ${plainHint(st.blocked)}.`, cls: "hint err" };
   }
   let why: string;
-  if (custom && !v?.cleanup.custom.base_url) why = "enter your proxy's address on the Cloud page";
+  if (custom && !v?.cleanup.custom.base_url) why = "enter your own AI server's address on the AI provider page";
   else if (custom && !v?.cleanup.custom.model) why = "pick a model";
   else if (!st.consent) why = "accept the consent first (turn it off and on again under Engines)";
   else if (!custom && v && !v.key.set) why = "save an OpenRouter key";
@@ -47,7 +49,7 @@ export function cleanupBlockedLine(st: CleanupStatus, v: OrView | null): Cleanup
 
 /** Who cleaned the last dictation, for the row's "last:" part. */
 export function cleanupEngineName(engine: string, provider: CloudProvider | undefined, host?: string): string {
-  if (engine === "cloud") return provider === "custom" ? host || "your proxy" : "OpenRouter";
+  if (engine === "cloud") return provider === "custom" ? ownServerOr(host) : "OpenRouter";
   if (engine === "local") return "this PC";
   if (engine === "server") return "your server";
   return "another engine";
@@ -69,7 +71,7 @@ export function cleanupTestFailText(
 ): string {
   let why: string;
   if (code === "cloud_not_configured") {
-    why = provider === "custom" ? "this build can't reach your proxy" : "save an OpenRouter key first";
+    why = provider === "custom" ? "this build can't reach your own AI server" : "save an OpenRouter key first";
   } else {
     why = plainHint(code ?? "error");
   }

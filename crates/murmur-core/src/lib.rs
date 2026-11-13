@@ -31,6 +31,7 @@ pub mod segment;
 pub mod sherpa_online;
 pub mod summary;
 pub mod transform;
+pub mod translate;
 pub mod vad;
 #[cfg(feature = "whisper")]
 pub mod whisper;

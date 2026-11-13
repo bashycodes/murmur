@@ -37,8 +37,9 @@ export interface PcModelChip {
 
 /**
  * The status chip of the This PC model. `status` is the backend's model
- * state (`model:status`); it stays "loading" while This PC is off, so an
- * installed model reads "Installed" then, not "Loading".
+ * state (`model:status`). A cold model nobody loaded yet is "idle" (D94) and
+ * reads "On standby"; an installed model that is not ready reads "Installed",
+ * never "Loading".
  */
 export function pcModelChip(o: {
   status: string;
@@ -52,6 +53,7 @@ export function pcModelChip(o: {
   if (o.status === "failed") return chip("Failed", "destructive");
   if (o.entry && !o.entry.installed) return o.canDownload ? { text: "", kind: "light", download: true } : chip("Not downloaded", "warning");
   if (o.status === "missing") return chip("Missing", "destructive");
+  if (o.status === "idle") return chip("On standby", "light");
   return o.entry ? chip("Installed", "light") : chip("", "light");
 }
 

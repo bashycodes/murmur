@@ -64,6 +64,13 @@ data class Settings(
     val bubbleScale: Float = 1f,
     /** Command Mode's ✎ button next to the mic: off, while text is selected (default), or always (also speak-to-generate). */
     val commandButton: CommandButton = CommandButton.WITH_SELECTION,
+    /**
+     * D90: the Translate button (⇄) next to the mic: dictate, and it is typed translated.
+     * null = automatic: shown while two or more keyboard languages are enabled ([showsTranslate]).
+     */
+    val translateButton: Boolean? = null,
+    /** D90: the language the Translate button types in (whisper code); "" = the other keyboard language. */
+    val translateTo: String = "",
     /** core-p1 deterministic spoken cleanup ("Auto-format punctuation, fillers and corrections"). */
     val spokenCleanup: Boolean = true,
     /** On-device ASR engine; Parakeet is English-only (D4/D12). */
@@ -352,3 +359,6 @@ enum class CommandButton(val key: String) {
         fun fromKey(k: String?): CommandButton = entries.firstOrNull { it.key == k } ?: WITH_SELECTION
     }
 }
+
+/** D90: the ⇄ shows when the setting says so; unset, when [keyboardLanguages] offers something to translate into. */
+fun Settings.showsTranslate(keyboardLanguages: Int): Boolean = translateButton ?: (keyboardLanguages >= 2)

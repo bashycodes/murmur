@@ -8,7 +8,7 @@ import { ICON, iconEl } from "../lib/icons.js";
 import {
   dayText,
   legendHtml,
-  ROUTE_LABEL,
+  routeLabel,
   ROUTES,
   routeShare,
   splitKey,
@@ -16,7 +16,9 @@ import {
   type RouteCounts,
 } from "../lib/insights-text.js";
 import { invoke, onEvent } from "../lib/ipc.js";
+import { providerOf } from "../lib/provider-names.js";
 import { router, type Page } from "../lib/router.js";
+import { views } from "../lib/views.js";
 
 /** `murmur_core::insights::Summary` (counts only; computed on this PC). */
 export interface InsightsSummary {
@@ -34,7 +36,7 @@ export interface InsightsSummary {
   since: string | null;
 }
 
-export { ROUTE_LABEL, ROUTES, routeShare, type Route } from "../lib/insights-text.js";
+export { routeLabel, ROUTES, routeShare, type Route } from "../lib/insights-text.js";
 
 /** What `insights_get` returns: the summary plus the desktop extras. */
 export interface InsightsView extends InsightsSummary {
@@ -147,7 +149,7 @@ function showSplit(s: InsightsView): void {
   const used = ROUTES.filter((r) => s.routes_7d[r] > 0);
   // Every part is named in the key below; wide parts also carry the name.
   key.replaceChildren(
-    ...splitKey(s.routes_7d).map((k) => {
+    ...splitKey(s.routes_7d, providerOf(views.or)).map((k) => {
       const item = el("span", `is-${k.route}`, k.text);
       item.prepend(el("i"));
       return item;
@@ -155,9 +157,9 @@ function showSplit(s: InsightsView): void {
   );
   bar.replaceChildren(
     ...used.map((r) => {
-      const seg = el("span", `is-${r}`, share[r] >= 18 ? ROUTE_LABEL[r] : "");
+      const seg = el("span", `is-${r}`, share[r] >= 18 ? routeLabel(r, providerOf(views.or)) : "");
       seg.style.flex = String(Math.max(share[r], 3));
-      seg.title = `${ROUTE_LABEL[r]}: ${share[r]}%`;
+      seg.title = `${routeLabel(r, providerOf(views.or))}: ${share[r]}%`;
       return seg;
     }),
   );

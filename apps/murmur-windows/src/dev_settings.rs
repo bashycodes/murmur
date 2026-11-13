@@ -184,7 +184,7 @@ impl Default for ServerSettings {
 
 /// D78/D85: shown once when [`DevSettings::one_cloud_provider`] turns cloud
 /// speech off.
-pub const LITELLM_STT_OFF_NOTICE: &str = "Speech to text in the cloud is now off: your Cloud provider is LiteLLM and no speech model is set for your proxy. Speech stays on this PC and your server.";
+pub const LITELLM_STT_OFF_NOTICE: &str = "Speech to text on your own AI server is now off: it has no speech model set. Speech stays on this PC and your server.";
 
 /// `prefs.json` → `"developer"`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1036,6 +1036,33 @@ pub fn host_is_public(host: &str) -> bool {
     !murmur_router::net::classify(host).plaintext_ok()
 }
 
+/// Setup re-run (D95): the saved server (address, port, TLS and the
+/// encrypted token) when setup opened, so "Keep my old setup" can put it
+/// back. Lives in the backend because the token never goes to the page.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServerSnapshot {
+    server: ServerSettings,
+    token_dpapi: String,
+}
+
+impl ServerSnapshot {
+    pub fn of(dev: &DevSettings) -> Self {
+        ServerSnapshot {
+            server: dev.server.clone(),
+            token_dpapi: dev.token_dpapi.clone(),
+        }
+    }
+
+    /// `dev` with the snapshot's server and token; everything else as it is now.
+    pub fn restore(&self, dev: &DevSettings) -> DevSettings {
+        DevSettings {
+            server: self.server.clone(),
+            token_dpapi: self.token_dpapi.clone(),
+            ..dev.clone()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1324,6 +1351,30 @@ mod tests {
             "",
         );
         assert_eq!(j["allow_server"], false, "capability AND toggle");
+    }
+
+    #[test]
+    fn server_snapshot_puts_back_the_address_and_token_only() {
+        let mut before = DevSettings::for_build(BOTH);
+        before.server.host = "100.64.0.10".into();
+        before.token_dpapi = "old-blob".into();
+        let snap = ServerSnapshot::of(&before);
+        let mut now = before.clone();
+        now.server.host = "100.64.0.20".into();
+        now.server.port = 9999;
+        now.token_dpapi = "new-blob".into();
+        now.allow_client = !before.allow_client;
+        let back = snap.restore(&now);
+        assert_eq!(back.server, before.server);
+        assert_eq!(back.token_dpapi, "old-blob");
+        assert_eq!(
+            back.allow_client, now.allow_client,
+            "other settings stay as they are now"
+        );
+        // Never in a debug print of the page's view.
+        assert!(!serde_json::to_string(&DevForm::for_page(&back))
+            .unwrap()
+            .contains("old-blob"));
     }
 
     #[test]

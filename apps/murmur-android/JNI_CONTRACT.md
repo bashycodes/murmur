@@ -200,6 +200,18 @@ the shared Rust ones, so Android and Windows behave alike. Every flavour exports
 |---|---|---|---|---|
 | `nativeCommand(h: Long, instruction: String, selected: String?): String` | `(JLjava/lang/String;Ljava/lang/String;)Ljava/lang/String;` | `Java_dev_murmur_core_NativeMurmurCore_nativeCommand` | `murmur_command` | **Blocking** (LLM call, ≤ `command::DEFAULT_TIMEOUT` 25 s, plus a D24 on-demand model load when nothing else can answer). `Router::command`: the warm local engine's on-device LLM and/or OpenRouter cleanup per `cleanup_order`, consent, key, budget. A **selection** goes to OpenRouter only with `cloud.openrouter.cleanup.send_surrounding_text`; otherwise the on-device part answers, or `selection_not_allowed`. `selected` null / blank = write at the cursor. Never null: `{"ok":true,"text":…}` (sanitised, ready to replace the selection), `{"ok":true,"answer":…}` (D86: the instruction asked a question; the answer is shown and nothing is written; no `text` key) or `{"ok":false,"kind":…,"error":…}` with `kind` ∈ `no_instruction`, `selection_too_long` (> 4000 chars), `no_llm`, `selection_not_allowed`, `timeout`, `empty`, `backend`; `error` is user-facing text. A core handle uses its own LLM only |
 
+## Translation (D90, 2026-11-13) — additive
+
+Dictate in one language, paste in another (`crates/murmur-core/src/translate.rs`): the shell
+records a raw (`raw_mode: true`) dictation with the normal session calls, then asks the router to
+clean and translate its text in one LLM call. The prompt, the route order and the checks are the
+shared Rust ones, so Android and Windows behave alike. Every flavour exports it. A library built
+before it throws `UnsatisfiedLinkError`; Kotlin treats that as `no_llm`.
+
+| Kotlin (`@JvmStatic external`) | JNI descriptor | C symbol | C ABI | Semantics |
+|---|---|---|---|---|
+| `nativeTranslate(h: Long, requestJson: String): String` | `(JLjava/lang/String;)Ljava/lang/String;` | `Java_dev_murmur_core_NativeMurmurCore_nativeTranslate` | — | **Blocking** (LLM calls, ≤ `translate::DEFAULT_TIMEOUT` 25 s, plus a D24 on-demand model load when nothing else can answer). The request is `{"text","source"?,"target"?,"installed"?,"dictionary"?}`: the dictation's text, its language when known (ISO 639-1), the target language (missing or empty = automatic: the first of `installed`, the keyboard languages, that is not the dictation's language, or with no known language the first one written in another script than the text, D58; none = `no_target`, never a guess) and the user's `Dictionary`. `Router::translate`: the dictation cleanup route (`cleanup_order`, server included), with the server and cloud hops tried **before** the on-device LLM; each hop keeps its own consent, key, budget and circuit checks (the cloud gate, D52/D78). A server gets it only when it lists `"translate"`. D65's script check is off for this task. Never null: `{"ok":true,"text":…,"target":…,"on_device":…}` (ready to paste; `target` = the language it is in, `on_device` = only the on-device LLM could answer, which the shells flag as lower quality) or `{"ok":false,"kind":…,"error":…}` with `kind` ∈ `no_text`, `text_too_long` (> 4000 chars), `no_target`, `no_llm`, `timeout`, `empty`, `not_translated` (the answer kept the dictation's script), `backend`; `error` is user-facing text. Wire vectors: `crates/murmur-core/fixtures/translate/translate_results.json`. A core handle uses its own LLM only |
+
 ## Benchmark (2026-10-31) — additive
 
 On-device benchmark hook for the debug-only `BenchActivity` (`tools/probes/android_bench`). Every

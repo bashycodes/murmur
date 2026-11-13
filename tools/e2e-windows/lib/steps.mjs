@@ -29,6 +29,21 @@ export async function windowShot(ctx, hwnd, name) {
   }
 }
 
+/** First-run setup as the settings page shows it: open or not, and its step. */
+export function onboardingDom(page) {
+  return page.eval(`(() => {
+    const ob = document.getElementById("onboarding");
+    const step = ob && [...ob.querySelectorAll("[data-ob-step]")].find((p) => !p.hidden);
+    return {
+      onboarding_present: !!ob,
+      onboarding_open: !!ob && !ob.hidden,
+      step: step ? step.dataset.obStep : null,
+      visibility: document.visibilityState,
+      title: document.title,
+    };
+  })()`);
+}
+
 /** Visible top-level windows of the app. */
 export async function appWindows(ctx) {
   const r = await ctx.agent.call("windows", { process: "murmur-windows" });

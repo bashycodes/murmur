@@ -62,10 +62,10 @@ ${group("", row(`<label for="asr_engine">This PC model</label>`, `Parakeet is En
 ${group("", row("Live transcription", "Text appears as you pause, so it finishes sooner.", toggle("dev_decode_while_speaking", "Live transcription", `data-save="dev"`)), `data-needs="dev"`)}
 
 <section class="lw-section" id="or_stt_group" data-needs="cloud">
-  <h3 class="fl-group-title lw-title-badge">Cloud · <span id="or_stt_provider_name">OpenRouter</span> <span class="fl-badge fl-badge-light" id="or_stt_used_badge">Used only when on above</span> <button type="button" class="lw-link lw-link-sm" data-go="settings-openrouter">Change provider →</button></h3>
+  <h3 class="fl-group-title lw-title-badge"><span id="or_stt_provider_name">Cloud · OpenRouter</span> <span class="fl-badge fl-badge-light" id="or_stt_used_badge">Used only when on above</span> <button type="button" class="lw-link lw-link-sm" data-go="settings-openrouter">Change provider →</button></h3>
   <div class="fl-group" id="or_stt_box">
     ${row(`<span id="or_stt_model_name"></span> <span id="or_stt_model_badges" class="pills"></span>`, `<span id="or_stt_model_desc"></span> <code id="or_stt_model_id" class="lw-mono"></code>`, `<button type="button" class="fl-btn fl-btn-secondary lw-btn-160" id="or_stt_change">Change</button>`, `data-stt-provider="openrouter"`)}
-    ${row(`<code id="cu_stt_model_name" class="lw-mono"></code>`, `Speech model on your proxy at <span id="cu_stt_host" class="lw-mono"></span>. Pick another on the Cloud page.`, "", `data-stt-provider="custom" hidden`)}
+    ${row(`<code id="cu_stt_model_name" class="lw-mono"></code>`, `Speech model on your own AI server at <span id="cu_stt_host" class="lw-mono"></span>. Pick another on the AI provider page.`, "", `data-stt-provider="custom" hidden`)}
     ${row("Language", "", `<input id="or_stt_language" class="fl-input lw-w160" spellcheck="false" placeholder="Auto-detect" aria-label="Language (empty = auto-detect)" />`, `data-stt-provider="openrouter"`)}
     ${row("Speech path", "A chat model with audio input may paraphrase.", `<select id="or_stt_path" class="fl-select is-wide">
         <option value="auto">Auto (from the catalogue)</option>

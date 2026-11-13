@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 pub mod context_echo;
 mod prompt_v4c;
 mod prompt_v5;
+mod prompt_v6;
 pub mod terms;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,11 +55,23 @@ pub enum CleanTask {
     /// A meeting's summary and action items, from its transcript or from
     /// notes on its parts (the reduce step).
     MeetingSummary,
+    /// D90: clean a dictation and translate it into
+    /// [`CleanRequest::target_language`], in one call
+    /// ([`crate::translate`]).
+    Translate,
 }
 
 impl CleanTask {
     pub fn is_cleanup(&self) -> bool {
         *self == CleanTask::Cleanup
+    }
+
+    /// Does the answer keep the dictation's language? Every task but
+    /// [`CleanTask::Translate`]. The language guards on an answer (D65's
+    /// script check, and any later one) run only when it does (D90): a
+    /// changed script is what a translation is for.
+    pub fn keeps_language(&self) -> bool {
+        *self != CleanTask::Translate
     }
 }
 
@@ -88,6 +101,10 @@ pub struct CleanRequest {
     /// meeting task when it advertises `"summary"`.
     #[serde(skip_serializing_if = "CleanTask::is_cleanup")]
     pub task: CleanTask,
+    /// D90: the language a [`CleanTask::Translate`] writes (ISO 639-1);
+    /// `None` for every other task, and then never written.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_language: Option<String>,
     /// What the context was narrowed to (not sent: a receiver builds with
     /// its own scope over the context it got).
     #[serde(skip)]
@@ -98,6 +115,16 @@ impl CleanRequest {
     /// The prompt for this request, narrowed to `scope` (and never wider
     /// than the request's own scope).
     pub fn prompt_for(&self, scope: PromptScope) -> CleanPrompt {
+        if self.task == CleanTask::Translate {
+            // D90: no field context, only the text and the dictionary.
+            return crate::translate::build_prompt(
+                &self.text,
+                self.language.as_deref(),
+                self.target_language.as_deref().unwrap_or("en"),
+                &self.dictionary,
+            )
+            .with_timeout(self.timeout_ms);
+        }
         if !self.task.is_cleanup() {
             // D53: a meeting summary step carries no field context.
             let mut p =
@@ -399,6 +426,12 @@ pub trait Cleaner: Send + Sync {
         None
     }
 
+    /// A [`ChainCleaner`]'s `min_fallback_ms` (`None` for anything else),
+    /// so a reordered copy ([`off_device_first`]) keeps it.
+    fn chain_min_fallback_ms(&self) -> Option<u64> {
+        None
+    }
+
     /// [`Cleaner::clean_cancellable`] plus metering. Backends with a cost
     /// override it and report usage even on error / cancel. Default: the
     /// plain call, usage = engine + model.
@@ -568,6 +601,22 @@ pub fn off_device(cl: &Arc<dyn Cleaner>) -> Option<Arc<dyn Cleaner>> {
         Some(hops) => ChainCleaner::build(hops.iter().filter_map(off_device).collect()),
         None => (cl.engine() != "local").then(|| cl.clone()),
     }
+}
+
+/// D90: `cl` with its on-device hops (engine `"local"`) moved after the
+/// others, keeping each group's order: the server and the cloud are tried
+/// first, the on-device LLM only when they cannot answer. A single backend
+/// is returned as it is; a chain keeps its `min_fallback_ms`.
+pub fn off_device_first(cl: &Arc<dyn Cleaner>) -> Arc<dyn Cleaner> {
+    let (Some(hops), Some(min_fallback_ms)) = (cl.chain_hops(), cl.chain_min_fallback_ms()) else {
+        return cl.clone();
+    };
+    let (local, other): (Vec<_>, Vec<_>) =
+        hops.iter().cloned().partition(|h| h.engine() == "local");
+    Arc::new(ChainCleaner {
+        hops: other.into_iter().chain(local).collect(),
+        min_fallback_ms,
+    })
 }
 
 /// D36: the user's cleanup order as one cleaner: hops (on-device LLM,
@@ -773,6 +822,10 @@ impl Cleaner for ChainCleaner {
 
     fn chain_hops(&self) -> Option<&[Arc<dyn Cleaner>]> {
         Some(&self.hops)
+    }
+
+    fn chain_min_fallback_ms(&self) -> Option<u64> {
+        Some(self.min_fallback_ms)
     }
 
     /// Cloud first → D30 (AI cleanup on the raw transcript, the hops after
@@ -1333,8 +1386,8 @@ pub fn session_prompt(
 /// Which system prompt + few-shots a [`CleanPrompt`] carries. The
 /// on-device and server pipelines (rules first, then the LLM) build
 /// [`PromptVersion::V2`]; the D30 AI-cleanup path (raw transcript, cloud or
-/// custom server) builds [`PromptVersion::V5`]. v4c, v5's predecessor from
-/// the 2026-10-26 benchmark, stays selectable for the bench and replay.
+/// custom server) builds [`PromptVersion::V6`]. v4c (the 2026-10-26
+/// benchmark) and v5 (1.3.0's) stay selectable for the bench and replay.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PromptVersion {
@@ -1345,13 +1398,17 @@ pub enum PromptVersion {
     /// transcript, light edits. Kept for the bench and replay.
     V4c,
     /// AI cleanup prompt v5 (`cleanup/prompt_v5.rs`): v4c with spoken lists
-    /// (bullets and numbers) and self-corrections reworked; what the D30
-    /// AI-cleanup path sends.
+    /// (bullets and numbers) and self-corrections reworked; what 1.3.0
+    /// sends. Kept for the bench and replay.
     V5,
+    /// AI cleanup prompt v6 (`cleanup/prompt_v6.rs`): v5 with spoken "new
+    /// line" and spoken marks reworked (D89); what the D30 AI-cleanup path
+    /// sends.
+    V6,
 }
 
 impl PromptVersion {
-    /// The one-pass AI-cleanup prompts (v4c, v5) on the raw transcript, as
+    /// The one-pass AI-cleanup prompts (v4c, v5, v6) on the raw transcript, as
     /// opposed to v2 on the rules text. They carry their own casual STYLE
     /// line, and their rules are the light level.
     pub fn is_ai_cleanup(self) -> bool {
@@ -1375,8 +1432,9 @@ pub fn build_prompt_versioned(
         PromptVersion::V2 => (SYSTEM, EXAMPLES.iter().collect()),
         PromptVersion::V4c => (prompt_v4c::SYSTEM, prompt_v4c::EXAMPLES.iter().collect()),
         PromptVersion::V5 => (prompt_v5::SYSTEM, prompt_v5::examples().collect()),
+        PromptVersion::V6 => (prompt_v6::SYSTEM, prompt_v6::examples().collect()),
     };
-    // v4c's and v5's own rules are the light level; other levels (and every
+    // v4c's, v5's and v6's own rules are the light level; other levels (and every
     // v2 level) add their line.
     let system = if version.is_ai_cleanup() && level == CleanupLevel::Light {
         system.to_string()
@@ -1448,6 +1506,7 @@ pub fn build_prompt_versioned(
             timeout_ms: 0,
             prompt: version,
             task: CleanTask::Cleanup,
+            target_language: None,
             scope,
         })),
     }
@@ -1698,7 +1757,7 @@ pub fn run_cleanup_metered_for(
 
 /// D30 AI cleanup: [`run_cleanup_metered`] on the **raw** transcript
 /// `raw`, with [`blank_line_before_lists`] applied to the answer. The
-/// caller builds the prompt with [`PromptVersion::V5`]. The third value
+/// caller builds the prompt with [`PromptVersion::V6`]. The third value
 /// is the fallback detail for the debug log (timeout, error or empty
 /// answer; `None` when the answer was used).
 pub fn run_ai_cleanup(
@@ -1733,6 +1792,12 @@ fn run_metered(
     let deadline = Instant::now() + timeout;
     // D71: the field the prompt showed (empty when its scope hid it).
     let source = prompt.source.clone().filter(|s| s.task.is_cleanup());
+    // D90: the language guards below are for answers that keep the
+    // dictation's language; a translation changes it on purpose.
+    let language_guards = prompt
+        .source
+        .as_ref()
+        .is_none_or(|s| s.task.keeps_language());
     let cancel = Arc::new(AtomicBool::new(false));
     let flag = AbortFlag(Some(cancel.clone()));
     let pending = CleanUsage {
@@ -1804,7 +1869,9 @@ fn run_metered(
     // it does not have in any spelling, nor in the whole dictionary
     // vocabulary or screen words (`known`, not only the terms the prompt
     // showed). Command Mode and transforms are not checked this way yet.
-    if let Some(s) = script_kept(asr_text) {
+    // D90: these guards are for answers that keep the dictation's language;
+    // a translation changes it on purpose, so the whole block is skipped.
+    if let Some(s) = script_kept(asr_text).filter(|_| language_guards) {
         let why = if script_lock::drifted_from(s, asr_text, &out) {
             Some(format!("answer not in {}", s.language()))
         } else {
@@ -2915,6 +2982,102 @@ mod tests {
     }
 
     #[test]
+    fn v6_is_v5_with_layout_shots_after_the_lists_and_corrections_last() {
+        let v5 = versioned(Style::Casual, PromptVersion::V5);
+        let v6 = versioned(Style::Casual, PromptVersion::V6);
+        assert_eq!(v6.user, v5.user);
+        // Only the list rule and the marks rule change.
+        let v5_lines: Vec<_> = v5.system.lines().collect();
+        let v6_lines: Vec<_> = v6.system.lines().collect();
+        assert_eq!(v6_lines.len(), v5_lines.len());
+        let changed: Vec<_> = v5_lines
+            .iter()
+            .zip(&v6_lines)
+            .filter(|(old, new)| old != new)
+            .map(|(_, new)| *new)
+            .collect();
+        assert_eq!(changed.len(), 2, "{changed:?}");
+        assert!(changed[0].starts_with("- Lists: "), "{}", changed[0]);
+        assert!(changed[1].starts_with("- Spoken marks "), "{}", changed[1]);
+        // "new line" is one line break, and line commands are never a list
+        // (in the marks rule and at the end of the list rule).
+        assert!(changed[1].contains("\"new line\" is one line break"));
+        assert!(changed[0].ends_with("are never a list."), "{}", changed[0]);
+        assert!(changed[1].ends_with("never a list."), "{}", changed[1]);
+        // v4c's three layout shots are v4c's own.
+        let (filler, v4c) = prompt_v4c::EXAMPLES.split_last().unwrap();
+        for said in prompt_v6::V4C_LAYOUT_SHOTS {
+            assert!(v4c.iter().any(|e| e.3 == said), "{said}");
+        }
+        let v4c_rest: Vec<_> = v4c
+            .iter()
+            .filter(|e| !prompt_v6::is_v4c_layout_shot(e))
+            .collect();
+        let v4c_layout: Vec<_> = v4c
+            .iter()
+            .filter(|e| prompt_v6::is_v4c_layout_shot(e))
+            .collect();
+        assert_eq!(v4c_layout.len(), 3);
+        // Prompt order: v4c's other shots, v5's list shots, v4c's layout
+        // shots, v6's own layout shots, v5's correction shots, the closing
+        // "only filler" turn.
+        let shots: Vec<_> = prompt_v6::examples().collect();
+        assert_eq!(v6.examples.len(), shots.len());
+        let mut at = 0;
+        let mut next = |n: usize| {
+            let segment = &shots[at..at + n];
+            at += n;
+            segment
+        };
+        let v4c_block = next(v4c_rest.len());
+        assert_eq!(v4c_block, &v4c_rest[..]);
+        let list_block = next(prompt_v5::LIST_SHOTS.len());
+        assert_eq!(list_block, prompt_v5::LIST_SHOTS.iter().collect::<Vec<_>>());
+        let v4c_layout_block = next(v4c_layout.len());
+        assert_eq!(v4c_layout_block, &v4c_layout[..]);
+        let layout_block = next(prompt_v6::LAYOUT_SHOTS.len());
+        assert_eq!(
+            layout_block,
+            prompt_v6::LAYOUT_SHOTS.iter().collect::<Vec<_>>()
+        );
+        let correction_block = next(prompt_v5::CORRECTION_SHOTS.len());
+        assert_eq!(
+            correction_block,
+            prompt_v5::CORRECTION_SHOTS.iter().collect::<Vec<_>>()
+        );
+        let closing_turn = next(1);
+        assert_eq!(closing_turn, [filler]);
+        assert_eq!(at, shots.len());
+        // Layout answers: no list, and no spoken mark or line command left
+        // as a word.
+        for &&(.., said, written) in v4c_layout_block.iter().chain(layout_block) {
+            assert!(!written.contains("<li>"), "{said} -> {written}");
+            for word in [
+                "comma",
+                "period",
+                "question mark",
+                "exclamation point",
+                "colon",
+                "semicolon",
+                "dash",
+                "new line",
+                "new paragraph",
+            ] {
+                assert!(
+                    !written.to_lowercase().contains(word),
+                    "{said} -> {written}"
+                );
+            }
+        }
+        // A dictated "new line" is one line break, not a blank line.
+        assert!(layout_block.iter().any(|&&(.., said, written)| {
+            said.to_lowercase().contains("new line")
+                && written.contains('\n')
+                && !written.contains("\n\n")
+        }));
+    }
+
+    #[test]
     fn v5_static_prompt_leaves_room_in_the_local_context() {
         // v5 sits close to the local engine's 4096-token context, and an
         // overflow fails every call ("prompt too long"; a 7-shot variant
@@ -2928,6 +3091,103 @@ mod tests {
                 .map(|(u, a)| u.len() + a.len())
                 .sum::<usize>();
         assert!(chars < 13_300, "{chars}");
+    }
+
+    /// The longest prompt v6 sends to the local engine: every style, a
+    /// DICTIONARY of the most terms a prompt carries (all named in the
+    /// transcript), and the full windows around the cursor; few-shots with
+    /// their rendered headers.
+    fn v6_longest_prompt_chars() -> usize {
+        // Made-up names, each said split in two ("quill mate"): the
+        // DICTIONARY selection (D64) picks up that shape as a misspelling.
+        let halves = [
+            ("Quill", "mate"),
+            ("Marble", "ford"),
+            ("Zen", "trova"),
+            ("Bracken", "moor"),
+            ("Fern", "leigh"),
+            ("Corvid", "ian"),
+            ("Tams", "worth"),
+            ("Vell", "oran"),
+            ("Kestrel", "byte"),
+            ("Oak", "hurst"),
+            ("Pell", "grove"),
+            ("Sand", "ovra"),
+            ("Thistle", "comb"),
+            ("Wren", "field"),
+            ("Amber", "vale"),
+            ("Lumi", "castra"),
+            ("North", "wyck"),
+            ("Glimmer", "dock"),
+            ("River", "slate"),
+            ("Hollow", "way"),
+        ];
+        assert_eq!(halves.len(), terms::MAX_PROMPT_TERMS);
+        let terms: Vec<String> = halves.iter().map(|(a, b)| format!("{a}{b}")).collect();
+        let dict = Dictionary {
+            entries: terms.iter().map(|t| DictEntry::word(t)).collect(),
+        };
+        let ctx = FieldContext {
+            app_category: AppCategory::PersonalChat,
+            before: "Notes from the planning call went out late. ".repeat(10),
+            after: "See everyone on the next call. ".repeat(10),
+            ..Default::default()
+        };
+        let said: Vec<String> = halves
+            .iter()
+            .map(|(a, b)| format!("{} {b}", a.to_lowercase()))
+            .collect();
+        let transcript = format!("please loop in {} on the thread", said.join(" and "));
+        [
+            Style::Default,
+            Style::Formal,
+            Style::Casual,
+            Style::VeryCasual,
+            Style::Excited,
+        ]
+        .into_iter()
+        .map(|style| {
+            let p = build_prompt_versioned(
+                &transcript,
+                CleanupLevel::Light,
+                style,
+                &ctx,
+                &dict,
+                PromptScope::FULL,
+                PromptVersion::V6,
+            );
+            let dictionary_line = p.user.lines().find(|l| l.starts_with("DICTIONARY: "));
+            assert_eq!(
+                dictionary_line.map(|l| l.split(", ").count()),
+                Some(terms::MAX_PROMPT_TERMS),
+                "{}",
+                p.user
+            );
+            p.system.len()
+                + p.examples
+                    .iter()
+                    .map(|(u, a)| u.len() + a.len())
+                    .sum::<usize>()
+                + p.user.len()
+                - transcript.len()
+        })
+        .max()
+        .unwrap()
+    }
+
+    #[test]
+    fn v6_longest_prompt_stays_at_its_measured_size() {
+        // The local engine (murmur-llm, also behind "Your server") refuses
+        // a prompt within 64 tokens of its 4096-token context and caps the
+        // answer at what is left. Measured on the Qwen2.5 tokenizer
+        // (tools/probes/prototypes/newline_punct_2026_11_12/budget_probe.py,
+        // docs/findings/2026-11-12-newline-punct-prompt.md): this longest
+        // prompt, the dictation aside, is 14.4k characters, about 3.91k
+        // tokens (3.68 characters a token), so a dictation and its answer
+        // share about 170 tokens; 1.3.0's v5 left about 510. Any growth
+        // needs a new measurement first.
+        let chars = v6_longest_prompt_chars();
+        assert!(chars <= 14_450, "{chars}");
     }
 
     #[test]

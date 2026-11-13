@@ -232,6 +232,12 @@ class HistoryActivity : Activity() {
                 card { selectableText(r.commandOriginal ?: "(nothing selected: written at the cursor)", 14f, p.muted) }
                 sectionLabel(if (r.inserted) "RESULT (REPLACED THE SELECTION)" else "RESULT")
                 card { selectableText(HistoryView.text(r, raw = false)) }
+            } else if (r.transformed != null) {
+                // D90: what was typed (the translation), then the dictation it came from.
+                sectionLabel((r.transform ?: "Transform").uppercase() + if (r.inserted) " (INSERTED)" else "")
+                card { selectableText(r.transformed) }
+                sectionLabel("DICTATION")
+                card { selectableText(HistoryView.text(r, raw = false), 14f, p.muted) }
             } else {
                 sectionLabel(if (r.inserted) "INSERTED TEXT" else "TEXT")
                 card { selectableText(HistoryView.text(r, raw = false)) }

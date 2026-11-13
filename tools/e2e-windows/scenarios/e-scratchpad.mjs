@@ -6,7 +6,7 @@
 // clip is in the note.
 import { Page, listPages } from "../lib/cdp.mjs";
 import { CDP_PORT } from "../lib/app.mjs";
-import { appWindows, judge, pageShot, sleep, talk, windowShot } from "../lib/steps.mjs";
+import { appWindows, debugLines, judge, pageShot, pickLine, sleep, talk, windowShot } from "../lib/steps.mjs";
 
 const PAGE_STATE = `({ href: location.href, ready: document.readyState, body_len: document.body ? document.body.innerHTML.length : 0, tauri: !!window.__TAURI__, editor: !!document.getElementById("editor"), editor_visible: !!document.getElementById("editor") && !document.getElementById("editor-view").hidden })`;
 
@@ -66,6 +66,7 @@ export default {
         await np.eval(`document.getElementById("editor").focus()`);
       }
       const clip = clips["en-short"];
+      const logBefore = debugLines(ctx).length;
       const said = await talk(ctx, "en-short", { guard: win.hwnd });
       if (said.aborted) return { status: "aborted", summary: `dictation aborted ${said.aborted_at}: the notes window lost the foreground`, details, evidence };
       await np.waitFor(`document.getElementById("editor").value.trim().length > 0`, 25_000).catch(() => {});
@@ -77,9 +78,15 @@ export default {
       const files = remote.ssh("dir /b %APPDATA%\\Murmur\\notes", { check: false }).out.split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
       details.note_files = files;
       evidence.push(`notes folder: ${files.join(", ") || "(empty)"}`);
+      // What the app logged for this try: no dictation line = the key never
+      // started one (the hook missed it); a line = see its insert outcome.
+      const lines = debugLines(ctx).slice(logBefore);
+      const dictation = lines.filter((l) => l.kind === "dictation").pop();
+      details.log = { dictation: pickLine(dictation), events: lines.filter((l) => l.kind === "event").map(pickLine) };
+      evidence.push(dictation ? `app log: insert=${JSON.stringify(dictation.insert ?? null)} target=${dictation.target ?? "?"}${dictation.error ? ` error="${dictation.error}"` : ""}` : `app log: no dictation (events: ${details.log.events.map((e) => e.error ?? e.event).join("; ") || "none"})`);
       const problems = [];
       if (!openedFocused) problems.push(`the notes window did not open focused with the caret in the editor (foreground ${details.opened_focused.foreground}, activeElement ${active})`);
-      if (!j.pass) problems.push(`the dictation did not land (got "${text}")`);
+      if (!j.pass) problems.push(`the dictation did not land (got "${text}"; ${dictation ? `app: ${dictation.insert?.outcome ?? dictation.error ?? "logged"}` : "the app logged no dictation"})`);
       return { status: problems.length ? "fail" : "pass", summary: problems.length ? problems.join("; ") : "note editor opened focused and took the dictation", details, evidence };
     } finally {
       np.close();

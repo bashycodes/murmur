@@ -22,6 +22,17 @@ ${heading("General")}
 ${group("Shortcuts", row("Push to talk", "Hold, speak, let go to paste.", key("ptt", "Push to talk")) +
         row("Hands-free", "Or double-tap push to talk. Stops by itself when you go quiet.", key("hands_free", "Hands-free")) +
         row("Command Mode", "Hold and say an instruction: rewrites the selected text (or writes new text at the cursor) with the AI cleanup model.", key("command", "Command Mode")) +
+        row("Translate", "Hold and speak: pastes what you said cleaned up and translated. Uses your server or the cloud first; the on-device model translates poorly.", key("translate", "Translate")) +
+        row("Translate into", "Automatic = your other keyboard language: what you say in one is pasted in the other.", select("translate_to", [
+            ["", "Automatic"],
+            ["en", "English"],
+            ["he", "Hebrew"],
+            ["ar", "Arabic"],
+            ["ru", "Russian"],
+            ["fr", "French"],
+            ["de", "German"],
+            ["es", "Spanish"],
+        ])) +
         row("Cancel", "", key("cancel", "Cancel")) +
         row("Paste last dictation", "", key("paste_last", "Paste last dictation")) +
         row("Copy last dictation", "", key("copy_last", "Copy last dictation")) +

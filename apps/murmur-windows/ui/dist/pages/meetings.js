@@ -11,7 +11,9 @@ import { $, askDialog, el } from "../lib/dom.js";
 import { ICON, iconEl, iconSvg } from "../lib/icons.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { prefsStore } from "../lib/prefs-store.js";
+import { cloudShortName, providerOf } from "../lib/provider-names.js";
 import { router } from "../lib/router.js";
+import { views } from "../lib/views.js";
 const TEMPLATE = `
 <div class="lw-page lw-mt">
   <div class="lw-page-head lw-mt-head">
@@ -218,11 +220,16 @@ async function refreshList() {
     $("mt_list").replaceChildren(...list.map(row));
     $("mt_empty").hidden = list.length > 0;
 }
-const SUMMARY_BY = {
-    local: "this PC's AI model",
-    server: "your server",
-    cloud: "Cloud",
-};
+/** Who wrote the summary; the cloud route by the saved provider (D96). */
+function summaryBy(engine) {
+    if (engine === "local")
+        return "this PC's AI model";
+    if (engine === "server")
+        return "your server";
+    if (engine === "cloud")
+        return cloudShortName(providerOf(views.or));
+    return engine;
+}
 /** What the summary box says about its state ("" when it just shows it). */
 export function summaryState(s, running) {
     if (running)
@@ -249,7 +256,7 @@ function showSummary(m) {
     st.hidden = !state;
     st.classList.toggle("is-err", s?.status === "failed" && !running);
     $("mt_summary_by").textContent =
-        s?.status === "done" && s.engine ? `by ${SUMMARY_BY[s.engine] ?? s.engine}` : "";
+        s?.status === "done" && s.engine ? `by ${summaryBy(s.engine)}` : "";
     $("mt_summary_text").textContent = s?.text ?? "";
     const items = s?.action_items ?? [];
     $("mt_items").replaceChildren(...items.map((t) => el("li", "", t)));
@@ -259,22 +266,25 @@ function showSummary(m) {
     btn.textContent = s ? "Regenerate" : "Summarise";
     btn.disabled = running || s?.status === "pending";
 }
-const ROUTE_NAMES = {
-    local: "This PC",
-    remote: "Your server",
-    cloud: "Cloud",
-};
+/** A meeting route's name; the cloud route by the saved provider (D96). */
+function routeName(r) {
+    if (r === "local")
+        return "This PC";
+    if (r === "remote")
+        return "Your server";
+    return cloudShortName(providerOf(views.or));
+}
 /** "Transcribed on: This PC"; with several routes, the most used first
  * with the share of chunks ("This PC 4, Your server 2"). */
 export function routesText(routes) {
     const used = Object.entries(routes ?? {})
-        .filter(([r, n]) => n > 0 && r in ROUTE_NAMES)
+        .filter(([r, n]) => n > 0 && ["local", "remote", "cloud"].includes(r))
         .sort((a, b) => b[1] - a[1]);
     if (!used.length)
         return "";
     const names = used.length === 1
-        ? ROUTE_NAMES[used[0][0]]
-        : used.map(([r, n]) => `${ROUTE_NAMES[r]} ${n}`).join(", ");
+        ? routeName(used[0][0])
+        : used.map(([r, n]) => `${routeName(r)} ${n}`).join(", ");
     return `Transcribed on: ${names}`;
 }
 function showDetail(m) {

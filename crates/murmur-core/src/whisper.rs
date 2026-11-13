@@ -154,6 +154,9 @@ pub struct WhisperEngine {
     /// Shrink the encoder window to the clip (`audio_ctx`), with a
     /// repetition guard that re-decodes with the full window.
     fit_ctx: bool,
+    /// `<|startoftranscript|>` and `<|nospeech|>` (D91).
+    sot: i32,
+    nosp: i32,
     /// Re-decodes by [`decode_guarded`] (tests, benchmarks).
     redecodes: std::sync::atomic::AtomicU64,
     // Keep the context alive for the state's lifetime.
@@ -189,6 +192,8 @@ impl WhisperEngine {
             .map_err(|e| AsrError::Load(e.to_string()))?;
         Ok(Self {
             multilingual: ctx.is_multilingual(),
+            sot: ctx.token_sot(),
+            nosp: ctx.token_nosp(),
             state: Mutex::new(state),
             threads: threads.max(1),
             silero: None,
@@ -243,6 +248,36 @@ impl WhisperEngine {
             self.decode(pcm, &audio, req, pass, abort)
         })
     }
+}
+
+/// whisper.cpp's decode settings for one `WhisperEngine` run: greedy, no
+/// carried context, `audio_ctx` 0 = full window, `prompt` as
+/// `initial_prompt` when not empty. The engine adds its Silero VAD, abort
+/// flag and no-speech probe (D91) on top. Public so tests can run
+/// whisper.cpp alone with the same settings.
+pub fn full_params<'a>(
+    threads: usize,
+    language: &'a str,
+    audio_ctx: i32,
+    prompt: &str,
+) -> FullParams<'a, 'a> {
+    let mut p = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+    p.set_n_threads(threads as i32);
+    p.set_language(Some(language));
+    p.set_no_context(true);
+    p.set_suppress_blank(true);
+    p.set_suppress_nst(true);
+    p.set_print_progress(false);
+    p.set_print_realtime(false);
+    p.set_print_special(false);
+    p.set_print_timestamps(false);
+    if audio_ctx > 0 {
+        p.set_audio_ctx(audio_ctx);
+    }
+    if !prompt.is_empty() {
+        p.set_initial_prompt(prompt);
+    }
+    p
 }
 
 /// One whisper.cpp run of [`decode_guarded`].
@@ -333,20 +368,8 @@ impl WhisperEngine {
                 text: String::new(),
                 language: lang,
                 no_speech_prob: None,
+                avg_logprob: None,
             });
-        }
-        let mut p = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-        p.set_n_threads(self.threads as i32);
-        p.set_language(Some(lang.as_deref().unwrap_or("auto")));
-        p.set_no_context(true);
-        p.set_suppress_blank(true);
-        p.set_suppress_nst(true);
-        p.set_print_progress(false);
-        p.set_print_realtime(false);
-        p.set_print_special(false);
-        p.set_print_timestamps(false);
-        if audio_ctx > 0 {
-            p.set_audio_ctx(audio_ctx);
         }
         // D22: the previous segments' last words follow the dictionary.
         let initial = if use_prompt {
@@ -355,9 +378,12 @@ impl WhisperEngine {
             ""
         };
         let prompt = crate::asr::compose_prompt(initial, req.prior_text.as_deref());
-        if !prompt.is_empty() {
-            p.set_initial_prompt(&prompt);
-        }
+        let mut p = full_params(
+            self.threads,
+            lang.as_deref().unwrap_or("auto"),
+            audio_ctx,
+            &prompt,
+        );
         if let Some(v) = &self.silero {
             p.set_vad_model_path(Some(v));
             p.enable_vad(true);
@@ -378,14 +404,23 @@ impl WhisperEngine {
                 p.set_abort_callback_user_data(f as *const AtomicBool as *mut std::ffi::c_void);
             }
         }
+        // D91: Whisper's no-speech probability, read per window by us
+        // (see `NoSpeechProbe`); `probe` outlives `st.full` below.
+        let mut probe = NoSpeechProbe::new(self.sot, self.nosp, self.threads);
+        // SAFETY: the callbacks only touch `probe` and the state whisper.cpp
+        // passes in, between two decodes (see `on_new_segment`).
+        unsafe {
+            let ud = &mut probe as *mut NoSpeechProbe as *mut std::ffi::c_void;
+            p.set_start_encoder_callback(Some(on_encoder_begin));
+            p.set_start_encoder_callback_user_data(ud);
+            p.set_new_segment_callback(Some(on_new_segment));
+            p.set_new_segment_callback_user_data(ud);
+        }
         let mut st = self.state.lock().unwrap();
         let full = st.full(p, audio);
         full.map_err(|e| AsrError::Transcribe(e.to_string()))?;
         let mut text = String::new();
-        let mut no_speech: Option<f32> = None;
         for seg in st.as_iter() {
-            let p = seg.no_speech_probability();
-            no_speech = Some(no_speech.map_or(p, |q| q.max(p)));
             text.push_str(
                 &seg.to_str_lossy()
                     .map_err(|e| AsrError::Transcribe(e.to_string()))?,
@@ -395,12 +430,186 @@ impl WhisperEngine {
             Some(l) => Some(l),
             None => whisper_rs::get_lang_str(st.full_lang_id_from_state()).map(str::to_string),
         };
+        let (no_speech_prob, avg_logprob) = probe.result(st.full_n_segments(), |segs| {
+            segs.filter_map(|i| st.get_segment(i))
+                .flat_map(|seg| {
+                    (0..seg.n_tokens())
+                        .filter_map(|j| seg.get_token(j).map(|t| t.token_data().plog))
+                        .collect::<Vec<_>>()
+                })
+                .collect()
+        });
         Ok(AsrOutput {
             text: clean_text(&text),
             language,
-            no_speech_prob: no_speech,
+            no_speech_prob,
+            avg_logprob,
         })
     }
+}
+
+/// D91: Whisper's no-speech probability, read at `<|startoftranscript|>`
+/// once per encoder window, as OpenAI Whisper reads it.
+///
+/// whisper.cpp 1.8.3's own value (`whisper_full_get_segment_no_speech_prob`)
+/// is unusable: `whisper_full_with_state` decodes the whole prompt
+/// ([`prev`, `initial_prompt`…], `sot`, language, task) but keeps the
+/// logits of the last prompt token only, in row `prompt.size() - 1`, and
+/// then reads `<|nospeech|>` from row 0. Row 0 is the `sot` row only when
+/// the prompt is `sot` alone (an English-only model with no prompt).
+/// Otherwise it holds stale logits from an earlier decode step and the
+/// value is about 0: on every multilingual model, and on English-only
+/// models given a dictionary prompt.
+///
+/// So when a window gives its first segment (whisper.cpp's new-segment
+/// callback, while that window's encoder output is still in the state),
+/// `sot` alone is decoded against it: one decoder step. This differs from
+/// OpenAI Whisper in one way: OpenAI reads at `sot` after the prompt
+/// tokens (`prev` and the initial prompt come first in its sequence), so
+/// its value is conditioned on the prompt; ours decodes `sot` with no
+/// prompt before it, so a dictionary prompt cannot move it. With no
+/// prompt the two are the same value. A window without text (a
+/// near-empty tail window after the last timestamp) is not read.
+///
+/// Each read window also gets OpenAI's `avg_logprob`: the sum of its
+/// sampled tokens' log-probabilities over (tokens + 1) (`decoding.py`
+/// counts the end-of-text token in both; whisper.cpp does not keep that
+/// token, so only the count has it). The engine reports the pair of the
+/// window with the highest no-speech probability; the guard needs both
+/// (`hallucination::whisper_says_no_speech`).
+///
+/// The probe leaves its logits in row 0, where whisper.cpp's broken read
+/// of the next decode would find them and could then drop a segment as
+/// "no speech" on the strength of an earlier window. So the row is zeroed
+/// afterwards: whisper.cpp then reads 1/n_vocab, about 0, as it did
+/// before, and its own no-speech drop stays as it was (it works only for
+/// an English-only model with no prompt, whose row 0 is its own `sot`).
+struct NoSpeechProbe {
+    sot: i32,
+    nosp: i32,
+    threads: i32,
+    windows: Vec<ProbeWindow>,
+}
+
+/// One encoder window as the probe saw it.
+struct ProbeWindow {
+    /// Segments before this window.
+    first_seg: i32,
+    /// Its no-speech probability was read (or the read failed).
+    read: bool,
+    no_speech: Option<f32>,
+}
+
+impl NoSpeechProbe {
+    fn new(sot: i32, nosp: i32, threads: usize) -> Self {
+        Self {
+            sot,
+            nosp,
+            threads: threads as i32,
+            windows: Vec::new(),
+        }
+    }
+
+    /// A new encoder window starts after `segs` segments.
+    fn window(&mut self, segs: i32) {
+        self.windows.push(ProbeWindow {
+            first_seg: segs,
+            read: false,
+            no_speech: None,
+        });
+    }
+
+    /// The current window gave a segment; `read` reads its no-speech
+    /// probability (once per window).
+    fn segment(&mut self, read: impl FnOnce() -> Option<f32>) {
+        if self.windows.is_empty() {
+            self.window(0);
+        }
+        let w = self.windows.last_mut().expect("a window");
+        if !std::mem::replace(&mut w.read, true) {
+            w.no_speech = read();
+        }
+    }
+
+    /// `(no_speech_prob, avg_logprob)` of the read window with the highest
+    /// no-speech probability, after `full` made `n_segs` segments in all.
+    /// `plogs` gives the token log-probabilities of a range of segments.
+    fn result(
+        &self,
+        n_segs: i32,
+        mut plogs: impl FnMut(std::ops::Range<i32>) -> Vec<f32>,
+    ) -> (Option<f32>, Option<f32>) {
+        let ends = self.windows.iter().skip(1).map(|w| w.first_seg);
+        self.windows
+            .iter()
+            .zip(ends.chain(std::iter::once(n_segs)))
+            .filter_map(|(w, end)| Some((w.no_speech?, avg_logprob(&plogs(w.first_seg..end)))))
+            .max_by(|a, b| a.0.total_cmp(&b.0))
+            .map_or((None, None), |(p, l)| (Some(p), Some(l)))
+    }
+}
+
+/// OpenAI's `avg_logprob` for a window's sampled tokens: the sum over
+/// (count + 1), the `+ 1` being the end-of-text token.
+fn avg_logprob(plogs: &[f32]) -> f32 {
+    plogs.iter().sum::<f32>() / (plogs.len() + 1) as f32
+}
+
+/// whisper.cpp's encoder-begin callback.
+unsafe extern "C" fn on_encoder_begin(
+    _ctx: *mut whisper_rs::whisper_rs_sys::whisper_context,
+    st: *mut whisper_rs::whisper_rs_sys::whisper_state,
+    user_data: *mut std::ffi::c_void,
+) -> bool {
+    // SAFETY: user_data is the `NoSpeechProbe` set in `decode`, alive for
+    // the whole `full` call; st is whisper.cpp's own.
+    unsafe {
+        let segs = whisper_rs::whisper_rs_sys::whisper_full_n_segments_from_state(st);
+        (*(user_data as *mut NoSpeechProbe)).window(segs);
+    }
+    true
+}
+
+/// whisper.cpp's new-segment callback: reads the window's no-speech
+/// probability. whisper.cpp calls it once the window is decoded and before
+/// the next encode; `decode_with_state` only rewrites the decoder batch,
+/// self-attention cache and logits, which whisper.cpp resets before its
+/// next decode (row 0 aside, zeroed here).
+unsafe extern "C" fn on_new_segment(
+    ctx: *mut whisper_rs::whisper_rs_sys::whisper_context,
+    st: *mut whisper_rs::whisper_rs_sys::whisper_state,
+    _n_new: std::ffi::c_int,
+    user_data: *mut std::ffi::c_void,
+) {
+    use whisper_rs::whisper_rs_sys as sys;
+    // SAFETY: user_data is the `NoSpeechProbe` set in `decode`, alive for
+    // the whole `full` call; ctx and st are whisper.cpp's own, and a
+    // one-token decode fills logits row 0 (n_vocab floats).
+    unsafe {
+        let probe = &mut *(user_data as *mut NoSpeechProbe);
+        let (sot, nosp, threads) = (probe.sot, probe.nosp, probe.threads);
+        probe.segment(|| {
+            if sys::whisper_decode_with_state(ctx, st, &sot, 1, 0, threads) != 0 {
+                return None;
+            }
+            let row = std::slice::from_raw_parts_mut(
+                sys::whisper_get_logits_from_state(st),
+                sys::whisper_n_vocab(ctx) as usize,
+            );
+            let p = softmax_at(row, nosp as usize);
+            row.fill(0.0);
+            Some(p)
+        });
+    }
+}
+
+/// `softmax(logits)[i]`. `logits` is one row of `whisper_n_vocab` floats,
+/// the same count whisper.cpp's own softmax uses (`id_to_token.size()`,
+/// which `whisper_process_logits` asserts equals `n_vocab`).
+fn softmax_at(logits: &[f32], i: usize) -> f32 {
+    let max = logits.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+    let sum: f32 = logits.iter().map(|l| (l - max).exp()).sum();
+    (logits[i] - max).exp() / sum
 }
 
 #[cfg(test)]
@@ -585,6 +794,52 @@ mod tests {
             "Put the box on the table, then put the box on the shelf.",
             5.0
         ));
+    }
+
+    #[test]
+    fn softmax_at_is_a_probability() {
+        let l = [1.0f32, 2.0, 3.0, 1000.0];
+        assert!((softmax_at(&l, 3) - 1.0).abs() < 1e-6);
+        assert!(softmax_at(&l, 0) < 1e-6);
+        let flat = [0.5f32; 4];
+        assert!((softmax_at(&flat, 2) - 0.25).abs() < 1e-6);
+    }
+
+    #[test]
+    fn no_speech_is_read_once_per_window_and_paired_with_its_logprob() {
+        let mut p = NoSpeechProbe::new(0, 1, 1);
+        // Window 1 gives segments 0-1: read once.
+        p.window(0);
+        p.segment(|| Some(0.2));
+        p.segment(|| panic!("read twice in one window"));
+        // Window 2 gives none (a near-empty tail window): not read.
+        p.window(2);
+        // Window 3 gives segment 2 and has the highest value.
+        p.window(2);
+        p.segment(|| Some(0.7));
+        // Window 4 gives segment 3; a failed read leaves no value.
+        p.window(3);
+        p.segment(|| None);
+        let mut asked = Vec::new();
+        let (nsp, lp) = p.result(4, |r| {
+            asked.push(r.clone());
+            // Two tokens per segment, -0.3 each.
+            vec![-0.3; 2 * r.len()]
+        });
+        assert_eq!(asked, [0..2, 2..3]);
+        assert_eq!(nsp, Some(0.7));
+        // Window 3: two tokens, (-0.6) / 3.
+        assert!((lp.unwrap() + 0.2).abs() < 1e-6);
+        // No text, no value.
+        let mut q = NoSpeechProbe::new(0, 1, 1);
+        q.window(0);
+        assert_eq!(q.result(0, |_| vec![]), (None, None));
+    }
+
+    #[test]
+    fn avg_logprob_counts_the_end_token() {
+        assert!((avg_logprob(&[-1.0, -2.0, -3.0]) + 1.5).abs() < 1e-6);
+        assert_eq!(avg_logprob(&[]), 0.0);
     }
 
     #[test]

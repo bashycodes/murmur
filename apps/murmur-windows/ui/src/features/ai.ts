@@ -17,6 +17,7 @@ import { cloudTimeout, noAiLevel, rulesAfterLevel, seconds, skippedWarning, time
 import type { CleanupEngine, CleanupRoute, CleanupStatus, CloudProvider, OrView } from "../lib/types.js";
 import { views } from "../lib/views.js";
 import { cleanupTarget, setCloudTimeouts, showOr } from "./openrouter.js";
+import { providerModelLabel } from "../lib/provider-names.js";
 
 type LlmStatus =
   | { state: "off" }
@@ -185,7 +186,7 @@ function describe(r: CleanupRoute): void {
   } else {
     const v = views.or;
     const custom = v?.cleanup.provider === "custom";
-    const model = custom ? v?.cleanup.custom.model ?? "" : (v?.cleanup.model ?? "").split("/").pop();
+    const model = providerModelLabel(v, "cleanup");
     $<HTMLElement>("aieng_desc_cloud").textContent = on
       ? `Sends the transcript as text to ${cleanupTarget(v)} · ${model}.`
       : `Sends the transcript as text to ${cleanupTarget(v)}. Asks first.`;

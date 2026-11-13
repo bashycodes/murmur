@@ -72,6 +72,8 @@ fn main() {
             "dev_test_connection",
             "dev_test_session",
             "setup_readiness",
+            "setup_server_snapshot",
+            "setup_server_restore",
             "admin_status",
             "admin_list_keys",
             "admin_create_key",

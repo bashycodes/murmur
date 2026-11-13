@@ -84,6 +84,12 @@ additive core fields need no protocol change. The server never sets
   `hello_ok.features` next to `"clean"`; an older server ignores `task` and
   would clean the text, so clients send a meeting task only to a server that
   lists it.
+* Translation (D90): `task: "translate"` with `target_language` (ISO 639-1,
+  e.g. `"en"`) and `language` = the spoken language when known. The server
+  builds `murmur_core::translate::build_prompt` (clean and translate in one
+  call, no field context). It lists `"translate"` in `hello_ok.features`
+  next to `"clean"`; clients send a translation only to a server that lists
+  it (fixture `client_clean_translate.json`).
 * `ModelConfig` (model paths, threads) is server configuration only.
 * Language routing (D33): a session whose `config.languages` is one forced
   language (`["he"]`, `["he-IL"]`, `["iw"]`) decodes on the server's model

@@ -107,6 +107,12 @@ impl Key {
     pub fn needs_release_mask(self) -> bool {
         matches!(self.either_side(), Key::Win | Key::Alt)
     }
+
+    /// Ctrl/Shift: a bare press-release of both flips the keyboard layout
+    /// (the Ctrl+Shift switch), so a chord holding them masks them too.
+    pub fn flips_layout(self) -> bool {
+        matches!(self.either_side(), Key::Ctrl | Key::Shift)
+    }
 }
 
 /// A set of keys that must all be held simultaneously.
@@ -319,6 +325,10 @@ pub struct Bindings {
     /// way: Right Alt held, then Ctrl+Win (or a Ctrl+Win push-to-talk, then
     /// Alt) turns that dictation into a command.
     pub command: Chord,
+    /// Hold to dictate text that is pasted translated (D90; default
+    /// Ctrl+Win+Shift). Like the Command chord it may extend a
+    /// push-to-talk on the way (a Ctrl+Win push-to-talk, then Shift).
+    pub translate: Chord,
     /// Open the Scratchpad window. Unset by default; `""` in prefs = unset.
     #[serde(
         skip_serializing_if = "Option::is_none",
@@ -370,6 +380,7 @@ impl Default for Bindings {
             new_note: None,
             meeting: None,
             command: Chord::new([Key::Ctrl, Key::Win, Key::Alt]),
+            translate: Chord::new([Key::Ctrl, Key::Win, Key::Shift]),
             transforms: Vec::new(),
             view_changes: None,
         }
@@ -406,6 +417,11 @@ pub enum HotkeyAction {
     CommandDown,
     /// Command chord released (after a `CommandDown`).
     CommandUp,
+    /// Translate chord became fully held (D90; supersedes a push-to-talk
+    /// that started on the way).
+    TranslateDown,
+    /// Translate chord released (after a `TranslateDown`).
+    TranslateUp,
     /// The shortcut of the transform at this index was pressed.
     Transform(u8),
     /// Transforms' "view changes" shortcut was pressed.
@@ -433,8 +449,9 @@ pub struct Decision {
     pub actions: Vec<HotkeyAction>,
     /// Return 1 from the hook (don't pass the event on).
     pub suppress: bool,
-    /// Swallow this Win/Alt key-up and inject a masked release instead
-    /// (`input::masked_release`: `[LCtrl↓, key↑, LCtrl↑]`). Implies `suppress`.
+    /// Swallow this key-up and inject a masked release instead
+    /// (`input::masked_release`: `[LCtrl↓, key↑, LCtrl↑]` for Win/Alt,
+    /// `[mask↓, mask↑, key↑]` for Ctrl/Shift). Implies `suppress`.
     pub mask_release: bool,
 }
 
@@ -446,13 +463,16 @@ pub struct ChordMatcher {
     ptt_active: bool,
     /// The Command chord fired and none of its keys was released yet.
     command_active: bool,
+    /// The Translate chord fired and none of its keys was released yet.
+    translate_active: bool,
     /// Keys whose key-down we swallowed: their key-up must be swallowed
     /// too, so it outlives [`reset`](Self::reset) (the app never saw the
     /// key go down). Only [`forget`](Self::forget) clears it: after missed
     /// events a key-up that passes is harmless, a swallowed one whose
     /// key-down passed would leave the key stuck.
     swallowed: BTreeSet<Key>,
-    /// Mask-needing keys (Win/Alt) held while some chord fired.
+    /// Mask-needing keys (Win/Alt; Ctrl/Shift of the translate chord) held
+    /// while some chord fired.
     needs_mask: BTreeSet<Key>,
     /// The fake Left Ctrl of an AltGr press is logically down.
     altgr_ctrl: bool,
@@ -470,6 +490,7 @@ impl ChordMatcher {
             pressed: BTreeSet::new(),
             ptt_active: false,
             command_active: false,
+            translate_active: false,
             swallowed: BTreeSet::new(),
             needs_mask: BTreeSet::new(),
             altgr_ctrl: false,
@@ -581,7 +602,7 @@ impl ChordMatcher {
         if b == self.bindings {
             return Vec::new();
         }
-        let held = self.ptt_active || self.command_active;
+        let held = self.ptt_active || self.command_active || self.translate_active;
         self.bindings = b;
         self.reset();
         if held {
@@ -597,6 +618,7 @@ impl ChordMatcher {
         self.pressed.clear();
         self.ptt_active = false;
         self.command_active = false;
+        self.translate_active = false;
         self.needs_mask.clear();
         self.altgr_ctrl = false;
     }
@@ -682,6 +704,23 @@ impl ChordMatcher {
                 if !ev.key.is_modifier() {
                     d.suppress = true;
                 }
+            } else if self.newly_matches(&self.bindings.translate, ev.key) {
+                // Translate supersedes a PTT that started on the way
+                // (Ctrl+Win, then Shift).
+                self.ptt_active = false;
+                self.translate_active = true;
+                d.actions.push(HotkeyAction::TranslateDown);
+                self.chord_fired();
+                // D90: Ctrl+Win+Shift holds both layout-switch keys; masking
+                // their releases keeps letting go from flipping the layout.
+                for k in self.pressed.iter().copied() {
+                    if k.flips_layout() {
+                        self.needs_mask.insert(k);
+                    }
+                }
+                if !ev.key.is_modifier() {
+                    d.suppress = true;
+                }
             } else if self.newly_matches(&self.bindings.ptt, ev.key) {
                 self.ptt_active = true;
                 d.actions.push(HotkeyAction::PttDown);
@@ -760,11 +799,15 @@ impl ChordMatcher {
                 && !self.bindings.ptt.covers(ev.key)
                 && !self.bindings.hands_free.covers(ev.key)
                 && !self.bindings.command.covers(ev.key)
+                && !self.bindings.translate.covers(ev.key)
             {
                 self.ptt_active = false;
                 d.actions.push(HotkeyAction::PttAborted);
             } else if self.command_active && !self.bindings.command.covers(ev.key) {
                 self.command_active = false;
+                d.actions.push(HotkeyAction::PttAborted);
+            } else if self.translate_active && !self.bindings.translate.covers(ev.key) {
+                self.translate_active = false;
                 d.actions.push(HotkeyAction::PttAborted);
             }
             if ev.key == Key::RAlt && self.swallows_right_alt() {
@@ -790,6 +833,10 @@ impl ChordMatcher {
             if self.command_active && self.bindings.command.covers(ev.key) {
                 self.command_active = false;
                 d.actions.push(HotkeyAction::CommandUp);
+            }
+            if self.translate_active && self.bindings.translate.covers(ev.key) {
+                self.translate_active = false;
+                d.actions.push(HotkeyAction::TranslateUp);
             }
             // A swallowed key-up needs no mask: the app never saw it down.
             let mask = self.needs_mask.remove(&ev.key);
@@ -899,6 +946,73 @@ mod tests {
         assert!(
             feed(&mut m, &[KeyEvent::up(Key::Win), KeyEvent::up(Key::LCtrl)]).is_empty(),
             "the superseded push-to-talk never reports a release"
+        );
+    }
+
+    #[test]
+    fn translate_chord_extends_a_push_to_talk_and_reports_its_release() {
+        let mut m = ctrl_win_ptt();
+        let a = feed(
+            &mut m,
+            &[
+                KeyEvent::down(Key::LCtrl),
+                KeyEvent::down(Key::Win),
+                KeyEvent::down(Key::LShift),
+            ],
+        );
+        assert_eq!(a, vec![PttDown, TranslateDown], "Shift is no foreign key");
+        let up = m.handle(KeyEvent::up(Key::LShift), false);
+        assert_eq!(up.actions, vec![TranslateUp]);
+        assert!(
+            feed(&mut m, &[KeyEvent::up(Key::Win), KeyEvent::up(Key::LCtrl)]).is_empty(),
+            "the superseded push-to-talk never reports a release"
+        );
+    }
+
+    #[test]
+    fn letting_go_of_the_translate_chord_cannot_flip_the_layout() {
+        let mut m = ChordMatcher::new(Bindings::default());
+        feed(
+            &mut m,
+            &[
+                KeyEvent::down(Key::LCtrl),
+                KeyEvent::down(Key::Win),
+                KeyEvent::down(Key::LShift),
+            ],
+        );
+        for k in [Key::LShift, Key::LCtrl, Key::Win] {
+            let up = m.handle(KeyEvent::up(k), false);
+            assert!(up.suppress && up.mask_release, "{k:?} release masked");
+        }
+    }
+
+    #[test]
+    fn a_push_to_talk_leaves_ctrl_and_shift_unmasked() {
+        let mut m = ctrl_win_ptt();
+        feed(
+            &mut m,
+            &[KeyEvent::down(Key::LCtrl), KeyEvent::down(Key::Win)],
+        );
+        assert!(!m.handle(KeyEvent::up(Key::LCtrl), false).mask_release);
+    }
+
+    #[test]
+    fn translate_chord_alone_and_its_foreign_key_abort() {
+        let mut m = ChordMatcher::new(Bindings::default());
+        let a = feed(
+            &mut m,
+            &[
+                KeyEvent::down(Key::LShift),
+                KeyEvent::down(Key::LCtrl),
+                KeyEvent::down(Key::Win),
+            ],
+        );
+        assert_eq!(a, vec![TranslateDown]);
+        let s = Key::Vk(b'S' as u16);
+        assert_eq!(m.handle(KeyEvent::down(s), false).actions, vec![PttAborted]);
+        assert!(
+            feed(&mut m, &[KeyEvent::up(s), KeyEvent::up(Key::Win)]).is_empty(),
+            "an aborted translation reports no release"
         );
     }
 
@@ -1494,6 +1608,7 @@ mod tests {
         assert_eq!(b.ptt.to_string(), "Right Alt");
         assert_eq!(b.hands_free.to_string(), "Ctrl+Win+Space");
         assert_eq!(b.command.to_string(), "Ctrl+Win+Alt");
+        assert_eq!(b.translate.to_string(), "Ctrl+Win+Shift");
         let mut m = default_bindings();
         let d = m.handle_raw(LALT_VK, ALT_SCAN, true, false);
         assert_eq!(d, Decision::default(), "Left Alt is not push-to-talk");
@@ -1967,7 +2082,13 @@ mod tests {
 
     #[test]
     fn superset_chord_does_not_fire_ptt() {
-        let mut m = ctrl_win_ptt();
+        // Ctrl+Win+Shift is the default Translate chord (D90); keep this
+        // about a plain superset of push-to-talk.
+        let mut m = ChordMatcher::new(Bindings {
+            ptt: "Ctrl+Win".parse().unwrap(),
+            translate: "Ctrl+Alt+T".parse().unwrap(),
+            ..Bindings::default()
+        });
         let a = feed(
             &mut m,
             &[
@@ -2039,7 +2160,7 @@ mod tests {
         let j = serde_json::to_string(&Bindings::default()).unwrap();
         assert_eq!(
             j,
-            r#"{"ptt":"Right Alt","hands_free":"Ctrl+Win+Space","cancel":"Esc","paste_last":"Alt+Shift+Z","copy_last":"Alt+Shift+X","command":"Ctrl+Win+Alt"}"#
+            r#"{"ptt":"Right Alt","hands_free":"Ctrl+Win+Space","cancel":"Esc","paste_last":"Alt+Shift+Z","copy_last":"Alt+Shift+X","command":"Ctrl+Win+Alt","translate":"Ctrl+Win+Shift"}"#
         );
         let b: Bindings = serde_json::from_str(r#"{"ptt":"Ctrl+Shift"}"#).unwrap();
         assert_eq!(b.ptt.to_string(), "Ctrl+Shift");

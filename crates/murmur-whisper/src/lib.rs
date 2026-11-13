@@ -24,7 +24,7 @@
 //!                                  const char* req, const bool* cancel /* nullable */,
 //!                                  char** out);
 //!          // req = JSON {"initial_prompt":"…","language":"he"|null,"prior_text":null}
-//!          // 0 = ok (*out = JSON {"text","language","no_speech_prob"}),
+//!          // 0 = ok (*out = JSON {"text","language","no_speech_prob","avg_logprob"}),
 //!          // 2 = error (*out = message)
 //! void     murmur_whisper_free_string(char*);
 //! void     murmur_whisper_unload(void* h);
@@ -281,6 +281,7 @@ pub unsafe extern "C" fn murmur_whisper_transcribe(
                     "text": o.text,
                     "language": o.language,
                     "no_speech_prob": o.no_speech_prob,
+                    "avg_logprob": o.avg_logprob,
                 })
                 .to_string(),
             );

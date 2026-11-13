@@ -162,6 +162,9 @@ pub struct Prefs {
     /// foreground window's keyboard layout (Hebrew layout → Hebrew model);
     /// an unknown layout falls back to `languages` ([`crate::keyboard_language`]).
     pub keyboard_language: bool,
+    /// D90: the language the Translate shortcut pastes in (`he`, `en`, …);
+    /// empty = automatic: the other installed keyboard language (D58).
+    pub translate_to: String,
     pub enable_sounds: bool,
     /// Mute other apps while dictating (on by default).
     pub mute_audio_while_dictating: bool,
@@ -274,6 +277,7 @@ impl Default for Prefs {
             microphone: None,
             languages: Vec::new(),
             keyboard_language: true,
+            translate_to: String::new(),
             enable_sounds: true,
             mute_audio_while_dictating: true,
             launch_at_login: false,
@@ -333,6 +337,13 @@ impl Prefs {
     pub fn default_path(appdata: Option<&str>) -> PathBuf {
         let base = appdata.map(PathBuf::from).unwrap_or_default();
         base.join(APP_DIR).join(FILE_NAME)
+    }
+
+    /// Whether the app opens its window by itself at start: while first-run
+    /// setup is not finished. A missing file is a fresh install, and setup
+    /// saves each step as it goes, so a file can exist before setup is done.
+    pub fn opens_window_at_start(&self) -> bool {
+        !self.onboarded
     }
 
     pub fn load(path: &Path) -> (Prefs, LoadOutcome) {
@@ -455,6 +466,14 @@ impl Prefs {
             check("meeting", c, false)?;
         }
         check("command", &s.command, false)?;
+        check("translate", &s.translate, false)?;
+        let t = &self.translate_to;
+        let code = (2..=3).contains(&t.len()) && t.chars().all(|c| c.is_ascii_lowercase());
+        if !t.is_empty() && !code {
+            return Err(format!(
+                "translate to: \"{t}\" is not a language code (he, en, …)"
+            ));
+        }
         self.transforms.validate()?;
         if !self.shortcuts_distinct() {
             return Err("shortcuts must differ from each other".into());
@@ -490,6 +509,7 @@ impl Prefs {
             &s.paste_last,
             &s.copy_last,
             &s.command,
+            &s.translate,
         ];
         all.extend(s.scratchpad.as_ref());
         all.extend(s.new_note.as_ref());
@@ -525,11 +545,11 @@ impl Prefs {
     /// never pasted, so cleaning it would only add latency.
     pub fn session_config_for(&self, mode: crate::dictation::Mode) -> SessionConfig {
         let mut c = self.session_config();
-        match mode {
-            crate::dictation::Mode::Locked => c.endpoint_silence_ms = self.hands_free_endpoint(),
-            crate::dictation::Mode::Command => c.raw_mode = true,
-            crate::dictation::Mode::Ptt => {}
+        if mode == crate::dictation::Mode::Locked {
+            c.endpoint_silence_ms = self.hands_free_endpoint();
         }
+        // D90: a command or translation cleans in its own single call.
+        c.raw_mode |= mode.is_one_call();
         c
     }
 
@@ -814,6 +834,30 @@ mod tests {
         assert!(old.onboarded, "an upgrader skips first-run setup");
         let (mid, _) = load_str("onboard-mid", r#"{"onboarded": false}"#);
         assert!(!mid.onboarded, "setup left unfinished stays unfinished");
+    }
+
+    /// The window opens by itself at start exactly while setup is not
+    /// finished: with no prefs file, and also with a file that setup saved
+    /// before it was finished (a step's choice, then the app quit; or such
+    /// a file copied from the old folder, D83). Before this, only a missing
+    /// file opened it, and an unfinished setup waited in a hidden window.
+    #[test]
+    fn window_opens_at_start_until_setup_is_finished() {
+        let d = tmpdir("start-fresh");
+        let (fresh, _) = Prefs::load(&d.join(FILE_NAME));
+        assert!(fresh.opens_window_at_start(), "no prefs file");
+        let (mid, o) = load_str(
+            "start-mid",
+            r#"{"onboarded": false, "asr_engine": "whisper"}"#,
+        );
+        assert_eq!(o, LoadOutcome::Loaded);
+        assert!(mid.opens_window_at_start(), "setup saved a step, then quit");
+        let (done, _) = load_str("start-done", r#"{"onboarded": true}"#);
+        assert!(!done.opens_window_at_start(), "set up: starts in the tray");
+        let (old, _) = load_str("start-old", r#"{"enable_sounds": true}"#);
+        assert!(!old.opens_window_at_start(), "upgrader: starts in the tray");
+        let (bad, _) = load_str("start-corrupt", "{not json");
+        assert!(!bad.opens_window_at_start(), "corrupt file: set up before");
     }
 
     #[test]
@@ -1397,5 +1441,24 @@ mod tests {
             "no LLM on the instruction"
         );
         assert!(!p.session_config_for(Mode::Ptt).raw_mode);
+    }
+
+    #[test]
+    fn translate_defaults_and_its_target_language() {
+        let p = Prefs::default();
+        assert_eq!(p.shortcuts.translate.to_string(), "Ctrl+Win+Shift");
+        assert_eq!(p.translate_to, "", "automatic");
+        let q: Prefs = serde_json::from_str(r#"{"shortcuts":{"ptt":"Ctrl+Shift"}}"#).unwrap();
+        assert_eq!(q.shortcuts.translate, p.shortcuts.translate, "old prefs");
+        use crate::dictation::Mode;
+        assert!(p.session_config_for(Mode::Translate).raw_mode);
+        let mut q = p.clone();
+        q.translate_to = "he".into();
+        assert!(q.validate().is_ok());
+        q.translate_to = "Hebrew".into();
+        assert!(q.validate().is_err());
+        let mut q = p.clone();
+        q.shortcuts.translate = q.shortcuts.command.clone();
+        assert!(q.validate().is_err(), "shortcuts must differ");
     }
 }

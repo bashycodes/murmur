@@ -233,7 +233,7 @@ fn main() {
             // cases do not time out on it.
             if let Some(w) = &wrapper {
                 let v = if mode == "cloud" {
-                    murmur_core::cleanup::PromptVersion::V5
+                    murmur_core::cleanup::PromptVersion::V6
                 } else {
                     murmur_core::cleanup::PromptVersion::V2
                 };

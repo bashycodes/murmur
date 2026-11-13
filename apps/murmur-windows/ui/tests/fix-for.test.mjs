@@ -10,7 +10,8 @@ const refusal = (to) =>
   `Command Mode would send the selection to ${to}: allow surrounding text there, or use a local AI model`;
 
 test("selection refusals open the AI cleanup page for every provider", () => {
-  for (const to of ["OpenRouter", "LiteLLM (10.0.0.5)", "LiteLLM (myserver.lan)", "the cloud"]) {
+  // D96: Windows names the own AI server; the shared router still says LiteLLM.
+  for (const to of ["OpenRouter", "LiteLLM (10.0.0.5)", "your own AI server (10.0.0.5)", "your own AI server", "the cloud"]) {
     assert.deepEqual(fixFor(refusal(to)), { page: "settings-cleanup", label: "Fix →" }, to);
   }
   assert.equal(

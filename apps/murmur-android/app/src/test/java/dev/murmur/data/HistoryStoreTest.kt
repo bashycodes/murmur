@@ -87,6 +87,22 @@ class HistoryStoreTest {
         s.close()
     }
 
+    /** D90: a translated dictation keeps its own text; the translation rides along until a retry. */
+    @Test fun aTranslationIsKeptBesideTheDictation() {
+        val s = HistoryStore(ctx)
+        val id = s.add(
+            HistoryRow(0, 9L, "a", "FORMATTED", "see you soon", "See you soon.", true, 900, transform = "Translate to French", transformed = "À bientôt."),
+            Retention.KEEP,
+        )!!
+        val r = s.recent().single()
+        assertEquals("See you soon.", r.finalText)
+        assertEquals("Translate to French", r.transform)
+        assertEquals("what was typed is what Copy gives", "À bientôt.", HistoryPages.copyText(r))
+        s.applyCorrection(id, "See you very soon.", 10L)
+        assertNull("a changed dictation drops the stale translation", s.recent().single().transformed)
+        s.close()
+    }
+
     @Test fun v3FileUpgradesToV4() {
         ctx.deleteDatabase(NAME)
         val f = ctx.getDatabasePath(NAME).also { it.parentFile?.mkdirs() }

@@ -215,6 +215,13 @@ impl RunsOn {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum ModelStatus {
+    /// Not loaded, and no load is running: the slot was never asked to load
+    /// (this PC is a cold fallback behind the server, D24 `keep_local_warm`
+    /// off), so the router loads it when a dictation needs it. `path` is
+    /// empty in the slot; [`idle_status`] names the model the prefs point at.
+    Idle {
+        path: String,
+    },
     Loading {
         path: String,
     },
@@ -249,6 +256,9 @@ impl ModelStatus {
     pub fn problem(&self) -> Option<String> {
         match self {
             ModelStatus::Ready { .. } => None,
+            ModelStatus::Idle { .. } => {
+                Some("Speech model on this PC is not loaded yet (it loads when needed)".into())
+            }
             ModelStatus::Loading { .. } => Some("Speech model is still loading".into()),
             ModelStatus::Missing { path, engine } if engine == "parakeet" => Some(format!(
                 "Speech model not found: {path}. Put the Parakeet model folder there \
@@ -733,7 +743,8 @@ impl MurmurCoreAdapter {
     pub fn with_llm_loader(loader: LlmLoader) -> Arc<Self> {
         Arc::new(MurmurCoreAdapter {
             slot: Mutex::new(Slot {
-                status: ModelStatus::Loading {
+                // Nothing loads until `load` / `load_now` is called.
+                status: ModelStatus::Idle {
                     path: String::new(),
                 },
                 asr: None,
@@ -773,6 +784,17 @@ impl MurmurCoreAdapter {
 
     pub fn status(&self) -> ModelStatus {
         self.slot.lock().unwrap().status.clone()
+    }
+
+    /// The status the UI and setup's readiness report: a slot nobody loaded
+    /// (`Idle`) says whether the file of `spec` (the model a load would use)
+    /// is there, through [`idle_status`]; any other state as it is. `None`:
+    /// no model would be loaded, so `Idle` stays as it is.
+    pub fn reported_status(&self, spec: Option<&ModelSpec>) -> ModelStatus {
+        match (self.status(), spec) {
+            (ModelStatus::Idle { .. }, Some(spec)) => idle_status(spec),
+            (st, _) => st,
+        }
     }
 
     pub fn llm_status(&self) -> LlmStatus {
@@ -1195,6 +1217,29 @@ fn status_of_load_error(path: String, engine: &str, e: murmur_core::CoreError) -
     }
 }
 
+/// What `get_model_status` reports for a slot that was never loaded (`Idle`
+/// with no path): the model the prefs point at, `Missing` when nothing is
+/// there (the same existence check a load makes), else `Idle` with its path.
+/// Never `Loading`: no load is running, and none starts until a dictation
+/// needs one (D24), so a "Loading" here never resolved (setup step 3 showed
+/// it for minutes on a PC whose speech runs on the server).
+pub fn idle_status(spec: &ModelSpec) -> ModelStatus {
+    let present = match spec {
+        ModelSpec::Whisper { path, .. } => path.is_file(),
+        ModelSpec::Parakeet { dir, .. } => dir.is_dir(),
+        ModelSpec::Mock { .. } => true,
+    };
+    let path = spec.label();
+    if present {
+        ModelStatus::Idle { path }
+    } else {
+        ModelStatus::Missing {
+            path,
+            engine: spec.engine().into(),
+        }
+    }
+}
+
 /// The shell composes engines itself (two-phase LLM load), so it cannot go
 /// through `MurmurCore::load_models`; this mirrors its existence check and
 /// returns the same typed errors.
@@ -1510,7 +1555,7 @@ fn to_core_level(l: CleanupLevel) -> fc::CleanupLevel {
     }
 }
 
-fn to_core_dict(d: &[DictEntry]) -> murmur_core::dictionary::Dictionary {
+pub(crate) fn to_core_dict(d: &[DictEntry]) -> murmur_core::dictionary::Dictionary {
     murmur_core::dictionary::Dictionary {
         entries: d
             .iter()
@@ -1752,6 +1797,66 @@ mod tests {
             .iter()
             .any(|s| matches!(s, ModelStatus::Loading { .. })));
         assert!(seen.last().unwrap().is_ready());
+    }
+
+    #[test]
+    fn a_slot_never_loaded_is_idle_not_loading() {
+        // D24 cold fallback: no load runs until a dictation needs one, so
+        // the status must not read as a load in progress.
+        let a = MurmurCoreAdapter::new();
+        assert!(matches!(a.status(), ModelStatus::Idle { ref path } if path.is_empty()));
+        assert!(!a.status().is_ready());
+        assert!(a.status().problem().is_some());
+        // A wait on it gives up at once instead of waiting for a load.
+        let t0 = Instant::now();
+        assert!(a.wait_ready(Duration::from_secs(5)).is_err());
+        assert!(t0.elapsed() < Duration::from_secs(1));
+    }
+
+    #[test]
+    fn idle_status_names_the_file_and_says_when_it_is_missing() {
+        let dir = std::env::temp_dir().join(format!("murmur-idle-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("ggml-large-v3-turbo.bin");
+        std::fs::write(&file, b"x").unwrap();
+        let there = ModelSpec::Whisper {
+            path: file.clone(),
+            threads: None,
+        };
+        assert_eq!(
+            idle_status(&there),
+            ModelStatus::Idle {
+                path: file.display().to_string()
+            }
+        );
+        // The adapter reports the same for a slot nobody loaded.
+        let a = MurmurCoreAdapter::new();
+        assert_eq!(a.reported_status(Some(&there)), idle_status(&there));
+        assert!(
+            matches!(a.reported_status(None), ModelStatus::Idle { ref path } if path.is_empty())
+        );
+        let gone = ModelSpec::Whisper {
+            path: dir.join("nope.bin"),
+            threads: None,
+        };
+        assert!(
+            matches!(idle_status(&gone), ModelStatus::Missing { ref engine, .. } if engine == "whisper")
+        );
+        let pk = ModelSpec::Parakeet {
+            dir: dir.join("no-dir"),
+            threads: None,
+            decoding: fc::ParakeetDecoding::default(),
+        };
+        assert!(
+            matches!(idle_status(&pk), ModelStatus::Missing { ref engine, .. } if engine == "parakeet")
+        );
+        let pk = ModelSpec::Parakeet {
+            dir: dir.clone(),
+            threads: None,
+            decoding: fc::ParakeetDecoding::default(),
+        };
+        assert!(matches!(idle_status(&pk), ModelStatus::Idle { .. }));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
