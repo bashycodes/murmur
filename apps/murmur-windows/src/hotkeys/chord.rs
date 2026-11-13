@@ -107,6 +107,12 @@ impl Key {
     pub fn needs_release_mask(self) -> bool {
         matches!(self.either_side(), Key::Win | Key::Alt)
     }
+
+    /// Ctrl/Shift: a bare press-release of both flips the keyboard layout
+    /// (the Ctrl+Shift switch), so a chord holding them masks them too.
+    pub fn flips_layout(self) -> bool {
+        matches!(self.either_side(), Key::Ctrl | Key::Shift)
+    }
 }
 
 /// A set of keys that must all be held simultaneously.
@@ -443,8 +449,9 @@ pub struct Decision {
     pub actions: Vec<HotkeyAction>,
     /// Return 1 from the hook (don't pass the event on).
     pub suppress: bool,
-    /// Swallow this Win/Alt key-up and inject a masked release instead
-    /// (`input::masked_release`: `[LCtrl↓, key↑, LCtrl↑]`). Implies `suppress`.
+    /// Swallow this key-up and inject a masked release instead
+    /// (`input::masked_release`: `[LCtrl↓, key↑, LCtrl↑]` for Win/Alt,
+    /// `[mask↓, mask↑, key↑]` for Ctrl/Shift). Implies `suppress`.
     pub mask_release: bool,
 }
 
@@ -464,7 +471,8 @@ pub struct ChordMatcher {
     /// events a key-up that passes is harmless, a swallowed one whose
     /// key-down passed would leave the key stuck.
     swallowed: BTreeSet<Key>,
-    /// Mask-needing keys (Win/Alt) held while some chord fired.
+    /// Mask-needing keys (Win/Alt; Ctrl/Shift of the translate chord) held
+    /// while some chord fired.
     needs_mask: BTreeSet<Key>,
     /// The fake Left Ctrl of an AltGr press is logically down.
     altgr_ctrl: bool,
@@ -703,6 +711,13 @@ impl ChordMatcher {
                 self.translate_active = true;
                 d.actions.push(HotkeyAction::TranslateDown);
                 self.chord_fired();
+                // D90: Ctrl+Win+Shift holds both layout-switch keys; masking
+                // their releases keeps letting go from flipping the layout.
+                for k in self.pressed.iter().copied() {
+                    if k.flips_layout() {
+                        self.needs_mask.insert(k);
+                    }
+                }
                 if !ev.key.is_modifier() {
                     d.suppress = true;
                 }
@@ -952,6 +967,33 @@ mod tests {
             feed(&mut m, &[KeyEvent::up(Key::Win), KeyEvent::up(Key::LCtrl)]).is_empty(),
             "the superseded push-to-talk never reports a release"
         );
+    }
+
+    #[test]
+    fn letting_go_of_the_translate_chord_cannot_flip_the_layout() {
+        let mut m = ChordMatcher::new(Bindings::default());
+        feed(
+            &mut m,
+            &[
+                KeyEvent::down(Key::LCtrl),
+                KeyEvent::down(Key::Win),
+                KeyEvent::down(Key::LShift),
+            ],
+        );
+        for k in [Key::LShift, Key::LCtrl, Key::Win] {
+            let up = m.handle(KeyEvent::up(k), false);
+            assert!(up.suppress && up.mask_release, "{k:?} release masked");
+        }
+    }
+
+    #[test]
+    fn a_push_to_talk_leaves_ctrl_and_shift_unmasked() {
+        let mut m = ctrl_win_ptt();
+        feed(
+            &mut m,
+            &[KeyEvent::down(Key::LCtrl), KeyEvent::down(Key::Win)],
+        );
+        assert!(!m.handle(KeyEvent::up(Key::LCtrl), false).mask_release);
     }
 
     #[test]

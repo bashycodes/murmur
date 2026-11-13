@@ -128,6 +128,9 @@ pub trait Platform: Send + Sync + 'static {
     fn keyboard_languages(&self) -> Vec<String> {
         Vec::new()
     }
+    /// D90: show an engine badge (and its notice) on the Murmur bar, as
+    /// the router does after a dictation (`dictation:route`).
+    fn engine_badge(&self, _badge: &crate::router_adapter::Badge) {}
 }
 
 /// Longest wait for the selection capture (UIA timeout + Ctrl+C wait).
@@ -1604,57 +1607,57 @@ impl Controller {
             })
             .unwrap_or_default();
         let plain = plain.unwrap_or_else(|| crate::paste::plain_text(&text));
-        let (chosen, dictionary) = {
+        let req = {
             let p = self.prefs.read().unwrap();
-            (p.translate_to.clone(), p.dictionary.clone())
-        };
-        let target = if chosen.is_empty() {
-            murmur_core::translate::default_target(
-                source.as_deref(),
-                &plain,
-                &self.platform.keyboard_languages(),
-            )
-        } else {
-            Some(chosen)
+            murmur_core::translate::Request {
+                text: plain.clone(),
+                source,
+                // "" = automatic: the other installed keyboard language (D58).
+                target: Some(p.translate_to.clone()).filter(|t| !t.is_empty()),
+                installed: self.platform.keyboard_languages(),
+                dictionary: crate::core_adapter::to_core_dict(&p.dictionary),
+            }
         };
         let core = self.core.clone();
         let shared = self.shared.clone();
         let tx = self.tx.clone();
         let debug = self.debug.clone();
+        let platform = self.platform.clone();
         let fallback = text.clone();
         let spawned = std::thread::Builder::new()
             .name("murmur-translate".into())
             .spawn(move || {
-                let r = match &target {
-                    Some(t) => core.translate(
-                        &plain,
-                        source.as_deref(),
-                        t,
-                        &dictionary,
-                        murmur_core::translate::DEFAULT_TIMEOUT,
-                    ),
-                    None => Err(murmur_core::translate::TranslateError::NoTarget.to_string()),
-                };
-                match (&r, &target) {
-                    (Ok(t), Some(lang)) => {
+                let r = core.translate(&req, murmur_core::translate::DEFAULT_TIMEOUT);
+                match &r {
+                    Ok(t) => {
                         if let Some(i) = shared.sessions.lock().unwrap().get_mut(&session) {
                             i.applied = Some(AppliedTransform {
                                 name: format!(
                                     "Translate to {}",
-                                    murmur_core::config::language_name(lang)
+                                    murmur_core::config::language_name(&t.target)
                                 ),
                                 original: plain,
-                                result: t.clone(),
+                                result: t.text.clone(),
+                            });
+                        }
+                        // No server or cloud could: the on-device model's
+                        // translations are weaker, so say so (L badge).
+                        if t.on_device {
+                            platform.engine_badge(&crate::router_adapter::Badge {
+                                letter: "L",
+                                fallback: false,
+                                title: None,
+                                message: Some(TRANSLATED_ON_DEVICE.into()),
                             });
                         }
                     }
-                    (Err(e), _) => {
+                    Err(e) => {
                         if let Some(d) = &debug {
                             d.event("translate", &format!("not translated: {e}"));
                         }
                     }
-                    _ => {}
                 }
+                let r = r.map(|t| t.text);
                 let _ = tx.send(Input::TranslateFinished {
                     session,
                     original: text,
@@ -1685,6 +1688,9 @@ impl Controller {
     }
 }
 
+/// D90: a translation only the on-device model could make (no server or
+/// cloud answered): shown with the L badge.
+pub const TRANSLATED_ON_DEVICE: &str = "Translated on this PC: lower quality";
 /// The recording of a history row is no longer kept.
 pub const RETRY_GONE: &str = "The recording of this dictation is no longer kept";
 /// Retry refused while a dictation runs (the engine serves one at a time).
@@ -2310,6 +2316,13 @@ mod tests {
         fn keyboard_languages(&self) -> Vec<String> {
             self.layouts.clone()
         }
+        fn engine_badge(&self, b: &crate::router_adapter::Badge) {
+            self.push(format!(
+                "badge {} {}",
+                b.letter,
+                b.message.as_deref().unwrap_or("-")
+            ));
+        }
         fn duck(&self) {
             self.push("duck");
         }
@@ -2797,13 +2810,15 @@ mod tests {
     #[test]
     fn translate_pastes_the_translation_into_the_other_keyboard_language() {
         let mut r = translate_rig(auto_prefs()); // auto-apply never runs on it
-        r.core.set_translate_reply(Ok("translated words".into()));
+        r.core.set_translate_reply(Ok(("translated words", false)));
         dictate_translated(&mut r);
         assert!(r.core.last_config().unwrap().raw_mode, "one LLM call");
+        let req = &r.core.translations()[0];
+        assert_eq!(req.text, "[stub: 1.0 s of audio]");
         assert_eq!(
-            r.core.translations(),
-            [("[stub: 1.0 s of audio]".to_string(), None, "he".to_string())],
-            "English text: the other installed language"
+            (req.target.as_deref(), req.installed.as_slice()),
+            (None, ["he".to_string(), "en".to_string()].as_slice()),
+            "automatic: the core picks the other installed language"
         );
         assert!(r.core.transforms().is_empty());
         let log = r.fake.log();
@@ -2826,9 +2841,26 @@ mod tests {
             translate_to: "fr".into(),
             ..Prefs::default()
         });
-        r.core.set_translate_reply(Ok("des mots".into()));
+        r.core.set_translate_reply(Ok(("des mots", false)));
         dictate_translated(&mut r);
-        assert_eq!(r.core.translations()[0].2, "fr");
+        assert_eq!(r.core.translations()[0].target.as_deref(), Some("fr"));
+        let e = history_latest(&r).unwrap();
+        assert_eq!(e.transform.as_deref(), Some("Translate to French"));
+        assert!(!r.fake.log().iter().any(|l| l.starts_with("badge")));
+    }
+
+    #[test]
+    fn an_on_device_translation_shows_the_l_badge_and_says_so() {
+        let mut r = translate_rig(Prefs::default());
+        r.core.set_translate_reply(Ok(("translated words", true)));
+        dictate_translated(&mut r);
+        let log = r.fake.log();
+        assert!(
+            log.contains(&format!("badge L {TRANSLATED_ON_DEVICE}")),
+            "{log:?}"
+        );
+        let pastes: Vec<_> = log.iter().filter(|l| l.starts_with("paste")).collect();
+        assert_eq!(pastes, ["paste translated words"], "still pasted");
     }
 
     #[test]

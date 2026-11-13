@@ -538,14 +538,11 @@ impl Prefs {
     /// never pasted, so cleaning it would only add latency.
     pub fn session_config_for(&self, mode: crate::dictation::Mode) -> SessionConfig {
         let mut c = self.session_config();
-        match mode {
-            crate::dictation::Mode::Locked => c.endpoint_silence_ms = self.hands_free_endpoint(),
-            // D90: the translation call cleans and translates in one go.
-            crate::dictation::Mode::Command | crate::dictation::Mode::Translate => {
-                c.raw_mode = true
-            }
-            crate::dictation::Mode::Ptt => {}
+        if mode == crate::dictation::Mode::Locked {
+            c.endpoint_silence_ms = self.hands_free_endpoint();
         }
+        // D90: a command or translation cleans in its own single call.
+        c.raw_mode |= mode.is_one_call();
         c
     }
 

@@ -21,6 +21,9 @@ pub mod vk {
     pub const C: u16 = 0x43;
     /// Masking key for lone Win/Alt releases (VK_LCONTROL rather than 0xFF).
     pub const LCONTROL: u16 = 0xA2;
+    /// Unassigned VK: the "other key" that keeps a Ctrl/Shift release from
+    /// switching the keyboard layout (D90).
+    pub const LAYOUT_MASK: u16 = 0xE8;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,7 +53,18 @@ impl Stroke {
 /// sees "another key was involved", so Start / the menu bar don't open.
 /// The trailing LCtrl↑ is skipped when LCtrl is physically held (the user's
 /// Ctrl must stay logically down).
+///
+/// Ctrl/Shift (`0xA0..=0xA3`, the translate chord) get `[mask↓, mask↑,
+/// key↑]` instead: an unassigned key between their press and release
+/// keeps the Ctrl+Shift layout switch from firing.
 pub fn masked_release(vk: u16, lctrl_held: bool) -> Vec<Stroke> {
+    if (0xA0..=0xA3).contains(&vk) {
+        return vec![
+            Stroke::down(vk::LAYOUT_MASK),
+            Stroke::up(vk::LAYOUT_MASK),
+            Stroke::up(vk),
+        ];
+    }
     let mut v = vec![Stroke::down(vk::LCONTROL), Stroke::up(vk)];
     if !lctrl_held {
         v.push(Stroke::up(vk::LCONTROL));
@@ -240,6 +254,20 @@ mod tests {
             masked_release(0x5B, false),
             vec![Stroke::down(0xA2), Stroke::up(0x5B), Stroke::up(0xA2)]
         );
+    }
+
+    #[test]
+    fn ctrl_and_shift_releases_are_masked_with_an_unassigned_key() {
+        for v in [0xA0, 0xA1, 0xA2, 0xA3] {
+            assert_eq!(
+                masked_release(v, true),
+                vec![
+                    Stroke::down(vk::LAYOUT_MASK),
+                    Stroke::up(vk::LAYOUT_MASK),
+                    Stroke::up(v)
+                ]
+            );
+        }
     }
 
     #[test]

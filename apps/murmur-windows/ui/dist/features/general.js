@@ -75,6 +75,8 @@ function fill(prefs) {
     setValue("ptt", prefs.shortcuts.ptt);
     setValue("hands_free", prefs.shortcuts.hands_free);
     setValue("command", prefs.shortcuts.command);
+    setValue("translate", prefs.shortcuts.translate ?? "Ctrl+Win+Shift");
+    pick("translate_to", prefs.translate_to ?? "", (v) => v);
     setValue("cancel", prefs.shortcuts.cancel);
     setValue("paste_last", prefs.shortcuts.paste_last);
     setValue("copy_last", prefs.shortcuts.copy_last);
@@ -331,6 +333,7 @@ export function collectGeneral() {
             ptt: $("ptt").value.trim(),
             hands_free: $("hands_free").value.trim(),
             command: $("command").value.trim(),
+            translate: $("translate").value.trim(),
             cancel: $("cancel").value.trim(),
             paste_last: $("paste_last").value.trim(),
             copy_last: $("copy_last").value.trim(),
@@ -352,6 +355,7 @@ export function collectGeneral() {
         next[f] = $(f).checked;
     next.paste_method = $("paste_method").value;
     next.keyboard_language = $("language_pick").value === "keyboard";
+    next.translate_to = $("translate_to").value;
     next.languages = $("languages")
         .value.split(",")
         .map((s) => s.trim())

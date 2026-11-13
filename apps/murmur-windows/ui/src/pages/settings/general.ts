@@ -42,7 +42,7 @@ ${group(
     ) +
     row(
       "Translate into",
-      "Automatic = your other keyboard language (Hebrew dictation pastes English, English pastes Hebrew).",
+      "Automatic = your other keyboard language: what you say in one is pasted in the other.",
       select("translate_to", [
         ["", "Automatic"],
         ["en", "English"],

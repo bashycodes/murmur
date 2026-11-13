@@ -41,6 +41,13 @@ pub enum Mode {
     Translate,
 }
 
+impl Mode {
+    /// Command and Translate: one AI call on the raw transcript, not a cleanup.
+    pub fn is_one_call(self) -> bool {
+        matches!(self, Mode::Command | Mode::Translate)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Listening {
     pub mode: Mode,
@@ -674,7 +681,7 @@ impl Dictation {
         let (sound, overlay) = match mode {
             Mode::Ptt => (Sound::Start, OverlayState::ActivePtt),
             Mode::Locked => (Sound::Lock, OverlayState::ActiveLocked),
-            Mode::Command | Mode::Translate => (Sound::Start, OverlayState::ActiveCommand),
+            _ => (Sound::Start, OverlayState::ActiveCommand),
         };
         vec![
             Effect::Sound(sound),

@@ -905,20 +905,15 @@ impl CoreApi for RouterAdapter {
     /// server and the cloud are tried before this PC's small model.
     fn translate(
         &self,
-        text: &str,
-        source: Option<&str>,
-        target: &str,
-        dictionary: &[crate::core_api::DictEntry],
+        req: &murmur_core::translate::Request,
         timeout: std::time::Duration,
-    ) -> Result<String, String> {
+    ) -> Result<murmur_core::translate::Translation, String> {
         let base = self.local.as_ref().and_then(|a| a.cleaner());
         let cleaner = self.router.cleanup_cleaner(base);
-        if cleaner.is_none() && self.local_llm_loading() && !text.trim().is_empty() {
+        if cleaner.is_none() && self.local_llm_loading() && !req.text.trim().is_empty() {
             return Err(LLM_LOADING_MSG.into());
         }
-        let dict = crate::core_adapter::to_core_dict(dictionary);
-        murmur_core::translate::run(cleaner, text, source, target, &dict, timeout)
-            .map_err(|e| e.to_string())
+        crate::core_api::translate_on(cleaner, req, timeout)
     }
 }
 
@@ -1299,14 +1294,19 @@ mod tests {
     fn translate_runs_on_the_cleanup_route_with_this_pcs_llm() {
         let r = command_rig(true);
         let t = std::time::Duration::from_secs(5);
+        let req = murmur_core::translate::Request {
+            text: "hello there".into(),
+            source: Some("en".into()),
+            target: Some("fr".into()),
+            ..Default::default()
+        };
+        let out = r.translate(&req, t).unwrap();
+        // This PC's LLM answered: the shell flags the lower quality.
         assert_eq!(
-            r.translate("hello there", Some("en"), "fr", &[], t)
-                .as_deref(),
-            Ok("HELLO THERE")
+            (out.text.as_str(), out.target.as_str(), out.on_device),
+            ("HELLO THERE", "fr", true)
         );
-        let e = command_rig(false)
-            .translate("hello there", Some("en"), "fr", &[], t)
-            .unwrap_err();
+        let e = command_rig(false).translate(&req, t).unwrap_err();
         assert!(e.contains("needs AI"), "{e}");
     }
 

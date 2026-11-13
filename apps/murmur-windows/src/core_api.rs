@@ -432,23 +432,27 @@ pub trait CoreApi: Send + Sync {
         murmur_core::transform::run_transform(None, instruction, text, source, timeout)
             .map_err(|e| e.to_string())
     }
-    /// D90: clean and translate a dictation's `text` (spoken in `source`,
-    /// when known) into `target` with the cleanup route, off-device first
-    /// (`murmur_core::translate`), blocking up to `timeout`. `dictionary` =
-    /// the user's, for the terms the prompt names. `Ok` = the text to
-    /// paste, `Err` = why not. Default: no LLM available.
+    /// D90: clean and translate a dictation (`req`) with the cleanup route,
+    /// off-device first (`murmur_core::translate`), blocking up to
+    /// `timeout`. `Ok` = the translation to paste, `Err` = why not (pill
+    /// text). Default: no LLM available.
     fn translate(
         &self,
-        text: &str,
-        source: Option<&str>,
-        target: &str,
-        dictionary: &[DictEntry],
+        req: &murmur_core::translate::Request,
         timeout: std::time::Duration,
-    ) -> Result<String, String> {
-        let dict = crate::core_adapter::to_core_dict(dictionary);
-        murmur_core::translate::run(None, text, source, target, &dict, timeout)
-            .map_err(|e| e.to_string())
+    ) -> Result<murmur_core::translate::Translation, String> {
+        translate_on(None, req, timeout)
     }
+}
+
+/// [`CoreApi::translate`] on `cleaner` (`None` = no AI): the one place the
+/// shell calls `murmur_core::translate::run`.
+pub fn translate_on(
+    cleaner: Option<std::sync::Arc<dyn murmur_core::cleanup::Cleaner>>,
+    req: &murmur_core::translate::Request,
+    timeout: std::time::Duration,
+) -> Result<murmur_core::translate::Translation, String> {
+    murmur_core::translate::run(cleaner, req, timeout).map_err(|e| e.to_string())
 }
 
 /// Model-free stand-in for `murmur-core`: counts samples and returns
@@ -477,10 +481,9 @@ struct StubState {
     /// triples it was asked.
     transform_reply: Option<Result<String, String>>,
     transforms: Vec<(String, String, murmur_core::transform::Source)>,
-    /// Scripted translation answer and the (text, source, target) triples
-    /// it was asked.
-    translate_reply: Option<Result<String, String>>,
-    translations: Vec<(String, Option<String>, String)>,
+    /// Scripted translation answer (text, on-device) and every request.
+    translate_reply: Option<Result<(String, bool), String>>,
+    translations: Vec<murmur_core::translate::Request>,
 }
 
 impl StubCore {
@@ -542,13 +545,15 @@ impl StubCore {
         self.inner.lock().unwrap().transforms.clone()
     }
 
-    /// Script what `translate()` answers.
-    pub fn set_translate_reply(&self, reply: Result<String, String>) {
-        self.inner.lock().unwrap().translate_reply = Some(reply);
+    /// Script what `translate()` answers: the text, and whether only the
+    /// on-device model could (its target is the request's).
+    pub fn set_translate_reply(&self, reply: Result<(&str, bool), String>) {
+        self.inner.lock().unwrap().translate_reply =
+            Some(reply.map(|(t, on_device)| (t.to_string(), on_device)));
     }
 
-    /// (text, source, target) of every `translate()` call.
-    pub fn translations(&self) -> Vec<(String, Option<String>, String)> {
+    /// Every `translate()` request.
+    pub fn translations(&self) -> Vec<murmur_core::translate::Request> {
         self.inner.lock().unwrap().translations.clone()
     }
 }
@@ -670,29 +675,25 @@ impl CoreApi for StubCore {
 
     fn translate(
         &self,
-        text: &str,
-        source: Option<&str>,
-        target: &str,
-        dictionary: &[DictEntry],
+        req: &murmur_core::translate::Request,
         timeout: std::time::Duration,
-    ) -> Result<String, String> {
+    ) -> Result<murmur_core::translate::Translation, String> {
         let reply = {
             let mut s = self.inner.lock().unwrap();
-            s.translations.push((
-                text.to_string(),
-                source.map(str::to_string),
-                target.to_string(),
-            ));
+            s.translations.push(req.clone());
             s.translate_reply.clone()
         };
-        match reply {
-            Some(r) => r,
-            None => {
-                let dict = crate::core_adapter::to_core_dict(dictionary);
-                murmur_core::translate::run(None, text, source, target, &dict, timeout)
-                    .map_err(|e| e.to_string())
-            }
-        }
+        let Some(reply) = reply else {
+            return translate_on(None, req, timeout);
+        };
+        let target = req
+            .resolved_target()
+            .ok_or_else(|| murmur_core::translate::TranslateError::NoTarget.to_string())?;
+        reply.map(|(text, on_device)| murmur_core::translate::Translation {
+            text,
+            target,
+            on_device,
+        })
     }
 }
 
