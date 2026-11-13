@@ -400,6 +400,13 @@ impl Controller {
     }
 
     pub fn handle(&mut self, mut input: Input) {
+        let mut now = (self.clock)();
+        if let Input::HotkeyAt { action, at_ms } = input {
+            // D92: time the key event when the hook saw it, not when this
+            // thread got to it (it may have been busy opening the mic).
+            now = now.min(at_ms);
+            input = Input::Hotkey(action);
+        }
         if input == Input::Hotkey(HotkeyAction::NewNote) {
             // New note, then hands-free into it, unless already dictating
             // (that dictation keeps its own target window).
@@ -409,7 +416,6 @@ impl Controller {
             }
             input = Input::Hotkey(HotkeyAction::HandsFreeToggle);
         }
-        let now = (self.clock)();
         match &input {
             Input::Hotkey(HotkeyAction::PasteLast) => {
                 self.paste_last();
@@ -536,11 +542,7 @@ impl Controller {
         if let Some(i) = self.shared.sessions.lock().unwrap().get_mut(&l.session) {
             i.mode = match l.mode {
                 crate::dictation::Mode::Ptt => "hold",
-                crate::dictation::Mode::Locked
-                    if i.mode == "tap" || (ptt_down && i.mode == "hold") =>
-                {
-                    "tap"
-                }
+                crate::dictation::Mode::Locked if i.mode == "tap" || ptt_down => "tap",
                 crate::dictation::Mode::Locked => "handsfree",
                 crate::dictation::Mode::Command => "command",
                 crate::dictation::Mode::Translate => "translate",
@@ -3883,6 +3885,30 @@ mod tests {
         assert_eq!(l[0]["endpoint_wait_ms"], 2000);
         assert_eq!(l[1]["mode"], "tap");
         assert_eq!(l[1]["endpoint_wait_ms"], serde_json::Value::Null);
+    }
+
+    /// A key event the hook delivered at `at_ms`.
+    fn key_at(action: HotkeyAction, at_ms: u64) -> Input {
+        Input::HotkeyAt { action, at_ms }
+    }
+
+    #[test]
+    fn hook_time_not_handling_time_decides_a_fast_double_tap() {
+        // D92: the press opened the mic and kept this thread busy for
+        // 700 ms; the tap's release (80 ms) and the second press (200 ms)
+        // queued meanwhile. Timed on handling, the release looked like a
+        // 700 ms hold: it committed and the second press was lost.
+        let mut r = rig(Fake::default(), Prefs::default());
+        r.at(0, key_at(HotkeyAction::PttDown, 0));
+        r.at(700, key_at(HotkeyAction::PttUp, 80));
+        r.at(700, key_at(HotkeyAction::PttDown, 200));
+        match r.c.machine().phase() {
+            Phase::Listening(l) => {
+                assert_eq!(l.mode, crate::dictation::Mode::Locked);
+                assert_eq!(l.locked_at, Some(200));
+            }
+            other => panic!("not locked: {other:?}"),
+        }
     }
 
     #[test]

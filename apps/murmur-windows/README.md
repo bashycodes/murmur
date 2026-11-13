@@ -407,7 +407,7 @@ before the paste.
 |---|---|
 | `src/hotkeys/chord.rs` | Pure chord matcher: PTT / hands-free / Command Mode / cancel, Win/Alt release masking, foreign-key abort, either-side vs side-specific keys, AltGr fake-Ctrl filter |
 | `src/hotkeys/win.rs` | `WH_KEYBOARD_LL` hook thread. It skips our own `dwExtraInfo`-tagged input, does masked Win/Alt releases (`[LCtrl↓, key↑, LCtrl↑]`) and runs a 1 s stale-key probe |
-| `src/dictation.rs` | Pure state machine `idle → listening(ptt\|locked) → processing → pasted\|error → idle`. Timings: 500 ms tap / double-tap lock / triple-press, warning at 19 min, hard stop at 20 min, 35 s processing timeout, 500 ms error |
+| `src/dictation.rs` | Pure state machine `idle → listening(ptt\|locked) → processing → pasted\|error → idle`. Timings: 500 ms tap (hold threshold) / triple-press, double-tap lock = second press < 500 ms after the first tap's release (D92), warning at 19 min, hard stop at 20 min, 35 s processing timeout, 500 ms error |
 | `src/controller.rs` | Runs the machine's effects against a `Platform` trait plus `CoreApi`; integration-tested with fakes. Command Mode: selection capture after the chord is up, `CoreApi::command`, history row |
 | `src/audio/` | Resampler to 16 kHz mono i16 and an adaptive-floor level meter (pure); `capture.rs` = cpal/WASAPI |
 | `src/paste/` | Pure strategy, restore guard and per-app restore delay; `win.rs` = clipboard snapshot → CF_UNICODETEXT plus history/monitor opt-outs → masked Alt/Win release → `[Ctrl↓,V↓]` 50 ms `[V↑,Ctrl↑]` → restore if the sequence number is unchanged. Falls back to KEYEVENTF_UNICODE |
