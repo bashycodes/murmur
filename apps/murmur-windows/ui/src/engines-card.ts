@@ -5,6 +5,8 @@
 
 import { cleanupTarget } from "./features/openrouter.js";
 import { $ } from "./lib/dom.js";
+import { serverCleanupOn } from "./lib/cleanup-order.js";
+import { cloudCleanupUsable, cloudLiveLabel, providerModelLabel, providerOf } from "./lib/provider-names.js";
 import { invoke, onEvent } from "./lib/ipc.js";
 import { prefsStore } from "./lib/prefs-store.js";
 import type { CleanupEngine, OrView, Route } from "./lib/types.js";
@@ -31,11 +33,6 @@ const DOT: Record<string, string> = {
   off: "var(--toggle-border)",
 };
 
-/** `meta-llama/llama-3.3-70b-instruct` -> `llama-3.3-70b-instruct`. */
-function shortModel(id: string): string {
-  return id.split("/").pop() ?? id;
-}
-
 function fileStem(path: string | undefined): string {
   const f = (path ?? "").split(/[\\/]/).pop() ?? "";
   return f.replace(/\.(gguf|bin)$/i, "");
@@ -59,7 +56,7 @@ function routeLabel(r: Route): [string, string] {
     const engine = prefsStore.get()?.asr_engine === "parakeet" ? "Parakeet" : "Whisper";
     return [`This PC · ${engine}`, DOT[model.state] ?? DOT.off];
   }
-  return [`Cloud · ${shortModel(views.or?.stt.model ?? "")}`, "var(--glow-300)"];
+  return [cloudLiveLabel(providerOf(views.or), providerModelLabel(views.or, "stt")), "var(--glow-300)"];
 }
 
 const FALLBACK: Record<Route, string> = {
@@ -68,16 +65,21 @@ const FALLBACK: Record<Route, string> = {
   cloud: "Falls back to the cloud",
 };
 
+/** D96: the cloud fallback names your own AI server when that is the provider. */
+function fallbackText(r: Route): string {
+  return r === "cloud" && providerOf(views.or) === "custom" ? "Falls back to your own AI server" : FALLBACK[r];
+}
+
 /**
  * The cloud cleanup engine's label when the router can use it: consent
  * given (`consent` is the backend's `consent_ok()`, bound to the custom
  * server's current host); D52: a custom server with a model, named by its
- * host, never "OpenRouter".
+ * host, never "OpenRouter"; D96: "Your own AI server", never "Cloud".
  */
-function cloudCleanup(or: OrView): string | null {
-  const c = or.cleanup;
-  if (c.provider === "custom") return c.custom.consent && c.custom.model ? `Cloud · ${cleanupTarget(or)}` : null;
-  return c.consent ? `Cloud · ${shortModel(c.model)}` : null;
+function cloudCleanup(or: OrView | null): string | null {
+  if (!cloudCleanupUsable(or)) return null;
+  const p = providerOf(or);
+  return cloudLiveLabel(p, p === "custom" ? cleanupTarget(or) : providerModelLabel(or, "cleanup"));
 }
 
 function cleanupLabel(): [string, string] {
@@ -93,11 +95,11 @@ function cleanupLabel(): [string, string] {
     { route: "server", enabled: true },
   ];
   for (const e of engines) {
-    const cloud = e.route === "cloud" && or?.supported && or.cleanup.allow ? cloudCleanup(or) : null;
+    const cloud = e.route === "cloud" ? cloudCleanup(or) : null;
     if (cloud) return [cloud, "var(--glow-300)"];
     if (e.route === "local" && e.enabled && p.llm_enabled && dv?.caps.local)
       return [`This PC · ${fileStem(llm.path) || "local model"}`, DOT[llm.state] ?? DOT.off];
-    if (e.route === "server" && e.enabled && dv?.caps.remote && dv.form.host && or?.cleanup.status.server_llm !== false) {
+    if (e.route === "server" && dv && serverCleanupOn([e], dv.form.host, dv.caps.remote, or?.cleanup.status.server_llm)) {
       const h = dv.route?.health;
       return [`Your server · ${dv.form.host}`, !h ? DOT.off : h.ok ? DOT.ready : DOT.failed];
     }
@@ -119,7 +121,7 @@ function render(): void {
   $<HTMLElement>("eng_ai_dot").style.background = aiDot;
   const fb = $<HTMLElement>("eng_fallback");
   fb.hidden = order.length < 2;
-  fb.textContent = order.length > 1 ? FALLBACK[order[1]] : "";
+  fb.textContent = order.length > 1 ? fallbackText(order[1]) : "";
 }
 
 export const enginesCard = {

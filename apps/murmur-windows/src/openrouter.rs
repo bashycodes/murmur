@@ -26,9 +26,34 @@ use murmur_router::cloud::{
 use murmur_router::{CleanupRoute, CleanupStatus, CloudProvider, CloudUsage, Usd};
 use serde::{Deserialize, Serialize};
 
+/// D96: the OpenAI-compatible provider (D52, `CloudProvider::LiteLlm`) as
+/// Windows names it inside a sentence. "Cloud" means OpenRouter only.
+pub const OWN_AI_SERVER: &str = "your own AI server";
+
+/// D96: the own AI server by its host, or by name while no host is set.
+pub fn own_server_or(host: &str) -> String {
+    if host.is_empty() {
+        OWN_AI_SERVER.into()
+    } else {
+        host.into()
+    }
+}
+
+/// D96: the shared router names the own AI server "LiteLLM (host)" in
+/// Command Mode and transform refusals (`CloudConfig::cleanup_destination`,
+/// kept for Android); Windows says "your own AI server (host)".
+pub fn windows_destination_names(msg: String) -> String {
+    let lite = CloudProvider::LiteLlm.label();
+    if msg.contains(lite) {
+        msg.replace(lite, OWN_AI_SERVER)
+    } else {
+        msg
+    }
+}
+
 /// D78/D85: why cloud speech can't be switched on while LiteLLM is the
 /// Cloud provider without a speech model.
-pub const LITELLM_NO_STT: &str = "Your LiteLLM proxy has no speech model set. Press Test connection on the Cloud page to find one, or pick OpenRouter";
+pub const LITELLM_NO_STT: &str = "Your own AI server has no speech model set. Press Test connection on the AI provider page to find one, or pick OpenRouter";
 
 /// Speech-to-text card.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -362,10 +387,7 @@ pub fn apply_stt(dev: &mut DevSettings, f: &SttForm, now_ms: u64) -> Result<(), 
             }
             CloudProvider::LiteLlm => format!(
                 "Accept sending audio to {} before turning this on",
-                match next.cloud.custom_cleanup.host() {
-                    h if h.is_empty() => "your proxy".into(),
-                    h => h,
-                }
+                own_server_or(&next.cloud.custom_cleanup.host())
             ),
         });
     }
@@ -438,10 +460,7 @@ fn record_cleanup_consent(cloud: &mut murmur_router::cloud::CloudConfig, now_ms:
 fn cleanup_host_name(cloud: &murmur_router::cloud::CloudConfig) -> String {
     match cloud.provider {
         CloudProvider::OpenRouter => "OpenRouter".into(),
-        CloudProvider::LiteLlm => match cloud.cleanup_host() {
-            h if h.is_empty() => "your proxy".into(),
-            h => h,
-        },
+        CloudProvider::LiteLlm => own_server_or(&cloud.cleanup_host()),
     }
 }
 
@@ -486,7 +505,7 @@ pub fn apply_custom_cleanup(
     cc.timeout_ms = f.timeout_ms as u64;
     if f.consent {
         if custom && cc.host().is_empty() {
-            return Err("Enter your proxy's address".into());
+            return Err("Enter your own AI server's address".into());
         }
         record_cleanup_consent(&mut next.cloud, now_ms);
     }
@@ -646,6 +665,29 @@ pub const CLEANUP_SAMPLE: &str =
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn d96_refusals_name_the_own_ai_server_not_litellm() {
+        let cmd = murmur_core::command::CommandError::SelectionNotAllowed {
+            to: Some("LiteLLM (10.0.0.5)".into()),
+        };
+        let m = windows_destination_names(cmd.to_string());
+        assert!(
+            m.starts_with(
+                "Command Mode would send the selection to your own AI server (10.0.0.5):"
+            ),
+            "{m}"
+        );
+        assert!(!m.contains("LiteLLM"), "{m}");
+        assert_eq!(
+            windows_destination_names("would send the selection to LiteLLM: x".into()),
+            "would send the selection to your own AI server: x"
+        );
+        let or = "Command Mode would send the selection to OpenRouter: x".to_string();
+        assert_eq!(windows_destination_names(or.clone()), or);
+        assert_eq!(own_server_or(""), "your own AI server");
+        assert_eq!(own_server_or("10.0.0.5"), "10.0.0.5");
+    }
 
     const ALL: BuildCaps = BuildCaps {
         local: true,

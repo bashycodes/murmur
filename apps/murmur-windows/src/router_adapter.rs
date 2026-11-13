@@ -897,7 +897,7 @@ impl CoreApi for RouterAdapter {
             return Err(LLM_LOADING_MSG.into());
         }
         murmur_core::command::run(cleaner, instruction, selected, timeout)
-            .map_err(|e| e.to_string())
+            .map_err(|e| crate::openrouter::windows_destination_names(e.to_string()))
     }
 
     /// Transforms on the same route as Command Mode (consent, budget,
@@ -917,7 +917,7 @@ impl CoreApi for RouterAdapter {
             return Err(LLM_LOADING_MSG.into());
         }
         murmur_core::transform::run_transform(cleaner, instruction, text, source, timeout)
-            .map_err(|e| e.to_string())
+            .map_err(|e| crate::openrouter::windows_destination_names(e.to_string()))
     }
 
     /// D90: on the AI cleanup route (this PC's LLM, the server, OpenRouter

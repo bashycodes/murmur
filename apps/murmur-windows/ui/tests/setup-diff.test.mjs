@@ -94,6 +94,17 @@ test("labels for the empty cases", () => {
   assert.equal(choiceLabel("cleanup", { ...cfg, cleanup: "cloud" }, L), "Cloud");
 });
 
+test("D96: the line names your own AI server, not Cloud, when that is the provider", () => {
+  const own = { ...L, provider: "custom" };
+  assert.equal(choiceLabel("cleanup", { ...cfg, cleanup: "cloud" }, own), "Your own AI server");
+  assert.equal(choiceLabel("engine", { ...cfg, engine: "cloud" }, own), "Your own AI server");
+  assert.equal(choiceLabel("engine", { ...cfg, engine: "cloud" }, { ...L, provider: "openrouter" }), "Cloud");
+  assert.equal(
+    changesLine(setupChanges({ ...cfg, cleanup: "cloud" }, { ...cfg, cleanup: "rules" }, own)),
+    "Finish changes Cleanup: Your own AI server → Rules only.",
+  );
+});
+
 test("Change goes to the step of the choice", () => {
   assert.deepEqual(STEP_OF, {
     engine: "engine",

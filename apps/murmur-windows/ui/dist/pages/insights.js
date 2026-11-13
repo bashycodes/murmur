@@ -4,10 +4,12 @@
 // `insights_reset`; kept apart from History, never sent anywhere).
 import { $, askDialog, el, setStatus } from "../lib/dom.js";
 import { ICON, iconEl } from "../lib/icons.js";
-import { dayText, legendHtml, ROUTE_LABEL, ROUTES, routeShare, splitKey, streakText, } from "../lib/insights-text.js";
+import { dayText, legendHtml, routeLabel, ROUTES, routeShare, splitKey, streakText, } from "../lib/insights-text.js";
 import { invoke, onEvent } from "../lib/ipc.js";
+import { providerOf } from "../lib/provider-names.js";
 import { router } from "../lib/router.js";
-export { ROUTE_LABEL, ROUTES, routeShare } from "../lib/insights-text.js";
+import { views } from "../lib/views.js";
+export { routeLabel, ROUTES, routeShare } from "../lib/insights-text.js";
 const TEMPLATE = `
 <div class="lw-ins">
   <div class="lw-ins-head">
@@ -110,15 +112,15 @@ function showSplit(s) {
         return;
     const used = ROUTES.filter((r) => s.routes_7d[r] > 0);
     // Every part is named in the key below; wide parts also carry the name.
-    key.replaceChildren(...splitKey(s.routes_7d).map((k) => {
+    key.replaceChildren(...splitKey(s.routes_7d, providerOf(views.or)).map((k) => {
         const item = el("span", `is-${k.route}`, k.text);
         item.prepend(el("i"));
         return item;
     }));
     bar.replaceChildren(...used.map((r) => {
-        const seg = el("span", `is-${r}`, share[r] >= 18 ? ROUTE_LABEL[r] : "");
+        const seg = el("span", `is-${r}`, share[r] >= 18 ? routeLabel(r, providerOf(views.or)) : "");
         seg.style.flex = String(Math.max(share[r], 3));
-        seg.title = `${ROUTE_LABEL[r]}: ${share[r]}%`;
+        seg.title = `${routeLabel(r, providerOf(views.or))}: ${share[r]}%`;
         return seg;
     }));
 }

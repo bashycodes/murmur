@@ -69,14 +69,14 @@ export function enginesFor(choice, list) {
 }
 /**
  * Why Cloud cleanup would be on but skipped (null = ready to clean): setup
- * asks only for consent; the key or the address is added in Settings → Cloud.
+ * asks only for consent; the key or the address is added in Settings → AI provider.
  * Shown with the option, so the fallback to the next cleaner is not silent.
  */
 export function cloudMissingLine(c) {
     if (c.provider === "custom") {
-        return c.baseUrl.trim() && c.model.trim() ? null : "Cloud cleanup starts once you add your server's address in Settings → Cloud.";
+        return c.baseUrl.trim() && c.model.trim() ? null : "Cleanup starts once you add your own AI server's address in Settings → AI provider.";
     }
-    return c.keySet ? null : "Cloud cleanup starts once you add a key in Settings → Cloud.";
+    return c.keySet ? null : "Cloud cleanup starts once you add a key in Settings → AI provider.";
 }
 function same(a, b) {
     return a.length === b.length && a.every((e, i) => e.route === b[i].route && e.enabled === b[i].enabled);

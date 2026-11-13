@@ -4,3 +4,7 @@
 export function withEngine(list, route, enabled) {
     return list.map((e) => (e.route === route ? { ...e, enabled } : { ...e }));
 }
+/** D96: your server cleans text: in the order with its switch on, a server set, not known to lack an AI model. */
+export function serverCleanupOn(engines, host, remote, serverLlm) {
+    return remote && host !== "" && serverLlm !== false && engines.some((e) => e.route === "server" && e.enabled);
+}

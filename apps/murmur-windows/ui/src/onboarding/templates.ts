@@ -222,7 +222,7 @@ const cleanupOption = (id: string, title: string, desc: string): string => `
 <button type="button" role="radio" class="lw-ob-option" data-ob-cleanup="${id}" aria-checked="false">
   <span class="lw-ob-radio"></span>
   <span class="lw-ob-option-text">
-    <span class="lw-ob-option-title">${title}<span class="fl-badge fl-badge-dark" data-ob-rec hidden>Recommended</span><span class="fl-badge fl-badge-light" data-ob-na hidden>Not in this build</span></span>
+    <span class="lw-ob-option-title"><span data-ob-title>${title}</span><span class="fl-badge fl-badge-dark" data-ob-rec hidden>Recommended</span><span class="fl-badge fl-badge-light" data-ob-na hidden>Not in this build</span></span>
     <span class="lw-ob-option-desc" data-ob-desc>${desc}</span>
     <span class="lw-ob-option-desc" data-ob-reason hidden></span>
   </span>
@@ -279,7 +279,7 @@ const cleanup = stepPanel(
           <input type="checkbox" id="ob_clean_consent" />
           <span class="fl-row-text"><span class="fl-row-title" id="ob_clean_consent_title">Send my dictated text to OpenRouter</span><span class="fl-row-desc" id="ob_clean_consent_desc"></span></span>
         </label>
-        <p class="lw-ob-small lw-ob-later">Add details later in Settings → Cloud. <span class="lw-ob-missing" id="ob_cloud_missing" hidden></span></p>
+        <p class="lw-ob-small lw-ob-later">Add details later in Settings → AI provider. <span class="lw-ob-missing" id="ob_cloud_missing" hidden></span></p>
       </div>
       <div class="lw-ob-status" id="ob_cleanup_status"></div>
     </div>

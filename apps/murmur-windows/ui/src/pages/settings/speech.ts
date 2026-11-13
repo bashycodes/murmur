@@ -91,7 +91,7 @@ ${group(
 )}
 
 <section class="lw-section" id="or_stt_group" data-needs="cloud">
-  <h3 class="fl-group-title lw-title-badge">Cloud · <span id="or_stt_provider_name">OpenRouter</span> <span class="fl-badge fl-badge-light" id="or_stt_used_badge">Used only when on above</span> <button type="button" class="lw-link lw-link-sm" data-go="settings-openrouter">Change provider →</button></h3>
+  <h3 class="fl-group-title lw-title-badge"><span id="or_stt_provider_name">Cloud · OpenRouter</span> <span class="fl-badge fl-badge-light" id="or_stt_used_badge">Used only when on above</span> <button type="button" class="lw-link lw-link-sm" data-go="settings-openrouter">Change provider →</button></h3>
   <div class="fl-group" id="or_stt_box">
     ${row(
       `<span id="or_stt_model_name"></span> <span id="or_stt_model_badges" class="pills"></span>`,
@@ -101,7 +101,7 @@ ${group(
     )}
     ${row(
       `<code id="cu_stt_model_name" class="lw-mono"></code>`,
-      `Speech model on your proxy at <span id="cu_stt_host" class="lw-mono"></span>. Pick another on the Cloud page.`,
+      `Speech model on your own AI server at <span id="cu_stt_host" class="lw-mono"></span>. Pick another on the AI provider page.`,
       "",
       `data-stt-provider="custom" hidden`,
     )}

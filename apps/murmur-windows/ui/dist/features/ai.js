@@ -14,6 +14,7 @@ import { withEngine } from "../lib/cleanup-order.js";
 import { cloudTimeout, noAiLevel, rulesAfterLevel, seconds, skippedWarning, timeoutNote } from "../lib/model-pages.js";
 import { views } from "../lib/views.js";
 import { cleanupTarget, setCloudTimeouts, showOr } from "./openrouter.js";
+import { providerModelLabel } from "../lib/provider-names.js";
 /** What each cleanup level does (D27), with the design's example of what is pasted. */
 const LEVELS = {
     verbatim: [
@@ -174,7 +175,7 @@ function describe(r) {
     else {
         const v = views.or;
         const custom = v?.cleanup.provider === "custom";
-        const model = custom ? v?.cleanup.custom.model ?? "" : (v?.cleanup.model ?? "").split("/").pop();
+        const model = providerModelLabel(v, "cleanup");
         $("aieng_desc_cloud").textContent = on
             ? `Sends the transcript as text to ${cleanupTarget(v)} · ${model}.`
             : `Sends the transcript as text to ${cleanupTarget(v)}. Asks first.`;

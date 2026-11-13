@@ -32,6 +32,7 @@ import { settingsGeneralPage } from "./pages/settings/general.js";
 import { adminStore, settingsKeysPage } from "./pages/settings/keys.js";
 import { settingsOpenrouterPage } from "./pages/settings/openrouter.js";
 import { settingsPrivacyPage } from "./pages/settings/privacy.js";
+import { PROVIDER_PAGE } from "./lib/provider-names.js";
 import { settingsServerPage } from "./pages/settings/server.js";
 import { settingsSpeechPage } from "./pages/settings/speech.js";
 import { settingsSystemPage } from "./pages/settings/system.js";
@@ -110,7 +111,7 @@ const SETTINGS_NAV: [string, NavItem[], string?][] = [
       { page: "settings-server", label: "Your server", icon: ICON.server, id: "tab_server" },
       // D39: only when this app's server token is an admin key.
       { page: "settings-keys", label: "Users & keys", icon: ICON.keys, id: "tab_keys" },
-      { page: "settings-openrouter", label: "Cloud", icon: ICON.cloud, id: "tab_openrouter", badge: "or_badge" },
+      { page: "settings-openrouter", label: PROVIDER_PAGE, icon: ICON.cloud, id: "tab_openrouter", badge: "or_badge" },
     ],
     "nav_connections",
   ],

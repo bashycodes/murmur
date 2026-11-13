@@ -184,7 +184,7 @@ impl Default for ServerSettings {
 
 /// D78/D85: shown once when [`DevSettings::one_cloud_provider`] turns cloud
 /// speech off.
-pub const LITELLM_STT_OFF_NOTICE: &str = "Speech to text in the cloud is now off: your Cloud provider is LiteLLM and no speech model is set for your proxy. Speech stays on this PC and your server.";
+pub const LITELLM_STT_OFF_NOTICE: &str = "Speech to text on your own AI server is now off: it has no speech model set. Speech stays on this PC and your server.";
 
 /// `prefs.json` → `"developer"`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
