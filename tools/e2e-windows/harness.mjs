@@ -281,7 +281,7 @@ async function run(args, { runId, dir, log, remote, release, orphans }) {
     log(remote.ps("appdata.ps1", ["-Action", "wipe"]).out.trim());
 
     await remote.tunnel(CDP_PORT);
-    const ctx = { args, dir, log, remote, agent, app, clips, results, cableIn: CABLE_IN, cableMic: CABLE_MIC, audioDefaults: remote.winPath(AUDIO_DEFAULTS), seedPatch: SEED_PATCH, seeded: false };
+    const ctx = { args, installer, dir, log, remote, agent, app, clips, results, cableIn: CABLE_IN, cableMic: CABLE_MIC, audioDefaults: remote.winPath(AUDIO_DEFAULTS), seedPatch: SEED_PATCH, seeded: false };
 
     for (const s of SCENARIOS) {
       if (!args.scenarios.includes(s.id)) continue;

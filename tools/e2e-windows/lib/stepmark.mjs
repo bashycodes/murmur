@@ -16,6 +16,7 @@ const READ_ONLY = {
   "appdata.ps1": ["status", "ownerprefs"],
   "vbcable.ps1": ["status"],
   "audio.ps1": ["list", "waveout"],
+  "uninstall-data.ps1": ["check"],
 };
 
 /** Does `script args` change anything on the laptop (so it gets a marker)? */

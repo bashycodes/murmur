@@ -61,7 +61,7 @@ test("args", () => {
   const i = ["--installer", "M.exe"];
   assert.equal(parseArgs([...i, "--no-restore"]).restore, false);
   assert.equal(parseArgs([...i, "--no-wait"]).wait, false);
-  assert.deepEqual(parseArgs(i).scenarios, ["a", "b", "c", "d", "e", "f", "g"]);
+  assert.deepEqual(parseArgs(i).scenarios, ["a", "b", "c", "d", "e", "f", "g", "h"]);
   assert.deepEqual(parseArgs([...i, "--gaps", "100,250"]).gaps, [100, 250]);
   assert.deepEqual(parseArgs([...i, "--tap-ms", "90"]).taps, [90]);
   assert.deepEqual(parseArgs([...i, "--keys", "RAlt"]).keys, ["RAlt"]);

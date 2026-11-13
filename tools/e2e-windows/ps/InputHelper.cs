@@ -386,4 +386,84 @@ namespace MurmurE2E
             return null;
         }
     }
+
+    public class ChildInfo
+    {
+        public long Hwnd, Parent;
+        public string Class, Text;
+        public int Id;
+        public uint Style;
+        public bool Visible, Enabled;
+    }
+
+    /// Win32 dialogs of another process (the NSIS uninstaller): every child
+    /// window, recursively, and a button's check state / click by message.
+    /// UI Automation did not see the confirm page's check box.
+    public static class Dlg
+    {
+        delegate bool EnumProc(IntPtr h, IntPtr p);
+        [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr parent, EnumProc cb, IntPtr p);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder s, int n);
+        [DllImport("user32.dll")] static extern int GetDlgCtrlID(IntPtr h);
+        [DllImport("user32.dll")] static extern IntPtr GetParent(IntPtr h);
+        [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr h, int i);
+        [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+        [DllImport("user32.dll")] static extern bool IsWindowEnabled(IntPtr h);
+        [DllImport("user32.dll")] static extern bool IsWindow(IntPtr h);
+        [DllImport("user32.dll")] static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
+        [DllImport("user32.dll")] static extern IntPtr SendMessageTimeout(IntPtr h, uint msg, IntPtr w, IntPtr l, uint flags, uint ms, out IntPtr result);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "SendMessageTimeoutW")] static extern IntPtr SendMessageTimeoutText(IntPtr h, uint msg, IntPtr w, StringBuilder l, uint flags, uint ms, out IntPtr result);
+        const uint SMTO_ABORTIFHUNG = 2, WM_GETTEXT = 0x0D, WM_COMMAND = 0x111, BM_GETCHECK = 0xF0, BM_SETCHECK = 0xF1;
+
+        static string Text(IntPtr h)
+        {
+            var sb = new StringBuilder(512);
+            IntPtr r;
+            return SendMessageTimeoutText(h, WM_GETTEXT, new IntPtr(512), sb, SMTO_ABORTIFHUNG, 2000, out r) == IntPtr.Zero ? "" : sb.ToString();
+        }
+
+        public static List<ChildInfo> Children(long top)
+        {
+            var all = new List<ChildInfo>();
+            EnumChildWindows(new IntPtr(top), (h, p) =>
+            {
+                var c = new StringBuilder(256); GetClassName(h, c, 256);
+                all.Add(new ChildInfo
+                {
+                    Hwnd = h.ToInt64(), Parent = GetParent(h).ToInt64(), Class = c.ToString(), Id = GetDlgCtrlID(h),
+                    Text = Text(h), Style = (uint)GetWindowLong(h, -16), Visible = IsWindowVisible(h), Enabled = IsWindowEnabled(h),
+                });
+                return true;
+            }, IntPtr.Zero);
+            return all;
+        }
+
+        /// A visible BUTTON with a check-box style (BS_CHECKBOX, BS_AUTOCHECKBOX, BS_3STATE, BS_AUTO3STATE).
+        public static bool IsCheckBox(ChildInfo c)
+        {
+            uint t = c.Style & 0xF;
+            return c.Visible && string.Equals(c.Class, "Button", StringComparison.OrdinalIgnoreCase) && (t == 2 || t == 3 || t == 5 || t == 6);
+        }
+
+        /// BM_GETCHECK: 0 off, 1 on, 2 indeterminate; -1 when the message failed.
+        public static int GetCheck(long h)
+        {
+            IntPtr r;
+            return SendMessageTimeout(new IntPtr(h), BM_GETCHECK, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 2000, out r) == IntPtr.Zero ? -1 : r.ToInt32();
+        }
+
+        public static void SetCheck(long h, bool on)
+        {
+            IntPtr r;
+            SendMessageTimeout(new IntPtr(h), BM_SETCHECK, new IntPtr(on ? 1 : 0), IntPtr.Zero, SMTO_ABORTIFHUNG, 2000, out r);
+        }
+
+        /// What a click on button `btn` (control id `id`) of dialog `top` sends: WM_COMMAND(BN_CLICKED).
+        public static bool Click(long top, int id, long btn)
+        {
+            return PostMessage(new IntPtr(top), WM_COMMAND, new IntPtr(id & 0xFFFF), new IntPtr(btn));
+        }
+
+        public static bool Alive(long h) { return IsWindow(new IntPtr(h)); }
+    }
 }

@@ -8,6 +8,8 @@ import d from "./d-double-alt.mjs";
 import e from "./e-scratchpad.mjs";
 import f from "./f-language.mjs";
 import g from "./g-unfinished-setup.mjs";
+import h from "./h-uninstall-data.mjs";
 
 // g restarts the fresh install with setup left half way; b then walks it.
-export const SCENARIOS = [a, g, b, c, d, e, f];
+// h uninstalls and reinstalls the app: last.
+export const SCENARIOS = [a, g, b, c, d, e, f, h];
