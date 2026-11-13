@@ -1,12 +1,12 @@
-{"answer":"Dana's meeting is on Thursday at three.","error":null,"id":"he_en_meeting","kept":"0/1","ms":5911,"pass":true,"script":"Some(Latin)","source":"he","target":"en"}
-{"answer":"The package arrived this morning. Thank you very much for the quick transmission.","error":null,"id":"he_en_package","kept":"0/0","ms":1320,"pass":true,"script":"Some(Latin)","source":"he","target":"en"}
-{"answer":"I'll start in about 10 minutes.","error":null,"id":"he_en_late","kept":"1/1","ms":927,"pass":true,"script":"Some(Latin)","source":"he","target":"en"}
-{"answer":"I need to buy flour, eggs, and sugar.","error":null,"id":"he_en_list","kept":"0/0","ms":893,"pass":true,"script":"Some(Latin)","source":"he","target":"en"}
-{"answer":"I'll meet you on Tuesday, not Wednesday.","error":null,"id":"he_en_selfcorrect","kept":"0/0","ms":871,"pass":true,"script":"Some(Latin)","source":"he","target":"en"}
-{"answer":"אתה מדבר עם דנה, הפגישה נמצאת בثلاث ביום רביעי.","error":null,"id":"en_he_meeting","kept":"0/1","ms":1734,"pass":true,"script":"Some(Hebrew)","source":"en","target":"he"}
-{"answer":"","error":"not_translated","id":"en_he_package","kept":"0/0","ms":1339,"pass":false,"script":"None","source":"en","target":"he"}
-{"answer":"אני מגיע ל pocchenta דקות מהירה אז תתחיל בלי אותי.","error":null,"id":"en_he_late","kept":"0/0","ms":1269,"pass":true,"script":"Some(Hebrew)","source":"en","target":"he"}
-{"answer":"הBuild Zephyr הוא ירוק,你可以現在進行合併.","error":null,"id":"en_he_build","kept":"1/1","ms":1208,"pass":false,"script":"None","source":"en","target":"he"}
-{"answer":"נראה לי להתקדם בפגישה ביום ראשון, אבל אני מendoza להתקדם בפגישה ביום שני.","error":null,"id":"en_he_selfcorrect","kept":"0/0","ms":1930,"pass":true,"script":"Some(Hebrew)","source":"en","target":"he"}
-{"answer":"Please remind me to call the doctor tomorrow.","error":null,"id":"auto_source_he_en","kept":"0/0","ms":930,"pass":true,"script":"Some(Latin)","source":null,"target":"en"}
-{"answer":"זכור לי להתקשר אל המזונן tomorrow.","error":null,"id":"auto_source_en_he","kept":"0/0","ms":1042,"pass":true,"script":"Some(Hebrew)","source":null,"target":"he"}
+{"answer":"Dana's meeting is on Thursday at three.","error":null,"id":"he_en_meeting","kept":"0/1","ms":5774,"pass":true,"script":"Some(Latin)","source":"he","target":"en"}
+{"answer":"The package arrived this morning. Thank you very much for the quick transmission.","error":null,"id":"he_en_package","kept":"0/0","ms":1188,"pass":true,"script":"Some(Latin)","source":"he","target":"en"}
+{"answer":"I'll start in about 10 minutes.","error":null,"id":"he_en_late","kept":"1/1","ms":981,"pass":true,"script":"Some(Latin)","source":"he","target":"en"}
+{"answer":"I need to buy flour, eggs, and sugar.","error":null,"id":"he_en_list","kept":"0/0","ms":958,"pass":true,"script":"Some(Latin)","source":"he","target":"en"}
+{"answer":"I'll meet you on Tuesday, not Wednesday.","error":null,"id":"he_en_selfcorrect","kept":"0/0","ms":834,"pass":true,"script":"Some(Latin)","source":"he","target":"en"}
+{"answer":"","error":"not_translated","id":"en_he_meeting","kept":"0/1","ms":1621,"pass":false,"script":"None","source":"en","target":"he"}
+{"answer":"","error":"not_translated","id":"en_he_package","kept":"0/0","ms":1306,"pass":false,"script":"None","source":"en","target":"he"}
+{"answer":"","error":"not_translated","id":"en_he_late","kept":"0/0","ms":1311,"pass":false,"script":"None","source":"en","target":"he"}
+{"answer":"","error":"not_translated","id":"en_he_build","kept":"0/1","ms":1151,"pass":false,"script":"None","source":"en","target":"he"}
+{"answer":"","error":"not_translated","id":"en_he_selfcorrect","kept":"0/0","ms":1672,"pass":false,"script":"None","source":"en","target":"he"}
+{"answer":"Please remind me to call the doctor tomorrow.","error":null,"id":"auto_source_he_en","kept":"0/0","ms":860,"pass":true,"script":"Some(Latin)","source":null,"target":"en"}
+{"answer":"","error":"not_translated","id":"auto_source_en_he","kept":"0/0","ms":960,"pass":false,"script":"None","source":null,"target":"he"}

@@ -1,12 +1,12 @@
-{"answer":"The meeting with Dana has been postponed to Wednesday at three.","error":null,"id":"he_en_meeting","kept":"0/1","ms":857,"pass":true,"script":"Some(Latin)","source":"he","target":"en"}
-{"answer":"The package arrived this morning, thank you very much for the quick delivery.","error":null,"id":"he_en_package","kept":"0/0","ms":975,"pass":true,"script":"Some(Latin)","source":"he","target":"en"}
-{"answer":"I'm running ten minutes late, start without me.","error":null,"id":"he_en_late","kept":"0/1","ms":759,"pass":true,"script":"Some(Latin)","source":"he","target":"en"}
-{"answer":"We need to buy milk, bread, and eggs.","error":null,"id":"he_en_list","kept":"0/0","ms":938,"pass":true,"script":"Some(Latin)","source":"he","target":"en"}
-{"answer":"We're meeting on Monday, not on Wednesday.","error":null,"id":"he_en_selfcorrect","kept":"0/0","ms":1230,"pass":true,"script":"Some(Latin)","source":"he","target":"en"}
-{"answer":"הפגישה עם דנה הועברה ליום רביעי בשעה שלוש.","error":null,"id":"en_he_meeting","kept":"0/1","ms":2057,"pass":true,"script":"Some(Hebrew)","source":"en","target":"he"}
-{"answer":"החבילה הגיעה הבוקר, תודה רבה על המשלוח המהיר.","error":null,"id":"en_he_package","kept":"0/0","ms":1743,"pass":true,"script":"Some(Hebrew)","source":"en","target":"he"}
-{"answer":"אני מאחר בכעשר דקות, אז התחלו בלעדיי.","error":null,"id":"en_he_late","kept":"0/0","ms":1584,"pass":true,"script":"Some(Hebrew)","source":"en","target":"he"}
-{"answer":"הבנייה של Zephyr היא ירוקה, אתה יכול לאחד אותה עכשיו.","error":null,"id":"en_he_build","kept":"1/1","ms":1681,"pass":true,"script":"Some(Hebrew)","source":"en","target":"he"}
-{"answer":"נפגש ביום שלישי.","error":null,"id":"en_he_selfcorrect","kept":"0/0","ms":960,"pass":true,"script":"Some(Hebrew)","source":"en","target":"he"}
-{"answer":"Remind me to call the doctor tomorrow.","error":null,"id":"auto_source_he_en","kept":"0/0","ms":1384,"pass":true,"script":"Some(Latin)","source":null,"target":"en"}
-{"answer":"הזכר לי להתקשר לרופא השיניים מחר","error":null,"id":"auto_source_en_he","kept":"0/0","ms":2012,"pass":true,"script":"Some(Hebrew)","source":null,"target":"he"}
+{"answer":"The meeting with Dana has been postponed to Wednesday at three.","error":null,"id":"he_en_meeting","kept":"0/1","ms":1034,"pass":true,"script":"Some(Latin)","source":"he","target":"en"}
+{"answer":"The package arrived this morning, thank you very much for the quick delivery.","error":null,"id":"he_en_package","kept":"0/0","ms":617,"pass":true,"script":"Some(Latin)","source":"he","target":"en"}
+{"answer":"I'm running ten minutes late, start without me.","error":null,"id":"he_en_late","kept":"0/1","ms":742,"pass":true,"script":"Some(Latin)","source":"he","target":"en"}
+{"answer":"We need to buy milk, bread, and eggs.","error":null,"id":"he_en_list","kept":"0/0","ms":606,"pass":true,"script":"Some(Latin)","source":"he","target":"en"}
+{"answer":"Let's meet on Monday, not on Wednesday.","error":null,"id":"he_en_selfcorrect","kept":"0/0","ms":590,"pass":true,"script":"Some(Latin)","source":"he","target":"en"}
+{"answer":"הפגישה עם דנה הועברה ליום רביעי בשלוש.","error":null,"id":"en_he_meeting","kept":"0/1","ms":1415,"pass":true,"script":"Some(Hebrew)","source":"en","target":"he"}
+{"answer":"החבילה הגיעה הבוקר, תודה רבה על המשלוח המהיר.","error":null,"id":"en_he_package","kept":"0/0","ms":1137,"pass":true,"script":"Some(Hebrew)","source":"en","target":"he"}
+{"answer":"אני מאחר בכעשר דקות, התחלו בלעדי.","error":null,"id":"en_he_late","kept":"0/0","ms":959,"pass":true,"script":"Some(Hebrew)","source":"en","target":"he"}
+{"answer":"הבנייה של Zephyr עובדת, תוכל לאחד אותה עכשיו.","error":null,"id":"en_he_build","kept":"1/1","ms":1089,"pass":true,"script":"Some(Hebrew)","source":"en","target":"he"}
+{"answer":"נפגש ביום שלישי.","error":null,"id":"en_he_selfcorrect","kept":"0/0","ms":1174,"pass":true,"script":"Some(Hebrew)","source":"en","target":"he"}
+{"answer":"Remind me to call the doctor tomorrow.","error":null,"id":"auto_source_he_en","kept":"0/0","ms":808,"pass":true,"script":"Some(Latin)","source":null,"target":"en"}
+{"answer":"הזכר לי להתקשר לרופא השיניים מחר","error":null,"id":"auto_source_en_he","kept":"0/0","ms":1556,"pass":true,"script":"Some(Hebrew)","source":null,"target":"he"}
