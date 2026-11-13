@@ -892,6 +892,8 @@ tweak.
    silence and quiet-speech probes (`2026-11-01-quiet-speech-gate.md`) and the
    hallucination fixtures. Keep it only if WER holds and fewer stock tails
    reach `hallucination.rs`. Record the result as a decision.
+   **Done 2026-11-13: rejected (D88).** WER held, but stock phrases went
+   82 → 89; see `2026-11-13-whisper-decoder-thresholds.md`.
 4. **Recited dictionary prompt: detect and re-decode.** When a Whisper result
    is mostly dictionary or screen words (OpenWhispr: ≥ 90 % of the output's
    words, using ≥ 70 % of the list), re-decode once without
