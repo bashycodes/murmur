@@ -73,7 +73,10 @@ function showDialog(id, okId, cancelId) {
         d.showModal();
     });
 }
-/** Time today, else date + time. */
+/**
+ * Time today, else date + time. Fine for a single status stamp; tables use
+ * format.ts `dateTime`, a fixed format, so a column never mixes the two forms.
+ */
 export function when(ts) {
     const d = new Date(ts);
     const today = new Date();

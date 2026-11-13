@@ -1,10 +1,11 @@
 // Settings → Users & keys (D39): the server's named keys (D38), shown only
 // when this app's saved server token is an admin key (`admin_status`).
-// List with usage, create (the secret is shown once in a copy box and
+// List with usage (revoked keys folded away), create (the secret is shown once in a copy box and
 // dropped from the page when closed), revoke with a confirm. Key names and
 // clients are user data: always textContent, never markup.
-import { $, askDialog, el, setStatus, when } from "../../lib/dom.js";
+import { $, askDialog, el, setStatus } from "../../lib/dom.js";
 import { invoke } from "../../lib/ipc.js";
+import { keyDetails, keyTime, lastUsed, splitKeys } from "../../lib/key-rows.js";
 import { group, heading, row, toggle } from "../../lib/markup.js";
 import { router } from "../../lib/router.js";
 import { views } from "../../lib/views.js";
@@ -35,10 +36,6 @@ export const adminStore = {
         return s;
     },
 };
-const seen = (secs) => (secs ? when(secs * 1000) : "never");
-const day = (secs) => new Date(secs * 1000).toLocaleDateString([], { dateStyle: "medium" });
-const minutes = (ms) => (ms / 60000).toFixed(1);
-const megabytes = (b) => `${(b / 1e6).toFixed(1)} MB`;
 export const settingsKeysPage = {
     id: "settings-keys",
     area: "settings",
@@ -51,11 +48,20 @@ ${heading("Users & keys", "Give each person or device its own key, so you can se
   <h3 class="fl-group-title">Keys</h3>
   <div class="fl-group">
     <table class="lw-keys" id="keys_table">
-      <thead><tr><th>Name</th><th>Created</th><th title="Last dictation or model download">Last used</th><th title="Last request of any kind, including connection checks and this page">Last connected</th><th class="num">Dictations</th><th class="num">Audio min</th><th class="num">Downloads</th><th></th></tr></thead>
+      <thead><tr><th title="Hover a name for its app build, creation date, last connection and usage">Name</th><th title="Last dictation or model download">Last used</th><th class="num">Dictations</th><th class="act" aria-label="Revoke"></th></tr></thead>
       <tbody id="keys_rows"></tbody>
     </table>
     <p class="lw-empty-row" id="keys_empty" hidden>Loading…</p>
   </div>
+  <details class="defaults lw-keys-revoked" id="keys_revoked" hidden>
+    <summary id="keys_revoked_sum">Show revoked</summary>
+    <div class="fl-group">
+      <table class="lw-keys">
+        <thead><tr><th>Name</th><th>Last used</th><th class="num">Dictations</th><th class="act">Revoked</th></tr></thead>
+        <tbody id="keys_revoked_rows"></tbody>
+      </table>
+    </div>
+  </details>
 </section>
 ${group("New key", row(`<label for="keys_name">Name</label>`, `Who or what it is for, like <code>phone</code> or <code>sams-laptop</code>. Letters, digits, <code>.</code> <code>_</code> <code>-</code>.`, `<input id="keys_name" class="fl-input lw-w220" maxlength="64" spellcheck="false" autocomplete="off" placeholder="phone" />`) +
         row("Admin", "An admin key can open this page and create or revoke keys. Give it only to devices you own.", toggle("keys_admin", "Admin")))}
@@ -130,64 +136,56 @@ async function load() {
         void adminStore.refresh();
     }
 }
-// Model downloads: the count, with the bytes sent on hover.
-function downloads(k) {
-    const n = k.downloads ?? 0;
-    const td = el("td", "num", String(n));
-    if (n)
-        td.title = megabytes(k.download_bytes ?? 0);
-    return td;
+// Name, Last used, Dictations; the build string and the rest on hover.
+function keyRow(k) {
+    const tr = el("tr");
+    tr.dataset.keyId = k.id;
+    if (k.revoked)
+        tr.classList.add("is-revoked");
+    const name = el("td", "name");
+    name.title = keyDetails(k);
+    name.append(el("span", "lw-key-name", k.name));
+    const tags = el("span", "lw-key-tags");
+    if (k.admin)
+        tags.append(el("span", "fl-badge fl-badge-light", "admin"));
+    if (k.current)
+        tags.append(el("span", "fl-badge fl-badge-brandLight", "this app"));
+    if (tags.childElementCount)
+        name.append(tags);
+    tr.append(name, el("td", "", lastUsed(k)), el("td", "num", String(k.dictations)));
+    return tr;
 }
 function render(keys) {
+    const { active, revoked } = splitKeys(keys);
     const body = $("keys_rows");
     body.replaceChildren();
-    // Active first (oldest first, as the server lists them), then revoked.
-    const active = keys.filter((k) => !k.revoked);
-    const sorted = [...active, ...keys.filter((k) => k.revoked)];
     const admins = active.filter((k) => k.admin).length;
-    for (const k of sorted) {
-        const tr = el("tr");
-        tr.dataset.keyId = k.id;
-        if (k.revoked)
-            tr.classList.add("is-revoked");
-        const name = el("td", "name");
-        name.append(el("span", "lw-key-name", k.name));
-        const tags = el("span", "lw-key-tags");
-        if (k.admin)
-            tags.append(el("span", "fl-badge fl-badge-light", "admin"));
-        if (k.current)
-            tags.append(el("span", "fl-badge fl-badge-brandLight", "this app"));
-        if (tags.childElementCount)
-            name.append(tags);
-        // The app it last connected with, under the name.
-        name.append(el("span", "lw-key-client", k.client ?? "not used yet"));
-        // A key used before the server tracked last use has counts but no time.
-        const used = k.last_used || !(k.dictations || k.downloads) ? seen(k.last_used) : "unknown";
-        // Older servers send only `last_seen`, which is last connected.
-        const connected = seen(k.last_connected ?? k.last_seen);
-        tr.append(name, el("td", "", day(k.created)), el("td", "", used), el("td", "", connected), el("td", "num", String(k.dictations)), el("td", "num", minutes(k.audio_ms)), downloads(k));
+    for (const k of active) {
+        const tr = keyRow(k);
+        const b = el("button", "fl-btn fl-btn-ghost fl-btn-sm", "Revoke");
+        b.type = "button";
+        b.dataset.revoke = k.id;
+        if (k.admin && admins <= 1) {
+            b.disabled = true;
+            b.title = "The last admin key can't be revoked: create another admin key first";
+        }
+        b.addEventListener("click", () => void revoke(k));
         const act = el("td", "act");
-        if (k.revoked) {
-            act.append(el("span", "lw-muted", `Revoked ${day(k.revoked)}`));
-            act.classList.add("is-revoked");
-        }
-        else {
-            const b = el("button", "fl-btn fl-btn-ghost fl-btn-sm", "Revoke");
-            b.type = "button";
-            b.dataset.revoke = k.id;
-            if (k.admin && admins <= 1) {
-                b.disabled = true;
-                b.title = "The last admin key can't be revoked: create another admin key first";
-            }
-            b.addEventListener("click", () => void revoke(k));
-            act.append(b);
-        }
+        act.append(b);
         tr.append(act);
         body.append(tr);
     }
+    // Revoked keys fold away under "Show revoked (N)"; open or shut stays as the user left it.
+    $("keys_revoked_rows").replaceChildren(...revoked.map((k) => {
+        const tr = keyRow(k);
+        tr.append(el("td", "act", keyTime(k.revoked)));
+        return tr;
+    }));
+    $("keys_revoked").hidden = revoked.length === 0;
+    $("keys_revoked_sum").textContent = `Show revoked (${revoked.length})`;
     const empty = $("keys_empty");
-    empty.hidden = keys.length > 0;
-    empty.textContent = "No keys yet.";
+    empty.hidden = active.length > 0;
+    empty.textContent = revoked.length ? "No active keys." : "No keys yet.";
 }
 async function create() {
     const name = $("keys_name").value.trim();
