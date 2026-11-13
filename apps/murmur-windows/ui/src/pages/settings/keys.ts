@@ -6,7 +6,7 @@
 
 import { $, askDialog, el, setStatus } from "../../lib/dom.js";
 import { invoke } from "../../lib/ipc.js";
-import { at, keyDetails, lastUsed, splitKeys } from "../../lib/key-rows.js";
+import { keyDetails, keyTime, lastUsed, splitKeys } from "../../lib/key-rows.js";
 import { group, heading, row, toggle } from "../../lib/markup.js";
 import { router, type Page } from "../../lib/router.js";
 import type { AdminStatus, CreatedKey, KeyList, KeyView } from "../../lib/types.js";
@@ -195,7 +195,7 @@ function render(keys: KeyView[]): void {
   $<HTMLElement>("keys_revoked_rows").replaceChildren(
     ...revoked.map((k) => {
       const tr = keyRow(k);
-      tr.append(el("td", "act", at(k.revoked)));
+      tr.append(el("td", "act", keyTime(k.revoked)));
       return tr;
     }),
   );

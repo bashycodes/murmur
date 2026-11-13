@@ -9,28 +9,27 @@ export function splitKeys(keys) {
     };
 }
 /** A server timestamp (seconds) in the table's one date format. */
-export const at = (secs) => (secs ? dateTime(secs * 1000) : "Never");
-/**
- * The Last used cell. A key used before the server tracked last use has
- * counts but no time: "—" rather than a made-up date.
- */
+export const keyTime = (secs) => (secs ? dateTime(secs * 1000) : "Never");
+/** Used before the server tracked last use: counts but no time. */
+const usedBeforeTracking = (k) => !k.last_used && !!(k.dictations || k.downloads);
+/** The Last used cell: "—" rather than a made-up date for a key used before tracking. */
 export function lastUsed(k) {
-    if (k.last_used)
-        return at(k.last_used);
-    return k.dictations || k.downloads ? "—" : "Never";
+    if (usedBeforeTracking(k))
+        return "—";
+    return keyTime(k.last_used);
 }
 /** Hover text on a key's name: the build it last connected with, then what the table leaves out. */
 export function keyDetails(k) {
-    const lines = [k.client ?? "Not used yet", `Created ${at(k.created)}`];
+    const lines = [k.client ?? "Not used yet", `Created ${keyTime(k.created)}`];
     // Older servers send only `last_seen`, which is last connected.
-    lines.push(`Last connected ${at(k.last_connected ?? k.last_seen)}`);
-    if (!k.last_used && (k.dictations || k.downloads))
+    lines.push(`Last connected ${keyTime(k.last_connected ?? k.last_seen)}`);
+    if (usedBeforeTracking(k))
         lines.push("Last used before the server tracked it");
     lines.push(`Audio ${(k.audio_ms / 60000).toFixed(1)} min`);
     const n = k.downloads ?? 0;
     if (n)
         lines.push(`Model downloads ${n} (${((k.download_bytes ?? 0) / 1e6).toFixed(1)} MB)`);
     if (k.revoked)
-        lines.push(`Revoked ${at(k.revoked)}`);
+        lines.push(`Revoked ${keyTime(k.revoked)}`);
     return lines.join("\n");
 }

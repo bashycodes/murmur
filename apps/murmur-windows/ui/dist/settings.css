@@ -136,6 +136,8 @@ code,
 .lw-settings-body {
   overflow-y: auto;
   padding: 0 48px 48px;
+  /* scrollIntoView lands below the header strip, not under it. */
+  scroll-padding-top: 56px;
 }
 /* A solid header strip in place of the top padding: the page scrolls under
    it, so nothing runs under the close button. */

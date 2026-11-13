@@ -5,7 +5,7 @@
 // clients are user data: always textContent, never markup.
 import { $, askDialog, el, setStatus } from "../../lib/dom.js";
 import { invoke } from "../../lib/ipc.js";
-import { at, keyDetails, lastUsed, splitKeys } from "../../lib/key-rows.js";
+import { keyDetails, keyTime, lastUsed, splitKeys } from "../../lib/key-rows.js";
 import { group, heading, row, toggle } from "../../lib/markup.js";
 import { router } from "../../lib/router.js";
 import { views } from "../../lib/views.js";
@@ -178,7 +178,7 @@ function render(keys) {
     // Revoked keys fold away under "Show revoked (N)"; open or shut stays as the user left it.
     $("keys_revoked_rows").replaceChildren(...revoked.map((k) => {
         const tr = keyRow(k);
-        tr.append(el("td", "act", at(k.revoked)));
+        tr.append(el("td", "act", keyTime(k.revoked)));
         return tr;
     }));
     $("keys_revoked").hidden = revoked.length === 0;
