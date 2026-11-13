@@ -908,6 +908,9 @@ tweak.
    only."). Measure on v5 (cloud stand-in) and v2 (1.5B): negatives,
    instructions-kept, preamble-strip hits, latency. Adopt what helps; record
    a decision.
+   **Done 2026-11-13: rejected (D97).** Shots move ≤ 1 of 22 AI cases; the
+   re-anchor line keeps 19 of 22 (v6: 14) but drops the suite 75 → 72 % (3B)
+   and 74 → 66 % (1.5B); see `2026-11-13-ai-addressed-negatives.md`.
 6. **Command Mode question marker.** Teach both Command Mode prompts to answer
    a fixed marker when the instruction asks about the selection ("what does
    this mean", "explain this") rather than for a change. The shell then shows
