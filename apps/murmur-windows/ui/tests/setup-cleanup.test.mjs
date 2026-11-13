@@ -4,7 +4,8 @@
 // Settings → AI cleanup's switch. Runs on the built dist: `npm test`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { enginesFor, initialCleanup, recommendedCleanup, serverOption, withEngine } from "../dist/lib/setup-cleanup.js";
+import { enginesFor, initialCleanup, recommendedCleanup, serverOption } from "../dist/lib/setup-cleanup.js";
+import { withEngine } from "../dist/lib/cleanup-order.js";
 
 const D36 = [
   { route: "local", enabled: true },

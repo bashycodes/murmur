@@ -41,10 +41,6 @@ export function initialCleanup(saved, serverSaved) {
     }
     return "rules";
 }
-/** The order with `route` switched on or off, the rest unchanged (Settings' switch). */
-export function withEngine(list, route, enabled) {
-    return list.map((e) => (e.route === route ? { ...e, enabled } : { ...e }));
-}
 /**
  * The cleanup order a setup choice saves, or null when it stays as it is.
  * Your server: its switch on and first, so it cleans before this PC (which
@@ -52,12 +48,11 @@ export function withEngine(list, route, enabled) {
  * server was first. Rules and Cloud keep the order (Cloud saves its own).
  */
 export function enginesFor(choice, list) {
-    const first = (r, on) => {
-        const e = list.find((x) => x.route === r) ?? { route: r, enabled: true };
-        return [{ ...e, enabled: on ?? e.enabled }, ...list.filter((x) => x.route !== r).map((x) => ({ ...x }))];
-    };
     if (choice === "server") {
-        const next = first("server", true);
+        const next = [
+            { route: "server", enabled: true },
+            ...list.filter((x) => x.route !== "server").map((x) => ({ ...x })),
+        ];
         return same(next, list) ? null : next;
     }
     if (choice === "pc") {
@@ -65,7 +60,7 @@ export function enginesFor(choice, list) {
         const si = list.findIndex((e) => e.route === "server");
         if (li < 0 || si < 0 || li < si)
             return null;
-        const next = [...list.map((e) => ({ ...e }))];
+        const next = list.map((e) => ({ ...e }));
         const [local] = next.splice(li, 1);
         next.splice(si, 0, local);
         return next;
