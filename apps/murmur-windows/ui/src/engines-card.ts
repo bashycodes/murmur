@@ -23,6 +23,8 @@ let llm: Load = { state: "off" };
 const DOT: Record<string, string> = {
   ready: "var(--success-500)",
   loading: "var(--warning-400)",
+  // Not loaded, loaded when needed (D24).
+  idle: "var(--toggle-border)",
   missing: "var(--destructive-500)",
   failed: "var(--destructive-500)",
   plugin_missing: "var(--destructive-500)",

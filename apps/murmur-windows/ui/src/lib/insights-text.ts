@@ -2,11 +2,13 @@
 // key, the heatmap legend, the streak pair, and backend ISO days in the
 // app's date format. Tested in tests/insights-text.test.mjs.
 
+import { ENGINE_LABEL } from "./setup-engine.js";
+
 /** Where speech was turned into text (`history::route_label`). */
 export type Route = "pc" | "server" | "cloud";
 
 export const ROUTES: Route[] = ["pc", "server", "cloud"];
-export const ROUTE_LABEL: Record<Route, string> = { pc: "This PC", server: "Your server", cloud: "Cloud" };
+export const ROUTE_LABEL: Record<Route, string> = ENGINE_LABEL;
 
 /** Dictations per route (`InsightsView.routes_7d`). */
 export type RouteCounts = Record<Route | "unknown", number>;

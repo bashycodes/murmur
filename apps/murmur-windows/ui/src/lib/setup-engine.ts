@@ -5,6 +5,9 @@
 
 export type SetupEngine = "pc" | "server" | "cloud";
 
+/** Each engine in the app's words (setup, Insights, the re-run line). */
+export const ENGINE_LABEL: Record<SetupEngine, string> = { pc: "This PC", server: "Your server", cloud: "Cloud" };
+
 /** What setup knows about the build and the saved settings. */
 export interface EngineFacts {
   /** The build has this engine. */

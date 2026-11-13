@@ -12,13 +12,9 @@ import { prefsStore, type Prefs } from "../lib/prefs-store.js";
 import type { Feature } from "../lib/router.js";
 import { hebrewChosen, hebrewReady, mb, models, type CatalogEntry } from "./models.js";
 import { pcModelChip, pcModelEntry } from "../lib/model-pages.js";
+import type { ModelStatus } from "../lib/types.js";
 import { setTheme } from "../lib/theme.js";
 
-type ModelStatus =
-  | { state: "loading"; path: string }
-  | { state: "ready"; path: string; load_ms: number }
-  | { state: "missing"; path: string; engine?: string }
-  | { state: "failed"; path: string; message: string };
 
 export interface ModelInfo {
   status: ModelStatus;

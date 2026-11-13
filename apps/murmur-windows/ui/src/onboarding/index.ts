@@ -6,26 +6,27 @@
 // (dev_set through the dev store, prefs through the prefs store,
 // dev_cloud_set_key / dev_or_set_* for OpenRouter); Finish sets
 // onboarded = true. Nothing downloads by itself (D9/D31): the model step
-// points the app at files the user already has, or downloads a catalogue
-// model after the user pressed Download and confirmed it (3a/3b, through
-// features/models.ts), from the user's server or Hugging Face ("Download
-// from", D79; picking Your server with none saved shows step 2's server
-// fields right there). Step 4 offers the same for the cleanup model, and
-// "Your server" (D36 server cleanup, lib/setup-cleanup.ts) once a server
-// is saved. With
-// speech on the server the step is optional ("Skip — use my server only").
-// A server test or an OpenRouter key/consent happens only on the user's
-// own click.
+// (only when speech runs on this PC, lib/setup-model.ts) offers one
+// recommended model and "More languages ▸", each with its state, and
+// downloads one after the user pressed Download and confirmed it (3a/3b,
+// through features/models.ts); files of the user's own and "Download from"
+// (D79) are set in Settings → Speech to text. Step 4 offers "Download from"
+// for the cleanup model (picking Your server with none saved shows step 2's
+// server fields right there), and "Your server" (D36 server cleanup,
+// lib/setup-cleanup.ts) once a server is saved. A server test or an
+// OpenRouter key/consent happens only on the user's own click.
 
 import { downloadSource, hasServer, mb, models, pickPath, progressLine, recommendedLlm, setDownloadSource, type CatalogEntry } from "../features/models.js";
 import { devStore } from "../lib/dev-store.js";
 import { $, el, html } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { captureChord, stopCapture } from "../lib/keycapture.js";
-import { modelStepFoot, sourceHint, sourceView, type ModelSource, type SourceView } from "../lib/model-source.js";
+import { sourceHint, sourceView, type ModelSource, type SourceView } from "../lib/model-source.js";
 import { prefsStore, type Prefs } from "../lib/prefs-store.js";
+import { chip, fileState, initialModel, PARAKEET_TITLE, setupSteps, whisperRow, type FileState, type SetupStep, type SpeechRow, type WhisperRow } from "../lib/setup-model.js";
+import { changesLine, savedEngine, setupChanges, STEP_OF, type Labels, type SetupChange, type SetupConfig, type SpeechModel } from "../lib/setup-diff.js";
 import { pillLine, readinessErrorLine, readinessLine, RECHECK_MS, type PillState, type Readiness, type TryLine, type TryLineSource } from "../lib/setup-try.js";
-import type { DevForm, DevView, FieldError, Health, KeyState, OrView, Route, RouteView } from "../lib/types.js";
+import type { CleanupEngine, DevForm, DevView, FieldError, Health, KeyState, ModelStatus, OrView, Route, RouteView } from "../lib/types.js";
 import { initialEngine, recommendedEngine } from "../lib/setup-engine.js";
 import { cloudMissingLine, enginesFor, initialCleanup, recommendedCleanup, serverOption, type ServerFacts, type SetupCleanup } from "../lib/setup-cleanup.js";
 import { views } from "../lib/views.js";
@@ -33,13 +34,8 @@ import { engines as cleanupEngines, pollCleanupStatus } from "../features/ai.js"
 import { TEMPLATE } from "./templates.js";
 
 type Engine = "pc" | "server" | "cloud";
-type Step = "welcome" | "engine" | "model" | "cleanup" | "try";
+type Step = SetupStep;
 
-interface ModelStatus {
-  state: "loading" | "ready" | "missing" | "failed";
-  path: string;
-  message?: string;
-}
 interface LlmStatus {
   state: string;
   path?: string;
@@ -55,18 +51,14 @@ interface ModelInfo {
 }
 
 const ENGINE_ROUTE: Record<Engine, Route> = { pc: "client", server: "server", cloud: "cloud" };
-const ENGINE_OF: Record<Route, Engine> = { client: "pc", server: "server", cloud: "cloud" };
 const SAMPLE: Record<SetupCleanup, string> = {
   rules: "So lunch is Thursday.",
   pc: "Lunch is on Thursday.",
   server: "Lunch is on Thursday.",
   cloud: "Lunch is on Thursday.",
 };
-/** The catalogue model behind each row (model_catalog ids). */
-const CATALOG_ID: Record<"parakeet" | "whisper", string> = {
-  parakeet: "parakeet-tdt-0.6b-v2-int8",
-  whisper: "whisper-base",
-};
+/** The recommended speech model (model_catalog id). */
+const PARAKEET_ID = "parakeet-tdt-0.6b-v2-int8";
 
 const st = {
   step: "welcome" as Step,
@@ -88,7 +80,27 @@ const st = {
   busy: false,
   /** "Download from" as picked on this run (null = as the backend has it). */
   pick: null as ModelSource | null,
+  /** Step 3's picked row (preselected: the model in use). */
+  modelPick: "parakeet" as SpeechRow,
+  /** Step 3's "More languages" is open. */
+  moreOpen: false,
+  /** A re-run (setup was finished before): the settings it opened with (null: a first run). */
+  rerunSnapshot: null as Before | null,
+  /** Server tokens saved on this run (D95 says "Server token replaced"; the token is never read back). */
+  tokenSaves: 0,
 };
+
+/**
+ * The saved settings a re-run opened with (D95): its choices as setup names
+ * them, and the values Keep puts back for a choice that changed.
+ */
+interface Before {
+  cfg: SetupConfig;
+  dev: Pick<DevForm, "allow_client" | "allow_server" | "route_order">;
+  stt: OrView["stt"] | null;
+  cleanup: { allow: boolean; consent: boolean; engines: CleanupEngine[] } | null;
+  prefs: Partial<Prefs>;
+}
 let onDone: () => void = () => {};
 
 // ------------------------------------------------------------ capabilities
@@ -127,9 +139,9 @@ function savedCleanup(): SetupCleanup {
   return hasCleanup(c) ? c : "rules";
 }
 
-/** Steps shown in this build: no model step in a build without engines on this PC. */
+/** Steps shown: the model step only with speech on this PC (and a build that has it). */
 function steps(): Step[] {
-  return has("pc") ? ["welcome", "engine", "model", "cleanup", "try"] : ["welcome", "engine", "cleanup", "try"];
+  return setupSteps(has("pc"), st.engine);
 }
 
 // ------------------------------------------------------------ helpers
@@ -214,6 +226,7 @@ function renderEngine(): void {
   placeServerForm();
   $<HTMLElement>("ob_cloud_detail").hidden = st.engine !== "cloud";
   $<HTMLElement>("ob_engine_hint").textContent = "";
+  showCounter();
 }
 
 async function testServer(): Promise<void> {
@@ -240,7 +253,9 @@ async function saveServer(patch: Partial<DevForm>): Promise<boolean> {
     return false;
   }
   try {
-    await devStore.save({ ...patch, host, token: $<HTMLInputElement>("ob_token").value.trim() });
+    const token = $<HTMLInputElement>("ob_token").value.trim();
+    await devStore.save({ ...patch, host, token });
+    if (token) st.tokenSaves += 1;
     $<HTMLInputElement>("ob_token").value = "";
     return true;
   } catch (e) {
@@ -255,15 +270,15 @@ async function saveServer(patch: Partial<DevForm>): Promise<boolean> {
   }
 }
 
-/** "Connect" on steps 3/4: save the server (downloads only; speech keeps its route), then test it. */
+/** "Connect" on step 4: save the server (downloads only; speech keeps its route), then test it. */
 async function connectServer(): Promise<void> {
   if (await saveServer({})) await testServer();
 }
 
-/** Step 2's server fields live on step 2, or on step 3/4 while "Your server" is picked with none saved. */
+/** Step 2's server fields live on step 2, or on step 4 while "Your server" is picked with none saved. */
 function placeServerForm(): void {
   const form = $<HTMLElement>("ob_server_detail");
-  const here = st.step === "model" || st.step === "cleanup" ? st.step : "engine";
+  const here = st.step === "cleanup" ? st.step : "engine";
   const slot = document.querySelector<HTMLElement>(`#onboarding [data-ob-server-slot="${here}"]`);
   if (slot && form.parentElement !== slot) slot.append(form);
   form.hidden = here === "engine" ? st.engine !== "server" : !srcView().serverForm;
@@ -275,7 +290,7 @@ function placeServerForm(): void {
 
 /**
  * "I already have a server ▸": on step 2 the address and token sit behind it
- * (open when one is saved); on steps 3/4 they are what the form is for.
+ * (open when one is saved); on step 4 they are what the form is for.
  */
 function renderServerFold(onEngineStep: boolean): void {
   const more = $<HTMLButtonElement>("ob_server_more");
@@ -290,6 +305,7 @@ function renderServerFold(onEngineStep: boolean): void {
 async function applyEngine(): Promise<boolean> {
   const dev = views.dev;
   if (!dev) return true;
+  if (engineKept()) return true;
   const order: Route[] = [ENGINE_ROUTE[st.engine], ...dev.form.route_order.filter((r) => r !== ENGINE_ROUTE[st.engine])];
   if (st.engine === "pc") {
     // An unset server would only add a "not set up" warning.
@@ -321,83 +337,125 @@ async function applyEngine(): Promise<boolean> {
 
 // ------------------------------------------------------------ step: model
 
-function activeModel(): "parakeet" | "whisper" {
+function activeModel(): SpeechRow {
   return prefsStore.get()?.asr_engine === "parakeet" ? "parakeet" : "whisper";
 }
 
+/** The Whisper row: the model the prefs' file stands for. */
+function whisper(): WhisperRow {
+  return whisperRow(prefsStore.get()?.model_path, models.catalog());
+}
+
+/** The catalogue model behind a row (the Whisper row follows the prefs' file). */
+function rowEntry(id: SpeechRow, w: WhisperRow = whisper()): CatalogEntry | undefined {
+  if (id === "parakeet") return models.entry(PARAKEET_ID);
+  return w.id ? models.entry(w.id) : undefined;
+}
+
+/**
+ * Whether the row's model is on this PC: the one in use as the backend
+ * found its file, else the catalogue's `installed`. A file nothing knows
+ * about (the backend said nothing, no catalogue entry) is "unknown": never
+ * shown Installed or saved on a guess.
+ */
+function rowFile(id: SpeechRow, e: CatalogEntry | undefined): FileState {
+  const known = id === activeModel() ? fileState(st.model) : "unknown";
+  if (known !== "unknown") return known;
+  return e ? (e.installed ? "present" : "missing") : "unknown";
+}
+
+/** Percent of a running download (or check) of `e`, else null. */
+function downloadPct(e: CatalogEntry | undefined): number | null {
+  if (!e || !models.busy(e.id)) return null;
+  const p = models.progress(e.id);
+  return p?.total ? Math.round((p.received / p.total) * 100) : 0;
+}
+
+function pickModelRow(id: SpeechRow): void {
+  st.modelPick = id;
+  renderModel();
+}
+
 function renderModel(): void {
-  const needed = st.engine === "pc";
-  const onServer = st.engine === "server";
-  $<HTMLElement>("ob_model_optional").hidden = needed;
-  const dl = models.canDownload();
-  $<HTMLElement>("ob_model_lead").textContent = onServer
-    ? "The model is the part that listens. This PC uses it whenever your server can't be reached. We download it once, from your server or from Hugging Face, or you can add the file yourself."
-    : !needed
-      ? "Your choice does the listening. A model on this PC keeps dictation working when it can't be reached. You can skip this."
-      : dl
-        ? "The model is the part that listens. We can download it for you once, from your server or from Hugging Face, or you can add the file yourself."
-        : "The model is the part that listens. Get it once from where its makers publish it, then tell Murmur where it is.";
-  $<HTMLElement>("ob_model_note").textContent = dl
-    ? "A download only fetches the file. Nothing about you or your voice is sent. Every file is checked against its SHA-256 fingerprint before it's used, wherever it came from."
-    : "Murmur never downloads anything by itself. Your voice is turned into text by the model on this PC.";
-  const v = renderSource("model", dl);
-  $<HTMLElement>("ob_model_links").hidden = !v.hfLinks;
-  const p = prefsStore.get();
-  if (p) {
-    const pk = $<HTMLInputElement>("ob_parakeet_dir");
-    const wh = $<HTMLInputElement>("ob_whisper_path");
-    if (document.activeElement !== pk) pk.value = p.parakeet_model_dir ?? "";
-    if (document.activeElement !== wh) wh.value = p.model_path ?? "";
-  }
-  if (st.info) {
-    $<HTMLElement>("ob_models_dir").textContent = st.info.models_dir;
-    $<HTMLInputElement>("ob_parakeet_dir").placeholder = st.info.default_parakeet_dir;
-    $<HTMLInputElement>("ob_whisper_path").placeholder = st.info.default_path;
-  }
-  const active = activeModel();
-  const m = st.model;
+  const w = whisper();
+  const other = $<HTMLElement>("ob_model_other");
+  const more = $<HTMLButtonElement>("ob_model_more");
+  // The Whisper row picked (a re-run with Whisper in use) keeps "More languages" open.
+  if (st.modelPick === "whisper") st.moreOpen = true;
+  other.hidden = !st.moreOpen;
+  more.setAttribute("aria-expanded", String(st.moreOpen));
+  (more.querySelector(".lw-ob-chev") as HTMLElement).textContent = st.moreOpen ? "▾" : "▸";
+  let picked = { installed: false, busy: false, canDownload: false, why: "" };
   for (const r of document.querySelectorAll<HTMLElement>("#onboarding [data-ob-model]")) {
-    const id = r.dataset.obModel;
-    const on = id === active;
+    const id = r.dataset.obModel as SpeechRow;
+    const e = rowEntry(id, w);
+    const on = id === st.modelPick;
     r.classList.toggle("is-on", on);
+    r.setAttribute("aria-checked", String(on));
     (r.querySelector("[data-ob-rec]") as HTMLElement).hidden = id !== "parakeet";
-    const badge = r.querySelector<HTMLElement>("[data-ob-model-badge]") as HTMLElement;
-    const line = r.querySelector<HTMLElement>("[data-ob-model-status]") as HTMLElement;
-    const use = r.querySelector<HTMLButtonElement>("[data-ob-use]") as HTMLButtonElement;
-    use.textContent = on ? "Check again" : "Use";
-    renderDownload(r, id as "parakeet" | "whisper", v);
-    badge.hidden = !on || !m;
-    line.textContent = "";
-    line.className = "lw-ob-model-status";
-    if (!on || !m) continue;
-    const [text, kind, desc] =
-      m.state === "ready"
-        ? ["Ready", "success", `Found and loaded: ${m.path}`]
-        : m.state === "loading"
-          ? ["Loading", "light", `Loading ${m.path}…`]
-          : m.state === "missing"
-            ? ["Not found", "warning", `Nothing at ${m.path}.`]
-            : ["Failed", "destructive", `Could not load ${m.path}: ${m.message ?? ""}`];
-    badge.textContent = text;
-    badge.className = `fl-badge fl-badge-${kind}`;
-    line.textContent = desc;
-    line.classList.add(m.state === "ready" ? "ok" : m.state === "loading" ? "hint" : "err");
+    (r.querySelector("[data-ob-model-title]") as HTMLElement).textContent = id === "parakeet" ? PARAKEET_TITLE : w.title;
+    const size = e ? `${mb(e.size)} · ` : "";
+    (r.querySelector("[data-ob-model-desc]") as HTMLElement).textContent =
+      id === "parakeet" ? `${size}English only, the quickest` : `${size}Many languages${e ? "" : " · your own file"}`;
+    const pct = downloadPct(e);
+    const file = rowFile(id, e);
+    const installed = file === "present";
+    const c = chip(file, pct);
+    const badge = r.querySelector<HTMLElement>("[data-ob-chip]") as HTMLElement;
+    badge.hidden = !c;
+    badge.textContent = c?.text ?? "";
+    badge.className = `fl-badge fl-badge-${c?.kind ?? "light"}`;
+    badge.dataset.state = c?.state ?? "unknown";
+    const busy = pct !== null;
+    const canStart = !!e && models.canStart(e);
+    const dl = r.querySelector<HTMLButtonElement>("[data-ob-dl]") as HTMLButtonElement;
+    dl.hidden = installed || busy || !canStart;
+    dl.disabled = models.busy();
+    dl.textContent = e && models.progress(e.id)?.state === "error" ? "Try again" : "Download";
+    (r.querySelector("[data-ob-dl-cancel]") as HTMLElement).hidden = !busy;
+    renderProgress(
+      r.querySelector("[data-ob-dl-box]") as HTMLElement,
+      r.querySelector("[data-ob-dl-bar]") as HTMLElement,
+      r.querySelector("[data-ob-dl-line]") as HTMLElement,
+      e,
+      busy,
+    );
+    if (on) {
+      const why =
+        installed || busy || canStart
+          ? ""
+          : e && models.notOnServer(e)
+            ? "Your server doesn't have this model. After setup, download it from the internet in Settings → Speech to text."
+            : "This version of Murmur can't download it. Add the file after setup in Settings → Speech to text.";
+      picked = { installed, busy, canDownload: canStart, why };
+    }
   }
-  const downloading = models.busy();
-  const foot = modelStepFoot({ needed, serverEngine: onServer, ready: !!m && (m.state === "ready" || m.state === "loading"), busy: downloading });
+  const m = st.model;
+  const failed = m?.state === "failed" && st.modelPick === activeModel();
+  status("ob_model_status", failed ? `It didn't load: ${m?.message ?? ""}` : picked.why, failed ? false : undefined);
+  // Continue once the picked model is there or downloading. One this setup
+  // can't fetch is added in Settings, so setup never gets stuck here.
   const next = nextBtn("model");
-  next.hidden = foot.next === "hidden";
-  next.disabled = foot.next === "disabled";
-  $<HTMLElement>("ob_model_skip").hidden = !foot.skip;
-  $<HTMLElement>("ob_model_hint").textContent = foot.next === "disabled"
-    ? "Add a speech model to continue"
-    : foot.next === "hidden"
-      ? ""
-      : downloading
+  next.disabled = !picked.installed && !picked.busy && picked.canDownload;
+  $<HTMLElement>("ob_model_hint").textContent = next.disabled
+    ? "Download it to continue"
+    : picked.busy
       ? "You can carry on. It finishes in the background."
-      : m?.state === "loading"
-        ? "You can carry on. It finishes loading in the background."
-        : "";
+      : "";
+}
+
+/** Continue on the model step: the picked model becomes the one in use (a download sets it when done). */
+async function applyModel(): Promise<boolean> {
+  const pick = st.modelPick;
+  if (pick === activeModel() || rowFile(pick, rowEntry(pick)) !== "present") return true;
+  try {
+    await prefsStore.save({ asr_engine: pick });
+    st.model = (await invoke<ModelInfo>("get_model_status")).status;
+    return true;
+  } catch (e) {
+    status("ob_model_status", errText(e), false);
+    return false;
+  }
 }
 
 /** "Download from" over where downloads come from (the backend's catalogue). */
@@ -405,10 +463,10 @@ function srcView(): SourceView {
   return sourceView({ pick: st.pick, effective: downloadSource(), remote: !!views.dev?.caps.remote, serverSet: hasServer() });
 }
 
-/** Step 3/4's "Download from: Your server | Hugging Face" (D79) and the server fields under it. */
-function renderSource(step: "model" | "cleanup", dl: boolean): SourceView {
+/** Step 4's "Download from: Your server | Hugging Face" (D79) and the server fields under it. */
+function renderSource(dl: boolean): SourceView {
   const v = srcView();
-  const box = panel(step).querySelector<HTMLElement>("[data-ob-src-box]") as HTMLElement;
+  const box = panel("cleanup").querySelector<HTMLElement>("[data-ob-src-box]") as HTMLElement;
   box.hidden = !dl && !v.serverButton;
   for (const b of box.querySelectorAll<HTMLButtonElement>("[data-ob-src]")) {
     const on = b.dataset.obSrc === v.shown;
@@ -435,70 +493,14 @@ function renderProgress(box: HTMLElement, bar: HTMLElement, line: HTMLElement, e
   line.textContent = progressLine(p, e);
 }
 
-/** "Your server doesn't have this one" description of a catalogue model. */
-const missingDesc = (e: CatalogEntry): string =>
-  `${e.desc} · ${mb(e.size)}. Your server doesn't have this one. Ask whoever runs it to add it, or switch to Hugging Face.`;
-
-/** A row's Download / Cancel buttons and progress (3b). */
-function renderDownload(r: HTMLElement, id: "parakeet" | "whisper", v: SourceView): void {
-  const e = models.entry(CATALOG_ID[id]);
-  const p = e ? models.progress(e.id) : undefined;
-  const busy = !!e && models.busy(e.id);
-  const dl = r.querySelector<HTMLButtonElement>("[data-ob-dl]") as HTMLButtonElement;
-  const cancel = r.querySelector<HTMLButtonElement>("[data-ob-dl-cancel]") as HTMLButtonElement;
-  const use = r.querySelector<HTMLButtonElement>("[data-ob-use]") as HTMLButtonElement;
-  const box = r.querySelector<HTMLElement>("[data-ob-dl-box]") as HTMLElement;
-  const bar = r.querySelector<HTMLElement>("[data-ob-dl-bar]") as HTMLElement;
-  const line = r.querySelector<HTMLElement>("[data-ob-dl-line]") as HTMLElement;
-  const desc = r.querySelector<HTMLElement>("[data-ob-model-desc]") as HTMLElement;
-  const missing = models.notOnServer(e) && !e?.installed;
-  if (e) {
-    const what = e.files.length > 1 ? `a folder of ${mb(e.size)}` : `a ${mb(e.size)} file`;
-    desc.textContent = missing ? missingDesc(e) : `${e.desc} · ${what}${e.installed ? " · downloaded and checked" : ""}`;
-  }
-  (r.querySelector("[data-ob-missing]") as HTMLElement).hidden = !missing || busy;
-  dl.hidden = !e || !v.downloads || !models.canStart(e) || e.installed || busy;
-  dl.disabled = models.busy();
-  dl.textContent = p?.state === "error" ? "Try again" : "Download";
-  cancel.hidden = !busy;
-  use.hidden = busy;
-  renderProgress(box, bar, line, e, busy);
-}
-
-/** "Choose folder" / "Choose file": the native picker, then Use it. */
-async function pickModel(id: "parakeet" | "whisper" | "llm"): Promise<void> {
+/** "Choose file" for the cleanup model: the native picker fills the field. */
+async function pickLlm(): Promise<void> {
   try {
-    const p =
-      id === "parakeet"
-        ? await pickPath("folder", "Choose the Parakeet model folder")
-        : id === "whisper"
-          ? await pickPath("file", "Choose a Whisper model", [{ name: "Whisper model (ggml)", pattern: "*.bin" }, { name: "All files", pattern: "*.*" }])
-          : await pickPath("file", "Choose an AI cleanup model", [{ name: "GGUF model", pattern: "*.gguf" }, { name: "All files", pattern: "*.*" }]);
-    if (!p) return;
-    if (id === "llm") {
-      $<HTMLInputElement>("ob_llm_path").value = p;
-      return;
-    }
-    $<HTMLInputElement>(id === "parakeet" ? "ob_parakeet_dir" : "ob_whisper_path").value = p;
-    await useModel(id);
+    const p = await pickPath("file", "Choose an AI cleanup model", [{ name: "GGUF model", pattern: "*.gguf" }, { name: "All files", pattern: "*.*" }]);
+    if (p) $<HTMLInputElement>("ob_llm_path").value = p;
   } catch (e) {
     console.error("pick_path", e);
   }
-}
-
-/** "Use": save the engine + its location; the app reloads the model and reports model:status. */
-async function useModel(id: "parakeet" | "whisper"): Promise<void> {
-  const patch: Partial<Prefs> =
-    id === "parakeet"
-      ? { asr_engine: "parakeet", parakeet_model_dir: $<HTMLInputElement>("ob_parakeet_dir").value.trim() || null }
-      : { asr_engine: "whisper", model_path: $<HTMLInputElement>("ob_whisper_path").value.trim() || null };
-  try {
-    await prefsStore.save(patch);
-    st.model = (await invoke<ModelInfo>("get_model_status")).status;
-  } catch (e) {
-    st.model = { state: "failed", path: "", message: String(e) };
-  }
-  renderModel();
 }
 
 // ------------------------------------------------------------ step: cleanup
@@ -582,7 +584,7 @@ function llmEntry(): CatalogEntry | undefined {
 /** Step 4's "Download from" and Download row for the cleanup model (D79), as on step 3. */
 function renderLlmDownload(): void {
   const e = llmEntry();
-  const v = renderSource("cleanup", !!e?.available);
+  const v = renderSource(!!e?.available);
   $<HTMLElement>("ob_llm_hf").hidden = !v.hfLinks;
   const row = $<HTMLElement>("ob_llm_dl");
   row.hidden = !e;
@@ -605,6 +607,7 @@ function renderLlmDownload(): void {
 
 /** Re-draw the open step after the server, the catalogue or a download changed. */
 function rerender(): void {
+  if (st.step === "try") renderSummary();
   if (st.step === "model") renderModel();
   else if (st.step === "engine") placeServerForm();
   else if (st.step === "cleanup") {
@@ -682,6 +685,7 @@ function cleanupForm(allow: boolean, consent: boolean): Record<string, unknown> 
 async function applyCleanup(): Promise<boolean> {
   const p = prefsStore.get();
   if (!p) return true;
+  if (cleanupKept()) return true;
   const level = p.cleanup_level === "none" ? "light" : p.cleanup_level;
   // Read before the saves below: each one redraws the step from the saved prefs.
   const llmPath = $<HTMLInputElement>("ob_llm_path").value.trim() || null;
@@ -855,16 +859,20 @@ function pressLine(line: TryLine): void {
 
 // ------------------------------------------------------------ navigation
 
+/** "Step n of N" on the open step (N follows step 2's pick: no model step off this PC). */
+function showCounter(): void {
+  const list = steps();
+  const over = panel(st.step).querySelector<HTMLElement>(".lw-ob-head .fl-overline");
+  if (over) over.textContent = `Step ${list.indexOf(st.step) + 1} of ${list.length}`;
+}
+
 function show(s: Step): void {
   st.step = s;
   for (const p of document.querySelectorAll<HTMLElement>("#onboarding [data-ob-step]")) p.hidden = p.dataset.obStep !== s;
   const scroller = panel(s).querySelector<HTMLElement>("[data-ob-scroll]");
   if (scroller) scroller.scrollTop = 0;
-  const list = steps();
-  const n = list.indexOf(s) + 1;
-  const over = panel(s).querySelector<HTMLElement>(".fl-overline");
-  if (over) over.textContent = `Step ${n} of ${list.length}`;
   if (s === "engine") renderEngine();
+  else showCounter();
   if (s === "model") {
     renderModel();
     // A fresh listing for "Not on your server" each time the step opens.
@@ -884,6 +892,7 @@ function show(s: Step): void {
     st.line = "none";
     $<HTMLElement>("ob_result").hidden = true;
     void checkReady();
+    renderSummary();
     $<HTMLTextAreaElement>("ob_try_box").focus();
   }
   panel(s).querySelector<HTMLElement>('[data-ob="next"]')?.focus({ preventScroll: true });
@@ -901,6 +910,7 @@ async function next(): Promise<void> {
       $<HTMLElement>("ob_engine_hint").textContent = errText(e);
       return false;
     });
+    if (st.step === "model") ok = await applyModel();
     if (st.step === "cleanup") ok = await applyCleanup();
     if (!ok) return;
     if (st.step === "try") {
@@ -924,13 +934,6 @@ function pickSource(src: ModelSource): void {
   void setDownloadSource(src).catch((err) => console.error("model_source", err));
 }
 
-/** "Skip — use my server only": on to the next step with no model on this PC. */
-function skipModel(): void {
-  if (st.step !== "model") return;
-  const list = steps();
-  show(list[list.indexOf("model") + 1]);
-}
-
 function back(): void {
   const list = steps();
   const i = list.indexOf(st.step);
@@ -948,21 +951,175 @@ async function finish(): Promise<void> {
   onDone();
 }
 
+// ------------------------------------------------------------ re-run: what Finish changes (D95)
+
+/** The engine the saved settings would use first (an address counts trimmed, as everywhere). */
+function savedSpeech(): Engine | null {
+  const dev = views.dev?.form;
+  if (!dev) return null;
+  return savedEngine({ route_order: dev.route_order, allow_client: dev.allow_client, allow_server: dev.allow_server, host: dev.host, cloudStt: !!views.or?.stt.allow });
+}
+
+/** Names for the line only; choices are compared as saved. */
+const LABELS: Labels = {
+  modelName: (m: SpeechModel) => (m.asr_engine === "parakeet" ? PARAKEET_TITLE : whisperRow(m.model_path, models.catalog()).title),
+};
+
+/** Setup's choices as the saved settings have them now. */
+function savedConfig(): SetupConfig {
+  const p = prefsStore.get();
+  return {
+    engine: savedSpeech(),
+    host: views.dev?.form.host.trim() ?? "",
+    tokenSaves: st.tokenSaves,
+    model: has("pc") && p ? { asr_engine: p.asr_engine, model_path: p.model_path, parakeet_model_dir: p.parakeet_model_dir } : null,
+    source: p?.model_source ?? "",
+    cleanup: savedCleanup(),
+    llmPath: p?.llm_model_path ?? null,
+    ptt: p?.shortcuts.ptt || "Right Alt",
+    mic: p?.microphone ?? null,
+  };
+}
+
+async function snapshot(): Promise<Before> {
+  const dev = views.dev?.form;
+  const or = views.or;
+  const p = prefsStore.get();
+  // The saved server (address and token) is kept by the backend, so Keep can put it back without the token ever reaching this page.
+  if (has("server")) await invoke("setup_server_snapshot").catch((e) => console.error("setup_server_snapshot", e));
+  return {
+    cfg: savedConfig(),
+    dev: { allow_client: !!dev?.allow_client, allow_server: !!dev?.allow_server, route_order: [...(dev?.route_order ?? [])] },
+    stt: or?.supported ? { ...or.stt } : null,
+    cleanup: or?.supported ? { allow: or.cleanup.allow, consent: cloudConsent(), engines: cleanupEngines().map((e) => ({ ...e })) } : null,
+    prefs: p
+      ? {
+          asr_engine: p.asr_engine,
+          model_path: p.model_path,
+          parakeet_model_dir: p.parakeet_model_dir,
+          model_source: p.model_source,
+          llm_enabled: p.llm_enabled,
+          cleanup_level: p.cleanup_level,
+          spoken_cleanup: p.spoken_cleanup,
+          raw_mode: p.raw_mode,
+          llm_model_path: p.llm_model_path,
+          shortcuts: { ...p.shortcuts },
+          microphone: p.microphone,
+        }
+      : {},
+  };
+}
+
+/** Step 2 on a re-run with the saved engine still picked and nothing new typed: Continue saves nothing. */
+function engineKept(): boolean {
+  const b = st.rerunSnapshot;
+  if (!b || st.engine !== b.cfg.engine) return false;
+  if (st.engine === "server") {
+    return $<HTMLInputElement>("ob_host").value.trim() === (views.dev?.form.host.trim() ?? "") && !$<HTMLInputElement>("ob_token").value.trim();
+  }
+  if (st.engine === "cloud") return !$<HTMLInputElement>("ob_stt_key").value.trim() && $<HTMLInputElement>("ob_stt_consent").checked;
+  return true;
+}
+
+/** Step 4 on a re-run with the saved option still picked (and, on this PC, the same model file): Continue saves nothing. */
+function cleanupKept(): boolean {
+  const b = st.rerunSnapshot;
+  if (!b || st.cleanup !== b.cfg.cleanup) return false;
+  if (st.cleanup === "pc") return ($<HTMLInputElement>("ob_llm_path").value.trim() || null) === (prefsStore.get()?.llm_model_path ?? null);
+  if (st.cleanup === "cloud") return $<HTMLInputElement>("ob_clean_consent").checked;
+  return true;
+}
+
+function changes(): SetupChange[] {
+  return st.rerunSnapshot ? setupChanges(st.rerunSnapshot.cfg, savedConfig(), LABELS) : [];
+}
+
+/** Step 5 on a re-run: the line saying what Finish leaves changed, with Keep / Change. */
+function renderSummary(): void {
+  const box = $<HTMLElement>("ob_summary");
+  box.hidden = !st.rerunSnapshot;
+  if (!st.rerunSnapshot) return;
+  const list = changes();
+  $<HTMLElement>("ob_summary_text").textContent = changesLine(list);
+  $<HTMLElement>("ob_summary_keep").hidden = !list.length;
+  $<HTMLElement>("ob_summary_change").hidden = !list.length;
+}
+
+/** Keep: put back what each changed choice had when setup opened. */
+async function keepBefore(): Promise<void> {
+  const b = st.rerunSnapshot;
+  if (!b) return;
+  const keys = new Set(changes().map((c) => c.key));
+  const savedPrefs = <K extends keyof Prefs>(...ks: K[]): Partial<Prefs> =>
+    Object.fromEntries(ks.filter((k) => k in b.prefs).map((k) => [k, b.prefs[k]])) as Partial<Prefs>;
+  try {
+    // The server first: the route order below may name it.
+    if (keys.has("host") || keys.has("token")) {
+      views.setDev(await invoke<DevView>("setup_server_restore"));
+      st.tokenSaves = 0;
+      $<HTMLInputElement>("ob_host").value = views.dev?.form.host ?? "";
+    }
+    if (keys.has("engine")) {
+      if (b.stt && views.or && views.or.stt.allow !== b.stt.allow) {
+        const s = b.stt;
+        views.setOr(
+          await invoke<OrView>("dev_or_set_stt", {
+            form: { allow: s.allow, consent: s.consent, language: s.language, send_dictionary: s.send_dictionary, stt_path: s.stt_path },
+          }),
+        );
+      }
+      await devStore.save(b.dev);
+    }
+    const back: Partial<Prefs> = {};
+    if (keys.has("model")) Object.assign(back, savedPrefs("asr_engine", "model_path", "parakeet_model_dir"));
+    if (keys.has("source")) Object.assign(back, savedPrefs("model_source"));
+    if (keys.has("cleanup") || keys.has("llmPath")) {
+      if (keys.has("cleanup") && b.cleanup && views.or) {
+        if (views.or.cleanup.allow !== b.cleanup.allow) {
+          views.setOr(await invoke<OrView>("dev_or_set_cleanup", { form: cleanupForm(b.cleanup.allow, b.cleanup.consent) }));
+        }
+        views.setOr(await invoke<OrView>("dev_cleanup_set_engines", { engines: b.cleanup.engines }));
+      }
+      Object.assign(back, savedPrefs("llm_enabled", "cleanup_level", "spoken_cleanup", "raw_mode", "llm_model_path"));
+    }
+    if (keys.has("ptt")) Object.assign(back, savedPrefs("shortcuts"));
+    if (keys.has("mic")) Object.assign(back, savedPrefs("microphone"));
+    if (Object.keys(back).length) await prefsStore.save(back);
+  } catch (e) {
+    $<HTMLElement>("ob_summary_text").textContent = errText(e);
+    return;
+  }
+  st.engine = b.cfg.engine ?? st.engine;
+  st.cleanup = b.cfg.cleanup;
+  st.cleanupPicked = false;
+  st.modelPick = activeModel();
+  st.pick = null;
+  renderTry();
+  renderSummary();
+}
+
+/** Change: back to the step of the first choice that changed. */
+function changeFirst(): void {
+  const first = changes()[0];
+  if (!first) return;
+  const to = STEP_OF[first.key];
+  show(steps().includes(to) ? to : "engine");
+}
+
 // ------------------------------------------------------------ choices from the saved settings
 
 function initialChoices(): void {
   const dev = views.dev?.form;
   const or = views.or;
-  const first = dev?.route_order.find((r) =>
-    r === "client" ? dev.allow_client : r === "server" ? dev.allow_server && !!dev.host : !!or?.stt.allow,
-  );
   const p = prefsStore.get();
   // Once per run: a server saved on this run (Test / Connect) doesn't move the badge.
   const facts = { has, serverSaved: hasServer() };
   st.recEngine = recommendedEngine(facts);
-  st.engine = initialEngine(first ? ENGINE_OF[first] : null, !!p?.onboarded, facts);
+  st.engine = initialEngine(savedSpeech(), !!p?.onboarded, facts);
   st.cleanup = savedCleanup();
   st.cleanupPicked = false;
+  st.modelPick = initialModel(activeModel(), !!p?.onboarded, fileState(st.model));
+  st.moreOpen = false;
   $<HTMLInputElement>("ob_host").value = dev?.host ?? "";
   $<HTMLInputElement>("ob_token").placeholder = dev?.token_saved ? "Saved" : "Paste the token";
   $<HTMLElement>("ob_token_desc").textContent = dev?.token_saved
@@ -988,28 +1145,37 @@ export const onboarding = {
       if (act === "next") void next();
       else if (act === "back") back();
       else if (act === "skip") void finish();
-      else if (act === "skip-model") skipModel();
       const eng = t.closest<HTMLElement>("[data-ob-engine]")?.dataset.obEngine;
       if (eng) pickEngine(eng as Engine);
       const cl = t.closest<HTMLElement>("[data-ob-cleanup]")?.dataset.obCleanup;
       if (cl) pickCleanup(cl as SetupCleanup);
-      const use = t.closest<HTMLElement>("[data-ob-use]")?.dataset.obUse;
-      if (use) void useModel(use as "parakeet" | "whisper");
-      const pick = t.closest<HTMLElement>("[data-ob-pick]")?.dataset.obPick;
-      if (pick) void pickModel(pick as "parakeet" | "whisper" | "llm");
+      // A speech model row: a click anywhere on it picks it (Download too).
+      const row = t.closest<HTMLElement>("[data-ob-model]")?.dataset.obModel;
+      if (row && !t.closest("[data-ob-dl-cancel]")) pickModelRow(row as SpeechRow);
+      if (t.closest("[data-ob-pick=llm]")) void pickLlm();
       const src = t.closest<HTMLElement>("[data-ob-src]")?.dataset.obSrc;
       if (src) pickSource(src as ModelSource);
       const dl = t.closest<HTMLElement>("[data-ob-dl]")?.dataset.obDl;
-      if (dl) void models.confirmAndStart(CATALOG_ID[dl as "parakeet" | "whisper"]);
+      const dlEntry = dl ? rowEntry(dl as SpeechRow) : undefined;
+      if (dlEntry) void models.confirmAndStart(dlEntry.id);
       const stop = t.closest<HTMLElement>("[data-ob-dl-cancel]")?.dataset.obDlCancel;
-      if (stop) void models.cancel(CATALOG_ID[stop as "parakeet" | "whisper"]);
+      const stopEntry = stop ? rowEntry(stop as SpeechRow) : undefined;
+      if (stopEntry) void models.cancel(stopEntry.id);
     });
-    // Enter in a model path field = Use.
-    for (const [id, m] of [["ob_parakeet_dir", "parakeet"], ["ob_whisper_path", "whisper"]] as const) {
-      $<HTMLInputElement>(id).addEventListener("keydown", (e) => {
-        if (e.key === "Enter") void useModel(m);
+    // Space / Enter on a focused speech model row picks it, as on a radio.
+    for (const r of root.querySelectorAll<HTMLElement>("[data-ob-model]")) {
+      r.addEventListener("keydown", (e) => {
+        if (e.target !== r || (e.key !== " " && e.key !== "Enter")) return;
+        e.preventDefault();
+        pickModelRow(r.dataset.obModel as SpeechRow);
       });
     }
+    $<HTMLButtonElement>("ob_model_more").addEventListener("click", () => {
+      st.moreOpen = !st.moreOpen;
+      // Folding it away while Whisper is picked goes back to the recommended one.
+      if (!st.moreOpen && st.modelPick === "whisper") st.modelPick = "parakeet";
+      renderModel();
+    });
     $<HTMLInputElement>("ob_stt_consent").addEventListener("change", () => status("ob_cloud_status", ""));
     $<HTMLInputElement>("ob_clean_consent").addEventListener("change", () => status("ob_cleanup_status", ""));
     $<HTMLButtonElement>("ob_server_more").addEventListener("click", () => {
@@ -1030,6 +1196,8 @@ export const onboarding = {
       void prefsStore.save({ microphone: $<HTMLSelectElement>("ob_mic").value || null });
     });
     $<HTMLButtonElement>("ob_ptt_change").addEventListener("click", () => void recordPtt());
+    $<HTMLButtonElement>("ob_summary_keep").addEventListener("click", () => void keepBefore());
+    $<HTMLButtonElement>("ob_summary_change").addEventListener("click", changeFirst);
     $<HTMLButtonElement>("ob_ptt_type").addEventListener("click", typePtt);
     $<HTMLInputElement>("ob_ptt").addEventListener("change", async () => {
       const p = prefsStore.get();
@@ -1108,6 +1276,9 @@ export const onboarding = {
       console.error("setup: model status failed", e);
     }
     initialChoices();
+    // A re-run keeps the current setup and says before Finish what it changes (D95).
+    st.tokenSaves = 0;
+    st.rerunSnapshot = prefsStore.get()?.onboarded ? await snapshot() : null;
     st.pick = null;
     $<HTMLElement>("onboarding").hidden = false;
     document.body.classList.add("lw-ob-open");

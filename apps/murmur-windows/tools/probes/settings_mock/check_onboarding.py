@@ -7,15 +7,21 @@ Opens the app as a fresh install (onboarded false): setup covers the shell.
 Walks every step in light and dark: This PC preselected and Recommended
 on a new install (UX review on 1.3.0, amends D73), picks each engine
 (server: "I already have a server" opens address + token + Test; Cloud
-(D78): OpenRouter key + consent), a model location that is missing,
-a download (D31: confirm dialog 3a, cancel, progress 3b, done -> prefs and
-model ready), a picked folder that loads, each cleanup choice (Cloud: the
+(D78): OpenRouter key + consent; both skip the speech-model step), then
+This PC: step 3 is one recommended row + "More languages", each with an
+Installed / Downloading % / Not installed chip and no paths (UX review on
+1.3.0), a download (D31: confirm dialog, cancel, progress, done -> prefs
+and Installed), each cleanup choice (Cloud: the
 consent only, details later in Settings → Cloud), then the
 practice box (a
 dictation result arrives through dev:route), changes the shortcut and
 finishes. Asserts what reached dev_set / dev_or_set_* / set_prefs, that
 Finish saves onboarded = true and that Settings → General → Run setup
-opens it again. Writes shots/ob-*.png (gitignored).
+opens it again. Re-run walks (D95): Continue through every step changing
+nothing leaves prefs, the developer form and the cloud settings as they
+were and says so before Finish; changing cleanup from Your server to Rules
+only says "Cleanup: Your server → Rules only", Keep puts it back, Change
+goes to step 4. Writes shots/ob-*.png (gitignored).
 """
 import pathlib
 import sys
@@ -119,10 +125,11 @@ def walk(pg, scheme):
     check(tag + "test connection on click", "Connected" in pg.inner_text("#ob_server_status"), pg.inner_text("#ob_server_status"))
     nxt(pg)
     d = dev(pg)
-    check(tag + "server saved", visible_step(pg) == "model" and d["host"] == "100.64.0.10" and d["allow_server"] and d["route_order"][0] == "server", str(d))
-    # D79: Optional badge, "Skip — use my server only" until a model is ready.
-    check(tag + "model optional for server", pg.is_visible("#ob_model_optional") and pg.is_visible("[data-ob=skip-model]"))
+    # Your server does the listening: no speech-model step (UX review on 1.3.0).
+    check(tag + "server saved, model step skipped", visible_step(pg) == "cleanup" and d["host"] == "100.64.0.10" and d["allow_server"] and d["route_order"][0] == "server", f"{visible_step(pg)} {d}")
+    check(tag + "server: step 3 of 4", pg.inner_text("[data-ob-step=cleanup] .fl-overline").strip().lower() == "step 3 of 4", pg.inner_text("[data-ob-step=cleanup] .fl-overline"))
     back(pg)
+    check(tag + "back from cleanup lands on step 2", visible_step(pg) == "engine")
     rec = pg.eval_on_selector_all("[data-ob-engine]", "bs => bs.filter(b => !b.querySelector('[data-ob-rec]').hidden).map(b => b.dataset.obEngine)")
     check(tag + "Recommended stays put once a server is saved mid-run", rec == ["pc"], str(rec))
 
@@ -138,57 +145,64 @@ def walk(pg, scheme):
     pg.check("#ob_stt_consent")
     nxt(pg)
     o = orv(pg)
-    check(tag + "cloud speech on with consent", visible_step(pg) == "model" and o["stt"]["allow"] and o["stt"]["consent"], str(o["stt"]))
+    check(tag + "cloud speech on with consent, model step skipped", visible_step(pg) == "cleanup" and o["stt"]["allow"] and o["stt"]["consent"], str(o["stt"]))
     check(tag + "cloud first", dev(pg)["route_order"][0] == "cloud", str(dev(pg)["route_order"]))
     back(pg)
 
-    # This PC: client on and first.
+    # This PC: client on and first, then the speech model.
     pg.click("[data-ob-engine=pc]")
     nxt(pg)
     d = dev(pg)
     check(tag + "this PC first", d["allow_client"] and d["route_order"][0] == "client", str(d))
     check(tag + "model step", visible_step(pg) == "model")
-    check(tag + "continue blocked without a model", pg.is_disabled("[data-ob-step=model] [data-ob=next]"))
-    check(tag + "models folder shown", "Murmur" in pg.inner_text("#ob_models_dir"))
-    shot("3-model-missing")
-    pg.fill("#ob_whisper_path", "C:\\missing\\ggml-base.bin")
-    pg.click("[data-ob-use=whisper]")
-    pg.wait_for_timeout(400)
-    check(tag + "missing file reported", "Not found" in pg.inner_text("[data-ob-model=whisper] [data-ob-model-badge]") and pg.is_disabled("[data-ob-step=model] [data-ob=next]"))
-
-    # D79: a server was saved above, so downloads default to it; this walk
-    # checks the Hugging Face path (check_download_source.py covers the server).
-    src = lambda: checked(pg, "[data-ob-step=model] [data-ob-src]", "data-ob-src")
-    check(tag + "downloads from your server by default", src() == ["server"], str(src()))
-    pg.click("[data-ob-step=model] [data-ob-src=huggingface]")
-    pg.wait_for_timeout(150)
-    check(tag + "hugging face picked", src() == ["huggingface"], str(src()))
+    check(tag + "this PC: step 3 of 5", pg.inner_text("[data-ob-step=model] .fl-overline").strip().lower() == "step 3 of 5")
+    model = "[data-ob-step=model]"
+    chip = lambda r: pg.inner_text(f"[data-ob-model={r}] [data-ob-chip]").strip()
+    picked = lambda: checked(pg, "[data-ob-model]", "data-ob-model")
+    # One recommended row, picked; Whisper folded under "More languages".
+    check(tag + "recommended row picked", picked() == ["parakeet"] and pg.is_visible("[data-ob-model=parakeet] [data-ob-rec]"), str(picked()))
+    check(tag + "whisper folded", not pg.is_visible("[data-ob-model=whisper]") and pg.get_attribute("#ob_model_more", "aria-expanded") == "false")
+    check(tag + "chip: not installed", chip("parakeet") == "Not installed")
+    # Paths, the drop zone and "Download from" live in Settings → Speech to text.
+    n_inputs = pg.eval_on_selector_all(f"{model} input:not([type=radio])", "is => is.length")
+    check(tag + "no path fields", n_inputs == 0, str(n_inputs))
+    check(tag + "no drop zone, no source switch", not pg.query_selector(f"{model} [data-ob-drop]") and not pg.query_selector(f"{model} [data-ob-src]"))
+    jargon = [w for w in ("SHA-256", "Hugging Face", "Parakeet TDT", "Empty =", "ggml", "sherpa") if w in pg.inner_text(model)]
+    check(tag + "no jargon on step 3", not jargon, str(jargon))
+    shot("3-model")
+    # A server was saved above, so downloads come from it; it has no Parakeet:
+    # setup says so and lets you carry on (check_download_source.py covers
+    # the Hugging Face download).
+    check(tag + "not on your server", "doesn't have this model" in pg.inner_text("#ob_model_status") and not pg.is_visible("[data-ob-dl=parakeet]") and not pg.is_disabled(f"{model} [data-ob=next]"), pg.inner_text("#ob_model_status"))
+    pg.click("#ob_model_more")
+    pg.wait_for_timeout(100)
+    check(tag + "More languages opens Whisper", pg.is_visible("[data-ob-model=whisper]") and pg.get_attribute("#ob_model_more", "aria-expanded") == "true")
+    check(tag + "whisper base named", pg.inner_text("[data-ob-model=whisper] [data-ob-model-title]").strip() == "Whisper base" and chip("whisper") == "Not installed")
     # D31 download: confirm dialog first; Cancel there starts nothing.
-    check(tag + "download offered", pg.is_visible("[data-ob-dl=parakeet]") and pg.is_visible("[data-ob-dl=whisper]"))
-    check(tag + "download-capable lead", "download it for you" in pg.inner_text("#ob_model_lead") and "fingerprint" in pg.inner_text("#ob_model_note"))
-    pg.click("[data-ob-dl=parakeet]")
+    pg.click("[data-ob-dl=whisper]")
     pg.wait_for_timeout(150)
-    check(tag + "confirm dialog (3a)", pg.is_visible("#dl_confirm") and "Download Parakeet TDT 0.6B?" in pg.inner_text("#dl_title"))
-    check(tag + "confirm shows source, size, folder", "huggingface.co" in pg.inner_text("#dl_from") and "661 MB in 4 files" in pg.inner_text("#dl_size") and "Murmur" in pg.inner_text("#dl_dest") and pg.inner_text("#dl_ok") == "Download 661 MB")
+    check(tag + "download picks the row", picked() == ["whisper"])
+    check(tag + "confirm dialog", pg.is_visible("#dl_confirm") and "Whisper" in pg.inner_text("#dl_title") and "Your server" in pg.inner_text("#dl_from"), pg.inner_text("#dl_title"))
     shot("3c-download-confirm")
     pg.click("#dl_cancel")
     pg.wait_for_timeout(150)
     check(tag + "cancel in the dialog starts nothing", not pg.is_visible("#dl_confirm") and not calls(pg, "model_download_start"))
+    check(tag + "continue blocked until it is there", pg.is_disabled(f"{model} [data-ob=next]") and "Download it" in pg.inner_text("#ob_model_hint"))
     # Start, then cancel mid-way (slow ticks).
     pg.evaluate("window.__dlSteps = 40; window.__dlTickMs = 60")
-    pg.click("[data-ob-dl=parakeet]")
+    pg.click("[data-ob-dl=whisper]")
     pg.wait_for_timeout(100)
     pg.click("#dl_ok")
     pg.wait_for_timeout(500)
-    check(tag + "download started on confirm", [c["id"] for c in calls(pg, "model_download_start")] == ["parakeet-tdt-0.6b-v2-int8"])
-    check(tag + "progress (3b)", pg.is_visible("[data-ob-model=parakeet] [data-ob-dl-bar]") and " of 661 MB" in pg.inner_text("[data-ob-model=parakeet] [data-ob-dl-line]") and "huggingface.co" in pg.inner_text("[data-ob-model=parakeet] [data-ob-dl-line]"), pg.inner_text("[data-ob-model=parakeet] [data-ob-dl-line]"))
-    check(tag + "continue allowed while downloading", not pg.is_disabled("[data-ob-step=model] [data-ob=next]") and "background" in pg.inner_text("#ob_model_hint"))
-    check(tag + "other download disabled", pg.is_disabled("[data-ob-dl=whisper]"))
+    check(tag + "download started on confirm", [c["id"] for c in calls(pg, "model_download_start")] == ["whisper-base"], str(calls(pg, "model_download_start")))
+    check(tag + "chip: downloading %", chip("whisper").startswith("Downloading ") and chip("whisper").endswith("%"), chip("whisper"))
+    check(tag + "progress", pg.is_visible("[data-ob-model=whisper] [data-ob-dl-bar]") and " of " in pg.inner_text("[data-ob-model=whisper] [data-ob-dl-line]"), pg.inner_text("[data-ob-model=whisper] [data-ob-dl-line]"))
+    check(tag + "continue allowed while downloading", not pg.is_disabled(f"{model} [data-ob=next]") and "background" in pg.inner_text("#ob_model_hint"))
     shot("3d-downloading")
-    pg.click("[data-ob-dl-cancel=parakeet]")
+    pg.click("[data-ob-dl-cancel=whisper]")
     pg.wait_for_timeout(300)
-    check(tag + "cancelled", "cancelled" in pg.inner_text("[data-ob-model=parakeet] [data-ob-dl-line]") and pg.is_visible("[data-ob-dl=parakeet]") and pg.is_disabled("[data-ob-step=model] [data-ob=next]"))
-    # Whisper base to the end: prefs point at it and it loads.
+    check(tag + "cancelled", "cancelled" in pg.inner_text("[data-ob-model=whisper] [data-ob-dl-line]") and pg.is_visible("[data-ob-dl=whisper]") and chip("whisper") == "Not installed" and pg.is_disabled(f"{model} [data-ob=next]"))
+    # Whisper base to the end: prefs point at it, chip says Installed.
     pg.evaluate("window.__dlSteps = 4; window.__dlTickMs = 40")
     pg.click("[data-ob-dl=whisper]")
     pg.wait_for_timeout(100)
@@ -196,24 +210,17 @@ def walk(pg, scheme):
     pg.wait_for_timeout(900)
     p = prefs(pg)
     check(tag + "download done -> prefs", p["asr_engine"] == "whisper" and p["model_path"].endswith("ggml-base.bin"), str(p["model_path"]))
-    check(tag + "downloaded model ready", "Ready" in pg.inner_text("[data-ob-model=whisper] [data-ob-model-badge]") and not pg.is_visible("[data-ob-dl=whisper]") and "downloaded" in pg.inner_text("[data-ob-model=whisper] [data-ob-model-desc]"))
-    check(tag + "continue after download", not pg.is_disabled("[data-ob-step=model] [data-ob=next]"))
+    check(tag + "chip: installed", chip("whisper") == "Installed" and not pg.is_visible("[data-ob-dl=whisper]"), chip("whisper"))
+    check(tag + "continue after download", not pg.is_disabled(f"{model} [data-ob=next]"))
     shot("3e-downloaded")
-    pg.evaluate("window.__pickResult = null")
-    pg.click("[data-ob-pick=parakeet]")
-    pg.wait_for_timeout(200)
-    check(tag + "cancelled picker changes nothing", prefs(pg)["asr_engine"] == "whisper")
-    pg.evaluate("delete window.__pickResult")
-    pg.click("[data-ob-pick=parakeet]")
-    pg.wait_for_timeout(400)
-    check(tag + "folder picker asked", any(c["kind"] == "folder" for c in calls(pg, "pick_path")))
-    p = prefs(pg)
-    check(tag + "parakeet saved", p["asr_engine"] == "parakeet" and p["parakeet_model_dir"].startswith("D:"), str(p["asr_engine"]))
-    check(tag + "model ready", "Ready" in pg.inner_text("[data-ob-model=parakeet] [data-ob-model-badge]") and not pg.is_disabled("[data-ob-step=model] [data-ob=next]"))
-    pg.click("#onboarding [data-ob-step=model] [data-open-url*=sherpa-onnx]")
+    # Folding "More languages" goes back to the recommended row.
+    pg.click("#ob_model_more")
     pg.wait_for_timeout(100)
-    check(tag + "download page opens in the browser", any("sherpa-onnx" in c["url"] for c in calls(pg, "open_external")) and "settings.html" in pg.url)
-    shot("3b-model-ready")
+    check(tag + "folding picks the recommended row", picked() == ["parakeet"] and not pg.is_visible("[data-ob-model=whisper]"))
+    pg.click("#ob_model_more")
+    pg.click("[data-ob-model=whisper]")
+    pg.wait_for_timeout(100)
+    check(tag + "row click picks it", picked() == ["whisper"])
     nxt(pg)
 
     check(tag + "cleanup step", visible_step(pg) == "cleanup")
@@ -248,6 +255,7 @@ def walk(pg, scheme):
     check(tag + "rules only saved", not p["llm_enabled"] and p["cleanup_level"] == "none" and p["spoken_cleanup"])
 
     check(tag + "try step", visible_step(pg) == "try")
+    check(tag + "first run: no what-changes line", not pg.is_visible("#ob_summary"))
     check(tag + "shortcut keys (D57 default)", keys(pg) == ["Right Alt"], str(keys(pg)))
     check(tag + "practice box focused", pg.evaluate("document.activeElement.id") == "ob_try_box")
     pg.fill("#ob_try_box", "Hey, are we still on for Thursday? I'll bring the slides.")
@@ -284,6 +292,152 @@ def walk(pg, scheme):
     check(tag + "set up later closes", not pg.is_visible("#onboarding"))
 
 
+def state(pg):
+    """Everything a re-run could change, as the backend has it."""
+    return {"prefs": prefs(pg), "dev": dev(pg), "or": orv(pg)}
+
+
+def summary(pg):
+    return pg.inner_text("#ob_summary_text").strip() if pg.is_visible("#ob_summary") else None
+
+
+def rerun_open(pg, query=""):
+    pg.goto(f"http://127.0.0.1:{port}/settings.html{query}")
+    pg.wait_for_timeout(600)
+    pg.evaluate("window.__goPage('settings-general')")
+    pg.wait_for_timeout(200)
+    before = state(pg)
+    pg.click("#run_setup")
+    pg.wait_for_timeout(400)
+    return before
+
+
+def rerun(pg, scheme):
+    """Run setup again on a finished setup (D95): it keeps the current
+    config, and before Finish says what Finish changes."""
+    shot = lambda name: pg.screenshot(path=str(out / f"ob-rerun-{name}-{scheme}.png"))
+    tag = f"[rerun {scheme}] "
+
+    # Continue through every step, changing nothing.
+    before = rerun_open(pg)
+    check(tag + "opens on welcome", visible_step(pg) == "welcome")
+    n = 0
+    while visible_step(pg) != "try" and n < 6:
+        nxt(pg, 400)
+        n += 1
+    check(tag + "reaches step 5", visible_step(pg) == "try", visible_step(pg))
+    check(tag + "nothing changes, says so", summary(pg) == "Nothing changes. Finish keeps your setup as it was.", str(summary(pg)))
+    check(tag + "no Keep / Change when nothing changes", not pg.is_visible("#ob_summary_keep") and not pg.is_visible("#ob_summary_change"))
+    shot("nothing")
+    nxt(pg, 400)
+    after = state(pg)
+    check(tag + "finish closes", not pg.is_visible("#onboarding"))
+    for k in ("prefs", "dev", "or"):
+        diff = sorted(x for x in set(before[k]) | set(after[k]) if before[k].get(x) != after[k].get(x))
+        check(tag + f"{k} unchanged", not diff, str(diff))
+
+    # A server doing the cleanup; pick Rules only: the line names it, Keep puts it back.
+    before = rerun_open(pg, "?cleanup=server")
+    while visible_step(pg) != "cleanup":
+        nxt(pg, 400)
+    picked = checked(pg, "[data-ob-cleanup]", "data-ob-cleanup")
+    check(tag + "cleanup preselects your server", picked == ["server"], str(picked))
+    pg.click("[data-ob-cleanup=rules]")
+    nxt(pg, 400)
+    check(tag + "step 5", visible_step(pg) == "try")
+    check(tag + "says what Finish changes", summary(pg) == "Finish changes Cleanup: Your server → Rules only.", str(summary(pg)))
+    check(tag + "Keep / Change shown", pg.is_visible("#ob_summary_keep") and pg.is_visible("#ob_summary_change"))
+    shot("cleanup")
+    pg.click("#ob_summary_change")
+    pg.wait_for_timeout(300)
+    check(tag + "Change goes to step 4", visible_step(pg) == "cleanup", visible_step(pg))
+    nxt(pg, 400)
+    pg.click("#ob_summary_keep")
+    pg.wait_for_timeout(500)
+    check(tag + "Keep: nothing changes now", summary(pg) == "Nothing changes. Finish keeps your setup as it was.", str(summary(pg)))
+    nxt(pg, 400)
+    after = state(pg)
+    for k in ("prefs", "dev", "or"):
+        diff = sorted(x for x in set(before[k]) | set(after[k]) if before[k].get(x) != after[k].get(x))
+        check(tag + f"Keep: {k} as before", not diff, str(diff))
+    check(tag + "server still first in the cleanup order", after["or"]["cleanup"]["engines"][0] == {"route": "server", "enabled": True}, str(after["or"]["cleanup"]["engines"]))
+
+    def to_try():
+        n = 0
+        while visible_step(pg) != "try" and n < 6:
+            nxt(pg, 400)
+            n += 1
+
+    def same(before, after, what):
+        for k in ("prefs", "dev", "or"):
+            diff = sorted(x for x in set(before[k]) | set(after[k]) if before[k].get(x) != after[k].get(x))
+            check(tag + f"{what}: {k} as before", not diff, str(diff))
+
+    # Your server stays the engine, its address and token change: both named
+    # (the token never shown); Keep puts back the address and the token.
+    before = rerun_open(pg)
+    nxt(pg)
+    check(tag + "saved server preselected", checked(pg, "[data-ob-engine]", "data-ob-engine") == ["server"])
+    if not pg.is_visible("#ob_host"):
+        pg.click("#ob_server_more")
+    pg.fill("#ob_host", "100.64.0.20")
+    pg.fill("#ob_token", "abcdefghijklmnop9999")
+    to_try()
+    line = summary(pg) or ""
+    check(tag + "address change named", "Server address: 100.64.0.10 → 100.64.0.20" in line, line)
+    check(tag + "token change named, never shown", "Server token replaced" in line and "abcdefghijklmnop9999" not in line and "dev-token" not in line, line)
+    check(tag + "Keep is labelled clearly", pg.inner_text("#ob_summary_keep").strip() == "Keep my old setup")
+    shot("server")
+    pg.click("#ob_summary_keep")
+    pg.wait_for_timeout(500)
+    check(tag + "Keep: server back", summary(pg) == "Nothing changes. Finish keeps your setup as it was.", str(summary(pg)))
+    nxt(pg, 400)
+    same(before, state(pg), "Keep server")
+
+    # Cleanup stays On this PC with another model file, and downloads switch
+    # to Hugging Face: both named; Keep puts both back.
+    before = rerun_open(pg)
+    while visible_step(pg) != "cleanup":
+        nxt(pg, 400)
+    check(tag + "cleanup on this PC preselected", checked(pg, "[data-ob-cleanup]", "data-ob-cleanup") == ["pc"], str(checked(pg, "[data-ob-cleanup]", "data-ob-cleanup")))
+    pg.click("[data-ob-step=cleanup] [data-ob-src=huggingface]")
+    pg.wait_for_timeout(300)
+    pg.fill("#ob_llm_path", "D:\\models\\other.gguf")
+    to_try()
+    line = summary(pg) or ""
+    check(tag + "cleanup model change named", "Cleanup model: None → other.gguf" in line, line)
+    check(tag + "download source change named", "Download from: Your server → Hugging Face" in line, line)
+    pg.click("#ob_summary_change")
+    pg.wait_for_timeout(300)
+    check(tag + "Change goes to step 4 (Download from)", visible_step(pg) == "cleanup", visible_step(pg))
+    to_try()
+    pg.click("#ob_summary_keep")
+    pg.wait_for_timeout(500)
+    check(tag + "Keep: cleanup model and source back", summary(pg) == "Nothing changes. Finish keeps your setup as it was.", str(summary(pg)))
+    nxt(pg, 400)
+    same(before, state(pg), "Keep cleanup")
+
+
+def unknown_file(pg):
+    """A Whisper file nothing has checked (no catalogue entry, not in use):
+    no Installed chip, and Continue does not switch to it on a guess."""
+    tag = "[unknown file] "
+    pg.goto(f"http://127.0.0.1:{port}/settings.html?onboard=1&whisper=own")
+    pg.wait_for_timeout(600)
+    nxt(pg)
+    pg.click("[data-ob-engine=pc]")
+    nxt(pg)
+    check(tag + "model step", visible_step(pg) == "model")
+    pg.click("#ob_model_more")
+    pg.wait_for_timeout(100)
+    check(tag + "named after the file", pg.inner_text("[data-ob-model=whisper] [data-ob-model-title]").strip() == "Whisper custom")
+    check(tag + "no chip", not pg.is_visible("[data-ob-model=whisper] [data-ob-chip]"))
+    pg.click("[data-ob-model=whisper]")
+    pg.wait_for_timeout(100)
+    nxt(pg, 400)
+    check(tag + "Continue did not switch to it", prefs(pg)["asr_engine"] == "parakeet", prefs(pg)["asr_engine"])
+
+
 def box(pg, sel):
     return pg.eval_on_selector(sel, "e => { const r = e.getBoundingClientRect(); return { x: r.left, y: r.top, r: r.right, b: r.bottom }; }")
 
@@ -317,9 +471,8 @@ def layout(pg, scheme):
     pg.fill("#ob_token", "abcdefghijklmnop1234")
     shot("2-server-open")
     nxt(pg)
-    pg.click("[data-ob=skip-model]")
     pg.wait_for_timeout(250)
-    check(tag + "step 4", visible_step(pg) == "cleanup", visible_step(pg))
+    check(tag + "cleanup after the server", visible_step(pg) == "cleanup", visible_step(pg))
     rules = "[data-ob-cleanup=rules]"
     tops = []
     for c in ("rules", "pc", "cloud", "server", "rules"):
@@ -361,8 +514,16 @@ with sync_playwright() as p:
         pg.close()
         pg = b.new_page(viewport={"width": 1040, "height": 675}, color_scheme=scheme)
         pg.on("pageerror", lambda e: errors.append(str(e)))
+        rerun(pg, scheme)
+        pg.close()
+        pg = b.new_page(viewport={"width": 1040, "height": 675}, color_scheme=scheme)
+        pg.on("pageerror", lambda e: errors.append(str(e)))
         layout(pg, scheme)
         pg.close()
+    pg = b.new_page(viewport={"width": 1040, "height": 675})
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    unknown_file(pg)
+    pg.close()
     # ?dlfail=1: a fingerprint mismatch is shown and can be retried.
     pg = b.new_page(viewport={"width": 1280, "height": 800})
     pg.on("pageerror", lambda e: errors.append(str(e)))
@@ -372,6 +533,7 @@ with sync_playwright() as p:
     pg.click("[data-ob-engine=pc]")
     nxt(pg)
     pg.evaluate("window.__dlSteps = 2; window.__dlTickMs = 30")
+    pg.click("#ob_model_more")
     pg.click("[data-ob-dl=whisper]")
     pg.wait_for_timeout(100)
     pg.click("#dl_ok")

@@ -8,13 +8,10 @@ import { ICON } from "../lib/icons.js";
 const CHECK = "M5 12.5l4.5 4.5L19 7";
 const SHIELD = ICON.privacy;
 const FILE = "M6 3h8l4 4v14H6zM14 3v4h4";
-const FOLDER = "M3 6h6l2 2h10v11H3z";
 
 export const STEPS = 5;
 
-/** Model pages for adding the files by hand (open in the browser). */
-export const URL_PARAKEET = "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8";
-export const URL_WHISPER = "https://huggingface.co/ggerganov/whisper.cpp";
+/** The cleanup model's page, for adding the file by hand (opens in the browser). */
 export const URL_LLM = "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF";
 
 /** A stroke icon (`lw-ico` = 20 px inline icon). */
@@ -173,30 +170,25 @@ const source = (step: string): string => `
 </div>
 <div class="lw-ob-server-slot" data-ob-server-slot="${step}"></div>`;
 
-const modelRow = (id: string, title: string, desc: string, input: string, placeholder: string, pick: string): string => `
-<div class="fl-row lw-ob-model" data-ob-model="${id}">
-  <span class="lw-tile">${ico(id === "parakeet" ? FOLDER : FILE, "")}</span>
-  <div class="fl-row-text">
-    <div class="fl-row-title">${title} <span class="fl-badge fl-badge-dark" data-ob-rec hidden>Recommended</span></div>
-    <div class="fl-row-desc" data-ob-model-desc>${desc}</div>
-  </div>
-  <span class="fl-badge" data-ob-model-badge hidden></span>
+/**
+ * A speech model row (step 3): picked like step 4's options, with its state
+ * chip (Installed / Downloading 34% / Not installed), Download / Cancel and
+ * the download's progress (3b). A div, not a button: it holds buttons.
+ */
+const speechRow = (id: string, title: string, desc: string): string => `
+<div class="lw-ob-option lw-ob-speech" role="radio" aria-checked="false" tabindex="0" data-ob-model="${id}">
+  <span class="lw-ob-radio"></span>
+  <span class="lw-ob-option-text">
+    <span class="lw-ob-option-title"><span data-ob-model-title>${title}</span><span class="fl-badge fl-badge-dark" data-ob-rec hidden>Recommended</span></span>
+    <span class="lw-ob-option-desc lw-ob-speech-state"><span class="fl-badge" data-ob-chip></span><span data-ob-model-desc>${desc}</span></span>
+  </span>
   <span class="lw-ob-model-actions">
-    <span class="fl-badge fl-badge-light" data-ob-missing hidden>Not on your server</span>
-    <button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" data-ob-use="${id}">Use</button>
-    <button type="button" class="fl-btn ${id === "parakeet" ? "fl-btn-primary" : "fl-btn-secondary"} fl-btn-sm" data-ob-dl="${id}" hidden>Download</button>
+    <button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" data-ob-dl="${id}" hidden>Download</button>
     <button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" data-ob-dl-cancel="${id}" hidden>Cancel</button>
   </span>
   <div class="lw-ob-dl" data-ob-dl-box hidden>
     <div class="lw-ob-bar" role="progressbar" aria-label="Downloading ${title}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" data-ob-dl-bar><span></span></div>
     <span class="lw-ob-dl-line" data-ob-dl-line></span>
-  </div>
-  <div class="lw-ob-model-path">
-    <span class="lw-ob-model-input">
-      <input id="${input}" class="fl-input" spellcheck="false" placeholder="${placeholder}" aria-label="${title} location" />
-      <button type="button" class="fl-btn fl-btn-ghost fl-btn-sm" data-ob-pick="${id}">${pick}</button>
-    </span>
-    <span class="lw-ob-model-status" data-ob-model-status></span>
   </div>
 </div>`;
 
@@ -206,43 +198,24 @@ const model = stepPanel(
   `
   <div class="lw-ob-body is-split">
     <div class="lw-ob-side">
-      <div class="lw-ob-title-row">
-        <h1 class="fl-serif lw-ob-h1" id="ob_model_title">Add a speech model</h1>
-        <span class="fl-badge fl-badge-light" id="ob_model_optional" hidden>Optional</span>
-      </div>
-      <p class="lw-ob-lead" id="ob_model_lead">The model is the part that listens. Get it once from where its makers publish it, then tell Murmur where it is.</p>
+      <h1 class="fl-serif lw-ob-h1">Add a speech model</h1>
+      <p class="lw-ob-lead">The model is the part that listens. It runs on this PC, so your voice stays here. One download, once.</p>
       <div class="lw-ob-note">
         ${ico(SHIELD, "lw-ico lw-ob-check")}
-        <span id="ob_model_note">Murmur never downloads anything by itself. Your voice is turned into text by the model on this PC.</span>
+        <span id="ob_model_note">A download only fetches the model. Nothing about you or your voice is sent.</span>
       </div>
     </div>
-    <div class="lw-ob-main">
-      ${source("model")}
-      <div class="fl-group">
-        ${modelRow("parakeet", "Parakeet TDT 0.6B", "English · fastest · a folder of about 660 MB", "ob_parakeet_dir", "Model folder", "Choose folder")}
-        ${modelRow("whisper", "Whisper base", "Many languages · one 148 MB file (ggml-base.bin)", "ob_whisper_path", "Model file", "Choose file")}
+    <div role="radiogroup" aria-label="Speech model" class="lw-ob-main">
+      ${speechRow("parakeet", "English — fast", "")}
+      <button type="button" class="lw-link lw-ob-copy lw-ob-more" id="ob_model_more" aria-expanded="false" aria-controls="ob_model_other">More languages <span class="lw-ob-chev" aria-hidden="true">▸</span></button>
+      <div id="ob_model_other" hidden>
+        ${speechRow("whisper", "Whisper base", "Many languages")}
       </div>
-      <div class="lw-ob-drop">
-        ${ico("M12 15V4M8 8l4-4 4 4M5 13v7h14v-7", "lw-ico")}
-        <div class="lw-ob-drop-text">
-          <span>Put the files in <code class="lw-mono" id="ob_models_dir"></code>, or type where they are. Empty = the default name in that folder.</span>
-          <span class="lw-ob-links" id="ob_model_links">
-            ${extLink(URL_PARAKEET, "Parakeet download page →", "lw-link lw-ob-copy")}
-            ${extLink(URL_WHISPER, "Whisper download page →", "lw-link lw-ob-copy")}
-          </span>
-        </div>
-      </div>
+      <div class="lw-ob-status" id="ob_model_status"></div>
+      <p class="lw-ob-small">Have a model file already? Choose it after setup in Settings → Speech to text.</p>
     </div>
   </div>`,
-  foot(
-    true,
-    "Continue",
-    "ob_model_hint",
-    `<div class="lw-ob-skip" id="ob_model_skip" hidden>
-      <button type="button" class="fl-btn fl-btn-ghost" data-ob="skip-model">Skip — use my server only</button>
-      <span class="lw-ob-skip-note">You can add a local model later in Settings · Speech to text.</span>
-    </div>`,
-  ),
+  foot(true, "Continue", "ob_model_hint"),
 );
 
 const cleanupOption = (id: string, title: string, desc: string): string => `
@@ -347,7 +320,16 @@ const tryIt = stepPanel(
       </div>
     </div>
   </div>`,
-  foot(true, "Finish"),
+  foot(
+    true,
+    "Finish",
+    "",
+    `<span class="lw-ob-summary" id="ob_summary" hidden>
+      <span id="ob_summary_text"></span>
+      <button type="button" class="lw-link lw-ob-copy" id="ob_summary_keep" title="Put back the settings you had before this run">Keep my old setup</button>
+      <button type="button" class="lw-link lw-ob-copy" id="ob_summary_change">Change</button>
+    </span>`,
+  ),
 );
 
 export const TEMPLATE = `
