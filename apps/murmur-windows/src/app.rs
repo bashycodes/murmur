@@ -3153,7 +3153,7 @@ fn build_or_show_notes_window(h: &AppHandle, query: &str) {
         }
         let _ = w.show();
         let _ = w.unminimize();
-        let _ = w.set_focus();
+        focus_notes_window(&w);
         return;
     }
     let pref = h.state::<AppState>().prefs.read().unwrap().theme;
@@ -3167,9 +3167,24 @@ fn build_or_show_notes_window(h: &AppHandle, query: &str) {
         .center()
         .focused(true)
         .build();
-    if let Err(e) = built {
-        eprintln!("[scratchpad] {e}");
-        debug_log::event("scratchpad", &e.to_string());
+    match built {
+        Ok(w) => focus_notes_window(&w),
+        Err(e) => {
+            eprintln!("[scratchpad] {e}");
+            debug_log::event("scratchpad", &e.to_string());
+        }
+    }
+}
+
+/// Put the notes window in front with the keyboard focus. `.focused(true)`
+/// and `set_focus` only ask Windows, which refuses while another app holds
+/// the foreground (the new-note shortcut from another app): the window
+/// then opened behind it and typing went elsewhere. The page puts the caret
+/// in the editor once the note loads.
+fn focus_notes_window(w: &WebviewWindow) {
+    let front = hwnd_of(w).is_some_and(crate::foreground::win::bring_to_front);
+    if !front {
+        debug_log::event("scratchpad", "the notes window did not come to the front");
     }
 }
 

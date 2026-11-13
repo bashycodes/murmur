@@ -301,14 +301,51 @@ namespace MurmurE2E
             return sb.ToString();
         }
 
-        /// False while the lock screen / UAC desktop has the input.
+        /// False while the PC is locked or the UAC desktop has the input:
+        /// the session is locked (WTS), or the input desktop is not
+        /// Default (OpenInputDesktop can still succeed on a locked
+        /// session). Nothing can take the foreground then
+        /// (GetForegroundWindow = 0, shown as fg=Idle).
         public static bool InputDesktopUsable()
         {
+            if (SessionLocked()) return false;
             var d = OpenInputDesktop(0, false, 0x0100); // DESKTOP_SWITCHDESKTOP
             if (d == IntPtr.Zero) return false;
-            CloseDesktop(d);
+            try
+            {
+                // A GetUserObjectInformation failure counts as usable: only
+                // a name we could read and that is not Default rules it out.
+                var name = new StringBuilder(256);
+                int needed;
+                if (GetUserObjectInformation(d, 2 /* UOI_NAME */, name, name.Capacity * 2, out needed)
+                    && !string.Equals(name.ToString(), "Default", StringComparison.OrdinalIgnoreCase)) return false;
+            }
+            finally { CloseDesktop(d); }
             return true;
         }
+
+        /// True when WTS reports this session locked (WTSSessionInfoEx,
+        /// SessionFlags == WTS_SESSIONSTATE_LOCK). Unlike a LogonUI process
+        /// check, it does not linger after unlock. Unknown counts as unlocked.
+        public static bool SessionLocked()
+        {
+            IntPtr buf;
+            int bytes;
+            if (!WTSQuerySessionInformation(IntPtr.Zero /* WTS_CURRENT_SERVER_HANDLE */, -1 /* WTS_CURRENT_SESSION */, 25 /* WTSSessionInfoEx */, out buf, out bytes)) return false;
+            try
+            {
+                // WTSINFOEXW: DWORD Level, then the 8-byte-aligned union
+                // WTSINFOEX_LEVEL1_W { ULONG SessionId; WTS_CONNECTSTATE_CLASS
+                // SessionState; LONG SessionFlags; ... }.
+                if (bytes < 20 || Marshal.ReadInt32(buf, 0) != 1) return false;
+                return Marshal.ReadInt32(buf, 16) == 0; // WTS_SESSIONSTATE_LOCK
+            }
+            finally { WTSFreeMemory(buf); }
+        }
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern bool GetUserObjectInformation(IntPtr h, int index, StringBuilder info, int len, out int needed);
+        [DllImport("wtsapi32.dll", CharSet = CharSet.Unicode)] static extern bool WTSQuerySessionInformation(IntPtr server, int session, int infoClass, out IntPtr buf, out int bytes);
+        [DllImport("wtsapi32.dll")] static extern void WTSFreeMemory(IntPtr p);
 
         [DllImport("user32.dll")] static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags);
 

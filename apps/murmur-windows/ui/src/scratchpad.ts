@@ -304,6 +304,14 @@
 
     $("back").addEventListener("click", () => open("view=notes"));
 
+    // The window can come to the front after the note loaded (or after a
+    // click on its frame): give the caret back to the editor then.
+    window.addEventListener("focus", () => {
+      if (document.activeElement === document.body || document.activeElement === null) {
+        editor.focus();
+      }
+    });
+
     // Closing the window or leaving for the list: write now rather than
     // after the debounce (the shell also flushes on window close and quit).
     window.addEventListener("pagehide", () => {
