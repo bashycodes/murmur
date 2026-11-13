@@ -207,10 +207,10 @@ new folder is made per run.
 | `clips/` | The WAVs that were played. |
 | `app-data/` | From the test profile: `dictations.jsonl` debug log, `history.sqlite`, notes. |
 
-The laptop must be unlocked: the agent checks that the input desktop is
-usable (it is `Default`, not Winlogon, and no lock screen runs in its
-session) and aborts otherwise. On a locked laptop no window can take the
-foreground (`fg=Idle`), so every scenario that types would abort.
+The laptop must be unlocked: the agent checks that Windows does not report
+the session locked and that the input desktop is `Default`, not Winlogon,
+and aborts otherwise. On a locked laptop no window can take the foreground
+(`fg=Idle`), so every scenario that types would abort.
 
 ## Scenarios
 

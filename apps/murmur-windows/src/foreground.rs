@@ -10,10 +10,12 @@
 //! `set_focus` fallback taps Alt, which the double-Alt hook would see).
 
 /// Attach to the foreground thread's input only when there is a foreground
-/// window and it belongs to another thread (attaching a thread to itself
-/// fails; with no foreground window nothing needs lifting).
-pub fn attach_needed(foreground_thread: u32, own_thread: u32) -> bool {
-    foreground_thread != 0 && foreground_thread != own_thread
+/// window, it belongs to another thread (attaching a thread to itself
+/// fails; with no foreground window nothing needs lifting) and that window
+/// is not hung (sharing input state with a hung thread can stall ours);
+/// otherwise plain `SetForegroundWindow`.
+pub fn attach_needed(foreground_thread: u32, own_thread: u32, foreground_hung: bool) -> bool {
+    foreground_thread != 0 && foreground_thread != own_thread && !foreground_hung
 }
 
 #[cfg(windows)]
@@ -23,7 +25,8 @@ pub mod win {
     use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
     use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
     use windows::Win32::UI::WindowsAndMessaging::{
-        BringWindowToTop, GetForegroundWindow, GetWindowThreadProcessId, SetForegroundWindow,
+        BringWindowToTop, GetForegroundWindow, GetWindowThreadProcessId, IsHungAppWindow,
+        SetForegroundWindow,
     };
 
     /// Make `hwnd` the foreground window with the keyboard focus (its
@@ -35,13 +38,16 @@ pub mod win {
             if fg == hwnd {
                 return true;
             }
-            let fg_thread = if fg.is_invalid() {
-                0
+            let (fg_thread, fg_hung) = if fg.is_invalid() {
+                (0, false)
             } else {
-                GetWindowThreadProcessId(fg, None)
+                (
+                    GetWindowThreadProcessId(fg, None),
+                    IsHungAppWindow(fg).as_bool(),
+                )
             };
             let me = GetCurrentThreadId();
-            let attach = attach_needed(fg_thread, me);
+            let attach = attach_needed(fg_thread, me, fg_hung);
             let attached = attach && AttachThreadInput(me, fg_thread, true).as_bool();
             let _ = BringWindowToTop(hwnd);
             let _ = SetForegroundWindow(hwnd);
@@ -60,11 +66,18 @@ mod tests {
 
     #[test]
     fn attaches_only_to_another_threads_foreground() {
-        assert!(attach_needed(42, 7));
-        assert!(!attach_needed(7, 7), "attaching a thread to itself fails");
+        assert!(attach_needed(42, 7, false));
         assert!(
-            !attach_needed(0, 7),
+            !attach_needed(7, 7, false),
+            "attaching a thread to itself fails"
+        );
+        assert!(
+            !attach_needed(0, 7, false),
             "no foreground window: nothing to lift"
+        );
+        assert!(
+            !attach_needed(42, 7, true),
+            "a hung foreground window: plain SetForegroundWindow"
         );
     }
 }
