@@ -23,6 +23,7 @@ import { captureChord, stopCapture } from "../lib/keycapture.js";
 import { sourceHint, sourceView } from "../lib/model-source.js";
 import { prefsStore } from "../lib/prefs-store.js";
 import { chip, filePresent, initialModel, setupSteps, whisperRow } from "../lib/setup-model.js";
+import { changesLine, savedEngine, setupChanges, stepOf } from "../lib/setup-diff.js";
 import { pillLine, readinessErrorLine, readinessLine, RECHECK_MS } from "../lib/setup-try.js";
 import { initialEngine, recommendedEngine } from "../lib/setup-engine.js";
 import { cloudMissingLine, enginesFor, initialCleanup, recommendedCleanup, serverOption } from "../lib/setup-cleanup.js";
@@ -63,6 +64,8 @@ const st = {
     modelPick: "parakeet",
     /** Step 3's "More languages" is open. */
     moreOpen: false,
+    /** A re-run (setup was finished before): the settings it opened with (null: a first run). */
+    before: null,
 };
 let onDone = () => { };
 // ------------------------------------------------------------ capabilities
@@ -257,6 +260,8 @@ function renderServerFold(onEngineStep) {
 async function applyEngine() {
     const dev = views.dev;
     if (!dev)
+        return true;
+    if (engineKept())
         return true;
     const order = [ENGINE_ROUTE[st.engine], ...dev.form.route_order.filter((r) => r !== ENGINE_ROUTE[st.engine])];
     if (st.engine === "pc") {
@@ -540,6 +545,8 @@ function renderLlmDownload() {
 }
 /** Re-draw the open step after the server, the catalogue or a download changed. */
 function rerender() {
+    if (st.step === "try")
+        renderSummary();
     if (st.step === "model")
         renderModel();
     else if (st.step === "engine")
@@ -615,6 +622,8 @@ function cleanupForm(allow, consent) {
 async function applyCleanup() {
     const p = prefsStore.get();
     if (!p)
+        return true;
+    if (cleanupKept())
         return true;
     const level = p.cleanup_level === "none" ? "light" : p.cleanup_level;
     // Read before the saves below: each one redraws the step from the saved prefs.
@@ -826,6 +835,7 @@ function show(s) {
         st.line = "none";
         $("ob_result").hidden = true;
         void checkReady();
+        renderSummary();
         $("ob_try_box").focus();
     }
     panel(s).querySelector('[data-ob="next"]')?.focus({ preventScroll: true });
@@ -888,6 +898,144 @@ async function finish() {
     $("onboarding").hidden = true;
     document.body.classList.remove("lw-ob-open");
     onDone();
+}
+// ------------------------------------------------------------ re-run: what Finish changes (D95)
+/** The speech model's name as step 3 shows it (null: this build has no model on this PC). */
+function modelName() {
+    if (!has("pc"))
+        return null;
+    return activeModel() === "parakeet" ? "English — fast" : whisperRow(prefsStore.get()?.model_path, models.catalog()).title;
+}
+/** Setup's choices as the saved settings have them now. */
+function savedConfig() {
+    const dev = views.dev?.form;
+    const p = prefsStore.get();
+    return {
+        engine: dev
+            ? savedEngine({ route_order: dev.route_order, allow_client: dev.allow_client, allow_server: dev.allow_server, host: dev.host, cloudStt: !!views.or?.stt.allow })
+            : null,
+        model: modelName(),
+        cleanup: savedCleanup(),
+        ptt: p?.shortcuts.ptt || "Right Alt",
+        mic: p?.microphone ?? null,
+    };
+}
+function snapshot() {
+    const dev = views.dev?.form;
+    const or = views.or;
+    const p = prefsStore.get();
+    return {
+        cfg: savedConfig(),
+        dev: { allow_client: !!dev?.allow_client, allow_server: !!dev?.allow_server, route_order: [...(dev?.route_order ?? [])] },
+        stt: or?.supported ? { ...or.stt } : null,
+        cleanup: or?.supported ? { allow: or.cleanup.allow, consent: cloudConsent(), engines: cleanupEngines().map((e) => ({ ...e })) } : null,
+        prefs: p
+            ? {
+                asr_engine: p.asr_engine,
+                model_path: p.model_path,
+                parakeet_model_dir: p.parakeet_model_dir,
+                llm_enabled: p.llm_enabled,
+                cleanup_level: p.cleanup_level,
+                spoken_cleanup: p.spoken_cleanup,
+                raw_mode: p.raw_mode,
+                llm_model_path: p.llm_model_path,
+                shortcuts: { ...p.shortcuts },
+                microphone: p.microphone,
+            }
+            : {},
+    };
+}
+/** Step 2 on a re-run with the saved engine still picked and nothing new typed: Continue saves nothing. */
+function engineKept() {
+    const b = st.before;
+    if (!b || st.engine !== b.cfg.engine)
+        return false;
+    if (st.engine === "server") {
+        return $("ob_host").value.trim() === (views.dev?.form.host ?? "") && !$("ob_token").value.trim();
+    }
+    if (st.engine === "cloud")
+        return !$("ob_stt_key").value.trim() && $("ob_stt_consent").checked;
+    return true;
+}
+/** Step 4 on a re-run with the saved option still picked (and, on this PC, the same model file): Continue saves nothing. */
+function cleanupKept() {
+    const b = st.before;
+    if (!b || st.cleanup !== b.cfg.cleanup)
+        return false;
+    if (st.cleanup === "pc")
+        return ($("ob_llm_path").value.trim() || null) === (prefsStore.get()?.llm_model_path ?? null);
+    if (st.cleanup === "cloud")
+        return $("ob_clean_consent").checked;
+    return true;
+}
+function changes() {
+    return st.before ? setupChanges(st.before.cfg, savedConfig()) : [];
+}
+/** Step 5 on a re-run: the line saying what Finish leaves changed, with Keep / Change. */
+function renderSummary() {
+    const box = $("ob_summary");
+    box.hidden = !st.before;
+    if (!st.before)
+        return;
+    const list = changes();
+    $("ob_summary_text").textContent = changesLine(list);
+    $("ob_summary_keep").hidden = !list.length;
+    $("ob_summary_change").hidden = !list.length;
+}
+/** Keep: put back what each changed choice had when setup opened. */
+async function keepBefore() {
+    const b = st.before;
+    if (!b)
+        return;
+    const keys = new Set(changes().map((c) => c.key));
+    const pick = (...ks) => Object.fromEntries(ks.filter((k) => k in b.prefs).map((k) => [k, b.prefs[k]]));
+    try {
+        if (keys.has("engine")) {
+            if (b.stt && views.or && views.or.stt.allow !== b.stt.allow) {
+                const s = b.stt;
+                views.setOr(await invoke("dev_or_set_stt", {
+                    form: { allow: s.allow, consent: s.consent, language: s.language, send_dictionary: s.send_dictionary, stt_path: s.stt_path },
+                }));
+            }
+            await devStore.save(b.dev);
+        }
+        if (keys.has("model"))
+            await prefsStore.save(pick("asr_engine", "model_path", "parakeet_model_dir"));
+        if (keys.has("cleanup")) {
+            if (b.cleanup && views.or) {
+                if (views.or.cleanup.allow !== b.cleanup.allow) {
+                    views.setOr(await invoke("dev_or_set_cleanup", { form: cleanupForm(b.cleanup.allow, b.cleanup.consent) }));
+                }
+                views.setOr(await invoke("dev_cleanup_set_engines", { engines: b.cleanup.engines }));
+            }
+            await prefsStore.save(pick("llm_enabled", "cleanup_level", "spoken_cleanup", "raw_mode", "llm_model_path"));
+        }
+        const rest = {};
+        if (keys.has("ptt"))
+            Object.assign(rest, pick("shortcuts"));
+        if (keys.has("mic"))
+            Object.assign(rest, pick("microphone"));
+        if (Object.keys(rest).length)
+            await prefsStore.save(rest);
+    }
+    catch (e) {
+        $("ob_summary_text").textContent = errText(e);
+        return;
+    }
+    st.engine = b.cfg.engine ?? st.engine;
+    st.cleanup = b.cfg.cleanup;
+    st.cleanupPicked = false;
+    st.modelPick = activeModel();
+    renderTry();
+    renderSummary();
+}
+/** Change: back to the step of the first choice that changed. */
+function changeFirst() {
+    const first = changes()[0];
+    if (!first)
+        return;
+    const to = stepOf(first.key);
+    show(steps().includes(to) ? to : "engine");
 }
 // ------------------------------------------------------------ choices from the saved settings
 function initialChoices() {
@@ -992,6 +1140,8 @@ export const onboarding = {
             void prefsStore.save({ microphone: $("ob_mic").value || null });
         });
         $("ob_ptt_change").addEventListener("click", () => void recordPtt());
+        $("ob_summary_keep").addEventListener("click", () => void keepBefore());
+        $("ob_summary_change").addEventListener("click", changeFirst);
         $("ob_ptt_type").addEventListener("click", typePtt);
         $("ob_ptt").addEventListener("change", async () => {
             const p = prefsStore.get();
@@ -1080,6 +1230,8 @@ export const onboarding = {
             console.error("setup: model status failed", e);
         }
         initialChoices();
+        // A re-run keeps the current setup and says before Finish what it changes (D95).
+        st.before = prefsStore.get()?.onboarded ? snapshot() : null;
         st.pick = null;
         $("onboarding").hidden = false;
         document.body.classList.add("lw-ob-open");

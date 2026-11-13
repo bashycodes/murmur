@@ -38,6 +38,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 - **Windows: going from Verbatim back to an AI level turns the formatting rules back on.**
 - **Windows: model pickers no longer get cut off** in a narrow window.
 - **Windows setup's speech-model step is one choice, and only for This PC** (step 3, D94). It shows the recommended model and "More languages ▸", each with a chip saying Installed, Downloading 34% or Not installed, and a Download button when it is not there. The file paths, the drop zone and "Download from" are gone from setup; they stay in Settings → Speech to text. When step 2 picks Your server or Cloud, setup skips this step (4 steps instead of 5). The Whisper row is named after the file it uses ("Whisper large-v3-turbo"), not always "Whisper base".
+- **Running Windows setup again keeps your current setup** (Settings → General → Run setup, D95). Every step opens on what is saved now, and Continue on a step you left as it was saves nothing. Before Finish, step 5 says what Finish changes ("Finish changes Cleanup: Your server → Rules only.") with Keep, which puts those choices back, and Change, which goes to that step; when nothing changed it says so.
 
 ### Fixed
 

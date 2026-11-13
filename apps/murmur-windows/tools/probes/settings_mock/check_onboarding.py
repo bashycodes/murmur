@@ -17,7 +17,11 @@ practice box (a
 dictation result arrives through dev:route), changes the shortcut and
 finishes. Asserts what reached dev_set / dev_or_set_* / set_prefs, that
 Finish saves onboarded = true and that Settings → General → Run setup
-opens it again. Writes shots/ob-*.png (gitignored).
+opens it again. Re-run walks (D95): Continue through every step changing
+nothing leaves prefs, the developer form and the cloud settings as they
+were and says so before Finish; changing cleanup from Your server to Rules
+only says "Cleanup: Your server → Rules only", Keep puts it back, Change
+goes to step 4. Writes shots/ob-*.png (gitignored).
 """
 import pathlib
 import sys
@@ -251,6 +255,7 @@ def walk(pg, scheme):
     check(tag + "rules only saved", not p["llm_enabled"] and p["cleanup_level"] == "none" and p["spoken_cleanup"])
 
     check(tag + "try step", visible_step(pg) == "try")
+    check(tag + "first run: no what-changes line", not pg.is_visible("#ob_summary"))
     check(tag + "shortcut keys (D57 default)", keys(pg) == ["Right Alt"], str(keys(pg)))
     check(tag + "practice box focused", pg.evaluate("document.activeElement.id") == "ob_try_box")
     pg.fill("#ob_try_box", "Hey, are we still on for Thursday? I'll bring the slides.")
@@ -285,6 +290,77 @@ def walk(pg, scheme):
     pg.click("[data-ob=skip]")
     pg.wait_for_timeout(200)
     check(tag + "set up later closes", not pg.is_visible("#onboarding"))
+
+
+def state(pg):
+    """Everything a re-run could change, as the backend has it."""
+    return {"prefs": prefs(pg), "dev": dev(pg), "or": orv(pg)}
+
+
+def summary(pg):
+    return pg.inner_text("#ob_summary_text").strip() if pg.is_visible("#ob_summary") else None
+
+
+def rerun_open(pg, query=""):
+    pg.goto(f"http://127.0.0.1:{port}/settings.html{query}")
+    pg.wait_for_timeout(600)
+    pg.evaluate("window.__goPage('settings-general')")
+    pg.wait_for_timeout(200)
+    before = state(pg)
+    pg.click("#run_setup")
+    pg.wait_for_timeout(400)
+    return before
+
+
+def rerun(pg, scheme):
+    """Run setup again on a finished setup (D95): it keeps the current
+    config, and before Finish says what Finish changes."""
+    shot = lambda name: pg.screenshot(path=str(out / f"ob-rerun-{name}-{scheme}.png"))
+    tag = f"[rerun {scheme}] "
+
+    # Continue through every step, changing nothing.
+    before = rerun_open(pg)
+    check(tag + "opens on welcome", visible_step(pg) == "welcome")
+    n = 0
+    while visible_step(pg) != "try" and n < 6:
+        nxt(pg, 400)
+        n += 1
+    check(tag + "reaches step 5", visible_step(pg) == "try", visible_step(pg))
+    check(tag + "nothing changes, says so", summary(pg) == "Nothing changes. Finish keeps your setup as it was.", str(summary(pg)))
+    check(tag + "no Keep / Change when nothing changes", not pg.is_visible("#ob_summary_keep") and not pg.is_visible("#ob_summary_change"))
+    shot("nothing")
+    nxt(pg, 400)
+    after = state(pg)
+    check(tag + "finish closes", not pg.is_visible("#onboarding"))
+    for k in ("prefs", "dev", "or"):
+        diff = sorted(x for x in set(before[k]) | set(after[k]) if before[k].get(x) != after[k].get(x))
+        check(tag + f"{k} unchanged", not diff, str(diff))
+
+    # A server doing the cleanup; pick Rules only: the line names it, Keep puts it back.
+    before = rerun_open(pg, "?cleanup=server")
+    while visible_step(pg) != "cleanup":
+        nxt(pg, 400)
+    picked = checked(pg, "[data-ob-cleanup]", "data-ob-cleanup")
+    check(tag + "cleanup preselects your server", picked == ["server"], str(picked))
+    pg.click("[data-ob-cleanup=rules]")
+    nxt(pg, 400)
+    check(tag + "step 5", visible_step(pg) == "try")
+    check(tag + "says what Finish changes", summary(pg) == "Finish changes Cleanup: Your server → Rules only.", str(summary(pg)))
+    check(tag + "Keep / Change shown", pg.is_visible("#ob_summary_keep") and pg.is_visible("#ob_summary_change"))
+    shot("cleanup")
+    pg.click("#ob_summary_change")
+    pg.wait_for_timeout(300)
+    check(tag + "Change goes to step 4", visible_step(pg) == "cleanup", visible_step(pg))
+    nxt(pg, 400)
+    pg.click("#ob_summary_keep")
+    pg.wait_for_timeout(500)
+    check(tag + "Keep: nothing changes now", summary(pg) == "Nothing changes. Finish keeps your setup as it was.", str(summary(pg)))
+    nxt(pg, 400)
+    after = state(pg)
+    for k in ("prefs", "dev", "or"):
+        diff = sorted(x for x in set(before[k]) | set(after[k]) if before[k].get(x) != after[k].get(x))
+        check(tag + f"Keep: {k} as before", not diff, str(diff))
+    check(tag + "server still first in the cleanup order", after["or"]["cleanup"]["engines"][0] == {"route": "server", "enabled": True}, str(after["or"]["cleanup"]["engines"]))
 
 
 def box(pg, sel):
@@ -360,6 +436,10 @@ with sync_playwright() as p:
         pg.on("pageerror", lambda e: errors.append(str(e)))
         pg.on("console", lambda m: m.type == "error" and errors.append(m.text))
         walk(pg, scheme)
+        pg.close()
+        pg = b.new_page(viewport={"width": 1040, "height": 675}, color_scheme=scheme)
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+        rerun(pg, scheme)
         pg.close()
         pg = b.new_page(viewport={"width": 1040, "height": 675}, color_scheme=scheme)
         pg.on("pageerror", lambda e: errors.append(str(e)))

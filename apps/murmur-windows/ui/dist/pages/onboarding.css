@@ -159,6 +159,20 @@ body.lw-ob-open .lw-settings {
   justify-content: space-between;
   gap: 16px;
 }
+/* A re-run's "what Finish changes" line, next to Finish (D95). */
+.lw-ob-summary {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  font: 400 14px/20px var(--font-sans);
+  color: var(--foreground-secondary);
+}
+.lw-ob-summary[hidden] {
+  display: none;
+}
+.lw-ob-summary .lw-link {
+  margin-left: 8px;
+}
 .lw-ob-hint {
   flex: 1;
   text-align: right;

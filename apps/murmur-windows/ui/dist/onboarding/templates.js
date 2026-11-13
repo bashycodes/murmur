@@ -282,7 +282,11 @@ const tryIt = stepPanel("try", 5, `
         </div>
       </div>
     </div>
-  </div>`, foot(true, "Finish"));
+  </div>`, foot(true, "Finish", "", `<span class="lw-ob-summary" id="ob_summary" hidden>
+      <span id="ob_summary_text"></span>
+      <button type="button" class="lw-link lw-ob-copy" id="ob_summary_keep" title="Put back what you had before this run">Keep</button>
+      <button type="button" class="lw-link lw-ob-copy" id="ob_summary_change">Change</button>
+    </span>`));
 export const TEMPLATE = `
 <div class="lw-ob" id="onboarding" role="dialog" aria-modal="true" aria-label="Set up Murmur" hidden>
   ${welcome}${engine}${model}${cleanup}${tryIt}
