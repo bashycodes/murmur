@@ -187,6 +187,8 @@ function renderRoutes() {
     $("dev_pin_row").hidden = !$("dev_tls").checked;
     // Dictionary words while listening = Parakeet's beam search with hotwords.
     $("dict_words_row").classList.toggle("lw-gone", $("asr_engine").value !== "parakeet");
+    // Keeping this PC's model loaded means nothing while this PC is off.
+    $("dev_keep_local_warm").disabled = !engineOn("client");
     renderMeetings();
 }
 function move(r, dir) {

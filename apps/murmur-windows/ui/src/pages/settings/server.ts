@@ -1,10 +1,11 @@
 // Settings → Your server (design: SettingsServer.dc.html): the murmur-server
-// connection (features/engines.ts validates it and saves it with Save).
+// connection (features/engines.ts validates it and saves it with Save) and
+// the models in its library (features/models.ts).
 // Markup only.
 
 import { group, heading, row, toggle } from "../../lib/markup.js";
 import type { Page } from "../../lib/router.js";
-import { extLink, SERVER_HELP } from "../../features/models.js";
+import { extLink, SERVER_HELP, SERVER_MODELS_GROUP } from "../../features/models.js";
 
 const err = (field: string): string => `<small class="field-err" data-err="${field}"></small>`;
 
@@ -70,6 +71,7 @@ ${group(
   ),
   `id="srv_keys" hidden`,
 )}
+${SERVER_MODELS_GROUP}
 ${group(
   "Advanced",
   row(

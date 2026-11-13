@@ -316,10 +316,10 @@ neither is downloaded automatically:
   (the default used to be `qwen2.5-0.5b-instruct-q4_k_m.gguf`: faster,
   much less accurate; a PC that has only that file keeps loading it);
   `tools/fetch-models.sh --llm` fetches both on explicit request. Settings
-  → AI cleanup → On this PC downloads these and Llama 3.2 3B, and
+  → AI cleanup → This PC model downloads these and Llama 3.2 3B, and
   recommends Llama 3.2 3B when cleanup runs on a GPU, Qwen2.5 1.5B
   otherwise (benchmark: `docs/findings/2026-10-30-laptop-model-benchmark.md`);
-* the engine plugin **next to `murmur-windows.exe`** (or the path in "Engine
+* the engine plugin **next to `murmur-windows.exe`** (or the path in Settings → Developer → "Engine
   library"): `murmur_llm_vulkan.dll` (GPU through Vulkan) is tried first,
   then `murmur_llm.dll` (CPU). The Vulkan one does not load on a PC without
   `vulkan-1.dll` (it comes with the GPU driver); with Vulkan but no usable
@@ -338,12 +338,16 @@ failed). When the formatted text leaves nothing to fix the model is skipped
 
 Settings → AI cleanup:
 
-* **Time budget** default 3000 ms (was 1500, which timed out on nearly every
-  dictation; a stored 1500 moves to 3000 once, `prefs_rev` 3).
-* **Cleanup level** *No AI — formatting rules only* (was "None — exactly
+* **Advanced → Give up after** (`llm_timeout_ms`) default 3000 ms (was 1500,
+  which timed out on nearly every dictation; a stored 1500 moves to 3000
+  once, `prefs_rev` 3). It is the one limit for every engine: picking a time
+  also sets the cloud engine's own limit (within what its provider accepts).
+* **Cleanup level** *Rules only* (was "None — exactly
   what you said"; since D27 the core still formats at `none`), Light /
-  Medium / High, or *Verbatim — exactly what you said* = `cleanup_level:
-  none` + Auto-format off (the two controls stay in step). Migration
+  Medium / High, or *Verbatim* = `cleanup_level: none` + formatting rules
+  (`spoken_cleanup`) off; leaving Verbatim turns the rules back on. At Light /
+  Medium / High, Advanced → *Formatting rules first* decides whether the rules
+  run before the AI. Migration
   (`prefs_rev` 3): a stored None becomes Verbatim (what it did before); the
   old "Raw mode" box, which only ever skipped the LLM, becomes No AI and is
   gone from the UI.
@@ -558,7 +562,7 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
    cargo run --features app
    copy ..\..\target\release\murmur_llm.dll target\debug\   # plugin next to the exe
    ```
-   (Or set Settings → AI cleanup → Engine library to the DLL's path.) Optionally install the CLI first (`cargo install tauri-cli --version "^2"`); then `cargo tauri dev`, or for an NSIS installer in `target\release\bundle\nsis\` that ships the plugin next to the exe:
+   (Or set Settings → Developer → Engine library to the DLL's path.) Optionally install the CLI first (`cargo install tauri-cli --version "^2"`); then `cargo tauri dev`, or for an NSIS installer in `target\release\bundle\nsis\` that ships the plugin next to the exe:
    ```powershell
    cargo tauri build --config tauri.llm.conf.json
    ```

@@ -3,13 +3,15 @@
 Probe (Playwright + its bundled Chromium):
     python3 tools/probes/settings_mock/serve.py 8765 &
     python3 tools/probes/settings_mock/check_cleanup_order.py [port]
-Settings -> AI cleanup -> Cleanup order: three rows (this PC, your server,
+Settings -> AI cleanup -> Engines (the cleanup order): three rows (this PC, your server,
 OpenRouter) with the speech-to-text order's widget (rank, up/down, switch,
 status badge), default this PC -> your server -> OpenRouter (off). Moving a
 row saves the whole order (dev_cleanup_set_engines), the server switch keeps
 its place when off, OpenRouter is switched with its consent dialog and keeps
 its place, the server's badge follows cleanup_status.server_llm, and the old
-order select is gone. Writes shots/cleanup-order-*.png (gitignored).
+order select is gone. At Rules only / Verbatim with an AI engine on, the
+page warns "AI engines are skipped at …"; at an AI level it doesn't. The one
+Advanced "Give up after" also sets the cloud's limit. Writes shots/cleanup-order-*.png (gitignored).
 """
 import pathlib
 import sys
@@ -59,11 +61,11 @@ with sync_playwright() as p:
         pg.on("pageerror", lambda e: errors.append(str(e)))
         pg.goto(f"http://127.0.0.1:{port}/settings.html")
         pg.wait_for_timeout(500)
-        pg.evaluate("window.__goPage('settings-cleanup')")
+        pg.evaluate("(window.__goPage('settings-cleanup'), document.querySelectorAll('details.lw-fold').forEach(d => d.open = true))")
         pg.wait_for_timeout(300)
 
-        check(tag + "section is called Cleanup order",
-              "Cleanup order" in pg.inner_text("#cleanup_order_group"))
+        check(tag + "section is called Engines",
+              pg.inner_text("#cleanup_order_group h3") == "Engines")
         check(tag + "old order select is gone", pg.query_selector("#or_cleanup_order") is None)
         r = rows(pg)
         check(tag + "default: this PC, your server, OpenRouter (off)",
@@ -76,8 +78,15 @@ with sync_playwright() as p:
         check(tag + "server badge Ready (server has an LLM)", badge(pg, "server") == "Ready", badge(pg, "server"))
         check(tag + "server desc names the host", "100.64.0.10" in pg.inner_text("#aieng_desc_server"))
         check(tag + "cloud badge Off", badge(pg, "cloud") == "Off", badge(pg, "cloud"))
-        line = pg.inner_text("#ai_engine_line")
-        check(tag + "now-line lists this PC then your server", line == "This PC, then your server", line)
+        check(tag + "no warning at Light", pg.inner_text("#ai_warnings") == "")
+        pg.click("#level_seg [data-level=none]")
+        pg.wait_for_timeout(200)
+        warn = pg.inner_text("#ai_warnings")
+        check(tag + "Rules only with engines on: skipped warning", warn == "AI engines are skipped at Rules only.", warn)
+        check(tag + "formatting rules switch hidden at Rules only", not pg.is_visible("#rules_row"))
+        pg.click("#level_seg [data-level=light]")
+        pg.wait_for_timeout(200)
+        check(tag + "warning gone at Light", pg.inner_text("#ai_warnings") == "")
         pg.screenshot(path=str(out / f"cleanup-order-default-{scheme}.png"), full_page=True)
 
         # Move the server below OpenRouter: saved as the whole list.
@@ -100,14 +109,12 @@ with sync_playwright() as p:
         check(tag + "server badge Off", badge(pg, "server") == "Off", badge(pg, "server"))
         check(tag + "saved server off",
               [x for x in engines(pg) if x["route"] == "server"] == [{"route": "server", "enabled": False}])
-        check(tag + "now-line drops the server", pg.inner_text("#ai_engine_line") == "This PC")
 
         # Server without an LLM: badge says so.
         pg.evaluate("window.__serverLlm = false")
         pg.click("#aieng_row_server .fl-toggle")
         pg.wait_for_timeout(200)
         check(tag + "server without LLM is flagged", badge(pg, "server") == "No AI model", badge(pg, "server"))
-        check(tag + "and skipped in the now-line", pg.inner_text("#ai_engine_line") == "This PC")
         pg.evaluate("window.__serverLlm = true")
 
         # OpenRouter on: consent dialog, keeps its place (last).
@@ -122,8 +129,16 @@ with sync_playwright() as p:
         move(pg, "cloud", "up")
         move(pg, "cloud", "up")
         check(tag + "OpenRouter first", [x[0] for x in rows(pg)] == ["cloud", "server", "local"], str(rows(pg)))
-        line = pg.inner_text("#ai_engine_line")
-        check(tag + "now-line starts with the cloud (D78)", line.startswith("The cloud ("), line)
+        # One Give up after: the note names the cloud's own limit until a time is picked.
+        pg.evaluate("document.getElementById('cleanup_advanced').open = true")
+        note = pg.inner_text("#cleanup_timeout_note")
+        check(tag + "note names the cloud's own limit", "2.5 seconds" in note, note)
+        pg.select_option("#llm_timeout_ms", "5000")
+        pg.wait_for_timeout(400)
+        cloud = pg.evaluate("window.__TAURI__.core.invoke('dev_or_get')")["cleanup"]["timeout_ms"]
+        local = pg.evaluate("window.__TAURI__.core.invoke('get_prefs')")["llm_timeout_ms"]
+        check(tag + "Give up after sets this PC and the cloud", (local, cloud) == (5000, 5000), f"{local} {cloud}")
+        check(tag + "note gone once they match", not pg.is_visible("#cleanup_timeout_note"))
         pg.screenshot(path=str(out / f"cleanup-order-moved-{scheme}.png"), full_page=True)
 
         # The Developer page carries no cleanup order.

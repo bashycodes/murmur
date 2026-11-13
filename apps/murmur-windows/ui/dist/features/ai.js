@@ -11,6 +11,7 @@ import { invoke, onEvent } from "../lib/ipc.js";
 import { prefsStore } from "../lib/prefs-store.js";
 import { moveShown, onMove, rankRows } from "../lib/ranked-list.js";
 import { withEngine } from "../lib/cleanup-order.js";
+import { cloudTimeout, noAiLevel, rulesAfterLevel, seconds, skippedWarning, timeoutNote } from "../lib/model-pages.js";
 import { views } from "../lib/views.js";
 import { cleanupTarget, showOr } from "./openrouter.js";
 /** What each cleanup level does (D27), with the design's example of what is pasted. */
@@ -53,6 +54,7 @@ function showLevel() {
     $("level_title").textContent = title;
     $("level_desc").textContent = desc;
     $("level_sample").textContent = sample;
+    showLevelState();
 }
 function llmText(st) {
     switch (st.state) {
@@ -205,6 +207,7 @@ function renderEngines() {
         before: list.querySelector(".lw-foot-row"),
     }, engines().map((e) => e.route));
     shown.forEach(describe);
+    showLevelState();
 }
 /** Save the order and the server switch; the answer is shown everywhere. */
 async function saveEngines(list) {
@@ -231,39 +234,66 @@ function serverToggled() {
 function cleanupChoice(p) {
     return p.cleanup_level === "none" && !p.spoken_cleanup ? "verbatim" : p.cleanup_level;
 }
-/** Which engines clean the text, in order (switches + OrView). */
-function showAiEngine() {
+/** The warning under the engines (an AI engine is on at a level without AI)
+ *  and the formatting rules switch, which only means something at an AI level. */
+function showLevelState() {
     const level = $("cleanup_level").value;
-    const name = {
-        local: "this PC",
-        server: "your server",
-        cloud: views.or?.cleanup.provider === "custom"
-            ? `${cleanupTarget(views.or)} (${views.or.cleanup.custom.model})`
-            : `the cloud (${views.or?.cleanup.model ?? ""})`,
+    const aiOn = engines().some((e) => available(e.route) && (e.route === "server" ? serverUsable() : engineOn(e.route)));
+    const warn = skippedWarning(level, LEVELS[level]?.[0] ?? level, aiOn);
+    $("ai_warnings").replaceChildren(...(warn ? [el("li", "", warn)] : []));
+    $("rules_row").hidden = noAiLevel(level);
+}
+/** The cloud engine's own time limit and provider (null: no cloud cleanup in this build). */
+function cloudLimit() {
+    const v = views.or;
+    if (!v?.supported)
+        return null;
+    const custom = v.cleanup.provider === "custom";
+    return {
+        provider: v.cleanup.provider,
+        id: custom ? "cu_timeout_ms" : "or_cleanup_timeout_ms",
+        ms: custom ? v.cleanup.custom.timeout_ms : v.cleanup.timeout_ms,
+        on: v.cleanup.allow,
     };
-    const used = engines()
-        .map((e) => e.route)
-        .filter((r) => available(r) && (r === "server" ? serverUsable() : engineOn(r)));
-    let text;
-    if (level === "none" || level === "verbatim")
-        text = `no AI (the cleanup level is ${level === "none" ? "Rules only" : "Verbatim"})`;
-    else if (used.length === 0)
-        text = "the formatting rules only";
-    else {
-        const t = used.map((r) => name[r]).join(", then ");
-        text = t.charAt(0).toUpperCase() + t.slice(1);
-    }
-    $("ai_engine_line").textContent = text;
+}
+/** One "Give up after" for every engine: the cloud's limit follows it
+ *  (features/openrouter.ts saves the hidden field it reads). */
+function timeoutPicked() {
+    const c = cloudLimit();
+    const ms = parseInt($("llm_timeout_ms").value, 10);
+    if (!c || !Number.isFinite(ms))
+        return;
+    const want = cloudTimeout(c.provider, ms);
+    if (want === c.ms)
+        return;
+    const sel = $(c.id);
+    if (![...sel.options].some((o) => o.value === String(want)))
+        sel.add(new Option(seconds(want), String(want)));
+    sel.value = String(want);
+    sel.dispatchEvent(new Event("change"));
+}
+/** "The cloud still waits …" while its limit differs from the one shown. */
+function showTimeoutNote() {
+    const c = cloudLimit();
+    const ms = parseInt($("llm_timeout_ms").value, 10);
+    const note = c && Number.isFinite(ms) ? timeoutNote(ms, c.provider, c.on ? c.ms : null) : "";
+    const box = $("cleanup_timeout_note");
+    box.textContent = note;
+    box.hidden = !note;
 }
 function fill(p) {
     $("llm_enabled").checked = Boolean(p.llm_enabled);
     $("cleanup_level").value = cleanupChoice(p);
+    shownLevel = cleanupChoice(p);
     showLevel();
     setField("llm_model_path", p.llm_model_path ?? "");
     setField("llm_lib_path", p.llm_lib_path ?? "");
-    ensureOption("llm_timeout_ms", String(p.llm_timeout_ms), `${p.llm_timeout_ms / 1000} seconds`);
+    ensureOption("llm_timeout_ms", String(p.llm_timeout_ms), seconds(p.llm_timeout_ms));
+    showTimeoutNote();
     renderEngines();
 }
+/** The level before the one being picked (the formatting rules follow the move, D27). */
+let shownLevel = "";
 /** Select `value` in a preset list, adding it as a choice when it is not a preset. */
 function ensureOption(id, value, label) {
     const sel = $(id);
@@ -321,8 +351,8 @@ export async function pollCleanupStatus() {
 }
 export const ai = {
     init() {
-        $("llm_enabled").addEventListener("change", showAiEngine);
         $("llm_enabled").addEventListener("change", renderEngines);
+        $("llm_timeout_ms").addEventListener("change", timeoutPicked);
         $("aieng_server_on").addEventListener("change", serverToggled);
         onMove($("ai_routes"), "cleanup", moveEngine);
         const level = $("cleanup_level");
@@ -335,36 +365,20 @@ export const ai = {
                 level.dispatchEvent(new Event("change", { bubbles: true }));
             });
         }
-        level.addEventListener("change", showLevel);
-        level.addEventListener("change", showAiEngine);
-        // Verbatim and the Auto-format switch are the same switch (D27): keep them in step.
+        // D27: Verbatim is Rules only with the formatting rules off, so the
+        // rules switch follows the level (it is shown only at the AI levels).
         level.addEventListener("change", () => {
             const fmt = $("spoken_cleanup");
-            if (level.value === "verbatim")
-                fmt.checked = false;
-            else if (!fmt.checked && level.value === "none")
-                fmt.checked = true;
+            fmt.checked = rulesAfterLevel(level.value, shownLevel, fmt.checked);
+            shownLevel = level.value;
         });
-        $("spoken_cleanup").addEventListener("change", () => {
-            const fmt = $("spoken_cleanup");
-            if (!fmt.checked && level.value === "none")
-                level.value = "verbatim";
-            else if (fmt.checked && level.value === "verbatim")
-                level.value = "none";
-            showLevel();
-        });
+        level.addEventListener("change", showLevel);
         views.onOr(() => {
-            showAiEngine();
+            showTimeoutNote();
             renderEngines();
         });
-        views.onDev(() => {
-            showAiEngine();
-            renderEngines();
-        });
-        prefsStore.subscribe((p) => {
-            fill(p);
-            showAiEngine();
-        });
+        views.onDev(renderEngines);
+        prefsStore.subscribe(fill);
         void onEvent("llm:status", (e) => showLlm(e.payload));
     },
     async load() {

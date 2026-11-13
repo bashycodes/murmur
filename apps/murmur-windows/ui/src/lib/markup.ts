@@ -14,6 +14,11 @@ export function group(title: string, rows: string, attrs = ""): string {
   return `<section class="lw-section"${attrs ? ` ${attrs}` : ""}>${t}<div class="fl-group">${rows}</div></section>`;
 }
 
+/** The "Advanced" group of Settings → Your server, folded: closed until the user opens it. */
+export function advanced(rows: string, attrs = ""): string {
+  return `<details class="lw-section lw-fold"${attrs ? ` ${attrs}` : ""}><summary class="fl-group-title">Advanced</summary><div class="fl-group">${rows}</div></details>`;
+}
+
 /** A switch bound to a checkbox `id` (page logic reads `.checked`). */
 export function toggle(id: string, label: string, attrs = ""): string {
   return `<input type="checkbox" role="switch" class="fl-toggle" id="${id}" aria-label="${label}"${attrs ? ` ${attrs}` : ""} />`;

@@ -198,6 +198,8 @@ function renderRoutes(): void {
   $<HTMLElement>("dev_pin_row").hidden = !$<HTMLInputElement>("dev_tls").checked;
   // Dictionary words while listening = Parakeet's beam search with hotwords.
   $<HTMLElement>("dict_words_row").classList.toggle("lw-gone", $<HTMLSelectElement>("asr_engine").value !== "parakeet");
+  // Keeping this PC's model loaded means nothing while this PC is off.
+  $<HTMLInputElement>("dev_keep_local_warm").disabled = !engineOn("client");
   renderMeetings();
 }
 

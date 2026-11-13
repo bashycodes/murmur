@@ -10,7 +10,8 @@ import { invoke, onEvent } from "../lib/ipc.js";
 import { captureChord, RECORDING_TEXT, stopCapture } from "../lib/keycapture.js";
 import { prefsStore, type Prefs } from "../lib/prefs-store.js";
 import type { Feature } from "../lib/router.js";
-import { hebrewChosen, hebrewReady, models } from "./models.js";
+import { hebrewChosen, hebrewReady, mb, models, type CatalogEntry } from "./models.js";
+import { pcModelChip, pcModelEntry } from "../lib/model-pages.js";
 import { setTheme } from "../lib/theme.js";
 
 type ModelStatus =
@@ -41,26 +42,44 @@ const BOOL_FIELDS = [
   "spoken_cleanup",
 ] as const;
 
+let modelState: ModelStatus = { state: "loading", path: "" };
+/** The backend's default model paths (get_model_status), empty until it answers. */
+let defaults = { whisper: "", parakeet: "" };
+
+/** The status line under This PC model: only a problem; the chip says the rest. */
 function showModel(st: ModelStatus): void {
-  const e = $<HTMLParagraphElement>("model_status");
-  switch (st.state) {
-    case "loading":
-      e.textContent = `Loading ${st.path}…`;
-      e.className = "hint";
-      break;
-    case "ready":
-      e.textContent = `Ready: ${st.path} (loaded in ${st.load_ms} ms)`;
-      e.className = "hint ok";
-      break;
-    case "missing":
-      e.textContent = `Model file not found: ${st.path}. Dictation is unavailable until it exists.`;
-      e.className = "hint err";
-      break;
-    case "failed":
-      e.textContent = `Model failed to load (${st.path}): ${st.message}`;
-      e.className = "hint err";
-      break;
-  }
+  modelState = st;
+  const e = $<HTMLElement>("model_status");
+  e.textContent =
+    st.state === "missing"
+      ? `Model file not found: ${st.path}.`
+      : st.state === "failed"
+        ? `Model failed to load (${st.path}): ${st.message}`
+        : "";
+  e.className = "hint err";
+  showModelChip();
+}
+
+/** The catalogue model This PC loads now (undefined: a custom file). */
+function pcEntry(): CatalogEntry | undefined {
+  const engine = $<HTMLSelectElement>("asr_engine").value;
+  const parakeet = engine === "parakeet";
+  const path = $<HTMLInputElement>(parakeet ? "parakeet_model_dir" : "model_path").value;
+  return pcModelEntry(models.catalog(), engine, path, parakeet ? defaults.parakeet : defaults.whisper);
+}
+
+/** The chip next to This PC model: Ready / Installed / …, or Download when it isn't here yet. */
+function showModelChip(): void {
+  const e = pcEntry();
+  const c = pcModelChip({ status: modelState.state, entry: e, canDownload: models.canStart(e), busy: !!e && models.busy(e.id) });
+  const chip = $<HTMLElement>("pc_model_chip");
+  chip.textContent = c.text;
+  chip.className = `fl-badge fl-badge-${c.kind}`;
+  chip.hidden = c.download || !c.text;
+  const dl = $<HTMLButtonElement>("pc_model_dl");
+  dl.hidden = !c.download;
+  dl.disabled = models.busy();
+  if (e) dl.textContent = `Download ${mb(e.missing || e.size)}…`;
 }
 
 function showEngineFields(): void {
@@ -68,6 +87,7 @@ function showEngineFields(): void {
   for (const l of document.querySelectorAll<HTMLElement>("[data-engine]")) {
     l.hidden = l.dataset.engine !== engine;
   }
+  showModelChip();
 }
 
 function fill(prefs: Prefs): void {
@@ -371,6 +391,11 @@ export const general: Feature = {
     models.onChange(() => {
       const p = prefsStore.get();
       if (p) showLanguages(p);
+      showModelChip();
+    });
+    $<HTMLButtonElement>("pc_model_dl").addEventListener("click", () => {
+      const e = pcEntry();
+      if (e) void models.confirmAndStart(e.id);
     });
     for (const e of document.querySelectorAll<HTMLElement>(".lw-edit")) wireEdit(e);
     // Theme applies at once; the save follows through data-save="prefs".
@@ -383,8 +408,8 @@ export const general: Feature = {
       invoke<string[]>("list_microphones"),
       invoke<ModelInfo>("get_model_status"),
     ]);
+    defaults = { whisper: model.default_path, parakeet: model.default_parakeet_dir };
     showModel(model.status);
-    $<HTMLElement>("models_dir").textContent = model.models_dir;
     $<HTMLInputElement>("model_path").placeholder = model.default_path;
     $<HTMLInputElement>("parakeet_model_dir").placeholder = model.default_parakeet_dir;
     const mic = $<HTMLSelectElement>("microphone");
