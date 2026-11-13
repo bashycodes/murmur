@@ -1,0 +1,37 @@
+{
+  "t": "clean",
+  "id": 5,
+  "req": {
+    "text": "the demo is on thursday right",
+    "level": "light",
+    "style": "default",
+    "ctx": {
+      "app_id": "",
+      "url_host": "",
+      "app_category": "other",
+      "before": "",
+      "selected": "",
+      "after": "",
+      "screen_words": [],
+      "file_names": [],
+      "context_known": true
+    },
+    "dictionary": [
+      {
+        "word": "zephyr",
+        "replacement": "Zephyr",
+        "isSnippet": false
+      },
+      {
+        "word": "my address",
+        "replacement": "1 Main St",
+        "isSnippet": true
+      }
+    ],
+    "language": "en",
+    "timeout_ms": 10000,
+    "prompt": "v2",
+    "task": "translate",
+    "target_language": "he"
+  }
+}

@@ -9,10 +9,10 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use murmur_core::asr::{AbortFlag, MockAsr};
-use murmur_core::cleanup::{CleanError, CleanPrompt, CleanRequest, Cleaner};
+use murmur_core::cleanup::{CleanError, CleanPrompt, CleanRequest, CleanTask, Cleaner};
 use murmur_core::config::CleanupLevel;
 use murmur_core::MurmurCore;
-use murmur_protocol::{Cleaned, HelloOk, FEATURE_CLEAN, FEATURE_SUMMARY};
+use murmur_protocol::{Cleaned, HelloOk, FEATURE_CLEAN, FEATURE_SUMMARY, FEATURE_TRANSLATE};
 use murmur_router::*;
 
 const KEY: &str = "sk-or-LEAKCHECK-d36-0123456789";
@@ -80,6 +80,8 @@ struct Server {
     llm: Mutex<bool>,
     /// Advertises D53's `summary` with `clean` (a newer server).
     summary: Mutex<bool>,
+    /// Advertises D90's `translate` with `clean` (a newer server).
+    translate: Mutex<bool>,
     hello_known: Mutex<bool>,
     /// `Some(llm)`: the hello of an older connection, still cached until
     /// the next connection (`warm`, `clean`, a session) renews it.
@@ -98,6 +100,7 @@ impl Server {
         Arc::new(Self {
             llm: Mutex::new(true),
             summary: Mutex::new(true),
+            translate: Mutex::new(true),
             hello_known: Mutex::new(true),
             old_hello: Mutex::new(None),
             warms: AtomicUsize::new(0),
@@ -193,7 +196,10 @@ impl Backend for Server {
                 (true, true) => vec![FEATURE_CLEAN.into(), FEATURE_SUMMARY.into()],
                 (true, false) => vec![FEATURE_CLEAN.into()],
                 _ => Vec::new(),
-            },
+            }
+            .into_iter()
+            .chain((llm && *self.translate.lock().unwrap()).then(|| FEATURE_TRANSLATE.into()))
+            .collect(),
             ..Default::default()
         })
     }
@@ -206,8 +212,17 @@ impl Backend for Server {
                 ..Default::default()
             });
         }
+        // murmur-remote's refusal of a translation to an older server.
+        if req.task == CleanTask::Translate {
+            if !*self.translate.lock().unwrap() {
+                return Ok(Cleaned {
+                    error: Some("no_translate".into()),
+                    ..Default::default()
+                });
+            }
+        }
         // murmur-remote's refusal of a meeting task to an older server.
-        if !req.task.is_cleanup() && !*self.summary.lock().unwrap() {
+        else if !req.task.is_cleanup() && !*self.summary.lock().unwrap() {
             return Ok(Cleaned {
                 error: Some("no_summary".into()),
                 ..Default::default()
@@ -867,5 +882,76 @@ fn no_engine_on_means_no_summary() {
     assert_eq!(
         summarise(&k).unwrap_err(),
         murmur_core::summary::SummaryError::NoEngine
+    );
+}
+
+// ---- D90: translation on the cleanup order, server and cloud first ---------
+
+/// A made-up Hebrew dictation (the fakes answer in English).
+const HE_IN: &str = "תזכיר לי לקנות חלב מחר בבוקר";
+
+fn translate(k: &Rig) -> Result<String, murmur_core::translate::TranslateError> {
+    k.router.translate(
+        HE_IN,
+        Some("he"),
+        "en",
+        &Default::default(),
+        Duration::from_secs(5),
+    )
+}
+
+#[test]
+fn a_translation_goes_to_the_server_before_the_local_model() {
+    let k = rig(cfg(&[L, S, C]));
+    assert_eq!(translate(&k).unwrap(), SERVER_OUT);
+    let req = k.server.cleans.lock().unwrap()[0].clone();
+    assert_eq!(req.task, CleanTask::Translate);
+    assert_eq!(req.target_language.as_deref(), Some("en"));
+    assert_eq!(
+        (req.text.as_str(), req.language.as_deref()),
+        (HE_IN, Some("he"))
+    );
+    assert_eq!((k.local_calls(), k.cloud_calls()), (0, 0));
+}
+
+#[test]
+fn an_older_server_is_skipped_for_translations() {
+    let k = rig(cfg(&[L, S, C]));
+    *k.server.translate.lock().unwrap() = false;
+    assert_eq!(translate(&k).unwrap(), CLOUD_OUT);
+    assert_eq!((k.local_calls(), k.cloud_calls()), (0, 1));
+    assert!(k.cloud.seen.lock().unwrap()[0]
+        .user
+        .starts_with("TARGET LANGUAGE: English"));
+    // Still a good server for dictations: no circuit opened.
+    assert!(!k.router.cleanup_status().server_circuit.unwrap().open);
+}
+
+#[test]
+fn translations_keep_the_cloud_consent_gate() {
+    // No consent: the cloud is never asked; the local model is the last resort.
+    let mut c = cfg(&[C, L]);
+    c.cloud.openrouter.cleanup.consent_at_ms = 0;
+    let k = rig(c.clone());
+    let r = translate(&k);
+    assert_eq!(k.cloud_calls(), 0, "nothing sent without consent");
+    assert_eq!(k.local_calls(), 1);
+    // The fake local model answers in English: used.
+    assert_eq!(r.unwrap(), LOCAL_OUT);
+    // Cloud alone without consent: refused, nothing sent.
+    c.cleanup_order = vec![C];
+    let k = rig(c);
+    assert!(translate(&k).is_err());
+    assert_eq!(k.cloud_calls(), 0);
+}
+
+#[test]
+fn no_engine_on_means_no_translation() {
+    let mut c = cfg(&[L, S, C]);
+    c.cleanup_off = vec![L, S, C];
+    let k = rig(c);
+    assert_eq!(
+        translate(&k).unwrap_err(),
+        murmur_core::translate::TranslateError::NoLlm
     );
 }

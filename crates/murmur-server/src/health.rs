@@ -26,6 +26,8 @@ pub(crate) fn hello_ok(state: &AppState, proto: u32) -> murmur_protocol::HelloOk
             .chain(state.pool.llm.then_some(murmur_protocol::FEATURE_CLEAN))
             // D53: meeting summary tasks ride on `clean`.
             .chain(state.pool.llm.then_some(murmur_protocol::FEATURE_SUMMARY))
+            // D90: and the translate task.
+            .chain(state.pool.llm.then_some(murmur_protocol::FEATURE_TRANSLATE))
             .map(String::from)
             .collect(),
         languages: state.pool.languages.keys().cloned().collect(),

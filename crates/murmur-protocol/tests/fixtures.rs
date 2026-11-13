@@ -86,6 +86,18 @@ fn clean_request() -> CleanRequest {
     (*p.source.unwrap()).clone()
 }
 
+/// D90: a translation request, as `murmur_core::translate` builds it.
+fn translate_request() -> CleanRequest {
+    let p = murmur_core::translate::build_prompt(
+        "the demo is on thursday right",
+        Some("en"),
+        "he",
+        &session_config().dictionary,
+    )
+    .with_timeout(10_000);
+    (*p.source.unwrap()).clone()
+}
+
 fn hello_ok() -> HelloOk {
     HelloOk {
         proto: 1,
@@ -145,6 +157,13 @@ fn client_cases() -> Vec<(&'static str, ClientMsg)> {
             ClientMsg::Clean {
                 id: 4,
                 req: Box::new(clean_request()),
+            },
+        ),
+        (
+            "client_clean_translate",
+            ClientMsg::Clean {
+                id: 5,
+                req: Box::new(translate_request()),
             },
         ),
         ("client_commit", ClientMsg::Commit { sid: 7 }),

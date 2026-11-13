@@ -395,7 +395,8 @@ impl Backend for RemoteBackend {
 /// Why a `clean` request is not sent to a server with this hello:
 /// `no_llm` (no `clean` feature), `no_summary` (a meeting task, D53, to a
 /// server without the `summary` feature, which would clean the text
-/// instead), or `None` = send it.
+/// instead), `no_translate` (the same for a translation, D90, without the
+/// `translate` feature), or `None` = send it.
 pub(crate) fn clean_refusal(
     hello: &murmur_protocol::HelloOk,
     req: &murmur_core::cleanup::CleanRequest,
@@ -403,6 +404,8 @@ pub(crate) fn clean_refusal(
     let has = |f: &str| hello.features.iter().any(|x| x == f);
     if !has(murmur_protocol::FEATURE_CLEAN) {
         Some("no_llm")
+    } else if req.task == murmur_core::cleanup::CleanTask::Translate {
+        (!has(murmur_protocol::FEATURE_TRANSLATE)).then_some("no_translate")
     } else if !req.task.is_cleanup() && !has(murmur_protocol::FEATURE_SUMMARY) {
         Some("no_summary")
     } else {
@@ -474,5 +477,23 @@ mod tests {
         assert_eq!(clean_refusal(&hello(&[c]), &clean), None);
         assert_eq!(clean_refusal(&hello(&[c]), &notes), Some("no_summary"));
         assert_eq!(clean_refusal(&hello(&[c, s]), &notes), None);
+    }
+
+    #[test]
+    fn a_translation_needs_the_translate_feature() {
+        let tr = CleanRequest {
+            task: CleanTask::Translate,
+            target_language: Some("en".into()),
+            ..Default::default()
+        };
+        let (c, s, t) = (
+            murmur_protocol::FEATURE_CLEAN,
+            murmur_protocol::FEATURE_SUMMARY,
+            murmur_protocol::FEATURE_TRANSLATE,
+        );
+        assert_eq!(clean_refusal(&hello(&[]), &tr), Some("no_llm"));
+        // A server that would clean the text instead of translating it.
+        assert_eq!(clean_refusal(&hello(&[c, s]), &tr), Some("no_translate"));
+        assert_eq!(clean_refusal(&hello(&[c, t]), &tr), None);
     }
 }

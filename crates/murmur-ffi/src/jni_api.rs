@@ -825,6 +825,36 @@ pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeCommand(
     guard(std::ptr::null_mut(), || out(&mut env, &r))
 }
 
+/// Translation (D90, JNI_CONTRACT.md "Translation"): blocking, off Main.
+/// `request` = `{"text","source"?,"target","dictionary"?}`. Never null:
+/// failures are `{"ok":false,"kind":…,"error":…}` JSON.
+#[no_mangle]
+pub extern "system" fn Java_dev_murmur_core_NativeMurmurCore_nativeTranslate(
+    mut env: JNIEnv,
+    _c: JClass,
+    h: jlong,
+    request: JString,
+) -> jstring {
+    use murmur_core::translate::TranslateError;
+    let r = guard(
+        json_api::translate_json(Err(TranslateError::Backend(
+            "panic inside murmur-core".into(),
+        ))),
+        || {
+            let Some(h) = handle(h) else {
+                return json_api::translate_json(Err(TranslateError::Backend(
+                    "null handle".into(),
+                )));
+            };
+            let Some(q) = jstr(&mut env, &request, "translate request") else {
+                return json_api::translate_json(Err(TranslateError::NoText));
+            };
+            json_api::translate(h, &q)
+        },
+    );
+    guard(std::ptr::null_mut(), || out(&mut env, &r))
+}
+
 /// Benchmark hook (`dev.murmur.debug.BenchActivity`): one AI-cleanup
 /// request on a core handle's on-device LLM ([`crate::bench`]). Blocking.
 /// Never null: the result JSON, or `{"error":…}`.

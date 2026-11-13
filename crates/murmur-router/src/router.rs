@@ -1050,6 +1050,44 @@ impl Router {
         cl.available().then_some(cl)
     }
 
+    /// D90: translation (`murmur_core::translate::run`) for a shell whose
+    /// local engine the router owns (Android `nativeTranslate`): the
+    /// dictation cleanup route ([`Self::cleanup_cleaner`]: the order the
+    /// user set, server included, every hop with its own consent, budget
+    /// and circuit checks), which `translate::run` tries with the server and
+    /// cloud first. The on-device LLM is the warm local engine's; a cold
+    /// on-demand engine (D24) is loaded only when nothing else could
+    /// answer. Blocking (LLM calls bounded by `timeout`, plus a possible
+    /// model load). `dictionary` = the user's, for the terms the prompt
+    /// names (D64). Additive.
+    pub fn translate(
+        &self,
+        text: &str,
+        source: Option<&str>,
+        target: &str,
+        dictionary: &murmur_core::dictionary::Dictionary,
+        timeout: std::time::Duration,
+    ) -> Result<String, murmur_core::translate::TranslateError> {
+        let (warm, cold) = {
+            let st = self.state.lk();
+            (st.warm_local(), st.cold_local())
+        };
+        let mut base = warm.and_then(|l| l.llm_cleaner());
+        if base.is_none() && self.cleanup_cleaner(None).is_none() && !text.trim().is_empty() {
+            if let Some(z) = cold {
+                base = z.ensure().0.ok().and_then(|l| l.llm_cleaner());
+            }
+        }
+        murmur_core::translate::run(
+            self.cleanup_cleaner(base),
+            text,
+            source,
+            target,
+            dictionary,
+            timeout,
+        )
+    }
+
     /// Load 3: hold the warm local engine's on-device LLM for the next
     /// local load (`MurmurCore::keep_llm`), before the shell frees this
     /// router for a language switch. Whether there was one.
