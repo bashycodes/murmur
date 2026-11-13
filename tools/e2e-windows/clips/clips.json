@@ -1,0 +1,28 @@
+{
+  "_comment": "Made-up sentences only (never the owner's). Each clip is espeak-ng TTS; a clip with several parts is the parts joined by 300 ms of silence. 'expect' is what a perfect transcript would say (compared loosely, word level).",
+  "clips": {
+    "en-short": {
+      "lang": "en",
+      "parts": [{ "voice": "en-us", "text": "The quick brown fox jumps over the lazy dog." }],
+      "expect": "The quick brown fox jumps over the lazy dog."
+    },
+    "en-report": {
+      "lang": "en",
+      "parts": [{ "voice": "en-us", "text": "Please send the weekly report to the team before Friday afternoon." }],
+      "expect": "Please send the weekly report to the team before Friday afternoon."
+    },
+    "he-shop": {
+      "lang": "he",
+      "parts": [{ "voice": "he", "text": "היום אני רוצה לקנות לחם וחלב בחנות הקטנה." }],
+      "expect": "היום אני רוצה לקנות לחם וחלב בחנות הקטנה."
+    },
+    "mixed-meeting": {
+      "lang": "mixed",
+      "parts": [
+        { "voice": "he", "text": "אני צריך לסיים את המצגת." },
+        { "voice": "en-us", "text": "Before the meeting tomorrow morning." }
+      ],
+      "expect": "אני צריך לסיים את המצגת. Before the meeting tomorrow morning."
+    }
+  }
+}
