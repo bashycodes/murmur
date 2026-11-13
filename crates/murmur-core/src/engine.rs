@@ -2169,7 +2169,7 @@ fn finish_text(
             cfg,
             &ctx,
             cloud.prompt_scope(),
-            cleanup::PromptVersion::V5,
+            cleanup::PromptVersion::V6,
             language.as_deref(),
         );
         let timeout_ms = cloud.budget_ms(cfg.llm_budget_ms(&r.asr_text));
