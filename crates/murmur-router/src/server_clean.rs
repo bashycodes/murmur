@@ -248,6 +248,8 @@ impl Cleaner for ServerClean {
                             "no_llm" => (Err(unavailable("server_no_llm")), none),
                             // D53: an older server without meeting tasks.
                             "no_summary" => (Err(unavailable("server_no_summary")), none),
+                            // D90: an older server without the translate task.
+                            "no_translate" => (Err(unavailable("server_no_translate")), none),
                             "busy" | "too_large" => (Err(unavailable(&e)), none),
                             "llm_timeout" => (Err(CleanError::Backend("timeout".into())), u),
                             _ => (Err(CleanError::Backend(e)), u),

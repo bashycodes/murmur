@@ -23,7 +23,8 @@ pub enum Script {
 }
 
 impl Script {
-    fn of(c: char) -> Option<Script> {
+    /// The script of letter `c`, when it is one of these.
+    pub fn of(c: char) -> Option<Script> {
         if !c.is_alphabetic() {
             return None;
         }

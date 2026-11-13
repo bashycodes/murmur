@@ -147,6 +147,7 @@ object Backup {
         .put("asr_ms", r.asrMs).put("llm_ms", r.llmMs).put("total_ms", r.totalMs)
         .put("insert_outcome", r.insertOutcome ?: JSONObject.NULL).put("route", r.route ?: JSONObject.NULL)
         .put("command_original", r.commandOriginal ?: JSONObject.NULL)
+        .put("transform", r.transform ?: JSONObject.NULL).put("transformed", r.transformed ?: JSONObject.NULL)
 
     // ---- decode (everything is checked before anything is written) ----
 
@@ -241,6 +242,7 @@ object Backup {
                 audioMs = o.optLong("audio_ms"), fallbackReason = str("fallback_reason"),
                 asrMs = o.optLong("asr_ms"), llmMs = o.optLong("llm_ms"), totalMs = o.optLong("total_ms"),
                 insertOutcome = str("insert_outcome"), route = str("route"), commandOriginal = str("command_original"),
+                transform = str("transform"), transformed = str("transformed"),
             )
         } catch (x: JSONException) {
             throw Bad("history entry ${i + 1} is malformed")

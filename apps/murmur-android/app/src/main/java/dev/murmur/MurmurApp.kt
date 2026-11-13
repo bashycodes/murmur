@@ -262,6 +262,22 @@ class MurmurApp : Application() {
     }
 
     /**
+     * D90: the languages of the active keyboard app's enabled subtypes (whisper codes, each once,
+     * the current one first), for the automatic translation target. Never throws.
+     */
+    fun keyboardLanguages(): List<String> = try {
+        val imm = getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+        val id = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.DEFAULT_INPUT_METHOD)
+        val info = imm?.enabledInputMethodList?.firstOrNull { it.id == id }
+        @Suppress("DEPRECATION") // InputMethodSubtype.locale: only when languageTag is empty
+        val all = info?.let { imm.getEnabledInputMethodSubtypeList(it, true) }.orEmpty()
+            .mapNotNull { KeyboardLanguage.of(it.languageTag, it.locale) }
+        (listOfNotNull(keyboardLanguage()) + all).distinct()
+    } catch (_: Exception) {
+        emptyList()
+    }
+
+    /**
      * D28, once: stored D18 cloud settings (schema 1) become the one OpenRouter config. The rules
      * are the router's (`nativeMigrateCloud`, pure and fast); only runs (and only loads the native
      * library this early) while a schema-1 config is stored. A failure leaves it for the next start.

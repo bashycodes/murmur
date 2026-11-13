@@ -1,0 +1,12 @@
+{"id":"he_en_meeting","text":"אממ הפגישה עם דנה נדחתה ליום רביעי בשלוש","source":"he","target":"en","keep":["3"]}
+{"id":"he_en_package","text":"החבילה הגיעה הבוקר תודה רבה על המשלוח המהיר","source":"he","target":"en","keep":[]}
+{"id":"he_en_late","text":"אני מאחר בעשר דקות תתחילו בלעדיי","source":"he","target":"en","keep":["10"]}
+{"id":"he_en_list","text":"צריך לקנות חלב לחם וביצים","source":"he","target":"en","keep":[]}
+{"id":"he_en_selfcorrect","text":"נפגש ביום שני רגע לא ביום שלישי","source":"he","target":"en","keep":[]}
+{"id":"en_he_meeting","text":"um the meeting with Dana moved to Wednesday at three","source":"en","target":"he","keep":["Dana"]}
+{"id":"en_he_package","text":"the package arrived this morning thanks a lot for the fast delivery","source":"en","target":"he","keep":[]}
+{"id":"en_he_late","text":"I'm running about ten minutes late so start without me","source":"en","target":"he","keep":[]}
+{"id":"en_he_build","text":"the Zephyr build is green you can merge it now","source":"en","target":"he","keep":["Zephyr"]}
+{"id":"en_he_selfcorrect","text":"let's meet on Monday no wait Tuesday","source":"en","target":"he","keep":[]}
+{"id":"auto_source_he_en","text":"תזכיר לי להתקשר לרופא מחר","target":"en","keep":[]}
+{"id":"auto_source_en_he","text":"remind me to call the dentist tomorrow","target":"he","keep":[]}

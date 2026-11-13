@@ -83,6 +83,17 @@ class FakeMurmurCore(@Volatile var transcript: String = "", private val hasLlm: 
         return commandReply?.invoke(instruction, selected) ?: CommandOutcome.noLlm
     }
 
+    /** D90 (tests): the translation; null = the engine has no AI ([TranslateOutcome.noLlm]). */
+    @Volatile var translateReply: ((text: String, target: String?) -> TranslateOutcome)? = null
+    /** Every [translate] call as (text, source, target, installed). */
+    val translations: MutableList<List<Any?>> = java.util.Collections.synchronizedList(mutableListOf())
+
+    override fun translate(text: String, source: String?, target: String?, installed: List<String>, dictionary: List<DictEntry>): TranslateOutcome {
+        BlockingCalls.check("translate")
+        translations += listOf(text, source, target, installed)
+        return translateReply?.invoke(text, target) ?: TranslateOutcome.noLlm
+    }
+
     override fun learnEdit(pasted: String, edited: String) = emptyList<LearnCandidate>()
 
     /** Load 3: [keepLlm] calls, each with whether this engine was still loaded (tests). */

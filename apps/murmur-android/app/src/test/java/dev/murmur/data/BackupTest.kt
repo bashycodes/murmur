@@ -37,7 +37,7 @@ class BackupTest {
             Note("n2-empty", "", false, 5L, 5L),
         ),
         history = listOf(
-            HistoryRow(0, 100, "com.chat", "FORMATTED", "hi there", "Hi there.", true, 1200, asrMs = 300, totalMs = 900, insertOutcome = "inserted", route = "local"),
+            HistoryRow(0, 100, "com.chat", "FORMATTED", "hi there", "Hi there.", true, 1200, asrMs = 300, totalMs = 900, insertOutcome = "inserted", route = "local", transform = "Translate to French", transformed = "Salut."),
             HistoryRow(0, 200, null, HistoryRow.COMMAND, "make it formal", "Good day.", false, 0, commandOriginal = "hey", fallbackReason = "timeout"),
         ),
     )

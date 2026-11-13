@@ -219,6 +219,14 @@ impl Platform for WinPlatform {
         crate::keyboard_language::win::foreground_language().map(String::from)
     }
 
+    fn keyboard_languages(&self) -> Vec<String> {
+        crate::keyboard_language::win::installed_languages()
+    }
+
+    fn engine_badge(&self, badge: &crate::router_adapter::Badge) {
+        let _ = self.app.emit_to(OVERLAY, "dictation:route", Some(badge));
+    }
+
     fn focus_target(&self) -> Option<paste::FocusTarget> {
         use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
         let (hwnd, exe, _) = uia::foreground_app();

@@ -141,6 +141,12 @@ pub const FEATURE_CLEAN: &str = "clean";
 /// text instead, so a client sends a meeting task only to a server that
 /// lists this.
 pub const FEATURE_SUMMARY: &str = "summary";
+/// [`HelloOk::features`] value: the server's `clean` also runs the
+/// translate task (`CleanRequest::task` = `translate` with
+/// `target_language`, D90). Advertised with [`FEATURE_CLEAN`]. An older
+/// server would clean the text instead of translating it, so a client
+/// sends a translation only to a server that lists this.
+pub const FEATURE_TRANSLATE: &str = "translate";
 
 /// Largest `text` a [`ClientMsg::Clean`] may carry (bytes).
 pub const MAX_CLEAN_TEXT_BYTES: usize = 32 * 1024;

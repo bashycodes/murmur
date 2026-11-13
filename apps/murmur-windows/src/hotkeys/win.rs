@@ -351,9 +351,15 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
                     };
                     if !input::suppress_physical_release(blocked, sent, strokes.len()) {
                         suppress = false;
-                        if sent > 0 && !lctrl_held {
-                            // A partial batch may have left our LCtrl down.
-                            input::win::send(&[input::Stroke::up(input::vk::LCONTROL)]);
+                        // A partial batch may have left our mask key down.
+                        if let Some(&input::Stroke::Vk {
+                            vk: mask,
+                            up: false,
+                        }) = strokes.first()
+                        {
+                            if sent > 0 && !(mask == input::vk::LCONTROL && lctrl_held) {
+                                input::win::send(&[input::Stroke::up(mask)]);
+                            }
                         }
                     }
                 }

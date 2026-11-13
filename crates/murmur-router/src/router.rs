@@ -1050,6 +1050,45 @@ impl Router {
         cl.available().then_some(cl)
     }
 
+    /// D90: translation (`murmur_core::translate::run`) for a shell whose
+    /// local engine the router owns (Android `nativeTranslate`): the
+    /// dictation cleanup route ([`Self::cleanup_cleaner`]: the order the
+    /// user set, server included, every hop with its own consent, budget
+    /// and circuit checks), which `translate::run` tries with the server and
+    /// cloud first. The on-device LLM is the warm local engine's; a cold
+    /// on-demand engine (D24) is loaded only when nothing else could
+    /// answer. Blocking (LLM calls bounded by `timeout`, plus a possible
+    /// model load). `dictionary` = the user's, for the terms the prompt
+    /// names (D64). Additive.
+    pub fn translate(
+        &self,
+        req: &murmur_core::translate::Request,
+        timeout: std::time::Duration,
+    ) -> Result<murmur_core::translate::Translation, murmur_core::translate::TranslateError> {
+        let base = self.one_off_llm(&req.text, |b| self.cleanup_cleaner(b));
+        murmur_core::translate::run(self.cleanup_cleaner(base), req, timeout)
+    }
+
+    /// The on-device LLM for a one-off request outside a dictation
+    /// (Command Mode, translation): the warm local engine's; a cold
+    /// on-demand engine (D24) is loaded only when `route(None)` (the route
+    /// without it) has nothing to run on and there is `input` to work on.
+    fn one_off_llm(
+        &self,
+        input: &str,
+        route: impl Fn(Option<Arc<dyn Cleaner>>) -> Option<Arc<dyn Cleaner>>,
+    ) -> Option<Arc<dyn Cleaner>> {
+        let (warm, cold) = {
+            let st = self.state.lk();
+            (st.warm_local(), st.cold_local())
+        };
+        let base = warm.and_then(|l| l.llm_cleaner());
+        if base.is_some() || route(None).is_some() || input.trim().is_empty() {
+            return base;
+        }
+        cold.and_then(|z| z.ensure().0.ok().and_then(|l| l.llm_cleaner()))
+    }
+
     /// Load 3: hold the warm local engine's on-device LLM for the next
     /// local load (`MurmurCore::keep_llm`), before the shell frees this
     /// router for a language switch. Whether there was one.
@@ -1072,17 +1111,7 @@ impl Router {
         selected: Option<&str>,
         timeout: std::time::Duration,
     ) -> Result<murmur_core::command::CommandOutput, murmur_core::command::CommandError> {
-        let (warm, cold) = {
-            let st = self.state.lk();
-            (st.warm_local(), st.cold_local())
-        };
-        let mut base = warm.and_then(|l| l.llm_cleaner());
-        if base.is_none() && self.command_cleaner(None).is_none() && !instruction.trim().is_empty()
-        {
-            if let Some(z) = cold {
-                base = z.ensure().0.ok().and_then(|l| l.llm_cleaner());
-            }
-        }
+        let base = self.one_off_llm(instruction, |b| self.command_cleaner(b));
         murmur_core::command::run(self.command_cleaner(base), instruction, selected, timeout)
     }
 

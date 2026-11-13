@@ -54,11 +54,23 @@ pub enum CleanTask {
     /// A meeting's summary and action items, from its transcript or from
     /// notes on its parts (the reduce step).
     MeetingSummary,
+    /// D90: clean a dictation and translate it into
+    /// [`CleanRequest::target_language`], in one call
+    /// ([`crate::translate`]).
+    Translate,
 }
 
 impl CleanTask {
     pub fn is_cleanup(&self) -> bool {
         *self == CleanTask::Cleanup
+    }
+
+    /// Does the answer keep the dictation's language? Every task but
+    /// [`CleanTask::Translate`]. The language guards on an answer (D65's
+    /// script check, and any later one) run only when it does (D90): a
+    /// changed script is what a translation is for.
+    pub fn keeps_language(&self) -> bool {
+        *self != CleanTask::Translate
     }
 }
 
@@ -88,6 +100,10 @@ pub struct CleanRequest {
     /// meeting task when it advertises `"summary"`.
     #[serde(skip_serializing_if = "CleanTask::is_cleanup")]
     pub task: CleanTask,
+    /// D90: the language a [`CleanTask::Translate`] writes (ISO 639-1);
+    /// `None` for every other task, and then never written.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_language: Option<String>,
     /// What the context was narrowed to (not sent: a receiver builds with
     /// its own scope over the context it got).
     #[serde(skip)]
@@ -98,6 +114,16 @@ impl CleanRequest {
     /// The prompt for this request, narrowed to `scope` (and never wider
     /// than the request's own scope).
     pub fn prompt_for(&self, scope: PromptScope) -> CleanPrompt {
+        if self.task == CleanTask::Translate {
+            // D90: no field context, only the text and the dictionary.
+            return crate::translate::build_prompt(
+                &self.text,
+                self.language.as_deref(),
+                self.target_language.as_deref().unwrap_or("en"),
+                &self.dictionary,
+            )
+            .with_timeout(self.timeout_ms);
+        }
         if !self.task.is_cleanup() {
             // D53: a meeting summary step carries no field context.
             let mut p =
@@ -399,6 +425,12 @@ pub trait Cleaner: Send + Sync {
         None
     }
 
+    /// A [`ChainCleaner`]'s `min_fallback_ms` (`None` for anything else),
+    /// so a reordered copy ([`off_device_first`]) keeps it.
+    fn chain_min_fallback_ms(&self) -> Option<u64> {
+        None
+    }
+
     /// [`Cleaner::clean_cancellable`] plus metering. Backends with a cost
     /// override it and report usage even on error / cancel. Default: the
     /// plain call, usage = engine + model.
@@ -568,6 +600,22 @@ pub fn off_device(cl: &Arc<dyn Cleaner>) -> Option<Arc<dyn Cleaner>> {
         Some(hops) => ChainCleaner::build(hops.iter().filter_map(off_device).collect()),
         None => (cl.engine() != "local").then(|| cl.clone()),
     }
+}
+
+/// D90: `cl` with its on-device hops (engine `"local"`) moved after the
+/// others, keeping each group's order: the server and the cloud are tried
+/// first, the on-device LLM only when they cannot answer. A single backend
+/// is returned as it is; a chain keeps its `min_fallback_ms`.
+pub fn off_device_first(cl: &Arc<dyn Cleaner>) -> Arc<dyn Cleaner> {
+    let (Some(hops), Some(min_fallback_ms)) = (cl.chain_hops(), cl.chain_min_fallback_ms()) else {
+        return cl.clone();
+    };
+    let (local, other): (Vec<_>, Vec<_>) =
+        hops.iter().cloned().partition(|h| h.engine() == "local");
+    Arc::new(ChainCleaner {
+        hops: other.into_iter().chain(local).collect(),
+        min_fallback_ms,
+    })
 }
 
 /// D36: the user's cleanup order as one cleaner: hops (on-device LLM,
@@ -773,6 +821,10 @@ impl Cleaner for ChainCleaner {
 
     fn chain_hops(&self) -> Option<&[Arc<dyn Cleaner>]> {
         Some(&self.hops)
+    }
+
+    fn chain_min_fallback_ms(&self) -> Option<u64> {
+        Some(self.min_fallback_ms)
     }
 
     /// Cloud first → D30 (AI cleanup on the raw transcript, the hops after
@@ -1448,6 +1500,7 @@ pub fn build_prompt_versioned(
             timeout_ms: 0,
             prompt: version,
             task: CleanTask::Cleanup,
+            target_language: None,
             scope,
         })),
     }
@@ -1733,6 +1786,12 @@ fn run_metered(
     let deadline = Instant::now() + timeout;
     // D71: the field the prompt showed (empty when its scope hid it).
     let source = prompt.source.clone().filter(|s| s.task.is_cleanup());
+    // D90: the language guards below are for answers that keep the
+    // dictation's language; a translation changes it on purpose.
+    let language_guards = prompt
+        .source
+        .as_ref()
+        .is_none_or(|s| s.task.keeps_language());
     let cancel = Arc::new(AtomicBool::new(false));
     let flag = AbortFlag(Some(cancel.clone()));
     let pending = CleanUsage {
@@ -1804,7 +1863,9 @@ fn run_metered(
     // it does not have in any spelling, nor in the whole dictionary
     // vocabulary or screen words (`known`, not only the terms the prompt
     // showed). Command Mode and transforms are not checked this way yet.
-    if let Some(s) = script_kept(asr_text) {
+    // D90: these guards are for answers that keep the dictation's language;
+    // a translation changes it on purpose, so the whole block is skipped.
+    if let Some(s) = script_kept(asr_text).filter(|_| language_guards) {
         let why = if script_lock::drifted_from(s, asr_text, &out) {
             Some(format!("answer not in {}", s.language()))
         } else {

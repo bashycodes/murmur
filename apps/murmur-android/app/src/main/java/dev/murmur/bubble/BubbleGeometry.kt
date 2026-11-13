@@ -23,12 +23,14 @@ data class BubbleUi(
      * selection (or always, per the "Command button" setting). Keeps the bubble full size.
      */
     val showCommand: Boolean = false,
+    /** D90 Translate button (⇄) next to the mic while resting, per the "Translate button" setting. */
+    val showTranslate: Boolean = false,
 ) {
     /** Resting (no dictation in flight), so the repair / minimised looks apply. */
     val resting: Boolean get() = state == DictationState.Idle || state == DictationState.Ready
 }
 
-enum class BubbleButton { MAIN, CANCEL, DONE, COPY, PASTE, DISMISS, COMMAND }
+enum class BubbleButton { MAIN, CANCEL, DONE, COPY, PASTE, DISMISS, COMMAND, TRANSLATE }
 
 /**
  * Bubble sizes and button layout, pure so sizes and hit-testing are JVM-testable.
@@ -39,11 +41,15 @@ object BubbleGeometry {
     data class Slot(val left: Float, val right: Float, val button: BubbleButton)
 
     /** The 36dp minimised look applies: resting, shrunk, and neither repair nor the copy / command button showing. */
-    fun isMinimisedLook(u: BubbleUi): Boolean = u.resting && u.minimized && !u.repair && !u.showCopy && !u.showCommand
+    fun isMinimisedLook(u: BubbleUi): Boolean =
+        u.resting && u.minimized && !u.repair && !u.showCopy && !u.showCommand && !u.showTranslate
 
-    /** Resting buttons right of the mic, 64dp apart: ✎ (Command Mode) first, then ⧉ (copy last). */
-    private fun extras(u: BubbleUi): List<BubbleButton> =
-        listOfNotNull(BubbleButton.COMMAND.takeIf { u.showCommand }, BubbleButton.COPY.takeIf { u.showCopy })
+    /** Resting buttons right of the mic, 64dp apart: ✎ (Command Mode), ⇄ (translate, D90), then ⧉ (copy last). */
+    private fun extras(u: BubbleUi): List<BubbleButton> = listOfNotNull(
+        BubbleButton.COMMAND.takeIf { u.showCommand },
+        BubbleButton.TRANSLATE.takeIf { u.showTranslate },
+        BubbleButton.COPY.takeIf { u.showCopy },
+    )
 
     /** Widths (56 circle, +64 per resting extra (copy, command), 230 tap row, 160 hold row; 176 paste/copy/dismiss, 116 copy/dismiss), unscaled. */
     fun baseWidthDp(u: BubbleUi): Float = if (u.resting && u.repair) 56f else if (isMinimisedLook(u)) 36f else when (val s = u.state) {

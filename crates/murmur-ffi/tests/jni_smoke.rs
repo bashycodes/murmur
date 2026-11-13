@@ -131,6 +131,9 @@ fn jvm_round_trip() {
         assert_eq!(cmd["kind"], "no_llm", "{cmd}");
         assert!(cmd["error"].as_str().unwrap().contains("needs AI"), "{cmd}");
     }
+    let tr: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
+    assert_eq!(tr["ok"], false, "{tr}");
+    assert_eq!(tr["kind"], "no_llm", "{tr}");
     assert_eq!(lines.next().unwrap(), "KIND no_engine_enabled");
     let caps: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
     assert_eq!(caps["remote"], cfg!(feature = "remote"), "{caps}");
@@ -210,8 +213,8 @@ fn contract_symbols_exported() {
         .collect();
     // D28: +10 OpenRouter natives; +1 Command Mode; +1 nativeBenchClean; D41: +2 model library (feature `library`);
     // D46: +7 meeting transcription; D52: +2 custom cleanup server; Load 3: +3 load
-    // timings / keep LLM / release it; D55: +1 local-only start.
-    assert_eq!(want.len(), 58, "{want:?}");
+    // timings / keep LLM / release it; D55: +1 local-only start; D90: +1 translate.
+    assert_eq!(want.len(), 59, "{want:?}");
     let src = include_str!("../src/jni_api.rs");
     let have: std::collections::BTreeSet<&str> = src
         .split(|c: char| !c.is_alphanumeric() && c != '_')

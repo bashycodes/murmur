@@ -1510,7 +1510,7 @@ fn to_core_level(l: CleanupLevel) -> fc::CleanupLevel {
     }
 }
 
-fn to_core_dict(d: &[DictEntry]) -> murmur_core::dictionary::Dictionary {
+pub(crate) fn to_core_dict(d: &[DictEntry]) -> murmur_core::dictionary::Dictionary {
     murmur_core::dictionary::Dictionary {
         entries: d
             .iter()

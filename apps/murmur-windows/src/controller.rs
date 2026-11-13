@@ -123,6 +123,14 @@ pub trait Platform: Send + Sync + 'static {
     fn keyboard_language(&self) -> Option<String> {
         None
     }
+    /// D90: the languages of the installed keyboard layouts, in order
+    /// (the automatic translation target is the other one). Cheap.
+    fn keyboard_languages(&self) -> Vec<String> {
+        Vec::new()
+    }
+    /// D90: show an engine badge (and its notice) on the Murmur bar, as
+    /// the router does after a dictation (`dictation:route`).
+    fn engine_badge(&self, _badge: &crate::router_adapter::Badge) {}
 }
 
 /// Longest wait for the selection capture (UIA timeout + Ctrl+C wait).
@@ -535,6 +543,7 @@ impl Controller {
                 }
                 crate::dictation::Mode::Locked => "handsfree",
                 crate::dictation::Mode::Command => "command",
+                crate::dictation::Mode::Translate => "translate",
             };
         }
     }
@@ -1219,6 +1228,7 @@ impl Controller {
             } => self.run_command(session, instruction),
             Effect::Transform { session, index } => self.run_transform(session, index),
             Effect::AutoTransform { session, text } => self.run_auto_transform(session, text),
+            Effect::Translate { session, text } => self.run_translate(session, text),
             Effect::Paste { session, text } => {
                 // The core's paste plan (core-p1): text runs, Tab/Break and
                 // a trailing Enter. `text` is only the fallback for a result
@@ -1576,6 +1586,93 @@ impl Controller {
         }
     }
 
+    /// D90: translate a dictation's text (off-thread) into the chosen
+    /// language, or the other installed keyboard language; the answer
+    /// comes back as `TranslateFinished`. A success is kept like an
+    /// auto-apply transform (pasted instead, History shows the original).
+    fn run_translate(&self, session: SessionId, text: String) {
+        let (plain, source) = self
+            .shared
+            .sessions
+            .lock()
+            .unwrap()
+            .get(&session)
+            .map(|i| {
+                let r = i.result.as_ref();
+                (
+                    r.map(|r| r.plain()),
+                    r.and_then(|r| r.language.clone())
+                        .or_else(|| i.language.clone()),
+                )
+            })
+            .unwrap_or_default();
+        let plain = plain.unwrap_or_else(|| crate::paste::plain_text(&text));
+        let req = {
+            let p = self.prefs.read().unwrap();
+            murmur_core::translate::Request {
+                text: plain.clone(),
+                source,
+                // "" = automatic: the other installed keyboard language (D58).
+                target: Some(p.translate_to.clone()).filter(|t| !t.is_empty()),
+                installed: self.platform.keyboard_languages(),
+                dictionary: crate::core_adapter::to_core_dict(&p.dictionary),
+            }
+        };
+        let core = self.core.clone();
+        let shared = self.shared.clone();
+        let tx = self.tx.clone();
+        let debug = self.debug.clone();
+        let platform = self.platform.clone();
+        let fallback = text.clone();
+        let spawned = std::thread::Builder::new()
+            .name("murmur-translate".into())
+            .spawn(move || {
+                let r = core.translate(&req, murmur_core::translate::DEFAULT_TIMEOUT);
+                match &r {
+                    Ok(t) => {
+                        if let Some(i) = shared.sessions.lock().unwrap().get_mut(&session) {
+                            i.applied = Some(AppliedTransform {
+                                name: format!(
+                                    "Translate to {}",
+                                    murmur_core::config::language_name(&t.target)
+                                ),
+                                original: plain,
+                                result: t.text.clone(),
+                            });
+                        }
+                        // No server or cloud could: the on-device model's
+                        // translations are weaker, so say so (L badge).
+                        if t.on_device {
+                            platform.engine_badge(&crate::router_adapter::Badge {
+                                letter: "L",
+                                fallback: false,
+                                title: None,
+                                message: Some(TRANSLATED_ON_DEVICE.into()),
+                            });
+                        }
+                    }
+                    Err(e) => {
+                        if let Some(d) = &debug {
+                            d.event("translate", &format!("not translated: {e}"));
+                        }
+                    }
+                }
+                let r = r.map(|t| t.text);
+                let _ = tx.send(Input::TranslateFinished {
+                    session,
+                    original: text,
+                    result: r,
+                });
+            });
+        if let Err(e) = spawned {
+            let _ = self.tx.send(Input::TranslateFinished {
+                session,
+                original: fallback,
+                result: Err(e.to_string()),
+            });
+        }
+    }
+
     /// "View changes": Home with the last transform's row expanded.
     fn view_changes(&self) {
         let row = self.history.as_ref().and_then(|h| {
@@ -1591,6 +1688,9 @@ impl Controller {
     }
 }
 
+/// D90: a translation only the on-device model could make (no server or
+/// cloud answered): shown with the L badge.
+pub const TRANSLATED_ON_DEVICE: &str = "Translated on this PC: lower quality";
 /// The recording of a history row is no longer kept.
 pub const RETRY_GONE: &str = "The recording of this dictation is no longer kept";
 /// Retry refused while a dictation runs (the engine serves one at a time).
@@ -2188,6 +2288,8 @@ mod tests {
         selection_reads: AtomicU64,
         /// D37: the foreground window's keyboard language.
         keyboard: Mutex<Option<String>>,
+        /// D90: the installed keyboard languages.
+        layouts: Vec<String>,
     }
 
     impl Fake {
@@ -2210,6 +2312,16 @@ mod tests {
         }
         fn keyboard_language(&self) -> Option<String> {
             self.keyboard.lock().unwrap().clone()
+        }
+        fn keyboard_languages(&self) -> Vec<String> {
+            self.layouts.clone()
+        }
+        fn engine_badge(&self, b: &crate::router_adapter::Badge) {
+            self.push(format!(
+                "badge {} {}",
+                b.letter,
+                b.message.as_deref().unwrap_or("-")
+            ));
         }
         fn duck(&self) {
             self.push("duck");
@@ -2671,6 +2783,98 @@ mod tests {
         let e = history_latest(&r).unwrap();
         assert_eq!(e.transform, None);
         assert_eq!(e.pasted.as_deref(), Some("[stub: 1.0 s of audio]"));
+    }
+
+    // ---- D90: translation ----
+
+    fn translate_rig(prefs: Prefs) -> Rig {
+        let fake = Fake {
+            layouts: vec!["he".into(), "en".into()],
+            ..Fake::default()
+        };
+        let mut r = rig(fake, prefs);
+        r.c =
+            r.c.with_history(Arc::new(Mutex::new(History::open_in_memory().unwrap())));
+        r
+    }
+
+    fn dictate_translated(r: &mut Rig) {
+        r.at(0, Input::Hotkey(HotkeyAction::TranslateDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        r.at(1000, Input::Hotkey(HotkeyAction::TranslateUp));
+        r.pump(); // Committed -> Translate
+        r.pump(); // TranslateFinished -> Paste
+        r.pump(); // PasteFinished
+    }
+
+    #[test]
+    fn translate_pastes_the_translation_into_the_other_keyboard_language() {
+        let mut r = translate_rig(auto_prefs()); // auto-apply never runs on it
+        r.core.set_translate_reply(Ok(("translated words", false)));
+        dictate_translated(&mut r);
+        assert!(r.core.last_config().unwrap().raw_mode, "one LLM call");
+        let req = &r.core.translations()[0];
+        assert_eq!(req.text, "[stub: 1.0 s of audio]");
+        assert_eq!(
+            (req.target.as_deref(), req.installed.as_slice()),
+            (None, ["he".to_string(), "en".to_string()].as_slice()),
+            "automatic: the core picks the other installed language"
+        );
+        assert!(r.core.transforms().is_empty());
+        let log = r.fake.log();
+        let pastes: Vec<_> = log.iter().filter(|l| l.starts_with("paste")).collect();
+        assert_eq!(pastes, ["paste translated words"]);
+        assert!(
+            log.contains(&"overlay ActiveCommand".to_string()),
+            "{log:?}"
+        );
+        let e = history_latest(&r).unwrap();
+        assert!(!e.command);
+        assert_eq!(e.transform.as_deref(), Some("Translate to Hebrew"));
+        assert_eq!(e.original.as_deref(), Some("[stub: 1.0 s of audio]"));
+        assert_eq!(e.pasted.as_deref(), Some("translated words"));
+    }
+
+    #[test]
+    fn translate_uses_the_chosen_target_language() {
+        let mut r = translate_rig(Prefs {
+            translate_to: "fr".into(),
+            ..Prefs::default()
+        });
+        r.core.set_translate_reply(Ok(("des mots", false)));
+        dictate_translated(&mut r);
+        assert_eq!(r.core.translations()[0].target.as_deref(), Some("fr"));
+        let e = history_latest(&r).unwrap();
+        assert_eq!(e.transform.as_deref(), Some("Translate to French"));
+        assert!(!r.fake.log().iter().any(|l| l.starts_with("badge")));
+    }
+
+    #[test]
+    fn an_on_device_translation_shows_the_l_badge_and_says_so() {
+        let mut r = translate_rig(Prefs::default());
+        r.core.set_translate_reply(Ok(("translated words", true)));
+        dictate_translated(&mut r);
+        let log = r.fake.log();
+        assert!(
+            log.contains(&format!("badge L {TRANSLATED_ON_DEVICE}")),
+            "{log:?}"
+        );
+        let pastes: Vec<_> = log.iter().filter(|l| l.starts_with("paste")).collect();
+        assert_eq!(pastes, ["paste translated words"], "still pasted");
+    }
+
+    #[test]
+    fn a_failed_translation_pastes_the_dictation_with_a_notice() {
+        let mut r = translate_rig(Prefs::default());
+        dictate_translated(&mut r); // the stub has no LLM
+        let log = r.fake.log();
+        let pastes: Vec<_> = log.iter().filter(|l| l.starts_with("paste")).collect();
+        assert_eq!(pastes, ["paste [stub: 1.0 s of audio]"]);
+        let notice = log.iter().position(|l| l.contains("Not translated"));
+        let paste = log.iter().position(|l| l.starts_with("paste"));
+        assert!(notice > paste, "{log:?}");
+        let e = history_latest(&r).unwrap();
+        assert_eq!(e.transform, None);
     }
 
     #[test]

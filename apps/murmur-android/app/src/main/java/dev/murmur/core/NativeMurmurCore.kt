@@ -211,6 +211,14 @@ class NativeMurmurCore private constructor(handle: Long, val isRouter: Boolean =
             try { CommandOutcome.decode(nativeCommand(h, instruction, selected)) } catch (e: UnsatisfiedLinkError) { CommandOutcome.noLlm }
         }
 
+    /** D90. A library without `nativeTranslate` reads as "no AI" (never a crash). */
+    override fun translate(text: String, source: String?, target: String?, installed: List<String>, dictionary: List<DictEntry>): TranslateOutcome =
+        lease.use({ TranslateOutcome.Failed(TranslateOutcome.BACKEND, "Speech engine was unloaded, try again in a moment.") }) { h ->
+            BlockingCalls.check("nativeTranslate")
+            val req = TranslateOutcome.request(text, source, target, installed, dictionary)
+            try { TranslateOutcome.decode(nativeTranslate(h, req)) } catch (e: UnsatisfiedLinkError) { TranslateOutcome.noLlm }
+        }
+
     /**
      * Benchmark hook (debug BenchActivity, tools/probes/android_bench): one AI-cleanup request
      * (`{"mode":"prod"|"v4c","input","context","session"}`) on this core handle's on-device LLM.
@@ -489,6 +497,9 @@ class NativeMurmurCore private constructor(handle: Long, val isRouter: Boolean =
 
         // ---- 2026-10-28 Command Mode (JNI_CONTRACT.md "Command Mode"); never null ----
         @JvmStatic external fun nativeCommand(handle: Long, instruction: String, selected: String?): String
+
+        // ---- D90 translation (JNI_CONTRACT.md "Translation"); never null ----
+        @JvmStatic external fun nativeTranslate(handle: Long, requestJson: String): String
 
         // ---- 2026-10-31 on-device benchmark hook (JNI_CONTRACT.md "Benchmark"); never null ----
         @JvmStatic external fun nativeBenchClean(handle: Long, requestJson: String): String

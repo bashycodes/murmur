@@ -761,6 +761,30 @@ pub mod json_api {
         murmur_core::command::result_json(&r).to_string()
     }
 
+    /// D90: clean and translate `req_json` (a `murmur_core::translate::Request`:
+    /// `text`, `source`?, `target`? (missing or blank = automatic, from
+    /// `installed`), `installed`, `dictionary`) on the cleanup route, server
+    /// and cloud first. Blocking. Always a `translate::result_json` object.
+    pub fn translate(h: &MurmurHandle, req_json: &str) -> String {
+        use murmur_core::translate::{self, Request, TranslateError};
+        let r = match serde_json::from_str::<Request>(req_json) {
+            Err(e) => Err(TranslateError::Backend(format!("bad request: {e}"))),
+            Ok(q) => match h {
+                MurmurHandle::Router(r) => r.translate(&q, translate::DEFAULT_TIMEOUT),
+                MurmurHandle::Core(c) => {
+                    translate::run(c.cleaner(), &q, translate::DEFAULT_TIMEOUT)
+                }
+            },
+        };
+        translate_json(r)
+    }
+
+    pub fn translate_json(
+        r: Result<murmur_core::translate::Translation, murmur_core::translate::TranslateError>,
+    ) -> String {
+        murmur_core::translate::result_json(&r).to_string()
+    }
+
     /// Benchmark hook ([`crate::bench`]): one AI-cleanup request on a bare
     /// core handle's on-device LLM. Router handles answer `{"error":…}`.
     /// Blocking (one LLM call).
