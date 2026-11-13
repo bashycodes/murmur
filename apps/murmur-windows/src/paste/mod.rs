@@ -151,6 +151,50 @@ pub fn should_restore(enabled: bool, seq_after_our_set: u32, seq_now: u32) -> bo
     enabled && seq_after_our_set == seq_now
 }
 
+/// D93: a clipboard paste sends its chord at most this often. A second
+/// chord goes out only when nobody read the text after the first.
+pub const PASTE_ATTEMPTS: u32 = 2;
+
+/// D93: what a clipboard paste does once the wait after a chord is over.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AfterChord {
+    /// The text was read from the clipboard: the paste landed.
+    Confirmed,
+    /// Nobody read it: send the chord again.
+    Retry,
+    /// Nobody read it and no retry is left (or the focus moved): report
+    /// it, and leave the text on the clipboard.
+    NotConfirmed,
+}
+
+/// D93. `read` = an app asked for our text (the clipboard text is
+/// delay-rendered, so a paste that reaches the clipboard calls us back);
+/// `attempt` = chords sent so far (1-based); `can_retry` = the window the
+/// paste started in still has the focus and our text is still on the
+/// clipboard. A retry never goes out after a read, so the paste itself is
+/// never doubled.
+pub fn after_chord(read: bool, attempt: u32, can_retry: bool) -> AfterChord {
+    if read {
+        AfterChord::Confirmed
+    } else if attempt < PASTE_ATTEMPTS && can_retry {
+        AfterChord::Retry
+    } else {
+        AfterChord::NotConfirmed
+    }
+}
+
+/// D93: the paste chord went out but no app read the text.
+pub const NOT_CONFIRMED_MSG: &str =
+    "Not pasted: the app did not take the text. It is on the clipboard (Ctrl+V).";
+
+/// D93: restore the user's clipboard only while our paste still owns it.
+/// Anyone's copy since (the user's, the target's) takes the ownership, and
+/// that copy stays. (The sequence number can't tell: rendering our
+/// delayed text for the target is a clipboard change of its own.)
+pub fn should_restore_owned(enabled: bool, still_ours: bool) -> bool {
+    enabled && still_ours
+}
+
 /// Formats whose clipboard handle is an HGLOBAL we can copy byte-wise.
 /// GDI-handle formats (bitmaps, metafiles, palettes) and owner-display
 /// formats are skipped; Windows re-synthesises CF_BITMAP from CF_DIB.
@@ -526,6 +570,40 @@ mod tests {
         assert!(should_restore(true, 41, 41));
         assert!(!should_restore(true, 41, 42), "someone copied meanwhile");
         assert!(!should_restore(false, 41, 41));
+    }
+
+    #[test]
+    fn a_read_confirms_the_paste_and_stops_retries() {
+        assert_eq!(after_chord(true, 1, true), AfterChord::Confirmed);
+        assert_eq!(
+            after_chord(true, PASTE_ATTEMPTS, false),
+            AfterChord::Confirmed
+        );
+    }
+
+    #[test]
+    fn an_unread_paste_is_retried_once_then_reported() {
+        assert_eq!(after_chord(false, 1, true), AfterChord::Retry);
+        assert_eq!(
+            after_chord(false, PASTE_ATTEMPTS, true),
+            AfterChord::NotConfirmed
+        );
+        assert_eq!(
+            PASTE_ATTEMPTS, 2,
+            "one retry: more would only delay the report"
+        );
+    }
+
+    #[test]
+    fn no_retry_once_the_focus_moved_or_the_clipboard_changed() {
+        assert_eq!(after_chord(false, 1, false), AfterChord::NotConfirmed);
+    }
+
+    #[test]
+    fn restore_only_while_the_paste_owns_the_clipboard() {
+        assert!(should_restore_owned(true, true));
+        assert!(!should_restore_owned(true, false), "someone copied since");
+        assert!(!should_restore_owned(false, true), "restore turned off");
     }
 
     #[test]
