@@ -2,9 +2,9 @@
 // help links that open in the browser (open_external, allowlisted hosts
 // only), and the speech-model downloader (D31): the catalogue, the confirm
 // dialog (OnboardDownloadConfirm.dc.html), progress from `model:download`
-// and the minimal "Download a model" row in Settings → Speech to text; the
-// AI cleanup models (GGUF, engine "llm") get the same row in Settings → AI
-// cleanup, plus Use and Delete. Onboarding uses the same state and dialog. A download starts only from
+// and the "Other models" row in Settings → Speech to text's Advanced fold; the
+// AI cleanup models (GGUF, engine "llm") get the "This PC model" row in Settings → AI
+// cleanup, plus Use and Delete. The server's library is Settings → Your server. Onboarding uses the same state and dialog. A download starts only from
 // the dialog's Download button, never by itself (D9). "Import from file…" next to each row installs
 // the same catalogue model from a folder, .zip or file on this PC (model_import_start, no network),
 // checked against the same fingerprints; its progress comes as the same `model:download` events.
@@ -13,6 +13,7 @@
 import { $, askDialog, html } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { onServer } from "../lib/model-source.js";
+import { llmModelChip } from "../lib/model-pages.js";
 import { prefsStore } from "../lib/prefs-store.js";
 import { views } from "../lib/views.js";
 let catalog = [];
@@ -353,6 +354,7 @@ function renderSettingsRow() {
     const busy = models.busy();
     const e = models.entry(id);
     const missing = models.notOnServer(e);
+    showCredit($("dl_credit"), e);
     $("dl_start").hidden = models.busy(id) || !models.canStart(e);
     $("dl_start").disabled = busy;
     $("dl_missing").hidden = !missing || !!e?.installed;
@@ -371,6 +373,13 @@ function renderSettingsRow() {
     }
     line.textContent = progressLine(p, models.entry(id));
     line.className = `hint ${p.state === "error" ? "err" : p.state === "done" ? "ok" : ""}`;
+}
+/** "Licence · model page" under a model's row. */
+function showCredit(box, e) {
+    box.replaceChildren();
+    box.hidden = !e;
+    if (e)
+        box.append(e.license ? `${e.license} · ` : "", html(extLink(e.page, "model page")));
 }
 /** Under a catalogue model the server lacks (D79). */
 const NOT_ON_SERVER = "Your server doesn't have this one. Ask whoever runs it to add it, or download from Hugging Face.";
@@ -405,16 +414,11 @@ function askLlmBackend() {
 export function recommendedLlm(list, gpu) {
     return list.find((c) => (gpu ? c.recommended_gpu : c.recommended));
 }
-/** "This PC: …" under the cleanup model list. */
-function hardwareLine(b, rec) {
+/** The one line under "This PC model": where cleanup runs (the list marks the pick for it). */
+function hardwareLine(b) {
     if (!b)
         return "";
-    const pick = rec ? ` Recommended: ${rec.title}.` : "";
-    if (b.gpu)
-        return `This PC runs AI cleanup on its graphics chip (${b.device}, ${b.backend}).${pick}`;
-    if (!b.plugin)
-        return `No AI cleanup engine found to check this PC's graphics chip; assuming the CPU.${pick}`;
-    return `No graphics chip found for AI cleanup: it runs on the CPU.${pick}`;
+    return b.gpu ? `Runs on the graphics chip (${b.device}).` : "Runs on the CPU.";
 }
 /** Local cleanup runs with this catalogue model (path set to it, or empty = the default file). */
 export function llmInUse(c, p = prefsStore.get()) {
@@ -451,7 +455,7 @@ function renderLlmRow() {
         if (pick)
             sel.value = pick.id;
     }
-    $("llm_dl_hw").textContent = hardwareLine(llmBackend, rec);
+    $("llm_dl_hw").textContent = hardwareLine(llmBackend);
     const e = models.entry(sel.value);
     const start = $("llm_dl_start");
     const stop = $("llm_dl_stop");
@@ -464,6 +468,13 @@ function renderLlmRow() {
     const inUse = Boolean(e && e.installed && llmInUse(e));
     const missing = models.notOnServer(e);
     $("llm_dl_missing").hidden = !e || e.installed || busy || !missing;
+    const chip = $("llm_dl_chip");
+    const c = llmModelChip({ installed: Boolean(e?.installed), inUse, busy });
+    chip.hidden = !c;
+    if (c) {
+        chip.textContent = c.text;
+        chip.className = `fl-badge fl-badge-${c.kind}`;
+    }
     start.hidden = !e || e.installed || busy || !models.canStart(e);
     start.disabled = models.busy();
     if (e)
@@ -498,16 +509,14 @@ function renderLlmRow() {
             line.append(`${e.desc}. ${NOT_ON_SERVER}`);
             return;
         }
-        line.append(`${e.desc}. Not downloaded yet${e.available ? "." : ": "}`);
+        line.append(`${e.desc}.`);
         if (!e.available)
-            line.append(html(extLink(e.page, "get it from its model page")), e.importable ? ", then Import from file." : ".");
+            line.append(" ", html(extLink(e.page, "Get it from its model page")), e.importable ? ", then Import from file." : ".");
         if (e.license)
             line.append(` ${e.license}.`);
         return;
     }
-    if (inUse)
-        return set(`${e.desc}. Downloaded and in use for cleanup on this PC.`, "ok");
-    set(`${e.desc}. Downloaded. Press Use to clean up with it.`);
+    set(`${e.desc}.`);
 }
 async function useLlm(id) {
     const e = models.entry(id);
@@ -540,15 +549,16 @@ async function deleteLlm(id) {
     await prefsStore.load().catch(() => { });
     await models.refresh().catch(() => { });
 }
-/** Settings → AI cleanup → On this PC: download / use / delete a cleanup model. */
+/** Settings → AI cleanup → This PC model: pick, download, use or delete a cleanup model. */
 export const LLM_DOWNLOAD_ROW = `
 <div class="fl-row lw-dl-row" id="llm_dl_row" data-needs="local" hidden>
   <div class="fl-row-text">
-    <div class="fl-row-title"><label for="llm_dl_model">Download a model</label></div>
-    <div class="fl-row-desc">From your server or Hugging Face (Download models from, in Speech to text), checked against a fingerprint built into this version. Only when you press Download; nothing about you is sent. A downloaded or imported model turns on cleanup on this PC.<span class="lw-status-sub"><span class="lw-dl-bar" id="llm_dl_bar" hidden><span></span></span><span id="llm_dl_status"></span></span><span class="lw-status-sub hint" id="llm_dl_hw"></span></div>
+    <div class="fl-row-title"><label for="llm_dl_model">This PC model</label></div>
+    <div class="fl-row-desc"><span id="llm_dl_hw"></span><span class="lw-status-sub"><span class="lw-dl-bar" id="llm_dl_bar" hidden><span></span></span><span id="llm_dl_status"></span></span></div>
   </div>
   <div class="fl-row-control">
-    <select id="llm_dl_model" class="fl-select lw-w220" aria-label="Cleanup model to download"></select>
+    <select id="llm_dl_model" class="fl-select lw-model-select" aria-label="AI cleanup model on this PC"></select>
+    <span class="fl-badge fl-badge-light" id="llm_dl_chip" hidden></span>
     ${NOT_ON_SERVER_BADGE("llm_dl_missing")}
     <button type="button" class="fl-btn fl-btn-secondary" id="llm_dl_start">Download…</button>
     <button type="button" class="fl-btn fl-btn-secondary" id="llm_dl_import" hidden>Import from file…</button>
@@ -674,9 +684,13 @@ function renderHebrewRow() {
     const set = (text, cls = "") => {
         line.textContent = text;
         line.className = `hint${cls ? ` ${cls}` : ""}`;
+        // A Hebrew problem (Hebrew chosen, no model) opens the Advanced fold the row sits in.
+        const fold = line.closest("details");
+        if (cls === "err" && fold)
+            fold.open = true;
     };
     if (!e) {
-        set(wantHe ? "Your language is Hebrew, but with no Hebrew model it uses the model above." : "Hebrew uses the model above.", wantHe ? "err" : "");
+        set(wantHe ? "Your language is Hebrew, but with no Hebrew model it uses This PC model." : "Hebrew uses This PC model.", wantHe ? "err" : "");
         return;
     }
     const p = models.progress(e.id);
@@ -702,7 +716,7 @@ function renderHebrewRow() {
                 : e.importable
                     ? "get it from its model page, then Import from file"
                     : "get it from its model page";
-        set(`Not downloaded yet: ${how} (${mb(e.size)}).${wantHe ? " Until then Hebrew uses the model above." : ""}${wouldRunLine(e, rec)}`, wantHe ? "err" : "");
+        set(`Not downloaded yet: ${how} (${mb(e.size)}).${wantHe ? " Until then Hebrew uses This PC model." : ""}${wouldRunLine(e, rec)}`, wantHe ? "err" : "");
         if (!e.available)
             credit.append(" · ", html(extLink(e.page, "Download page")));
         return;
@@ -733,10 +747,10 @@ export const HEBREW_ROW = `
 <div class="fl-row lw-dl-row" id="he_row">
   <div class="fl-row-text">
     <div class="fl-row-title"><label for="hebrew_model">Hebrew model</label></div>
-    <div class="fl-row-desc">Used when the language is Hebrew (Settings → General), or on Detect automatically when you speak Hebrew; every other language keeps the model above. Zipformer is small and fast on any PC; ivrit.ai Whisper turbo is the most accurate but needs a graphics chip (GPU). The download includes a 32 MB Whisper model that tells Hebrew from English.<span class="lw-status-sub"><span class="lw-dl-bar" id="he_bar" hidden><span></span></span><span id="he_status"></span></span><span class="lw-status-sub lw-he-credit" id="he_credit" hidden></span></div>
+    <div class="fl-row-desc">Used when you speak Hebrew.<span class="lw-status-sub"><span class="lw-dl-bar" id="he_bar" hidden><span></span></span><span id="he_status"></span></span><span class="lw-status-sub lw-he-credit" id="he_credit" hidden></span></div>
   </div>
   <div class="fl-row-control">
-    <select id="hebrew_model" class="fl-select lw-w220" data-save="prefs" aria-label="Hebrew model">
+    <select id="hebrew_model" class="fl-select lw-model-select" data-save="prefs" aria-label="Hebrew model">
       <option value="zipformer">Zipformer</option>
       <option value="ivrit_turbo">ivrit.ai Whisper turbo</option>
       <option value="parakeet_he">Parakeet</option>
@@ -748,7 +762,7 @@ export const HEBREW_ROW = `
     <button type="button" class="fl-btn fl-btn-secondary" id="he_stop" hidden>Cancel</button>
   </div>
 </div>`;
-// ------------------------------------------------------------ Settings → Speech to text: From your server (D41)
+// ------------------------------------------------------------ Settings → Your server: Models on your server (D41)
 const KIND_LABEL = {
     stt: "Speech to text",
     hebrew: "Hebrew",
@@ -858,24 +872,27 @@ function renderServerModels() {
     }
     box.replaceChildren(...(lib.models ?? []).map(serverRow));
 }
-/** Settings → Speech to text: the server's model library (shown when a server is set). */
+/** Settings → Your server: the server's model library (shown when a server is set).
+ *  The wrapper takes data-needs, so applyNeeds can't unhide a group with no server. */
 export const SERVER_MODELS_GROUP = `
-<section class="lw-section" id="srv_group" data-needs="local" hidden>
-  <h3 class="fl-group-title lw-title-badge">From your server <button type="button" class="fl-btn fl-btn-ghost lw-btn-sm" id="srv_refresh">Refresh</button></h3>
+<div data-needs="local">
+<section class="lw-section" id="srv_group" hidden>
+  <h3 class="fl-group-title lw-title-badge">Models on your server <button type="button" class="fl-btn fl-btn-ghost lw-btn-sm" id="srv_refresh">Refresh</button></h3>
   <div class="fl-group">
     <div class="fl-row">
-      <div class="fl-row-text"><div class="fl-row-desc">Everything in your server's library, including models you added to it. Only when you press Download; built-in models are checked against the fingerprints in this version, your own against the fingerprint your server lists.<span class="lw-status-sub" id="srv_note"></span></div></div>
+      <div class="fl-row-text"><div class="fl-row-desc">Download one to use it on this PC.<span class="lw-status-sub" id="srv_note"></span></div></div>
     </div>
     <div id="srv_models" class="lw-srv-list"></div>
   </div>
-</section>`;
+</section>
+</div>`;
 // ------------------------------------------------------------ Download models from (D79)
-/** Settings → Speech to text → On this PC: where downloads come from, shown while a server is set. */
+/** Settings → Speech to text → Advanced: where downloads come from, shown while a server is set. */
 export const SOURCE_ROW = `
 <div class="fl-row" id="src_row" hidden>
   <div class="fl-row-text">
-    <div class="fl-row-title"><label for="model_source">Download models from</label></div>
-    <div class="fl-row-desc">For speech and cleanup models. Your server works without the internet. Every file is checked against its SHA-256 fingerprint before it's used.</div>
+    <div class="fl-row-title"><label for="model_source">Download from</label></div>
+    <div class="fl-row-desc">Speech and cleanup models. Your server works offline.</div>
   </div>
   <div class="fl-row-control">
     <select id="model_source" class="fl-select lw-w220" data-save="prefs" aria-label="Download models from">
@@ -1027,15 +1044,15 @@ export function browseButton(field, label = "Browse") {
 export function extLink(url, text, cls = "lw-link") {
     return `<a class="${cls}" href="${url}" data-open-url="${url}">${text}</a>`;
 }
-/** The settings row markup (Settings → Speech to text). */
+/** Settings → Speech to text → Advanced: download or import another speech model. */
 export const DOWNLOAD_ROW = `
 <div class="fl-row lw-dl-row" id="dl_row" hidden>
   <div class="fl-row-text">
-    <div class="fl-row-title"><label for="dl_model">Download a model</label></div>
-    <div class="fl-row-desc">From your server or Hugging Face (Download models from, above), or Import from file (a folder, .zip or model file you copied here, no network); either way checked against a fingerprint built into this version. Only when you press Download; nothing about you is sent.<span class="lw-status-sub"><span class="lw-dl-bar" id="dl_bar" hidden><span></span></span><span id="dl_status"></span></span></div>
+    <div class="fl-row-title"><label for="dl_model">Other models</label></div>
+    <div class="fl-row-desc">Download one, or import one you copied here.<span class="lw-status-sub"><span class="lw-dl-bar" id="dl_bar" hidden><span></span></span><span id="dl_status"></span></span><span class="lw-status-sub lw-he-credit" id="dl_credit" hidden></span></div>
   </div>
   <div class="fl-row-control">
-    <select id="dl_model" class="fl-select lw-w220" aria-label="Model to download"></select>
+    <select id="dl_model" class="fl-select lw-model-select" aria-label="Model to download"></select>
     ${NOT_ON_SERVER_BADGE("dl_missing")}
     <button type="button" class="fl-btn fl-btn-secondary" id="dl_start">Download…</button>
     <button type="button" class="fl-btn fl-btn-secondary" id="dl_import" hidden>Import from file…</button>

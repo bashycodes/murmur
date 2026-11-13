@@ -3,8 +3,8 @@
 Probe (Playwright + its bundled Chromium):
     python3 tools/probes/settings_mock/serve.py 8765 &
     python3 tools/probes/settings_mock/check_server_models.py [port]
-With a server set (?server=1) Settings -> Speech to text lists the server's
-library under "From your server": every model with its kind and size, a
+With a server set (?server=1) Settings -> Your server lists the server's
+library under "Models on your server": every model with its kind and size, a
 Download / Use button for the ones this app can load and the reason for the
 others. The catalogue rows download from the server ("Download models
 from: Your server", D79); one the library lacks says "Not on your server". Covers: a custom whisper model (confirm dialog says "your server" and
@@ -51,9 +51,14 @@ def open_page(b, scheme, query):
     pg.goto(f"http://127.0.0.1:{port}/settings.html{query}")
     pg.wait_for_timeout(500)
     pg.evaluate("window.__dlSteps = 3; window.__dlTickMs = 30")
-    pg.evaluate("window.__goPage('settings-speech')")
-    pg.wait_for_timeout(300)
+    go(pg, "settings-server")
     return pg
+
+
+def go(pg, page):
+    """The library is on Your server; the speech picker is in Speech to text's Advanced fold."""
+    pg.evaluate(f"window.__goPage('{page}'); document.querySelectorAll('details.lw-fold').forEach(d => d.open = true)")
+    pg.wait_for_timeout(300)
 
 
 with sync_playwright() as p:
@@ -76,10 +81,12 @@ with sync_playwright() as p:
         # Catalogue rows: downloaded from the server (D79), not Hugging Face.
         cat = pg.evaluate("window.__TAURI__.core.invoke('model_catalog')")
         check(tag + "catalogue: every row from the server", all(c["available"] and c.get("from_server") for c in cat))
+        go(pg, "settings-speech")
         pg.select_option("#dl_model", "whisper-small-q5_1")
         pg.wait_for_timeout(100)
         st = pg.inner_text("#dl_status")
         check(tag + "speech row: not on the server, no Download", not pg.is_visible("#dl_start") and pg.is_visible("#dl_import") and pg.is_visible("#dl_missing") and "doesn't have" in st, st)
+        go(pg, "settings-server")
         if scheme == "light":
             pg.locator("#srv_group").screenshot(path=str(out / "server-list.png"))
 
@@ -138,6 +145,7 @@ with sync_playwright() as p:
         pg.wait_for_timeout(900)
         after = prefs(pg)
         check(tag + "Hebrew: route points at the server folder", after["hebrew_model"] == "zipformer" and after["hebrew_model_dir"].endswith("server\\zipformer-he-v2"), str(after.get("hebrew_model_dir")))
+        go(pg, "settings-speech")
         st = pg.inner_text("#he_status")
         check(tag + "Hebrew row: uses it", "from your server" in st, st)
         check(tag + "no page errors so far", not errors, "; ".join(errors[:3]))
@@ -153,6 +161,7 @@ with sync_playwright() as p:
     pg = open_page(b, "light", "")
     check("no server: group hidden", not pg.is_visible("#srv_group"))
     check("no server: server_models not even asked", calls(pg, "server_models") == [])
+    go(pg, "settings-speech")
     pg.select_option("#dl_model", "whisper-small-q5_1")
     pg.wait_for_timeout(100)
     check("no server: Download from Hugging Face is back", pg.is_visible("#dl_start"))

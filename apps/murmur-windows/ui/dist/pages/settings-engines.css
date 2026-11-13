@@ -22,6 +22,56 @@
 .fl-row-control > .lw-w180 { width: 180px; }
 .fl-row-control > .lw-w300 { width: 300px; }
 .fl-row-control > .lw-btn-160 { width: 160px; }
+/* Model pickers: as wide as the longest model name, so none is cut off; a
+   row too narrow for the picker and its buttons puts them under the text. */
+.fl-row.lw-dl-row,
+#pc_model_row {
+  flex-wrap: wrap;
+}
+.lw-dl-row > .fl-row-text,
+#pc_model_row > .fl-row-text {
+  flex: 1 1 220px;
+}
+.lw-dl-row > .fl-row-control,
+#pc_model_row > .fl-row-control {
+  max-width: 100%;
+}
+.fl-row-control > select.lw-model-select {
+  width: auto;
+  min-width: 200px;
+  max-width: 100%;
+}
+
+/* The Advanced fold (lib/markup.ts advanced(): Speech to text, AI cleanup,
+   Your server): a group behind a ▸ title. */
+details.lw-fold > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  list-style: none;
+  cursor: pointer;
+}
+details.lw-fold > summary::-webkit-details-marker {
+  display: none;
+}
+details.lw-fold > summary::before {
+  content: "▸";
+  display: inline-block;
+  transition: transform 0.15s;
+}
+details.lw-fold[open] > summary::before {
+  transform: rotate(90deg);
+}
+details.lw-fold:not([open]) > summary {
+  margin-bottom: 0;
+}
+details.lw-fold > summary:focus-visible {
+  outline: 2px solid var(--foreground);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 .lw-mono-input {
   font-family: "Cascadia Mono", Consolas, ui-monospace, monospace;
   font-size: 13px !important;
@@ -113,10 +163,11 @@
 .lw-level-text {
   margin-top: 16px;
 }
+/* Label first, switch on the right, like every other row. */
 .lw-switch-stack {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: flex-end;
   gap: 10px;
 }
 .lw-small-switch {

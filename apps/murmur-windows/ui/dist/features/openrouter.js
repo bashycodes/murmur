@@ -13,6 +13,7 @@ import { iconEl } from "../lib/icons.js";
 import { cleanupBlockedLine, cleanupEngineName, cleanupTestFailText, plainHint } from "../lib/cleanup-state.js";
 import { cleanupMonthCost, failText, money, usd } from "../lib/format.js";
 import { invoke, onEvent } from "../lib/ipc.js";
+import { cloudTimeout } from "../lib/model-pages.js";
 import { Serial } from "../lib/serial.js";
 import { views } from "../lib/views.js";
 const PARAPHRASE_BADGE = "chat model, may paraphrase";
@@ -157,7 +158,6 @@ export function showOr(v) {
     showModelRow("or_cleanup", c.model, v.cleanup_model_info, spent);
     $("or_cleanup_box").classList.toggle("lw-dim", !c.allow);
     $("or_cleanup_sort").value = c.sort;
-    ensureOption("or_cleanup_timeout_ms", String(c.timeout_ms), `${c.timeout_ms / 1000} seconds`);
     $("or_cleanup_send_surrounding_text").checked = c.send_surrounding_text;
     $("or_cleanup_send_screen_words").checked = c.send_screen_words;
     $("or_cleanup_send_app_name").checked = c.send_app_name;
@@ -268,9 +268,9 @@ function showCleanupStatus(st) {
     if (blocked?.turnOn)
         e.append(" ", turnOnButton());
 }
-/** "Turn on": the Cleanup order switch, so its consent ask runs as when clicked there. */
+/** "Turn on": the Engines switch, so its consent ask runs as when clicked there. */
 function turnOnButton() {
-    const b = el("button", "lw-link", "Turn on in Cleanup order");
+    const b = el("button", "lw-link", "Turn on under Engines");
     b.type = "button";
     b.addEventListener("click", () => {
         // orCleanupToggled reads the switch: on, it asks for consent when needed.
@@ -512,25 +512,34 @@ async function orTestStt() {
  *  and a field's save fired by a click lands before that click's own save. */
 const writes = new Serial();
 async function orApplyCleanup(consent) {
-    const t = parseInt($("or_cleanup_timeout_ms").value, 10);
     const form = {
         allow: $("or_cleanup_allow").checked,
         consent,
         // The order is the AI cleanup page's (dev_cleanup_set_engines): kept.
         sort: $("or_cleanup_sort").value,
-        timeout_ms: Number.isFinite(t) ? Math.min(8000, Math.max(800, t)) : 2500,
+        // Set only by AI cleanup → Give up after (setCloudTimeouts): kept.
+        timeout_ms: cloudTimeout("openrouter", views.or?.cleanup.timeout_ms ?? 2500),
         send_surrounding_text: $("or_cleanup_send_surrounding_text").checked,
         send_screen_words: $("or_cleanup_send_screen_words").checked,
         send_app_name: $("or_cleanup_send_app_name").checked,
     };
     const r = await orCall("dev_or_set_cleanup", { form }, "or_cleanup_msg", "Saved — applies to the next dictation");
-    if (r) {
-        $("or_cleanup_timeout_ms").value = String(r.cleanup.timeout_ms);
+    if (r)
         showOr(r);
-    }
     else if (views.or)
         showOr(views.or);
     return r !== null;
+}
+/** AI cleanup → Advanced → Give up after: both cloud providers' own limits
+ *  (each within its range). Saves only those two, never an address, model,
+ *  switch or consent, so it never asks anything. */
+export function setCloudTimeouts(ms) {
+    return writes.run(async () => {
+        const form = { openrouter_ms: cloudTimeout("openrouter", ms), custom_ms: cloudTimeout("custom", ms) };
+        const r = await orCall("dev_or_set_cleanup_timeouts", { form }, "or_cleanup_msg", "");
+        if (r)
+            showOr(r);
+    });
 }
 async function orCleanupToggled() {
     const box = $("or_cleanup_allow");
@@ -581,7 +590,6 @@ function showCustom(v) {
     if (stt !== "")
         ensureOption("cu_stt_model", stt, stt);
     $("cu_stt_model").value = stt;
-    ensureOption("cu_timeout_ms", String(cu.timeout_ms), `${cu.timeout_ms / 1000} seconds`);
     $("cu_http_warn").hidden = !cu.plain_http;
     const ks = $("cu_key_state");
     ks.textContent = cu.key.set ? `Key ${cu.key.masked}` : "No key saved.";
@@ -628,12 +636,12 @@ function showProviderRows(provider) {
  *  Custom is saved as soon as it is picked (D52): the selector always shows
  *  what dictation uses, and the server is used once address and model are set. */
 async function cuApply(provider, consent) {
-    const t = parseInt($("cu_timeout_ms").value, 10);
     const form = {
         provider,
         base_url: $("cu_base_url").value,
         model: $("cu_model").value,
-        timeout_ms: Number.isFinite(t) ? t : 4000,
+        // Set only by AI cleanup → Give up after (setCloudTimeouts): kept.
+        timeout_ms: cloudTimeout("custom", views.or?.cleanup.custom.timeout_ms ?? 4000),
         consent,
         stt_model: $("cu_stt_model").value,
     };
@@ -977,7 +985,6 @@ function wire() {
     $("or_cleanup_allow").addEventListener("change", () => void writes.run(orCleanupToggled));
     for (const id of [
         "or_cleanup_sort",
-        "or_cleanup_timeout_ms",
         "or_cleanup_send_surrounding_text",
         "or_cleanup_send_screen_words",
         "or_cleanup_send_app_name",
@@ -995,7 +1002,7 @@ function wire() {
                 void cuChanged(picked);
         });
     }
-    for (const id of ["cu_base_url", "cu_model", "cu_timeout_ms", "cu_stt_model"]) {
+    for (const id of ["cu_base_url", "cu_model", "cu_stt_model"]) {
         $(id).addEventListener("change", () => void cuChanged(provider()));
     }
     $("cu_base_url").addEventListener("input", () => {

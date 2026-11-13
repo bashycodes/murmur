@@ -62,7 +62,7 @@ with sync_playwright() as p:
     for scheme in ["light", "dark"]:
         tag = f"[{scheme}] "
         pg = open_page(b, scheme)
-        pg.evaluate("window.__goPage('settings-speech')")
+        pg.evaluate("(window.__goPage('settings-speech'), document.querySelectorAll('details.lw-fold').forEach(d => d.open = true))")
         pg.wait_for_timeout(300)
         # --- Speech to text: Whisper small from its .bin file.
         pg.select_option("#dl_model", "whisper-small-q5_1")
@@ -133,7 +133,7 @@ with sync_playwright() as p:
         p3 = prefs(pg)
         check(tag + "parakeet folder import -> engine uses it", p3["asr_engine"] == "parakeet" and p3["parakeet_model_dir"].endswith("sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8"), str(p3["parakeet_model_dir"]))
         # --- AI cleanup.
-        pg.evaluate("window.__goPage('settings-cleanup')")
+        pg.evaluate("(window.__goPage('settings-cleanup'), document.querySelectorAll('details.lw-fold').forEach(d => d.open = true))")
         pg.wait_for_timeout(300)
         pg.select_option("#llm_dl_model", Q05)
         pg.wait_for_timeout(100)
@@ -160,13 +160,13 @@ with sync_playwright() as p:
         pg.wait_for_timeout(900)
         p4 = prefs(pg)
         check(tag + "cleanup import -> local cleanup on with it", p4["llm_enabled"] and p4["llm_model_path"].endswith(Q15 + ".gguf"), str((p4["llm_enabled"], p4["llm_model_path"])))
-        check(tag + "cleanup: in use, no Import/Download", "in use" in pg.inner_text("#llm_dl_status") and not pg.is_visible("#llm_dl_import") and not pg.is_visible("#llm_dl_start"), pg.inner_text("#llm_dl_status"))
+        check(tag + "cleanup: in use, no Import/Download", pg.inner_text("#llm_dl_chip") == "In use" and not pg.is_visible("#llm_dl_import") and not pg.is_visible("#llm_dl_start"), pg.inner_text("#llm_dl_status"))
         pg.close()
 
         # --- Client-only build: no downloader, import still works.
         tag = f"[nodl {scheme}] "
         pg = open_page(b, scheme, "?nodl=1")
-        pg.evaluate("window.__goPage('settings-speech')")
+        pg.evaluate("(window.__goPage('settings-speech'), document.querySelectorAll('details.lw-fold').forEach(d => d.open = true))")
         pg.wait_for_timeout(300)
         check(tag + "speech row shown with Import only", pg.is_visible("#dl_row") and pg.is_visible("#dl_import") and not pg.is_visible("#dl_start"))
         st = pg.inner_text("#he_status")
@@ -192,7 +192,7 @@ with sync_playwright() as p:
         pg.wait_for_timeout(900)
         st = pg.inner_text("#he_status")
         check(tag + "language-ID imported: complete", "Ready for Hebrew" in st and "language-ID" not in st and not pg.is_visible("#he_import"), st)
-        pg.evaluate("window.__goPage('settings-cleanup')")
+        pg.evaluate("(window.__goPage('settings-cleanup'), document.querySelectorAll('details.lw-fold').forEach(d => d.open = true))")
         pg.wait_for_timeout(300)
         st = pg.inner_text("#llm_dl_status")
         check(tag + "cleanup: Import only, says how", pg.is_visible("#llm_dl_import") and not pg.is_visible("#llm_dl_start") and "then Import from file" in st, st)

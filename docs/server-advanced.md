@@ -402,7 +402,8 @@ same port and TLS as dictation, to any valid key.
 * Changes are picked up without a restart: the server rescans every
   `rescan_s` seconds (default 60; one `stat` per file, and every
   `model.toml` is read again, so a tag edit shows on the next scan; tap
-  *From your server* again in the app to see it). A file is hashed
+  *From your server* again on Android, or Refresh on Windows' *Models on
+  your server*, to see it). A file is hashed
   (SHA-256) only when it is new or its size or mtime changed; the hashes are
   cached in `<state dir>/library-hashes.json`. A model shows up once all its
   files are hashed (a few seconds per GB, in the background).
@@ -489,11 +490,12 @@ The wire format (`GET /v1/models`, downloads with `Range`) is in
 ### What the apps do with it (D41)
 
 With this server set, the Windows app downloads models from the library
-by default (setup's model steps and Settings → Speech to text → Download
-models from: **Your server**, D79): it then never contacts Hugging Face,
+by default (setup's model steps and Settings → Speech to text → Advanced →
+Download from: **Your server**, D79): it then never contacts Hugging Face,
 even for a model the library lacks (that one shows *Not on your server*;
 pick Hugging Face there to get it from the internet). Built-in models
-download from their usual rows; anything else from *From your server*.
+download from their usual rows; anything else from Settings → Your server →
+*Models on your server*.
 Folders with a
 `catalogue_id` must match the hashes built into the app (a different copy
 is refused); other folders are trusted by the hash the server lists. `kind`

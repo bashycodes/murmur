@@ -310,8 +310,9 @@ In each app: Settings → **Your server**. Enter the server's address
 key in **Access token** (Windows) or **Token** (Android). Press **Test
 connection**: Windows says `Connected.` Dictation then runs on the server, and falls back to
 the device's own model when the server is unreachable (if one is
-imported). *From your server* on the model pages downloads models from
-the server's library.
+imported). The server's library is in Settings → Your server → *Models on
+your server* (Windows) and under *From your server* on the model pages
+(Android).
 
 * `auth_failed`: wrong or revoked key.
 * `connect_failed`: server not running, wrong address, or the firewall.

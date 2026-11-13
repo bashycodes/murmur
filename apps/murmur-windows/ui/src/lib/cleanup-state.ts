@@ -5,7 +5,7 @@
 import { cloudHint } from "./format.js";
 import type { CloudProvider, CleanupStatus, OrView } from "./types.js";
 
-/** What the row says; `turnOn` = offer a button that switches cloud cleanup on in Cleanup order. */
+/** What the row says; `turnOn` = offer a button that switches cloud cleanup on under Engines. */
 export interface CleanupStateLine {
   text: string;
   cls: "hint" | "hint ok" | "hint err";
@@ -21,7 +21,7 @@ export function plainHint(code: string | null | undefined): string {
  * Why cloud cleanup is not used, before the circuit and the usage. `null` =
  * nothing blocks it (the caller shows the on line). `cloud_cleanup_not_configured`
  * covers several causes (D28: toggle off, no consent, no key, custom server not
- * set up); this tells them apart from the view. The Cleanup order switch comes
+ * set up); this tells them apart from the view. The Engines switch comes
  * first, then the custom server's address and model (its consent needs a host,
  * so it reads as missing until the address is typed), then consent and key.
  */
@@ -30,7 +30,7 @@ export function cleanupBlockedLine(st: CleanupStatus, v: OrView | null): Cleanup
   const where = custom ? st.host || "your proxy" : "OpenRouter";
   if (!st.supported) return { text: "Not in this build.", cls: "hint" };
   if (!st.enabled) {
-    return { text: `Cloud cleanup is off in Cleanup order: ${where} gets no text.`, cls: "hint", turnOn: true };
+    return { text: `Cloud cleanup is off under Engines: ${where} gets no text.`, cls: "hint", turnOn: true };
   }
   if (!st.blocked) return null;
   if (st.blocked !== "cloud_cleanup_not_configured") {
@@ -39,7 +39,7 @@ export function cleanupBlockedLine(st: CleanupStatus, v: OrView | null): Cleanup
   let why: string;
   if (custom && !v?.cleanup.custom.base_url) why = "enter your proxy's address on the Cloud page";
   else if (custom && !v?.cleanup.custom.model) why = "pick a model";
-  else if (!st.consent) why = "accept the consent first (turn it off and on again in Cleanup order)";
+  else if (!st.consent) why = "accept the consent first (turn it off and on again under Engines)";
   else if (!custom && v && !v.key.set) why = "save an OpenRouter key";
   else why = "not set up yet";
   return { text: `Not used: ${why}.`, cls: "hint err" };

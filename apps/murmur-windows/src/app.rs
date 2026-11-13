@@ -2615,6 +2615,18 @@ fn dev_or_set_custom_cleanup(
     })
 }
 
+/// AI cleanup → Advanced → Give up after: both cloud limits, nothing else.
+#[tauri::command]
+fn dev_or_set_cleanup_timeouts(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    form: crate::openrouter::CleanupTimeoutsForm,
+) -> Result<crate::openrouter::OrView, String> {
+    edit_cloud(&app, &state, |d| {
+        crate::openrouter::apply_cleanup_timeouts(d, &form)
+    })
+}
+
 /// D36: the cleanup order on the AI cleanup page (order + this PC / your
 /// server switches; OpenRouter's switch is `dev_or_set_cleanup`'s). In
 /// every build: the answer's `cleanup.engines` is what the page shows.
@@ -3410,6 +3422,7 @@ pub fn run() {
             dev_or_set_stt,
             dev_or_set_cleanup,
             dev_or_set_custom_cleanup,
+            dev_or_set_cleanup_timeouts,
             dev_cleanup_set_engines,
             dev_meeting_routes_set,
             dev_or_set_privacy,

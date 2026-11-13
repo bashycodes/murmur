@@ -187,6 +187,8 @@ function renderRoutes() {
     $("dev_pin_row").hidden = !$("dev_tls").checked;
     // Dictionary words while listening = Parakeet's beam search with hotwords.
     $("dict_words_row").classList.toggle("lw-gone", $("asr_engine").value !== "parakeet");
+    // Keeping this PC's model loaded means nothing while this PC is off.
+    $("dev_keep_local_warm").disabled = !engineOn("client");
     renderMeetings();
 }
 function move(r, dir) {
@@ -281,8 +283,13 @@ function showCheck(c) {
         i.classList.remove("invalid");
     for (const e of c.errors) {
         const slot = document.querySelector(`[data-err="${e.field}"]`);
-        if (slot)
+        if (slot) {
             slot.textContent = e.message;
+            // A field in a closed Advanced fold: open it so the error is seen.
+            const fold = slot.closest("details");
+            if (fold)
+                fold.open = true;
+        }
         $(`dev_${e.field}`)?.classList.add("invalid");
     }
     devValid = c.errors.length === 0;

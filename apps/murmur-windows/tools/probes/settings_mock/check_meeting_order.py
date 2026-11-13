@@ -60,7 +60,7 @@ with sync_playwright() as p:
         pg.on("pageerror", lambda e: errors.append(str(e)))
         pg.goto(f"http://127.0.0.1:{port}/notetaker-on/settings.html")
         pg.wait_for_timeout(500)
-        pg.evaluate("window.__goPage('settings-speech')")
+        pg.evaluate("(window.__goPage('settings-speech'), document.querySelectorAll('details.lw-fold').forEach(d => d.open = true))")
         pg.wait_for_timeout(300)
 
         check(tag + "section is shown and called Meetings",

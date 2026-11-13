@@ -1,11 +1,14 @@
 // Settings → Speech to text (design: SettingsSpeech.dc.html): the engine
 // order and the meeting order (D47) (features/engines.ts), the model on
-// this PC (features/general.ts) and cloud speech to text on OpenRouter or
-// (D85) the LiteLLM proxy (features/openrouter.ts). Markup only.
+// this PC with its status chip (features/general.ts), live transcription,
+// cloud speech to text on OpenRouter or (D85) the LiteLLM proxy
+// (features/openrouter.ts), and an Advanced fold with the model plumbing
+// (Hebrew model, keep loaded, download source, other models, model file).
+// The server's model library is on Settings → Your server. Markup only.
 import { ICON, iconSvg } from "../../lib/icons.js";
-import { group, heading, row, toggle } from "../../lib/markup.js";
+import { advanced, group, heading, row, toggle } from "../../lib/markup.js";
 import { NOTETAKER_ENABLED } from "../notetaker.js";
-import { browseButton, DOWNLOAD_ROW, HEBREW_ROW, SERVER_MODELS_GROUP, SOURCE_ROW } from "../../features/models.js";
+import { browseButton, DOWNLOAD_ROW, HEBREW_ROW, SOURCE_ROW } from "../../features/models.js";
 /** One engine in a ranked list (`<prefix>_row_<key>`, `_desc_`, `_badge_`):
  *  rank, tile, text, status badge, move up/down, switch. The feature module
  *  moves the row, numbers it and fills the text and badge. `keyAttr` names
@@ -28,7 +31,7 @@ export const settingsSpeechPage = {
     id: "settings-speech",
     area: "settings",
     template: `
-${heading("Speech to text", "Turns your voice into words. Engines are tried top to bottom; if one fails, the next one picks up the same audio and nothing you said is lost.")}
+${heading("Speech to text", "Turns your voice into words. If one engine fails, the next takes over.")}
 <section class="lw-section" id="eng_group">
   <h3 class="fl-group-title">Engines</h3>
   <div class="fl-group" id="dev_routes">
@@ -45,40 +48,40 @@ ${heading("Speech to text", "Turns your voice into words. Engines are tried top 
     ${engineRow("meet", "meeting", "client", ICON.chip, "This PC", toggle("meet_on_client", "Transcribe meetings on this PC"))}
     ${engineRow("meet", "meeting", "server", ICON.server, "Your server", toggle("meet_on_server", "Transcribe meetings on your server"))}
     ${engineRow("meet", "meeting", "cloud", ICON.cloud, "Cloud", toggle("meet_on_cloud", "Transcribe meetings in the cloud"))}
-    <div class="fl-row lw-foot-row"><div class="fl-row-desc">Recorded meetings are transcribed after they end by the first engine that is on and answers; if it fails, the next one picks up the same part of the meeting. Dictation always goes first. <span id="meet_follow"></span> <span id="meet_order_msg" class="hint"></span></div></div>
+    <div class="fl-row lw-foot-row"><div class="fl-row-desc">Meetings are transcribed after they end, by the first engine that answers. <span id="meet_follow"></span> <span id="meet_order_msg" class="hint"></span></div></div>
   </div>
 </section>
 
-${group("On this PC", row("Model", `Parakeet is fastest but English only. Whisper speaks many languages.<span class="lw-status-sub"><span id="model_status">Checking…</span></span>`, `<select id="asr_engine" class="fl-select" data-save="prefs">
-      <option value="parakeet">Parakeet (English)</option>
-      <option value="whisper">Whisper (multilingual)</option>
-    </select>`) +
-        row("Model file", `A whisper.cpp ggml model, e.g. <code>ggml-base.bin</code> (default) or <code>ggml-small-q5_1.bin</code> for better accuracy. Empty = default.`, `<input id="model_path" class="fl-input is-wide lw-mono-input" data-save="prefs" spellcheck="false" />${browseButton("model_path")}`, `data-engine="whisper"`) +
-        row("Model folder", "The <code>sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8</code> folder. Empty = default.", `<input id="parakeet_model_dir" class="fl-input is-wide lw-mono-input" data-save="prefs" spellcheck="false" />${browseButton("parakeet_model_dir")}`, `data-engine="parakeet"`) +
-        SOURCE_ROW +
-        DOWNLOAD_ROW +
-        HEBREW_ROW +
-        row("Use dictionary words when listening", "Better at names and jargon. Uses about 0.6 GB more memory; changing it reloads the model.", toggle("dev_parakeet_decoding", "Use dictionary words when listening"), `data-needs="dev" id="dict_words_row"`) +
-        row("Keep loaded while the server is used", "Instant fallback if the server drops, at the cost of memory.", toggle("dev_keep_local_warm", "Keep loaded while the server is used", `data-save="dev"`), `data-needs="remote"`), `data-needs="local"`)}
-<p class="fl-help lw-group-help" data-needs="local">Models are never downloaded automatically: press Download, or put them in <code id="models_dir" class="lw-mono"></code>.</p>
+${group("", row(`<label for="asr_engine">This PC model</label>`, `Parakeet is English only; Whisper speaks many languages.<span class="lw-status-sub"><span id="model_status"></span></span>`, `<select id="asr_engine" class="fl-select lw-model-select" data-save="prefs">
+      <option value="parakeet">Parakeet · English, fastest</option>
+      <option value="whisper">Whisper · many languages</option>
+    </select>
+    <span class="fl-badge fl-badge-light" id="pc_model_chip" hidden></span>
+    <button type="button" class="fl-btn fl-btn-secondary" id="pc_model_dl" hidden>Download…</button>`, `id="pc_model_row"`), `data-needs="local"`)}
 
-${SERVER_MODELS_GROUP}
+${group("", row("Live transcription", "Text appears as you pause, so it finishes sooner.", toggle("dev_decode_while_speaking", "Live transcription", `data-save="dev"`)), `data-needs="dev"`)}
 
 <section class="lw-section" id="or_stt_group" data-needs="cloud">
   <h3 class="fl-group-title lw-title-badge">Cloud · <span id="or_stt_provider_name">OpenRouter</span> <span class="fl-badge fl-badge-light" id="or_stt_used_badge">Used only when on above</span> <button type="button" class="lw-link lw-link-sm" data-go="settings-openrouter">Change provider →</button></h3>
   <div class="fl-group" id="or_stt_box">
     ${row(`<span id="or_stt_model_name"></span> <span id="or_stt_model_badges" class="pills"></span>`, `<span id="or_stt_model_desc"></span> <code id="or_stt_model_id" class="lw-mono"></code>`, `<button type="button" class="fl-btn fl-btn-secondary lw-btn-160" id="or_stt_change">Change</button>`, `data-stt-provider="openrouter"`)}
-    ${row(`<code id="cu_stt_model_name" class="lw-mono"></code>`, `Speech model on your proxy at <span id="cu_stt_host" class="lw-mono"></span>, with your dictionary words. Pick another on the Cloud page.`, "", `data-stt-provider="custom" hidden`)}
+    ${row(`<code id="cu_stt_model_name" class="lw-mono"></code>`, `Speech model on your proxy at <span id="cu_stt_host" class="lw-mono"></span>. Pick another on the Cloud page.`, "", `data-stt-provider="custom" hidden`)}
     ${row("Language", "", `<input id="or_stt_language" class="fl-input lw-w160" spellcheck="false" placeholder="Auto-detect" aria-label="Language (empty = auto-detect)" />`, `data-stt-provider="openrouter"`)}
-    ${row("Speech path", "A chat model with audio input may paraphrase instead of writing down what you said.", `<select id="or_stt_path" class="fl-select is-wide">
+    ${row("Speech path", "A chat model with audio input may paraphrase.", `<select id="or_stt_path" class="fl-select is-wide">
         <option value="auto">Auto (from the catalogue)</option>
         <option value="transcriptions">Transcription endpoint</option>
         <option value="chat_audio">Chat model with audio input</option>
       </select>`, `data-stt-provider="openrouter"`)}
-    ${row("Send dictionary words", "Helps it spell names the way you do.", toggle("or_stt_send_dictionary", "Send dictionary words"), `data-stt-provider="openrouter"`)}
+    ${row("Send dictionary words", "Helps it spell names your way.", toggle("or_stt_send_dictionary", "Send dictionary words"), `data-stt-provider="openrouter"`)}
     ${row("Try it", `<span id="or_stt_consent"></span> <span id="or_stt_test_out"></span> <span id="or_stt_status"></span>`, `<button type="button" class="fl-btn fl-btn-secondary" id="or_stt_test">Test</button>`)}
   </div>
 </section>
 
-${group("", row("Transcribe while I speak", "Each phrase is turned into text as you pause, so long dictations finish about a second after you let go. Off = the whole recording is transcribed after you stop. The cloud always gets the whole recording.", toggle("dev_decode_while_speaking", "Transcribe while I speak", `data-save="dev"`)), `data-needs="dev"`)}`,
+${advanced(HEBREW_ROW +
+        row("Keep model loaded", "Faster fallback, uses more memory.", toggle("dev_keep_local_warm", "Keep model loaded", `data-save="dev"`), `data-needs="remote"`) +
+        row("Use dictionary words when listening", "Better at names; uses about 0.6 GB more memory.", toggle("dev_parakeet_decoding", "Use dictionary words when listening"), `data-needs="dev" id="dict_words_row"`) +
+        SOURCE_ROW +
+        DOWNLOAD_ROW +
+        row("Model file", `Empty = the default. Your models folder: <code class="lw-mono" data-models-dir></code>`, `<input id="model_path" class="fl-input is-wide lw-mono-input" data-save="prefs" spellcheck="false" aria-label="Whisper model file" />${browseButton("model_path")}`, `data-engine="whisper"`) +
+        row("Model folder", `Empty = the default. Your models folder: <code class="lw-mono" data-models-dir></code>`, `<input id="parakeet_model_dir" class="fl-input is-wide lw-mono-input" data-save="prefs" spellcheck="false" aria-label="Parakeet model folder" />${browseButton("parakeet_model_dir")}`, `data-engine="parakeet"`), `id="stt_advanced" data-needs="local"`)}`,
 };

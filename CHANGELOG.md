@@ -26,6 +26,16 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 - **Windows setup tells one story about where speech runs, in plain words** (steps 1, 2 and 4). A new install now recommends and preselects This PC, as step 1 promises; Your server is recommended only once a server is saved. The cards read "Private, works offline.", "Use a faster computer you own." and "Best accuracy. Audio is sent online.", and setup no longer mentions murmur-server, VPN, LiteLLM, ws://, gen-token, GGUF or Q4_K_M. Your server's address and token sit behind "I already have a server ▸", and the token field no longer cuts off its hint. Step 1 no longer names OpenRouter.
 - **Windows setup's Cloud cleanup asks only for consent** (step 4). The provider switch and the LiteLLM address, key and model fields are gone, replaced by "Add details later in Settings → Cloud"; the consent box stays, naming where the text goes, because Cloud is never turned on without it (D28, D52). Setup turns Cloud cleanup on with the provider already saved in Settings → Cloud; when that provider has no key or address yet, the option says Cloud cleanup starts once you add it there.
+- **Windows: Speech to text and AI cleanup show only the main settings.** Each page shows its engines, a **This PC model** picker with its status (Ready, Installed, In use, or a Download button) and its main switches. Everything else is in a closed **Advanced** fold, and every helper text is one line.
+- **Windows: Speech to text → Advanced** holds the Hebrew model, Keep model loaded, dictionary words, Download from, other models and the model file or folder. Cleanup models are no longer listed on this page.
+- **Windows: AI cleanup → Advanced** holds Give up after, Use text on screen, Also send to the cloud, Formatting rules first and the model file.
+- **Windows: one Give up after for every cleanup engine.** Picking a time also sets the OpenRouter and LiteLLM limits, each within its provider's range, and changes nothing else.
+- **Windows: the server's model library moved** to Settings → Your server → **Models on your server**.
+- **Windows: Engine library** (the cleanup engine DLL) moved to Settings → Developer.
+- **Windows: Your server → Advanced is a closed fold too.** It opens by itself when one of its fields has an error.
+- **Windows: AI cleanup says "AI engines are skipped at …"** when an AI engine is on at Verbatim or Rules only.
+- **Windows: going from Verbatim back to an AI level turns the formatting rules back on.**
+- **Windows: model pickers no longer get cut off** in a narrow window.
 
 ### Fixed
 

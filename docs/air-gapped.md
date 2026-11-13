@@ -309,7 +309,7 @@ Android **Host or IP**; `hostname -I` on the server shows it), port `7313`, the 
 (**Access token** / **Token**), and the TLS pin if you use TLS. **Test connection**
 says `Connected.` on Windows.
 
-**Windows.** Settings → Speech to text → **From your server** lists the
+**Windows.** Settings → Your server → **Models on your server** lists the
 library. Press Download (it asks first), and the model is checked,
 installed and selected; **Use** switches to one you already have. AI
 cleanup and Hebrew models come the same way. With a server set, downloads

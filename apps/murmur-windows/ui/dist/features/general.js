@@ -7,7 +7,8 @@ import { $, el, setStatus, setValue } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { captureChord, RECORDING_TEXT, stopCapture } from "../lib/keycapture.js";
 import { prefsStore } from "../lib/prefs-store.js";
-import { hebrewChosen, hebrewReady, models } from "./models.js";
+import { hebrewChosen, hebrewReady, mb, models } from "./models.js";
+import { pcModelChip, pcModelEntry } from "../lib/model-pages.js";
 import { setTheme } from "../lib/theme.js";
 const BOOL_FIELDS = [
     "enable_sounds",
@@ -20,32 +21,49 @@ const BOOL_FIELDS = [
     "learn_from_edits",
     "spoken_cleanup",
 ];
+let modelState = { state: "loading", path: "" };
+/** The backend's default model paths (get_model_status), empty until it answers. */
+let defaults = { whisper: "", parakeet: "" };
+/** The status line under This PC model: only a problem; the chip says the rest. */
 function showModel(st) {
+    modelState = st;
     const e = $("model_status");
-    switch (st.state) {
-        case "loading":
-            e.textContent = `Loading ${st.path}…`;
-            e.className = "hint";
-            break;
-        case "ready":
-            e.textContent = `Ready: ${st.path} (loaded in ${st.load_ms} ms)`;
-            e.className = "hint ok";
-            break;
-        case "missing":
-            e.textContent = `Model file not found: ${st.path}. Dictation is unavailable until it exists.`;
-            e.className = "hint err";
-            break;
-        case "failed":
-            e.textContent = `Model failed to load (${st.path}): ${st.message}`;
-            e.className = "hint err";
-            break;
-    }
+    e.textContent =
+        st.state === "missing"
+            ? `Model file not found: ${st.path}.`
+            : st.state === "failed"
+                ? `Model failed to load (${st.path}): ${st.message}`
+                : "";
+    e.className = "hint err";
+    showModelChip();
+}
+/** The catalogue model This PC loads now (undefined: a custom file). */
+function pcEntry() {
+    const engine = $("asr_engine").value;
+    const parakeet = engine === "parakeet";
+    const path = $(parakeet ? "parakeet_model_dir" : "model_path").value;
+    return pcModelEntry(models.catalog(), engine, path, parakeet ? defaults.parakeet : defaults.whisper);
+}
+/** The chip next to This PC model: Ready / Installed / …, or Download when it isn't here yet. */
+function showModelChip() {
+    const e = pcEntry();
+    const c = pcModelChip({ status: modelState.state, entry: e, canDownload: models.canStart(e), busy: !!e && models.busy(e.id) });
+    const chip = $("pc_model_chip");
+    chip.textContent = c.text;
+    chip.className = `fl-badge fl-badge-${c.kind}`;
+    chip.hidden = c.download || !c.text;
+    const dl = $("pc_model_dl");
+    dl.hidden = !c.download;
+    dl.disabled = models.busy();
+    if (e)
+        dl.textContent = `Download ${mb(e.missing || e.size)}…`;
 }
 function showEngineFields() {
     const engine = $("asr_engine").value;
     for (const l of document.querySelectorAll("[data-engine]")) {
         l.hidden = l.dataset.engine !== engine;
     }
+    showModelChip();
 }
 function fill(prefs) {
     setValue("model_path", prefs.model_path ?? "");
@@ -360,6 +378,12 @@ export const general = {
             const p = prefsStore.get();
             if (p)
                 showLanguages(p);
+            showModelChip();
+        });
+        $("pc_model_dl").addEventListener("click", () => {
+            const e = pcEntry();
+            if (e)
+                void models.confirmAndStart(e.id);
         });
         for (const e of document.querySelectorAll(".lw-edit"))
             wireEdit(e);
@@ -373,8 +397,10 @@ export const general = {
             invoke("list_microphones"),
             invoke("get_model_status"),
         ]);
+        defaults = { whisper: model.default_path, parakeet: model.default_parakeet_dir };
         showModel(model.status);
-        $("models_dir").textContent = model.models_dir;
+        for (const c of document.querySelectorAll("[data-models-dir]"))
+            c.textContent = model.models_dir;
         $("model_path").placeholder = model.default_path;
         $("parakeet_model_dir").placeholder = model.default_parakeet_dir;
         const mic = $("microphone");

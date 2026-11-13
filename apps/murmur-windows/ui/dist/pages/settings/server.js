@@ -1,8 +1,9 @@
 // Settings → Your server (design: SettingsServer.dc.html): the murmur-server
-// connection (features/engines.ts validates it and saves it with Save).
+// connection (features/engines.ts validates it and saves it with Save) and
+// the models in its library (features/models.ts).
 // Markup only.
-import { group, heading, row, toggle } from "../../lib/markup.js";
-import { extLink, SERVER_HELP } from "../../features/models.js";
+import { advanced, group, heading, row, toggle } from "../../lib/markup.js";
+import { extLink, SERVER_HELP, SERVER_MODELS_GROUP } from "../../features/models.js";
 const err = (field) => `<small class="field-err" data-err="${field}"></small>`;
 /** A preset timeout list; features/engines.ts adds the saved value when it is not a preset. */
 const choice = (id, label, opts) => `<select id="dev_${id}" class="fl-select lw-w160" data-dev-field aria-label="${label}">${opts
@@ -33,7 +34,8 @@ ${group("Connection", row(`<label for="dev_host">Address</label>`, `A name or IP
   <span class="lw-dot"></span><span class="lw-result-text" id="dev_test_text"></span>
 </div>
 ${group("Users & keys", row("Keys for people and devices", `This app's key is an admin key, so you can give each person or device its own key and revoke it. <span id="srv_keys_who"></span>`, `<button type="button" class="fl-btn fl-btn-outline" data-go="settings-keys">Manage keys</button>`), `id="srv_keys" hidden`)}
-${group("Advanced", row("Give up connecting after", `Then the next engine takes over. ${err("connect_timeout_ms")}`, choice("connect_timeout_ms", "Give up connecting after", [
+${SERVER_MODELS_GROUP}
+${advanced(row("Give up connecting after", `Then the next engine takes over. ${err("connect_timeout_ms")}`, choice("connect_timeout_ms", "Give up connecting after", [
         [500, "0.5 seconds"],
         [800, "0.8 seconds"],
         [1500, "1.5 seconds"],

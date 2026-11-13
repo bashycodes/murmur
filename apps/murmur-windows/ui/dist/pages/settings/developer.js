@@ -1,6 +1,7 @@
-// Settings → Developer: engine status and diagnostics (features/engines.ts).
+// Settings → Developer: engine status and diagnostics (features/engines.ts),
+// and where the AI cleanup engine library loads from (features/ai.ts).
 // Shown in builds with a server engine, or after seven taps on the version.
-import { heading } from "../../lib/markup.js";
+import { group, heading, row } from "../../lib/markup.js";
 export const settingsDeveloperPage = {
     id: "settings-developer",
     area: "settings",
@@ -25,5 +26,6 @@ ${heading("Developer")}
   <button type="button" id="dev_lock" class="fl-btn fl-btn-ghost" hidden>Lock</button>
 </div>
 <p class="lw-status-line"><span id="dev_diag_status"></span></p>
-<p id="dev_diag" class="hint"></p>`,
+<p id="dev_diag" class="hint"></p>
+${group("AI cleanup on this PC", row(`<label for="llm_lib_path">Engine library</label>`, `llama.cpp, <code id="llm_plugin" class="lw-mono"></code>. Empty = next to the app.`, `<input id="llm_lib_path" class="fl-input is-wide lw-mono-input" data-save="prefs" spellcheck="false" />`), `data-needs="local"`)}`,
 };
