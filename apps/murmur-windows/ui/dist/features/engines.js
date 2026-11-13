@@ -405,11 +405,37 @@ function timingLine(l) {
         parts.push(`engine ${l.total_ms}`);
     return parts.join(" · ");
 }
+let lastSeq = 0;
+/** No dictation since the app started: show the newest history row instead. */
+async function showHistoryLast(e, seq) {
+    let rows = [];
+    try {
+        rows = await invoke("history_list", { query: "", limit: 1 });
+    }
+    catch {
+        /* history unreadable: keep the empty text */
+    }
+    if (seq !== lastSeq)
+        return; // a dictation (or a newer view) came in meanwhile
+    const h = rows[0];
+    e.textContent = h
+        ? [
+            new Date(h.ts).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }),
+            h.app.replace(/\.exe$/i, "") || "unknown app",
+            `${h.words.toLocaleString()} words`,
+            h.route ?? "",
+            "timings show after the next dictation",
+        ]
+            .filter(Boolean)
+            .join(" · ")
+        : "No dictation yet";
+}
 function showRoute(r) {
     const last = r.last;
     const e = $("dev_last");
+    const seq = ++lastSeq;
     if (!last) {
-        e.textContent = "No dictation yet";
+        void showHistoryLast(e, seq);
     }
     else {
         const engine = last.engine === "remote" ? "server" : last.engine === "local" ? "client" : (last.engine ?? "none");

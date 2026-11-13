@@ -37,6 +37,12 @@
 .lw-split .is-pc { background: var(--fathom-900); color: var(--pure-white); }
 .lw-split .is-server { background: var(--fathom-500); color: var(--vast-950); }
 .lw-split .is-cloud { background: var(--glow-300); color: var(--glow-900); }
+.lw-split-key { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; font: 400 12px/18px var(--font-sans); color: var(--foreground-tertiary); }
+.lw-split-key > span { display: inline-flex; align-items: center; gap: 6px; }
+.lw-split-key i { display: block; width: 10px; height: 10px; border-radius: 2px; }
+.lw-split-key .is-pc i { background: var(--fathom-900); }
+.lw-split-key .is-server i { background: var(--fathom-500); }
+.lw-split-key .is-cloud i { background: var(--glow-300); }
 
 /* Heatmap */
 .fl-heat { display: grid; grid-template-columns: 28px repeat(var(--cols, 18), 13px); gap: 6px; align-items: center; font: 400 10px/18px var(--font-sans); color: var(--foreground-tertiary); }

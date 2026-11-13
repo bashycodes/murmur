@@ -5,6 +5,7 @@
 
 import { $, askDialog, el, setStatus } from "../lib/dom.js";
 import { ICON, iconEl } from "../lib/icons.js";
+import { dayText, legendHtml, streakText } from "../lib/insights-text.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { router, type Page } from "../lib/router.js";
 
@@ -79,6 +80,7 @@ const TEMPLATE = `
       <div class="fl-metric-cap">Words dictated so far</div>
       <div class="lw-ins-rule"></div>
       <div class="lw-split" id="ins_split"></div>
+      <div class="lw-split-key" id="ins_split_key"></div>
       <span class="lw-ins-note" id="ins_split_note">Where your speech was turned into text this week</span>
     </div>
   </div>
@@ -90,10 +92,10 @@ const TEMPLATE = `
       <p id="ins_apps_empty" class="lw-ins-note">No dictations yet.</p>
     </div>
     <div class="fl-card lw-ins-card lw-ins-big">
-      <div class="lw-ins-cardhead"><span class="lw-ins-title" id="ins_streak">0 day streak</span><span class="fl-metric-cap" id="ins_longest">Longest 0 days</span></div>
+      <div class="lw-ins-cardhead"><span class="lw-ins-title" id="ins_streak">0 day streak</span><span class="fl-metric-cap" id="ins_longest" hidden></span></div>
       <div>
         <div class="fl-heat" id="ins_heat" role="img" aria-label="Words per day, last 18 weeks"></div>
-        <div class="fl-heat-legend">More<i class="h4"></i><i class="h3"></i><i class="h2"></i><i class="h1"></i>Less</div>
+        <div class="fl-heat-legend">${legendHtml()}</div>
       </div>
     </div>
   </div>
@@ -114,10 +116,6 @@ export function minutesText(m: number): string {
   if (m < 1) return `${Math.round(m * 60)} s`;
   if (m < 60) return `${Math.round(m)} min`;
   return `${(m / 60).toFixed(1)} h`;
-}
-
-function days(n: number): string {
-  return n === 1 ? "1 day" : `${n} days`;
 }
 
 /** Speed against typing: the gauge fills at 4.5× typing speed. */
@@ -142,13 +140,24 @@ function showSpeed(s: InsightsView): void {
 function showSplit(s: InsightsView): void {
   const share = routeShare(s.routes_7d);
   const bar = $<HTMLElement>("ins_split");
+  const key = $<HTMLElement>("ins_split_key");
   bar.hidden = share === null;
+  key.hidden = share === null;
   $<HTMLElement>("ins_split_note").textContent = share
     ? "Where your speech was turned into text this week"
     : "No dictations with a known engine this week";
   if (!share) return;
+  const used = ROUTES.filter((r) => s.routes_7d[r] > 0);
+  // Every part is named in the key below; wide parts also carry the name.
+  key.replaceChildren(
+    ...used.map((r) => {
+      const item = el("span", `is-${r}`, `${ROUTE_LABEL[r]} ${share[r]}%`);
+      item.prepend(el("i"));
+      return item;
+    }),
+  );
   bar.replaceChildren(
-    ...ROUTES.filter((r) => s.routes_7d[r] > 0).map((r) => {
+    ...used.map((r) => {
       const seg = el("span", `is-${r}`, share[r] >= 18 ? ROUTE_LABEL[r] : "");
       seg.style.flex = String(Math.max(share[r], 3));
       seg.title = `${ROUTE_LABEL[r]}: ${share[r]}%`;
@@ -200,13 +209,16 @@ function showHeatmap(s: InsightsView): void {
     for (const w of weeks) {
       const day = w[d];
       const cell = el("i", day ? level(day.words, max) : "");
-      if (day && day.words !== null) cell.title = `${day.date}: ${day.words.toLocaleString()} words`;
+      if (day && day.words !== null) cell.title = `${dayText(day.date)}: ${day.words.toLocaleString()} words`;
       cells.push(cell);
     }
   });
   heat.replaceChildren(...cells);
-  $<HTMLElement>("ins_streak").textContent = `${s.current_streak} day streak`;
-  $<HTMLElement>("ins_longest").textContent = `Longest ${days(s.longest_streak)}`;
+  const st = streakText(s.current_streak, s.longest_streak);
+  $<HTMLElement>("ins_streak").textContent = st.streak;
+  const longest = $<HTMLElement>("ins_longest");
+  longest.textContent = st.longest ?? "";
+  longest.hidden = st.longest === null;
 }
 
 function showInsights(s: InsightsView): void {
@@ -220,7 +232,7 @@ function showInsights(s: InsightsView): void {
   showHeatmap(s);
   $<HTMLElement>("ins_assume").textContent =
     `${s.dictations.toLocaleString()} dictations; about ${minutesText(s.saved_minutes)} saved against typing at ${s.typing_wpm} words per minute.` +
-    (s.since ? ` Counting since ${s.since}.` : "");
+    (s.since ? ` Counting since ${dayText(s.since)}.` : "");
 }
 
 async function loadInsights(): Promise<void> {

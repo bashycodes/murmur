@@ -420,11 +420,45 @@ function timingLine(l: LastDictation): string {
   return parts.join(" · ");
 }
 
+/** History's newest row (what Home lists), for "Last dictation" before
+ *  this run of the app has dictated. */
+interface HistoryHead {
+  ts: number;
+  app: string;
+  words: number;
+  route: string | null;
+}
+
+let lastSeq = 0;
+/** No dictation since the app started: show the newest history row instead. */
+async function showHistoryLast(e: HTMLElement, seq: number): Promise<void> {
+  let rows: HistoryHead[] = [];
+  try {
+    rows = await invoke<HistoryHead[]>("history_list", { query: "", limit: 1 });
+  } catch {
+    /* history unreadable: keep the empty text */
+  }
+  if (seq !== lastSeq) return; // a dictation (or a newer view) came in meanwhile
+  const h = rows[0];
+  e.textContent = h
+    ? [
+        new Date(h.ts).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }),
+        h.app.replace(/\.exe$/i, "") || "unknown app",
+        `${h.words.toLocaleString()} words`,
+        h.route ?? "",
+        "timings show after the next dictation",
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : "No dictation yet";
+}
+
 function showRoute(r: RouteView): void {
   const last = r.last;
   const e = $<HTMLElement>("dev_last");
+  const seq = ++lastSeq;
   if (!last) {
-    e.textContent = "No dictation yet";
+    void showHistoryLast(e, seq);
   } else {
     const engine =
       last.engine === "remote" ? "server" : last.engine === "local" ? "client" : (last.engine ?? "none");

@@ -26,7 +26,7 @@ ${group(
   "Connection",
   row(
     `<label for="dev_host">Address</label>`,
-    `A name or IP address, without ws:// or a port. ${err("host")}${err("port")}`,
+    `Name or IP address only, e.g. homeserver. ${err("host")}${err("port")}`,
     `<input id="dev_host" class="fl-input lw-w220" data-dev-field spellcheck="false" placeholder="100.64.0.10 or mybox.local" />
      <input id="dev_port" class="fl-input lw-w72" data-dev-field type="number" min="1" max="65535" aria-label="Port" />`,
   ) +
