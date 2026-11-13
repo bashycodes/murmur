@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use murmur_asr_sherpa::{OnlineConfig, OnlineEngine, Search};
 
 use crate::asr::{AsrEngine, AsrError, AsrOutput, AsrRequest};
-use crate::parakeet::{hotwords_from_prompt, implausibly_short};
+use crate::parakeet::implausibly_short;
 
 pub struct SherpaOnlineAsr {
     engine: OnlineEngine,
@@ -65,7 +65,7 @@ impl AsrEngine for SherpaOnlineAsr {
         if req.abort.is_set() {
             return Err(AsrError::Transcribe("aborted".into()));
         }
-        let hotwords = hotwords_from_prompt(&req.initial_prompt);
+        let hotwords = crate::asr::hotword_phrases(req);
         let search = self.engine.default_search(&hotwords);
         let mut text = self.decode(pcm, &hotwords, search)?;
         // Same guard as Parakeet: a beam result that is empty or

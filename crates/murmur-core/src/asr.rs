@@ -284,6 +284,20 @@ impl PromptBudget {
     }
 }
 
+/// Phrases for an engine that biases by phrase list (Parakeet and sherpa
+/// online hotwords), most important first: `dictionary_terms`, then the
+/// rest of `initial_prompt`'s phrases (screen words; all of it when the
+/// caller set no terms). Sherpa keeps only the first
+/// `murmur_asr_sherpa::MAX_HOTWORDS`, and the prompt lists the dictionary
+/// last (D87). Duplicates are left for sherpa's case-insensitive dedupe.
+pub fn hotword_phrases(req: &AsrRequest) -> Vec<String> {
+    req.dictionary_terms
+        .iter()
+        .cloned()
+        .chain(prompt_phrases(&req.initial_prompt))
+        .collect()
+}
+
 /// The phrase list of a [`build_initial_prompt`] string (`"a, b c, d."`).
 pub fn prompt_phrases(prompt: &str) -> Vec<String> {
     let p = prompt.trim();
@@ -374,6 +388,33 @@ mod tests {
         assert_eq!(p, "Alice, Kubernetes, Zephyr.");
         assert_eq!(prompt_phrases(&p), ["Alice", "Kubernetes", "Zephyr"]);
         assert!(prompt_phrases("").is_empty());
+    }
+
+    #[test]
+    fn hotwords_put_the_dictionary_first() {
+        // Synthetic terms; a screen list long enough to fill sherpa's cap
+        // of 100 phrases before the dictionary.
+        let d = Dictionary {
+            entries: vec![
+                DictEntry::word("Quorvel"),
+                DictEntry::replacement("tamsik", "Tamsik Lintrava"),
+            ],
+        };
+        let screen: Vec<String> = (0..150).map(|i| format!("sw{i}")).collect();
+        let req = AsrRequest {
+            initial_prompt: build_initial_prompt(&d, &screen),
+            dictionary_terms: vec!["Quorvel".into(), "Tamsik Lintrava".into()],
+            ..Default::default()
+        };
+        let h = hotword_phrases(&req);
+        assert_eq!(h[..3], ["Quorvel", "Tamsik Lintrava", "sw0"]);
+        assert!(prompt_phrases(&req.initial_prompt).len() > 100);
+        // Without terms (a caller that sets only the prompt): the prompt.
+        let req = AsrRequest {
+            initial_prompt: "Alice, Kubernetes.".into(),
+            ..Default::default()
+        };
+        assert_eq!(hotword_phrases(&req), ["Alice", "Kubernetes"]);
     }
 
     #[test]

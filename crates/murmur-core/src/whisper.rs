@@ -252,7 +252,7 @@ struct Pass {
     audio_ctx: i32,
     /// Whether `initial_prompt` (the dictionary and screen words) is used;
     /// D22's `prior_text` always is.
-    prompt: bool,
+    use_prompt: bool,
 }
 
 /// Decode with encoder window `ctx` (0 = full) and `prompt`, then at most
@@ -278,27 +278,24 @@ fn decode_guarded(
         }
         out
     };
-    let mut out = decode(Pass {
+    let out = decode(Pass {
         audio_ctx: ctx,
-        prompt: true,
+        use_prompt: true,
     })?;
-    match recital::check(&out.text, prompt) {
-        Recital::Whole => {
-            redecodes.fetch_add(1, Ordering::Relaxed);
-            let degenerate = ctx > 0 && looks_degenerate(&out.text, secs);
-            return decode(Pass {
-                audio_ctx: if degenerate { 0 } else { ctx },
-                prompt: false,
-            });
-        }
-        Recital::Tail(speech) => out.text = speech,
-        Recital::None => {}
+    if recital::check(&out.text, prompt) == Recital::Whole {
+        redecodes.fetch_add(1, Ordering::Relaxed);
+        let degenerate = ctx > 0 && looks_degenerate(&out.text, secs);
+        return decode(Pass {
+            audio_ctx: if degenerate { 0 } else { ctx },
+            use_prompt: false,
+        });
     }
+    let out = strip_tail(out);
     if ctx > 0 && looks_degenerate(&out.text, secs) {
         redecodes.fetch_add(1, Ordering::Relaxed);
         return decode(Pass {
             audio_ctx: 0,
-            prompt: true,
+            use_prompt: true,
         })
         .map(strip_tail);
     }
@@ -322,7 +319,10 @@ impl WhisperEngine {
         pass: Pass,
         abort: Option<&AtomicBool>,
     ) -> Result<AsrOutput, AsrError> {
-        let Pass { audio_ctx, prompt } = pass;
+        let Pass {
+            audio_ctx,
+            use_prompt,
+        } = pass;
         let lang = if self.multilingual {
             req.language.clone()
         } else {
@@ -349,7 +349,7 @@ impl WhisperEngine {
             p.set_audio_ctx(audio_ctx);
         }
         // D22: the previous segments' last words follow the dictionary.
-        let initial = if prompt {
+        let initial = if use_prompt {
             req.initial_prompt.as_str()
         } else {
             ""
@@ -509,7 +509,7 @@ mod tests {
         move |p| {
             seen.push(p);
             Ok(AsrOutput {
-                text: if p.prompt { with } else { without }.into(),
+                text: if p.use_prompt { with } else { without }.into(),
                 ..Default::default()
             })
         }
@@ -523,7 +523,10 @@ mod tests {
         let n = std::sync::atomic::AtomicU64::new(0);
         let mut seen = Vec::new();
         let out = decode_guarded(0, 9.0, prompt, &n, fake(&mut seen, recited, "")).unwrap();
-        let pass = |audio_ctx, prompt| Pass { audio_ctx, prompt };
+        let pass = |audio_ctx, use_prompt| Pass {
+            audio_ctx,
+            use_prompt,
+        };
         assert_eq!(seen, [pass(0, true), pass(0, false)]);
         assert_eq!(out.text, "");
         assert_eq!(n.load(Ordering::Relaxed), 1);
@@ -546,7 +549,7 @@ mod tests {
 
     #[test]
     fn a_recited_list_after_speech_is_cut_without_a_redecode() {
-        let prompt = "Quorvel, Tamsik, Brennolt, Vexmoor, Lintrava.";
+        let prompt = "Pellish, Orrin, Quorvel, Tamsik, Brennolt, Vexmoor.";
         let n = std::sync::atomic::AtomicU64::new(0);
         let mut seen = Vec::new();
         let out = decode_guarded(
@@ -556,7 +559,7 @@ mod tests {
             &n,
             fake(
                 &mut seen,
-                "Move the review to Friday. Quorvel, Tamsik, Brennolt, Vexmoor.",
+                "Move the review to Friday. Pellish, Orrin, Quorvel, Tamsik, Brennolt, Vexmoor.",
                 "x",
             ),
         )
