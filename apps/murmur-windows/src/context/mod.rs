@@ -200,14 +200,15 @@ pub fn apply_bucket_override(
     };
 }
 
-/// App → style bucket, with a tab-title fallback for browsers whose address
-/// bar couldn't be read.
+/// App → style bucket. A listed exe or host wins (host rules, including
+/// a listed site's name as a host label, live in the app groups); an
+/// unlisted or unread host falls back to the tab title's `" - "`-separated
+/// segments (`"… - Gmail - Google Chrome"`).
 pub fn classify(exe: &str, host: Option<&str>, title: &str) -> StyleBucket {
     let kind = app_kind(exe, host);
-    if kind != AppKind::Other || host.is_some() {
+    if kind != AppKind::Other {
         return bucket_of(kind);
     }
-    // "… - Gmail - Google Chrome": match " - "-separated segments.
     let segs: Vec<String> = title
         .split(" - ")
         .map(|s| s.trim().to_ascii_lowercase())
@@ -555,6 +556,97 @@ mod tests {
             classify("chrome.exe", Some("example.com"), "Example"),
             StyleBucket::Other
         );
+    }
+
+    #[test]
+    fn unlisted_host_falls_back_to_the_tab_title() {
+        assert_eq!(
+            classify(
+                "chrome.exe",
+                Some("portal.example.org"),
+                "Inbox - Outlook - Google Chrome"
+            ),
+            StyleBucket::Email
+        );
+        assert_eq!(
+            classify(
+                "msedge.exe",
+                Some("intranet.example.net"),
+                "general (Channel) - Example Co - Slack - Microsoft Edge"
+            ),
+            StyleBucket::Work
+        );
+        assert_eq!(
+            classify("firefox.exe", Some("chat.example.test"), "Telegram"),
+            StyleBucket::Personal
+        );
+        // A listed host still beats the title.
+        assert_eq!(
+            classify(
+                "chrome.exe",
+                Some("app.slack.com"),
+                "Inbox - Gmail - Google Chrome"
+            ),
+            StyleBucket::Work
+        );
+    }
+
+    #[test]
+    fn unlisted_host_matches_a_site_name_label() {
+        assert_eq!(
+            classify("chrome.exe", Some("slack.example.org"), ""),
+            StyleBucket::Work
+        );
+        assert_eq!(
+            classify("chrome.exe", Some("outlook.example.org"), ""),
+            StyleBucket::Email
+        );
+        assert_eq!(
+            classify("chrome.exe", Some("discord.example.net"), ""),
+            StyleBucket::Personal
+        );
+        assert_eq!(
+            classify("chrome.exe", Some("www.chat.Slack.example.co.uk"), ""),
+            StyleBucket::Work
+        );
+        // The host's label wins over a title naming another site.
+        assert_eq!(
+            classify("chrome.exe", Some("outlook.example.org"), "Slack"),
+            StyleBucket::Email
+        );
+    }
+
+    #[test]
+    fn site_names_inside_labels_or_titles_do_not_match() {
+        for host in [
+            "slackware.example.org",
+            "example-slack.test",
+            "outlooks.example.net",
+            "mailchimp.example.com",
+            "gmailtools.example.org",
+            "example.mail",
+            "example.discord",
+            "news.mail.example.org",
+            "telegramme.example.fr",
+            "mymail.example.org",
+        ] {
+            assert_eq!(
+                classify("chrome.exe", Some(host), ""),
+                StyleBucket::Other,
+                "{host}"
+            );
+        }
+        for title in [
+            "Outlook for the weekend - Example News - Google Chrome",
+            "Slackline tips - Example Blog",
+            "Re: gmail export question - Example Forum",
+        ] {
+            assert_eq!(
+                classify("chrome.exe", Some("news.example.org"), title),
+                StyleBucket::Other,
+                "{title}"
+            );
+        }
     }
 
     #[test]

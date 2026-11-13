@@ -2,7 +2,7 @@
   "about": [
     "Which apps get special handling: one source for murmur-core (Rust, both platforms), the Windows app (through murmur-core) and the Android PolicyLists.kt (packed as a Java resource).",
     "Method: each group is defined by what its caller does with it (see docs/DECISIONS.md D81). Membership comes from public sources only: an app's package name is the id in its public Google Play listing (play.google.com/store/apps/details?id=<package>), a Windows id is the program's own executable name as its vendor ships it, a web host is the vendor's own address. Naming rules cover whole families where the vendor's naming makes that safe; lists hold the rest.",
-    "Matching (any case; ids and hosts are lowercased on load and on lookup): exact = equal; families = equal or starts with '<family>.'; parts = one dot-separated part equals; words = substring. Windows ids are exe names without '.exe', matched exactly (the old lists matched by prefix). Hosts (no 'www.'): suffixes = equal or ends with '.<suffix>'; prefixes = starts with."
+    "Matching (any case; ids and hosts are lowercased on load and on lookup): exact = equal; families = equal or starts with '<family>.'; parts = one dot-separated part equals; words = substring. Windows ids are exe names without '.exe', matched exactly (the old lists matched by prefix). Hosts (no 'www.'): suffixes = equal or ends with '.<suffix>'; prefixes = starts with; parts = a whole dot-separated label other than the last equals (a listed site's name on a host the lists don't have, e.g. slack.<company>; Windows groups only, PolicyLists.kt doesn't read it)."
   ],
   "android": {
     "restart_prone": {
@@ -170,7 +170,10 @@
     "work": {
       "about": "Style bucket work (checked after email). Ids are exe names without '.exe'.",
       "apps": { "exact": ["slack", "ms-teams", "msteams", "teams", "mattermost", "zoom", "zulip", "rocket.chat", "ringcentral", "webex"] },
-      "hosts": { "suffixes": ["slack.com", "teams.microsoft.com", "teams.live.com", "chat.google.com", "linkedin.com", "zulipchat.com", "ringcentral.com"] }
+      "hosts": {
+        "suffixes": ["slack.com", "teams.microsoft.com", "teams.live.com", "chat.google.com", "linkedin.com", "zulipchat.com", "ringcentral.com"],
+        "parts": ["slack"]
+      }
     },
     "messaging": {
       "about": "Chat apps, work or personal (murmur-core: trailing-period drop). Not work = style bucket personal.",
@@ -178,7 +181,8 @@
         "exact": ["slack", "ms-teams", "msteams", "teams", "mattermost", "whatsapp", "whatsapp.root", "telegram", "discord", "signal", "messenger", "viber", "line", "wechat", "element", "zulip", "rocket.chat", "ringcentral", "webex"]
       },
       "hosts": {
-        "suffixes": ["slack.com", "teams.microsoft.com", "teams.live.com", "chat.google.com", "whatsapp.com", "telegram.org", "discord.com", "messenger.com", "instagram.com", "messages.google.com", "app.element.io", "zulipchat.com"]
+        "suffixes": ["slack.com", "teams.microsoft.com", "teams.live.com", "chat.google.com", "whatsapp.com", "telegram.org", "discord.com", "messenger.com", "instagram.com", "messages.google.com", "app.element.io", "zulipchat.com"],
+        "parts": ["slack", "whatsapp", "telegram", "discord"]
       }
     },
     "email": {
@@ -186,7 +190,8 @@
       "apps": { "exact": ["outlook", "olk", "hxoutlook", "thunderbird", "mailbird", "mailclient", "mailspring", "hey"] },
       "hosts": {
         "suffixes": ["outlook.live.com", "outlook.office.com", "outlook.office365.com", "app.fastmail.com", "app.tuta.com", "app.hey.com"],
-        "prefixes": ["mail.", "webmail."]
+        "prefixes": ["mail.", "webmail."],
+        "parts": ["outlook"]
       }
     },
     "ai": {
