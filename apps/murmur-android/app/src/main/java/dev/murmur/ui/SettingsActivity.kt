@@ -722,6 +722,25 @@ class SettingsActivity : Activity() {
                 ) { v -> applyNow { copy(commandButton = v) } }
             }
             note("Command Mode uses AI cleanup: the on-device model, or the cloud only when \"send text around the cursor\" is on. Never in password, sensitive or banking fields.")
+            sectionLabel("TRANSLATE")
+            card {
+                toggleRow("Translate button", "Shows ⇄ next to the mic: tap it, speak, and what you said is typed cleaned up and translated", s.translateButton)
+                    .onChange { on -> applyNow { copy(translateButton = on) } }
+            }
+            card {
+                choiceRows(
+                    listOf(
+                        DevUi.Choice("", "Your other keyboard language", "Hebrew dictation types English, English types Hebrew"),
+                        DevUi.Choice("en", "English", ""),
+                        DevUi.Choice("he", "Hebrew", ""),
+                        DevUi.Choice("ar", "Arabic", ""),
+                        DevUi.Choice("ru", "Russian", ""),
+                        DevUi.Choice("fr", "French", ""),
+                    ),
+                    s.translateTo,
+                ) { v -> applyNow { copy(translateTo = v) } }
+            }
+            note("Translation uses your server or the cloud first (the on-device model translates poorly), under the same consent as AI cleanup. If it fails, the dictation is typed as said.")
             note("Drag the bubble onto the target at the bottom of the screen to snooze it for 10 minutes. Changes apply at once.")
         }
     }

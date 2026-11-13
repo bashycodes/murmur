@@ -38,6 +38,8 @@ class SettingsStore(context: Context) {
         shrinkToDot = loadShrinkToDot(),
         bubbleScale = loadBubbleScale(),
         commandButton = loadCommandButton(),
+        translateButton = loadTranslateButton(),
+        translateTo = sp.getString("translate_to", null).orEmpty(),
         spokenCleanup = sp.getBoolean("spoken_cleanup", true),
         asrEngine = dev.murmur.core.AsrEngine.entries.firstOrNull { it.wire == sp.getString("asr_engine", null) } ?: dev.murmur.core.AsrEngine.WHISPER,
         endpointSilenceMs = loadEndpointMs(),
@@ -102,6 +104,8 @@ class SettingsStore(context: Context) {
             .putBoolean("shrink_to_dot", s.shrinkToDot)
             .putFloat("bubble_scale", s.bubbleScale)
             .putString("command_button", s.commandButton.key)
+            .putBoolean("translate_button", s.translateButton)
+            .putString("translate_to", s.translateTo)
             .putBoolean("spoken_cleanup", s.spokenCleanup)
             .putString("asr_engine", s.asrEngine.wire)
             .putInt("endpoint_silence_ms", s.endpointSilenceMs)
@@ -120,7 +124,13 @@ class SettingsStore(context: Context) {
         _bubbleScale.value = s.bubbleScale
         _shrinkToDot.value = s.shrinkToDot
         _commandButton.value = s.commandButton
+        _translateButton.value = s.translateButton
     }
+
+    private fun loadTranslateButton() = sp.getBoolean("translate_button", false)
+    private val _translateButton = kotlinx.coroutines.flow.MutableStateFlow(loadTranslateButton())
+    /** D90: the saved "Translate button", so the running bubble shows / hides ⇄ the moment it changes. */
+    val translateButton: kotlinx.coroutines.flow.StateFlow<Boolean> = _translateButton
 
     private fun loadCommandButton() = CommandButton.fromKey(sp.getString("command_button", null))
     private val _commandButton = kotlinx.coroutines.flow.MutableStateFlow(loadCommandButton())

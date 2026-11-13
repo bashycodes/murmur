@@ -3,6 +3,7 @@ package dev.murmur.session
 import dev.murmur.command.CommandRecord
 import dev.murmur.command.CommandTarget
 import dev.murmur.core.CommandOutcome
+import dev.murmur.core.TranslateOutcome
 import dev.murmur.core.CommitResult
 import dev.murmur.core.CommitStatus
 import dev.murmur.core.CoreException
@@ -103,6 +104,8 @@ enum class DictationHint {
     NoSpeechDetected,
     /** EMPTY with `empty_reason = only_filler`: only "um"/"uh" was heard. */
     OnlyFiller,
+    /** D90: the translation failed, so the dictation was typed as said. */
+    NotTranslated,
 }
 
 /** Idle → Ready → Recording(hold|tap) → Processing → Ready | Error. */
@@ -271,6 +274,12 @@ class DictationController(
 
         /** D58: the stop language differs from the start one: make the engine serve it (loads its model if needed). */
         fun prepareStopLanguage() = Unit
+
+        /** D90: the language a translation types in; null = automatic (the other keyboard language). */
+        fun translateTarget(): String? = null
+
+        /** D90: the languages of the enabled keyboard subtypes (whisper codes), for the automatic target. */
+        fun keyboardLanguages(): List<String> = emptyList()
     }
 
     /** D58: [languages] in the [SessionConfig.languages] shape; [source] = debug log `language_source`. */
@@ -305,6 +314,8 @@ class DictationController(
          * timeout is 25 s; an on-demand phone model load comes on top).
          */
         const val COMMAND_TIMEOUT_MS = 35_000L
+        /** D90: the translation's budget after the dictation is transcribed (as Command Mode's). */
+        const val TRANSLATE_TIMEOUT_MS = 35_000L
         /** D24: at most one server pre-warm per this interval (field focus can flap). */
         const val PREWARM_MIN_INTERVAL_MS = 20_000L
         /** D35: a retry transcribes a whole recording again (up to the cap) after the user asked: more room than a dictation. */
@@ -521,6 +532,24 @@ class DictationController(
         }
     }
 
+    /**
+     * D90 Translate button: starts a hands-free dictation that is typed translated (it ends on
+     * silence, ✓ or a second tap), or stops one. Debounced with [toggle].
+     */
+    fun toggleTranslate() {
+        val t = now()
+        if (t - lastToggleAt < TOGGLE_DEBOUNCE_MS) return
+        when (_state.value) {
+            DictationState.Idle, DictationState.Ready, is DictationState.Error -> {
+                if (started?.isActive == true || retrying || replaying) return
+                lastToggleAt = t
+                start(hold = false, translate = true)
+            }
+            is DictationState.Recording -> { lastToggleAt = t; stopAndSubmit() }
+            is DictationState.Processing -> Unit
+        }
+    }
+
     /** Command Mode outcome without text: error tone + the reason; the field is left as it was. */
     private fun failCommand(message: String) {
         host.feedback(FeedbackEvent.CommandFailed)
@@ -551,6 +580,7 @@ class DictationController(
         trace(traceStart, InsertOutcome.CANCELLED, liveRoute = _route.value)
         capture = null
         commandTarget = null
+        translating = false
         generation++
         // D55: stop waiting for the model (the load itself goes on); the held audio is dropped.
         waiting = null
@@ -692,7 +722,10 @@ class DictationController(
     /** Command Mode target of the recording / processing command; null for a dictation. */
     private var commandTarget: CommandTarget.Field? = null
 
-    private fun start(hold: Boolean, command: CommandTarget.Field? = null) {
+    /** D90: the recording / processing dictation is typed translated. */
+    private var translating = false
+
+    private fun start(hold: Boolean, command: CommandTarget.Field? = null, translate: Boolean = false) {
         if (!host.hasMicPermission()) {
             host.feedback(FeedbackEvent.NeedMicPermission)
             return
@@ -714,12 +747,14 @@ class DictationController(
             // D19: only hands-free sessions end themselves on silence; push-to-talk leaves it unset.
             endpointSilenceMs = if (handsFree) host.endpointSilenceMs() else null,
             // Command Mode: the instruction is transcribed as spoken (no cleanup; Windows does the same).
-            rawMode = base.rawMode || command != null,
+            // D90: so is a dictation to translate: the translation call cleans it too.
+            rawMode = base.rawMode || command != null || translate,
         )
         val gen = ++generation
         // A command's field was read by captureCommand; its text is not dictation context.
         val ctx = if (command != null) null else host.captureContext()
         commandTarget = command
+        translating = translate
         sessionAppId = command?.appId ?: ctx?.appId
         sessionContext = ctx
         traceStart = TraceStart(
@@ -774,6 +809,7 @@ class DictationController(
             session = null
             capture = null
             commandTarget = null
+            translating = false
             host.onRecordingActive(false)
             trace(traceStart, InsertOutcome.START_FAILED, error = "microphone unavailable")
             _state.value = DictationState.Error(DictationState.ErrorKind.MicUnavailable)
@@ -898,6 +934,7 @@ class DictationController(
         session = null
         capture = null
         commandTarget = null
+        translating = false
         _route.value = null
         _partial.value = null
         // e.g. router `no_engine_enabled`: "Dictation disabled — enable server or client …"
@@ -953,6 +990,8 @@ class DictationController(
         val ctx = sessionContext
         val cmd = commandTarget
         commandTarget = null
+        val tr = translating
+        translating = false
         val start = started ?: return
         val gen = generation
         _state.value = DictationState.Processing(rec.hold, now(), rec.command)
@@ -1061,35 +1100,38 @@ class DictationController(
                 runCommand(c, cmd, result, appId, gen) { outcome, r, error, text -> done(outcome, r, error, text) }
                 return@launch
             }
+            // D90: a translation types the translated text (the dictation as said when it fails).
+            val (res, typed) = if (tr) translated(c, result, plan, gen) ?: return@launch else result to plan
             // S12: only into the field focused at dictation start, and only while it is still allowed.
             when (host.insertTarget(explicit = false)) {
                 InsertTarget.OK -> Unit
                 InsertTarget.CHANGED, InsertTarget.PROTECTED -> {
                     val protected = host.insertTarget(explicit = true) == InsertTarget.PROTECTED
                     host.feedback(if (protected) FeedbackEvent.TargetProtected else FeedbackEvent.TargetChanged)
-                    val text = plan.filterIsInstance<PasteSegment.Text>().joinToString("") { it.text }
+                    val text = typed.filterIsInstance<PasteSegment.Text>().joinToString("") { it.text }
                     val outcome = if (protected) InsertOutcome.TARGET_PROTECTED else InsertOutcome.TARGET_CHANGED
                     // D35: never keep a recording meant for a protected field.
-                    host.recordHistory(result, false, appId, outcome, recording.takeIf { !protected })
-                    notInserted(result, text, outcome)
+                    host.recordHistory(res, false, appId, outcome, recording.takeIf { !protected })
+                    notInserted(res, text, outcome)
                     _state.value = DictationState.Error(DictationState.ErrorKind.FailedToPaste(text))
-                    done(outcome, result)
+                    done(outcome, res)
                     return@launch
                 }
             }
-            val unpasted = paste(plan)
+            val unpasted = paste(typed)
             val inserted = unpasted == null
-            host.recordHistory(result, inserted, appId, if (inserted) InsertOutcome.INSERTED else InsertOutcome.PASTE_FAILED, recording)
-            if (!inserted) notInserted(result, unpasted!!, InsertOutcome.PASTE_FAILED)
-            else try {
+            host.recordHistory(res, inserted, appId, if (inserted) InsertOutcome.INSERTED else InsertOutcome.PASTE_FAILED, recording)
+            if (!inserted) notInserted(res, unpasted!!, InsertOutcome.PASTE_FAILED)
+            // D90: a translation is the AI's wording: nothing to learn from.
+            else if (res === result) try {
                 host.onInserted(
-                    plan.filterIsInstance<PasteSegment.Text>().joinToString("") { it.text }, ctx,
-                    plan.any { it is PasteSegment.Key && it.key == PasteKey.ENTER },
+                    typed.filterIsInstance<PasteSegment.Text>().joinToString("") { it.text }, ctx,
+                    typed.any { it is PasteSegment.Key && it.key == PasteKey.ENTER },
                 )
             } catch (_: Throwable) { }
             _state.value = if (inserted) restingState()
             else DictationState.Error(DictationState.ErrorKind.FailedToPaste(unpasted!!))
-            done(if (inserted) InsertOutcome.INSERTED else InsertOutcome.PASTE_FAILED, result)
+            done(if (inserted) InsertOutcome.INSERTED else InsertOutcome.PASTE_FAILED, res)
         }
     }
 
@@ -1177,6 +1219,38 @@ class DictationController(
             _state.value = DictationState.Error(DictationState.ErrorKind.FailedToPaste(text))
         }
         done(outcome, result, null, text)
+    }
+
+    /**
+     * D90: translate the transcribed dictation (off the caller's thread, bounded by
+     * [TRANSLATE_TIMEOUT_MS]): the result and paste plan to type. A failure keeps the dictation
+     * as said, with the [DictationHint.NotTranslated] hint. Null = the dictation was dropped meanwhile.
+     */
+    private suspend fun translated(
+        c: MurmurCore, result: CommitResult, plan: List<PasteSegment>, gen: Long,
+    ): Pair<CommitResult, List<PasteSegment>>? {
+        val text = result.historyText.ifBlank { result.asrText }.trim()
+        val target = runCatching { host.translateTarget() }.getOrNull()
+        val installed = runCatching { host.keyboardLanguages() }.getOrDefault(emptyList())
+        val dictionary = startCfg?.dictionary.orEmpty()
+        // Not a child: a hung native call must be abandonable (cancel / timeout).
+        val pending = CoroutineScope(commitDispatcher).async { c.translate(text, result.language, target, installed, dictionary) }
+        val answer = withTimeoutOrNull(TRANSLATE_TIMEOUT_MS) { pending.await() }
+            ?: TranslateOutcome.Failed(TranslateOutcome.TIMEOUT, "AI didn't translate within ${TRANSLATE_TIMEOUT_MS / 1000} s")
+        if (generation != gen) return null
+        return when (answer) {
+            is TranslateOutcome.Text -> {
+                val enter = plan.filter { it is PasteSegment.Key && it.key == PasteKey.ENTER }
+                val typed = listOf(PasteSegment.Text(answer.text)) + enter
+                result.copy(finalText = answer.text, plainText = answer.text, segments = typed) to typed
+            }
+            is TranslateOutcome.Failed -> {
+                val h = DictationHint.NotTranslated
+                _hint.value = h
+                hintJob = scope.launch { delay(HINT_MS); if (_hint.value == h) _hint.value = null }
+                result to plan
+            }
+        }
     }
 
     /**

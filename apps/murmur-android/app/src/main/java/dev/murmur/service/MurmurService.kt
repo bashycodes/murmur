@@ -164,7 +164,10 @@ class MurmurService : Service() {
         scope.launch {
             // "Bubble size" and "Shrink to a dot" ride along with repair, so either applies to the live bubble at once.
             // Command Mode's ✎ rides along too: shown per the "Command button" setting and the field's selection.
-            val command = combine(app.settings.commandButton, app.fieldSelection) { mode, sel -> mode.shows(sel) }
+            // D90: and the ⇄ (Translate button setting).
+            val command = combine(app.settings.commandButton, app.settings.translateButton, app.fieldSelection) { mode, tr, sel ->
+                Extras(mode.shows(sel), tr)
+            }
             // Our own screens in front ride along too: no resting bubble over them (OwnScreens). An Error
             // raised meanwhile stays in the state, so leaving the app shows it unless it timed out.
             val ownScreen = app.ownScreens.front.map { it.hidesBubble }
@@ -174,7 +177,8 @@ class MurmurService : Service() {
             combine(controller.state, controller.level, showCopy, presence.presence, repairAndLook) { s, l, c, p, look ->
                 BubbleUi(
                     s, c && s == DictationState.Ready, l, minimized = p.minimized, repair = look.repair, visible = presence.visible(s, look.ownScreen),
-                    scale = look.scale, dot = look.dot, showCommand = look.command && s == DictationState.Ready,
+                    scale = look.scale, dot = look.dot, showCommand = look.command.command && s == DictationState.Ready,
+                    showTranslate = look.command.translate && s == DictationState.Ready,
                 )
             }.collect { if (::overlay.isInitialized) overlay.render(it) }
         }
@@ -721,6 +725,11 @@ class MurmurService : Service() {
 
         override fun followsKeyboard() = app.settings.load().followsKeyboard
 
+        // D90: "" = automatic, the other keyboard language (the core picks it from keyboardLanguages).
+        override fun translateTarget(): String? = app.settings.load().translateTo.ifBlank { null }
+
+        override fun keyboardLanguages(): List<String> = app.keyboardLanguages()
+
         // D58: the keyboard active when the recording stops decides; the source goes on the debug line.
         override fun stopLanguage(): DictationController.StopLanguage? {
             val s = app.settings.load()
@@ -789,7 +798,10 @@ class MurmurService : Service() {
     @Volatile private var languageSource: String? = null
 
     /** Repair, bubble look settings, Command Mode's ✎ and "our screen is in front" (one flow, so the bubble combine stays at five inputs). */
-    private data class Look(val repair: Boolean, val scale: Float, val dot: Boolean, val command: Boolean, val ownScreen: Boolean)
+    private data class Look(val repair: Boolean, val scale: Float, val dot: Boolean, val command: Extras, val ownScreen: Boolean)
+
+    /** The resting extras next to the mic: Command Mode's ✎ and the Translate ⇄ (D90). */
+    private data class Extras(val command: Boolean, val translate: Boolean)
 
     private inner class BubbleListener : BubbleView.Listener {
         override fun onTap(button: BubbleButton) {
@@ -801,6 +813,13 @@ class MurmurService : Service() {
                     haptic(VibrationEffect.EFFECT_CLICK)
                     beforeStart()
                     controller.toggleCommand()
+                }
+                BubbleButton.TRANSLATE -> {
+                    // D90: tap ⇄ and speak; it is typed translated. Ends on silence, ✓ or a second tap.
+                    presence.touch()
+                    haptic(VibrationEffect.EFFECT_CLICK)
+                    beforeStart()
+                    controller.toggleTranslate()
                 }
                 BubbleButton.CANCEL -> controller.cancel()
                 BubbleButton.DONE -> { haptic(VibrationEffect.EFFECT_CLICK); controller.release() }

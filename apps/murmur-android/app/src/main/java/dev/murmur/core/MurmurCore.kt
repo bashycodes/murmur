@@ -80,6 +80,16 @@ interface MurmurCore {
     fun command(instruction: String, selected: String?): CommandOutcome = CommandOutcome.noLlm
 
     /**
+     * D90 (`nativeTranslate`): clean [text] (spoken in [source], when known) and translate it
+     * into [target] (null = the first of [installed], the keyboard languages, that is not the
+     * dictation's). The AI cleanup route with the server and cloud tried before the on-device
+     * model, each with its own consent checks. **Blocking** (up to ~25 s): never on Main.
+     * Engines without it answer [TranslateOutcome.noLlm].
+     */
+    fun translate(text: String, source: String?, target: String?, installed: List<String>, dictionary: List<DictEntry>): TranslateOutcome =
+        TranslateOutcome.noLlm
+
+    /**
      * Load 3 (`nativeKeepLlm`): hold this engine's own on-device LLM for the next
      * [MurmurCoreLoader.loadModels] with the same model (a language switch reloads only the speech
      * model). Call it before [unload]. Returns whether there was one; false when unsupported.
