@@ -36,6 +36,14 @@ pub fn valid_id(id: &str) -> bool {
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
 }
 
+/// The notes window's page (`WebviewUrl::App`): `scratchpad.html?<query>`,
+/// `note=<id>` = that note's editor, `view=notes` = the Notes list. The
+/// app's asset protocol drops `?…` before the lookup, so `scratchpad.html`
+/// loads and the page reads the query itself.
+pub fn window_page(query: &str) -> String {
+    format!("scratchpad.html?{query}")
+}
+
 /// `%APPDATA%\Murmur` (next to `prefs.json`).
 pub fn app_dir(appdata: Option<&str>) -> PathBuf {
     appdata

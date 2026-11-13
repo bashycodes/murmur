@@ -882,16 +882,16 @@ const MEETING_PROMPT: &str = "meeting-prompt";
 
 /// "Record this meeting?" (`meeting-prompt.html?app=Zoom`): a small
 /// always-on-top window at the bottom right of the work area that never
-/// takes focus from the call. `None` closes it.
+/// takes focus from the call. `None` closes it. Through
+/// [`post_to_main_thread`], so a main-thread caller cannot deadlock it.
 fn show_meeting_prompt(app: &AppHandle, which: Option<meetings::detect::App>) {
-    let h = app.clone();
-    let _ = app.run_on_main_thread(move || {
+    post_to_main_thread(app, move |h| {
         if let Some(w) = h.get_webview_window(MEETING_PROMPT) {
             let _ = w.destroy();
         }
         let Some(which) = which else { return };
         let page = format!("meeting-prompt.html?app={}", which.label());
-        let built = WebviewWindowBuilder::new(&h, MEETING_PROMPT, WebviewUrl::App(page.into()))
+        let built = WebviewWindowBuilder::new(h, MEETING_PROMPT, WebviewUrl::App(page.into()))
             .title("Record this meeting? — Murmur")
             .inner_size(360.0, 132.0)
             .resizable(false)
@@ -3031,40 +3031,100 @@ fn show_scratchpad(app: &AppHandle) {
     show_notes_window(app, format!("note={}", notes::SCRATCHPAD));
 }
 
-/// Show the notes window on `scratchpad.html?<query>` (`note=<id>` = that
+/// Run `f` on the main thread from the event loop, never inline. Use it
+/// for anything that builds a webview window: `run_on_main_thread` runs its
+/// closure at once when the caller is already on the main thread, and a
+/// sync command is, inside the calling window's WebView2 request callback.
+/// Building a WebView2 there waits on a callback WebView2 never delivers
+/// re-entrantly (the deadlock tauri documents for sync commands): the
+/// Scratchpad window stayed `about:blank` and the event loop stopped (dead
+/// ✕, no typing). From the main thread it posts from a worker task, which
+/// always goes through the loop; from any other thread it posts directly,
+/// keeping that thread's calls in order (a meeting prompt's show, then its
+/// close).
+fn post_to_main_thread(app: &AppHandle, f: impl FnOnce(&AppHandle) + Send + 'static) {
+    let h = app.clone();
+    let task = move || f(&h);
+    let on_main = MAIN_THREAD
+        .get()
+        .is_none_or(|t| *t == std::thread::current().id());
+    if on_main {
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            let _ = app.run_on_main_thread(task);
+        });
+    } else {
+        let _ = app.run_on_main_thread(task);
+    }
+}
+
+/// The event loop's thread (set in `setup`), for [`post_to_main_thread`].
+static MAIN_THREAD: OnceLock<std::thread::ThreadId> = OnceLock::new();
+
+/// The notes window's WebView theme: the app's `theme` pref when it is
+/// set, else `None` (follow Windows). The page follows it through
+/// `prefers-color-scheme`.
+fn notes_window_theme(pref: crate::prefs::Theme) -> Option<tauri::Theme> {
+    match pref {
+        crate::prefs::Theme::Light => Some(tauri::Theme::Light),
+        crate::prefs::Theme::Dark => Some(tauri::Theme::Dark),
+        crate::prefs::Theme::System => None,
+    }
+}
+
+/// The notes window's first-frame colour: the page's `--background-tertiary`
+/// in the app's `theme` pref (`system` = `windows`, Windows' app mode; dark
+/// when unknown), so the window never flashes white before scratchpad.css
+/// applies.
+fn notes_window_background(
+    pref: crate::prefs::Theme,
+    windows: Option<tauri::Theme>,
+) -> tauri::window::Color {
+    match notes_window_theme(pref).or(windows) {
+        Some(tauri::Theme::Light) => tauri::window::Color(0xf5, 0xf4, 0xf0, 0xff),
+        _ => tauri::window::Color(0x20, 0x20, 0x20, 0xff),
+    }
+}
+
+/// Show the notes window on `notes::window_page(query)` (`note=<id>` = that
 /// note in the editor, `view=notes` = the Notes list), creating it if it is
 /// closed and navigating it if it shows something else (the page flushes
-/// its note on the way out). Always on the main thread (the shortcuts
-/// arrive on the controller thread).
+/// its note on the way out). Called from sync commands, so it goes through
+/// [`post_to_main_thread`].
 fn show_notes_window(app: &AppHandle, query: String) {
-    let h = app.clone();
-    let _ = app.run_on_main_thread(move || {
-        let page = format!("scratchpad.html?{query}");
-        if let Some(w) = h.get_webview_window(SCRATCHPAD) {
-            if let Ok(cur) = w.url() {
-                if cur.query() != Some(query.as_str()) {
-                    if let Ok(url) = cur.join(&page) {
-                        let _ = w.navigate(url);
-                    }
+    post_to_main_thread(app, move |h| build_or_show_notes_window(h, &query));
+}
+
+fn build_or_show_notes_window(h: &AppHandle, query: &str) {
+    let page = notes::window_page(query);
+    if let Some(w) = h.get_webview_window(SCRATCHPAD) {
+        if let Ok(cur) = w.url() {
+            if cur.query() != Some(query) {
+                if let Ok(url) = cur.join(&page) {
+                    let _ = w.navigate(url);
                 }
             }
-            let _ = w.show();
-            let _ = w.unminimize();
-            let _ = w.set_focus();
-            return;
         }
-        let built = WebviewWindowBuilder::new(&h, SCRATCHPAD, WebviewUrl::App(page.into()))
-            .title("Notes — Murmur")
-            .inner_size(520.0, 560.0)
-            .min_inner_size(320.0, 240.0)
-            .center()
-            .focused(true)
-            .build();
-        if let Err(e) = built {
-            eprintln!("[scratchpad] {e}");
-            debug_log::event("scratchpad", &e.to_string());
-        }
-    });
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+        return;
+    }
+    let pref = h.state::<AppState>().prefs.read().unwrap().theme;
+    let windows = h.get_webview_window(SETTINGS).and_then(|w| w.theme().ok());
+    let built = WebviewWindowBuilder::new(h, SCRATCHPAD, WebviewUrl::App(page.into()))
+        .title("Notes — Murmur")
+        .inner_size(520.0, 560.0)
+        .min_inner_size(320.0, 240.0)
+        .theme(notes_window_theme(pref))
+        .background_color(notes_window_background(pref, windows))
+        .center()
+        .focused(true)
+        .build();
+    if let Err(e) = built {
+        eprintln!("[scratchpad] {e}");
+        debug_log::event("scratchpad", &e.to_string());
+    }
 }
 
 /// Never take focus from the app being dictated into; never show in
@@ -3460,6 +3520,7 @@ pub fn run() {
             }
         })
         .setup(move |app| {
+            let _ = MAIN_THREAD.set(std::thread::current().id());
             let handle = app.handle().clone();
             let h = handle.clone();
             instance.listen(move || show_settings(&h));
@@ -3749,5 +3810,53 @@ mod tests {
         assert!(overlay_settings_page(Some("settings-developer")).is_err());
         assert!(overlay_settings_page(Some("")).is_err());
         assert!(overlay_settings_page(None).is_err());
+    }
+
+    #[test]
+    fn notes_window_url_is_scratchpad_html_with_the_note_in_the_query() {
+        // What tauri does with `WebviewUrl::App`: the app URL (on Windows
+        // http://tauri.localhost/) joined with the page.
+        let base = tauri::Url::parse("http://tauri.localhost/").unwrap();
+        let dist = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("ui/dist");
+        for query in ["note=scratchpad", "note=n-1731500000000", "view=notes"] {
+            let url = base.join(&notes::window_page(query)).unwrap();
+            assert_eq!(url.path(), "/scratchpad.html");
+            assert_eq!(url.query(), Some(query));
+            assert!(
+                dist.join(&url.path()[1..]).is_file(),
+                "{url} not in ui/dist"
+            );
+        }
+        // The asset protocol drops `?…`; the page's script and styles ship
+        // next to it.
+        let html = std::fs::read_to_string(dist.join("scratchpad.html")).unwrap();
+        for file in [
+            "scratchpad.js",
+            "scratchpad.css",
+            "theme.css",
+            "components.css",
+        ] {
+            assert!(html.contains(&format!("\"{file}\"")), "{file} not linked");
+            assert!(dist.join(file).is_file(), "{file} not in ui/dist");
+        }
+    }
+
+    #[test]
+    fn notes_window_starts_in_the_theme_pref() {
+        use crate::prefs::Theme as Pref;
+        use tauri::window::Color;
+        use tauri::Theme::{Dark, Light};
+        let dark = Color(0x20, 0x20, 0x20, 0xff);
+        let light = Color(0xf5, 0xf4, 0xf0, 0xff);
+        // The pref wins over Windows' app mode.
+        assert_eq!(notes_window_background(Pref::Light, Some(Dark)), light);
+        assert_eq!(notes_window_background(Pref::Dark, Some(Light)), dark);
+        assert_eq!(notes_window_theme(Pref::Light), Some(Light));
+        assert_eq!(notes_window_theme(Pref::Dark), Some(Dark));
+        // `system` follows Windows; dark when it is unknown.
+        assert_eq!(notes_window_theme(Pref::System), None);
+        assert_eq!(notes_window_background(Pref::System, Some(Light)), light);
+        assert_eq!(notes_window_background(Pref::System, Some(Dark)), dark);
+        assert_eq!(notes_window_background(Pref::System, None), dark);
     }
 }

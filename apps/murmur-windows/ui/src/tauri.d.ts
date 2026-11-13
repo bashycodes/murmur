@@ -12,5 +12,8 @@ interface Window {
     event: {
       listen<T>(event: string, cb: (e: TauriEvent<T>) => void): Promise<() => void>;
     };
+    window: {
+      getCurrentWindow(): { close(): Promise<void> };
+    };
   };
 }

@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "scratchpad",
-  "description": "Scratchpad / Notes window: list, create, edit, pin, delete and export notes and copy their text (nothing else).",
+  "description": "Scratchpad / Notes window: list, create, edit, pin, delete and export notes and copy their text, and close itself on Esc (nothing else).",
   "windows": [
     "scratchpad"
   ],
@@ -14,6 +14,7 @@
     "allow-note-delete",
     "allow-note-set-pinned",
     "allow-note-export",
-    "allow-clipboard-copy"
+    "allow-clipboard-copy",
+    "core:window:allow-close"
   ]
 }

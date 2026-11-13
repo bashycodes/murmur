@@ -48,6 +48,9 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 - **Windows setup keeps the cleanup model file chosen on step 4** when Continue also turns Cloud cleanup off: the field was redrawn from the saved settings before it was read.
 - **Windows: small wrong facts.** Settings → Developer's "Last dictation" shows the newest dictation in history (not Command Mode or transform rows) until the app's first dictation (it said "No dictation yet" while Home listed many). Insights: the heatmap legend reads Less → More, every part of the words bar is named (with its share) in a key below it, "Longest" shows only when it beats the current streak, and dates use the app's date format instead of ISO. Settings → Your server's address hint now reads "Name or IP address only, e.g. homeserver".
 - **Dictionary suggestions skip corrections that switch script** (Android and Windows): an edit from a Latin word to a Hebrew one (or Cyrillic, Greek, Arabic, …) is a change of language, not a misheard word, so it is no longer offered as a dictionary entry. The other way round (a name heard in Hebrew letters corrected to its Latin spelling) is still offered.
+- **Windows: the Scratchpad / Notes window works again.** Opening a note from Settings → Scratchpad (New note, Quick note, a note in the list) built the window inside the app window's request handler, where WebView2 cannot finish creating it: the window stayed blank and white, ignored typing and could not be closed. It now opens from the app's event loop, and so does the "Record this meeting?" prompt.
+- **Windows: the notes window no longer flashes white when it opens.** It starts in the colour of the Theme setting (Settings → General → Theme; System follows Windows), and the page uses that theme too.
+- **Windows: Esc closes the notes window.** In the Notes list, Esc with text in Search clears the search first.
 
 ## [1.3.0] - 2026-11-13
 

@@ -2,8 +2,8 @@
 //! `allow-*` permission), the settings (app) window is granted exactly the
 //! app's commands, the overlay window only `overlay_action` and
 //! `overlay_theme` (the theme pref, not `get_prefs`), the Scratchpad
-//! only its note commands plus `clipboard_copy`, and the meeting prompt
-//! only its answer.
+//! only its note commands plus `clipboard_copy` and closing itself, and
+//! the meeting prompt only its answer.
 
 /// The note editor's commands: only the Scratchpad / Notes window reads,
 /// writes, deletes or exports a note's text.
@@ -112,6 +112,15 @@ fn scratchpad_may_only_edit_its_notes_and_copy() {
     assert_eq!(granted, want);
     let v: serde_json::Value = serde_json::from_str(&read("capabilities/scratchpad.json")).unwrap();
     assert_eq!(v["windows"], serde_json::json!(["scratchpad"]));
+    // Esc closes the window; no other core permission.
+    let core: Vec<&str> = v["permissions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|p| p.as_str())
+        .filter(|p| p.starts_with("core:"))
+        .collect();
+    assert_eq!(core, ["core:window:allow-close"]);
     let handlers = handler_commands();
     for c in SCRATCHPAD_ONLY
         .iter()
