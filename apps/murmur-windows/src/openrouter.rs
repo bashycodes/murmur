@@ -673,7 +673,9 @@ mod tests {
         };
         let m = windows_destination_names(cmd.to_string());
         assert!(
-            m.starts_with("Command Mode would send the selection to your own AI server (10.0.0.5):"),
+            m.starts_with(
+                "Command Mode would send the selection to your own AI server (10.0.0.5):"
+            ),
             "{m}"
         );
         assert!(!m.contains("LiteLLM"), "{m}");
