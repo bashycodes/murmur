@@ -10,7 +10,9 @@
 // model after the user pressed Download and confirmed it (3a/3b, through
 // features/models.ts), from the user's server or Hugging Face ("Download
 // from", D79; picking Your server with none saved shows step 2's server
-// fields right there). Step 4 offers the same for the cleanup model. With
+// fields right there). Step 4 offers the same for the cleanup model, and
+// "Your server" (D36 server cleanup, lib/setup-cleanup.ts) once a server
+// is saved. With
 // speech on the server the step is optional ("Skip — use my server only").
 // A server test or an OpenRouter key/consent happens only on the user's
 // own click.
@@ -25,11 +27,13 @@ import { prefsStore, type Prefs } from "../lib/prefs-store.js";
 import { pillLine, readinessErrorLine, readinessLine, RECHECK_MS, type PillState, type Readiness, type TryLine, type TryLineSource } from "../lib/setup-try.js";
 import type { CloudProvider, DevForm, DevView, FieldError, Health, KeyState, OrView, Route, RouteView } from "../lib/types.js";
 import { initialEngine, recommendedEngine } from "../lib/setup-engine.js";
+import { enginesFor, initialCleanup, recommendedCleanup, serverOption, type ServerFacts, type SetupCleanup } from "../lib/setup-cleanup.js";
 import { views } from "../lib/views.js";
+import { engines as cleanupEngines, pollCleanupStatus } from "../features/ai.js";
 import { TEMPLATE } from "./templates.js";
 
 type Engine = "pc" | "server" | "cloud";
-type Cleanup = "rules" | "pc" | "cloud";
+type Cleanup = SetupCleanup;
 type Step = "welcome" | "engine" | "model" | "cleanup" | "try";
 
 interface ModelStatus {
@@ -56,6 +60,7 @@ const ENGINE_OF: Record<Route, Engine> = { client: "pc", server: "server", cloud
 const SAMPLE: Record<Cleanup, string> = {
   rules: "So lunch is Thursday.",
   pc: "Lunch is on Thursday.",
+  server: "Lunch is on Thursday.",
   cloud: "Lunch is on Thursday.",
 };
 /** The catalogue model behind each row (model_catalog ids). */
@@ -68,6 +73,8 @@ const st = {
   step: "welcome" as Step,
   engine: "pc" as Engine,
   cleanup: "rules" as Cleanup,
+  /** The user picked a cleanup option on this run (else it follows the saved settings and the server). */
+  cleanupPicked: false,
   /** D78: which Cloud provider cleans up (speech is always OpenRouter). */
   prov: "openrouter" as CloudProvider,
   model: null as ModelStatus | null,
@@ -92,10 +99,31 @@ function has(e: Engine): boolean {
   return !!views.or?.supported;
 }
 
+/** The server as step 4 sees it: saved in step 2 (`hasServer`) and whether it can clean (D36). */
+function serverFacts(): ServerFacts {
+  return { build: has("server"), saved: hasServer(), llm: views.or?.cleanup.status.server_llm };
+}
+
 function hasCleanup(c: Cleanup): boolean {
   if (c === "rules") return true;
   if (c === "pc") return views.dev ? views.dev.caps.local || views.dev.capabilities.llm : true;
+  if (c === "server") return !serverOption(serverFacts()).disabled;
   return !!views.or?.supported;
+}
+
+/** Step 4's selection from the saved settings (Cloud on, the level, the D36 order). */
+function savedCleanup(): Cleanup {
+  const p = prefsStore.get();
+  const c = initialCleanup(
+    {
+      cloudAllow: !!views.or?.cleanup.allow,
+      aiLevel: !!p && p.cleanup_level !== "none",
+      llmEnabled: !!p?.llm_enabled,
+      engines: cleanupEngines(),
+    },
+    hasServer(),
+  );
+  return hasCleanup(c) ? c : "rules";
 }
 
 /** Steps shown in this build: no model step in a build without engines on this PC. */
@@ -461,6 +489,7 @@ async function useModel(id: "parakeet" | "whisper"): Promise<void> {
 function pickCleanup(c: Cleanup): void {
   if (!hasCleanup(c)) return;
   st.cleanup = c;
+  st.cleanupPicked = true;
   renderCleanup();
 }
 
@@ -481,16 +510,32 @@ function llmLine(s: LlmStatus | undefined): string {
   }
 }
 
-function renderCleanup(): void {
+/** The options: selected, Recommended, and "Your server" shown only with a server engine, disabled with
+ *  the reason until a server is saved (step 2). Redrawn when the server or its cleanup status changes. */
+function renderCleanupOptions(): void {
+  const facts = serverFacts();
+  const server = serverOption(facts);
+  const rec = recommendedCleanup(facts, hasCleanup("pc"));
   for (const b of document.querySelectorAll<HTMLButtonElement>("#onboarding [data-ob-cleanup]")) {
     const id = b.dataset.obCleanup as Cleanup;
     const on = id === st.cleanup;
     b.setAttribute("aria-checked", String(on));
     b.classList.toggle("is-on", on);
     b.disabled = !hasCleanup(id);
-    (b.querySelector("[data-ob-na]") as HTMLElement).hidden = hasCleanup(id);
-    (b.querySelector("[data-ob-rec]") as HTMLElement).hidden = id !== "pc" || !hasCleanup("pc");
+    // "Not in this build" is for a missing engine; the server option says why instead.
+    (b.querySelector("[data-ob-na]") as HTMLElement).hidden = id === "server" || hasCleanup(id);
+    (b.querySelector("[data-ob-rec]") as HTMLElement).hidden = id !== rec || !hasCleanup(id);
+    if (id !== "server") continue;
+    b.hidden = server.hidden;
+    const reason = b.querySelector("[data-ob-reason]") as HTMLElement;
+    reason.textContent = server.reason;
+    reason.hidden = !server.reason;
+    (b.querySelector("[data-ob-desc]") as HTMLElement).hidden = !!server.reason;
   }
+}
+
+function renderCleanup(): void {
+  renderCleanupOptions();
   $<HTMLElement>("ob_sample").textContent = SAMPLE[st.cleanup];
   $<HTMLElement>("ob_llm_detail").hidden = st.cleanup !== "pc";
   $<HTMLElement>("ob_or_detail").hidden = st.cleanup !== "cloud";
@@ -540,8 +585,11 @@ function renderLlmDownload(): void {
 /** Re-draw the open step after the server, the catalogue or a download changed. */
 function rerender(): void {
   if (st.step === "model") renderModel();
-  else if (st.step === "cleanup") renderLlmModel();
   else if (st.step === "engine") placeServerForm();
+  else if (st.step === "cleanup") {
+    renderCleanupOptions();
+    renderLlmModel();
+  }
 }
 
 /** D78: the OpenRouter | LiteLLM switch of the Cloud cleanup option. */
@@ -723,11 +771,18 @@ async function applyCleanup(): Promise<boolean> {
       await prefsStore.save({ cleanup_level: level, spoken_cleanup: true, raw_mode: false });
       return true;
     }
-    // Rules or this PC: Cloud cleanup off if it was on.
+    // Rules, this PC or your server: Cloud cleanup off if it was on.
     if (views.or?.supported && views.or.cleanup.allow) {
       views.setOr(await invoke<OrView>("dev_or_set_cleanup", { form: cleanupForm(false, false) }));
     }
-    if (st.cleanup === "rules") {
+    // Your server / this PC first in the D36 cleanup order, through the same
+    // command as Settings → AI cleanup's switches (features/ai.ts).
+    const order = enginesFor(st.cleanup, cleanupEngines());
+    if (order) views.setOr(await invoke<OrView>("dev_cleanup_set_engines", { engines: order }));
+    if (st.cleanup === "server") {
+      // This PC's switch stays as it was: a backup when it is on.
+      await prefsStore.save({ cleanup_level: level, spoken_cleanup: true, raw_mode: false });
+    } else if (st.cleanup === "rules") {
       await prefsStore.save({ llm_enabled: false, cleanup_level: "none", spoken_cleanup: true, raw_mode: false });
     } else {
       await prefsStore.save({
@@ -888,8 +943,12 @@ function show(s: Step): void {
     if (models.fromServer()) void models.refreshServer();
   }
   if (s === "cleanup") {
+    // A server saved in step 2 on this run counts; a pick made here stays.
+    if (!st.cleanupPicked || !hasCleanup(st.cleanup)) st.cleanup = savedCleanup();
     renderCleanup();
     if (models.fromServer()) void models.refreshServer();
+    // Whether the server has an AI model (D36), for "Recommended"; the answer redraws through views.onOr.
+    void pollCleanupStatus();
   }
   if (s === "try") {
     renderTry();
@@ -971,7 +1030,8 @@ function initialChoices(): void {
   );
   const p = prefsStore.get();
   st.engine = initialEngine(first ? ENGINE_OF[first] : null, !!p?.onboarded, has);
-  st.cleanup = or?.cleanup.allow ? "cloud" : p?.llm_enabled && p.cleanup_level !== "none" ? "pc" : "rules";
+  st.cleanup = savedCleanup();
+  st.cleanupPicked = false;
   $<HTMLInputElement>("ob_host").value = dev?.host ?? "";
   $<HTMLInputElement>("ob_token").placeholder = dev?.token_saved ? "saved (hidden), leave empty to keep" : "from murmur-server gen-token";
   $<HTMLInputElement>("ob_stt_consent").checked = !!or?.stt.consent;
@@ -1061,6 +1121,7 @@ export const onboarding = {
     models.onChange(rerender);
     prefsStore.subscribe(rerender);
     views.onDev(rerender);
+    views.onOr(rerender);
     void onEvent<{ id: string; state: string }>("model:download", (e) => {
       if (e.payload.state !== "done") return;
       void invoke<ModelInfo>("get_model_status").then((i) => {
