@@ -39,6 +39,34 @@ body.lw-ob-open .lw-settings {
   overflow: hidden;
 }
 
+/* Steps 2-5 (templates.ts stepPanel): one centred column that scrolls,
+   top aligned, above a footer bar that never moves. The footer reserves
+   the same scrollbar gutter as the scroller, so Back / Continue line up
+   with the content's edges whether or not a scrollbar shows. */
+.lw-ob-panel.is-framed {
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+.lw-ob-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  /* Room between something scrolled into view and the footer bar. */
+  scroll-padding-bottom: 16px;
+}
+.lw-ob-frame {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1088px;
+  margin: 0 auto;
+  padding: 40px 64px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
 .lw-ob-head {
   display: flex;
   align-items: center;
@@ -74,16 +102,16 @@ body.lw-ob-open .lw-settings {
   color: var(--fathom-400);
 }
 
+/* Top aligned: a pick that shows or hides fields only changes what is below it. */
 .lw-ob-body {
-  flex: 1;
   display: flex;
   gap: 64px;
-  align-items: center;
+  align-items: flex-start;
   min-height: 0;
 }
 .lw-ob-body.is-center {
   flex-direction: column;
-  justify-content: center;
+  align-items: center;
   gap: 32px;
 }
 .lw-ob-body.is-tight {
@@ -117,7 +145,16 @@ body.lw-ob-open .lw-settings {
 }
 
 .lw-ob-foot {
-  display: flex;
+  flex: none;
+  border-top: 1px solid var(--border);
+  background: var(--background-tertiary);
+  overflow: hidden;
+  scrollbar-gutter: stable;
+}
+.lw-ob-foot-row {
+  padding-top: 14px;
+  padding-bottom: 14px;
+  flex-direction: row;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
@@ -275,9 +312,17 @@ body.lw-ob-open .lw-settings {
   border: 2px solid var(--primary);
   padding: 19px;
 }
-.lw-ob-card:focus-visible,
-.lw-ob-option:focus-visible {
+/* One selection style for cards and options: the purple ring, whether the
+   pick came from the saved settings or a click. Keyboard focus on an
+   unpicked one is a plain outline. */
+.lw-ob-card.is-on,
+.lw-ob-option.is-on {
   box-shadow: 0 0 0 3px var(--selected-border);
+}
+.lw-ob-card:focus-visible:not(.is-on),
+.lw-ob-option:focus-visible:not(.is-on) {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 .lw-ob-card:disabled,
 .lw-ob-option:disabled {
@@ -432,8 +477,35 @@ body.lw-ob-open .lw-settings {
   flex-wrap: wrap;
   gap: 4px 20px;
 }
-.lw-ob-help {
-  padding: 0 0 12px;
+/* Step 2's server: "I already have a server ▸" over the address and token. */
+.lw-ob-server {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.lw-ob-server[hidden] {
+  display: none;
+}
+.lw-ob-server-bar {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+.lw-ob-server-bar .lw-ob-small {
+  padding: 0;
+}
+.lw-ob-more[hidden] {
+  display: none;
+}
+.lw-ob-chev {
+  margin-left: 4px;
+}
+.lw-ob-later {
+  padding: 0 0 14px;
+}
+.lw-ob-missing {
+  color: var(--foreground);
 }
 
 /* ---- model rows: picker, Download / Cancel, progress (3b) ---- */

@@ -4,12 +4,13 @@ Probe (Playwright + its bundled Chromium):
     python3 tools/probes/settings_mock/serve.py 8765 &
     python3 tools/probes/settings_mock/check_onboarding.py [port]
 Opens the app as a fresh install (onboarded false): setup covers the shell.
-Walks every step in light and dark: Your server preselected and Recommended
-(D73), picks each engine (server: address + token + Test; Cloud (D78):
-OpenRouter key + consent), a model location that is missing,
+Walks every step in light and dark: This PC preselected and Recommended
+on a new install (UX review on 1.3.0, amends D73), picks each engine
+(server: "I already have a server" opens address + token + Test; Cloud
+(D78): OpenRouter key + consent), a model location that is missing,
 a download (D31: confirm dialog 3a, cancel, progress 3b, done -> prefs and
-model ready), a picked folder that loads, each cleanup choice (Cloud with
-OpenRouter and with a LiteLLM proxy, D78), then the
+model ready), a picked folder that loads, each cleanup choice (Cloud: the
+consent only, details later in Settings → Cloud), then the
 practice box (a
 dictation result arrives through dev:route), changes the shortcut and
 finishes. Asserts what reached dev_set / dev_or_set_* / set_prefs, that
@@ -84,11 +85,15 @@ def walk(pg, scheme):
 
     nxt(pg)
     check(tag + "engine step", visible_step(pg) == "engine")
-    # D73: a clean install opens with Your server selected and Recommended.
-    check(tag + "your server preselected", checked(pg, "[data-ob-engine]", "data-ob-engine") == ["server"])
+    # A new install (no server saved) opens on This PC, the Recommended one.
+    check(tag + "this PC preselected", checked(pg, "[data-ob-engine]", "data-ob-engine") == ["pc"])
     rec = pg.eval_on_selector_all("[data-ob-engine]", "bs => bs.filter(b => !b.querySelector('[data-ob-rec]').hidden).map(b => b.dataset.obEngine)")
-    check(tag + "your server recommended", rec == ["server"], str(rec))
-    check(tag + "server fields shown", pg.is_visible("#ob_host") and pg.is_visible("#ob_token") and pg.is_visible("#ob_test_conn"))
+    check(tag + "this PC recommended", rec == ["pc"], str(rec))
+    check(tag + "no server fields", not pg.is_visible("#ob_server_detail"))
+    copy = pg.inner_text("[data-ob-step=engine]") + pg.inner_text("[data-ob-step=welcome]")
+    jargon = [w for w in ("murmur-server", "VPN", "LiteLLM", "ws://", "gen-token", "GGUF", "Q4_K_M") if w in copy]
+    check(tag + "no jargon on steps 1-2", not jargon, str(jargon))
+    check(tag + "no OpenRouter on screen one", "OpenRouter" not in pg.inner_text("[data-ob-step=welcome]"))
     # D78: the online card is "Cloud" and available in this build.
     check(tag + "cloud card", pg.inner_text("[data-ob-engine=cloud] .lw-ob-card-title").strip() == "Cloud" and not pg.is_disabled("[data-ob-engine=cloud]"))
     check(tag + "step counter", pg.inner_text("[data-ob-step=engine] .fl-overline").strip().lower() == "step 2 of 5")
@@ -96,9 +101,14 @@ def walk(pg, scheme):
 
     # Your server: address required, Test, then Continue saves it first in the order.
     pg.click("[data-ob-engine=server]")
+    check(tag + "address and token folded", pg.is_visible("#ob_server_more") and not pg.is_visible("#ob_host") and pg.get_attribute("#ob_server_more", "aria-expanded") == "false")
     shot("2b-engine-server")
+    pg.click("#ob_server_more")
+    check(tag + "I already have a server opens them", pg.is_visible("#ob_host") and pg.is_visible("#ob_token") and pg.is_visible("#ob_test_conn") and pg.get_attribute("#ob_server_more", "aria-expanded") == "true")
+    pg.click("#ob_server_more")
+    check(tag + "and folds them again", not pg.is_visible("#ob_host"))
     nxt(pg)
-    check(tag + "server needs an address", visible_step(pg) == "engine" and "address" in pg.inner_text("#ob_host_err"))
+    check(tag + "server needs an address", visible_step(pg) == "engine" and pg.is_visible("#ob_host") and "address" in pg.inner_text("#ob_host_err"))
     pg.click("#ob_server_detail [data-open-url]")
     pg.wait_for_timeout(100)
     check(tag + "set up a server opens the docs", any("github.com/bashycodes/murmur" in c["url"] for c in calls(pg, "open_external")))
@@ -113,6 +123,8 @@ def walk(pg, scheme):
     # D79: Optional badge, "Skip — use my server only" until a model is ready.
     check(tag + "model optional for server", pg.is_visible("#ob_model_optional") and pg.is_visible("[data-ob=skip-model]"))
     back(pg)
+    rec = pg.eval_on_selector_all("[data-ob-engine]", "bs => bs.filter(b => !b.querySelector('[data-ob-rec]').hidden).map(b => b.dataset.obEngine)")
+    check(tag + "Recommended stays put once a server is saved mid-run", rec == ["pc"], str(rec))
 
     # OpenRouter: key + consent before it is turned on.
     pg.click("[data-ob-engine=cloud]")
@@ -210,7 +222,9 @@ def walk(pg, scheme):
     check(tag + "local model row", pg.is_visible("#ob_llm_detail") and pg.inner_text("#ob_sample") == "Lunch is on Thursday.")
     shot("4b-cleanup-pc")
     pg.click("[data-ob-cleanup=cloud]")
-    check(tag + "saved key not asked again", "saved" in pg.get_attribute("#ob_clean_key", "placeholder"))
+    check(tag + "cloud: consent and one line, no provider fields", pg.is_visible("#ob_clean_consent") and "Add details later in Settings → Cloud" in pg.inner_text("#ob_or_detail") and pg.eval_on_selector_all("#ob_or_detail input", "is => is.length") == 1)
+    check(tag + "key saved on step 2: nothing missing", not pg.is_visible("#ob_cloud_missing"))
+    check(tag + "no jargon on step 4", not [w for w in ("GGUF", "Q4_K_M", "without a GPU", "LiteLLM") if w in pg.inner_text("[data-ob-step=cleanup]")])
     nxt(pg)
     check(tag + "cleanup needs consent", visible_step(pg) == "cleanup" and "Tick" in pg.inner_text("#ob_cleanup_status"))
     pg.check("#ob_clean_consent")
@@ -218,24 +232,7 @@ def walk(pg, scheme):
     nxt(pg)
     o = orv(pg)
     check(tag + "cloud cleanup on", visible_step(pg) == "try" and o["cleanup"]["allow"] and o["cleanup"]["consent"], str(o["cleanup"]))
-    back(pg)
-    # D78: Cloud cleanup has an OpenRouter | LiteLLM switch (one provider).
-    prov = lambda: checked(pg, "#ob_cloud_prov_seg [data-ob-cloud-provider]", "data-ob-cloud-provider")
-    check(tag + "cloud cleanup option", pg.inner_text("[data-ob-cleanup=cloud] .lw-ob-option-title").startswith("Cloud") and prov() == ["openrouter"], str(prov()))
-    pg.click("#ob_cloud_prov_seg [data-ob-cloud-provider=custom]")
-    pg.wait_for_timeout(100)
-    check(tag + "litellm fields", prov() == ["custom"] and pg.is_visible("#ob_ll_url") and pg.is_hidden("#ob_or_key_row") and not pg.is_checked("#ob_clean_consent") and "my proxy" in pg.inner_text("#ob_clean_consent_title"))
-    pg.fill("#ob_ll_url", "http://10.0.0.5:4000")  # saved with /v1 added
-    pg.click("#ob_ll_test")
-    pg.wait_for_timeout(200)
-    check(tag + "litellm test lists models", "Connected · 1 model" in pg.inner_text("#ob_ll_test_out") and pg.input_value("#ob_ll_model") == "llama-3.1-8b-instruct", pg.inner_text("#ob_ll_test_out"))
-    shot("4d-cleanup-litellm")
-    pg.check("#ob_clean_consent")
-    nxt(pg)
-    o = orv(pg)
-    cu = o["cleanup"]["custom"]
-    check(tag + "litellm cleanup saved", visible_step(pg) == "try" and o["cleanup"]["provider"] == "custom" and o["cleanup"]["allow"] and cu["host"] == "10.0.0.5" and cu["base_url"] == "http://10.0.0.5:4000/v1" and cu["model"] == "llama-3.1-8b-instruct" and cu["consent"], str(o["cleanup"]))
-    check(tag + "litellm turns cloud speech off", not o["stt"]["allow"] and o["stt"]["available"] is False, str(o["stt"]))
+    check(tag + "cloud keeps the saved provider", o["cleanup"]["provider"] == "openrouter", str(o["cleanup"]["provider"]))
     back(pg)
     pg.click("[data-ob-cleanup=pc]")
     pg.click("[data-ob-pick=llm]")
@@ -287,6 +284,72 @@ def walk(pg, scheme):
     check(tag + "set up later closes", not pg.is_visible("#onboarding"))
 
 
+def box(pg, sel):
+    return pg.eval_on_selector(sel, "e => { const r = e.getBoundingClientRect(); return { x: r.left, y: r.top, r: r.right, b: r.bottom }; }")
+
+
+def layout(pg, scheme):
+    """One shared step layout at the default window size (about 1040 x 675):
+    content scrolls above a fixed footer, top aligned, no jumps per pick."""
+    shot = lambda name: pg.screenshot(path=str(out / f"ob-layout-{name}-{scheme}.png"))
+    tag = f"[layout {scheme}] "
+    pg.goto(f"http://127.0.0.1:{port}/settings.html?onboard=1")
+    pg.wait_for_timeout(600)
+    nxt(pg)
+    h1 = "[data-ob-step=engine] .lw-ob-h1"
+    tops = []
+    for e in ("pc", "server", "cloud", "pc"):
+        pg.click(f"[data-ob-engine={e}]")
+        pg.wait_for_timeout(50)
+        tops.append(round(box(pg, h1)["y"]))
+    check(tag + "step 2 heading stays put across picks", len(set(tops)) == 1, str(tops))
+    cards = box(pg, "[data-ob-step=engine] .lw-ob-cards")
+    bk = box(pg, "[data-ob-step=engine] [data-ob=back]")
+    nx = box(pg, "[data-ob-step=engine] [data-ob=next]")
+    check(tag + "Back / Continue line up with the cards", abs(bk["x"] - cards["x"]) <= 1 and abs(nx["r"] - cards["r"]) <= 1, f"{bk} {nx} {cards}")
+    ring = lambda sel: pg.eval_on_selector(sel, "e => getComputedStyle(e).boxShadow")
+    card_ring = ring("[data-ob-engine].is-on")
+    check(tag + "selected card has the ring", card_ring not in ("", "none"), card_ring)
+    shot("2-pc")
+    pg.click("[data-ob-engine=server]")
+    pg.click("#ob_server_more")
+    pg.fill("#ob_host", "100.64.0.10")
+    pg.fill("#ob_token", "abcdefghijklmnop1234")
+    shot("2-server-open")
+    nxt(pg)
+    pg.click("[data-ob=skip-model]")
+    pg.wait_for_timeout(250)
+    check(tag + "step 4", visible_step(pg) == "cleanup", visible_step(pg))
+    rules = "[data-ob-cleanup=rules]"
+    tops = []
+    for c in ("rules", "pc", "cloud", "server", "rules"):
+        pg.click(f"[data-ob-cleanup={c}]")
+        pg.wait_for_timeout(50)
+        # In the scrolled content: picking Cloud scrolls to its consent on purpose.
+        tops.append(round(box(pg, rules)["y"] + pg.eval_on_selector("[data-ob-step=cleanup] [data-ob-scroll]", "e => e.scrollTop")))
+    check(tag + "step 4 options stay put across picks", len(set(tops)) == 1, str(tops))
+    check(tag + "one selection style", ring("[data-ob-cleanup].is-on") == card_ring, ring("[data-ob-cleanup].is-on"))
+    for c in ("pc", "cloud"):
+        pg.click(f"[data-ob-cleanup={c}]")
+        pg.wait_for_timeout(50)
+        over = box(pg, "[data-ob-step=cleanup] .lw-ob-head .fl-overline")
+        foot = box(pg, "[data-ob-step=cleanup] .lw-ob-foot")
+        scroll = box(pg, "[data-ob-step=cleanup] [data-ob-scroll]")
+        if c == "pc":  # picking Cloud scrolls down to its consent (below)
+            check(tag + f"{c}: step counter on screen", over["y"] >= 0 and over["b"] <= foot["y"], str(over))
+        check(tag + f"{c}: footer below the scrolling content", scroll["b"] <= foot["y"] + 1 and foot["b"] <= pg.viewport_size["height"], f"{scroll} {foot}")
+        shot(f"4-{c}")
+    # No manual scroll: picking Cloud must bring the consent and the
+    # missing-key line fully into view, above the footer.
+    consent = box(pg, "#ob_or_detail")
+    missing = box(pg, "#ob_cloud_missing")
+    foot = box(pg, "[data-ob-step=cleanup] .lw-ob-foot")
+    scroll = box(pg, "[data-ob-step=cleanup] [data-ob-scroll]")
+    check(tag + "picking Cloud shows the consent fully", consent["y"] >= scroll["y"] and consent["b"] <= foot["y"], f"{consent} {foot}")
+    check(tag + "and the missing-key line", missing["y"] >= scroll["y"] and missing["b"] <= foot["y"], f"{missing} {foot}")
+    check(tag + "no key yet: says Cloud waits for one", pg.is_visible("#ob_cloud_missing") and "add a key in Settings → Cloud" in pg.inner_text("#ob_cloud_missing"), pg.inner_text("#ob_cloud_missing"))
+
+
 with sync_playwright() as p:
     b = p.chromium.launch()
     errors = []
@@ -296,13 +359,17 @@ with sync_playwright() as p:
         pg.on("console", lambda m: m.type == "error" and errors.append(m.text))
         walk(pg, scheme)
         pg.close()
+        pg = b.new_page(viewport={"width": 1040, "height": 675}, color_scheme=scheme)
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+        layout(pg, scheme)
+        pg.close()
     # ?dlfail=1: a fingerprint mismatch is shown and can be retried.
     pg = b.new_page(viewport={"width": 1280, "height": 800})
     pg.on("pageerror", lambda e: errors.append(str(e)))
     pg.goto(f"http://127.0.0.1:{port}/settings.html?onboard=1&dlfail=1")
     pg.wait_for_timeout(600)
     nxt(pg)
-    pg.click("[data-ob-engine=pc]")  # D73: Your server is preselected
+    pg.click("[data-ob-engine=pc]")
     nxt(pg)
     pg.evaluate("window.__dlSteps = 2; window.__dlTickMs = 30")
     pg.click("[data-ob-dl=whisper]")
