@@ -54,9 +54,10 @@ pub struct Listening {
     pub session: SessionId,
     pub since_ms: u64,
     pub warned: bool,
-    /// PTT released before the debounce window ended: dismissed at
-    /// `since + debounce` unless pressed again in time (→ double-tap lock).
-    pub early_release: bool,
+    /// D92: when the push-to-talk key was released as a tap (held less
+    /// than `debounce_ms`). Dismissed at `released_at + double_tap_gap_ms`
+    /// unless pressed again sooner (→ double-tap lock).
+    pub released_at: Option<u64>,
     /// When the session became locked (triple-press detection).
     pub locked_at: Option<u64>,
 }
@@ -134,6 +135,14 @@ pub enum CommitOutcome {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Input {
     Hotkey(HotkeyAction),
+    /// D92: a hotkey stamped `at_ms` (the controller's clock) when the
+    /// keyboard hook delivered it. The controller turns it into `Hotkey`
+    /// timed at that moment, so a busy controller (a mic opening) doesn't
+    /// stretch a tap into a hold. The machine itself ignores it.
+    HotkeyAt {
+        action: HotkeyAction,
+        at_ms: u64,
+    },
     /// Periodic clock tick (drives max-duration and linger timeouts).
     Tick,
     Committed {
@@ -244,10 +253,17 @@ pub struct Policy {
     /// Hard stop: the dictation is committed (not discarded) at this length.
     pub max_ms: u64,
     pub warn_ms: u64,
-    /// Debounce window: PTT released sooner = tap (dismissed
-    /// unless a second press locks it); second press sooner = double-tap
-    /// lock; press sooner after locking = triple-press dismiss.
+    /// Hold threshold: PTT released sooner = tap (dismissed unless a
+    /// second press locks it); press sooner after locking = triple-press
+    /// dismiss.
     pub debounce_ms: u64,
+    /// D92: a second press this soon after a tap's *release* locks
+    /// (hands-free). Measured release → press, not press → press, so a
+    /// slow first tap still counts.
+    /// A double tap made while the last dictation was still processing
+    /// starts hands-free only if that processing ends within this gap of
+    /// the second press too.
+    pub double_tap_gap_ms: u64,
     /// Processing longer than this is an error (35 s).
     pub processing_timeout_ms: u64,
     /// D58: the budget instead when the stop language differs and the
@@ -269,6 +285,7 @@ impl Default for Policy {
             max_ms: 20 * 60 * 1000,
             warn_ms: 19 * 60 * 1000,
             debounce_ms: 500,
+            double_tap_gap_ms: 500,
             processing_timeout_ms: 35_000,
             rerun_timeout_ms: 90_000,
             pasted_linger_ms: 0,
@@ -310,10 +327,22 @@ pub const TRANSFORM_SKIPPED: &str = "Transform skipped";
 /// D90: notice after a translation failed and the untranslated text was
 /// pasted.
 pub const TRANSLATE_SKIPPED: &str = "Not translated";
+/// D92: push-to-talk presses seen while no dictation could start
+/// (processing), so a double tap begun then still locks.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct BusyTap {
+    /// A press still held.
+    down_at: Option<u64>,
+    /// That press was released as a tap, at this time.
+    released_at: Option<u64>,
+    /// A second press came in time: lock once processing ends.
+    lock_at: Option<u64>,
+}
 
 #[derive(Debug, Clone)]
 pub struct Dictation {
     phase: Phase,
+    busy_tap: BusyTap,
     policy: Policy,
     next_session: SessionId,
     /// Dictations go through the auto-apply transform before the paste.
@@ -331,6 +360,7 @@ impl Dictation {
     pub fn new(policy: Policy) -> Self {
         Dictation {
             phase: Phase::Idle,
+            busy_tap: BusyTap::default(),
             policy,
             next_session: 1,
             auto_transform: false,
@@ -366,6 +396,14 @@ impl Dictation {
     }
 
     pub fn handle(&mut self, input: Input, now_ms: u64) -> Vec<Effect> {
+        // Esc or another key during push-to-talk: no pending tap survives
+        // it, whatever the phase (a press right after must not lock).
+        if matches!(
+            input,
+            Input::Hotkey(HotkeyAction::Cancel | HotkeyAction::PttAborted)
+        ) {
+            self.busy_tap = BusyTap::default();
+        }
         match self.phase.clone() {
             Phase::Idle | Phase::Pasted { .. } | Phase::Error { .. } | Phase::Answer { .. } => {
                 self.handle_resting(input, now_ms)
@@ -375,14 +413,96 @@ impl Dictation {
                 session,
                 since_ms,
                 command,
-            } => self.handle_processing(session, since_ms, command, input, now_ms),
+            } => {
+                if let Input::Hotkey(a) = &input {
+                    self.note_busy_tap(*a, now_ms);
+                }
+                let mut fx = self.handle_processing(session, since_ms, command, input, now_ms);
+                fx.extend(self.start_queued_lock(now_ms));
+                fx
+            }
         }
+    }
+
+    /// D92: a push-to-talk press or release while processing (it can't
+    /// start a dictation): remembered so a double tap still locks.
+    fn note_busy_tap(&mut self, action: HotkeyAction, now_ms: u64) {
+        let p = self.policy;
+        let second = self.within_gap(self.busy_tap.released_at, now_ms);
+        let t = &mut self.busy_tap;
+        match action {
+            // A third press dismisses the queued lock, as a triple press
+            // dismisses a locked dictation.
+            HotkeyAction::PttDown if t.lock_at.is_some() => *t = BusyTap::default(),
+            HotkeyAction::PttDown => {
+                *t = if second {
+                    BusyTap {
+                        lock_at: Some(now_ms),
+                        ..BusyTap::default()
+                    }
+                } else {
+                    BusyTap {
+                        down_at: Some(now_ms),
+                        ..BusyTap::default()
+                    }
+                };
+            }
+            HotkeyAction::PttUp => {
+                if let Some(down) = t.down_at.take() {
+                    if now_ms.saturating_sub(down) < p.debounce_ms {
+                        t.released_at = Some(now_ms);
+                    }
+                }
+            }
+            // Another shortcut (Translate, Command, hands-free, a
+            // transform; with Ctrl+Win push-to-talk their chords start
+            // with a PttDown): the user meant that, not a double tap.
+            HotkeyAction::TranslateDown
+            | HotkeyAction::CommandDown
+            | HotkeyAction::HandsFreeToggle
+            | HotkeyAction::Transform(_) => *t = BusyTap::default(),
+            _ => {}
+        }
+    }
+
+    /// D92: processing just ended in a paste (or nothing to paste) and a
+    /// double tap came meanwhile: start hands-free now, if it was recent.
+    /// An error or notice drops it (its pill stays readable).
+    fn start_queued_lock(&mut self, now_ms: u64) -> Vec<Effect> {
+        if !matches!(self.phase, Phase::Idle | Phase::Pasted { .. }) {
+            if !matches!(self.phase, Phase::Processing { .. }) {
+                self.busy_tap.lock_at = None;
+            }
+            return Vec::new();
+        }
+        match self.busy_tap.lock_at.take() {
+            Some(at) if self.within_gap(Some(at), now_ms) => self.begin(Mode::Locked, now_ms),
+            _ => Vec::new(),
+        }
+    }
+
+    /// D92: `now_ms` is less than `double_tap_gap_ms` after `since`
+    /// (a tap's release, or a queued lock's second press).
+    fn within_gap(&self, since: Option<u64>, now_ms: u64) -> bool {
+        since.is_some_and(|t| now_ms.saturating_sub(t) < self.policy.double_tap_gap_ms)
     }
 
     fn handle_resting(&mut self, input: Input, now_ms: u64) -> Vec<Effect> {
         let p = self.policy;
         match (&self.phase, input) {
+            // D92: the second press of a double tap whose first tap came
+            // while processing.
+            (_, Input::Hotkey(HotkeyAction::PttDown))
+                if self.within_gap(self.busy_tap.released_at, now_ms) =>
+            {
+                self.begin(Mode::Locked, now_ms)
+            }
             (_, Input::Hotkey(HotkeyAction::PttDown)) => self.begin(Mode::Ptt, now_ms),
+            // The release of a press made while processing.
+            (_, Input::Hotkey(a @ HotkeyAction::PttUp)) => {
+                self.note_busy_tap(a, now_ms);
+                Vec::new()
+            }
             (_, Input::Hotkey(HotkeyAction::HandsFreeToggle)) => self.begin(Mode::Locked, now_ms),
             (_, Input::Hotkey(HotkeyAction::CommandDown)) => self.begin(Mode::Command, now_ms),
             (_, Input::Hotkey(HotkeyAction::TranslateDown)) => self.begin(Mode::Translate, now_ms),
@@ -439,16 +559,21 @@ impl Dictation {
             }
 
             // ---- push-to-talk ----
-            (Mode::Ptt, Input::Hotkey(PttDown)) if l.early_release => {
-                if elapsed < p.debounce_ms {
+            // D92: the gap counts from the tap's release, not its press.
+            (Mode::Ptt, Input::Hotkey(PttDown)) if l.released_at.is_some() => {
+                if self.within_gap(l.released_at, now_ms) {
                     self.lock(l, now_ms)
                 } else {
-                    self.cancel_listening(l.session)
+                    // Too late for a double tap: the tap is dismissed and
+                    // this is a fresh press.
+                    let mut fx = self.cancel_listening(l.session);
+                    fx.extend(self.begin(Mode::Ptt, now_ms));
+                    fx
                 }
             }
-            (Mode::Ptt, Input::Hotkey(PttUp)) if !l.early_release => {
+            (Mode::Ptt, Input::Hotkey(PttUp)) if l.released_at.is_none() => {
                 if elapsed < p.debounce_ms {
-                    l.early_release = true;
+                    l.released_at = Some(now_ms);
                     self.phase = Phase::Listening(l);
                     Vec::new()
                 } else {
@@ -460,7 +585,7 @@ impl Dictation {
             // Ctrl+Win, then Alt: the push-to-talk becomes a command.
             (Mode::Ptt, Input::Hotkey(CommandDown)) => {
                 l.mode = Mode::Command;
-                l.early_release = false;
+                l.released_at = None;
                 self.phase = Phase::Listening(l);
                 vec![Effect::Overlay(OverlayState::ActiveCommand)]
             }
@@ -479,7 +604,7 @@ impl Dictation {
             // Ctrl+Win, then Shift: the push-to-talk becomes a translation.
             (Mode::Ptt, Input::Hotkey(TranslateDown)) => {
                 l.mode = Mode::Translate;
-                l.early_release = false;
+                l.released_at = None;
                 self.phase = Phase::Listening(l);
                 vec![Effect::Overlay(OverlayState::ActiveCommand)]
             }
@@ -511,7 +636,7 @@ impl Dictation {
 
             // ---- clock ----
             (_, Input::Tick) => {
-                if l.early_release && elapsed >= p.debounce_ms {
+                if l.released_at.is_some() && !self.within_gap(l.released_at, now_ms) {
                     self.cancel_listening(l.session)
                 } else if elapsed >= p.max_ms {
                     self.stop_listening(&l, now_ms)
@@ -668,6 +793,7 @@ impl Dictation {
     }
 
     fn begin(&mut self, mode: Mode, now_ms: u64) -> Vec<Effect> {
+        self.busy_tap = BusyTap::default();
         let session = self.next_session;
         self.next_session += 1;
         self.phase = Phase::Listening(Listening {
@@ -675,7 +801,7 @@ impl Dictation {
             session,
             since_ms: now_ms,
             warned: false,
-            early_release: false,
+            released_at: None,
             locked_at: (mode == Mode::Locked).then_some(now_ms),
         });
         let (sound, overlay) = match mode {
@@ -708,7 +834,7 @@ impl Dictation {
 
     fn lock(&mut self, mut l: Listening, now_ms: u64) -> Vec<Effect> {
         l.mode = Mode::Locked;
-        l.early_release = false;
+        l.released_at = None;
         l.locked_at = Some(now_ms);
         self.phase = Phase::Listening(l);
         vec![
@@ -883,9 +1009,10 @@ mod tests {
             hk(&mut d, PttUp, 1100).is_empty(),
             "keeps listening for a 2nd tap"
         );
-        assert!(listening(&d).early_release);
-        assert!(d.handle(Input::Tick, 1499).is_empty());
-        assert_eq!(d.handle(Input::Tick, 1500), cancel_fx(s));
+        assert_eq!(listening(&d).released_at, Some(1100));
+        // D92: the double-tap gap runs from the release (1100 + 500).
+        assert!(d.handle(Input::Tick, 1599).is_empty());
+        assert_eq!(d.handle(Input::Tick, 1600), cancel_fx(s));
         assert_eq!(d.phase(), &Phase::Idle);
     }
 
@@ -931,15 +1058,17 @@ mod tests {
     }
 
     #[test]
-    fn late_second_tap_after_debounce_dismisses() {
+    fn late_second_tap_dismisses_and_starts_fresh_press() {
         let mut d = d();
         let s = session_of(&hk(&mut d, PttDown, 0));
         hk(&mut d, PttUp, 100);
-        assert_eq!(
-            hk(&mut d, PttDown, 600),
-            cancel_fx(s),
-            "no tick arrived yet"
-        );
+        // No tick arrived yet: 500 ms after the release is too late.
+        let fx = hk(&mut d, PttDown, 600);
+        assert_eq!(fx[..4], cancel_fx(s)[..]);
+        let fresh = session_of(&fx);
+        assert_ne!(fresh, s);
+        let l = listening(&d);
+        assert_eq!((l.mode, l.session), (Mode::Ptt, fresh));
     }
 
     #[test]
@@ -1847,6 +1976,7 @@ mod tests {
         assert_eq!(p.max_ms, 1_200_000);
         assert_eq!(p.warn_ms, 1_140_000);
         assert_eq!(p.debounce_ms, 500);
+        assert_eq!(p.double_tap_gap_ms, 500);
         assert_eq!(p.processing_timeout_ms, 35_000);
         assert_eq!(p.error_linger_ms, 500);
         assert_eq!(p.max_samples(), 20 * 60 * 16_000);
@@ -1867,11 +1997,32 @@ mod tests {
         until: u64,
         fake_up_first: bool,
     ) -> Vec<Effect> {
+        right_alt_timeline(d, presses, &[], until, fake_up_first)
+    }
+
+    /// [`right_alt_presses`] plus an auto-repeat (both AltGr halves
+    /// again, as key-downs) at each time in `repeats`.
+    fn right_alt_timeline(
+        d: &mut Dictation,
+        presses: &[(u64, u64)],
+        repeats: &[u64],
+        until: u64,
+        fake_up_first: bool,
+    ) -> Vec<Effect> {
         let mut m = crate::hotkeys::ChordMatcher::new(crate::hotkeys::Bindings::default());
         let fake = |down| (0xA2, 0x21D, down);
         let ralt = |down| (RALT_VK, ALT_SCAN, down);
         let mut fx = Vec::new();
         for t in 0..=until {
+            if repeats.contains(&t) {
+                for (vk, scan, is_down) in [fake(true), ralt(true)] {
+                    let dec = m.handle_raw(vk, scan, is_down, d.is_active());
+                    assert!(dec.suppress, "a repeat never reaches the app");
+                    for a in dec.actions {
+                        fx.extend(d.handle(Input::Hotkey(a), t));
+                    }
+                }
+            }
             for &(down, up) in presses {
                 let evs = if t == down {
                     vec![fake(true), ralt(true)]
@@ -2102,5 +2253,418 @@ mod tests {
         assert!(fx.contains(&Effect::Overlay(OverlayState::Error {
             message: "Translation timed out".into()
         })));
+    }
+
+    // --- D92: the double-tap detector, as timestamps. ---
+
+    /// Push-to-talk presses `(down, up)` (ms) with a tick every 50 ms up
+    /// to `until`, as the controller feeds them.
+    fn taps(d: &mut Dictation, presses: &[(u64, u64)], until: u64) -> Vec<Effect> {
+        let mut fx = Vec::new();
+        for t in 0..=until {
+            for &(down, up) in presses {
+                if t == down {
+                    fx.extend(hk(d, PttDown, t));
+                }
+                if t == up {
+                    fx.extend(hk(d, PttUp, t));
+                }
+            }
+            if t % 50 == 0 {
+                fx.extend(d.handle(Input::Tick, t));
+            }
+        }
+        fx
+    }
+
+    fn is_locked(d: &Dictation) -> bool {
+        matches!(d.phase(), Phase::Listening(l) if l.mode == Mode::Locked)
+    }
+
+    fn assert_locked_once(d: &Dictation, fx: &[Effect], why: &str) {
+        assert!(is_locked(d), "{why}: {:?}", d.phase());
+        let begins = fx
+            .iter()
+            .filter(|e| matches!(e, Effect::BeginSession(_)))
+            .count();
+        assert_eq!(begins, 1, "{why}: one session, locked in place");
+        assert!(!fx.iter().any(|e| matches!(e, Effect::Commit(_))), "{why}");
+        assert!(
+            !fx.iter().any(|e| matches!(e, Effect::CancelSession(_))),
+            "{why}"
+        );
+    }
+
+    #[test]
+    fn double_tap_locks_across_human_tap_and_gap_lengths() {
+        // Taps of 80–200 ms, gaps of 120–450 ms: press to press runs up to
+        // 650 ms, past the old press-measured 500 ms window.
+        for tap in [80, 120, 160, 200] {
+            for gap in [120, 200, 300, 400, 450] {
+                let mut d = d();
+                let (a, b) = (1000, 1000 + tap);
+                let (c, e) = (b + gap, b + gap + tap);
+                let fx = taps(&mut d, &[(a, b), (c, e)], e + 2000);
+                assert_locked_once(&d, &fx, &format!("tap {tap} gap {gap}"));
+            }
+        }
+    }
+
+    #[test]
+    fn harness_cells_that_failed_on_1_3_0_lock() {
+        // Tap 80/120/160 + gap 400, +20 ms jitter on each (press to press
+        // 520–600 ms).
+        for tap in [80, 120, 160] {
+            let mut d = d();
+            let up = tap + 20;
+            let fx = taps(&mut d, &[(0, up), (up + 420, up + 420 + tap)], 3000);
+            assert_locked_once(&d, &fx, &format!("tap {tap}"));
+        }
+    }
+
+    #[test]
+    fn long_first_tap_still_locks() {
+        // Held 300–490 ms (still a tap), then a 400 ms gap.
+        for tap in [300, 400, 490] {
+            let mut d = d();
+            let fx = taps(&mut d, &[(0, tap), (tap + 400, tap + 480)], 3000);
+            assert_locked_once(&d, &fx, &format!("first tap {tap}"));
+        }
+    }
+
+    #[test]
+    fn hold_past_threshold_is_still_push_to_talk() {
+        let mut d = d();
+        let fx = taps(&mut d, &[(0, 500)], 1000);
+        let s = session_of(&fx);
+        assert!(fx.contains(&Effect::Commit(s)));
+        assert_eq!(processing(&d), s);
+    }
+
+    #[test]
+    fn single_tap_is_dismissed_one_gap_after_its_release() {
+        let mut d = d();
+        let fx = taps(&mut d, &[(0, 200)], 650);
+        let s = session_of(&fx);
+        assert_eq!(listening(&d).released_at, Some(200), "waits for a 2nd tap");
+        assert!(!fx.contains(&Effect::CancelSession(s)));
+        assert_eq!(d.handle(Input::Tick, 700), cancel_fx(s));
+        assert_eq!(d.phase(), &Phase::Idle);
+    }
+
+    #[test]
+    fn second_press_at_the_gap_is_a_fresh_press_not_a_lock() {
+        let mut d = d();
+        hk(&mut d, PttDown, 0);
+        hk(&mut d, PttUp, 100);
+        hk(&mut d, PttDown, 599);
+        assert!(is_locked(&d), "499 ms after the release: locks");
+        let mut d = Dictation::new(Policy::default());
+        hk(&mut d, PttDown, 0);
+        hk(&mut d, PttUp, 100);
+        hk(&mut d, PttDown, 600);
+        assert_eq!(listening(&d).mode, Mode::Ptt, "500 ms: a new press");
+        // ...that is push-to-talk when held.
+        let s = listening(&d).session;
+        assert!(hk(&mut d, PttUp, 1600).contains(&Effect::Commit(s)));
+    }
+
+    #[test]
+    fn triple_press_still_dismisses_with_slow_taps() {
+        let mut d = d();
+        let fx = taps(&mut d, &[(0, 200), (600, 750), (900, 950)], 1000);
+        let s = session_of(&fx);
+        assert!(fx.contains(&Effect::CancelSession(s)));
+        assert_eq!(d.phase(), &Phase::Idle);
+    }
+
+    #[test]
+    fn repeated_key_events_change_nothing() {
+        // A duplicate release after the tap and duplicate presses once
+        // locked (the matcher drops auto-repeat; the machine must not care).
+        let mut d = d();
+        let s = session_of(&hk(&mut d, PttDown, 0));
+        assert!(hk(&mut d, PttUp, 150).is_empty());
+        assert!(hk(&mut d, PttUp, 160).is_empty(), "2nd release ignored");
+        assert_eq!(listening(&d).released_at, Some(150));
+        assert_eq!(hk(&mut d, PttDown, 550), lock_fx());
+        assert_eq!(listening(&d).session, s);
+        // A press held with repeats: no early release, a hold.
+        let mut d = Dictation::new(Policy::default());
+        let s = session_of(&hk(&mut d, PttDown, 0));
+        for t in (300..1000).step_by(33) {
+            assert!(hk(&mut d, PttDown, t).is_empty(), "repeat at {t}");
+        }
+        assert!(hk(&mut d, PttUp, 1000).contains(&Effect::Commit(s)));
+    }
+
+    /// Dictate and stop: processing session `s`.
+    fn processing_one(d: &mut Dictation) -> SessionId {
+        let s = session_of(&hk(d, PttDown, 0));
+        hk(d, PttUp, 1000);
+        assert_eq!(processing(d), s);
+        s
+    }
+
+    fn paste_done(d: &mut Dictation, s: SessionId, t: u64) -> Vec<Effect> {
+        d.handle(
+            Input::Committed {
+                session: s,
+                outcome: CommitOutcome::Text("hi".into()),
+            },
+            t,
+        );
+        d.handle(
+            Input::PasteFinished {
+                session: s,
+                result: Ok(()),
+            },
+            t,
+        )
+    }
+
+    #[test]
+    fn first_tap_during_processing_second_after_paste_locks() {
+        let mut d = d();
+        let s = processing_one(&mut d);
+        assert!(hk(&mut d, PttDown, 1200).is_empty());
+        assert!(hk(&mut d, PttUp, 1300).is_empty());
+        paste_done(&mut d, s, 1400);
+        d.handle(Input::Tick, 1450);
+        let fx = hk(&mut d, PttDown, 1700);
+        assert_eq!(fx[0], Effect::Sound(Sound::Lock));
+        assert!(is_locked(&d));
+        assert_ne!(listening(&d).session, s);
+    }
+
+    #[test]
+    fn double_tap_during_processing_locks_when_the_paste_lands() {
+        let mut d = d();
+        let s = processing_one(&mut d);
+        hk(&mut d, PttDown, 1200);
+        hk(&mut d, PttUp, 1300);
+        hk(&mut d, PttDown, 1600);
+        hk(&mut d, PttUp, 1700);
+        assert_eq!(processing(&d), s, "no second recording meanwhile");
+        // Within the gap (499 ms) of the second press.
+        let fx = paste_done(&mut d, s, 2099);
+        assert_eq!(fx[0], Effect::Sound(Sound::Paste));
+        assert!(fx.contains(&Effect::Sound(Sound::Lock)));
+        assert!(is_locked(&d));
+        assert_eq!(listening(&d).since_ms, 2099);
+        assert!(hk(&mut d, PttUp, 2150).is_empty(), "stays locked");
+    }
+
+    #[test]
+    fn queued_lock_is_dropped_when_stale_failed_or_cancelled() {
+        // Processing ended a gap (500 ms) after the second press.
+        let mut d = d();
+        let s = processing_one(&mut d);
+        hk(&mut d, PttDown, 1200);
+        hk(&mut d, PttUp, 1300);
+        hk(&mut d, PttDown, 1600);
+        let fx = paste_done(&mut d, s, 2100);
+        assert!(!fx.contains(&Effect::Sound(Sound::Lock)));
+        assert_eq!(d.phase(), &Phase::Pasted { since_ms: 2100 });
+        // Processing failed: the error stays readable.
+        let mut d = Dictation::new(Policy::default());
+        let s = processing_one(&mut d);
+        hk(&mut d, PttDown, 1200);
+        hk(&mut d, PttUp, 1300);
+        hk(&mut d, PttDown, 1600);
+        d.handle(
+            Input::Committed {
+                session: s,
+                outcome: CommitOutcome::Failed("boom".into()),
+            },
+            1700,
+        );
+        assert!(matches!(d.phase(), Phase::Error { .. }));
+        d.handle(Input::Tick, 2300);
+        assert_eq!(d.phase(), &Phase::Idle);
+        // Esc while processing.
+        let mut d = Dictation::new(Policy::default());
+        processing_one(&mut d);
+        hk(&mut d, PttDown, 1200);
+        hk(&mut d, PttUp, 1300);
+        hk(&mut d, PttDown, 1600);
+        hk(&mut d, Cancel, 1650);
+        assert_eq!(d.phase(), &Phase::Idle);
+        let fx = hk(&mut d, PttDown, 1700);
+        assert_eq!(fx[0], Effect::Sound(Sound::Start), "plain push-to-talk");
+    }
+
+    #[test]
+    fn single_or_slow_taps_during_processing_lock_nothing() {
+        let mut d = d();
+        let s = processing_one(&mut d);
+        hk(&mut d, PttDown, 1200);
+        hk(&mut d, PttUp, 1300);
+        hk(&mut d, PttDown, 1800); // 500 ms after the release
+        hk(&mut d, PttUp, 1850);
+        paste_done(&mut d, s, 1900);
+        d.handle(Input::Tick, 1950);
+        assert_eq!(d.phase(), &Phase::Idle);
+        // A held press during processing is not a tap.
+        let mut d = Dictation::new(Policy::default());
+        let s = processing_one(&mut d);
+        hk(&mut d, PttDown, 1200);
+        hk(&mut d, PttUp, 1800);
+        paste_done(&mut d, s, 1850);
+        let fx = hk(&mut d, PttDown, 1900);
+        assert_eq!(fx[0], Effect::Sound(Sound::Start));
+        assert_eq!(listening(&d).mode, Mode::Ptt);
+    }
+
+    #[test]
+    fn right_alt_altgr_slow_double_tap_locks() {
+        // AltGr's fake Left Ctrl rides along with each Right Alt edge.
+        for fake_up_first in [false, true] {
+            for (tap, gap) in [(80, 120), (160, 400), (200, 450), (400, 300)] {
+                let mut d = default_policy();
+                let presses = [(100, 100 + tap), (100 + tap + gap, 100 + 2 * tap + gap)];
+                let fx = right_alt_presses(&mut d, &presses, 3000, fake_up_first);
+                assert_locked_once(&d, &fx, &format!("AltGr tap {tap} gap {gap}"));
+            }
+        }
+    }
+
+    #[test]
+    fn right_alt_auto_repeat_while_held_is_still_a_hold() {
+        // Auto-repeat re-sends both AltGr halves while Right Alt is held.
+        for fake_up_first in [false, true] {
+            let mut d = default_policy();
+            let repeats: Vec<u64> = (250..1200).step_by(33).collect();
+            let fx = right_alt_timeline(&mut d, &[(0, 1200)], &repeats, 1300, fake_up_first);
+            let s = session_of(&fx);
+            assert!(fx.contains(&Effect::Commit(s)));
+            assert_eq!(processing(&d), s);
+        }
+    }
+
+    #[test]
+    fn right_alt_auto_repeat_during_double_tap_still_locks() {
+        // A first tap long enough to auto-repeat (300 ms), gap 400.
+        for fake_up_first in [false, true] {
+            let mut d = default_policy();
+            let presses = [(0, 300), (700, 780)];
+            let fx = right_alt_timeline(&mut d, &presses, &[250, 283], 2000, fake_up_first);
+            assert_locked_once(&d, &fx, "repeat in the first tap");
+        }
+    }
+
+    // --- D92 review: Esc and other keys clear a pending tap. ---
+
+    /// A first tap during processing, then the paste lands: the next
+    /// press within the gap would lock.
+    fn tap_pending_after_paste() -> Dictation {
+        let mut d = d();
+        let s = processing_one(&mut d);
+        hk(&mut d, PttDown, 1200);
+        hk(&mut d, PttUp, 1300);
+        paste_done(&mut d, s, 1350);
+        assert!(matches!(d.phase(), Phase::Pasted { .. }));
+        d
+    }
+
+    #[test]
+    fn esc_after_a_pending_tap_means_the_next_press_does_not_lock() {
+        // Esc in Pasted.
+        let mut d = tap_pending_after_paste();
+        hk(&mut d, Cancel, 1360);
+        let fx = hk(&mut d, PttDown, 1500);
+        assert_eq!(fx[0], Effect::Sound(Sound::Start), "push-to-talk, no lock");
+        assert_eq!(listening(&d).mode, Mode::Ptt);
+        // Esc in Idle.
+        let mut d = tap_pending_after_paste();
+        d.handle(Input::Tick, 1400);
+        assert_eq!(d.phase(), &Phase::Idle);
+        hk(&mut d, Cancel, 1450);
+        hk(&mut d, PttDown, 1500);
+        assert_eq!(listening(&d).mode, Mode::Ptt);
+    }
+
+    #[test]
+    fn ptt_aborted_at_rest_clears_a_pending_tap() {
+        let mut d = tap_pending_after_paste();
+        hk(&mut d, PttAborted, 1400);
+        hk(&mut d, PttDown, 1500);
+        assert_eq!(listening(&d).mode, Mode::Ptt);
+    }
+
+    #[test]
+    fn esc_or_another_key_during_processing_clears_a_first_tap() {
+        for abort in [Cancel, PttAborted] {
+            let mut d = d();
+            let s = processing_one(&mut d);
+            hk(&mut d, PttDown, 1200);
+            hk(&mut d, PttUp, 1300);
+            hk(&mut d, abort, 1350);
+            if abort == PttAborted {
+                paste_done(&mut d, s, 1400);
+            }
+            hk(&mut d, PttDown, 1500);
+            assert_eq!(listening(&d).mode, Mode::Ptt, "{abort:?}");
+        }
+    }
+
+    #[test]
+    fn third_press_during_processing_clears_the_queued_lock() {
+        let mut d = d();
+        let s = processing_one(&mut d);
+        hk(&mut d, PttDown, 1200);
+        hk(&mut d, PttUp, 1300);
+        hk(&mut d, PttDown, 1500); // second: lock queued
+        hk(&mut d, PttUp, 1550);
+        hk(&mut d, PttDown, 1650); // third: dismissed
+        hk(&mut d, PttUp, 1700);
+        let fx = paste_done(&mut d, s, 1750);
+        assert!(!fx.contains(&Effect::Sound(Sound::Lock)), "{fx:?}");
+        assert_eq!(d.phase(), &Phase::Pasted { since_ms: 1750 });
+        // ...and starts no new tap either.
+        hk(&mut d, PttDown, 1800);
+        assert_eq!(listening(&d).mode, Mode::Ptt);
+    }
+
+    #[test]
+    fn translate_or_command_during_processing_clears_a_pending_double_tap() {
+        // A queued lock, then the Translate (or Command) chord: no lock.
+        for other in [TranslateDown, CommandDown] {
+            let mut d = d();
+            let s = processing_one(&mut d);
+            hk(&mut d, PttDown, 1200);
+            hk(&mut d, PttUp, 1300);
+            hk(&mut d, PttDown, 1500);
+            hk(&mut d, other, 1510);
+            let fx = paste_done(&mut d, s, 1600);
+            assert!(!fx.contains(&Effect::Sound(Sound::Lock)), "{other:?}");
+            assert_eq!(d.phase(), &Phase::Pasted { since_ms: 1600 });
+        }
+        // A first tap, then Translate: the next press is push-to-talk.
+        let mut d = d();
+        let s = processing_one(&mut d);
+        hk(&mut d, PttDown, 1200);
+        hk(&mut d, PttUp, 1300);
+        hk(&mut d, TranslateDown, 1350);
+        paste_done(&mut d, s, 1400);
+        hk(&mut d, PttDown, 1500);
+        assert_eq!(listening(&d).mode, Mode::Ptt);
+    }
+
+    #[test]
+    fn translate_after_a_tap_at_rest_starts_translate_not_a_lock() {
+        // A push-to-talk tap is pending; the Translate chord turns that
+        // listening session into a translation, which a release ends.
+        let mut d = d();
+        let s = session_of(&hk(&mut d, PttDown, 0));
+        hk(&mut d, PttUp, 100);
+        hk(&mut d, TranslateDown, 300);
+        let l = listening(&d);
+        assert_eq!(
+            (l.mode, l.session, l.released_at),
+            (Mode::Translate, s, None)
+        );
+        assert!(d.handle(Input::Tick, 900).is_empty(), "no tap dismissal");
+        assert!(hk(&mut d, TranslateUp, 1300).contains(&Effect::Commit(s)));
     }
 }

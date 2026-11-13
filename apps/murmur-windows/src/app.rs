@@ -3814,8 +3814,12 @@ pub fn run() {
             std::thread::Builder::new()
                 .name("murmur-hotkey-fwd".into())
                 .spawn(move || {
-                    for a in hk_rx {
-                        if tx.send(Input::Hotkey(a)).is_err() {
+                    for action in hk_rx {
+                        // D92: stamped on arrival on the controller's clock
+                        // (this thread only forwards), so key timing
+                        // survives a busy controller.
+                        let at_ms = start.elapsed().as_millis() as u64;
+                        if tx.send(Input::HotkeyAt { action, at_ms }).is_err() {
                             break;
                         }
                     }
