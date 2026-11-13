@@ -10,6 +10,7 @@ import { engines, versionTapped } from "./features/engines.js";
 import { collectGeneral, general } from "./features/general.js";
 import { modelsFeature } from "./features/models.js";
 import { openrouter } from "./features/openrouter.js";
+import { shouldOpenSettings } from "./lib/app-keys.js";
 import { $, el, html, setStatus } from "./lib/dom.js";
 import { ICON, iconEl } from "./lib/icons.js";
 import { onEvent } from "./lib/ipc.js";
@@ -271,12 +272,28 @@ $("settings").addEventListener("click", (e) => {
     if (e.target === e.currentTarget)
         closeSettings();
 });
+/** What is on screen, for the window's own keys (Esc, Ctrl+,). */
+function windowState() {
+    return {
+        settingsOpen: !$("settings").hidden,
+        onboardingOpen: onboarding.isOpen(),
+        dialogOpen: !!document.querySelector("dialog[open]"),
+    };
+}
 document.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape" || $("settings").hidden || onboarding.isOpen())
+    if (e.key !== "Escape")
         return;
-    if (document.querySelector("dialog[open]"))
-        return; // the dialog closes first
-    closeSettings();
+    const w = windowState();
+    // An open dialog closes first.
+    if (w.settingsOpen && !w.onboardingOpen && !w.dialogOpen)
+        closeSettings();
+});
+// Ctrl+, opens Settings: this window only, never a global hotkey.
+document.addEventListener("keydown", (e) => {
+    if (!shouldOpenSettings(e, windowState()))
+        return;
+    e.preventDefault();
+    go("settings");
 });
 document.addEventListener("change", (e) => {
     const t = e.target;
