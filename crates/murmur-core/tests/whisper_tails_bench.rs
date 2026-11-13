@@ -66,14 +66,18 @@ fn rms(p: &[f32]) -> f32 {
     (p.iter().map(|s| s * s).sum::<f32>() / p.len().max(1) as f32).sqrt()
 }
 
-fn verdict(text: &str, no_speech_prob: Option<f32>) -> serde_json::Value {
+/// `ws`: Whisper's (no-speech probability, avg log-prob) for the decode.
+fn verdict(
+    text: &str,
+    (no_speech_prob, avg_logprob): (Option<f32>, Option<f32>),
+) -> serde_json::Value {
     let t = text.trim();
     let stock = !t.is_empty()
         && is_hallucination(
             t,
             Evidence {
                 speech_ms: Some(0),
-                no_speech_prob: None,
+                ..Default::default()
             },
         );
     let caught_vad_off = is_hallucination(
@@ -81,6 +85,7 @@ fn verdict(text: &str, no_speech_prob: Option<f32>) -> serde_json::Value {
         Evidence {
             speech_ms: None,
             no_speech_prob,
+            avg_logprob,
         },
     );
     serde_json::json!({
@@ -129,10 +134,10 @@ fn whisper_tails() {
                         id: &str,
                         r: &str,
                         text: &str,
-                        nsp: Option<f32>,
+                        ws: (Option<f32>, Option<f32>),
                         extra: serde_json::Value| {
             let mut line = serde_json::json!({"model": m, "case": case, "id": id, "ref": r,
-                "hyp": text, "no_speech_prob": nsp, "v": verdict(text, nsp)});
+                "hyp": text, "no_speech_prob": ws.0, "avg_logprob": ws.1, "v": verdict(text, ws)});
             if let (Some(o), Some(e)) = (line.as_object_mut(), extra.as_object()) {
                 o.extend(e.clone());
             }
@@ -154,7 +159,7 @@ fn whisper_tails() {
                             &id,
                             "",
                             &o.text,
-                            o.no_speech_prob,
+                            (o.no_speech_prob, o.avg_logprob),
                             serde_json::json!({"rms": rms(&pcm)}),
                         );
                     }
@@ -174,7 +179,7 @@ fn whisper_tails() {
                 id,
                 "",
                 &o.text,
-                o.no_speech_prob,
+                (o.no_speech_prob, o.avg_logprob),
                 serde_json::json!({}),
             );
         }
@@ -188,7 +193,7 @@ fn whisper_tails() {
                 id,
                 r,
                 &o.text,
-                o.no_speech_prob,
+                (o.no_speech_prob, o.avg_logprob),
                 serde_json::json!({}),
             );
         }
@@ -221,7 +226,7 @@ fn whisper_tails() {
                 id,
                 r,
                 &res.asr_text,
-                None,
+                (None, None),
                 serde_json::json!({"status": format!("{:?}", res.status), "empty_reason": res.empty_reason}),
             );
         }

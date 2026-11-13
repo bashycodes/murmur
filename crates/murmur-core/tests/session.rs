@@ -1318,6 +1318,7 @@ impl AsrEngine for GatedAsr {
             },
             language: Some("he".into()),
             no_speech_prob: None,
+            avg_logprob: None,
         })
     }
 }

@@ -519,6 +519,7 @@ impl AsrEngine for CloudAsr {
                 text: t.text,
                 language: t.language.or(language),
                 no_speech_prob: None,
+                avg_logprob: None,
             }),
             Err(e) => {
                 s.error = Some(BackendError::new(e.failure(), self.describe(&e)));
