@@ -144,11 +144,75 @@ pub fn fallback_after_clipboard_failure(text: &str, max_chars: usize) -> Option<
     (text.chars().count() <= max_chars).then_some(Strategy::Type)
 }
 
-/// Restore the user's clipboard only if nobody wrote to it since we did
-/// (`GetClipboardSequenceNumber` unchanged) — otherwise we'd clobber a copy
-/// the user or target app made in the meantime.
-pub fn should_restore(enabled: bool, seq_after_our_set: u32, seq_now: u32) -> bool {
-    enabled && seq_after_our_set == seq_now
+/// Restore the user's clipboard only while it still holds our paste:
+/// `still_ours` = nobody wrote to it since (the sequence number is
+/// unchanged, or our D93 owner window still owns it). Otherwise we'd
+/// clobber a copy the user or target app made in the meantime.
+pub fn should_restore(enabled: bool, still_ours: bool) -> bool {
+    enabled && still_ours
+}
+
+/// D93: how long a clipboard paste waits for the target to read the text
+/// before it reports the paste as not confirmed (or the per-app restore
+/// delay, if longer). A paste is never sent twice.
+pub const CONFIRM_WAIT_MS: u64 = 1500;
+
+/// D93: what a clipboard paste does after waiting `elapsed_ms` since its
+/// chord.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AfterWait {
+    /// Keep pumping messages.
+    Wait,
+    /// The target read the text, and its restore delay is over.
+    Confirmed,
+    /// The target didn't read the text in time.
+    NotConfirmed,
+}
+
+/// D93. `target_read` = the target app asked us for the text (it is
+/// delay-rendered, so its read calls us back). A confirmed paste still
+/// waits the restore delay (slow apps read more than one format), and an
+/// unread one gets at least [`CONFIRM_WAIT_MS`].
+pub fn after_wait(target_read: bool, elapsed_ms: u64, restore_delay_ms: u64) -> AfterWait {
+    if target_read {
+        if elapsed_ms >= restore_delay_ms {
+            AfterWait::Confirmed
+        } else {
+            AfterWait::Wait
+        }
+    } else if elapsed_ms >= restore_delay_ms.max(CONFIRM_WAIT_MS) {
+        AfterWait::NotConfirmed
+    } else {
+        AfterWait::Wait
+    }
+}
+
+/// D93: a read of our text counts only when the process that opened the
+/// clipboard is the target: the foreground window's process, or one of
+/// its child windows' (a UWP app's CoreWindow). `reader` = `None` when the
+/// reader opened the clipboard without a window (it can't be told apart
+/// from a clipboard listener, so it doesn't confirm).
+pub fn reader_is_target(reader: Option<u32>, targets: &[u32]) -> bool {
+    matches!(reader, Some(pid) if pid != 0 && targets.contains(&pid))
+}
+
+/// D93: the chord went out, nobody (target-side) read the text, and our
+/// text is still on the clipboard.
+pub const NOT_CONFIRMED_MSG: &str =
+    "Not pasted: the app did not take the text. It is on the clipboard (Ctrl+V).";
+
+/// D93: same, but something else replaced the clipboard meanwhile (the
+/// text is still in History).
+pub const NOT_CONFIRMED_CLIPBOARD_TAKEN_MSG: &str = "Not pasted: the app did not take the text.";
+
+/// The message of a paste that wasn't confirmed: `still_ours` = our text
+/// is still on the clipboard.
+pub fn not_confirmed_message(still_ours: bool) -> &'static str {
+    if still_ours {
+        NOT_CONFIRMED_MSG
+    } else {
+        NOT_CONFIRMED_CLIPBOARD_TAKEN_MSG
+    }
 }
 
 /// Formats whose clipboard handle is an HGLOBAL we can copy byte-wise.
@@ -522,10 +586,62 @@ mod tests {
     }
 
     #[test]
-    fn restore_guard() {
-        assert!(should_restore(true, 41, 41));
-        assert!(!should_restore(true, 41, 42), "someone copied meanwhile");
-        assert!(!should_restore(false, 41, 41));
+    fn restore_only_while_the_clipboard_holds_our_paste() {
+        assert!(should_restore(true, true));
+        assert!(!should_restore(true, false), "someone copied meanwhile");
+        assert!(!should_restore(false, true), "restore turned off");
+    }
+
+    #[test]
+    fn a_target_read_confirms_once_the_restore_delay_is_over() {
+        assert_eq!(after_wait(true, 10, 500), AfterWait::Wait);
+        assert_eq!(after_wait(true, 500, 500), AfterWait::Confirmed);
+        assert_eq!(after_wait(true, 3000, 3000), AfterWait::Confirmed);
+    }
+
+    #[test]
+    fn an_unread_paste_gets_the_confirm_wait_then_is_reported_once() {
+        assert_eq!(
+            after_wait(false, 500, 500),
+            AfterWait::Wait,
+            "no read yet is not never"
+        );
+        assert_eq!(after_wait(false, CONFIRM_WAIT_MS - 1, 500), AfterWait::Wait);
+        assert_eq!(
+            after_wait(false, CONFIRM_WAIT_MS, 500),
+            AfterWait::NotConfirmed
+        );
+        // A slow reader's longer restore delay is waited out first.
+        assert_eq!(after_wait(false, CONFIRM_WAIT_MS, 3000), AfterWait::Wait);
+        assert_eq!(after_wait(false, 3000, 3000), AfterWait::NotConfirmed);
+    }
+
+    #[test]
+    fn only_the_target_process_confirms_a_read() {
+        let targets = [100, 200];
+        assert!(reader_is_target(Some(100), &targets));
+        assert!(
+            reader_is_target(Some(200), &targets),
+            "the app's child window (UWP)"
+        );
+        assert!(
+            !reader_is_target(Some(300), &targets),
+            "a clipboard listener"
+        );
+        assert!(
+            !reader_is_target(None, &targets),
+            "a reader without a window"
+        );
+        assert!(!reader_is_target(Some(0), &[0]), "pid 0 is not a process");
+    }
+
+    #[test]
+    fn the_message_says_where_the_text_is() {
+        assert!(not_confirmed_message(true).contains("on the clipboard"));
+        assert!(
+            !not_confirmed_message(false).contains("clipboard"),
+            "someone else's copy replaced ours"
+        );
     }
 
     #[test]
