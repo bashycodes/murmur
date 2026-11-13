@@ -8,7 +8,7 @@ Measured 2026-10-20 to check the defaults in `DECISIONS.md` D3–D5 against data
 |---|---|---|---|
 | **Desktop, CPU only** | **Parakeet-TDT-0.6B int8** (sherpa-onnx) for English. **whisper base q5_1** for other languages or auto-detect. whisper small q5_1 as an opt-in "accurate" mode. | **OFF** by default. Opt-in: Qwen2.5-3B-Instruct Q4_K_M with the few-shot prompt (Qwen2.5-1.5B on slower CPUs). | ASR ≈ 1.2 s (Parakeet) / 2 s (base). The LLM adds 2.5–4.5 s. |
 | **Desktop, GPU** (estimate) | whisper large-v3-turbo q5_0 (multilingual). Parakeet on CUDA for English. | **ON** is viable: Qwen2.5-3B, or Qwen2.5-7B, few-shot. | ≈ 0.3–0.6 s ASR plus ≈ 0.3–0.8 s LLM (estimate) |
-| **Server with an NVIDIA GPU > 10 GB** (2026-11-12; quality measured, latency estimate) | as the server default | **Gemma 3 12B Q4_K_M**: the only one tested with no harmful Hebrew edit. Avoid Qwen2.5-14B for Hebrew (mixed-script junk). See §GPU cleanup model. | LLM ≈ 0.2–0.8 s (estimate) |
+| **Server with an NVIDIA GPU > 10 GB** (2026-11-12 quality; 2026-11-14 GPU memory and iGPU latency measured) | as the server default | **Gemma 3 12B Q4_K_M** (9.8 GB of GPU memory): the only one tested with no harmful Hebrew edit. Avoid Qwen2.5-14B for Hebrew (mixed-script junk). See §GPU cleanup model. | LLM p50 1.5 s / p95 3.5 s on an Intel Arc 140V iGPU (measured); ≈ 0.2–0.8 s on an RTX 3060-class card (estimate) |
 | **Android** (estimate) | whisper base q5_1 (D4 holds). tiny q5_1 on low-end phones. Parakeet int8 as an English option on flagships. | **OFF**. Opt-in Qwen2.5-1.5B only on phones with ≥ 8 GB RAM. | ≈ 1–2.5 s ASR on a flagship; the LLM adds 1.5–4 s |
 
 What this changes in DECISIONS:
@@ -186,7 +186,9 @@ Extrapolated from published whisper.cpp and llama.cpp CUDA/Vulkan results for a 
 * Qwen2.5-3B Q4_K_M: pp in the thousands of tok/s, tg ≈ 80–120 tok/s, so ≈ 0.3–0.5 s per dictation.
 * Qwen2.5-7B Q4_K_M: tg ≈ 50–70 tok/s, so ≈ 0.5–0.8 s.
 
-At those speeds, cleanup is cheap enough to default **ON** on GPU machines with Qwen2.5-3B, or 7B with ≥ 8 GB VRAM. Use the few-shot prompt and the improved guardrail, and keep "undo AI edit" one click away. iGPU (Vulkan) results vary too much to estimate; treat it as CPU tier until measured.
+At those speeds, cleanup is cheap enough to default **ON** on GPU machines with Qwen2.5-3B, or 7B with ≥ 8 GB VRAM. Use the few-shot prompt and the improved guardrail, and keep "undo AI edit" one click away.
+
+iGPU, **measured 2026-11-14** on one Intel Arc 140V (Lunar Lake, Vulkan, llama.cpp `llama-server`, drafting at 4; `docs/findings/2026-11-14-gpu-cleanup-bench.md`): per dictation p50 / p95 Llama 3.2 3B 0.46 / 2.15 s, Qwen2.5-7B 0.85 / 1.76 s, Gemma 3 12B 1.54 / 3.51 s. A recent iGPU is well above the CPU tier. Other iGPUs are not measured.
 
 ## Recommended defaults (for D4/D5 update)
 
@@ -275,11 +277,14 @@ Q4_K_M, Qwen2.5-14B Q4_K_M and Gemma 3 12B Q4_K_M (the strong alternative:
 Gemma 3 lists Hebrew among its trained languages). Qwen2.5-1.5B (the server
 default) is the baseline. Probe: `tools/probes/prototypes/gpu_cleanup_model_2026_11_12/`.
 
-**No GPU was reachable**, so quality is **measured** on the CPU (i7-6700, 4
-threads) and GPU latency is an **estimate**. We **assume** a GPU produces the
-same texts: decoding is greedy and deterministic, but CUDA kernels round
-differently from the CPU ones, so a token could occasionally differ. This
-has not been checked.
+Quality is **measured** on the CPU (i7-6700, 4 threads). On 2026-11-12 no
+GPU was reachable. On **2026-11-14 the latency and GPU memory were measured
+on an Intel Arc 140V iGPU** (Vulkan, llama.cpp `llama-server` b12368;
+`docs/findings/2026-11-14-gpu-cleanup-bench.md`), and the same suites were
+rerun there. The GPU gives the same final text as the CPU in 120 of 122
+dictations for Gemma, 112 for Qwen2.5-7B and 108 for Qwen2.5-14B. Every
+difference was checked by hand: case, a full stop or a comma, plus junk that
+the newer D65 guard now rejects. No NVIDIA card has been measured.
 
 ### Method (measured)
 
@@ -295,16 +300,24 @@ has not been checked.
   junk and rewording. For every reworded Hebrew line and every
   bench/numbers miss, the output was read by hand (`score.py --fails`).
 
-### Results (measured on CPU, except the last column)
+### Results (measured on CPU; the last two columns on the Arc 140V iGPU)
 
 The bench similarity of the raw input is 0.727.
 
-| model | file | bench exact | bench sim | numbers pass | HE stays Hebrew (D65) | HE words kept | HE junk lines | HE reworded | HE punctuated | fallbacks | CPU LLM p50 | GPU per dictation (**estimate**) |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Qwen2.5-1.5B (default) | 1.1 GB | 11/19 | 0.956 | 61/61 | 42/42 | 0.97 | 2 | 21 | 23/42 | 0/122 | 1.0 s | < 0.2 s |
-| Qwen2.5-7B | 4.7 GB | **14/19** | 0.956 | 58/61 | 42/42 | 0.98 | 2 | 14 | 23/42 | 0/122 | 3.7 s | 0.15–0.4 s |
-| **Gemma 3 12B** | 7.3 GB | 11/19 | 0.953 | 58/61 | 42/42 | **0.99** | **0** | **8** | **32/42** | 0/122 | 6.1 s | 0.2–0.8 s |
-| Qwen2.5-14B | 9.0 GB | 12/19 | 0.959 | 60/61 | 42/42 | 0.96 | **7** | 20 | 25/42 | 0/122 | 9.2 s | 0.2–0.8 s |
+| model | file | bench exact | bench sim | numbers pass | HE stays Hebrew (D65) | HE words kept | HE junk lines | HE reworded | HE punctuated | fallbacks | CPU LLM p50 | Arc 140V p50 / p95 per dictation (**measured**) | GPU memory (**measured**) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Qwen2.5-1.5B (default) | 1.1 GB | 11/19 | 0.956 | 61/61 | 42/42 | 0.97 | 2 | 21 | 23/42 | 0/122 | 1.0 s | not run (< 0.2 s on a discrete GPU, estimate) | not run |
+| Llama 3.2 3B (2026-11-14, scored on the GPU) | 2.0 GB | **14/19** | **0.968** | **53/61** | 42/42 | 0.97 | 0 | **22** (6 harmful) | 38/42 | 0/122 | not run | 0.46 / 2.15 s | 2.9 GB |
+| Qwen2.5-7B | 4.7 GB | **14/19** | 0.956 | 58/61 | 42/42 | 0.98 | 2 | 14 | 23/42 | 0/122 | 3.7 s | 0.85 / 1.76 s | 5.0 GB |
+| **Gemma 3 12B** | 7.3 GB | 11/19 | 0.953 | 58/61 | 42/42 | **0.99** | **0** | **8** | **32/42** | 0/122 | 6.1 s | **1.54 / 3.51 s** | **9.8 GB** |
+| Qwen2.5-14B | 9.0 GB | 12/19 | 0.959 | 60/61 | 42/42 | 0.96 | **7** | 20 | 25/42 | 0/122 | 9.2 s | 1.73 / 3.55 s | 9.9 GB |
+
+The Llama 3.2 3B row was scored on the GPU run, with the 2026-11-14 core.
+Its D65 guard also rejects foreign words, but no Llama answer had any, so
+its 0 junk is the model's own. Its 8 numbers misses include 3 harmful digit
+changes in spoken digit runs. Of its 22 reworded Hebrew lines, 6 are
+harmful and pass the guard: a changed subject, a dropped clause with its
+"not", a garbled phrase, a misspelling and two dropped phrases.
 
 "Junk" means a Hebrew output with an English word the input does not have,
 or with any Arabic, Cyrillic, CJK or U+FFFD character. "Punctuated" means
@@ -322,10 +335,12 @@ What the hand check found:
   * U+FFFD
   * "ToUpdate"
 
-  The D65 script check passes all of them, because each line stays mostly
-  Hebrew. It is not yet known whether prompt-lookup drafting plays a part.
-  `control.sh` reruns 5 of these lines with drafting off, but it has not
-  been run, because the shared build lock was busy.
+  The D65 script check of 2026-11-12 passed all of them, because each line
+  stays mostly Hebrew. Since 2026-11-13 the guard also rejects foreign
+  words, and it caught all 6 junk answers of the GPU rerun. **Drafting
+  is not the cause** (control, 2026-11-14). With drafting off, the 14B
+  still writes junk: in 4 of the 5 control lines through the plugin on the
+  CPU, and in 5 of 42 lines on the GPU, against 6 with drafting on.
 * **Qwen2.5-7B** is best at the English bench (14/19), but in Hebrew it:
   * changed a pronoun, which changes the meaning
   * introduced a spelling error
@@ -340,17 +355,21 @@ What the hand check found:
 * All four left the prompt-injection cases unanswered (c15, c16).
 * **Qwen2.5-1.5B** inserted two words that were not in the input.
 
-### GPU latency (estimate)
+### GPU latency (estimate for a discrete card; the iGPU is measured above)
 
 A dictation prefills about 40 new prompt tokens (the cached prefix is not
 counted) and generates about 22–25 tokens in about 6.5 decode steps, since
 prompt-lookup drafting accepts most tokens. On an RTX 3060 12 GB-class
 card, Q4_K_M decodes at about 50–70 tok/s for 7B and about 30–40 tok/s for
-12–14B. That gives the per-dictation column above. The first dictation also
-prefills the about 1.9k-token prompt prefix once (about 1 s).
+12–14B. That gives an estimate of 0.15–0.4 s for 7B and 0.2–0.8 s for
+12–14B per dictation. The first dictation also prefills the about 1.9k-token
+prompt prefix once (about 1 s). The Arc 140V iGPU measured 2–4× slower than
+this (decode 37 tok/s for 7B, 19–20 for 12–14B with drafting), with about
+136 GB/s of memory bandwidth against about 360 GB/s on an RTX 3060.
 
-Gemma 3 12B needs about 9–10 GB of VRAM: 7.3 GB of weights plus the KV
-cache and compute buffers. On a card with less, the plugin offloads part
+Gemma 3 12B needs 9.8 GB of GPU memory (measured 2026-11-14 on the iGPU at
+the plugin's 4096 context: 7.3 GB of weights plus the KV cache and compute
+buffers; the estimate was 9–10 GB). On a card with less, the plugin offloads part
 of the model or falls back to the CPU (`backend::choose`), and a CPU
 cleanup takes about 6 s. Loading the model from an HDD took about 2 min
 for 7B, 3–4 min for Gemma and 4.5 min for 14B.
@@ -362,7 +381,7 @@ NVIDIA GPU of more than 10 GB** (a 12 GB card or larger). It is the only
 candidate with no harmful Hebrew edit, and its English is close to the
 others.
 
-* For a GPU of 6–10 GB, use Llama 3.2 3B, which is already in the catalogue, or Qwen2.5-7B. Qwen2.5-7B is not catalogued, and its Hebrew has the slips listed above. On 8–10 GB, Gemma would run partly on the CPU, which has not been measured.
+* For a GPU of 6–10 GB, Llama 3.2 3B (2.9 GB, in the catalogue) or Qwen2.5-7B (5.0 GB, not catalogued). For English both are good. For Hebrew and spoken digit runs, Llama 3.2 3B makes harmful edits that no guard catches (6 Hebrew lines, 3 digit runs), and Qwen2.5-7B makes fewer (the slips listed above). On 8–10 GB, Gemma would run partly on the CPU, which has not been measured.
 * Do not use Qwen2.5-14B for Hebrew.
 * Without a GPU, keep Qwen2.5-1.5B.
 

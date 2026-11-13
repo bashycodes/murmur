@@ -1,0 +1,16 @@
+# Text-only cleanup replay against a remote llama-server
+# (tools/probes/prototypes/gpu_bench_2026_11_14). Own workspace (like the
+# other probe runners) so the product workspace is untouched; uses this
+# checkout's murmur-core without the plugin feature.
+[package]
+name = "gpu-http-clean"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+murmur-core = { path = "../../../../../crates/murmur-core" }
+serde_json = "1"
+ureq = { version = "2", default-features = false, features = ["json"] }

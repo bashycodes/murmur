@@ -257,15 +257,20 @@ no pin for it, and they never fetch it from Hugging Face. If a teammate
 downloads it from your server, you are the one handing it on, so the
 Gemma terms apply to that copy too.
 
-Choose by GPU memory:
+Choose by GPU memory. The memory each model needs was measured on one GPU
+(an Intel iGPU, Vulkan, `docs/findings/2026-11-14-gpu-cleanup-bench.md`).
+A CUDA card may need a little more for its runtime; that was not measured.
 
-* More than 10 GB: Gemma 3 12B, as above.
-* 8–10 GB: use `MURMUR_LLM=llama-3.2-3b-instruct-q4_k_m`. It is in the
-  cleanup zip of a bundle made with `--llm all`. Gemma does not fit fully:
-  the server would run part of it on the CPU, and how fast that is has not
-  been measured.
-* 6–8 GB: Llama 3.2 3B as well.
-* Less than 6 GB, or no GPU: keep the default.
+* More than 10 GB: Gemma 3 12B, as above. It needs 9.8 GB.
+* 6–10 GB: use `MURMUR_LLM=llama-3.2-3b-instruct-q4_k_m`. It needs
+  2.9 GB and is in the cleanup zip of a bundle made with `--llm all`.
+  Gemma does not fit on 8–10 GB: the server would run part of it on the
+  CPU, and how fast that is has not been measured. Llama 3.2 3B is good in
+  English. In Hebrew and in long spoken numbers (codes, booking references)
+  it sometimes changes the meaning, so a team that dictates mostly in
+  Hebrew should try it before switching.
+* Less than 6 GB, or no GPU: keep the default. (Llama 3.2 3B itself needs
+  only 2.9 GB, but a 4 GB card with a desktop on it has not been tried.)
 
 ### Without Docker
 
