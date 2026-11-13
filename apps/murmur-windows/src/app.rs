@@ -1776,7 +1776,10 @@ fn get_model_status(state: tauri::State<'_, AppState>) -> ModelInfo {
     // the prefs point at and whether it is there, instead of an empty
     // "Loading" that never resolves.
     let status = match state.core.get() {
-        Some(c) => c.reported_status(Some(&ModelSpec::from_prefs(&state.prefs.read().unwrap(), ad))),
+        Some(c) => c.reported_status(Some(&ModelSpec::from_prefs(
+            &state.prefs.read().unwrap(),
+            ad,
+        ))),
         // No model slot in this build (server only).
         None => ModelStatus::Idle {
             path: String::new(),
@@ -2192,7 +2195,10 @@ fn setup_server_snapshot(state: tauri::State<'_, AppState>) {
 /// Setup re-run "Keep my old setup" (D95): save the server remembered by
 /// [`setup_server_snapshot`] again. The token is never sent to the page.
 #[tauri::command]
-fn setup_server_restore(app: AppHandle, state: tauri::State<'_, AppState>) -> Result<DevView, String> {
+fn setup_server_restore(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<DevView, String> {
     let snap = state
         .setup_server
         .lock()

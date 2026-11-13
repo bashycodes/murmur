@@ -612,7 +612,9 @@ impl RouterAdapter {
                     // A start waits for a load, and a cold slot whose file is
                     // there (Idle) is loaded on demand (D24).
                     Some(ModelStatus::Ready { .. } | ModelStatus::Loading { .. }) => None,
-                    Some(ModelStatus::Idle { .. }) if self.on_demand.lock().unwrap().is_some() => None,
+                    Some(ModelStatus::Idle { .. }) if self.on_demand.lock().unwrap().is_some() => {
+                        None
+                    }
                     // Cold, and nothing would load it.
                     Some(ModelStatus::Idle { .. }) => Some(
                         "The speech model on this PC isn't loaded. \

@@ -1367,9 +1367,14 @@ mod tests {
         let back = snap.restore(&now);
         assert_eq!(back.server, before.server);
         assert_eq!(back.token_dpapi, "old-blob");
-        assert_eq!(back.allow_client, now.allow_client, "other settings stay as they are now");
+        assert_eq!(
+            back.allow_client, now.allow_client,
+            "other settings stay as they are now"
+        );
         // Never in a debug print of the page's view.
-        assert!(!serde_json::to_string(&DevForm::for_page(&back)).unwrap().contains("old-blob"));
+        assert!(!serde_json::to_string(&DevForm::for_page(&back))
+            .unwrap()
+            .contains("old-blob"));
     }
 
     #[test]

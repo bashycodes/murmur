@@ -1819,17 +1819,42 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("ggml-large-v3-turbo.bin");
         std::fs::write(&file, b"x").unwrap();
-        let there = ModelSpec::Whisper { path: file.clone(), threads: None };
-        assert_eq!(idle_status(&there), ModelStatus::Idle { path: file.display().to_string() });
+        let there = ModelSpec::Whisper {
+            path: file.clone(),
+            threads: None,
+        };
+        assert_eq!(
+            idle_status(&there),
+            ModelStatus::Idle {
+                path: file.display().to_string()
+            }
+        );
         // The adapter reports the same for a slot nobody loaded.
         let a = MurmurCoreAdapter::new();
         assert_eq!(a.reported_status(Some(&there)), idle_status(&there));
-        assert!(matches!(a.reported_status(None), ModelStatus::Idle { ref path } if path.is_empty()));
-        let gone = ModelSpec::Whisper { path: dir.join("nope.bin"), threads: None };
-        assert!(matches!(idle_status(&gone), ModelStatus::Missing { ref engine, .. } if engine == "whisper"));
-        let pk = ModelSpec::Parakeet { dir: dir.join("no-dir"), threads: None, decoding: fc::ParakeetDecoding::default() };
-        assert!(matches!(idle_status(&pk), ModelStatus::Missing { ref engine, .. } if engine == "parakeet"));
-        let pk = ModelSpec::Parakeet { dir: dir.clone(), threads: None, decoding: fc::ParakeetDecoding::default() };
+        assert!(
+            matches!(a.reported_status(None), ModelStatus::Idle { ref path } if path.is_empty())
+        );
+        let gone = ModelSpec::Whisper {
+            path: dir.join("nope.bin"),
+            threads: None,
+        };
+        assert!(
+            matches!(idle_status(&gone), ModelStatus::Missing { ref engine, .. } if engine == "whisper")
+        );
+        let pk = ModelSpec::Parakeet {
+            dir: dir.join("no-dir"),
+            threads: None,
+            decoding: fc::ParakeetDecoding::default(),
+        };
+        assert!(
+            matches!(idle_status(&pk), ModelStatus::Missing { ref engine, .. } if engine == "parakeet")
+        );
+        let pk = ModelSpec::Parakeet {
+            dir: dir.clone(),
+            threads: None,
+            decoding: fc::ParakeetDecoding::default(),
+        };
         assert!(matches!(idle_status(&pk), ModelStatus::Idle { .. }));
         let _ = std::fs::remove_dir_all(&dir);
     }
