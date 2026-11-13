@@ -21,12 +21,30 @@ const head = (step) => `
   <span class="lw-ob-brand">Murmur</span>
   <span class="fl-overline">Step ${step} of ${STEPS}</span>
 </div>`;
+/** The footer bar (own background, never scrolls): Back, a hint, Continue, lined up with the content. */
 const foot = (back, next, hintId = "", extra = "") => `
 <div class="lw-ob-foot">
-  ${back ? `<button type="button" class="fl-btn fl-btn-ghost" data-ob="back">Back</button>` : "<span></span>"}
-  ${hintId ? `<span class="lw-ob-hint" id="${hintId}"></span>` : ""}
-  ${extra}
-  <button type="button" class="fl-btn fl-btn-primary" data-ob="next">${next}</button>
+  <div class="lw-ob-frame lw-ob-foot-row">
+    ${back ? `<button type="button" class="fl-btn fl-btn-ghost" data-ob="back">Back</button>` : "<span></span>"}
+    ${hintId ? `<span class="lw-ob-hint" id="${hintId}"></span>` : ""}
+    ${extra}
+    <button type="button" class="fl-btn fl-btn-primary" data-ob="next">${next}</button>
+  </div>
+</div>`;
+/**
+ * Steps 2-5 share one layout: the head and the step's content scroll, top
+ * aligned, above the footer bar, all in one centred column, so a pick that
+ * shows or hides fields never moves what is above it.
+ */
+const stepPanel = (name, n, body, footer) => `
+<div class="lw-ob-panel is-framed" data-ob-step="${name}">
+  <div class="lw-ob-scroll" data-ob-scroll>
+    <div class="lw-ob-frame">
+      ${head(n)}
+      ${body}
+    </div>
+  </div>
+  ${footer}
 </div>`;
 const bullet = (b, rest) => `<li>${ico(CHECK, "lw-ico lw-ob-check")}<span><b>${b}</b> ${rest}</span></li>`;
 const welcome = `
@@ -38,7 +56,7 @@ const welcome = `
       <p class="lw-ob-lead">Hold a key, talk, let go. Murmur turns your voice into clean text in whatever app you're typing in.</p>
       <ul class="lw-ob-bullets">
         ${bullet("Runs on this PC.", "Works offline, no account.")}
-        ${bullet("Nothing goes online", "unless you choose a server or OpenRouter.")}
+        ${bullet("Nothing goes online", "unless you choose to.")}
         ${bullet("About 3 minutes", "to set up.")}
       </ul>
       <div class="lw-ob-actions">
@@ -67,43 +85,46 @@ const engineCard = (id, icon, title, desc, facts) => `
   <span class="lw-ob-card-desc">${desc}</span>
   <span class="lw-ob-facts">${facts.map((f) => `<span>${f}</span>`).join("")}</span>
 </button>`;
-const engine = `
-<div class="lw-ob-panel" data-ob-step="engine">
-  ${head(2)}
+const engine = stepPanel("engine", 2, `
   <div class="lw-ob-body is-center">
     <div class="lw-ob-title is-center">
       <h1 class="fl-serif lw-ob-h1">Where should your voice become text?</h1>
       <p class="lw-ob-lead">You can add the others later and use them as backups, in Settings → Speech to text.</p>
     </div>
     <div role="radiogroup" aria-label="Speech engine" class="lw-ob-cards">
-      ${engineCard("pc", ICON.chip, "This PC", "Private and works offline. Fast on most computers from the last five years.", [
-    "Needs a model file (0.15–0.7 GB)",
+      ${engineCard("pc", ICON.chip, "This PC", "Private, works offline.", [
+    "One download of 0.15–0.7 GB",
     "About 1 second after you stop talking",
     "Nothing leaves this PC",
 ])}
-      ${engineCard("server", ICON.server, "Your server", "A faster computer you own does the work. Good for older laptops.", [
-    "Needs murmur-server running at home or on a VPN",
-    "Audio goes only to your server",
-    "This PC can step in if it’s offline",
+      ${engineCard("server", ICON.server, "Your server", "Use a faster computer you own.", [
+    "Good for older laptops",
+    "Audio goes only to your computer",
+    "This PC can step in if it’s off",
 ])}
-      ${engineCard("cloud", ICON.cloud, "Cloud", "Speech to text by OpenRouter. No download, but your audio leaves this computer.", [
-    "Needs an OpenRouter API key",
+      ${engineCard("cloud", ICON.cloud, "Cloud", "Best accuracy. Audio is sent online.", [
+    "Needs an account key",
     "Pay per use, a few cents an hour of audio",
-    "A LiteLLM proxy can clean up text, not do speech",
+    "Nothing to download",
 ])}
     </div>
     <div class="lw-ob-server-slot" data-ob-server-slot="engine">
-    <div class="fl-group lw-ob-detail" id="ob_server_detail" hidden>
-      <div class="fl-row">
-        <div class="fl-row-text"><label class="fl-row-title" for="ob_host">Server address</label><div class="fl-row-desc">A name or IP address, without ws:// or a port. <small class="field-err" id="ob_host_err"></small></div></div>
-        <div class="fl-row-control"><input id="ob_host" class="fl-input is-wide" spellcheck="false" placeholder="100.64.0.10 or mybox.local" /></div>
+    <div class="lw-ob-detail lw-ob-server" id="ob_server_detail" hidden>
+      <div class="lw-ob-server-bar">
+        <button type="button" class="lw-link lw-ob-copy lw-ob-more" id="ob_server_more" aria-expanded="false" aria-controls="ob_server_fields">I already have a server <span class="lw-ob-chev" aria-hidden="true">▸</span></button>
+        <span class="lw-ob-small"><span id="ob_server_help">No server yet? Pick This PC above, or</span> ${extLink(SERVER_HELP, "set up a server →", "lw-link lw-ob-copy")}</span>
       </div>
-      <div class="fl-row">
-        <div class="fl-row-text"><label class="fl-row-title" for="ob_token">Access token</label><div class="fl-row-desc">From <code>murmur-server gen-token</code>. Stored encrypted for your Windows account. <small class="field-err" id="ob_token_err"></small></div></div>
-        <div class="fl-row-control"><input id="ob_token" class="fl-input" type="password" autocomplete="off" spellcheck="false" placeholder="from murmur-server gen-token" /><button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" id="ob_test_conn">Test</button></div>
+      <div class="fl-group" id="ob_server_fields" hidden>
+        <div class="fl-row">
+          <div class="fl-row-text"><label class="fl-row-title" for="ob_host">Server address</label><div class="fl-row-desc">Its name or IP address, e.g. mybox.local <small class="field-err" id="ob_host_err"></small></div></div>
+          <div class="fl-row-control"><input id="ob_host" class="fl-input is-wide" spellcheck="false" placeholder="mybox.local" /></div>
+        </div>
+        <div class="fl-row">
+          <div class="fl-row-text"><label class="fl-row-title" for="ob_token">Access token</label><div class="fl-row-desc"><span id="ob_token_desc">Shown when you set up your server. Stored encrypted for your Windows account.</span> <small class="field-err" id="ob_token_err"></small></div></div>
+          <div class="fl-row-control"><input id="ob_token" class="fl-input is-wide" type="password" autocomplete="off" spellcheck="false" placeholder="Paste the token" /><button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" id="ob_test_conn">Test</button></div>
+        </div>
+        <div class="lw-ob-status" id="ob_server_status"></div>
       </div>
-      <div class="lw-ob-status" id="ob_server_status"></div>
-      <p class="lw-ob-small lw-ob-help"><span id="ob_server_help">No server yet? Pick This PC above, or</span> ${extLink(SERVER_HELP, "set up a server →", "lw-link lw-ob-copy")}</p>
     </div>
     </div>
     <div class="fl-group lw-ob-detail" id="ob_cloud_detail" hidden>
@@ -117,9 +138,7 @@ const engine = `
       </label>
       <div class="lw-ob-status" id="ob_cloud_status"></div>
     </div>
-  </div>
-  ${foot(true, "Continue", "ob_engine_hint")}
-</div>`;
+  </div>`, foot(true, "Continue", "ob_engine_hint"));
 /**
  * "Download from: Your server | Hugging Face" (D79) on a step, and the slot the
  * step-2 server fields move into when "Your server" is picked with none saved.
@@ -160,9 +179,7 @@ const modelRow = (id, title, desc, input, placeholder, pick) => `
     <span class="lw-ob-model-status" data-ob-model-status></span>
   </div>
 </div>`;
-const model = `
-<div class="lw-ob-panel" data-ob-step="model">
-  ${head(3)}
+const model = stepPanel("model", 3, `
   <div class="lw-ob-body is-split">
     <div class="lw-ob-side">
       <div class="lw-ob-title-row">
@@ -192,12 +209,10 @@ const model = `
         </div>
       </div>
     </div>
-  </div>
-  ${foot(true, "Continue", "ob_model_hint", `<div class="lw-ob-skip" id="ob_model_skip" hidden>
+  </div>`, foot(true, "Continue", "ob_model_hint", `<div class="lw-ob-skip" id="ob_model_skip" hidden>
       <button type="button" class="fl-btn fl-btn-ghost" data-ob="skip-model">Skip — use my server only</button>
       <span class="lw-ob-skip-note">You can add a local model later in Settings · Speech to text.</span>
-    </div>`)}
-</div>`;
+    </div>`));
 const cleanupOption = (id, title, desc) => `
 <button type="button" role="radio" class="lw-ob-option" data-ob-cleanup="${id}" aria-checked="false">
   <span class="lw-ob-radio"></span>
@@ -207,9 +222,7 @@ const cleanupOption = (id, title, desc) => `
     <span class="lw-ob-option-desc" data-ob-reason hidden></span>
   </span>
 </button>`;
-const cleanup = `
-<div class="lw-ob-panel" data-ob-step="cleanup">
-  ${head(4)}
+const cleanup = stepPanel("cleanup", 4, `
   <div class="lw-ob-body is-split">
     <div class="lw-ob-side">
       <h1 class="fl-serif lw-ob-h1">Polish what you say?</h1>
@@ -223,9 +236,9 @@ const cleanup = `
     </div>
     <div role="radiogroup" aria-label="AI cleanup" class="lw-ob-main">
       ${cleanupOption("rules", "Rules only", 'Instant. Punctuation, numbers and "scratch that" by fixed rules. No model needed.')}
-      ${cleanupOption("pc", "On this PC", "A small model on this PC. Private, adds about a second. Needs a 0.4–1 GB GGUF file.")}
+      ${cleanupOption("pc", "On this PC", "A small AI model on this PC. Private, adds about a second. One download of about 1 GB.")}
       ${cleanupOption("server", "Your server", "Your server's AI model cleans the text. Nothing to download here, and the text goes only to your server.")}
-      ${cleanupOption("cloud", "Cloud", "A large model from OpenRouter or your own LiteLLM proxy. Best quality. Sends text, never audio.")}
+      ${cleanupOption("cloud", "Cloud", "A large online AI model. Best quality. Sends text, never audio.")}
       <div class="lw-ob-llm" id="ob_llm_detail" hidden>
         ${source("cleanup")}
         <div class="fl-group">
@@ -250,49 +263,19 @@ const cleanup = `
             <div class="fl-row-control"><input id="ob_llm_path" class="fl-input is-wide" spellcheck="false" /><button type="button" class="fl-btn fl-btn-ghost fl-btn-sm" data-ob-pick="llm">Choose file</button></div>
           </div>
         </div>
-        <p class="lw-ob-small">A GGUF chat model, e.g. Qwen2.5-1.5B-Instruct Q4_K_M.<span id="ob_llm_hf"> ${extLink(URL_LLM, "Get it from Hugging Face →", "lw-link lw-ob-copy")}</span></p>
+        <p class="lw-ob-small">Or choose a model file you already have.<span id="ob_llm_hf"> ${extLink(URL_LLM, "Get it from Hugging Face →", "lw-link lw-ob-copy")}</span></p>
       </div>
       <div class="fl-group" id="ob_or_detail" hidden>
-        <div class="fl-row">
-          <div class="fl-row-text"><span class="fl-row-title">Provider</span><div class="fl-row-desc" id="ob_cloud_prov_hint"></div></div>
-          <div class="fl-row-control">
-            <div class="lw-seg" role="radiogroup" aria-label="Cloud provider" id="ob_cloud_prov_seg">
-              <button type="button" role="radio" data-ob-cloud-provider="openrouter">OpenRouter</button>
-              <button type="button" role="radio" data-ob-cloud-provider="custom">LiteLLM</button>
-            </div>
-          </div>
-        </div>
-        <div class="fl-row" data-ob-key-row id="ob_or_key_row">
-          <div class="fl-row-text"><label class="fl-row-title" for="ob_clean_key">OpenRouter API key</label><div class="fl-row-desc" data-ob-key-desc>Kept in Windows Credential Manager, never shown again.</div></div>
-          <div class="fl-row-control"><input id="ob_clean_key" class="fl-input" data-ob-key type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-…" /></div>
-        </div>
-        <div id="ob_ll_rows" hidden>
-          <div class="fl-row">
-            <div class="fl-row-text"><label class="fl-row-title" for="ob_ll_url">Address</label><div class="fl-row-desc">Your proxy's OpenAI-compatible address, e.g. http://10.0.0.5:4000/v1</div></div>
-            <div class="fl-row-control"><input id="ob_ll_url" class="fl-input is-wide" type="url" spellcheck="false" placeholder="http://10.0.0.5:4000/v1" /></div>
-          </div>
-          <div class="fl-row">
-            <div class="fl-row-text"><label class="fl-row-title" for="ob_ll_key">API key (optional)</label><div class="fl-row-desc" id="ob_ll_key_desc">Only if your proxy asks for one.</div></div>
-            <div class="fl-row-control"><input id="ob_ll_key" class="fl-input" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…" /></div>
-          </div>
-          <div class="fl-row">
-            <div class="fl-row-text"><label class="fl-row-title" for="ob_ll_model">Model</label><div class="fl-row-desc" id="ob_ll_test_out">Test connection lists your proxy's models.</div></div>
-            <div class="fl-row-control"><input id="ob_ll_model" class="fl-input" list="ob_ll_models" spellcheck="false" /><datalist id="ob_ll_models"></datalist><button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" id="ob_ll_test">Test connection</button></div>
-          </div>
-        </div>
         <label class="fl-row lw-ob-consent">
           <input type="checkbox" id="ob_clean_consent" />
           <span class="fl-row-text"><span class="fl-row-title" id="ob_clean_consent_title">Send my dictated text to OpenRouter</span><span class="fl-row-desc" id="ob_clean_consent_desc"></span></span>
         </label>
+        <p class="lw-ob-small lw-ob-later">Add details later in Settings → Cloud.</p>
       </div>
       <div class="lw-ob-status" id="ob_cleanup_status"></div>
     </div>
-  </div>
-  ${foot(true, "Continue")}
-</div>`;
-const tryIt = `
-<div class="lw-ob-panel" data-ob-step="try">
-  ${head(5)}
+  </div>`, foot(true, "Continue"));
+const tryIt = stepPanel("try", 5, `
   <div class="lw-ob-body is-center is-tight">
     <div class="lw-ob-title is-center">
       <h1 class="fl-serif lw-ob-h1">Now try it</h1>
@@ -321,9 +304,7 @@ const tryIt = `
         </div>
       </div>
     </div>
-  </div>
-  ${foot(true, "Finish")}
-</div>`;
+  </div>`, foot(true, "Finish"));
 export const TEMPLATE = `
 <div class="lw-ob" id="onboarding" role="dialog" aria-modal="true" aria-label="Set up Murmur" hidden>
   ${welcome}${engine}${model}${cleanup}${tryIt}

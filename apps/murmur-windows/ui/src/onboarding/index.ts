@@ -25,7 +25,7 @@ import { captureChord, stopCapture } from "../lib/keycapture.js";
 import { modelStepFoot, sourceHint, sourceView, type ModelSource, type SourceView } from "../lib/model-source.js";
 import { prefsStore, type Prefs } from "../lib/prefs-store.js";
 import { pillLine, readinessErrorLine, readinessLine, RECHECK_MS, type PillState, type Readiness, type TryLine, type TryLineSource } from "../lib/setup-try.js";
-import type { CloudProvider, DevForm, DevView, FieldError, Health, KeyState, OrView, Route, RouteView } from "../lib/types.js";
+import type { DevForm, DevView, FieldError, Health, KeyState, OrView, Route, RouteView } from "../lib/types.js";
 import { initialEngine, recommendedEngine } from "../lib/setup-engine.js";
 import { enginesFor, initialCleanup, recommendedCleanup, serverOption, type ServerFacts, type SetupCleanup } from "../lib/setup-cleanup.js";
 import { views } from "../lib/views.js";
@@ -74,8 +74,8 @@ const st = {
   cleanup: "rules" as SetupCleanup,
   /** The user picked a cleanup option on this run (else it follows the saved settings and the server). */
   cleanupPicked: false,
-  /** D78: which Cloud provider cleans up (speech is always OpenRouter). */
-  prov: "openrouter" as CloudProvider,
+  /** Step 2's "I already have a server" is open (the address and token show). */
+  serverOpen: false,
   model: null as ModelStatus | null,
   info: null as ModelInfo | null,
   openedAt: 0,
@@ -207,7 +207,7 @@ function renderEngine(): void {
     b.classList.toggle("is-on", on);
     b.disabled = !has(id);
     (b.querySelector("[data-ob-na]") as HTMLElement).hidden = has(id);
-    (b.querySelector("[data-ob-rec]") as HTMLElement).hidden = id !== recommendedEngine(has);
+    (b.querySelector("[data-ob-rec]") as HTMLElement).hidden = id !== recommendedEngine(has, hasServer());
   }
   placeServerForm();
   $<HTMLElement>("ob_cloud_detail").hidden = st.engine !== "cloud";
@@ -232,6 +232,8 @@ async function saveServer(patch: Partial<DevForm>): Promise<boolean> {
   $<HTMLElement>("ob_token_err").textContent = "";
   const host = $<HTMLInputElement>("ob_host").value.trim();
   if (!host) {
+    st.serverOpen = true;
+    placeServerForm();
     $<HTMLElement>("ob_host_err").textContent = "Type your server's address.";
     return false;
   }
@@ -263,6 +265,14 @@ function placeServerForm(): void {
   const slot = document.querySelector<HTMLElement>(`#onboarding [data-ob-server-slot="${here}"]`);
   if (slot && form.parentElement !== slot) slot.append(form);
   form.hidden = here === "engine" ? st.engine !== "server" : !srcView().serverForm;
+  // On step 2 the address and token sit behind "I already have a server"
+  // (open when one is saved); on steps 3/4 they are what the form is for.
+  const more = $<HTMLButtonElement>("ob_server_more");
+  const open = here !== "engine" || st.serverOpen || hasServer();
+  more.hidden = here !== "engine" || hasServer();
+  more.setAttribute("aria-expanded", String(open));
+  (more.querySelector(".lw-ob-chev") as HTMLElement).textContent = open ? "▾" : "▸";
+  $<HTMLElement>("ob_server_fields").hidden = !open;
   $<HTMLButtonElement>("ob_test_conn").textContent = here === "engine" ? "Test" : "Connect";
   $<HTMLElement>("ob_server_help").textContent =
     here === "engine" ? "No server yet? Pick This PC above, or" : "No server yet? Download from Hugging Face, or";
@@ -538,7 +548,7 @@ function renderCleanup(): void {
   $<HTMLElement>("ob_sample").textContent = SAMPLE[st.cleanup];
   $<HTMLElement>("ob_llm_detail").hidden = st.cleanup !== "pc";
   $<HTMLElement>("ob_or_detail").hidden = st.cleanup !== "cloud";
-  renderCloudProvider();
+  renderCloudConsent();
   status("ob_cleanup_status", "");
   renderLlmModel();
 }
@@ -569,9 +579,10 @@ function renderLlmDownload(): void {
   const busy = models.busy(e.id);
   const missing = models.notOnServer(e) && !e.installed;
   $<HTMLElement>("ob_llm_dl_title").textContent = e.title;
+  // Setup's own words: the catalogue's description talks about GPUs.
   $<HTMLElement>("ob_llm_dl_desc").textContent = missing
-    ? missingDesc(e)
-    : `${e.desc} · a ${mb(e.size)} file${e.installed ? " · downloaded and checked" : ""}`;
+    ? `${mb(e.size)}. Your server doesn't have this one. Ask whoever runs it to add it, or switch to Hugging Face.`
+    : `Works on any PC · ${mb(e.size)}${e.installed ? " · downloaded and checked" : ""}`;
   $<HTMLElement>("ob_llm_missing").hidden = !missing || busy;
   const start = $<HTMLButtonElement>("ob_llm_dl_start");
   start.hidden = !v.downloads || !models.canStart(e) || e.installed || busy;
@@ -591,147 +602,36 @@ function rerender(): void {
   }
 }
 
-/** D78: the OpenRouter | LiteLLM switch of the Cloud cleanup option. */
-function renderCloudProvider(): void {
-  const custom = st.prov === "custom";
-  for (const b of document.querySelectorAll<HTMLButtonElement>("#ob_cloud_prov_seg [data-ob-cloud-provider]")) {
-    const on = b.dataset.obCloudProvider === st.prov;
-    b.setAttribute("aria-checked", String(on));
-    b.classList.toggle("is-on", on);
-  }
-  $<HTMLElement>("ob_cloud_prov_hint").textContent = custom ? "Your own OpenAI-compatible proxy" : "Pay per use with your key";
-  $<HTMLElement>("ob_or_key_row").hidden = custom;
-  $<HTMLElement>("ob_ll_rows").hidden = !custom;
+/**
+ * The Cloud option's consent, for the provider saved in Settings → Cloud
+ * (D78): setup asks only for consent; the provider, key and address are set
+ * there. Consent is bound to the destination's host (D28/D52), so it names it.
+ */
+function renderCloudConsent(): void {
+  const c = views.or?.cleanup;
+  const custom = c?.provider === "custom";
+  const host = custom ? urlHost(c?.custom.base_url ?? "") : "";
   $<HTMLElement>("ob_clean_consent_title").textContent = custom
-    ? "Send my dictated text to my proxy"
+    ? "Send my dictated text to my own AI server"
     : "Send my dictated text to OpenRouter";
   $<HTMLElement>("ob_clean_consent_desc").textContent = custom
-    ? `Your words go to ${llHost() || "your proxy"} as text. You confirm once for this address; a new address asks again.`
+    ? `Your words go to ${host || "the address you set in Settings → Cloud"} as text. A new address asks again.`
     : "Your words go to openrouter.ai as text, to zero-retention providers only. Your voice is not sent unless Cloud speech to text is also on.";
 }
 
-/** The host typed in the LiteLLM address field ("" when none). */
-function llHost(): string {
+function urlHost(url: string): string {
   try {
-    return new URL($<HTMLInputElement>("ob_ll_url").value.trim()).host;
+    return new URL(url.trim()).host;
   } catch {
     return "";
   }
 }
 
-function pickCloudProvider(p: CloudProvider): void {
-  if (p === st.prov) return;
-  st.prov = p;
-  // Consent names a host: switching provider asks again.
-  $<HTMLInputElement>("ob_clean_consent").checked = consentFor(p);
-  renderCloudProvider();
-  status("ob_cleanup_status", "");
-}
-
-function consentFor(p: CloudProvider): boolean {
+/** The saved consent for the saved Cloud provider. */
+function cloudConsent(): boolean {
   const c = views.or?.cleanup;
   if (!c) return false;
-  if (p === "custom") return c.provider === "custom" && c.custom.consent;
-  return c.provider === "openrouter" && c.consent;
-}
-
-interface CustomModels {
-  models?: string[];
-  error?: string;
-  message?: string;
-}
-
-/** "Test connection": the proxy's model list (typed key, else the saved one). */
-async function testProxy(): Promise<void> {
-  const out = $<HTMLElement>("ob_ll_test_out");
-  const baseUrl = $<HTMLInputElement>("ob_ll_url").value.trim();
-  if (!baseUrl) {
-    out.textContent = "Enter your proxy's address first.";
-    return;
-  }
-  out.textContent = `Asking ${llHost() || "your proxy"} for its models…`;
-  const typed = $<HTMLInputElement>("ob_ll_key").value.trim();
-  const args = { baseUrl, key: typed === "" ? null : typed };
-  try {
-    let t0 = performance.now();
-    let r = await invoke<CustomModels>("dev_or_custom_models", { ...args, consent: false });
-    // A saved key goes only to a host the user agreed to (D52): the tick is that agreement.
-    if (r.error === "consent_needed") {
-      if (!$<HTMLInputElement>("ob_clean_consent").checked) {
-        out.textContent = "Not sent: tick “Send my dictated text to my proxy” below first, or paste the key here.";
-        return;
-      }
-      t0 = performance.now();
-      r = await invoke<CustomModels>("dev_or_custom_models", { ...args, consent: true });
-      views.setOr(await invoke<OrView>("dev_or_get"));
-    }
-    const ms = Math.round(performance.now() - t0);
-    if (r.models) {
-      $<HTMLDataListElement>("ob_ll_models").replaceChildren(
-        ...r.models.map((id) => Object.assign(document.createElement("option"), { value: id })),
-      );
-      const model = $<HTMLInputElement>("ob_ll_model");
-      if (!model.value && r.models.length === 1) model.value = r.models[0] ?? "";
-      const n = r.models.length;
-      out.textContent = `Connected · ${n} model${n === 1 ? "" : "s"} · ${ms} ms${n ? ": pick one in the Model field" : ""}`;
-    } else {
-      out.textContent = r.message ?? r.error ?? "No answer";
-    }
-  } catch (e) {
-    out.textContent = errText(e);
-  }
-}
-
-/** Save the LiteLLM address, model and (typed) key as the Cloud provider. */
-async function applyProxy(): Promise<boolean> {
-  const baseUrl = $<HTMLInputElement>("ob_ll_url").value.trim();
-  const model = $<HTMLInputElement>("ob_ll_model").value.trim();
-  if (!baseUrl) {
-    status("ob_cleanup_status", "Enter your proxy's address.", false);
-    return false;
-  }
-  if (!model) {
-    status("ob_cleanup_status", "Pick a model: Test connection lists them.", false);
-    return false;
-  }
-  // D78: one Cloud provider at a time on Windows, and LiteLLM has no speech.
-  if (st.engine === "cloud") {
-    status(
-      "ob_cleanup_status",
-      "A LiteLLM proxy can't do speech to text, and Cloud is your speech engine: pick OpenRouter here, or go back and pick another engine.",
-      false,
-    );
-    return false;
-  }
-  const typed = $<HTMLInputElement>("ob_ll_key").value.trim();
-  if (typed) {
-    await invoke<KeyState>("dev_cloud_set_custom_key", { key: typed });
-    $<HTMLInputElement>("ob_ll_key").value = "";
-  }
-  const c = views.or?.cleanup.custom;
-  views.setOr(
-    await invoke<OrView>("dev_or_set_custom_cleanup", {
-      form: { provider: "custom", base_url: baseUrl, model, timeout_ms: c?.timeout_ms ?? 4000, consent: true },
-    }),
-  );
-  return true;
-}
-
-/** Back to OpenRouter when the saved provider is LiteLLM (its fields are kept). */
-async function useOpenRouter(): Promise<void> {
-  const c = views.or?.cleanup;
-  if (!c || c.provider === "openrouter") return;
-  views.setOr(
-    await invoke<OrView>("dev_or_set_custom_cleanup", {
-      form: {
-        provider: "openrouter",
-        base_url: c.custom.base_url,
-        model: c.custom.model,
-        timeout_ms: c.custom.timeout_ms,
-        consent: false,
-      },
-    }),
-  );
+  return c.provider === "custom" ? c.custom.consent : c.consent;
 }
 
 function cleanupForm(allow: boolean, consent: boolean): Record<string, unknown> {
@@ -754,18 +654,16 @@ async function applyCleanup(): Promise<boolean> {
   const p = prefsStore.get();
   if (!p) return true;
   const level = p.cleanup_level === "none" ? "light" : p.cleanup_level;
+  // Read before the saves below: each one redraws the step from the saved prefs.
+  const llmPath = $<HTMLInputElement>("ob_llm_path").value.trim() || null;
   try {
     if (st.cleanup === "cloud") {
       if (!$<HTMLInputElement>("ob_clean_consent").checked) {
         status("ob_cleanup_status", `Tick “${$<HTMLElement>("ob_clean_consent_title").textContent ?? ""}” to use it.`, false);
         return false;
       }
-      if (st.prov === "custom") {
-        if (!(await applyProxy())) return false;
-      } else {
-        if (!(await saveKey("ob_clean_key", "ob_cleanup_status"))) return false;
-        await useOpenRouter();
-      }
+      // The saved provider; a missing key or address is added in Settings → Cloud
+      // (until then Cloud is on but skipped, and the next cleaner runs).
       views.setOr(await invoke<OrView>("dev_or_set_cleanup", { form: cleanupForm(true, true) }));
       await prefsStore.save({ cleanup_level: level, spoken_cleanup: true, raw_mode: false });
       return true;
@@ -789,7 +687,7 @@ async function applyCleanup(): Promise<boolean> {
         cleanup_level: level,
         spoken_cleanup: true,
         raw_mode: false,
-        llm_model_path: $<HTMLInputElement>("ob_llm_path").value.trim() || null,
+        llm_model_path: llmPath,
       });
     }
     return true;
@@ -931,6 +829,8 @@ function pressLine(line: TryLine): void {
 function show(s: Step): void {
   st.step = s;
   for (const p of document.querySelectorAll<HTMLElement>("#onboarding [data-ob-step]")) p.hidden = p.dataset.obStep !== s;
+  const scroller = panel(s).querySelector<HTMLElement>("[data-ob-scroll]");
+  if (scroller) scroller.scrollTop = 0;
   const list = steps();
   const n = list.indexOf(s) + 1;
   const over = panel(s).querySelector<HTMLElement>(".fl-overline");
@@ -1028,20 +928,17 @@ function initialChoices(): void {
     r === "client" ? dev.allow_client : r === "server" ? dev.allow_server && !!dev.host : !!or?.stt.allow,
   );
   const p = prefsStore.get();
-  st.engine = initialEngine(first ? ENGINE_OF[first] : null, !!p?.onboarded, has);
+  st.engine = initialEngine(first ? ENGINE_OF[first] : null, !!p?.onboarded, has, hasServer());
   st.cleanup = savedCleanup();
   st.cleanupPicked = false;
   $<HTMLInputElement>("ob_host").value = dev?.host ?? "";
-  $<HTMLInputElement>("ob_token").placeholder = dev?.token_saved ? "saved (hidden), leave empty to keep" : "from murmur-server gen-token";
+  $<HTMLInputElement>("ob_token").placeholder = dev?.token_saved ? "Saved" : "Paste the token";
+  $<HTMLElement>("ob_token_desc").textContent = dev?.token_saved
+    ? "A token is saved. Paste a new one only to replace it."
+    : "Shown when you set up your server. Stored encrypted for your Windows account.";
+  st.serverOpen = false;
   $<HTMLInputElement>("ob_stt_consent").checked = !!or?.stt.consent;
-  st.prov = or?.cleanup.provider ?? "openrouter";
-  $<HTMLInputElement>("ob_clean_consent").checked = consentFor(st.prov);
-  $<HTMLInputElement>("ob_ll_url").value = or?.cleanup.custom.base_url ?? "";
-  $<HTMLInputElement>("ob_ll_model").value = or?.cleanup.custom.model ?? "";
-  if (or?.cleanup.custom.key.set) {
-    $<HTMLInputElement>("ob_ll_key").placeholder = `saved ${or.cleanup.custom.key.masked ?? ""}`;
-    $<HTMLElement>("ob_ll_key_desc").textContent = "A key is saved. Paste a new one only to replace it.";
-  }
+  $<HTMLInputElement>("ob_clean_consent").checked = cloudConsent();
   showKeyRows();
 }
 
@@ -1083,11 +980,11 @@ export const onboarding = {
     }
     $<HTMLInputElement>("ob_stt_consent").addEventListener("change", () => status("ob_cloud_status", ""));
     $<HTMLInputElement>("ob_clean_consent").addEventListener("change", () => status("ob_cleanup_status", ""));
-    for (const b of document.querySelectorAll<HTMLButtonElement>("#ob_cloud_prov_seg [data-ob-cloud-provider]")) {
-      b.addEventListener("click", () => pickCloudProvider((b.dataset.obCloudProvider ?? "openrouter") as CloudProvider));
-    }
-    $<HTMLButtonElement>("ob_ll_test").addEventListener("click", () => void testProxy());
-    $<HTMLInputElement>("ob_ll_url").addEventListener("input", renderCloudProvider);
+    $<HTMLButtonElement>("ob_server_more").addEventListener("click", () => {
+      st.serverOpen = !st.serverOpen;
+      placeServerForm();
+      if (st.serverOpen) $<HTMLInputElement>("ob_host").focus();
+    });
     $<HTMLButtonElement>("ob_test_conn").addEventListener("click", () => void (st.step === "engine" ? testServer() : connectServer()));
     $<HTMLButtonElement>("ob_llm_dl_start").addEventListener("click", () => {
       const e = llmEntry();
