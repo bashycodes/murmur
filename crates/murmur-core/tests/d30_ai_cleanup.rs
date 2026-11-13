@@ -184,7 +184,7 @@ fn cloud_ok_uses_the_ai_answer() {
 }
 
 #[test]
-fn cloud_gets_the_raw_transcript_with_prompt_v5_and_no_rules_pre_pass() {
+fn cloud_gets_the_raw_transcript_with_prompt_v6_and_no_rules_pre_pass() {
     let cloud = Arc::new(Fake::ok(AI).cloud());
     let r = dictate(&core_with(RAW, &cloud, None));
     assert_eq!(r.asr_text, RAW);
@@ -196,7 +196,7 @@ fn cloud_gets_the_raw_transcript_with_prompt_v5_and_no_rules_pre_pass() {
         "{}",
         p.user
     );
-    // Prompt v5, not v2 (nor its predecessor v4c).
+    // Prompt v6, not v2 (nor its predecessors v5 and v4c).
     let build = |v| {
         murmur_core::cleanup::build_prompt_versioned(
             RAW,
@@ -208,13 +208,15 @@ fn cloud_gets_the_raw_transcript_with_prompt_v5_and_no_rules_pre_pass() {
             v,
         )
     };
-    let v5 = build(murmur_core::cleanup::PromptVersion::V5);
-    assert_eq!(p.system, v5.system);
-    assert_eq!(p.examples, v5.examples);
-    assert_ne!(
-        p.system,
-        build(murmur_core::cleanup::PromptVersion::V4c).system
-    );
+    let v6 = build(murmur_core::cleanup::PromptVersion::V6);
+    assert_eq!(p.system, v6.system);
+    assert_eq!(p.examples, v6.examples);
+    for old in [
+        murmur_core::cleanup::PromptVersion::V5,
+        murmur_core::cleanup::PromptVersion::V4c,
+    ] {
+        assert_ne!(p.system, build(old).system, "{old:?}");
+    }
     // The cloud's minimal scope still holds.
     assert!(!p.user.contains("SCREENSECRET"));
 }

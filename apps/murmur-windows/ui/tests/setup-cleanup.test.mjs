@@ -97,10 +97,10 @@ test("selection when the step opens follows the saved settings", () => {
 
 test("Cloud cleanup says what is missing before it can start", () => {
   const or = { provider: "openrouter", keySet: false, baseUrl: "", model: "" };
-  assert.equal(cloudMissingLine(or), "Cloud cleanup starts once you add a key in Settings → Cloud.");
+  assert.equal(cloudMissingLine(or), "Cloud cleanup starts once you add a key in Settings → AI provider.");
   assert.equal(cloudMissingLine({ ...or, keySet: true }), null);
   const ll = { provider: "custom", keySet: false, baseUrl: "http://10.0.0.5:4000/v1", model: "" };
-  assert.match(cloudMissingLine(ll), /address in Settings → Cloud/);
+  assert.match(cloudMissingLine(ll), /own AI server's address in Settings → AI provider/);
   assert.equal(cloudMissingLine({ ...ll, model: "some-model" }), null);
   assert.match(cloudMissingLine({ ...ll, baseUrl: " ", model: "some-model" }), /address/);
 });

@@ -61,9 +61,9 @@ ${heading("AI cleanup", `Fixes punctuation, filler words and self-corrections. T
 ${group("", LLM_DOWNLOAD_ROW, `data-needs="local"`)}
 
 <section class="lw-section" id="or_cleanup_group" data-needs="cloud">
-  <h3 class="fl-group-title lw-title-badge" id="or_cleanup_title">Cloud · <span data-cloud-name>OpenRouter</span> <button type="button" class="lw-link lw-link-sm" data-go="settings-openrouter">Change provider →</button></h3>
+  <h3 class="fl-group-title lw-title-badge" id="or_cleanup_title"><span id="or_cleanup_title_name">Cloud · OpenRouter</span> <button type="button" class="lw-link lw-link-sm" data-go="settings-openrouter">Change provider →</button></h3>
   <div class="fl-group" id="or_cleanup_box">
-    ${row("Model", `From your proxy's list, or type its name. <span id="cu_models_out"></span>`, `<input id="cu_model" class="fl-input lw-w220 lw-mono-input" list="cu_model_list" spellcheck="false" autocomplete="off" placeholder="gpt-4o-mini" aria-label="Model id" />
+    ${row("Model", `From your own AI server's list, or type its name. <span id="cu_models_out"></span>`, `<input id="cu_model" class="fl-input lw-w220 lw-mono-input" list="cu_model_list" spellcheck="false" autocomplete="off" placeholder="gpt-4o-mini" aria-label="Model id" />
        <datalist id="cu_model_list"></datalist>
        <button type="button" class="fl-btn fl-btn-secondary" id="cu_models_load">Load models</button>`, `data-provider="custom"`)}
     ${row(`<span id="or_cleanup_model_name"></span> <span id="or_cleanup_model_badges" class="pills"></span>`, `<span id="or_cleanup_model_desc"></span> <code id="or_cleanup_model_id" class="lw-mono"></code>`, `<button type="button" class="fl-btn fl-btn-secondary lw-btn-160" id="or_cleanup_change">Change</button>`, `data-provider="openrouter"`)}

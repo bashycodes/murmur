@@ -2,6 +2,8 @@
 // "Recommended" and which one starts selected (D73, amended by the 1.3.0 UX
 // review: step 1 promises "Runs on this PC", so a new install is pointed at
 // it). Pure, so `npm test` runs it on the built dist without a page.
+/** Each engine in the app's words (setup, Insights, the re-run line). */
+export const ENGINE_LABEL = { pc: "This PC", server: "Your server", cloud: "Cloud" };
 /**
  * Setup's one order of preference, limited to the build's engines: a saved
  * server, then this PC, then a server still to be set up, then the cloud.

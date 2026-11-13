@@ -42,6 +42,7 @@
     const dup = all.find((c, n) => all.indexOf(c) !== n);
     if (dup) throw `shortcut ${dup} is used twice`;
   };
+  let setupServer = null;
   let dev = {
     allow_server: true, allow_client: true, route_order: ["server", "client", "cloud"], host: "100.64.0.10", port: 7313,
     tls: false, tls_pin_sha256: "", token: "dev-token-0123456789abcdef", connect_timeout_ms: 800,
@@ -82,6 +83,17 @@
     budget: null,
     notice: "Cloud speech now runs only through OpenRouter. Your Groq provider was removed; your OpenRouter key was kept. Cloud speech was turned off: turn it on again in this tab.",
   };
+  // ?cloud=custom: the user's own AI server (D52, wire "custom") picked, with
+  // an address, a model and consent, cleanup on, order your server -> it ->
+  // this PC (D96 naming, check_cloud_naming.py).
+  if (new URLSearchParams(location.search).get("cloud") === "custom") {
+    Object.assign(or.cleanup, {
+      allow: true, provider: "custom",
+      engines: [{ route: "server", enabled: true }, { route: "cloud", enabled: true }, { route: "local", enabled: true }],
+      custom: { base_url: "http://10.0.0.5:4000/v1", model: "gpt-4o-mini", timeout_ms: 4000, consent_host: "10.0.0.5", consent_at_ms: Date.now() },
+    });
+    or.notice = null;
+  }
   const usage = () => ({
     month: "2026-10", speech: "$0.0234", cleanup: "$0.0140", total: "$0.0374", budget: or.budget, budget_reached: false,
     rows: [
@@ -123,7 +135,7 @@
     return { ...c, host: hostOf(c.base_url), consent: consentOk(c), plain_http: c.base_url.startsWith("http:"), key: customKeyState() };
   };
   const orView = () => ({
-    supported: true, key: keyState(), privacy: { ...or.privacy }, stt: { ...or.stt, available: or.cleanup.provider === "openrouter" },
+    supported: true, key: keyState(), privacy: { ...or.privacy }, stt: { ...or.stt, available: or.cleanup.provider === "openrouter", provider: or.cleanup.provider },
     cleanup: { ...or.cleanup, status: cleanupStatus(), custom: customView() }, budget: or.budget, usage: usage(), catalog: { ...catStatus },
     notice: or.notice,
     warnings: [!orKey && (or.stt.allow || or.cleanup.allow) ? "OpenRouter is on but no key is saved." : "", or.privacy.zdr ? "" : "Zero retention is off: providers may keep your audio/text."].filter(Boolean),
@@ -242,6 +254,25 @@
     modelStatus = { state: "missing", path: "C:\\Users\\u\\AppData\\Roaming\\Murmur\\models\\ggml-base.bin" };
   }
   const MODELS = "C:\\Users\\u\\AppData\\Roaming\\Murmur\\models\\";
+  // ?whisper=turbo: a whisper file the user chose that is not whisper base,
+  // on a PC whose speech runs on the server with this PC kept cold (D24
+  // keep_local_warm off): the slot was never loaded, so get_model_status
+  // reports it idle with the file the prefs point at (core_adapter::idle_status).
+  if (new URLSearchParams(location.search).get("whisper") === "turbo") {
+    prefs.model_path = MODELS + "ggml-large-v3-turbo.bin";
+    dev = { ...dev, keep_local_warm: false };
+    modelStatus = { state: "idle", path: prefs.model_path };
+  }
+  // ?whisper=own: Parakeet in use, and a Whisper file of the user's own (not
+  // in the catalogue) that nothing has checked: setup must not call it installed.
+  if (new URLSearchParams(location.search).get("whisper") === "own") {
+    prefs.asr_engine = "parakeet";
+    prefs.model_path = "D:\\own\\ggml-custom.bin";
+  }
+  // ?cleanup=server: AI cleanup runs on your server (first in the D36 order).
+  if (new URLSearchParams(location.search).get("cleanup") === "server") {
+    or.cleanup.engines = [{ route: "server", enabled: true }, { route: "local", enabled: true }, { route: "cloud", enabled: false }];
+  }
   const hf = (repo, rev, name, size, sha256) => ({ name, url: `https://huggingface.co/${repo}/resolve/${rev}/${name}`, size, sha256 });
   const PK = ["csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8", "1ab9323565ddb038682214b292f588070a538ce2"];
   const WH = ["ggerganov/whisper.cpp", "5359861c739e955e79d9a303bcbc70fb988958b1"];
@@ -590,6 +621,9 @@
     dictionary_export_text: ({ entries }) => JSON.stringify(entries, null, 2),
     dev_get: devView,
     dev_validate: ({ form }) => devCheck(form),
+    // D95 setup re-run: the backend keeps the saved server (and token) for "Keep my old setup".
+    setup_server_snapshot: () => { setupServer = { host: dev.host, port: dev.port, tls: dev.tls, tls_pin_sha256: dev.tls_pin_sha256, token: dev.token }; return null; },
+    setup_server_restore: () => { if (!setupServer) throw "Nothing to put back"; dev = { ...dev, ...setupServer }; return devView(); },
     dev_set: ({ form }) => { const c = devCheck(form); if (c.errors.length) throw c.errors; dev = structuredClone(form); return devView(); },
     dev_test_connection: () => health,
     dev_test_session: () => ({ status: "EMPTY", empty_reason: "no_speech", error: null, engine: "remote", fallback: null, total_ms: 212 }),

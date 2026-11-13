@@ -394,6 +394,8 @@ type RouteListener = Box<dyn Fn(&LastDictation) + Send + Sync>;
 pub struct RouterAdapter {
     router: Router,
     local: Option<Arc<MurmurCoreAdapter>>,
+    /// The model an on-demand load would use (D24), for readiness.
+    on_demand: Mutex<Option<crate::core_adapter::ModelSpec>>,
     last: Mutex<Option<LastDictation>>,
     listener: Mutex<Option<RouteListener>>,
 }
@@ -426,6 +428,7 @@ impl RouterAdapter {
         Arc::new(RouterAdapter {
             router,
             local,
+            on_demand: Mutex::new(None),
             last: Mutex::new(None),
             listener: Mutex::new(None),
         })
@@ -458,6 +461,7 @@ impl RouterAdapter {
         spec: Option<crate::core_adapter::ModelSpec>,
         lang: Option<crate::core_adapter::LanguageSpec>,
     ) {
+        *self.on_demand.lock().unwrap() = spec.clone();
         let (Some(adapter), Some(spec)) = (self.local.clone(), spec) else {
             self.router.set_local_loader(None);
             return;
@@ -598,9 +602,25 @@ impl RouterAdapter {
         let mut first_reason: Option<String> = None;
         for check in self.router.route_checks() {
             let reason = match check.kind {
-                EngineKind::Local => match self.local.as_ref().map(|l| l.status()) {
-                    // Loading also covers a cold slot loaded on demand (D24).
+                // A cold slot reports whether the on-demand model's file is
+                // there (the same mapping as `get_model_status`).
+                EngineKind::Local => match self
+                    .local
+                    .as_ref()
+                    .map(|l| l.reported_status(self.on_demand.lock().unwrap().as_ref()))
+                {
+                    // A start waits for a load, and a cold slot whose file is
+                    // there (Idle) is loaded on demand (D24).
                     Some(ModelStatus::Ready { .. } | ModelStatus::Loading { .. }) => None,
+                    Some(ModelStatus::Idle { .. }) if self.on_demand.lock().unwrap().is_some() => {
+                        None
+                    }
+                    // Cold, and nothing would load it.
+                    Some(ModelStatus::Idle { .. }) => Some(
+                        "The speech model on this PC isn't loaded. \
+                         Check it in Settings → Speech to text."
+                            .into(),
+                    ),
                     Some(ModelStatus::Missing { path, .. }) => Some(format!(
                         "There's no speech model on this PC yet (nothing at {path}). \
                          Go back to the speech model step and download or choose one."
@@ -877,7 +897,7 @@ impl CoreApi for RouterAdapter {
             return Err(LLM_LOADING_MSG.into());
         }
         murmur_core::command::run(cleaner, instruction, selected, timeout)
-            .map_err(|e| e.to_string())
+            .map_err(|e| crate::openrouter::windows_destination_names(e.to_string()))
     }
 
     /// Transforms on the same route as Command Mode (consent, budget,
@@ -897,7 +917,7 @@ impl CoreApi for RouterAdapter {
             return Err(LLM_LOADING_MSG.into());
         }
         murmur_core::transform::run_transform(cleaner, instruction, text, source, timeout)
-            .map_err(|e| e.to_string())
+            .map_err(|e| crate::openrouter::windows_destination_names(e.to_string()))
     }
 
     /// D90: on the AI cleanup route (this PC's LLM, the server, OpenRouter
@@ -1898,6 +1918,46 @@ mod tests {
         let m = not_ready(nothing_set_up(vec![Route::Client, Route::Server]).readiness());
         assert!(m.contains("no speech model on this PC"), "{m}");
         assert!(!m.contains("server"), "{m}");
+    }
+
+    /// D24 cold slot behind a server that is down: ready only when the
+    /// on-demand model's file is there (it used to count as ready even with
+    /// no file, so setup's last step said "ready" with no model).
+    #[test]
+    fn readiness_with_a_cold_slot_checks_the_on_demand_file() {
+        let mut d = dev(true, true);
+        d.keep_local_warm = false;
+        let server = FakeServer::new("x");
+        server.up.store(false, Ordering::SeqCst);
+        let s2 = server.clone();
+        let factory: RemoteFactory = Box::new(move |_cfg: &ServerConfig| {
+            Arc::new(FakeRemote(s2.clone())) as Arc<dyn Backend>
+        });
+        let r = RouterAdapter::new(
+            router_config(&d, BOTH).unwrap(),
+            Some(MurmurCoreAdapter::new()),
+            Some(factory),
+        );
+        // Nothing would load it.
+        assert!(!matches!(r.readiness(), Readiness::Ready { .. }));
+        r.router().reset_circuit();
+        r.set_on_demand(Some(ModelSpec::Whisper {
+            path: "/nonexistent/ggml-base.bin".into(),
+            threads: None,
+        }));
+        r.router().reset_circuit();
+        // Was Ready before (the raw Idle slot counted). The message names
+        // the server, the first route: the engine the user chose.
+        let m = not_ready(r.readiness());
+        assert!(m.contains("can't be reached"), "{m}");
+        r.router().reset_circuit();
+        r.set_on_demand(Some(ModelSpec::Mock { text: "x".into() }));
+        assert_eq!(
+            r.readiness(),
+            Readiness::Ready {
+                engine: EngineKind::Local
+            }
+        );
     }
 
     #[test]

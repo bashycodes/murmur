@@ -66,11 +66,10 @@ const D: AppCategory = AppCategory::Document;
 const F: Style = Style::Formal;
 const C: Style = Style::Casual;
 
-/// v5's own few-shots, shown after v4c's (before its closing "only
+/// v5's own list few-shots, shown after v4c's (before its closing "only
 /// filler" turn): announced and counted lists, a correction inside a list,
-/// corrections with "I mean", "sorry" and "no" between commas, and two
-/// negatives.
-const LIST_AND_CORRECTION_SHOTS: &[Example] = &[
+/// and two negatives. v6 reuses them.
+pub(super) const LIST_SHOTS: &[Example] = &[
     (
         "Notes",
         N,
@@ -106,6 +105,11 @@ const LIST_AND_CORRECTION_SHOTS: &[Example] = &[
         "stuff for the bake sale flour sugar brown eggs no wait white eggs and paper bags",
         "Stuff for the bake sale:\n\n<ul><li>Flour</li><li>Sugar</li><li>White eggs</li><li>Paper bags</li></ul>",
     ),
+];
+
+/// v5's correction few-shots, right after [`LIST_SHOTS`]: "I mean",
+/// "sorry" and "no" between commas. v6 reuses them.
+pub(super) const CORRECTION_SHOTS: &[Example] = &[
     (
         "Slack",
         W,
@@ -129,11 +133,12 @@ const LIST_AND_CORRECTION_SHOTS: &[Example] = &[
     ),
 ];
 
-/// v5's few-shots in prompt order: v4c's, then [`LIST_AND_CORRECTION_SHOTS`],
-/// then v4c's closing "only filler" turn.
+/// v5's few-shots in prompt order: v4c's, then [`LIST_SHOTS`] and
+/// [`CORRECTION_SHOTS`], then v4c's closing "only filler" turn.
 pub(super) fn examples() -> impl Iterator<Item = &'static Example> {
     let (filler, v4c) = prompt_v4c::EXAMPLES.split_last().expect("v4c has examples");
     v4c.iter()
-        .chain(LIST_AND_CORRECTION_SHOTS)
+        .chain(LIST_SHOTS)
+        .chain(CORRECTION_SHOTS)
         .chain(std::iter::once(filler))
 }

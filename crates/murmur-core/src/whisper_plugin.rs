@@ -284,6 +284,7 @@ impl AsrEngine for PluginWhisper {
             text: v["text"].as_str().unwrap_or_default().to_string(),
             language: v["language"].as_str().map(str::to_string),
             no_speech_prob: v["no_speech_prob"].as_f64().map(|p| p as f32),
+            avg_logprob: v["avg_logprob"].as_f64().map(|p| p as f32),
         })
     }
 }

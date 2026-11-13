@@ -1,6 +1,7 @@
 # Cheap repo-wide checks that the path-filtered app builds would skip
 # (docs-only branches never trigger them). A few minutes on ubuntu; Rust
-# from rust-toolchain.toml (fmt --check, cargo fetch + metadata, nothing compiled).
+# from rust-toolchain.toml (fmt --check, cargo fetch + metadata, one
+# default-features clippy check; nothing linked).
 name: repo-checks
 
 on:
@@ -61,6 +62,12 @@ jobs:
           cargo fmt --version
           cargo fmt --all --check
           cargo fmt --all --check --manifest-path apps/murmur-windows/Cargo.toml
+      # The app builds always turn features on, so a feature-gated test or
+      # item missing its gate (a `[[test]]` without required-features, a
+      # helper only a feature uses) breaks only `cargo test` and
+      # `clippy --all-targets` without features. Check-only, no codegen.
+      - name: Clippy without features (murmur-core, murmur-replay)
+        run: cargo clippy --locked -p murmur-core -p murmur-replay --all-targets -- -D warnings
       - name: Decision ids unique
         run: tools/checks/decision-ids.sh
       # The android-build native gate on a stub toolchain: no SIGPIPE flake,

@@ -14,7 +14,7 @@ import { engineWord, HISTORY_PEEK, historyLastText, latestOnly, pickDictation, t
 import { prefsStore } from "../lib/prefs-store.js";
 import { router, type Feature } from "../lib/router.js";
 import { moveShown, onMove, rankRows } from "../lib/ranked-list.js";
-import type { DevCheck, DevForm, DevView, FieldError, Health, LastDictation, MeetingRoute, Route, RouteView } from "../lib/types.js";
+import type { DevCheck, DevForm, DevView, FieldError, Health, LastDictation, MeetingRoute, ModelStatus, Route, RouteView } from "../lib/types.js";
 import { views } from "../lib/views.js";
 import { NOTETAKER_ENABLED } from "../pages/notetaker.js";
 
@@ -33,11 +33,10 @@ const DEV_SWITCHES = ["allow_server", "allow_client", "keep_local_warm", "show_e
 const SRV_NUM = ["port", "connect_timeout_ms", "commit_timeout_base_ms", "health_ttl_s"] as const;
 const SRV_TEXT = ["host", "tls_pin_sha256", "token"] as const;
 
-type ModelStatus = { state: string; path?: string };
 
 let devOrder: Route[] = ["server", "client", "cloud"];
 /** The speech model on this PC (get_model_status / `model:status`), for its engine badge. */
-let pcModel: ModelStatus = { state: "loading" };
+let pcModel: ModelStatus = { state: "loading", path: "" };
 /** A Test button's result is on screen: the last known health must not replace it. */
 let testShown = false;
 let devValid = true;
@@ -173,6 +172,8 @@ function describe(r: Route): void {
     if (!on) setBadge(r, "Off", "light");
     else if (st === "ready") setBadge(r, "Ready", "success");
     else if (st === "loading") setBadge(r, "Loading", "light");
+    // D24: kept cold behind the server, loaded when it is needed.
+    else if (st === "idle") setBadge(r, "On standby", "light");
     else if (st === "missing") setBadge(r, "Model missing", "destructive");
     else setBadge(r, "Failed", "destructive");
   } else {

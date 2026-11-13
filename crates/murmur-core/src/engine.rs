@@ -1335,14 +1335,12 @@ impl SegOut {
         let ev = hallucination::Evidence {
             speech_ms: self.speech_ms,
             no_speech_prob: o.no_speech_prob,
+            avg_logprob: o.avg_logprob,
         };
         if hallucination::is_hallucination(t, ev) {
             return "";
         }
-        if !last
-            && o.no_speech_prob
-                .is_some_and(|p| p >= hallucination::NO_SPEECH_THOLD)
-        {
+        if !last && hallucination::whisper_says_no_speech(o.no_speech_prob, o.avg_logprob) {
             if let Some(h) = hallucination::strip_trailing_stock(t) {
                 return h;
             }
@@ -1928,6 +1926,7 @@ impl Worker {
         let evidence = hallucination::Evidence {
             speech_ms,
             no_speech_prob: out.no_speech_prob,
+            avg_logprob: out.avg_logprob,
         };
         self.finish(s, ctx, abort, r, evidence)
     }
@@ -2071,15 +2070,20 @@ impl Worker {
             }
             return r;
         }
+        // The piece with the highest no-speech probability, with its own
+        // log-probability (D91).
+        let whisper = spoken
+            .iter()
+            .filter_map(|p| p.out.as_ref())
+            .filter_map(|o| Some((o.no_speech_prob?, o.avg_logprob)))
+            .max_by(|a, b| a.0.total_cmp(&b.0));
         let evidence = hallucination::Evidence {
             speech_ms: s
                 .cfg
                 .vad
                 .then(|| pieces.iter().filter_map(|p| p.speech_ms).sum()),
-            no_speech_prob: spoken
-                .iter()
-                .filter_map(|p| p.out.as_ref()?.no_speech_prob)
-                .reduce(f32::max),
+            no_speech_prob: whisper.map(|w| w.0),
+            avg_logprob: whisper.and_then(|w| w.1),
         };
         self.finish(s, ctx, abort, r, evidence)
     }
@@ -2169,7 +2173,7 @@ fn finish_text(
             cfg,
             &ctx,
             cloud.prompt_scope(),
-            cleanup::PromptVersion::V5,
+            cleanup::PromptVersion::V6,
             language.as_deref(),
         );
         let timeout_ms = cloud.budget_ms(cfg.llm_budget_ms(&r.asr_text));
@@ -2349,10 +2353,7 @@ pub fn refinish(
     let server_llm_ms = r.timings.llm_ms;
     r.timings.llm_ms = 0;
     let abort = Arc::new(AtomicBool::new(false));
-    let evidence = hallucination::Evidence {
-        speech_ms: None,
-        no_speech_prob: None,
-    };
+    let evidence = hallucination::Evidence::default();
     let mut r = finish_text(cleaner.as_ref(), &cfg, &matcher, ctx, &abort, r, evidence);
     r.timings.llm_ms += server_llm_ms;
     r.timings.total_ms += t.elapsed().as_millis() as u64;

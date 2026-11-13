@@ -58,6 +58,27 @@ Hypotheses checked:
    the app now shows "Listening…" in the step, so a press that shows
    nothing at all means the shortcut never arrived.
 
+   **Update 2026-11-13 (E2E harness on 1.3.0).** The symptom is real: with
+   the Murmur window focused, holding Right Alt showed nothing, while the
+   same key worked in Notepad. Likely cause (not yet verified on the PC):
+   the hook filters nothing, but tao (Tauri's event loop) registers our
+   process for raw keyboard input while one of our windows has focus (its
+   default `DeviceEventFilter::Unfocused`), and with such a registration
+   Windows reportedly does not call the process's own `WH_KEYBOARD_LL`
+   hook for keys going to its window (a community report, not Microsoft
+   documentation). The watchdog's re-install above fits: the user typed in
+   our window, the hook saw nothing, the probe was not seen either. Fix:
+   `DeviceEventFilter::Always` (tao removes the raw registration; nothing in
+   the app uses device events), plus a startup check that logs a raw
+   keyboard registration if one is ever back (`hotkeys::raw_input`,
+   `hotkeys::win::raw_keyboard_registered`).
+
+   Elevation and UIPI were considered and set aside: the harness launches
+   the app non-elevated through an interactive scheduled task, and its
+   SendInput comes from the same user session, so injected keys are not
+   blocked from the Murmur window. A before/after harness run (scenario b
+   records whether the practice box gets text) settles the cause.
+
 ## Fix (D75)
 
 - `Router::route_checks()` (murmur-router, read-only, no network): the

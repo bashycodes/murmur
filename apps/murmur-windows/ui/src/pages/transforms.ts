@@ -12,6 +12,10 @@ import { invoke } from "../lib/ipc.js";
 import { captureChord, RECORDING_TEXT, stopCapture } from "../lib/keycapture.js";
 import { prefsStore, type Prefs, type TransformItem, type TransformPrefs } from "../lib/prefs-store.js";
 import type { Page } from "../lib/router.js";
+import { serverCleanupOn } from "../lib/cleanup-order.js";
+import { providerOf } from "../lib/provider-names.js";
+import { cloudCleanupAllowed, transformsEngineLine } from "../lib/transforms-line.js";
+import { views } from "../lib/views.js";
 
 /** murmur_core::transform limits (the backend checks them again). */
 const MAX_TRANSFORMS = 20;
@@ -34,7 +38,7 @@ const TEMPLATE = `
 
   <div class="fl-banner fl-banner-mist">
     <h3 class="fl-banner-title">Rewrite selected text in any app</h3>
-    <p class="fl-banner-body">Select text in any app, press a shortcut, and it's rewritten in place. Uses your AI cleanup engine: the cloud, then this PC.</p>
+    <p class="fl-banner-body">Select text in any app, press a shortcut, and it's rewritten in place. <span id="tf_engines"></span></p>
     <div class="fl-banner-actions">
       <button type="button" class="fl-btn fl-btn-lumen" id="tf_try">Try on sample text</button>
       <button type="button" class="fl-btn fl-btn-link-light" data-go="settings-cleanup">AI cleanup settings</button>
@@ -365,12 +369,32 @@ async function runTry(): Promise<void> {
   }
 }
 
+/** D96: the banner's engine sentence, from the live cleanup order. */
+function renderEngines(): void {
+  const or = views.or;
+  const dv = views.dev;
+  const engines = or?.cleanup.engines ?? [
+    { route: "local", enabled: true },
+    { route: "server", enabled: true },
+  ];
+  $<HTMLElement>("tf_engines").textContent = transformsEngineLine({
+    engines,
+    cloudAllowed: cloudCleanupAllowed(or),
+    provider: providerOf(or),
+    local: !!prefsStore.get()?.llm_enabled && !!dv?.caps.local,
+    server: serverCleanupOn(engines, dv?.form.host ?? "", !!dv?.caps.remote, or?.cleanup.status.server_llm),
+  });
+}
+
 export const transformsPage: Page = {
   id: "transforms",
   area: "main",
   template: TEMPLATE,
   init(): void {
     prefsStore.subscribe(render);
+    prefsStore.subscribe(renderEngines);
+    views.onDev(renderEngines);
+    views.onOr(renderEngines);
 
     $<HTMLInputElement>("tf_enabled").addEventListener("change", (e) => {
       const on = (e.target as HTMLInputElement).checked;
@@ -417,5 +441,9 @@ export const transformsPage: Page = {
 
     const p = prefsStore.get();
     if (p) render(p);
+    renderEngines();
+  },
+  show(): void {
+    renderEngines();
   },
 };

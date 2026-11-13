@@ -123,9 +123,12 @@ pub fn dedupe_terms<'a>(
 pub struct AsrOutput {
     pub text: String,
     pub language: Option<String>,
-    /// Highest per-segment no-speech probability, when the engine knows it
+    /// Highest per-window no-speech probability, when the engine knows it
     /// (Whisper). Feeds the hallucination guard.
     pub no_speech_prob: Option<f32>,
+    /// Average token log-probability of the window `no_speech_prob` comes
+    /// from (Whisper, D91): the guard needs both.
+    pub avg_logprob: Option<f32>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -229,6 +232,7 @@ impl AsrEngine for BurstEchoAsr {
             text: Self::words(pcm),
             language: Some("en".into()),
             no_speech_prob: None,
+            avg_logprob: None,
         })
     }
 }
@@ -367,6 +371,7 @@ impl AsrEngine for MockAsr {
             },
             language: Some(req.language.clone().unwrap_or_else(|| "en".into())),
             no_speech_prob: None,
+            avg_logprob: None,
         })
     }
 }

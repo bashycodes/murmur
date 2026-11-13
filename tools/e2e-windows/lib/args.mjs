@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 /** Gitignored per-machine settings (KEY=value lines), next to run.sh. */
 export const LOCAL_ENV = join(dirname(fileURLToPath(import.meta.url)), "..", "local.env");
 
-export const SCENARIOS = ["a", "b", "c", "d", "e", "f"];
+export const SCENARIOS = ["a", "b", "c", "d", "e", "f", "g"];
 export const COMMANDS = ["run", "restore", "status", "vbcable-install", "clips", "selftest"];
 /** Scenario d's dictation profiles: quiet = the seed; owner = the owner's sounds, ducking and mic. */
 export const PROFILES = ["quiet", "owner"];
@@ -18,7 +18,7 @@ export const USAGE = `usage: tools/e2e-windows/run.sh [run] (--installer NAME | 
   --installer NAME       installer in the laptop's Downloads (or a full Windows path)
   --installer-local PATH local installer (e.g. a CI artifact): copied to the laptop, then used
   --allow-downgrade      allow an installer older than the owner's installed version
-  --scenarios a,b,...    subset of a-f (default: all)
+  --scenarios a,b,...    subset of a-g (default: all)
   --no-restore           leave the test install's data in place (restore later with: run.sh restore)
   --no-wait              fail at once if another run holds the laptop (default: wait in line)
   --host USER@HOST       ssh destination (default: $MURMUR_E2E_HOST, then

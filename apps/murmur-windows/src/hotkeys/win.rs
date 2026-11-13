@@ -371,3 +371,58 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
     }
     CallNextHookEx(None, code, wparam, lparam)
 }
+
+/// Is raw keyboard input registered in our process? While it is, the hook
+/// is not called for keys going to our own windows
+/// ([`super::raw_input`]). `None` = the list couldn't be read.
+pub fn raw_keyboard_registered() -> Option<bool> {
+    use windows::Win32::UI::Input::{GetRegisteredRawInputDevices, RAWINPUTDEVICE};
+    let size = std::mem::size_of::<RAWINPUTDEVICE>() as u32;
+    let mut count = 0u32;
+    // SAFETY: a null buffer only asks for the count.
+    if unsafe { GetRegisteredRawInputDevices(None, &mut count, size) } == u32::MAX {
+        return None;
+    }
+    let mut list = vec![RAWINPUTDEVICE::default(); count as usize];
+    if count > 0 {
+        // SAFETY: `list` holds `count` entries of `size` bytes.
+        let got =
+            unsafe { GetRegisteredRawInputDevices(Some(list.as_mut_ptr()), &mut count, size) };
+        if got == u32::MAX {
+            return None;
+        }
+        list.truncate(got as usize);
+    }
+    let devices: Vec<(u16, u16)> = list.iter().map(|d| (d.usUsagePage, d.usUsage)).collect();
+    Some(super::raw_input::includes_keyboard(&devices))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::raw_input::{USAGE_KEYBOARD, USAGE_PAGE_GENERIC};
+    use super::*;
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::Input::{
+        RegisterRawInputDevices, RAWINPUTDEVICE, RAWINPUTDEVICE_FLAGS, RIDEV_REMOVE,
+    };
+
+    fn keyboard(flags: RAWINPUTDEVICE_FLAGS) -> [RAWINPUTDEVICE; 1] {
+        [RAWINPUTDEVICE {
+            usUsagePage: USAGE_PAGE_GENERIC,
+            usUsage: USAGE_KEYBOARD,
+            dwFlags: flags,
+            hwndTarget: HWND(std::ptr::null_mut()),
+        }]
+    }
+
+    #[test]
+    fn raw_keyboard_registration_is_seen_and_so_is_its_removal() {
+        let size = std::mem::size_of::<RAWINPUTDEVICE>() as u32;
+        // What tao's default device-event filter registers (focus only).
+        unsafe { RegisterRawInputDevices(&keyboard(RAWINPUTDEVICE_FLAGS(0)), size) }.unwrap();
+        assert_eq!(raw_keyboard_registered(), Some(true));
+        // What `DeviceEventFilter::Always` does.
+        unsafe { RegisterRawInputDevices(&keyboard(RIDEV_REMOVE), size) }.unwrap();
+        assert_eq!(raw_keyboard_registered(), Some(false));
+    }
+}

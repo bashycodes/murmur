@@ -3,14 +3,15 @@
 Probe (Playwright + its bundled Chromium):
     python3 tools/probes/settings_mock/serve.py 8765 &
     python3 tools/probes/settings_mock/check_download_source.py [port]
-An air-gapped install that picks This PC on step 2: step 3 offers "Download
-from: Your server | Hugging Face"; Your server with none saved shows step
-2's server fields there (Connect saves the address only: speech stays on
-This PC) and hides Download and the Hugging Face links until it is saved;
-then the catalogue downloads from the server, a model it lacks is "Not on
-your server". Step 4's "On this PC" cleanup gets the same switch and a
-Download row for the recommended cleanup model. Back on step 2 the server
-fields are where they were. Writes shots/src-*.png (gitignored).
+An air-gapped install that picks This PC on step 2: step 3 has no switch
+(it lives in Settings → Speech to text, UX review on 1.3.0) and downloads
+from Hugging Face. Step 4's "On this PC" cleanup offers "Download from:
+Your server | Hugging Face"; Your server with none saved shows step 2's
+server fields there (Connect saves the address only: speech stays on This
+PC) and hides Download and the Hugging Face link until it is saved; then
+the cleanup model downloads from the server. Back on step 3 a speech model
+the server lacks says so instead of offering Download. Back on step 2 the
+server fields are where they were. Writes shots/src-*.png (gitignored).
 """
 import pathlib
 import sys
@@ -59,23 +60,38 @@ with sync_playwright() as p:
     nxt(pg)
     check("step 3 after This PC", step(pg) == "model", step(pg))
 
-    # No server: the switch shows, on Hugging Face.
-    check("switch shown", shown(pg, "[data-ob-step=model] [data-ob-src-box]"))
-    check("both sources offered", shown(pg, "[data-ob-step=model] [data-ob-src=server]") and shown(pg, "[data-ob-step=model] [data-ob-src=huggingface]"))
-    check("on Hugging Face without a server", on(pg, "model", "huggingface"))
-    check("HF page links shown", shown(pg, "#ob_model_links"))
+    # Step 3: no "Download from" (Settings → Speech to text has it); Hugging Face.
+    check("no switch on step 3", not pg.query_selector("[data-ob-step=model] [data-ob-src-box]"))
+    check("no server fields on step 3", not shown(pg, "[data-ob-step=model] #ob_server_detail"))
+    pg.evaluate("window.__dlSteps = 2; window.__dlTickMs = 30")
+    pg.click("[data-ob-dl=parakeet]")
+    pg.wait_for_timeout(150)
+    check("speech model from Hugging Face", "huggingface.co" in pg.inner_text("#dl_from"), pg.inner_text("#dl_from"))
+    pg.click("#dl_ok")
+    pg.wait_for_timeout(800)
+    check("speech model installed", pg.inner_text("[data-ob-model=parakeet] [data-ob-chip]") == "Installed")
+    pg.screenshot(path=str(out / "src-1-step3.png"))
+
+    # Step 4: cleanup on this PC, the switch, on Hugging Face without a server.
+    nxt(pg)
+    check("step 4", step(pg) == "cleanup", step(pg))
+    pg.click("[data-ob-cleanup=pc]")
+    pg.wait_for_timeout(200)
+    check("switch shown", shown(pg, "[data-ob-step=cleanup] [data-ob-src-box]"))
+    check("both sources offered", shown(pg, "[data-ob-step=cleanup] [data-ob-src=server]") and shown(pg, "[data-ob-step=cleanup] [data-ob-src=huggingface]"))
+    check("on Hugging Face without a server", on(pg, "cleanup", "huggingface"))
+    check("HF link shown", shown(pg, "#ob_llm_hf"))
     check("no server fields yet", not shown(pg, "#ob_server_detail"))
-    pg.screenshot(path=str(out / "src-1-hf.png"))
 
     # Your server with none saved: step 2's fields, here.
-    pg.click("[data-ob-step=model] [data-ob-src=server]")
+    pg.click("[data-ob-step=cleanup] [data-ob-src=server]")
     pg.wait_for_timeout(300)
-    check("server picked", on(pg, "model", "server"))
-    check("server fields on step 3", shown(pg, "[data-ob-step=model] #ob_server_detail"))
+    check("server picked", on(pg, "cleanup", "server"))
+    check("server fields on step 4", shown(pg, "[data-ob-step=cleanup] #ob_server_detail"))
     check("button says Connect", pg.inner_text("#ob_test_conn") == "Connect")
-    check("Download waits for the server", not shown(pg, "[data-ob-dl=whisper]") and not shown(pg, "[data-ob-dl=parakeet]"))
-    check("HF links hidden", not shown(pg, "#ob_model_links"))
-    check("hint asks for the server", "Add your server" in pg.inner_text("[data-ob-step=model] [data-ob-src-hint]"))
+    check("Download waits for the server", not shown(pg, "#ob_llm_dl_start"))
+    check("HF link hidden", not shown(pg, "#ob_llm_hf"))
+    check("hint asks for the server", "Add your server" in pg.inner_text("[data-ob-step=cleanup] [data-ob-src-hint]"))
     pg.screenshot(path=str(out / "src-2-server-form.png"))
     pg.click("#ob_test_conn")
     pg.wait_for_timeout(200)
@@ -90,23 +106,8 @@ with sync_playwright() as p:
     prefs = pg.evaluate("window.__TAURI__.core.invoke('get_prefs')")
     check("model_source saved", prefs["model_source"] == "server")
     check("fields gone once saved", not shown(pg, "#ob_server_detail"))
-    check("hint names the server", "100.64.0.10" in pg.inner_text("[data-ob-step=model] [data-ob-src-hint]"))
-    check("Download from the server", shown(pg, "[data-ob-dl=whisper]"))
-    check("Parakeet not on the server", shown(pg, "[data-ob-model=parakeet] [data-ob-missing]") and not shown(pg, "[data-ob-dl=parakeet]"))
-    pg.screenshot(path=str(out / "src-3-server.png"))
-    pg.click("[data-ob-dl=whisper]")
-    pg.wait_for_timeout(150)
-    check("confirm says your server", "Your server, 100.64.0.10" in pg.inner_text("#dl_from"), pg.inner_text("#dl_from"))
-    pg.click("#dl_ok")
-    pg.wait_for_timeout(2500)
-    check("speech model downloaded from the server", "downloaded and checked" in pg.inner_text("[data-ob-model=whisper] [data-ob-model-desc]"))
-
-    # Step 4: cleanup on this PC, the same switch and a Download row.
-    nxt(pg)
-    check("step 4", step(pg) == "cleanup", step(pg))
-    pg.click("[data-ob-cleanup=pc]")
-    pg.wait_for_timeout(200)
-    check("step 4 switch on the server", shown(pg, "[data-ob-step=cleanup] [data-ob-src-box]") and on(pg, "cleanup", "server"))
+    check("hint names the server", "100.64.0.10" in pg.inner_text("[data-ob-step=cleanup] [data-ob-src-hint]"))
+    check("step 4 switch on the server", on(pg, "cleanup", "server"))
     check("cleanup model row", shown(pg, "#ob_llm_dl") and "Qwen2.5 1.5B" in pg.inner_text("#ob_llm_dl_title"))
     check("cleanup Download from the server", shown(pg, "#ob_llm_dl_start"))
     check("cleanup HF link hidden", not shown(pg, "#ob_llm_hf"))
@@ -115,9 +116,30 @@ with sync_playwright() as p:
     pg.wait_for_timeout(150)
     check("cleanup confirm says your server", "Your server" in pg.inner_text("#dl_from"))
     pg.click("#dl_ok")
-    pg.wait_for_timeout(2500)
+    pg.wait_for_timeout(1000)
     prefs = pg.evaluate("window.__TAURI__.core.invoke('get_prefs')")
     check("cleanup model downloaded and set", (prefs.get("llm_model_path") or "").endswith("qwen2.5-1.5b-instruct-q4_k_m.gguf") and "downloaded" in pg.inner_text("#ob_llm_dl_desc"), str(prefs.get("llm_model_path")))
+
+    # Back on step 3, downloads now come from the server: Whisper base is
+    # there, a model it lacks says so (and where to change it) instead of Download.
+    pg.click("#onboarding [data-ob-step]:not([hidden]) [data-ob=back]")
+    pg.wait_for_timeout(400)
+    pg.click("#ob_model_more")
+    pg.wait_for_timeout(100)
+    check("whisper base from the server", shown(pg, "[data-ob-dl=whisper]"))
+    pg.screenshot(path=str(out / "src-3-step3-server.png"))
+    pg.click("[data-ob-dl=whisper]")
+    pg.wait_for_timeout(150)
+    check("speech confirm says your server", "Your server, 100.64.0.10" in pg.inner_text("#dl_from"), pg.inner_text("#dl_from"))
+    pg.click("#dl_cancel")
+    pg.wait_for_timeout(100)
+    check("Continue waits for a picked model that is not there", pg.is_disabled("#onboarding [data-ob-step]:not([hidden]) [data-ob=next]"))
+    pg.click("[data-ob-model=parakeet]")
+    pg.wait_for_timeout(100)
+    pg.click("#onboarding [data-ob-step]:not([hidden]) [data-ob=next]")
+    pg.wait_for_timeout(300)
+
+    # Step 4 again: back to Hugging Face.
     pg.click("[data-ob-step=cleanup] [data-ob-src=huggingface]")
     pg.wait_for_timeout(400)
     prefs = pg.evaluate("window.__TAURI__.core.invoke('get_prefs')")
@@ -126,10 +148,9 @@ with sync_playwright() as p:
     check("no server fields with a server saved", not shown(pg, "#ob_server_detail"))
     pg.screenshot(path=str(out / "src-5-cleanup-hf.png"))
 
-    # Back: step 3 follows, step 2 has its fields again.
+    # Back: step 2 has its fields again.
     pg.click("#onboarding [data-ob-step]:not([hidden]) [data-ob=back]")
     pg.wait_for_timeout(200)
-    check("step 3 on Hugging Face", on(pg, "model", "huggingface") and shown(pg, "#ob_model_links"))
     pg.click("#onboarding [data-ob-step]:not([hidden]) [data-ob=back]")
     pg.wait_for_timeout(200)
     pg.click("[data-ob-engine=server]")

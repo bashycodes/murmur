@@ -4,6 +4,8 @@
 // retention, and the opt-in debug log (README "Debug log").
 
 import { $, askDialog, setStatus } from "../../lib/dom.js";
+import { serverCleanupOn } from "../../lib/cleanup-order.js";
+import { cloudLeaves, type LeaveRow, serverTextLeave } from "../../lib/privacy-rows.js";
 import { invoke, onEvent } from "../../lib/ipc.js";
 import { ICON, iconSvg } from "../../lib/icons.js";
 import { group, heading, row, toggle } from "../../lib/markup.js";
@@ -37,6 +39,7 @@ ${group(
     <div class="fl-row-text"><div class="fl-row-title">Nothing</div><div class="fl-row-desc">Everything runs on this PC. Nothing is sent over the network.</div></div>
   </div>` +
     leave("leave_server", ICON.server, "Audio to your server", "settings-server") +
+    leave("leave_server_cleanup", ICON.server, "Text to your server", "settings-cleanup") +
     leave("leave_or_audio", ICON.cloud, "Audio to the cloud", "settings-speech") +
     leave("leave_or_text", ICON.cloud, "Text to the cloud", "settings-cleanup"),
 )}
@@ -118,6 +121,7 @@ function showLeaves(): void {
   const remote = !!dv?.caps.remote;
   const cloud = !!or?.supported;
   $<HTMLElement>("leave_server").hidden = !remote;
+  $<HTMLElement>("leave_server_cleanup").hidden = !remote;
   $<HTMLElement>("leave_or_audio").hidden = !cloud;
   $<HTMLElement>("leave_or_text").hidden = !cloud;
   $<HTMLElement>("leave_none").hidden = remote || cloud;
@@ -128,17 +132,22 @@ function showLeaves(): void {
     $<HTMLElement>("leave_server_desc").textContent = on
       ? `${f.host || "No address set"}${f.tls ? ", encrypted" : ""}. Your own machine; audio goes nowhere else.`
       : "Off: speech is turned into text on this PC.";
+    // D96: the text your server cleans (the D36 cleanup order's server engine).
+    const engines = or?.cleanup.engines ?? [];
+    showLeave("leave_server_cleanup", serverTextLeave(serverCleanupOn(engines, f.host, remote, or?.cleanup.status.server_llm), f.host, f.tls));
   }
   if (cloud && or) {
-    badge("leave_or_audio_badge", or.stt.allow);
-    $<HTMLElement>("leave_or_audio_desc").textContent = or.stt.allow
-      ? `For speech to text with ${or.stt.model}.`
-      : "Off. Turning it on asks first.";
-    badge("leave_or_text_badge", or.cleanup.allow);
-    $<HTMLElement>("leave_or_text_desc").textContent = or.cleanup.allow
-      ? `For AI cleanup with ${or.cleanup.model}.${or.privacy.zdr ? " Zero-retention providers only." : ""}`
-      : "Off. Turning it on asks first.";
+    const rows = cloudLeaves(or);
+    showLeave("leave_or_audio", rows.audio);
+    showLeave("leave_or_text", rows.text);
   }
+}
+
+/** Fill a "What leaves this PC" row: title, description and On/Off. */
+function showLeave(id: string, r: LeaveRow): void {
+  $<HTMLElement>(id).querySelector<HTMLElement>(".fl-row-title")!.textContent = r.title;
+  $<HTMLElement>(`${id}_desc`).textContent = r.desc;
+  badge(`${id}_badge`, r.on);
 }
 
 /** Older files may hold `day` (24 hours, before the redesign): show it as is. */

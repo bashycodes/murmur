@@ -6,42 +6,40 @@
 // (dev_set through the dev store, prefs through the prefs store,
 // dev_cloud_set_key / dev_or_set_* for OpenRouter); Finish sets
 // onboarded = true. Nothing downloads by itself (D9/D31): the model step
-// points the app at files the user already has, or downloads a catalogue
-// model after the user pressed Download and confirmed it (3a/3b, through
-// features/models.ts), from the user's server or Hugging Face ("Download
-// from", D79; picking Your server with none saved shows step 2's server
-// fields right there). Step 4 offers the same for the cleanup model, and
-// "Your server" (D36 server cleanup, lib/setup-cleanup.ts) once a server
-// is saved. With
-// speech on the server the step is optional ("Skip — use my server only").
-// A server test or an OpenRouter key/consent happens only on the user's
-// own click.
+// (only when speech runs on this PC, lib/setup-model.ts) offers one
+// recommended model and "More languages ▸", each with its state, and
+// downloads one after the user pressed Download and confirmed it (3a/3b,
+// through features/models.ts); files of the user's own and "Download from"
+// (D79) are set in Settings → Speech to text. Step 4 offers "Download from"
+// for the cleanup model (picking Your server with none saved shows step 2's
+// server fields right there), and "Your server" (D36 server cleanup,
+// lib/setup-cleanup.ts) once a server is saved. A server test or an
+// OpenRouter key/consent happens only on the user's own click.
 import { downloadSource, hasServer, mb, models, pickPath, progressLine, recommendedLlm, setDownloadSource } from "../features/models.js";
 import { devStore } from "../lib/dev-store.js";
 import { $, el, html } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { captureChord, stopCapture } from "../lib/keycapture.js";
-import { modelStepFoot, sourceHint, sourceView } from "../lib/model-source.js";
+import { sourceHint, sourceView } from "../lib/model-source.js";
 import { prefsStore } from "../lib/prefs-store.js";
+import { chip, fileState, initialModel, PARAKEET_TITLE, setupSteps, whisperRow } from "../lib/setup-model.js";
+import { changesLine, savedEngine, setupChanges, STEP_OF } from "../lib/setup-diff.js";
 import { pillLine, readinessErrorLine, readinessLine, RECHECK_MS } from "../lib/setup-try.js";
 import { initialEngine, recommendedEngine } from "../lib/setup-engine.js";
 import { cloudMissingLine, enginesFor, initialCleanup, recommendedCleanup, serverOption } from "../lib/setup-cleanup.js";
+import { cloudWhere, providerOf, setupCloudCopy } from "../lib/provider-names.js";
 import { views } from "../lib/views.js";
 import { engines as cleanupEngines, pollCleanupStatus } from "../features/ai.js";
 import { TEMPLATE } from "./templates.js";
 const ENGINE_ROUTE = { pc: "client", server: "server", cloud: "cloud" };
-const ENGINE_OF = { client: "pc", server: "server", cloud: "cloud" };
 const SAMPLE = {
     rules: "So lunch is Thursday.",
     pc: "Lunch is on Thursday.",
     server: "Lunch is on Thursday.",
     cloud: "Lunch is on Thursday.",
 };
-/** The catalogue model behind each row (model_catalog ids). */
-const CATALOG_ID = {
-    parakeet: "parakeet-tdt-0.6b-v2-int8",
-    whisper: "whisper-base",
-};
+/** The recommended speech model (model_catalog id). */
+const PARAKEET_ID = "parakeet-tdt-0.6b-v2-int8";
 const st = {
     step: "welcome",
     engine: "pc",
@@ -62,6 +60,14 @@ const st = {
     busy: false,
     /** "Download from" as picked on this run (null = as the backend has it). */
     pick: null,
+    /** Step 3's picked row (preselected: the model in use). */
+    modelPick: "parakeet",
+    /** Step 3's "More languages" is open. */
+    moreOpen: false,
+    /** A re-run (setup was finished before): the settings it opened with (null: a first run). */
+    rerunSnapshot: null,
+    /** Server tokens saved on this run (D95 says "Server token replaced"; the token is never read back). */
+    tokenSaves: 0,
 };
 let onDone = () => { };
 // ------------------------------------------------------------ capabilities
@@ -97,9 +103,9 @@ function savedCleanup() {
     }, hasServer());
     return hasCleanup(c) ? c : "rules";
 }
-/** Steps shown in this build: no model step in a build without engines on this PC. */
+/** Steps shown: the model step only with speech on this PC (and a build that has it). */
 function steps() {
-    return has("pc") ? ["welcome", "engine", "model", "cleanup", "try"] : ["welcome", "engine", "cleanup", "try"];
+    return setupSteps(has("pc"), st.engine);
 }
 // ------------------------------------------------------------ helpers
 const panel = (s) => document.querySelector(`#onboarding [data-ob-step="${s}"]`);
@@ -172,9 +178,18 @@ function renderEngine() {
         b.querySelector("[data-ob-na]").hidden = has(id);
         b.querySelector("[data-ob-rec]").hidden = id !== st.recEngine;
     }
+    // D96: the cloud card names your own AI server when that is the provider.
+    const copy = setupCloudCopy(providerOf(views.or));
+    const card = document.querySelector('#onboarding [data-ob-engine="cloud"]');
+    if (card) {
+        card.querySelector(".lw-ob-card-title").textContent = copy.sttTitle;
+        card.querySelector(".lw-ob-card-desc").textContent = copy.sttDesc;
+        card.querySelector(".lw-ob-facts").replaceChildren(...copy.sttFacts.map((f) => el("span", undefined, f)));
+    }
     placeServerForm();
     $("ob_cloud_detail").hidden = st.engine !== "cloud";
     $("ob_engine_hint").textContent = "";
+    showCounter();
 }
 async function testServer() {
     const form = devStore.form({ host: $("ob_host").value.trim(), token: $("ob_token").value.trim() });
@@ -202,7 +217,10 @@ async function saveServer(patch) {
         return false;
     }
     try {
-        await devStore.save({ ...patch, host, token: $("ob_token").value.trim() });
+        const token = $("ob_token").value.trim();
+        await devStore.save({ ...patch, host, token });
+        if (token)
+            st.tokenSaves += 1;
         $("ob_token").value = "";
         return true;
     }
@@ -221,15 +239,15 @@ async function saveServer(patch) {
         return false;
     }
 }
-/** "Connect" on steps 3/4: save the server (downloads only; speech keeps its route), then test it. */
+/** "Connect" on step 4: save the server (downloads only; speech keeps its route), then test it. */
 async function connectServer() {
     if (await saveServer({}))
         await testServer();
 }
-/** Step 2's server fields live on step 2, or on step 3/4 while "Your server" is picked with none saved. */
+/** Step 2's server fields live on step 2, or on step 4 while "Your server" is picked with none saved. */
 function placeServerForm() {
     const form = $("ob_server_detail");
-    const here = st.step === "model" || st.step === "cleanup" ? st.step : "engine";
+    const here = st.step === "cleanup" ? st.step : "engine";
     const slot = document.querySelector(`#onboarding [data-ob-server-slot="${here}"]`);
     if (slot && form.parentElement !== slot)
         slot.append(form);
@@ -241,7 +259,7 @@ function placeServerForm() {
 }
 /**
  * "I already have a server ▸": on step 2 the address and token sit behind it
- * (open when one is saved); on steps 3/4 they are what the form is for.
+ * (open when one is saved); on step 4 they are what the form is for.
  */
 function renderServerFold(onEngineStep) {
     const more = $("ob_server_more");
@@ -255,6 +273,8 @@ function renderServerFold(onEngineStep) {
 async function applyEngine() {
     const dev = views.dev;
     if (!dev)
+        return true;
+    if (engineKept())
         return true;
     const order = [ENGINE_ROUTE[st.engine], ...dev.form.route_order.filter((r) => r !== ENGINE_ROUTE[st.engine])];
     if (st.engine === "pc") {
@@ -292,90 +312,123 @@ async function applyEngine() {
 function activeModel() {
     return prefsStore.get()?.asr_engine === "parakeet" ? "parakeet" : "whisper";
 }
+/** The Whisper row: the model the prefs' file stands for. */
+function whisper() {
+    return whisperRow(prefsStore.get()?.model_path, models.catalog());
+}
+/** The catalogue model behind a row (the Whisper row follows the prefs' file). */
+function rowEntry(id, w = whisper()) {
+    if (id === "parakeet")
+        return models.entry(PARAKEET_ID);
+    return w.id ? models.entry(w.id) : undefined;
+}
+/**
+ * Whether the row's model is on this PC: the one in use as the backend
+ * found its file, else the catalogue's `installed`. A file nothing knows
+ * about (the backend said nothing, no catalogue entry) is "unknown": never
+ * shown Installed or saved on a guess.
+ */
+function rowFile(id, e) {
+    const known = id === activeModel() ? fileState(st.model) : "unknown";
+    if (known !== "unknown")
+        return known;
+    return e ? (e.installed ? "present" : "missing") : "unknown";
+}
+/** Percent of a running download (or check) of `e`, else null. */
+function downloadPct(e) {
+    if (!e || !models.busy(e.id))
+        return null;
+    const p = models.progress(e.id);
+    return p?.total ? Math.round((p.received / p.total) * 100) : 0;
+}
+function pickModelRow(id) {
+    st.modelPick = id;
+    renderModel();
+}
 function renderModel() {
-    const needed = st.engine === "pc";
-    const onServer = st.engine === "server";
-    $("ob_model_optional").hidden = needed;
-    const dl = models.canDownload();
-    $("ob_model_lead").textContent = onServer
-        ? "The model is the part that listens. This PC uses it whenever your server can't be reached. We download it once, from your server or from Hugging Face, or you can add the file yourself."
-        : !needed
-            ? "Your choice does the listening. A model on this PC keeps dictation working when it can't be reached. You can skip this."
-            : dl
-                ? "The model is the part that listens. We can download it for you once, from your server or from Hugging Face, or you can add the file yourself."
-                : "The model is the part that listens. Get it once from where its makers publish it, then tell Murmur where it is.";
-    $("ob_model_note").textContent = dl
-        ? "A download only fetches the file. Nothing about you or your voice is sent. Every file is checked against its SHA-256 fingerprint before it's used, wherever it came from."
-        : "Murmur never downloads anything by itself. Your voice is turned into text by the model on this PC.";
-    const v = renderSource("model", dl);
-    $("ob_model_links").hidden = !v.hfLinks;
-    const p = prefsStore.get();
-    if (p) {
-        const pk = $("ob_parakeet_dir");
-        const wh = $("ob_whisper_path");
-        if (document.activeElement !== pk)
-            pk.value = p.parakeet_model_dir ?? "";
-        if (document.activeElement !== wh)
-            wh.value = p.model_path ?? "";
-    }
-    if (st.info) {
-        $("ob_models_dir").textContent = st.info.models_dir;
-        $("ob_parakeet_dir").placeholder = st.info.default_parakeet_dir;
-        $("ob_whisper_path").placeholder = st.info.default_path;
-    }
-    const active = activeModel();
-    const m = st.model;
+    const w = whisper();
+    const other = $("ob_model_other");
+    const more = $("ob_model_more");
+    // The Whisper row picked (a re-run with Whisper in use) keeps "More languages" open.
+    if (st.modelPick === "whisper")
+        st.moreOpen = true;
+    other.hidden = !st.moreOpen;
+    more.setAttribute("aria-expanded", String(st.moreOpen));
+    more.querySelector(".lw-ob-chev").textContent = st.moreOpen ? "▾" : "▸";
+    let picked = { installed: false, busy: false, canDownload: false, why: "" };
     for (const r of document.querySelectorAll("#onboarding [data-ob-model]")) {
         const id = r.dataset.obModel;
-        const on = id === active;
+        const e = rowEntry(id, w);
+        const on = id === st.modelPick;
         r.classList.toggle("is-on", on);
+        r.setAttribute("aria-checked", String(on));
         r.querySelector("[data-ob-rec]").hidden = id !== "parakeet";
-        const badge = r.querySelector("[data-ob-model-badge]");
-        const line = r.querySelector("[data-ob-model-status]");
-        const use = r.querySelector("[data-ob-use]");
-        use.textContent = on ? "Check again" : "Use";
-        renderDownload(r, id, v);
-        badge.hidden = !on || !m;
-        line.textContent = "";
-        line.className = "lw-ob-model-status";
-        if (!on || !m)
-            continue;
-        const [text, kind, desc] = m.state === "ready"
-            ? ["Ready", "success", `Found and loaded: ${m.path}`]
-            : m.state === "loading"
-                ? ["Loading", "light", `Loading ${m.path}…`]
-                : m.state === "missing"
-                    ? ["Not found", "warning", `Nothing at ${m.path}.`]
-                    : ["Failed", "destructive", `Could not load ${m.path}: ${m.message ?? ""}`];
-        badge.textContent = text;
-        badge.className = `fl-badge fl-badge-${kind}`;
-        line.textContent = desc;
-        line.classList.add(m.state === "ready" ? "ok" : m.state === "loading" ? "hint" : "err");
+        r.querySelector("[data-ob-model-title]").textContent = id === "parakeet" ? PARAKEET_TITLE : w.title;
+        const size = e ? `${mb(e.size)} · ` : "";
+        r.querySelector("[data-ob-model-desc]").textContent =
+            id === "parakeet" ? `${size}English only, the quickest` : `${size}Many languages${e ? "" : " · your own file"}`;
+        const pct = downloadPct(e);
+        const file = rowFile(id, e);
+        const installed = file === "present";
+        const c = chip(file, pct);
+        const badge = r.querySelector("[data-ob-chip]");
+        badge.hidden = !c;
+        badge.textContent = c?.text ?? "";
+        badge.className = `fl-badge fl-badge-${c?.kind ?? "light"}`;
+        badge.dataset.state = c?.state ?? "unknown";
+        const busy = pct !== null;
+        const canStart = !!e && models.canStart(e);
+        const dl = r.querySelector("[data-ob-dl]");
+        dl.hidden = installed || busy || !canStart;
+        dl.disabled = models.busy();
+        dl.textContent = e && models.progress(e.id)?.state === "error" ? "Try again" : "Download";
+        r.querySelector("[data-ob-dl-cancel]").hidden = !busy;
+        renderProgress(r.querySelector("[data-ob-dl-box]"), r.querySelector("[data-ob-dl-bar]"), r.querySelector("[data-ob-dl-line]"), e, busy);
+        if (on) {
+            const why = installed || busy || canStart
+                ? ""
+                : e && models.notOnServer(e)
+                    ? "Your server doesn't have this model. After setup, download it from the internet in Settings → Speech to text."
+                    : "This version of Murmur can't download it. Add the file after setup in Settings → Speech to text.";
+            picked = { installed, busy, canDownload: canStart, why };
+        }
     }
-    const downloading = models.busy();
-    const foot = modelStepFoot({ needed, serverEngine: onServer, ready: !!m && (m.state === "ready" || m.state === "loading"), busy: downloading });
+    const m = st.model;
+    const failed = m?.state === "failed" && st.modelPick === activeModel();
+    status("ob_model_status", failed ? `It didn't load: ${m?.message ?? ""}` : picked.why, failed ? false : undefined);
+    // Continue once the picked model is there or downloading. One this setup
+    // can't fetch is added in Settings, so setup never gets stuck here.
     const next = nextBtn("model");
-    next.hidden = foot.next === "hidden";
-    next.disabled = foot.next === "disabled";
-    $("ob_model_skip").hidden = !foot.skip;
-    $("ob_model_hint").textContent = foot.next === "disabled"
-        ? "Add a speech model to continue"
-        : foot.next === "hidden"
-            ? ""
-            : downloading
-                ? "You can carry on. It finishes in the background."
-                : m?.state === "loading"
-                    ? "You can carry on. It finishes loading in the background."
-                    : "";
+    next.disabled = !picked.installed && !picked.busy && picked.canDownload;
+    $("ob_model_hint").textContent = next.disabled
+        ? "Download it to continue"
+        : picked.busy
+            ? "You can carry on. It finishes in the background."
+            : "";
+}
+/** Continue on the model step: the picked model becomes the one in use (a download sets it when done). */
+async function applyModel() {
+    const pick = st.modelPick;
+    if (pick === activeModel() || rowFile(pick, rowEntry(pick)) !== "present")
+        return true;
+    try {
+        await prefsStore.save({ asr_engine: pick });
+        st.model = (await invoke("get_model_status")).status;
+        return true;
+    }
+    catch (e) {
+        status("ob_model_status", errText(e), false);
+        return false;
+    }
 }
 /** "Download from" over where downloads come from (the backend's catalogue). */
 function srcView() {
     return sourceView({ pick: st.pick, effective: downloadSource(), remote: !!views.dev?.caps.remote, serverSet: hasServer() });
 }
-/** Step 3/4's "Download from: Your server | Hugging Face" (D79) and the server fields under it. */
-function renderSource(step, dl) {
+/** Step 4's "Download from: Your server | Hugging Face" (D79) and the server fields under it. */
+function renderSource(dl) {
     const v = srcView();
-    const box = panel(step).querySelector("[data-ob-src-box]");
+    const box = panel("cleanup").querySelector("[data-ob-src-box]");
     box.hidden = !dl && !v.serverButton;
     for (const b of box.querySelectorAll("[data-ob-src]")) {
         const on = b.dataset.obSrc === v.shown;
@@ -401,67 +454,16 @@ function renderProgress(box, bar, line, e, busy) {
     bar.firstElementChild.style.width = `${pct}%`;
     line.textContent = progressLine(p, e);
 }
-/** "Your server doesn't have this one" description of a catalogue model. */
-const missingDesc = (e) => `${e.desc} · ${mb(e.size)}. Your server doesn't have this one. Ask whoever runs it to add it, or switch to Hugging Face.`;
-/** A row's Download / Cancel buttons and progress (3b). */
-function renderDownload(r, id, v) {
-    const e = models.entry(CATALOG_ID[id]);
-    const p = e ? models.progress(e.id) : undefined;
-    const busy = !!e && models.busy(e.id);
-    const dl = r.querySelector("[data-ob-dl]");
-    const cancel = r.querySelector("[data-ob-dl-cancel]");
-    const use = r.querySelector("[data-ob-use]");
-    const box = r.querySelector("[data-ob-dl-box]");
-    const bar = r.querySelector("[data-ob-dl-bar]");
-    const line = r.querySelector("[data-ob-dl-line]");
-    const desc = r.querySelector("[data-ob-model-desc]");
-    const missing = models.notOnServer(e) && !e?.installed;
-    if (e) {
-        const what = e.files.length > 1 ? `a folder of ${mb(e.size)}` : `a ${mb(e.size)} file`;
-        desc.textContent = missing ? missingDesc(e) : `${e.desc} · ${what}${e.installed ? " · downloaded and checked" : ""}`;
-    }
-    r.querySelector("[data-ob-missing]").hidden = !missing || busy;
-    dl.hidden = !e || !v.downloads || !models.canStart(e) || e.installed || busy;
-    dl.disabled = models.busy();
-    dl.textContent = p?.state === "error" ? "Try again" : "Download";
-    cancel.hidden = !busy;
-    use.hidden = busy;
-    renderProgress(box, bar, line, e, busy);
-}
-/** "Choose folder" / "Choose file": the native picker, then Use it. */
-async function pickModel(id) {
+/** "Choose file" for the cleanup model: the native picker fills the field. */
+async function pickLlm() {
     try {
-        const p = id === "parakeet"
-            ? await pickPath("folder", "Choose the Parakeet model folder")
-            : id === "whisper"
-                ? await pickPath("file", "Choose a Whisper model", [{ name: "Whisper model (ggml)", pattern: "*.bin" }, { name: "All files", pattern: "*.*" }])
-                : await pickPath("file", "Choose an AI cleanup model", [{ name: "GGUF model", pattern: "*.gguf" }, { name: "All files", pattern: "*.*" }]);
-        if (!p)
-            return;
-        if (id === "llm") {
+        const p = await pickPath("file", "Choose an AI cleanup model", [{ name: "GGUF model", pattern: "*.gguf" }, { name: "All files", pattern: "*.*" }]);
+        if (p)
             $("ob_llm_path").value = p;
-            return;
-        }
-        $(id === "parakeet" ? "ob_parakeet_dir" : "ob_whisper_path").value = p;
-        await useModel(id);
     }
     catch (e) {
         console.error("pick_path", e);
     }
-}
-/** "Use": save the engine + its location; the app reloads the model and reports model:status. */
-async function useModel(id) {
-    const patch = id === "parakeet"
-        ? { asr_engine: "parakeet", parakeet_model_dir: $("ob_parakeet_dir").value.trim() || null }
-        : { asr_engine: "whisper", model_path: $("ob_whisper_path").value.trim() || null };
-    try {
-        await prefsStore.save(patch);
-        st.model = (await invoke("get_model_status")).status;
-    }
-    catch (e) {
-        st.model = { state: "failed", path: "", message: String(e) };
-    }
-    renderModel();
 }
 // ------------------------------------------------------------ step: cleanup
 function pickCleanup(c) {
@@ -506,6 +508,12 @@ function renderCleanupOptions() {
         // "Not in this build" is for a missing engine; the server option says why instead.
         b.querySelector("[data-ob-na]").hidden = id === "server" || hasCleanup(id);
         b.querySelector("[data-ob-rec]").hidden = id !== rec || !hasCleanup(id);
+        if (id === "cloud") {
+            // D96: named by the saved provider.
+            const copy = setupCloudCopy(providerOf(views.or));
+            b.querySelector("[data-ob-title]").textContent = copy.cleanTitle;
+            b.querySelector("[data-ob-desc]").textContent = copy.cleanDesc;
+        }
         if (id !== "server")
             continue;
         b.hidden = server.hidden;
@@ -542,7 +550,7 @@ function llmEntry() {
 /** Step 4's "Download from" and Download row for the cleanup model (D79), as on step 3. */
 function renderLlmDownload() {
     const e = llmEntry();
-    const v = renderSource("cleanup", !!e?.available);
+    const v = renderSource(!!e?.available);
     $("ob_llm_hf").hidden = !v.hfLinks;
     const row = $("ob_llm_dl");
     row.hidden = !e;
@@ -565,6 +573,8 @@ function renderLlmDownload() {
 }
 /** Re-draw the open step after the server, the catalogue or a download changed. */
 function rerender() {
+    if (st.step === "try")
+        renderSummary();
     if (st.step === "model")
         renderModel();
     else if (st.step === "engine")
@@ -576,7 +586,7 @@ function rerender() {
     }
 }
 /**
- * The Cloud option's consent, for the provider saved in Settings → Cloud
+ * The Cloud option's consent, for the provider saved in Settings → AI provider
  * (D78): setup asks only for consent; the provider, key and address are set
  * there. Consent is bound to the destination's host (D28/D52), so it names it.
  */
@@ -588,7 +598,7 @@ function renderCloudConsent() {
         ? "Send my dictated text to my own AI server"
         : "Send my dictated text to OpenRouter";
     $("ob_clean_consent_desc").textContent = custom
-        ? `Your words go to ${host || "the address you set in Settings → Cloud"} as text. A new address asks again.`
+        ? `Your words go to ${host || "the address you set in Settings → AI provider"} as text. A new address asks again.`
         : "Your words go to openrouter.ai as text, to zero-retention providers only. Your voice is not sent unless Cloud speech to text is also on.";
     // Shown with the option, before Continue moves on: Cloud would be on but
     // skipped until then, and the next cleaner would run instead.
@@ -641,6 +651,8 @@ async function applyCleanup() {
     const p = prefsStore.get();
     if (!p)
         return true;
+    if (cleanupKept())
+        return true;
     const level = p.cleanup_level === "none" ? "light" : p.cleanup_level;
     // Read before the saves below: each one redraws the step from the saved prefs.
     const llmPath = $("ob_llm_path").value.trim() || null;
@@ -650,7 +662,7 @@ async function applyCleanup() {
                 status("ob_cleanup_status", `Tick “${$("ob_clean_consent_title").textContent ?? ""}” to use it.`, false);
                 return false;
             }
-            // The saved provider; a missing key or address is added in Settings → Cloud
+            // The saved provider; a missing key or address is added in Settings → AI provider
             // (until then Cloud is on but skipped, and the next cleaner runs).
             views.setOr(await invoke("dev_or_set_cleanup", { form: cleanupForm(true, true) }));
             await prefsStore.save({ cleanup_level: level, spoken_cleanup: true, raw_mode: false });
@@ -745,8 +757,9 @@ const WHERE = {
     client: "on this PC",
     remote: "by your server",
     server: "by your server",
-    cloud: "in the cloud",
 };
+/** Where the try-it dictation ran; the cloud route by the saved provider (D96). */
+const whereRan = (engine) => (engine === "cloud" ? cloudWhere(providerOf(views.or)) : WHERE[engine]);
 function setResult(line) {
     const r = $("ob_result");
     r.hidden = false;
@@ -762,7 +775,7 @@ function showResult(v) {
         return;
     st.resultAt = Date.now();
     const good = last.status === "FORMATTED" || last.status === "RAW_TRANSCRIPT";
-    const where = WHERE[last.engine ?? ""] ?? (last.engine ? `by ${last.engine}` : "");
+    const where = whereRan(last.engine ?? "") ?? (last.engine ? `by ${last.engine}` : "");
     const secs = (ms) => `${(ms / 1000).toFixed(1)} s`;
     pressLine({
         bad: !good,
@@ -811,6 +824,13 @@ function pressLine(line) {
     setResult(line);
 }
 // ------------------------------------------------------------ navigation
+/** "Step n of N" on the open step (N follows step 2's pick: no model step off this PC). */
+function showCounter() {
+    const list = steps();
+    const over = panel(st.step).querySelector(".lw-ob-head .fl-overline");
+    if (over)
+        over.textContent = `Step ${list.indexOf(st.step) + 1} of ${list.length}`;
+}
 function show(s) {
     st.step = s;
     for (const p of document.querySelectorAll("#onboarding [data-ob-step]"))
@@ -818,13 +838,10 @@ function show(s) {
     const scroller = panel(s).querySelector("[data-ob-scroll]");
     if (scroller)
         scroller.scrollTop = 0;
-    const list = steps();
-    const n = list.indexOf(s) + 1;
-    const over = panel(s).querySelector(".fl-overline");
-    if (over)
-        over.textContent = `Step ${n} of ${list.length}`;
     if (s === "engine")
         renderEngine();
+    else
+        showCounter();
     if (s === "model") {
         renderModel();
         // A fresh listing for "Not on your server" each time the step opens.
@@ -847,6 +864,7 @@ function show(s) {
         st.line = "none";
         $("ob_result").hidden = true;
         void checkReady();
+        renderSummary();
         $("ob_try_box").focus();
     }
     panel(s).querySelector('[data-ob="next"]')?.focus({ preventScroll: true });
@@ -866,6 +884,8 @@ async function next() {
                 $("ob_engine_hint").textContent = errText(e);
                 return false;
             });
+        if (st.step === "model")
+            ok = await applyModel();
         if (st.step === "cleanup")
             ok = await applyCleanup();
         if (!ok)
@@ -891,13 +911,6 @@ function pickSource(src) {
     rerender();
     void setDownloadSource(src).catch((err) => console.error("model_source", err));
 }
-/** "Skip — use my server only": on to the next step with no model on this PC. */
-function skipModel() {
-    if (st.step !== "model")
-        return;
-    const list = steps();
-    show(list[list.indexOf("model") + 1]);
-}
 function back() {
     const list = steps();
     const i = list.indexOf(st.step);
@@ -915,18 +928,179 @@ async function finish() {
     document.body.classList.remove("lw-ob-open");
     onDone();
 }
+// ------------------------------------------------------------ re-run: what Finish changes (D95)
+/** The engine the saved settings would use first (an address counts trimmed, as everywhere). */
+function savedSpeech() {
+    const dev = views.dev?.form;
+    if (!dev)
+        return null;
+    return savedEngine({ route_order: dev.route_order, allow_client: dev.allow_client, allow_server: dev.allow_server, host: dev.host, cloudStt: !!views.or?.stt.allow });
+}
+/** Names for the line only; choices are compared as saved. */
+const LABELS = {
+    modelName: (m) => (m.asr_engine === "parakeet" ? PARAKEET_TITLE : whisperRow(m.model_path, models.catalog()).title),
+    get provider() {
+        return providerOf(views.or);
+    },
+};
+/** Setup's choices as the saved settings have them now. */
+function savedConfig() {
+    const p = prefsStore.get();
+    return {
+        engine: savedSpeech(),
+        host: views.dev?.form.host.trim() ?? "",
+        tokenSaves: st.tokenSaves,
+        model: has("pc") && p ? { asr_engine: p.asr_engine, model_path: p.model_path, parakeet_model_dir: p.parakeet_model_dir } : null,
+        source: p?.model_source ?? "",
+        cleanup: savedCleanup(),
+        llmPath: p?.llm_model_path ?? null,
+        ptt: p?.shortcuts.ptt || "Right Alt",
+        mic: p?.microphone ?? null,
+    };
+}
+async function snapshot() {
+    const dev = views.dev?.form;
+    const or = views.or;
+    const p = prefsStore.get();
+    // The saved server (address and token) is kept by the backend, so Keep can put it back without the token ever reaching this page.
+    if (has("server"))
+        await invoke("setup_server_snapshot").catch((e) => console.error("setup_server_snapshot", e));
+    return {
+        cfg: savedConfig(),
+        dev: { allow_client: !!dev?.allow_client, allow_server: !!dev?.allow_server, route_order: [...(dev?.route_order ?? [])] },
+        stt: or?.supported ? { ...or.stt } : null,
+        cleanup: or?.supported ? { allow: or.cleanup.allow, consent: cloudConsent(), engines: cleanupEngines().map((e) => ({ ...e })) } : null,
+        prefs: p
+            ? {
+                asr_engine: p.asr_engine,
+                model_path: p.model_path,
+                parakeet_model_dir: p.parakeet_model_dir,
+                model_source: p.model_source,
+                llm_enabled: p.llm_enabled,
+                cleanup_level: p.cleanup_level,
+                spoken_cleanup: p.spoken_cleanup,
+                raw_mode: p.raw_mode,
+                llm_model_path: p.llm_model_path,
+                shortcuts: { ...p.shortcuts },
+                microphone: p.microphone,
+            }
+            : {},
+    };
+}
+/** Step 2 on a re-run with the saved engine still picked and nothing new typed: Continue saves nothing. */
+function engineKept() {
+    const b = st.rerunSnapshot;
+    if (!b || st.engine !== b.cfg.engine)
+        return false;
+    if (st.engine === "server") {
+        return $("ob_host").value.trim() === (views.dev?.form.host.trim() ?? "") && !$("ob_token").value.trim();
+    }
+    if (st.engine === "cloud")
+        return !$("ob_stt_key").value.trim() && $("ob_stt_consent").checked;
+    return true;
+}
+/** Step 4 on a re-run with the saved option still picked (and, on this PC, the same model file): Continue saves nothing. */
+function cleanupKept() {
+    const b = st.rerunSnapshot;
+    if (!b || st.cleanup !== b.cfg.cleanup)
+        return false;
+    if (st.cleanup === "pc")
+        return ($("ob_llm_path").value.trim() || null) === (prefsStore.get()?.llm_model_path ?? null);
+    if (st.cleanup === "cloud")
+        return $("ob_clean_consent").checked;
+    return true;
+}
+function changes() {
+    return st.rerunSnapshot ? setupChanges(st.rerunSnapshot.cfg, savedConfig(), LABELS) : [];
+}
+/** Step 5 on a re-run: the line saying what Finish leaves changed, with Keep / Change. */
+function renderSummary() {
+    const box = $("ob_summary");
+    box.hidden = !st.rerunSnapshot;
+    if (!st.rerunSnapshot)
+        return;
+    const list = changes();
+    $("ob_summary_text").textContent = changesLine(list);
+    $("ob_summary_keep").hidden = !list.length;
+    $("ob_summary_change").hidden = !list.length;
+}
+/** Keep: put back what each changed choice had when setup opened. */
+async function keepBefore() {
+    const b = st.rerunSnapshot;
+    if (!b)
+        return;
+    const keys = new Set(changes().map((c) => c.key));
+    const savedPrefs = (...ks) => Object.fromEntries(ks.filter((k) => k in b.prefs).map((k) => [k, b.prefs[k]]));
+    try {
+        // The server first: the route order below may name it.
+        if (keys.has("host") || keys.has("token")) {
+            views.setDev(await invoke("setup_server_restore"));
+            st.tokenSaves = 0;
+            $("ob_host").value = views.dev?.form.host ?? "";
+        }
+        if (keys.has("engine")) {
+            if (b.stt && views.or && views.or.stt.allow !== b.stt.allow) {
+                const s = b.stt;
+                views.setOr(await invoke("dev_or_set_stt", {
+                    form: { allow: s.allow, consent: s.consent, language: s.language, send_dictionary: s.send_dictionary, stt_path: s.stt_path },
+                }));
+            }
+            await devStore.save(b.dev);
+        }
+        const back = {};
+        if (keys.has("model"))
+            Object.assign(back, savedPrefs("asr_engine", "model_path", "parakeet_model_dir"));
+        if (keys.has("source"))
+            Object.assign(back, savedPrefs("model_source"));
+        if (keys.has("cleanup") || keys.has("llmPath")) {
+            if (keys.has("cleanup") && b.cleanup && views.or) {
+                if (views.or.cleanup.allow !== b.cleanup.allow) {
+                    views.setOr(await invoke("dev_or_set_cleanup", { form: cleanupForm(b.cleanup.allow, b.cleanup.consent) }));
+                }
+                views.setOr(await invoke("dev_cleanup_set_engines", { engines: b.cleanup.engines }));
+            }
+            Object.assign(back, savedPrefs("llm_enabled", "cleanup_level", "spoken_cleanup", "raw_mode", "llm_model_path"));
+        }
+        if (keys.has("ptt"))
+            Object.assign(back, savedPrefs("shortcuts"));
+        if (keys.has("mic"))
+            Object.assign(back, savedPrefs("microphone"));
+        if (Object.keys(back).length)
+            await prefsStore.save(back);
+    }
+    catch (e) {
+        $("ob_summary_text").textContent = errText(e);
+        return;
+    }
+    st.engine = b.cfg.engine ?? st.engine;
+    st.cleanup = b.cfg.cleanup;
+    st.cleanupPicked = false;
+    st.modelPick = activeModel();
+    st.pick = null;
+    renderTry();
+    renderSummary();
+}
+/** Change: back to the step of the first choice that changed. */
+function changeFirst() {
+    const first = changes()[0];
+    if (!first)
+        return;
+    const to = STEP_OF[first.key];
+    show(steps().includes(to) ? to : "engine");
+}
 // ------------------------------------------------------------ choices from the saved settings
 function initialChoices() {
     const dev = views.dev?.form;
     const or = views.or;
-    const first = dev?.route_order.find((r) => r === "client" ? dev.allow_client : r === "server" ? dev.allow_server && !!dev.host : !!or?.stt.allow);
     const p = prefsStore.get();
     // Once per run: a server saved on this run (Test / Connect) doesn't move the badge.
     const facts = { has, serverSaved: hasServer() };
     st.recEngine = recommendedEngine(facts);
-    st.engine = initialEngine(first ? ENGINE_OF[first] : null, !!p?.onboarded, facts);
+    st.engine = initialEngine(savedSpeech(), !!p?.onboarded, facts);
     st.cleanup = savedCleanup();
     st.cleanupPicked = false;
+    st.modelPick = initialModel(activeModel(), !!p?.onboarded, fileState(st.model));
+    st.moreOpen = false;
     $("ob_host").value = dev?.host ?? "";
     $("ob_token").placeholder = dev?.token_saved ? "Saved" : "Paste the token";
     $("ob_token_desc").textContent = dev?.token_saved
@@ -953,37 +1127,46 @@ export const onboarding = {
                 back();
             else if (act === "skip")
                 void finish();
-            else if (act === "skip-model")
-                skipModel();
             const eng = t.closest("[data-ob-engine]")?.dataset.obEngine;
             if (eng)
                 pickEngine(eng);
             const cl = t.closest("[data-ob-cleanup]")?.dataset.obCleanup;
             if (cl)
                 pickCleanup(cl);
-            const use = t.closest("[data-ob-use]")?.dataset.obUse;
-            if (use)
-                void useModel(use);
-            const pick = t.closest("[data-ob-pick]")?.dataset.obPick;
-            if (pick)
-                void pickModel(pick);
+            // A speech model row: a click anywhere on it picks it (Download too).
+            const row = t.closest("[data-ob-model]")?.dataset.obModel;
+            if (row && !t.closest("[data-ob-dl-cancel]"))
+                pickModelRow(row);
+            if (t.closest("[data-ob-pick=llm]"))
+                void pickLlm();
             const src = t.closest("[data-ob-src]")?.dataset.obSrc;
             if (src)
                 pickSource(src);
             const dl = t.closest("[data-ob-dl]")?.dataset.obDl;
-            if (dl)
-                void models.confirmAndStart(CATALOG_ID[dl]);
+            const dlEntry = dl ? rowEntry(dl) : undefined;
+            if (dlEntry)
+                void models.confirmAndStart(dlEntry.id);
             const stop = t.closest("[data-ob-dl-cancel]")?.dataset.obDlCancel;
-            if (stop)
-                void models.cancel(CATALOG_ID[stop]);
+            const stopEntry = stop ? rowEntry(stop) : undefined;
+            if (stopEntry)
+                void models.cancel(stopEntry.id);
         });
-        // Enter in a model path field = Use.
-        for (const [id, m] of [["ob_parakeet_dir", "parakeet"], ["ob_whisper_path", "whisper"]]) {
-            $(id).addEventListener("keydown", (e) => {
-                if (e.key === "Enter")
-                    void useModel(m);
+        // Space / Enter on a focused speech model row picks it, as on a radio.
+        for (const r of root.querySelectorAll("[data-ob-model]")) {
+            r.addEventListener("keydown", (e) => {
+                if (e.target !== r || (e.key !== " " && e.key !== "Enter"))
+                    return;
+                e.preventDefault();
+                pickModelRow(r.dataset.obModel);
             });
         }
+        $("ob_model_more").addEventListener("click", () => {
+            st.moreOpen = !st.moreOpen;
+            // Folding it away while Whisper is picked goes back to the recommended one.
+            if (!st.moreOpen && st.modelPick === "whisper")
+                st.modelPick = "parakeet";
+            renderModel();
+        });
         $("ob_stt_consent").addEventListener("change", () => status("ob_cloud_status", ""));
         $("ob_clean_consent").addEventListener("change", () => status("ob_cleanup_status", ""));
         $("ob_server_more").addEventListener("click", () => {
@@ -1007,6 +1190,8 @@ export const onboarding = {
             void prefsStore.save({ microphone: $("ob_mic").value || null });
         });
         $("ob_ptt_change").addEventListener("click", () => void recordPtt());
+        $("ob_summary_keep").addEventListener("click", () => void keepBefore());
+        $("ob_summary_change").addEventListener("click", changeFirst);
         $("ob_ptt_type").addEventListener("click", typePtt);
         $("ob_ptt").addEventListener("change", async () => {
             const p = prefsStore.get();
@@ -1095,6 +1280,9 @@ export const onboarding = {
             console.error("setup: model status failed", e);
         }
         initialChoices();
+        // A re-run keeps the current setup and says before Finish what it changes (D95).
+        st.tokenSaves = 0;
+        st.rerunSnapshot = prefsStore.get()?.onboarded ? await snapshot() : null;
         st.pick = null;
         $("onboarding").hidden = false;
         document.body.classList.add("lw-ob-open");

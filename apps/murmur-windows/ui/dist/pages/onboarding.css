@@ -159,6 +159,20 @@ body.lw-ob-open .lw-settings {
   justify-content: space-between;
   gap: 16px;
 }
+/* A re-run's "what Finish changes" line, next to Finish (D95). */
+.lw-ob-summary {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  font: 400 14px/20px var(--font-sans);
+  color: var(--foreground-secondary);
+}
+.lw-ob-summary[hidden] {
+  display: none;
+}
+.lw-ob-summary .lw-link {
+  margin-left: 8px;
+}
 .lw-ob-hint {
   flex: 1;
   text-align: right;
@@ -382,12 +396,10 @@ body.lw-ob-open .lw-settings {
 .lw-ob-detail .lw-ob-status:not(:empty) {
   padding: 0 0 12px;
 }
-.lw-ob-status.ok,
-.lw-ob-model-status.ok {
+.lw-ob-status.ok {
   color: var(--success);
 }
-.lw-ob-status.err,
-.lw-ob-model-status.err {
+.lw-ob-status.err {
   color: var(--destructive);
 }
 
@@ -417,50 +429,6 @@ body.lw-ob-open .lw-settings {
 .lw-ob-model:not(.is-on) .lw-tile {
   color: var(--foreground-tertiary);
 }
-.lw-ob-model-path {
-  flex: 1 0 100%;
-  box-sizing: border-box;
-  padding-left: 48px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.lw-ob-model-path .fl-input {
-  width: 100%;
-  box-sizing: border-box;
-}
-.lw-ob-model-status {
-  font: 400 13px/20px var(--font-sans);
-  color: var(--foreground-tertiary);
-  overflow-wrap: anywhere;
-}
-.lw-ob-model-status:empty {
-  display: none;
-}
-.lw-ob-drop {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 14px 16px;
-  border-radius: 12px;
-  border: 1.5px dashed var(--sand-700);
-  color: var(--neutral-600);
-  font: 400 14px/20px var(--font-sans);
-}
-.lw-dark .lw-ob-drop {
-  border-color: var(--vast-700);
-}
-.lw-ob-drop .lw-ico {
-  flex: none;
-}
-.lw-ob-drop-text,
-.lw-ob-links {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-.lw-ob-drop code,
 .lw-ob-small code {
   font-size: 12px;
   overflow-wrap: anywhere;
@@ -471,11 +439,6 @@ body.lw-ob-open .lw-settings {
   padding: 0;
   cursor: pointer;
   font-size: 14px;
-}
-.lw-ob-links {
-  flex-direction: row;
-  flex-wrap: wrap;
-  gap: 4px 20px;
 }
 /* Step 2's server: "I already have a server ▸" over the address and token. */
 .lw-ob-server {
@@ -508,23 +471,44 @@ body.lw-ob-open .lw-settings {
   color: var(--foreground);
 }
 
-/* ---- model rows: picker, Download / Cancel, progress (3b) ---- */
+/* ---- model rows: state chip, Download / Cancel, progress (3b) ---- */
 
 .lw-ob-model-actions {
-  display: flex;
-  gap: 8px;
-}
-.lw-ob-model-input {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.lw-ob-model-input .fl-input {
-  flex: 1;
+/* Step 3's speech model rows: picked like step 4's options, with the
+   state chip and Download on the right and the progress underneath. */
+.lw-ob-speech {
+  flex-wrap: wrap;
+  align-items: center;
+}
+.lw-ob-speech .lw-ob-radio {
+  margin-top: 0;
+}
+.lw-ob-speech .lw-ob-option-text {
+  flex: 1 1 0;
   min-width: 0;
 }
-.lw-ob-model-input .fl-btn {
+.lw-ob-speech-state {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+.lw-ob-speech .lw-ob-model-actions {
   flex: none;
+}
+.lw-ob-speech .lw-ob-dl {
+  padding-left: 34px;
+}
+.lw-ob-speech + .lw-ob-more,
+#ob_model_other + .lw-ob-status {
+  align-self: flex-start;
+}
+#ob_model_other[hidden] {
+  display: none;
 }
 .lw-ob-dl {
   flex: 1 0 100%;
@@ -799,12 +783,6 @@ dialog.fl-dialog .lw-dl-lead {
 }
 
 /* Speech model step: "Download from" switch, Optional badge, Skip (D79) */
-.lw-ob-title-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
 .lw-ob-src {
   display: flex;
   align-items: center;
@@ -815,17 +793,7 @@ dialog.fl-dialog .lw-dl-lead {
   font: 400 13px/20px var(--font-sans);
   color: var(--foreground-tertiary);
 }
-.lw-ob-skip {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-}
-.lw-ob-skip-note {
-  font: 400 13px/20px var(--font-sans);
-  color: var(--foreground-tertiary);
-}
-/* Step 2's server fields, moved to step 3/4 under "Download from: Your server" (D79) */
+/* Step 2's server fields, moved to step 4 under "Download from: Your server" (D79) */
 .lw-ob-server-slot {
   display: contents;
 }
