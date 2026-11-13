@@ -47,6 +47,98 @@ function Get-UiaText([long]$hwnd) {
     throw "no text control under window $hwnd"
 }
 
+# --- NSIS uninstaller dialog (scenario h) ---------------------------------
+# Tauri's "Delete the application data" box is on the uninstaller's confirm
+# page only: under /S that page never shows, so the box cannot be ticked
+# silently. Here the uninstaller runs as a person would start it, and the box
+# and the buttons are driven through UI Automation (language-independent:
+# the only check box on the page, and the button with control id 1, which
+# reads "Uninstall" and later "Close").
+$UIA = [System.Windows.Automation.AutomationElement]
+$TS = [System.Windows.Automation.TreeScope]
+function Uia-Cond($prop, $val) { New-Object System.Windows.Automation.PropertyCondition($prop, $val) }
+function Uia-Find($el, $cond) { try { $el.FindFirst($TS::Descendants, $cond) } catch { $null } }
+function Uia-CheckBox($w) { Uia-Find $w (Uia-Cond $UIA::ControlTypeProperty ([System.Windows.Automation.ControlType]::CheckBox)) }
+function Uia-Button1($w) {
+    $c = New-Object System.Windows.Automation.AndCondition(
+        (Uia-Cond $UIA::ControlTypeProperty ([System.Windows.Automation.ControlType]::Button)),
+        (Uia-Cond $UIA::AutomationIdProperty '1'))
+    Uia-Find $w $c
+}
+function Uia-Alive($w) { try { [void]$w.Current.ProcessId; $true } catch { $false } }
+# Top-level dialogs (#32770) of processes started at or after $since, other
+# than the app itself: the uninstaller re-launches itself from %TEMP%.
+function New-Dialogs([datetime]$since) {
+    $c = Uia-Cond $UIA::ClassNameProperty '#32770'
+    foreach ($w in $UIA::RootElement.FindAll($TS::Children, $c)) {
+        $p = Get-Process -Id $w.Current.ProcessId -ErrorAction SilentlyContinue
+        if (-not $p -or $p.ProcessName -eq 'murmur-windows') { continue }
+        $st = [datetime]::MinValue
+        try { $st = $p.StartTime } catch { }
+        if ($st -ge $since.AddSeconds(-2)) { [pscustomobject]@{ el = $w; process = $p.ProcessName; title = $w.Current.Name } }
+    }
+}
+function Invoke-NsisUninstall($r) {
+    $timeout = if ($r.timeoutSec) { [int]$r.timeoutSec } else { 120 }
+    $regKey = [string]$r.regKey
+    $since = Get-Date
+    Start-Process -FilePath ([string]$r.uninstaller) | Out-Null
+    $o = [ordered]@{ delete_data = [bool]$r.delete_data }
+    # 1. The confirm page: a dialog with the check box and button 1.
+    $deadline = (Get-Date).AddSeconds(60)
+    $win = $null; $cb = $null
+    while (-not $cb) {
+        if ((Get-Date) -gt $deadline) {
+            $seen = @(New-Dialogs $since | ForEach-Object { "$($_.process): $($_.title)" })
+            throw "no uninstaller confirm page with a check box within 60 s (dialogs: $($seen -join '; '))"
+        }
+        Start-Sleep -Milliseconds 400
+        foreach ($d in @(New-Dialogs $since)) {
+            $x = Uia-CheckBox $d.el
+            if ($x -and (Uia-Button1 $d.el)) { $win = $d.el; $cb = $x; $o.process = $d.process; break }
+        }
+    }
+    Start-Sleep -Milliseconds 500 # the page finishes drawing
+    $o.checkbox_name = $cb.Current.Name
+    $tp = $cb.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)
+    $o.checkbox_before = [string]$tp.Current.ToggleState
+    if ([bool]$r.delete_data -and $tp.Current.ToggleState -ne 'On') { $tp.Toggle(); Start-Sleep -Milliseconds 300 }
+    $o.checkbox_after = [string]$tp.Current.ToggleState
+    $hwnd = [long]$win.Current.NativeWindowHandle
+    if ($r.shot) { try { [MurmurE2E.Windows]::Shot($hwnd, [string]$r.shot); $o.shot = $r.shot } catch { $o.shot_error = $_.Exception.Message } }
+    if (([bool]$r.delete_data) -ne ($o.checkbox_after -eq 'On')) {
+        # Cancel (button 2) rather than uninstall with the wrong choice.
+        $cancel = Uia-Find $win (Uia-Cond $UIA::AutomationIdProperty '2')
+        if ($cancel) { $cancel.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }
+        throw "the check box is $($o.checkbox_after), wanted delete_data=$([bool]$r.delete_data); cancelled"
+    }
+    # 2. Uninstall, then wait for the entry to go and the window to close
+    #    (press Close when the finished page waits for it).
+    (Uia-Button1 $win).GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    $closed = $false
+    while ($sw.Elapsed.TotalSeconds -lt $timeout) {
+        Start-Sleep -Milliseconds 500
+        $gone = -not (Test-Path $regKey)
+        if (-not (Uia-Alive $win)) { if ($gone) { break } else { continue } }
+        if ($gone -and -not (Uia-CheckBox $win)) {
+            $b = Uia-Button1 $win
+            if ($b -and $b.Current.IsEnabled -and -not $closed) {
+                $o.close_button = $b.Current.Name
+                $b.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+                $closed = $true
+            }
+        }
+    }
+    $o.uninstall_s = [int]$sw.Elapsed.TotalSeconds
+    $o.entry_removed = -not (Test-Path $regKey)
+    $o.window_closed = -not (Uia-Alive $win)
+    if (-not $o.entry_removed) { throw "the uninstall entry is still there after $timeout s" }
+    # The uninstaller's temp copy may still be deleting files for a moment.
+    Start-Sleep -Seconds 2
+    return $o
+}
+
 # The foreground guard of a request: its `guard` hwnd, or 0 (no guard).
 function Guard-Of($r) { if ($r.guard) { [long]$r.guard } else { [long]0 } }
 function Test-Fg([long]$guard) { $guard -eq 0 -or [MurmurE2E.Windows]::Foreground().Hwnd -eq $guard }
@@ -145,6 +237,15 @@ function Invoke-Cmd($r) {
             return @{ layout = [MurmurE2E.Windows]::Layout([long]$r.hwnd) }
         }
         'uia_text' { return (Get-UiaText ([long]$r.hwnd)) }
+        'nsis_uninstall' { return (Invoke-NsisUninstall $r) }
+        'run_wait' {
+            # An installer run in this (interactive) session, as the updater
+            # or a person would run it; waits for it to exit.
+            $p = Start-Process -FilePath ([Environment]::ExpandEnvironmentVariables([string]$r.exe)) -ArgumentList ([string[]]$r.args) -PassThru
+            $sec = if ($r.timeoutSec) { [int]$r.timeoutSec } else { 300 }
+            if (-not $p.WaitForExit($sec * 1000)) { throw "$([IO.Path]::GetFileName([string]$r.exe)) did not exit within $sec s" }
+            return @{ exit_code = $p.ExitCode }
+        }
         default { throw "unknown cmd: $($r.cmd)" }
     }
 }
