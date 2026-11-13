@@ -2,6 +2,7 @@
 
 pub mod capture;
 pub mod chord;
+pub mod raw_input;
 pub mod watchdog;
 #[cfg(windows)]
 pub mod win;
