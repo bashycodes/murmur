@@ -27,6 +27,8 @@
 #                 in its own zip, <name>-gemma-model.zip, with the Gemma
 #                 Terms of Use, the Prohibited Use Policy and Google's notice
 #                 (D99). Found in --cache or DIR/models, else downloaded.
+#                 With --only, Gemma comes only if --only names
+#                 gemma-3-12b-it-q4_k_m too.
 # --only LIST     only these model folders (comma-separated ids), e.g. a test.
 # --gpu-models    also the speech models only worth it on an NVIDIA GPU
 #                 (D84: stock whisper-large-v3-turbo-q5_0, 574 MB); left out
@@ -95,7 +97,7 @@ while [ $# -gt 0 ]; do
     --no-zip) NO_ZIP=1 ;;
     --no-fetch) NO_FETCH=1 ;;
     --dry-run) DRY=1 ;;
-    -h|--help) sed -n '2,55p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,57p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown option: $1" ;;
   esac
   shift
@@ -141,8 +143,11 @@ awk -F'\t' -v llm="$LLM" -v only=",$ONLY," -v gpu="$GPU_MODELS" -v gpuonly="$GPU
   $2 != "llm" { print; next }
   llm == "all" || (llm == "default" && $1 == "qwen2.5-1.5b-instruct-q4_k_m") { print }
 ' "$WORK/all.tsv" > "$WORK/models.tsv"
+# Gemma (--gemma): with --only, only when --only names it too.
+if [ "$GEMMA" = 1 ] && { [ -z "$ONLY" ] || [[ ",$ONLY," == *",$GEMMA_DIR,"* ]]; }; then
+  printf '%s\n' "$GEMMA_ROW" >> "$WORK/models.tsv"
+fi
 [ -s "$WORK/models.tsv" ] || die "no models selected (--only $ONLY?)"
-[ "$GEMMA" = 0 ] || printf '%s\n' "$GEMMA_ROW" >> "$WORK/models.tsv"
 if [ -n "$ONLY" ]; then
   for f in ${ONLY//,/ }; do cut -f1 "$WORK/models.tsv" | grep -qx "$f" || die "--only: no model folder $f"; done
 fi

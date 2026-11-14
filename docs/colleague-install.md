@@ -240,7 +240,7 @@ container toolkit.
    curl -L -o $d/google_gemma-3-12b-it-Q4_K_M.gguf \
      https://huggingface.co/bartowski/google_gemma-3-12b-it-GGUF/resolve/648e3a36a77c8a9f12d86e741f9dcb9089c769c4/google_gemma-3-12b-it-Q4_K_M.gguf
    echo "fc57f67efa46d711c346e587cbef7d049e95f3df8db2eb2271153343ef0acc7b  $d/google_gemma-3-12b-it-Q4_K_M.gguf" | sha256sum -c
-   printf 'kind = "llm"\ntitle = "Gemma 3 12B Instruct"\ncatalogue_id = "gemma-3-12b-it-q4_k_m"\n' > $d/model.toml
+   printf 'kind = "llm"\ntitle = "Gemma 3 12B (cleanup)"\nengine = "gguf"\ncatalogue_id = "gemma-3-12b-it-q4_k_m"\n' > $d/model.toml
    ```
 <!-- /nogemma -->
 
