@@ -9,7 +9,8 @@ an error. A block between `<!-- name -->` and `<!-- /name -->` lines is
 kept (markers dropped) when the variable NAME (upper case) is 1, removed
 otherwise: `notetaker` (the speaker models), `image` (the bundle has the
 Docker image), `noimage` (it has not), `gemma` (the bundle has the Gemma
-zip, D99), `nogemma` (it has not).
+zip, D99), `nogemma` (it has not), `gpumodels` (the speech models zip has
+the GPU-only models, --gpu-models, D84), `nogpumodels` (it has not).
 """
 import os
 import re

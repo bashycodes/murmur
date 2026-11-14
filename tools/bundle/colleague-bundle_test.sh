@@ -42,8 +42,9 @@ if python3 -I "$H/models_manifest.py" "$T/bad.txt" "$RS" "$CA" > /dev/null 2>&1;
 
 # 4. The install note renders: no placeholder left, notetaker blocks only
 # with NOTETAKER=1, the Docker image's lines only when it is bundled.
-render() { # NOTETAKER IMAGE [GEMMA]
-  NOTETAKER=$1 IMAGE=$2 NOIMAGE=$((1 - $2)) GEMMA=${3:-0} NOGEMMA=$((1 - ${3:-0})) VERSION=9.9.9 COMMIT=abc1234 \
+render() { # NOTETAKER IMAGE [GEMMA [GPUMODELS]]
+  NOTETAKER=$1 IMAGE=$2 NOIMAGE=$((1 - $2)) GEMMA=${3:-0} NOGEMMA=$((1 - ${3:-0})) \
+    GPUMODELS=${4:-0} NOGPUMODELS=$((1 - ${4:-0})) VERSION=9.9.9 COMMIT=abc1234 \
     VARIANT=v WIN_EXE=w.exe APK=a.apk MODELS_ZIP=m.zip CLEANUP_ZIP=c.zip GEMMA_ZIP=g.zip GLIBC="glibc 2.39" DIARIZER_LIST="" SERVER_NOTE="note" \
     SOURCE_TGZ=murmur-server-source-9.9.9.tar.gz IMAGE_TAR=murmur-server-image-9.9.9.tar \
     python3 -I "$H/render_install.py" "$ROOT/docs/colleague-install.md"
@@ -65,6 +66,17 @@ grep -q '`g.zip`' "$T/g1.md" || fail "Gemma zip not in the file table"
 ! grep -q 'g.zip' "$T/i0.md" || fail "Gemma zip named without --gemma"
 grep -q 'curl -L -o $d/google_gemma-3-12b-it-Q4_K_M.gguf' "$T/i0.md" || fail "Gemma download missing without the zip"
 ! grep -q 'curl -L -o $d/google_gemma' "$T/g1.md" || fail "Gemma download shown with the zip"
+# Stock Whisper turbo (D84) is said to be in the models zip only with
+# --gpu-models; without it the note gives the list's pinned download.
+render 0 1 0 1 > "$T/t1.md"
+! grep -q '{{\|<!--' "$T/t1.md" || fail "placeholder or marker left in t1.md"
+grep -q 'both are in the models zip' "$T/t1.md" || fail "turbo zip claim missing with --gpu-models"
+! grep -q 'not in this bundle\|ggml-large-v3-turbo-q5_0.bin' "$T/t1.md" || fail "turbo download shown with --gpu-models"
+! grep -q 'both are in the models zip' "$T/i0.md" || fail "stock turbo said to be in the zip without --gpu-models"
+pin=$(awk '$1 == "whisper-large-v3-turbo-q5_0" { print $6 " " $7 }' "$LIST")
+for s in ${pin}; do
+  grep -qF "$s" "$T/i0.md" || fail "stock turbo download lacks the list's pin $s"
+done
 if NOTETAKER=0 python3 -I "$H/render_install.py" "$ROOT/docs/colleague-install.md" > /dev/null 2>&1; then
   fail "missing values accepted"
 fi

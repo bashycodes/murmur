@@ -87,6 +87,8 @@ the old `flow_data` volume and are not carried over; add them again.
   VPN; that is the only guard, because **ports published by Docker bypass
   `ufw`** and most host firewalls. On a machine with a public address,
   publish on its LAN or VPN address only: `-p 192.168.1.20:7313:7313`.
+  Or run it on the host network with a fixed list of addresses, where the
+  host firewall applies: `docs/container.md` §10 "Host network".
 * Plain `ws://` is not encrypted: use the server over a VPN or a LAN you
   trust, or turn on TLS (Advanced).
 

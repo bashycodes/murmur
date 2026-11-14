@@ -98,7 +98,12 @@ server.
 | Other languages | `whisper-base-q5_1` (light) or `whisper-small-q5_1` (more accurate) | 60 / 190 MB |
 | Hebrew | `zipformer-he-int8`, plus `whisper-tiny-lid` to detect Hebrew automatically | 72 + 32 MB |
 | Hebrew, PC or server with a graphics card | `ivrit-whisper-large-v3-turbo-q5_0` (most accurate Hebrew) | 574 MB |
+<!-- gpumodels -->
 | Any language, PC or server with a graphics card | `whisper-large-v3-turbo-q5_0` (stock Whisper turbo, most accurate multilingual) | 574 MB |
+<!-- /gpumodels -->
+<!-- nogpumodels -->
+| Any language, PC or server with a graphics card | `whisper-large-v3-turbo-q5_0` (stock Whisper turbo, most accurate multilingual): **not in this bundle**, see [With an NVIDIA graphics card](#with-an-nvidia-graphics-card) | 574 MB |
+<!-- /nogpumodels -->
 | AI cleanup | `qwen2.5-1.5b-instruct-q4_k_m` (from the cleanup zip) | 1117 MB |
 <!-- notetaker -->
 | Meeting speakers (Windows) | `speaker-diarization` (at the top of the models zip, not in `library/`) | 34 MB |
@@ -175,8 +180,29 @@ docker build -t murmur-server:cuda --target cuda \
   -f murmur-server-source-{{VERSION}}/deploy/docker/Dockerfile murmur-server-source-{{VERSION}}
 ```
 
+<!-- gpumodels -->
 Then start it as above with `--gpus all` and `murmur-server:cuda`, and
 pick one or both turbo models (both are in the models zip):
+<!-- /gpumodels -->
+<!-- nogpumodels -->
+The models zip has ivrit.ai's Hebrew turbo but not stock Whisper turbo
+(`whisper-large-v3-turbo-q5_0`), which is only worth it on a graphics card.
+To use it, download it into the library first (574 MB; skip this if you
+keep Parakeet for English):
+
+```sh
+d=~/murmur-models/library/whisper-large-v3-turbo-q5_0; mkdir -p $d
+curl -L -o $d/ggml-large-v3-turbo-q5_0.bin \
+  https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-large-v3-turbo-q5_0.bin
+echo "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2  $d/ggml-large-v3-turbo-q5_0.bin" | sha256sum -c
+printf 'kind = "stt"\ntitle = "Whisper large-v3 turbo"\nengine = "whisper"\ncatalogue_id = "whisper-large-v3-turbo-q5_0"\n' > $d/model.toml
+```
+
+Then start it as above with `--gpus all` and `murmur-server:cuda`, and
+pick one or both turbo models (without the download, leave out the
+`MURMUR_STT` line: when it names a folder that is not there, the container
+stops with an error):
+<!-- /nogpumodels -->
 
 ```sh
 docker run -d --name murmur-server --restart unless-stopped --gpus all -p 0.0.0.0:7313:7313 \
