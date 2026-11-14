@@ -25,6 +25,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Changed
 
+- **Docs: the colleague install note only claims stock Whisper turbo when the bundle has it; host-network server setup documented** (amends D77). Without `--gpu-models` (D84) the note now says `whisper-large-v3-turbo-q5_0` is not in the models zip and gives its pinned download, instead of saying both turbo models are in the zip. `docs/container.md` §10 adds running the server with `--network host`, `MURMUR_BIND_CONTAINER_IP=0` and a fixed `bind` list, next to the `-p 0.0.0.0:7313:7313` quick start.
 - **Windows setup shows your server's address and token straight away** (amends D73). Picking Your server on step 2 now opens the Server address, Access token and Test fields at once; the "I already have a server ▸" fold is gone, and "No server yet? … set up a server →" stays.
 - **Docs: measured GPU needs for the server's cleanup models.** The colleague install note's "Choose by GPU memory" list now gives each model's measured memory: Gemma 3 12B 9.8 GB, so a card with more than 10 GB, and Llama 3.2 3B 2.9 GB. It also warns that Llama 3.2 3B sometimes changes the meaning of Hebrew dictations and long spoken numbers. On an Intel Arc 140V laptop GPU, Gemma takes 1.5 s per dictation at the median (`docs/findings/2026-11-14-gpu-cleanup-bench.md`).
 

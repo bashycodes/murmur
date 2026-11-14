@@ -283,6 +283,15 @@ peers outside loopback / LAN / VPN (`docs/server-advanced.md` §3, config.rs
   container through its userland proxy, so the server would see the
   proxy's private address instead of the client's and the peer filter
   could not drop a public IPv6 client.
+* **Host network (`--network host`):** the container shares the host's
+  addresses, so there is no `-p` (Docker ignores it) and the entrypoint's
+  rewrite does not apply: run with `MURMUR_BIND_CONTAINER_IP=0` and put a
+  `/data/config.toml` with an explicit `bind` list, e.g.
+  `bind = ["127.0.0.1:7313", "192.168.1.20:7313"]` (§3). The server listens
+  only on those addresses, the peer filter stays on, and Docker adds no
+  forwarding rules, so the host firewall (`ufw`) applies as for any host
+  service. The generated config's `0.0.0.0` bind would be refused without
+  TLS, so the config file is required here.
 * **TLS (`wss://`):** §6. The rewritten bind is not a wildcard either way.
 * **`MURMUR_INSECURE_BIND_ANY=1`** (with `MURMUR_BIND_CONTAINER_IP=0` and a
   `0.0.0.0` bind) passes `--insecure-bind-any`: no wildcard check and **no
