@@ -16,6 +16,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-11-14
+
 ### Changed
 
 - **Windows setup shows "by bashycodes" again.** The first setup step's header reads "Murmur by bashycodes", as in the design; 1.6.0 had left the byline out everywhere, but only the Settings footer should go without it.
@@ -1463,7 +1465,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   adaptive connect timeout, connection pre-warm.
 - All P1/P2 findings of the 2026-10-22 review (`docs/reviews/2026-10-22-integration.md`).
 
-[Unreleased]: https://github.com/bashycodes/murmur/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/bashycodes/murmur/compare/v1.6.1...HEAD
+[1.6.1]: https://github.com/bashycodes/murmur/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/bashycodes/murmur/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/bashycodes/murmur/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/bashycodes/murmur/compare/v1.3.0...v1.4.0
