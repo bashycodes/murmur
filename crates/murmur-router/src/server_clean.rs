@@ -105,7 +105,7 @@ impl ServerClean {
     /// else its id); `None` before a hello or from an older server.
     pub fn server_llm_model(&self) -> Option<String> {
         let m = self.backend()?.server_hello()?.models.cleanup?;
-        Some(if m.title.is_empty() { m.id } else { m.title }).filter(|t| !t.is_empty())
+        m.name().map(str::to_owned)
     }
 
     /// The last hello's answer, with a "no" expiring after the TTL or when

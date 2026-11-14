@@ -11,7 +11,7 @@ import { captureChord, RECORDING_TEXT, stopCapture } from "../lib/keycapture.js"
 import { prefsStore, type Prefs } from "../lib/prefs-store.js";
 import type { Feature } from "../lib/router.js";
 import { hebrewChosen, hebrewReady, mb, models, type CatalogEntry } from "./models.js";
-import { pcModelChip, pcModelEntry } from "../lib/model-pages.js";
+import { languageNames, pcModelChip, pcModelEntry } from "../lib/model-pages.js";
 import type { ModelStatus } from "../lib/types.js";
 import { setTheme } from "../lib/theme.js";
 
@@ -236,22 +236,6 @@ function wireEdit(box: HTMLElement): void {
     const p = prefsStore.get();
     if (box.dataset.edit === "languages" && p) showLanguages(p, input.value, false);
   });
-}
-
-/** English names of language codes ("he" → "Hebrew"); the codes without Intl.DisplayNames. */
-function languageNames(codes: string[]): string[] {
-  try {
-    const dn = new Intl.DisplayNames(["en"], { type: "language" });
-    return codes.map((c) => {
-      try {
-        return dn.of(c) ?? c;
-      } catch {
-        return c;
-      }
-    });
-  } catch {
-    return codes;
-  }
 }
 
 /** D37: the keyboard layout's language right now (`null` = unknown), as

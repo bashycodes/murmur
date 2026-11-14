@@ -7,10 +7,12 @@ import assert from "node:assert/strict";
 import {
   cloudTimeout,
   llmModelChip,
+  modelName,
   pcModelChip,
   pcModelEntry,
   rulesAfterLevel,
   serverCleanupLine,
+  serverSpeechLine,
   skippedWarning,
   timeoutNote,
 } from "../dist/lib/model-pages.js";
@@ -103,4 +105,42 @@ test("the Your server row names the server's cleanup model; an older server keep
   assert.equal(serverCleanupLine("192.0.2.10", true, undefined), "192.0.2.10. Cleans the text with its own AI model.");
   assert.equal(serverCleanupLine("192.0.2.10", null, null), "192.0.2.10. Cleans the text with its own AI model.");
   assert.equal(serverCleanupLine("192.0.2.10", false, "Qwen"), "192.0.2.10 has no AI cleanup model: skipped.");
+});
+
+test("the Speech Your server row names the server's speech models; an older server's reads as before", () => {
+  const rtt_ms = { min: 20, median: 23, max: 30 };
+  const speech = { id: "parakeet-unified-en-0.6b-int8", title: "Parakeet unified 0.6B (English)" };
+  const named = {
+    ok: true,
+    rtt_ms,
+    models: { speech, languages: { he: { id: "zipformer-he", title: "Zipformer Hebrew" } } },
+  };
+  assert.equal(
+    serverSpeechLine("homeserver", named),
+    "homeserver · Parakeet unified 0.6B (English) · Hebrew: Zipformer Hebrew · 23 ms",
+  );
+  // A model without a title reads as its id.
+  assert.equal(
+    serverSpeechLine("homeserver", { ...named, models: { speech, languages: { he: { id: "zipformer-he", title: "" } } } }),
+    "homeserver · Parakeet unified 0.6B (English) · Hebrew: zipformer-he · 23 ms",
+  );
+  // No per-language models and no round trip: just the default model.
+  assert.equal(serverSpeechLine("homeserver", { ok: true, rtt_ms: null, models: { speech } }), "homeserver · Parakeet unified 0.6B (English)");
+  // Cleanup-only models (no speech ones) leave the speech line as before.
+  assert.equal(
+    serverSpeechLine("homeserver", { ok: true, rtt_ms, models: { cleanup: { id: "qwen", title: "Qwen" } } }),
+    "homeserver · 23 ms",
+  );
+  // An older server (no models in its hello) or one not probed yet: today's text.
+  assert.equal(serverSpeechLine("homeserver", { ok: true, rtt_ms }), "homeserver · 23 ms");
+  assert.equal(serverSpeechLine("homeserver", null), "homeserver");
+  assert.equal(serverSpeechLine("homeserver", undefined), "homeserver");
+});
+
+test("a server's model reads as its title, else its id (like ServerModel::name)", () => {
+  assert.equal(modelName({ id: "zipformer-he", title: "Zipformer Hebrew" }), "Zipformer Hebrew");
+  assert.equal(modelName({ id: "zipformer-he", title: "" }), "zipformer-he");
+  assert.equal(modelName({ id: "zipformer-he" }), "zipformer-he");
+  assert.equal(modelName({ id: "", title: "" }), "");
+  assert.equal(modelName(undefined), "");
 });

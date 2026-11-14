@@ -13,6 +13,7 @@ import { engineWord, HISTORY_PEEK, historyLastText, latestOnly, pickDictation } 
 import { prefsStore } from "../lib/prefs-store.js";
 import { router } from "../lib/router.js";
 import { moveShown, onMove, rankRows } from "../lib/ranked-list.js";
+import { serverSpeechLine } from "../lib/model-pages.js";
 import { views } from "../lib/views.js";
 import { NOTETAKER_ENABLED } from "../pages/notetaker.js";
 /** Engine switches that save at once (checkbox id = `dev_<field>`). */
@@ -139,9 +140,8 @@ function describe(r) {
     if (r === "server") {
         const f = views.dev?.form;
         const h = views.dev?.route.health;
-        const rtt = h?.ok && h.rtt_ms ? ` · ${h.rtt_ms.median} ms` : "";
         if (f?.host)
-            d.replaceChildren(`${f.host}${rtt}. `, goLink("settings-server", "Connection →"));
+            d.replaceChildren(`${serverSpeechLine(f.host, h)}. `, goLink("settings-server", "Connection →"));
         else
             d.replaceChildren("Not set up yet. ", goLink("settings-server", "Set up →"));
         if (!on)

@@ -546,3 +546,18 @@ fn d98_models_are_additive_both_ways() {
     assert_eq!(m.cleanup.unwrap().title, "");
     assert!(m.speech.is_none() && m.languages.is_empty());
 }
+
+/// D98: a model reads as its title, else its id, else nothing.
+#[test]
+fn d98_model_name_is_title_else_id() {
+    let m = |id: &str, title: &str| ServerModel {
+        id: id.into(),
+        title: title.into(),
+    };
+    assert_eq!(
+        m("zipformer-he", "Hebrew (zipformer)").name(),
+        Some("Hebrew (zipformer)")
+    );
+    assert_eq!(m("zipformer-he", "").name(), Some("zipformer-he"));
+    assert_eq!(m("", "").name(), None);
+}

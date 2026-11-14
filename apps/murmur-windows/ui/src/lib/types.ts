@@ -34,6 +34,22 @@ export interface DevCheck {
   tls_forced: boolean;
 }
 
+/** D98: one model a server runs (murmur-protocol `ServerModel`). */
+export interface ServerModel {
+  /** The library folder name, else the configured file or folder name. */
+  id: string;
+  /** The library tag's title; the server may leave it empty. */
+  title?: string;
+}
+
+/** D98: `hello_ok.models`; every part optional, a server reports only what it runs. */
+export interface ServerModels {
+  cleanup?: ServerModel;
+  speech?: ServerModel;
+  /** Per-language speech models, keyed like `hello_ok.languages`. */
+  languages?: Record<string, ServerModel>;
+}
+
 export interface Health {
   ok: boolean;
   error: string | null;
@@ -49,6 +65,8 @@ export interface Health {
   llm: boolean | null;
   workers: number | null;
   busy: number | null;
+  /** D98: the models the server's hello names (`hello_ok.models`); absent = an older server, or not a server probe. */
+  models?: ServerModels;
   provider?: string;
   model?: string;
   transcript?: string;
