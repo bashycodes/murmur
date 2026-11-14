@@ -16,6 +16,10 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Added
+
+- **Windows Settings links to Murmur on GitHub.** The Settings window's footer, under the page list, now shows a GitHub button next to "Murmur <version>"; it opens github.com/bashycodes/murmur in the browser.
+
 ## [1.5.0] - 2026-11-14
 
 ### Added
