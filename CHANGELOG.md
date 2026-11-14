@@ -16,6 +16,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-11-14
+
 ### Added
 
 - **Windows Settings links to Murmur on GitHub.** The Settings window's footer, under the page list, now shows a GitHub button next to "Murmur <version>"; it opens github.com/bashycodes/murmur in the browser.
@@ -1457,7 +1459,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   adaptive connect timeout, connection pre-warm.
 - All P1/P2 findings of the 2026-10-22 review (`docs/reviews/2026-10-22-integration.md`).
 
-[Unreleased]: https://github.com/bashycodes/murmur/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/bashycodes/murmur/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/bashycodes/murmur/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/bashycodes/murmur/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/bashycodes/murmur/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/bashycodes/murmur/compare/v1.2.0...v1.3.0
