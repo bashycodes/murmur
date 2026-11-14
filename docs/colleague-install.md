@@ -20,6 +20,9 @@ This bundle: version {{VERSION}}, build `{{COMMIT}}`, variant `{{VARIANT}}`.
 | `server/` | `murmur-server` for Linux x86_64 without Docker: the program, its libraries, a config and a systemd service. With Docker you do not need it. |
 | `{{MODELS_ZIP}}` | The speech models (English, many languages, Hebrew, language detection{{DIARIZER_LIST}}). |
 | `{{CLEANUP_ZIP}}` | The AI cleanup model (fixes punctuation, fillers, "scratch that"). Optional. |
+<!-- gemma -->
+| `{{GEMMA_ZIP}}` | Gemma 3 12B, the larger AI cleanup model for a server with an NVIDIA GPU of more than 10 GB, under Google's Gemma Terms of Use (see [With a GPU](#with-a-gpu-a-larger-cleanup-model)). Optional. |
+<!-- /gemma -->
 | `SHA256SUMS.txt` | Fingerprints of the files in this folder; each models zip has its own inside. Check with `sha256sum -c SHA256SUMS.txt`. |
 
 You do not need everything. One person on one PC needs only the Windows
@@ -211,9 +214,23 @@ These steps are for NVIDIA GPUs with CUDA only. AMD and other GPUs (Vulkan)
 are not covered yet. The host needs the NVIDIA driver and the NVIDIA
 container toolkit.
 
-1. **Download Gemma yourself.** Murmur does not ship Gemma or hand it on;
-   it is not in any bundle or zip. Downloading it means you accept
-   Google's [Gemma Terms of Use](https://ai.google.dev/gemma/terms) and its
+<!-- gemma -->
+1. **Unzip Gemma.** Gemma is Google's model, under Google's
+   [Gemma Terms of Use](https://ai.google.dev/gemma/terms) and its
+   [Prohibited Use Policy](https://ai.google.dev/gemma/prohibited_use_policy).
+   Using it means you accept them, so read them first. Both texts are in
+   the zip's `MODEL-LICENSES.txt`, and `GEMMA-NOTICE.txt` says what they ask.
+   If you hand Gemma on, give the notice and the Terms with it. The model is
+   7.3 GB; `SHA256SUMS.txt` in the zip checks it:
+
+   ```sh
+   unzip -q /path/to/{{GEMMA_ZIP}} -d ~/murmur-models
+   (cd ~/murmur-models && sha256sum -c SHA256SUMS.txt)
+   ```
+<!-- /gemma -->
+<!-- nogemma -->
+1. **Download Gemma.** Downloading it means you accept Google's
+   [Gemma Terms of Use](https://ai.google.dev/gemma/terms) and its
    [Prohibited Use Policy](https://ai.google.dev/gemma/prohibited_use_policy),
    so read them first. The model is 7.3 GB, pinned to one Hugging Face
    commit and checked by its SHA-256:
@@ -225,6 +242,7 @@ container toolkit.
    echo "fc57f67efa46d711c346e587cbef7d049e95f3df8db2eb2271153343ef0acc7b  $d/google_gemma-3-12b-it-Q4_K_M.gguf" | sha256sum -c
    printf 'kind = "llm"\ntitle = "Gemma 3 12B Instruct"\ncatalogue_id = "gemma-3-12b-it-q4_k_m"\n' > $d/model.toml
    ```
+<!-- /nogemma -->
 
 2. **Build the CUDA image** from the source. Set `CUDAARCHS` to your GPU's
    compute capability, for example 86 for an RTX 30xx.

@@ -3,6 +3,7 @@
 
     model_notice.py FOLDER...                 # MODEL-LICENSES.txt on stdout
     model_notice.py --check-catalog CATALOG_RS
+    model_notice.py --gemma-notice            # GEMMA-NOTICE.txt on stdout
 
 FOLDER: the model folders in the zip (column 1 of models_manifest.py).
 Prints each model's licence, attribution and how it was converted or
@@ -13,6 +14,11 @@ row is listed as "licence unconfirmed" rather than given one.
 
 --check-catalog: every catalogue entry of model_download.rs has a row whose
 licence equals the entry's `license`, and every row names texts that exist.
+
+--gemma-notice: the notice file of the bundle's Gemma zip (D99). Gemma Terms
+of Use §3.1: every recipient gets Google's notice, is told that the use
+restrictions of §3.2 (the Prohibited Use Policy) apply, and gets a copy of
+the Terms (MODEL-LICENSES.txt in the same zip).
 """
 import pathlib
 import re
@@ -25,8 +31,8 @@ NOTICES = {
     "Llama 3.2 Community License": "Built with Llama. Llama 3.2 is licensed under the Llama 3.2 Community "
                                    "License, Copyright (c) Meta Platforms, Inc. All Rights Reserved.",
     "NVIDIA Open Model License": "Licensed by NVIDIA Corporation under the NVIDIA Open Model License.",
-    # Gemma is never bundled (D80: the bundle refuses it); the notice is here
-    # so that a zip that ever carried it would say what the terms ask.
+    # The notice Gemma Terms of Use §3.1 asks of every copy (the bundle's
+    # Gemma zip, D99).
     "Gemma Terms of Use": "Gemma is provided under and subject to the Gemma Terms of Use found at "
                           "ai.google.dev/gemma/terms.",
 }
@@ -83,8 +89,25 @@ def check_catalog(rs):
         sys.exit("model_notice.py: " + "; ".join(bad))
 
 
+def gemma_notice():
+    return "\n".join([
+        "Gemma 3 12B Instruct (library/gemma-3-12b-it-q4_k_m)", "",
+        NOTICES["Gemma Terms of Use"], "",
+        "By using this copy of Gemma you accept the Gemma Terms of Use",
+        "(https://ai.google.dev/gemma/terms), including the use restrictions of",
+        "its Section 3.2: the Gemma Prohibited Use Policy",
+        "(https://ai.google.dev/gemma/prohibited_use_policy). If you hand Gemma",
+        "on, give the recipient this notice and the Terms too.", "",
+        "The full Terms of Use and Prohibited Use Policy are in",
+        "MODEL-LICENSES.txt in this archive. This copy is bartowski's GGUF",
+        "q4_k_m quantisation of google/gemma-3-12b-it, unchanged.",
+    ]) + "\n"
+
+
 if __name__ == "__main__":
     if sys.argv[1:2] == ["--check-catalog"]:
         check_catalog(sys.argv[2])
+    elif sys.argv[1:2] == ["--gemma-notice"]:
+        sys.stdout.write(gemma_notice())
     else:
         sys.stdout.write(notice(sys.argv[1:]))

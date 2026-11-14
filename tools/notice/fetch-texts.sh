@@ -75,9 +75,8 @@ curl -fsSL --retry 3 https://www.nvidia.com/en-us/agreements/enterprise-software
   python3 -I "$ROOT/tools/notice/html_text.py" 'NVIDIA Open Model License Agreement' 'Version Release Date:' \
   > "$L/models/NVIDIA-Open-Model-License.txt"
 # Gemma 3 (the GPU server's cleanup model, D31/D80): the Terms of Use and the
-# Prohibited Use Policy they include. Murmur never hands Gemma on (whoever
-# runs the server downloads it and accepts these terms); the texts are here
-# for NOTICE. Google edits these pages in place, so they come from fixed
+# Prohibited Use Policy they include; the texts are here for NOTICE and the
+# colleague bundle's Gemma zip (D99), which must carry them. Google edits these pages in place, so they come from fixed
 # Wayback Machine captures of dated versions; a newer version means a new
 # capture and date here.
 gemma() { # DEST TITLE CAPTURE URL START END LAST_MODIFIED

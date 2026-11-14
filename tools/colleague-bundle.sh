@@ -6,7 +6,8 @@
 # build it), the speech models, the AI cleanup model and an install note
 # (docs/colleague-install.md, version filled in; Docker first), plus
 # COPYRIGHT.txt, NOTICE.txt and THIRD-PARTY-LICENSES.txt (D80); each model
-# zip carries MODEL-LICENSES.txt (tools/bundle/model_notice.py).
+# zip carries MODEL-LICENSES.txt (tools/bundle/model_notice.py); with
+# --gemma also Gemma 3 12B in its own zip (D99).
 #
 #   tools/colleague-bundle.sh --source integration|notetaker|BRANCH|COMMIT [options]
 #
@@ -22,7 +23,10 @@
 #                 against the pinned SHA-256), e.g. a murmur-server library.
 # --llm WHICH     cleanup models: default (Qwen2.5 1.5B, 1.1 GB), all
 #                 (+ Llama 3.2 3B for GPUs, Qwen2.5 0.5B; 3.6 GB), none.
-#                 Never Gemma (D80: not ours to hand on).
+# --gemma         also Gemma 3 12B (the GPU server's cleanup model, 7.3 GB)
+#                 in its own zip, <name>-gemma-model.zip, with the Gemma
+#                 Terms of Use, the Prohibited Use Policy and Google's notice
+#                 (D99). Found in --cache or DIR/models, else downloaded.
 # --only LIST     only these model folders (comma-separated ids), e.g. a test.
 # --gpu-models    also the speech models only worth it on an NVIDIA GPU
 #                 (D84: stock whisper-large-v3-turbo-q5_0, 574 MB); left out
@@ -56,10 +60,19 @@ HERE="$ROOT/tools/bundle"
 SOURCE="" OUT="$ROOT/dist/colleague-bundle" LLM=default ONLY="" CACHES=()
 ANDROID_RUN="" WINDOWS_RUN="" ALLOW_STALE=0 SERVER_TARGET="" NO_SERVER=0
 NO_ZIP=0 NO_FETCH=0 DRY=0 NO_IMAGE=0 SHERPA_LIB="${SHERPA_ONNX_LIB_DIR:-}"
-GPU_MODELS=0
+GPU_MODELS=0 GEMMA=0
 # Catalogue speech models bundled only with --gpu-models (D84): on a CPU
 # they are too slow to be anyone's pick.
 GPU_ONLY=",whisper-large-v3-turbo-q5_0,"
+# Gemma 3 12B (--gemma, D99) runs on a server only, so no app catalogue pins
+# it and docs/air-gapped-models.txt leaves it out. Its pin (the same as in
+# docs/colleague-install.md "With a GPU"), as a models_manifest.py row:
+# folder kind engine file bytes sha256 url title.
+GEMMA_DIR=gemma-3-12b-it-q4_k_m
+GEMMA_ROW=$(printf '%s\t' "$GEMMA_DIR" llm gguf google_gemma-3-12b-it-Q4_K_M.gguf 7300575264 \
+  fc57f67efa46d711c346e587cbef7d049e95f3df8db2eb2271153343ef0acc7b \
+  https://huggingface.co/bartowski/google_gemma-3-12b-it-GGUF/resolve/648e3a36a77c8a9f12d86e741f9dcb9089c769c4/google_gemma-3-12b-it-Q4_K_M.gguf)
+GEMMA_ROW="${GEMMA_ROW}Gemma 3 12B (cleanup)"
 
 die() { echo "colleague-bundle.sh: $*" >&2; exit 1; }
 say() { echo "== $*"; }
@@ -71,6 +84,7 @@ while [ $# -gt 0 ]; do
     --llm) LLM="${2:?--llm default|all|none}"; shift ;;
     --only) ONLY="${2:?--only LIST}"; shift ;;
     --gpu-models) GPU_MODELS=1 ;;
+    --gemma) GEMMA=1 ;;
     --android-run) ANDROID_RUN="${2:?}"; shift ;;
     --windows-run) WINDOWS_RUN="${2:?}"; shift ;;
     --allow-stale) ALLOW_STALE=1 ;;
@@ -81,7 +95,7 @@ while [ $# -gt 0 ]; do
     --no-zip) NO_ZIP=1 ;;
     --no-fetch) NO_FETCH=1 ;;
     --dry-run) DRY=1 ;;
-    -h|--help) sed -n '2,50p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,55p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown option: $1" ;;
   esac
   shift
@@ -119,12 +133,6 @@ g show "$COMMIT:docs/air-gapped-models.txt" > "$WORK/list.txt"
 g show "$COMMIT:apps/murmur-windows/src/model_download.rs" > "$WORK/catalog.rs"
 g show "$COMMIT:apps/murmur-windows/src/core_adapter.rs" > "$WORK/core_adapter.rs"
 python3 -I "$HERE/models_manifest.py" "$WORK/list.txt" "$WORK/catalog.rs" "$WORK/core_adapter.rs" > "$WORK/all.tsv"
-# D80: Gemma's terms allow handing it on only under an agreement we do not
-# have, so no bundle carries a model under them, whatever the list says.
-if g show "$COMMIT:tools/notice/models.tsv" 2>/dev/null | awk -F'\t' '$3 ~ /^Gemma Terms of Use/ { print $1 }' |
-    grep -qxFf - <(cut -f1 "$WORK/all.tsv"); then
-  die "the model list names a Gemma model; Gemma is never bundled (D80)"
-fi
 NOTETAKER=0
 grep -q $'\tdiarizer\t' "$WORK/all.tsv" && NOTETAKER=1
 awk -F'\t' -v llm="$LLM" -v only=",$ONLY," -v gpu="$GPU_MODELS" -v gpuonly="$GPU_ONLY" '
@@ -134,6 +142,7 @@ awk -F'\t' -v llm="$LLM" -v only=",$ONLY," -v gpu="$GPU_MODELS" -v gpuonly="$GPU
   llm == "all" || (llm == "default" && $1 == "qwen2.5-1.5b-instruct-q4_k_m") { print }
 ' "$WORK/all.tsv" > "$WORK/models.tsv"
 [ -s "$WORK/models.tsv" ] || die "no models selected (--only $ONLY?)"
+[ "$GEMMA" = 0 ] || printf '%s\n' "$GEMMA_ROW" >> "$WORK/models.tsv"
 if [ -n "$ONLY" ]; then
   for f in ${ONLY//,/ }; do cut -f1 "$WORK/models.tsv" | grep -qx "$f" || die "--only: no model folder $f"; done
 fi
@@ -195,6 +204,7 @@ APK="murmur-android-hybrid-$VERSION-debug.apk"
 WIN_EXE="Murmur_${VERSION}_x64-setup_hybrid.exe"
 MODELS_ZIP="$NAME-speech-models.zip"
 CLEANUP_ZIP="$NAME-cleanup-model.zip"
+GEMMA_ZIP="$NAME-gemma-model.zip"
 # Docker: the server's source (exactly the files `docker build` needs, plus
 # its docs) and the image built from it, in the bundle's docker/ folder.
 SOURCE_TGZ="murmur-server-source-$VERSION.tar.gz"
@@ -234,7 +244,7 @@ if [ "$DRY" = 1 ]; then
   if [ "$NO_IMAGE" = 1 ]; then echo "  docker/$IMAGE_TAR: left out (--no-image)"
   else echo "  docker/$IMAGE_TAR: docker build of that archive (CARGO_BUILD_JOBS=2, MURMUR_GIT_SHA=$SHA7), docker save murmur-server:$VERSION + :latest"; fi
   echo "  notetaker speaker models: $([ "$NOTETAKER" = 1 ] && echo yes || echo "no (not in this commit's catalogue)")"
-  say "would write $BUNDLE/ and $OUT/{$NAME.zip,$MODELS_ZIP$([ "$LLM" != none ] && echo ",$CLEANUP_ZIP")}"
+  say "would write $BUNDLE/ and $OUT/{$NAME.zip,$MODELS_ZIP$([ "$LLM" != none ] && echo ",$CLEANUP_ZIP")$([ "$GEMMA" = 1 ] && echo ",$GEMMA_ZIP")}"
   exit 0
 fi
 
@@ -444,7 +454,7 @@ say "INSTALL.md"
 GLIBC=$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{ print $2 }')
 DIAR=""; [ "$NOTETAKER" = 1 ] && DIAR=", meeting speakers"
 VERSION="$VERSION" COMMIT="$SHA7" VARIANT="$VARIANT" WIN_EXE="$WIN_EXE" APK="$APK" \
-  MODELS_ZIP="$MODELS_ZIP" CLEANUP_ZIP="$CLEANUP_ZIP" GLIBC="glibc $GLIBC" DIARIZER_LIST="$DIAR" \
+  MODELS_ZIP="$MODELS_ZIP" CLEANUP_ZIP="$CLEANUP_ZIP" GEMMA_ZIP="$GEMMA_ZIP" GEMMA="$GEMMA" NOGEMMA=$((1 - GEMMA)) GLIBC="glibc $GLIBC" DIARIZER_LIST="$DIAR" \
   SERVER_NOTE="$SERVER_NOTE" NOTETAKER="$NOTETAKER" SOURCE_TGZ="$SOURCE_TGZ" IMAGE_TAR="$IMAGE_TAR" \
   IMAGE=$((1 - NO_IMAGE)) NOIMAGE="$NO_IMAGE" \
   python3 -I "$HERE/render_install.py" "$ROOT/docs/colleague-install.md" > "$BUNDLE/INSTALL.md"
@@ -454,13 +464,21 @@ mv "$WORK/sums.txt" "$BUNDLE/SHA256SUMS.txt"
 
 # Model zips (stored, not compressed), with a SHA256SUMS.txt inside from the
 # pins (each file was checked above) and MODEL-LICENSES.txt: each model's
-# licence and attribution and the full texts (D80).
-zip_models() { # ZIP llm|speech
+# licence and attribution and the full texts (D80). Gemma has a zip of its
+# own (D99) that also carries GEMMA-NOTICE.txt: Google's notice and the use
+# restrictions whoever uses the copy accepts (Gemma Terms of Use §3.1).
+zip_models() { # ZIP llm|speech|gemma
   local z="$OUT/$1" list="$WORK/$1.list"
-  awk -F'\t' -v want="$2" '($2 == "llm") == (want == "llm")' "$WORK/models.tsv" > "$WORK/$1.tsv"
+  awk -F'\t' -v want="$2" -v gemma="$GEMMA_DIR" '
+    want == "gemma" { if ($1 == gemma) print; next }
+    $1 != gemma && ($2 == "llm") == (want == "llm")' "$WORK/models.tsv" > "$WORK/$1.tsv"
   [ -s "$WORK/$1.tsv" ] || return 0
   cut -f1 "$WORK/$1.tsv" | sort -u | xargs python3 -I "$HERE/model_notice.py" > "$MODELS/MODEL-LICENSES.txt"
   printf '%s\n' SHA256SUMS.txt MODEL-LICENSES.txt > "$list"
+  if [ "$2" = gemma ]; then
+    python3 -I "$HERE/model_notice.py" --gemma-notice > "$MODELS/GEMMA-NOTICE.txt"
+    echo GEMMA-NOTICE.txt >> "$list"
+  fi
   while IFS=$'\t' read -r dir kind _ file _ sha _ _; do
     p=$(mpath "$dir" "$kind" "$file")
     echo "$p" >> "$list"
@@ -469,8 +487,9 @@ zip_models() { # ZIP llm|speech
   done < "$WORK/$1.tsv" > "$MODELS/SHA256SUMS.txt"
   rm -f "$z"
   (cd "$MODELS" && sort -u "$list" | zip -q -0 -@ "$z")
-  rm -f "$MODELS/SHA256SUMS.txt" "$MODELS/MODEL-LICENSES.txt"
+  rm -f "$MODELS/SHA256SUMS.txt" "$MODELS/MODEL-LICENSES.txt" "$MODELS/GEMMA-NOTICE.txt"
   unzip -l "$z" | grep -q ' MODEL-LICENSES.txt$' || die "$1 has no MODEL-LICENSES.txt"
+  [ "$2" != gemma ] || unzip -l "$z" | grep -q ' GEMMA-NOTICE.txt$' || die "$1 has no GEMMA-NOTICE.txt"
   echo "wrote $z ($(mb "$(stat -c %s "$z")"))"
 }
 if [ "$NO_ZIP" = 0 ]; then
@@ -480,8 +499,9 @@ if [ "$NO_ZIP" = 0 ]; then
   echo "wrote $OUT/$NAME.zip ($(mb "$(stat -c %s "$OUT/$NAME.zip")"))"
   zip_models "$MODELS_ZIP" speech
   zip_models "$CLEANUP_ZIP" llm
+  [ "$GEMMA" = 0 ] || zip_models "$GEMMA_ZIP" gemma
   zips=("$NAME.zip")
-  for z in "$MODELS_ZIP" "$CLEANUP_ZIP"; do [ ! -f "$OUT/$z" ] || zips+=("$z"); done
+  for z in "$MODELS_ZIP" "$CLEANUP_ZIP" "$GEMMA_ZIP"; do [ ! -f "$OUT/$z" ] || zips+=("$z"); done
   (cd "$OUT" && sha256sum "${zips[@]}" > "$NAME-SHA256SUMS.txt")
 fi
 say "done: $BUNDLE"
