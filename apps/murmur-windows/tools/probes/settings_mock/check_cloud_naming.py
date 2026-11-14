@@ -95,7 +95,6 @@ with sync_playwright() as p:
         pg.evaluate("window.__obCleanupText = () => document.querySelector('[data-ob-cleanup=cloud] [data-ob-title]').textContent + ' | ' + document.querySelector('[data-ob-cleanup=cloud] [data-ob-desc]').textContent")
         # Fastest way to step 4: your server (address + Test); D94 skips the model step.
         pg.click("[data-ob-engine=server]")
-        pg.click("#ob_server_more")
         pg.fill("#ob_host", "100.64.0.10")
         pg.fill("#ob_token", "abcdefghijklmnop1234")
         pg.click("#ob_test_conn")

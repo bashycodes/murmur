@@ -108,10 +108,9 @@ const engine = stepPanel("engine", 2, `
     <div class="lw-ob-server-slot" data-ob-server-slot="engine">
     <div class="lw-ob-detail lw-ob-server" id="ob_server_detail" hidden>
       <div class="lw-ob-server-bar">
-        <button type="button" class="lw-link lw-ob-copy lw-ob-more" id="ob_server_more" aria-expanded="false" aria-controls="ob_server_fields">I already have a server <span class="lw-ob-chev" aria-hidden="true">▸</span></button>
         <span class="lw-ob-small"><span id="ob_server_help">No server yet? Pick This PC above, or</span> ${extLink(SERVER_HELP, "set up a server →", "lw-link lw-ob-copy")}</span>
       </div>
-      <div class="fl-group" id="ob_server_fields" hidden>
+      <div class="fl-group" id="ob_server_fields">
         <div class="fl-row">
           <div class="fl-row-text"><label class="fl-row-title" for="ob_host">Server address</label><div class="fl-row-desc">Its name or IP address, e.g. mybox.local <small class="field-err" id="ob_host_err"></small></div></div>
           <div class="fl-row-control"><input id="ob_host" class="fl-input is-wide" spellcheck="false" placeholder="mybox.local" /></div>
