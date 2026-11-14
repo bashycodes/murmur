@@ -46,8 +46,6 @@ const st = {
     cleanup: "rules",
     /** The user picked a cleanup option on this run (else it follows the saved settings and the server). */
     cleanupPicked: false,
-    /** Step 2's "I already have a server" is open (the address and token show). */
-    serverOpen: false,
     /** Step 2's Recommended card, decided when setup opens (setup-engine.ts). */
     recEngine: null,
     model: null,
@@ -211,9 +209,8 @@ async function saveServer(patch) {
     $("ob_token_err").textContent = "";
     const host = $("ob_host").value.trim();
     if (!host) {
-        st.serverOpen = true;
-        renderServerFold(st.step === "engine");
         $("ob_host_err").textContent = "Type your server's address.";
+        $("ob_host").focus();
         return false;
     }
     try {
@@ -252,22 +249,9 @@ function placeServerForm() {
     if (slot && form.parentElement !== slot)
         slot.append(form);
     form.hidden = here === "engine" ? st.engine !== "server" : !srcView().serverForm;
-    renderServerFold(here === "engine");
     $("ob_test_conn").textContent = here === "engine" ? "Test" : "Connect";
     $("ob_server_help").textContent =
         here === "engine" ? "No server yet? Pick This PC above, or" : "No server yet? Download from Hugging Face, or";
-}
-/**
- * "I already have a server ▸": on step 2 the address and token sit behind it
- * (open when one is saved); on step 4 they are what the form is for.
- */
-function renderServerFold(onEngineStep) {
-    const more = $("ob_server_more");
-    const open = !onEngineStep || st.serverOpen || hasServer();
-    more.hidden = !onEngineStep || hasServer();
-    more.setAttribute("aria-expanded", String(open));
-    more.querySelector(".lw-ob-chev").textContent = open ? "▾" : "▸";
-    $("ob_server_fields").hidden = !open;
 }
 /** Continue on the engine step: turn the picked engine on and put it first. */
 async function applyEngine() {
@@ -1106,7 +1090,6 @@ function initialChoices() {
     $("ob_token_desc").textContent = dev?.token_saved
         ? "A token is saved. Paste a new one only to replace it."
         : "Shown when you set up your server. Stored encrypted for your Windows account.";
-    st.serverOpen = false;
     $("ob_stt_consent").checked = !!or?.stt.consent;
     $("ob_clean_consent").checked = cloudConsent();
     showKeyRows();
@@ -1169,12 +1152,6 @@ export const onboarding = {
         });
         $("ob_stt_consent").addEventListener("change", () => status("ob_cloud_status", ""));
         $("ob_clean_consent").addEventListener("change", () => status("ob_cleanup_status", ""));
-        $("ob_server_more").addEventListener("click", () => {
-            st.serverOpen = !st.serverOpen;
-            renderServerFold(true);
-            if (st.serverOpen)
-                $("ob_host").focus();
-        });
         $("ob_test_conn").addEventListener("click", () => void (st.step === "engine" ? testServer() : connectServer()));
         $("ob_llm_dl_start").addEventListener("click", () => {
             const e = llmEntry();

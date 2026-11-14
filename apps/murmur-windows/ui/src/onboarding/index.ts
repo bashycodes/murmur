@@ -67,8 +67,6 @@ const st = {
   cleanup: "rules" as SetupCleanup,
   /** The user picked a cleanup option on this run (else it follows the saved settings and the server). */
   cleanupPicked: false,
-  /** Step 2's "I already have a server" is open (the address and token show). */
-  serverOpen: false,
   /** Step 2's Recommended card, decided when setup opens (setup-engine.ts). */
   recEngine: null as Engine | null,
   model: null as ModelStatus | null,
@@ -256,9 +254,8 @@ async function saveServer(patch: Partial<DevForm>): Promise<boolean> {
   $<HTMLElement>("ob_token_err").textContent = "";
   const host = $<HTMLInputElement>("ob_host").value.trim();
   if (!host) {
-    st.serverOpen = true;
-    renderServerFold(st.step === "engine");
     $<HTMLElement>("ob_host_err").textContent = "Type your server's address.";
+    $<HTMLInputElement>("ob_host").focus();
     return false;
   }
   try {
@@ -291,23 +288,9 @@ function placeServerForm(): void {
   const slot = document.querySelector<HTMLElement>(`#onboarding [data-ob-server-slot="${here}"]`);
   if (slot && form.parentElement !== slot) slot.append(form);
   form.hidden = here === "engine" ? st.engine !== "server" : !srcView().serverForm;
-  renderServerFold(here === "engine");
   $<HTMLButtonElement>("ob_test_conn").textContent = here === "engine" ? "Test" : "Connect";
   $<HTMLElement>("ob_server_help").textContent =
     here === "engine" ? "No server yet? Pick This PC above, or" : "No server yet? Download from Hugging Face, or";
-}
-
-/**
- * "I already have a server ▸": on step 2 the address and token sit behind it
- * (open when one is saved); on step 4 they are what the form is for.
- */
-function renderServerFold(onEngineStep: boolean): void {
-  const more = $<HTMLButtonElement>("ob_server_more");
-  const open = !onEngineStep || st.serverOpen || hasServer();
-  more.hidden = !onEngineStep || hasServer();
-  more.setAttribute("aria-expanded", String(open));
-  (more.querySelector(".lw-ob-chev") as HTMLElement).textContent = open ? "▾" : "▸";
-  $<HTMLElement>("ob_server_fields").hidden = !open;
 }
 
 /** Continue on the engine step: turn the picked engine on and put it first. */
@@ -1145,7 +1128,6 @@ function initialChoices(): void {
   $<HTMLElement>("ob_token_desc").textContent = dev?.token_saved
     ? "A token is saved. Paste a new one only to replace it."
     : "Shown when you set up your server. Stored encrypted for your Windows account.";
-  st.serverOpen = false;
   $<HTMLInputElement>("ob_stt_consent").checked = !!or?.stt.consent;
   $<HTMLInputElement>("ob_clean_consent").checked = cloudConsent();
   showKeyRows();
@@ -1198,11 +1180,6 @@ export const onboarding = {
     });
     $<HTMLInputElement>("ob_stt_consent").addEventListener("change", () => status("ob_cloud_status", ""));
     $<HTMLInputElement>("ob_clean_consent").addEventListener("change", () => status("ob_cleanup_status", ""));
-    $<HTMLButtonElement>("ob_server_more").addEventListener("click", () => {
-      st.serverOpen = !st.serverOpen;
-      renderServerFold(true);
-      if (st.serverOpen) $<HTMLInputElement>("ob_host").focus();
-    });
     $<HTMLButtonElement>("ob_test_conn").addEventListener("click", () => void (st.step === "engine" ? testServer() : connectServer()));
     $<HTMLButtonElement>("ob_llm_dl_start").addEventListener("click", () => {
       const e = llmEntry();

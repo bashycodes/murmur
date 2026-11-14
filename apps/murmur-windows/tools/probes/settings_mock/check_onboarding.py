@@ -6,7 +6,7 @@ Probe (Playwright + its bundled Chromium):
 Opens the app as a fresh install (onboarded false): setup covers the shell.
 Walks every step in light and dark: This PC preselected and Recommended
 on a new install (UX review on 1.3.0, amends D73), picks each engine
-(server: "I already have a server" opens address + token + Test; Cloud
+(server: address + token + Test show straight away; Cloud
 (D78): OpenRouter key + consent; both skip the speech-model step), then
 This PC: step 3 is one recommended row + "More languages", each with an
 Installed / Downloading % / Not installed chip and no paths (UX review on
@@ -107,12 +107,9 @@ def walk(pg, scheme):
 
     # Your server: address required, Test, then Continue saves it first in the order.
     pg.click("[data-ob-engine=server]")
-    check(tag + "address and token folded", pg.is_visible("#ob_server_more") and not pg.is_visible("#ob_host") and pg.get_attribute("#ob_server_more", "aria-expanded") == "false")
+    check(tag + "address and token show straight away", pg.is_visible("#ob_host") and pg.is_visible("#ob_token") and pg.is_visible("#ob_test_conn") and not pg.is_visible("#ob_server_more"))
+    check(tag + "set up a server link kept", pg.is_visible("#ob_server_detail [data-open-url]"))
     shot("2b-engine-server")
-    pg.click("#ob_server_more")
-    check(tag + "I already have a server opens them", pg.is_visible("#ob_host") and pg.is_visible("#ob_token") and pg.is_visible("#ob_test_conn") and pg.get_attribute("#ob_server_more", "aria-expanded") == "true")
-    pg.click("#ob_server_more")
-    check(tag + "and folds them again", not pg.is_visible("#ob_host"))
     nxt(pg)
     check(tag + "server needs an address", visible_step(pg) == "engine" and pg.is_visible("#ob_host") and "address" in pg.inner_text("#ob_host_err"))
     pg.click("#ob_server_detail [data-open-url]")
@@ -378,8 +375,6 @@ def rerun(pg, scheme):
     before = rerun_open(pg)
     nxt(pg)
     check(tag + "saved server preselected", checked(pg, "[data-ob-engine]", "data-ob-engine") == ["server"])
-    if not pg.is_visible("#ob_host"):
-        pg.click("#ob_server_more")
     pg.fill("#ob_host", "100.64.0.20")
     pg.fill("#ob_token", "abcdefghijklmnop9999")
     to_try()
@@ -466,7 +461,6 @@ def layout(pg, scheme):
     check(tag + "selected card has the ring", card_ring not in ("", "none"), card_ring)
     shot("2-pc")
     pg.click("[data-ob-engine=server]")
-    pg.click("#ob_server_more")
     pg.fill("#ob_host", "100.64.0.10")
     pg.fill("#ob_token", "abcdefghijklmnop1234")
     shot("2-server-open")
