@@ -145,6 +145,10 @@ class CleanupOrderTest {
         assertEquals("Not set up", CleanupEngines.serverLine(d, caps, true))
         assertEquals("Not in this build", CleanupEngines.serverLine(set, BuildCaps.LOCAL, true))
         assertEquals("Ready · has an AI model", CleanupEngines.serverLine(set, caps, true))
+        // D98: a ready server names its model; an older one (none) reads as before; a model never hides a down server.
+        assertEquals("Ready · Qwen 2.5 1.5B", CleanupEngines.serverLine(set, caps, true, model = "Qwen 2.5 1.5B"))
+        assertEquals("Not reachable", CleanupEngines.serverLine(set, caps, true, circuitOpen = true, model = "Qwen 2.5 1.5B"))
+        assertEquals("Connected · no AI model on the server", CleanupEngines.serverLine(set, caps, false, model = "Qwen 2.5 1.5B"))
         assertEquals("Connected · no AI model on the server", CleanupEngines.serverLine(set, caps, false))
         assertEquals("Not checked yet", CleanupEngines.serverLine(set, caps, null))
         assertEquals("Not reachable", CleanupEngines.serverLine(set, caps, true, circuitOpen = true))

@@ -216,7 +216,7 @@ internal class SpeechPage(
     }
 
     private fun subtitle(r: Route, d: DevSettings, s: Settings) = when (r) {
-        Route.SERVER -> SettingsSummary.server(d, caps, health, checking)
+        Route.SERVER -> SettingsSummary.serverEngine(d, caps, health, checking)
         Route.CLIENT -> SettingsSummary.phoneEngine(s, fileName(app.settings.modelPath), fileName(app.settings.parakeetPath))
         Route.CLOUD -> SettingsSummary.cloudEngine(d, app.cloudKeys.has(OpenRouter.ID))
     }

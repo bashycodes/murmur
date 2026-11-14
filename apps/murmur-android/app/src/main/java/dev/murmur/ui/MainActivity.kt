@@ -19,7 +19,9 @@ import dev.murmur.MurmurApp
 import dev.murmur.R
 import dev.murmur.core.NativeMurmurCore
 import dev.murmur.data.AppVersion
+import dev.murmur.data.ServerHealth
 import dev.murmur.data.SettingsPages
+import dev.murmur.data.SettingsSummary
 import dev.murmur.data.SetupChecklist
 import dev.murmur.data.ShellPages
 import dev.murmur.data.ShellPages.Extra
@@ -196,11 +198,18 @@ class MainActivity : Activity() {
                 val s = runCatching { app.insights.summary() }.getOrNull() ?: return@thread
                 runOnUiThread { ShellPages.stats(s).forEachIndexed { i, (n, u) -> stats.set(i, n, u) } }
             }
+            // D98: the server's models from the last probe of this server (no network here) and the router's hello.
+            val router = if (dev.serverConfigured) app.engine.router() else null
+            val st = router?.cleanupStatus()
+            val health = router?.let { r ->
+                val e = dev.effective(app.caps)
+                ServerHealth.newer(app.serverHealth.fresh(e, System.currentTimeMillis(), Long.MAX_VALUE), runCatching { r.routeStatus().health }.getOrNull())?.report
+            }
             enginesCard(
-                ShellPages.speechLine(dev, app.caps, app.engine.phoneSpeechReady(settings)),
+                ShellPages.speechLine(dev, app.caps, app.engine.phoneSpeechReady(settings), SettingsSummary.serverSpeechModels(health)),
                 ShellPages.cleanupLine(
                     settings, dev.effective(app.caps), app.caps,
-                    serverLlm = if (dev.serverConfigured) app.engine.router()?.cleanupStatus()?.serverLlm else null,
+                    serverLlm = st?.serverLlm, serverModel = SettingsSummary.serverCleanupModel(st?.serverLlmModel, health),
                 ),
             )
             card {

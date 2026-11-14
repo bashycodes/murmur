@@ -4,6 +4,8 @@ import dev.murmur.core.AsrEngine
 import dev.murmur.core.CleanupLevel
 import dev.murmur.core.HealthReport
 import dev.murmur.core.Rtt
+import dev.murmur.core.ServerModel
+import dev.murmur.core.ServerModels
 import dev.murmur.data.SettingsPages.Field
 import dev.murmur.data.SettingsPages.Page
 import org.junit.Assert.assertEquals
@@ -317,6 +319,36 @@ class SettingsPagesTest {
         assertEquals("Not set up", SettingsSummary.server(DevSettings.defaults(caps), caps, ok))
         assertEquals("Off · 100.64.0.10", SettingsSummary.server(dev.copy(allowServer = false), caps, ok))
         assertEquals("Not in this build", SettingsSummary.server(dev, BuildCaps.LOCAL, ok))
+    }
+
+    /** D98: the server's engine rows name its models; an older server's probe names none and reads as before. */
+    @Test fun serverRowsNameTheServersModels() {
+        val caps = BuildCaps.ALL
+        val models = ServerModels(
+            cleanup = ServerModel("qwen2.5-1.5b-instruct-q4_k_m", "Qwen 2.5 1.5B"),
+            speech = ServerModel("parakeet-unified-en-0.6b-int8", "Parakeet"),
+            languages = mapOf("he" to ServerModel("zipformer-he", "")),
+        )
+        val newer = HealthReport(ok = true, rttMs = Rtt(30, 41, 60), models = models)
+        val older = HealthReport(ok = true, rttMs = Rtt(30, 41, 60))
+        assertEquals("Connected · 41 ms · Parakeet · he: zipformer-he", SettingsSummary.serverEngine(dev, caps, newer))
+        assertEquals("Connected · 41 ms", SettingsSummary.serverEngine(dev, caps, older))
+        assertEquals("Not reachable", SettingsSummary.serverEngine(dev, caps, newer.copy(ok = false)))
+        val speech = SettingsSummary.serverSpeechModels(newer)
+        assertNull(SettingsSummary.serverSpeechModels(older))
+        assertEquals("Your server (Parakeet · he: zipformer-he), then this phone", SettingsSummary.speech(dev, caps, true, speech))
+        assertEquals("This phone, then your server (Parakeet · he: zipformer-he)",
+            SettingsSummary.speech(dev.copy(routeOrder = listOf(DevSettings.Route.CLIENT, DevSettings.Route.SERVER)), caps, true, speech))
+        assertEquals("Your server, then this phone", SettingsSummary.speech(dev, caps, true, null))
+        // Cleanup: the router's hello first, else the probe's.
+        assertEquals("Qwen 2.5 1.5B", SettingsSummary.serverCleanupModel(null, newer))
+        assertEquals("Gemma", SettingsSummary.serverCleanupModel("Gemma", newer))
+        assertNull(SettingsSummary.serverCleanupModel(null, older))
+        assertEquals("Light · Your server (Qwen 2.5 1.5B), then rules", SettingsSummary.cleanupRow(s, dev, caps, true, "Qwen 2.5 1.5B"))
+        assertEquals("Light · Your server, then rules", SettingsSummary.cleanupRow(s, dev, caps, true, null))
+        // The drawer's Engines card shows the same text.
+        assertEquals("Your server (Parakeet · he: zipformer-he), then this phone", ShellPages.speechLine(dev, caps, true, speech).text)
+        assertEquals("Light · Your server (Qwen 2.5 1.5B), then rules", ShellPages.cleanupLine(s, dev, caps, true, "Qwen 2.5 1.5B").text)
     }
 
     @Test fun cloudRowNamesTheProviderKeyAndThisMonthsCost() {

@@ -341,10 +341,11 @@ class SettingsActivity : Activity() {
                 bubble.setSubtitle(SettingsSummary.bubble(s))
                 apps.setSubtitle(SettingsSummary.apps(s))
                 timing.setSubtitle(SettingsSummary.timing(s))
-                speechRow.setSubtitle(SettingsSummary.speech(d, caps, app.engine.phoneSpeechReady(s)))
+                val st = if (d.serverConfigured) app.engine.router()?.cleanupStatus() else null
+                speechRow.setSubtitle(SettingsSummary.speech(d, caps, app.engine.phoneSpeechReady(s), SettingsSummary.serverSpeechModels(health)))
                 cleanup?.setSubtitle(SettingsSummary.cleanupRow(
                     s, d.effective(caps), caps,
-                    serverLlm = if (d.serverConfigured) app.engine.router()?.cleanupStatus()?.serverLlm else null,
+                    serverLlm = st?.serverLlm, serverModel = SettingsSummary.serverCleanupModel(st?.serverLlmModel, health),
                 ))
                 server?.setSubtitle(SettingsSummary.server(d, caps, health, checking))
                 cloudRow?.setSubtitle(

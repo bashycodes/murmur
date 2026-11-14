@@ -21,6 +21,7 @@ import dev.murmur.data.DevSettings.CleanupRoute
 import dev.murmur.data.OpenRouter
 import dev.murmur.data.CloudPage
 import dev.murmur.data.Settings
+import dev.murmur.data.SettingsSummary
 
 /**
  * Settings → AI cleanup's "Engines" card (D36): this build's cleanup engines in the stored order,
@@ -119,7 +120,10 @@ internal class CleanupPage(
         CleanupRoute.LOCAL -> CleanupEngines.phoneLine(CleanupEngines.on(d, s, r), app.settings.llmModelPath?.let { java.io.File(it).name }, phoneLoaded())
         CleanupRoute.SERVER -> {
             val st = if (d.serverConfigured) app.engine.router()?.cleanupStatus() else null
-            CleanupEngines.serverLine(d, caps, st?.serverLlm, st?.serverCircuit?.open == true, health, checking)
+            CleanupEngines.serverLine(
+                d, caps, st?.serverLlm, st?.serverCircuit?.open == true, health, checking,
+                model = SettingsSummary.serverCleanupModel(st?.serverLlmModel, health),
+            )
         }
         CleanupRoute.CLOUD -> CleanupEngines.cloudLine(d, app.cloudKeys.has(OpenRouter.ID))
     }

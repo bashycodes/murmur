@@ -270,26 +270,31 @@ object SettingsSummary {
      * Speech to text row, and the drawer's line ([ShellPages.speechLine]): the engines a dictation
      * will try, in order ("Your server, then this phone"; [SpeechEngines.planned]), then the engines
      * that are on but cannot run ("This phone · server not set up"), or "Not set up: …" when none
-     * can run yet. [phoneReady] = [dev.murmur.EngineHolder.phoneSpeechReady].
+     * can run yet. [phoneReady] = [dev.murmur.EngineHolder.phoneSpeechReady]. D98: [serverModels]
+     * ([serverSpeechModels]) names the server's models: "Your server (Parakeet · he: Hebrew), then this phone".
      */
-    fun speech(d: DevSettings, caps: BuildCaps, phoneReady: Boolean): String {
+    fun speech(d: DevSettings, caps: BuildCaps, phoneReady: Boolean, serverModels: String? = null): String {
         val on = SpeechEngines.on(d, caps)
         if (on.isEmpty()) return "Off: no engine is on"
         val planned = SpeechEngines.planned(d, caps, phoneReady)
         val waiting = on - planned.toSet()
         if (planned.isEmpty()) return "Not set up: " + Prose.list(waiting.map { SpeechEngines.setupHint(it) }, "or")
-        val chain = if (planned.size == 1 && waiting.isEmpty()) "${engineName(planned[0])} only"
-        else planned.mapIndexed { i, r -> if (i == 0) engineName(r) else engineName(r).replaceFirstChar { it.lowercase() } }.joinToString(", then ")
+        fun name(r: DevSettings.Route) = engineName(r) + if (r == DevSettings.Route.SERVER && serverModels != null) " ($serverModels)" else ""
+        val chain = if (planned.size == 1 && waiting.isEmpty()) "${name(planned[0])} only"
+        else planned.mapIndexed { i, r -> if (i == 0) name(r) else name(r).replaceFirstChar { it.lowercase() } }.joinToString(", then ")
         return (listOf(chain) + waiting.map { SpeechEngines.notReady(it) }).joinToString(" · ")
     }
 
     /**
      * AI cleanup row: strength, then the engines in the order they are tried, then the formatting
      * rules ("Medium · Cloud, then rules"). [d] = the effective DevSettings (D36 cleanup order);
-     * [serverLlm] from `cleanup_status` ([CleanupEngines.planned]).
+     * [serverLlm] from `cleanup_status` ([CleanupEngines.planned]). D98: [serverModel] names the
+     * server's cleanup model: "Medium · Your server (Qwen 2.5 1.5B), then rules".
      */
-    fun cleanupRow(s: Settings, d: DevSettings, caps: BuildCaps, serverLlm: Boolean? = null): String {
-        val engines = CleanupEngines.plannedFor(s, d, caps, serverLlm).map(CleanupEngines::planName)
+    fun cleanupRow(s: Settings, d: DevSettings, caps: BuildCaps, serverLlm: Boolean? = null, serverModel: String? = null): String {
+        val engines = CleanupEngines.plannedFor(s, d, caps, serverLlm).map { r ->
+            CleanupEngines.planName(r) + if (r == DevSettings.CleanupRoute.SERVER && serverModel != null) " ($serverModel)" else ""
+        }
         val chain = engines + listOfNotNull(if (s.spokenCleanup) "rules" else null)
         if (engines.isEmpty()) return if (s.spokenCleanup) "Rules only" else "Off"
         return levelName(s.cleanupFor(d.offPhoneCleanup)) + " · " + chain.mapIndexed { i, e -> if (i == 0) e.replaceFirstChar { it.uppercase() } else e }.joinToString(", then ")
@@ -307,6 +312,28 @@ object SettingsSummary {
         h.ok -> "Connected" + (h.rttMs?.let { " · ${it.median} ms" } ?: "")
         else -> "Not reachable"
     }
+
+    /**
+     * D98: Speech to text's "Your server" engine row: [server], then the server's speech models once
+     * connected ("Connected · 41 ms · Parakeet · he: Hebrew"). An older server names none: [server] as is.
+     */
+    fun serverEngine(d: DevSettings, caps: BuildCaps, h: dev.murmur.core.HealthReport?, checking: Boolean = false): String =
+        server(d, caps, h, checking) + (serverSpeechModels(h)?.let { " · $it" } ?: "")
+
+    /**
+     * D98: the speech models a connected server's probe ([h]) names, the default then each
+     * per-language one ("Parakeet · he: Hebrew (zipformer)"); null when it names none (an older
+     * server) or the probe failed.
+     */
+    fun serverSpeechModels(h: dev.murmur.core.HealthReport?): String? {
+        val m = h?.takeIf { it.ok }?.models ?: return null
+        val all = listOfNotNull(m.speech?.name) + m.languages.map { (code, l) -> "$code: ${l.name}" }
+        return all.takeIf { it.isNotEmpty() }?.joinToString(" · ")
+    }
+
+    /** D98: the server's cleanup model: the router's `cleanup_status` ([status]), else a connected probe's ([h]). */
+    fun serverCleanupModel(status: String?, h: dev.murmur.core.HealthReport?): String? =
+        status ?: h?.takeIf { it.ok }?.models?.cleanup?.name
 
     /**
      * D78 "Cloud" row, named by the provider (usage counted on this phone only):

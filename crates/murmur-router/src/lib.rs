@@ -613,6 +613,11 @@ pub struct HealthReport {
     pub llm: Option<bool>,
     pub workers: Option<u32>,
     pub busy: Option<u32>,
+    /// D98: the models the server's hello names (cleanup, speech, per
+    /// language). Omitted while empty: an older server, or not a server
+    /// probe. Additive.
+    #[serde(skip_serializing_if = "murmur_protocol::ServerModels::is_empty")]
+    pub models: murmur_protocol::ServerModels,
     /// Unix time of the probe (ms).
     pub checked_at_ms: u64,
     /// Cloud "Test provider" (D18): provider id, model, the transcript of
