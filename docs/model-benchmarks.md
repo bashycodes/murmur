@@ -391,9 +391,10 @@ GPU"). The model is in the server catalogue only
 and SHA-256 are in the install note and in the probe's `fetch.sh`. Its
 licence is the Gemma Terms of Use (NOTICE §5).
 
-Murmur never redistributes Gemma: it is not in any bundle, image or zip
-(D80). Whoever runs the server downloads it from Hugging Face and accepts
-Google's terms.
+Gemma is in no app or image. The colleague bundle carries it in its own
+zip when built with `--gemma` (D99), with the Gemma Terms and Google's
+notice; otherwise whoever runs the server downloads it from Hugging Face.
+Either way, whoever uses it accepts Google's terms.
 
 An earlier note said Qwen2.5-7B had never been run with few-shot turns.
 That is not quite right: the 2026-10-20 table above has a few-shot result

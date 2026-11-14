@@ -101,9 +101,9 @@ pub const CATALOGUE: &[CatalogueModel] = &[
 
 /// Catalogue ids only a server runs, so no app catalogue pins them: Gemma 3
 /// 12B, the cleanup model for a server with a GPU of more than 10 GB (D31).
-/// Its pin is in `docs/colleague-install.md`. Whoever runs the server
-/// downloads it under the Gemma Terms of Use, and Murmur never hands it on
-/// (D80).
+/// Its pin is in `docs/colleague-install.md` and `tools/colleague-bundle.sh`
+/// (`--gemma` puts it in its own zip, D99). It is under the Gemma Terms of
+/// Use.
 pub const SERVER_ONLY: &[&str] = &["gemma-3-12b-it-q4_k_m"];
 
 /// The catalogue model `id` names, if any.

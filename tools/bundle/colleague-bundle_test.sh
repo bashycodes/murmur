@@ -42,9 +42,9 @@ if python3 -I "$H/models_manifest.py" "$T/bad.txt" "$RS" "$CA" > /dev/null 2>&1;
 
 # 4. The install note renders: no placeholder left, notetaker blocks only
 # with NOTETAKER=1, the Docker image's lines only when it is bundled.
-render() { # NOTETAKER IMAGE
-  NOTETAKER=$1 IMAGE=$2 NOIMAGE=$((1 - $2)) VERSION=9.9.9 COMMIT=abc1234 VARIANT=v WIN_EXE=w.exe \
-    APK=a.apk MODELS_ZIP=m.zip CLEANUP_ZIP=c.zip GLIBC="glibc 2.39" DIARIZER_LIST="" SERVER_NOTE="note" \
+render() { # NOTETAKER IMAGE [GEMMA]
+  NOTETAKER=$1 IMAGE=$2 NOIMAGE=$((1 - $2)) GEMMA=${3:-0} NOGEMMA=$((1 - ${3:-0})) VERSION=9.9.9 COMMIT=abc1234 \
+    VARIANT=v WIN_EXE=w.exe APK=a.apk MODELS_ZIP=m.zip CLEANUP_ZIP=c.zip GEMMA_ZIP=g.zip GLIBC="glibc 2.39" DIARIZER_LIST="" SERVER_NOTE="note" \
     SOURCE_TGZ=murmur-server-source-9.9.9.tar.gz IMAGE_TAR=murmur-server-image-9.9.9.tar \
     python3 -I "$H/render_install.py" "$ROOT/docs/colleague-install.md"
 }
@@ -58,6 +58,13 @@ grep -q 'Speaker separation' "$T/i1.md" || fail "notetaker block missing"
 grep -q 'docker load -i docker/murmur-server-image-9.9.9.tar' "$T/i0.md" || fail "docker load missing"
 ! grep -q 'murmur-server-image\|docker load' "$T/n0.md" || fail "image text without an image"
 grep -q 'no prebuilt image' "$T/n0.md" || fail "no-image note missing"
+render 0 1 1 > "$T/g1.md"
+! grep -q '{{\|<!--' "$T/g1.md" || fail "placeholder or marker left in g1.md"
+grep -q 'unzip -q /path/to/g.zip' "$T/g1.md" || fail "Gemma zip install missing"
+grep -q '`g.zip`' "$T/g1.md" || fail "Gemma zip not in the file table"
+! grep -q 'g.zip' "$T/i0.md" || fail "Gemma zip named without --gemma"
+grep -q 'curl -L -o $d/google_gemma-3-12b-it-Q4_K_M.gguf' "$T/i0.md" || fail "Gemma download missing without the zip"
+! grep -q 'curl -L -o $d/google_gemma' "$T/g1.md" || fail "Gemma download shown with the zip"
 if NOTETAKER=0 python3 -I "$H/render_install.py" "$ROOT/docs/colleague-install.md" > /dev/null 2>&1; then
   fail "missing values accepted"
 fi
@@ -112,12 +119,30 @@ fi
 # "unconfirmed", not given a licence.
 MN="$H/model_notice.py"
 python3 -I "$MN" --check-catalog "$RS" || fail "catalogue licences != tools/notice/models.tsv"
-# Gemma (server-only cleanup model) is never handed on: not in the list,
-# refused by the bundle, and its notice is still right should a zip name it.
+# Gemma (server-only cleanup model, D99): only with --gemma, in its own zip
+# (not in the list, so --llm all leaves it out); its row matches the install
+# note's pin; the zip's licence file has the Terms, the Prohibited Use Policy
+# and Google's notice, and GEMMA-NOTICE.txt the notice and both links.
 ! cut -f1 "$T/m.tsv" | grep -qx 'gemma-3-12b-it-q4_k_m' || fail "Gemma is in the bundle model list"
-grep -q 'Gemma is never bundled (D80)' "$B" || fail "colleague-bundle.sh does not refuse Gemma"
-python3 -I "$MN" gemma-3-12b-it-q4_k_m | grep -q 'Gemma is provided under and subject to the Gemma Terms of Use' ||
-  fail "Gemma notice"
+grep -q 'zip_models "$GEMMA_ZIP" gemma' "$B" || fail "colleague-bundle.sh has no Gemma zip"
+python3 -I - "$B" "$ROOT/docs/colleague-install.md" <<'PY' || fail "Gemma pin differs between the bundle and the install note"
+import re, sys
+b, doc = (open(p, encoding="utf-8").read() for p in sys.argv[1:])
+row = re.search(r"GEMMA_ROW=\$\(printf '%s\\t' \"\$GEMMA_DIR\" llm gguf (\S+) (\d+) \\\n\s+([0-9a-f]{64}) \\\n\s+(\S+)\)", b)
+assert row, "GEMMA_ROW not found"
+f, size, sha, url = row.groups()
+assert size == "7300575264" and sha == "fc57f67efa46d711c346e587cbef7d049e95f3df8db2eb2271153343ef0acc7b", row.groups()
+assert url.endswith("/" + f) and url in doc and sha in doc, "install note pin"
+PY
+python3 -I "$MN" gemma-3-12b-it-q4_k_m > "$T/gemma.txt"
+grep -q 'Gemma is provided under and subject to the Gemma Terms of Use' "$T/gemma.txt" || fail "Gemma notice"
+grep -q 'Distribution and Redistribution' "$T/gemma.txt" || fail "Gemma zip: Terms of Use text"
+grep -q '^Gemma Prohibited Use Policy' "$T/gemma.txt" || fail "Gemma zip: Prohibited Use Policy text"
+python3 -I "$MN" --gemma-notice > "$T/gn.txt"
+for s in 'Gemma is provided under and subject to the Gemma Terms of Use found at ai.google.dev/gemma/terms' \
+    'https://ai.google.dev/gemma/terms' 'https://ai.google.dev/gemma/prohibited_use_policy' 'Section 3.2'; do
+  grep -qF "$s" "$T/gn.txt" || fail "GEMMA-NOTICE.txt lacks: $s"
+done
 cut -f1 "$T/m.tsv" | sort -u > "$T/folders"
 while read -r f; do
   grep -q "^$f"$'\t' "$ROOT/tools/notice/models.tsv" || fail "model folder $f has no licence row"
