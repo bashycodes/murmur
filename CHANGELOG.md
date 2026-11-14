@@ -16,6 +16,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-14
+
 ### Added
 
 - **Windows shows the server's speech models** (D98). Settings → Speech → Engines → Your server now reads "<host> · Parakeet unified 0.6B (English) · Hebrew: Zipformer Hebrew · 23 ms. Connection →": the default speech model and each per-language model, by the titles the server reports, once the app has checked the server. An older server shows the line as before.
@@ -1451,7 +1453,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   adaptive connect timeout, connection pre-warm.
 - All P1/P2 findings of the 2026-10-22 review (`docs/reviews/2026-10-22-integration.md`).
 
-[Unreleased]: https://github.com/bashycodes/murmur/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/bashycodes/murmur/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/bashycodes/murmur/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/bashycodes/murmur/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/bashycodes/murmur/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/bashycodes/murmur/compare/v1.1.2...v1.2.0
