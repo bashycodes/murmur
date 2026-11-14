@@ -10,6 +10,7 @@ import {
   pcModelChip,
   pcModelEntry,
   rulesAfterLevel,
+  serverCleanupLine,
   skippedWarning,
   timeoutNote,
 } from "../dist/lib/model-pages.js";
@@ -92,4 +93,14 @@ test("the note shows only while the cloud is on with its own, different limit", 
   // Clamped to the provider's maximum: already the same limit.
   assert.equal(timeoutNote(15000, "openrouter", 8000), "");
   assert.equal(timeoutNote(3000, "openrouter", 2500), "The cloud still waits 2.5 seconds; pick a time to use one for all.");
+});
+
+test("the Your server row names the server's cleanup model; an older server keeps the old line", () => {
+  assert.equal(
+    serverCleanupLine("192.0.2.10", true, "Qwen 2.5 1.5B (cleanup)"),
+    "192.0.2.10 · Qwen 2.5 1.5B (cleanup). Cleans the text with its own AI model.",
+  );
+  assert.equal(serverCleanupLine("192.0.2.10", true, undefined), "192.0.2.10. Cleans the text with its own AI model.");
+  assert.equal(serverCleanupLine("192.0.2.10", null, null), "192.0.2.10. Cleans the text with its own AI model.");
+  assert.equal(serverCleanupLine("192.0.2.10", false, "Qwen"), "192.0.2.10 has no AI cleanup model: skipped.");
 });

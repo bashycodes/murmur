@@ -706,6 +706,11 @@ pub struct CleanupStatus {
     /// server is configured. Additive.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub server_circuit: Option<CircuitStatus>,
+    /// D98: the server's cleanup model as a person reads it
+    /// (`hello_ok.models.cleanup` title, else its id); `None` = not known
+    /// yet, no server, or a server too old to say. Additive.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_llm_model: Option<String>,
     /// D52: `openrouter` or `custom` (the service behind `cloud`). Additive.
     pub provider: crate::cloud::CloudProvider,
     /// D52: the custom server's host (consent, status line); `""` for

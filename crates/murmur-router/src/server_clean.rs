@@ -101,6 +101,13 @@ impl ServerClean {
         self.llm(&b)
     }
 
+    /// D98: the cleanup model the server's last hello names (its title,
+    /// else its id); `None` before a hello or from an older server.
+    pub fn server_llm_model(&self) -> Option<String> {
+        let m = self.backend()?.server_hello()?.models.cleanup?;
+        Some(if m.title.is_empty() { m.id } else { m.title }).filter(|t| !t.is_empty())
+    }
+
     /// The last hello's answer, with a "no" expiring after the TTL or when
     /// the server build changes. A stale "no" starts one background
     /// re-probe and reads as unknown.

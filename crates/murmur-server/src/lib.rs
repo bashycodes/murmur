@@ -58,6 +58,8 @@ pub(crate) struct AppState {
     pub capture: Option<Arc<capture::CaptureStore>>,
     /// The model library (D40); `None` without a library dir.
     pub library: Option<Arc<library::Library>>,
+    /// `hello_ok.models` (D98), named once at start.
+    pub models: murmur_protocol::ServerModels,
     pub kill: watch::Receiver<bool>,
     pub connections: AtomicU64,
     pub sessions: AtomicU64,
@@ -202,6 +204,29 @@ fn acceptor(cfg: &Config) -> Result<Acceptor, String> {
 /// How often changed per-key usage counters are written (D38).
 pub const USAGE_FLUSH: Duration = Duration::from_secs(30);
 
+/// `hello_ok.models` (D98): the cleanup model (when one is loaded), the
+/// default speech model and each language's, named by [`library::model_name`].
+fn server_models(
+    m: &murmur_core::config::ModelConfig,
+    llm: bool,
+    lib: Option<&library::Library>,
+) -> murmur_protocol::ServerModels {
+    let dir = lib.map(library::Library::dir);
+    murmur_protocol::ServerModels {
+        cleanup: m
+            .llm_path
+            .as_deref()
+            .filter(|_| llm)
+            .and_then(|p| library::model_name(dir, p)),
+        speech: library::model_name(dir, &m.asr_path),
+        languages: m
+            .languages
+            .iter()
+            .filter_map(|(k, l)| Some((k.clone(), library::model_name(dir, &l.asr_path)?)))
+            .collect(),
+    }
+}
+
 /// Serve on already-bound listeners with an already-loaded pool.
 pub async fn serve_with_pool(
     cfg: Config,
@@ -263,6 +288,7 @@ pub async fn serve_with_pool(
         let every = Duration::from_secs(cfg.library.rescan_s);
         library::spawn_rescan(l.clone(), every, kill_rx.clone());
     }
+    let models = server_models(pool.model_config(), pool.llm, library.as_deref());
     let cfg_max_conns = cfg.max_connections.max(1);
     let state = Arc::new(AppState {
         pool,
@@ -271,6 +297,7 @@ pub async fn serve_with_pool(
         hooks: Arc::new(Hooks::default()),
         capture,
         library,
+        models,
         kill: kill_rx,
         connections: AtomicU64::new(0),
         sessions: AtomicU64::new(0),

@@ -210,6 +210,11 @@ impl Pool {
         }
     }
 
+    /// The model config this pool was loaded with.
+    pub fn model_config(&self) -> &ModelConfig {
+        &self.model
+    }
+
     pub fn workers(&self) -> u32 {
         self.cores.len() as u32
     }

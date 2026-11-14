@@ -12,6 +12,8 @@
 //! `SessionConfig`, `FieldContext` and `CommitResult` are murmur-core's serde
 //! types verbatim, so additive core fields need no protocol change.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 pub mod admin;
@@ -127,6 +129,49 @@ pub struct HelloOk {
     /// included, on `asr_backend`/`asr_model`. Omitted when there are none.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub languages: Vec<String>,
+    /// The models this server runs, by name (additive, 2026-11-14, D98).
+    /// An older server omits it: a client then shows no model name.
+    /// Boxed: keeps [`ServerMsg`] small (clippy `large_enum_variant`).
+    #[serde(skip_serializing_if = "no_models")]
+    pub models: Box<ServerModels>,
+}
+
+/// One model a server runs (D98).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ServerModel {
+    /// The library folder name (D40) when the model is inside the library,
+    /// else the configured file or folder name.
+    pub id: String,
+    /// What to show a person: the library tag's `title` (`model.toml`)
+    /// when the server has one, else `id`.
+    pub title: String,
+}
+
+/// [`HelloOk::models`] (D98): every field optional, so a server reports
+/// only what it runs.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ServerModels {
+    /// The AI cleanup model (`clean`, and cleanup inside a session).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cleanup: Option<ServerModel>,
+    /// The default speech model (`asr_backend`/`asr_model`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub speech: Option<ServerModel>,
+    /// Per-language speech models, keyed like [`HelloOk::languages`].
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub languages: BTreeMap<String, ServerModel>,
+}
+
+fn no_models(m: &ServerModels) -> bool {
+    m.is_empty()
+}
+
+impl ServerModels {
+    pub fn is_empty(&self) -> bool {
+        self.cleanup.is_none() && self.speech.is_none() && self.languages.is_empty()
+    }
 }
 
 /// [`HelloOk::features`] value for pause-segmented decoding (D22).

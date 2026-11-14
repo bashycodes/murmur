@@ -19,6 +19,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 ### Added
 
 - **The colleague bundle can carry Gemma 3 12B** (D99, owner decision; replaces the rule that Gemma is never handed on). `tools/colleague-bundle.sh --gemma` adds `<name>-gemma-model.zip`: the pinned model, its `model.toml`, `SHA256SUMS.txt`, the Gemma Terms of Use and Prohibited Use Policy, and Google's notice. The install note says how to unzip it for a GPU server; without `--gemma` the bundle is unchanged.
+- **The server names its models, and Windows shows the server's cleanup model** (D98). Settings → AI cleanup → Your server now reads "<host> · Qwen 2.5 1.5B (cleanup). Cleans the text with its own AI model.": the server reports its cleanup, speech and per-language speech models, named by the library's `model.toml` title when the model is in the library folder, else by its folder or file name. An older server shows the line as before.
 
 ### Changed
 

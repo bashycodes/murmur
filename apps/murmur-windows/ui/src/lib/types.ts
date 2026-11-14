@@ -198,6 +198,8 @@ export interface CleanupStatus {
   order?: CleanupRoute[];
   /** D36: the server can clean text (`null`/absent = not known yet or no server). */
   server_llm?: boolean | null;
+  /** D98: the server's cleanup model title (`hello_ok.models`); absent = not known or an older server. */
+  server_llm_model?: string | null;
   /** D36: the server cleanup circuit, when the server is in the order. */
   server_circuit?: Circuit | null;
   consent: boolean;

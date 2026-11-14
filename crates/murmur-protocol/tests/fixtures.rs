@@ -112,6 +112,23 @@ fn hello_ok() -> HelloOk {
         max_samples: 19_200_000,
         features: vec![],
         languages: vec![],
+        models: Box::default(),
+    }
+}
+
+/// A D98 server's models: titles from library tags, else the ids.
+fn server_models() -> ServerModels {
+    let m = |id: &str, title: &str| ServerModel {
+        id: id.into(),
+        title: title.into(),
+    };
+    ServerModels {
+        cleanup: Some(m("qwen2.5-1.5b-instruct-q4_k_m", "Qwen 2.5 1.5B (cleanup)")),
+        speech: Some(m(
+            "parakeet-unified-en-0.6b-int8",
+            "parakeet-unified-en-0.6b-int8",
+        )),
+        languages: [("he".to_string(), m("zipformer-he", "Hebrew (zipformer)"))].into(),
     }
 }
 
@@ -238,6 +255,16 @@ fn server_cases() -> Vec<(&'static str, ServerMsg)> {
                     recv_audio_ms: 1000,
                 },
             },
+        ),
+        (
+            "server_hello_ok_models",
+            ServerMsg::HelloOk(HelloOk {
+                llm: true,
+                features: vec![FEATURE_SEGMENTS.into(), FEATURE_CLEAN.into()],
+                languages: vec!["he".into()],
+                models: Box::new(server_models()),
+                ..hello_ok()
+            }),
         ),
         (
             "server_hello_ok_clean",
@@ -474,4 +501,48 @@ fn d22_fields_are_additive_both_ways() {
     );
     let old_json = std::fs::read_to_string(dir().join("server_result.json")).unwrap();
     assert!(!old_json.contains("wait_ms") && !old_json.contains("segments\": 3"));
+}
+
+/// D98 is additive both ways: an old server's hello (no `models`) parses
+/// with none, a hello without models serialises without the key, and an
+/// old client (a hello type without `models`) reads a new server's hello.
+#[test]
+fn d98_models_are_additive_both_ways() {
+    let read = |n: &str| std::fs::read_to_string(dir().join(format!("{n}.json"))).unwrap();
+    let ServerMsg::HelloOk(h) = serde_json::from_str(&read("server_hello_ok")).unwrap() else {
+        panic!()
+    };
+    assert!(h.models.is_empty());
+    assert!(!read("server_hello_ok").contains("models"));
+
+    let ServerMsg::HelloOk(h) = serde_json::from_str(&read("server_hello_ok_models")).unwrap()
+    else {
+        panic!()
+    };
+    assert_eq!(*h.models, server_models());
+    assert_eq!(
+        h.models.cleanup.map(|m| m.title).as_deref(),
+        Some("Qwen 2.5 1.5B (cleanup)")
+    );
+
+    /// The pre-D98 hello, as an old client's serde sees it.
+    #[derive(serde::Deserialize)]
+    #[allow(dead_code)]
+    struct OldHelloOk {
+        proto: u32,
+        asr_model: String,
+        llm: bool,
+        #[serde(default)]
+        languages: Vec<String>,
+    }
+    let old: OldHelloOk = serde_json::from_str(&read("server_hello_ok_models")).unwrap();
+    assert_eq!(
+        (old.proto, old.llm, old.languages),
+        (1, true, vec!["he".to_string()])
+    );
+
+    // A partial `models` (only what the server runs) fills the rest in.
+    let m: ServerModels = serde_json::from_str(r#"{"cleanup":{"id":"x"}}"#).unwrap();
+    assert_eq!(m.cleanup.unwrap().title, "");
+    assert!(m.speech.is_none() && m.languages.is_empty());
 }
