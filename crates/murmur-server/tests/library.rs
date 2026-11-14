@@ -332,3 +332,27 @@ fn cli_library_list_shows_served_and_skipped() {
     );
     assert!(d.path().join("state/library-hashes.json").is_file());
 }
+
+/// D98: `hello_ok.models` names the configured speech model by its library
+/// title; no LLM is loaded, so there is no cleanup model.
+#[tokio::test(flavor = "multi_thread")]
+async fn health_names_the_speech_model_by_its_library_title() {
+    let d = tempfile::tempdir().unwrap();
+    tag_whisper(d.path());
+    let mut c = lib_cfg(d.path());
+    c.model.asr_path = d
+        .path()
+        .join("lib/whisper-base")
+        .to_string_lossy()
+        .into_owned();
+    let s = start(c).await;
+    let (status, body) = http_get(s.addr(), "/v1/health", Some(TOKEN)).await;
+    assert_eq!(status, 200);
+    let h: murmur_protocol::HelloOk = serde_json::from_str(&body).unwrap();
+    let speech = h.models.speech.expect("speech model named");
+    assert_eq!(
+        (speech.id.as_str(), speech.title.as_str()),
+        ("whisper-base", "Whisper base")
+    );
+    assert!(h.models.cleanup.is_none() && h.models.languages.is_empty());
+}

@@ -735,6 +735,39 @@ async fn file_handler(
     r
 }
 
+/// D98: the name `hello_ok.models` gives the model configured at `path`.
+/// Inside the library (`library` = its folder) the id is the model folder's
+/// name and the title its `model.toml` title; elsewhere, or untagged, the
+/// title is the id: the file or folder name, without a `.gguf` extension.
+/// `None` for an empty path.
+pub fn model_name(library: Option<&Path>, path: &str) -> Option<murmur_protocol::ServerModel> {
+    let p = Path::new(path.trim());
+    let folder = library.and_then(|lib| library_folder(lib, p));
+    let name = match &folder {
+        Some(f) => f.file_name(),
+        None => p.file_name(),
+    }?
+    .to_string_lossy();
+    let id = name.strip_suffix(".gguf").unwrap_or(&name).to_string();
+    let title = folder
+        .and_then(|f| std::fs::read_to_string(f.join(TAG_FILE)).ok())
+        .and_then(|t| parse_tag(&t).ok())
+        .map_or_else(|| id.clone(), |t| t.title);
+    Some(murmur_protocol::ServerModel { id, title })
+}
+
+/// The library's model folder that holds `p` (both canonicalised when they
+/// exist), or `None` when `p` is not below `lib`.
+fn library_folder(lib: &Path, p: &Path) -> Option<PathBuf> {
+    let real = |x: &Path| std::fs::canonicalize(x).unwrap_or_else(|_| x.to_path_buf());
+    let (lib, p) = (real(lib), real(p));
+    let first = p.strip_prefix(&lib).ok()?.components().next()?;
+    match first {
+        std::path::Component::Normal(n) => Some(lib.join(n)),
+        _ => None,
+    }
+}
+
 /// `murmur-server library list`: the served models, then the skipped folders.
 pub fn table(dir: &Path, idx: &Index) -> String {
     let mut out = format!("library: {}\n", dir.display());
@@ -805,6 +838,61 @@ mod tests {
     }
 
     const WHISPER: &str = "kind = \"stt\"\ntitle = \"Whisper base\"\ncatalogue_id = \"whisper-base\"\nengine = \"whisper\"\n";
+
+    #[test]
+    fn model_names_take_the_library_title_else_the_id() {
+        let d = tempfile::tempdir().unwrap();
+        let lib = d.path();
+        put(
+            &lib.join("qwen2.5-1.5b-instruct-q4_k_m/model.toml"),
+            "kind = \"llm\"\ntitle = \"Qwen 2.5 1.5B (cleanup)\"\n",
+        );
+        put(
+            &lib.join("qwen2.5-1.5b-instruct-q4_k_m/qwen2.5-1.5b-instruct-q4_k_m.gguf"),
+            "w",
+        );
+        put(&lib.join("parakeet-unified-en-0.6b-int8/tokens.txt"), "a");
+        put(&lib.join("zipformer-he/model.toml"), "not toml [");
+        let at = |rel: &str| lib.join(rel).to_string_lossy().into_owned();
+        let name = |l: Option<&Path>, p: &str| model_name(l, p).map(|m| (m.id, m.title));
+        let pair = |a: &str, b: &str| Some((a.to_string(), b.to_string()));
+        // Tagged folder: its title; the file inside it names the folder.
+        assert_eq!(
+            name(
+                Some(lib),
+                &at("qwen2.5-1.5b-instruct-q4_k_m/qwen2.5-1.5b-instruct-q4_k_m.gguf")
+            ),
+            pair("qwen2.5-1.5b-instruct-q4_k_m", "Qwen 2.5 1.5B (cleanup)")
+        );
+        // Untagged or invalid tag: the folder id.
+        assert_eq!(
+            name(Some(lib), &at("parakeet-unified-en-0.6b-int8")),
+            pair(
+                "parakeet-unified-en-0.6b-int8",
+                "parakeet-unified-en-0.6b-int8"
+            )
+        );
+        assert_eq!(
+            name(Some(lib), &at("zipformer-he")),
+            pair("zipformer-he", "zipformer-he")
+        );
+        // Outside the library, or no library: the file name.
+        assert_eq!(
+            name(
+                None,
+                &at("qwen2.5-1.5b-instruct-q4_k_m/qwen2.5-1.5b-instruct-q4_k_m.gguf")
+            ),
+            pair(
+                "qwen2.5-1.5b-instruct-q4_k_m",
+                "qwen2.5-1.5b-instruct-q4_k_m"
+            )
+        );
+        assert_eq!(
+            name(Some(lib), "/elsewhere/parakeet-tdt"),
+            pair("parakeet-tdt", "parakeet-tdt")
+        );
+        assert_eq!(name(Some(lib), ""), None);
+    }
 
     #[test]
     fn tagged_folders_are_listed_with_hashes() {

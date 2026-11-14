@@ -1,7 +1,8 @@
 // Pure rules behind the decluttered Speech to text and AI cleanup pages:
 // the This PC model status chip, the "AI engines are skipped" warning, the
-// formatting rules that follow the cleanup level (D27) and the one "Give up
-// after" that sets every cleanup engine's time limit. No DOM, so node tests
+// formatting rules that follow the cleanup level (D27), the one "Give up
+// after" that sets every cleanup engine's time limit and the Your server
+// engine line (D98). No DOM, so node tests
 // run them on the built dist.
 /** Windows paths compare without case and with either slash. */
 const samePath = (a, b) => a.replace(/\//g, "\\").toLowerCase() === b.replace(/\//g, "\\").toLowerCase();
@@ -83,4 +84,14 @@ export function timeoutNote(localMs, provider, cloudMs) {
     if (cloudMs === null || cloudMs === cloudTimeout(provider, localMs))
         return "";
     return `The cloud still waits ${seconds(cloudMs)}; pick a time to use one for all.`;
+}
+/**
+ * The AI cleanup Your server row's line once a host is set: names the
+ * server's cleanup model when its hello does (D98); an older server, or
+ * one not reached yet, gets the line without it.
+ */
+export function serverCleanupLine(host, serverLlm, model) {
+    if (serverLlm === false)
+        return `${host} has no AI cleanup model: skipped.`;
+    return model ? `${host} · ${model}. Cleans the text with its own AI model.` : `${host}. Cleans the text with its own AI model.`;
 }

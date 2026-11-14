@@ -99,6 +99,14 @@ additive core fields need no protocol change. The server never sets
   engine decoded comes back as `result.language` (`"he"` from the Hebrew
   model). A server without a model for the forced language still answers,
   on its default model.
+* Model names (D98, additive): `hello_ok.models` names what the server
+  runs: `cleanup` (only with an LLM loaded), `speech` (the default model)
+  and `languages` (keyed like `hello_ok.languages`), each
+  `{"id":…,"title":…}`. `id` is the library folder (D40) holding the
+  configured path, else its file or folder name (`.gguf` dropped); `title`
+  is that folder's `model.toml` title, else the id. Every part is omitted
+  when unknown and the whole key when empty; an older server sends none, so
+  a client shows no name (fixture `server_hello_ok_models.json`).
 
 ### 3.1 Server limits
 

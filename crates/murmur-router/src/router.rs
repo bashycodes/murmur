@@ -785,6 +785,7 @@ impl Router {
             order: cfg.effective_cleanup_order(),
             server_llm: self.server_clean.server_llm(),
             server_circuit: self.server_clean.circuit_status(),
+            server_llm_model: self.server_clean.server_llm_model(),
             consent: cfg.cloud.cleanup_consent_ok(),
             blocked: supported
                 .then(|| self.gate.not_ready().map(|f| f.as_str().to_string()))

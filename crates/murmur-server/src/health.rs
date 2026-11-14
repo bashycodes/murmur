@@ -31,6 +31,7 @@ pub(crate) fn hello_ok(state: &AppState, proto: u32) -> murmur_protocol::HelloOk
             .map(String::from)
             .collect(),
         languages: state.pool.languages.keys().cloned().collect(),
+        models: Box::new(state.models.clone()),
     }
 }
 

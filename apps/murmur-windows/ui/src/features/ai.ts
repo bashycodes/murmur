@@ -13,7 +13,7 @@ import { prefsStore, type Prefs } from "../lib/prefs-store.js";
 import { moveShown, onMove, rankRows } from "../lib/ranked-list.js";
 import type { Feature } from "../lib/router.js";
 import { withEngine } from "../lib/cleanup-order.js";
-import { cloudTimeout, noAiLevel, rulesAfterLevel, seconds, skippedWarning, timeoutNote } from "../lib/model-pages.js";
+import { cloudTimeout, noAiLevel, rulesAfterLevel, seconds, serverCleanupLine, skippedWarning, timeoutNote } from "../lib/model-pages.js";
 import type { CleanupEngine, CleanupRoute, CleanupStatus, CloudProvider, OrView } from "../lib/types.js";
 import { views } from "../lib/views.js";
 import { cleanupTarget, setCloudTimeouts, showOr } from "./openrouter.js";
@@ -175,8 +175,7 @@ function describe(r: CleanupRoute): void {
     const st = views.or?.cleanup.status;
     const d = $<HTMLElement>("aieng_desc_server");
     if (!host) d.replaceChildren("Not set up yet. ", goLink("settings-server", "Set up →"));
-    else if (st?.server_llm === false) d.textContent = `${host} has no AI cleanup model: skipped.`;
-    else d.textContent = `${host}. Cleans the text with its own AI model.`;
+    else d.textContent = serverCleanupLine(host, st?.server_llm, st?.server_llm_model);
     if (!on) setBadge(r, "Off", "light");
     else if (!host) setBadge(r, "Not set up", "warning");
     else if (st?.server_llm === false) setBadge(r, "No AI model", "warning");
@@ -356,7 +355,12 @@ export async function pollCleanupStatus(): Promise<void> {
     return; // older backend
   }
   const prev = v.cleanup.status;
-  if (prev.server_llm === st.server_llm && !!prev.server_circuit?.open === !!st.server_circuit?.open) return;
+  if (
+    prev.server_llm === st.server_llm &&
+    prev.server_llm_model === st.server_llm_model &&
+    !!prev.server_circuit?.open === !!st.server_circuit?.open
+  )
+    return;
   if (views.or !== v) return; // a newer view arrived meanwhile
   views.setOr({ ...v, cleanup: { ...v.cleanup, status: st } });
 }

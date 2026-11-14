@@ -329,6 +329,7 @@ fn cloud_fixtures() -> Vec<(String, Value)> {
             ],
             server_llm: Some(true),
             server_circuit: Some(CircuitStatus::default()),
+            server_llm_model: None,
             provider: Default::default(),
             host: String::new(),
             consent: true,

@@ -12,7 +12,9 @@ use murmur_core::asr::{AbortFlag, MockAsr};
 use murmur_core::cleanup::{CleanError, CleanPrompt, CleanRequest, CleanTask, Cleaner};
 use murmur_core::config::CleanupLevel;
 use murmur_core::MurmurCore;
-use murmur_protocol::{Cleaned, HelloOk, FEATURE_CLEAN, FEATURE_SUMMARY, FEATURE_TRANSLATE};
+use murmur_protocol::{
+    Cleaned, HelloOk, ServerModel, ServerModels, FEATURE_CLEAN, FEATURE_SUMMARY, FEATURE_TRANSLATE,
+};
 use murmur_router::*;
 
 const KEY: &str = "sk-or-LEAKCHECK-d36-0123456789";
@@ -82,6 +84,8 @@ struct Server {
     summary: Mutex<bool>,
     /// Advertises D90's `translate` with `clean` (a newer server).
     translate: Mutex<bool>,
+    /// D98: the models its hello names (empty: an older server).
+    models: Mutex<ServerModels>,
     hello_known: Mutex<bool>,
     /// `Some(llm)`: the hello of an older connection, still cached until
     /// the next connection (`warm`, `clean`, a session) renews it.
@@ -101,6 +105,7 @@ impl Server {
             llm: Mutex::new(true),
             summary: Mutex::new(true),
             translate: Mutex::new(true),
+            models: Mutex::new(ServerModels::default()),
             hello_known: Mutex::new(true),
             old_hello: Mutex::new(None),
             warms: AtomicUsize::new(0),
@@ -200,6 +205,7 @@ impl Backend for Server {
             .into_iter()
             .chain((llm && *self.translate.lock().unwrap()).then(|| FEATURE_TRANSLATE.into()))
             .collect(),
+            models: Box::new(self.models.lock().unwrap().clone()),
             ..Default::default()
         })
     }
@@ -434,6 +440,31 @@ fn status_reports_server_llm_and_circuit() {
     let k = rig(cfg(&[L, C]));
     let st = k.router.cleanup_status();
     assert_eq!((st.server_llm, st.server_circuit), (None, None));
+}
+
+/// D98: the status names the server's cleanup model by its title, else its
+/// id; an older server's hello names none.
+#[test]
+fn status_names_the_server_cleanup_model() {
+    let k = rig(cfg(&[L, S, C]));
+    assert_eq!(k.router.cleanup_status().server_llm_model, None);
+    let named = |id: &str, title: &str| ServerModels {
+        cleanup: Some(ServerModel {
+            id: id.into(),
+            title: title.into(),
+        }),
+        ..Default::default()
+    };
+    *k.server.models.lock().unwrap() = named("qwen-1.5b", "Qwen 2.5 1.5B (cleanup)");
+    assert_eq!(
+        k.router.cleanup_status().server_llm_model.as_deref(),
+        Some("Qwen 2.5 1.5B (cleanup)")
+    );
+    *k.server.models.lock().unwrap() = named("qwen-1.5b", "");
+    assert_eq!(
+        k.router.cleanup_status().server_llm_model.as_deref(),
+        Some("qwen-1.5b")
+    );
 }
 
 // ---- client STT ------------------------------------------------------------
