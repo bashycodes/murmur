@@ -1,11 +1,11 @@
 // Pure rules behind the decluttered Speech to text and AI cleanup pages:
 // the This PC model status chip, the "AI engines are skipped" warning, the
 // formatting rules that follow the cleanup level (D27), the one "Give up
-// after" that sets every cleanup engine's time limit and the Your server
-// engine line (D98). No DOM, so node tests
-// run them on the built dist.
+// after" that sets every cleanup engine's time limit, the Your server
+// engine lines (D98) and `languageNames` ("he" → "Hebrew"). No DOM, so
+// node tests run them on the built dist.
 
-import type { CloudProvider } from "./types.js";
+import type { CloudProvider, Health, ServerModel } from "./types.js";
 
 /** A speech model in the catalogue, as far as the chip needs it. */
 export interface PcModelEntry {
@@ -120,4 +120,48 @@ export function timeoutNote(localMs: number, provider: CloudProvider, cloudMs: n
 export function serverCleanupLine(host: string, serverLlm: boolean | null | undefined, model: string | null | undefined): string {
   if (serverLlm === false) return `${host} has no AI cleanup model: skipped.`;
   return model ? `${host} · ${model}. Cleans the text with its own AI model.` : `${host}. Cleans the text with its own AI model.`;
+}
+
+/** English names of language codes ("he" → "Hebrew"); the codes without Intl.DisplayNames. */
+export function languageNames(codes: string[]): string[] {
+  try {
+    const dn = new Intl.DisplayNames(["en"], { type: "language" });
+    return codes.map((c) => {
+      try {
+        return dn.of(c) ?? c;
+      } catch {
+        return c;
+      }
+    });
+  } catch {
+    return codes;
+  }
+}
+
+/**
+ * What to show for a server's model: its title, else its id; "" when both
+ * are empty. Mirrors murmur-protocol's `ServerModel::name` (D98).
+ */
+export const modelName = (m: ServerModel | null | undefined): string => m?.title || m?.id || "";
+
+/**
+ * The Speech Your server row's first part once a host is set: the host,
+ * the server's default speech model and each per-language one by name
+ * (`health.models`, D98), then the median round trip ("23 ms") of a probe
+ * that answered. An older server names none, and a server not probed yet
+ * has no `health`: the line is then the host (and round trip) alone.
+ */
+export function serverSpeechLine(host: string, health: Pick<Health, "ok" | "rtt_ms" | "models"> | null | undefined): string {
+  const models = health?.models;
+  const langs = Object.entries(models?.languages ?? {})
+    .map(([code, m]) => [code, modelName(m)] as const)
+    .filter(([, name]) => name);
+  const names = languageNames(langs.map(([code]) => code));
+  const speech = modelName(models?.speech);
+  return [
+    host,
+    ...(speech ? [speech] : []),
+    ...langs.map(([, model], i) => `${names[i]}: ${model}`),
+    ...(health?.ok && health.rtt_ms ? [`${health.rtt_ms.median} ms`] : []),
+  ].join(" · ");
 }

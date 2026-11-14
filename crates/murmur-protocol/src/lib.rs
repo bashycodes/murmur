@@ -164,6 +164,17 @@ pub struct ServerModels {
     pub languages: BTreeMap<String, ServerModel>,
 }
 
+impl ServerModel {
+    /// What to show a person: `title`, else `id`; `None` when both are
+    /// empty (D98).
+    pub fn name(&self) -> Option<&str> {
+        [&self.title, &self.id]
+            .into_iter()
+            .map(String::as_str)
+            .find(|s| !s.is_empty())
+    }
+}
+
 fn no_models(m: &ServerModels) -> bool {
     m.is_empty()
 }

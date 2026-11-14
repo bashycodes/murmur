@@ -8,7 +8,7 @@ import { invoke, onEvent } from "../lib/ipc.js";
 import { captureChord, RECORDING_TEXT, stopCapture } from "../lib/keycapture.js";
 import { prefsStore } from "../lib/prefs-store.js";
 import { hebrewChosen, hebrewReady, mb, models } from "./models.js";
-import { pcModelChip, pcModelEntry } from "../lib/model-pages.js";
+import { languageNames, pcModelChip, pcModelEntry } from "../lib/model-pages.js";
 import { setTheme } from "../lib/theme.js";
 const BOOL_FIELDS = [
     "enable_sounds",
@@ -223,23 +223,6 @@ function wireEdit(box) {
         if (box.dataset.edit === "languages" && p)
             showLanguages(p, input.value, false);
     });
-}
-/** English names of language codes ("he" → "Hebrew"); the codes without Intl.DisplayNames. */
-function languageNames(codes) {
-    try {
-        const dn = new Intl.DisplayNames(["en"], { type: "language" });
-        return codes.map((c) => {
-            try {
-                return dn.of(c) ?? c;
-            }
-            catch {
-                return c;
-            }
-        });
-    }
-    catch {
-        return codes;
-    }
 }
 /** D37: the keyboard layout's language right now (`null` = unknown), as
  *  last read; re-read each time the languages are shown. */

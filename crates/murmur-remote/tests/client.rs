@@ -1,6 +1,6 @@
 //! RemoteBackend against a minimal in-test WebSocket server (no murmur-server):
-//! cancel during commit (review C4, client side) and the resolved-address
-//! cleartext rule (review S6).
+//! cancel during commit (review C4, client side), the resolved-address
+//! cleartext rule (review S6) and the probe's model names (D98).
 #![allow(clippy::result_large_err)] // tungstenite's handshake callback signature
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -9,14 +9,16 @@ use std::time::{Duration, Instant};
 
 use futures_util::{SinkExt, StreamExt};
 use murmur_core::config::SessionConfig;
-use murmur_protocol::{ClientMsg, HelloOk, ServerMsg, OLD_SUBPROTOCOL, SUBPROTOCOL};
+use murmur_protocol::{
+    ClientMsg, HelloOk, ServerModel, ServerModels, ServerMsg, OLD_SUBPROTOCOL, SUBPROTOCOL,
+};
 use murmur_remote::RemoteBackend;
 use murmur_router::{Backend, Failure, ServerConfig};
 use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
 use tokio_tungstenite::tungstenite::http::HeaderValue;
 use tokio_tungstenite::tungstenite::Message;
 
-/// Says hello_ok and started, never answers a commit, records what it got.
+/// Says hello_ok, started and pong, never answers a commit, records what it got.
 struct SilentServer {
     port: u16,
     got: Arc<Mutex<Vec<String>>>,
@@ -30,6 +32,11 @@ impl SilentServer {
 
     /// A server that answers the upgrade with `subprotocol`.
     fn start_speaking(subprotocol: &'static str) -> Self {
+        Self::start_with(subprotocol, ServerModels::default())
+    }
+
+    /// A server whose hello names `models` (empty: an older server).
+    fn start_with(subprotocol: &'static str, models: ServerModels) -> Self {
         let rt = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(1)
             .enable_all()
@@ -44,6 +51,7 @@ impl SilentServer {
         rt.spawn(async move {
             while let Ok((tcp, _)) = l.accept().await {
                 let g3 = g2.clone();
+                let models = models.clone();
                 tokio::spawn(async move {
                     let cb = |_: &Request, mut resp: Response| {
                         resp.headers_mut().insert(
@@ -64,8 +72,10 @@ impl SilentServer {
                             ClientMsg::Hello(_) => Some(ServerMsg::HelloOk(HelloOk {
                                 proto: 1,
                                 workers: 1,
+                                models: Box::new(models.clone()),
                                 ..Default::default()
                             })),
+                            ClientMsg::Ping { n } => Some(ServerMsg::Pong { n: *n, busy: 0 }),
                             ClientMsg::Start { sid, .. } => Some(ServerMsg::Started {
                                 sid: *sid,
                                 queued: false,
@@ -200,4 +210,38 @@ fn warm_opens_the_connection_the_next_session_reuses() {
     c.connect_timeout_ms = 300;
     let e = RemoteBackend::new(c, "test").warm().unwrap_err();
     assert_eq!(e.kind, Failure::ConnectFailed);
+}
+
+/// D98: the probe's report carries the models the server's hello names; an
+/// older server's hello names none, and the report's JSON leaves `models` out.
+#[test]
+fn probe_carries_the_server_models() {
+    let m = |id: &str, title: &str| ServerModel {
+        id: id.into(),
+        title: title.into(),
+    };
+    let models = ServerModels {
+        speech: Some(m(
+            "parakeet-unified-en-0.6b-int8",
+            "Parakeet unified 0.6B (English)",
+        )),
+        languages: [("he".to_string(), m("zipformer-he", ""))].into(),
+        ..Default::default()
+    };
+    let srv = SilentServer::start_with(SUBPROTOCOL, models.clone());
+    let h = RemoteBackend::new(server_cfg("127.0.0.1", srv.port), "test").probe();
+    assert!(h.ok, "{:?}", h.message);
+    assert_eq!(h.models, models);
+    assert_eq!(
+        h.models.speech.as_ref().and_then(|m| m.name()),
+        Some("Parakeet unified 0.6B (English)")
+    );
+    assert_eq!(h.models.languages["he"].name(), Some("zipformer-he"));
+
+    let old = SilentServer::start();
+    let h = RemoteBackend::new(server_cfg("127.0.0.1", old.port), "test").probe();
+    assert!(h.ok, "{:?}", h.message);
+    assert!(h.models.is_empty());
+    let json = serde_json::to_string(&h).unwrap();
+    assert!(!json.contains("\"models\""), "{json}");
 }
