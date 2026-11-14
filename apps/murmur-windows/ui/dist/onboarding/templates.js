@@ -13,9 +13,10 @@ export const URL_LLM = "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF";
 export function ico(path, cls = "lw-ico") {
     return `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="${path}"></path></svg>`;
 }
-const head = (step) => `
+/** The step head; the welcome step's brand carries the "by bashycodes" byline (OnboardWelcome). */
+const head = (step, byline = false) => `
 <div class="lw-ob-head">
-  <span class="lw-ob-brand">Murmur</span>
+  ${byline ? `<span class="lw-ob-brandline"><span class="lw-ob-brand">Murmur</span><span class="lw-ob-byline">by bashycodes</span></span>` : `<span class="lw-ob-brand">Murmur</span>`}
   <span class="fl-overline">Step ${step} of ${STEPS}</span>
 </div>`;
 /** The footer bar (own background, never scrolls): Back, a hint, Continue, lined up with the content. */
@@ -47,7 +48,7 @@ const bullet = (b, rest) => `<li>${ico(CHECK, "lw-ico lw-ob-check")}<span><b>${b
 const welcome = `
 <div class="lw-ob-panel is-split" data-ob-step="welcome">
   <section class="lw-ob-intro">
-    ${head(1)}
+    ${head(1, true)}
     <div class="lw-ob-intro-body">
       <h1 class="fl-serif lw-ob-h1 is-big">Speak, and it's <em>written</em>.</h1>
       <p class="lw-ob-lead">Hold a key, talk, let go. Murmur turns your voice into clean text in whatever app you're typing in.</p>

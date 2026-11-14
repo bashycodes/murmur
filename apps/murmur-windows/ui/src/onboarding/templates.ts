@@ -19,9 +19,10 @@ export function ico(path: string, cls = "lw-ico"): string {
   return `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="${path}"></path></svg>`;
 }
 
-const head = (step: number): string => `
+/** The step head; the welcome step's brand carries the "by bashycodes" byline (OnboardWelcome). */
+const head = (step: number, byline = false): string => `
 <div class="lw-ob-head">
-  <span class="lw-ob-brand">Murmur</span>
+  ${byline ? `<span class="lw-ob-brandline"><span class="lw-ob-brand">Murmur</span><span class="lw-ob-byline">by bashycodes</span></span>` : `<span class="lw-ob-brand">Murmur</span>`}
   <span class="fl-overline">Step ${step} of ${STEPS}</span>
 </div>`;
 
@@ -58,7 +59,7 @@ const bullet = (b: string, rest: string): string =>
 const welcome = `
 <div class="lw-ob-panel is-split" data-ob-step="welcome">
   <section class="lw-ob-intro">
-    ${head(1)}
+    ${head(1, true)}
     <div class="lw-ob-intro-body">
       <h1 class="fl-serif lw-ob-h1 is-big">Speak, and it's <em>written</em>.</h1>
       <p class="lw-ob-lead">Hold a key, talk, let go. Murmur turns your voice into clean text in whatever app you're typing in.</p>

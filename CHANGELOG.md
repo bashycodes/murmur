@@ -16,6 +16,10 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Changed
+
+- **Windows setup shows "by bashycodes" again.** The first setup step's header reads "Murmur by bashycodes", as in the design; 1.6.0 had left the byline out everywhere, but only the Settings footer should go without it.
+
 ## [1.6.0] - 2026-11-14
 
 ### Added
