@@ -162,9 +162,15 @@ code,
   user-select: none;
 }
 .fl-modal-foot .lw-status {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.lw-github {
+  text-decoration: none;
 }
 
 /* ---- shared bits ---- */
