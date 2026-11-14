@@ -21,6 +21,20 @@ data class Rtt(val min: Long, val median: Long, val max: Long)
 /** murmur_router `CloudCapabilities` (`nativeCloudCapabilities()`, D18): does this library carry the cloud client. */
 data class CloudCapabilities(val cloud: Boolean = false, val adapters: List<String> = emptyList())
 
+/** D98: one model a server runs (`hello_ok.models`); [name] is what a person reads. */
+data class ServerModelName(val id: String = "", val title: String = "") {
+    /** The friendly title, else the id. */
+    val name: String get() = title.ifEmpty { id }
+}
+
+/** D98 `HealthReport.models`: all empty from an older server, which names none. */
+data class ServerModelNames(
+    val cleanup: ServerModelName? = null,
+    val speech: ServerModelName? = null,
+    /** Per-language speech models by language code (`he`), sorted by code. */
+    val languages: Map<String, ServerModelName> = emptyMap(),
+)
+
 /** murmur_router `HealthReport` (`nativeProbeServer`, `RouteStatus.health`). */
 data class HealthReport(
     val ok: Boolean,
@@ -40,6 +54,8 @@ data class HealthReport(
     val llm: Boolean? = null,
     val workers: Int? = null,
     val busy: Int? = null,
+    /** D98: the models the server's hello names; empty from an older server. */
+    val models: ServerModelNames = ServerModelNames(),
     val checkedAtMs: Long? = null,
     /** D18 Test provider (`engine:"cloud"`): provider id, model, what it heard, round trip, cost. */
     val provider: String? = null,
@@ -89,6 +105,8 @@ data class CleanupStatus(
     val serverLlm: Boolean? = null,
     /** D36: the server cleanup's breaker, when the server is in the order and set up. */
     val serverCircuit: CircuitStatus? = null,
+    /** D98: the server's cleanup model (its title, else its id); null = not known yet or an older server. */
+    val serverLlmModel: String? = null,
     /** D52: "openrouter" | "custom" (the cloud cleanup route's service). */
     val provider: String = "openrouter",
     /** D52: the custom server's host; "" for OpenRouter. */
@@ -195,6 +213,7 @@ object RouterJson {
         llm = o.optBoolOrNull("llm"),
         workers = o.optIntOrNull("workers"),
         busy = o.optIntOrNull("busy"),
+        models = decodeServerModelNames(o.optJSONObject("models")),
         checkedAtMs = o.optLongOrNull("checked_at_ms"),
         provider = o.optStringOrNull("provider"),
         model = o.optStringOrNull("model"),
@@ -202,6 +221,18 @@ object RouterJson {
         latencyMs = o.optLongOrNull("latency_ms"),
         costUsd = o.optDoubleOrNull("cost_usd"),
     )
+
+    /** D98 `models`; a missing object or entry (an older server) decodes as empty, an entry with no name as none. */
+    fun decodeServerModelNames(o: JSONObject?): ServerModelNames {
+        if (o == null) return ServerModelNames()
+        fun model(m: JSONObject?) = m?.let { ServerModelName(it.optString("id"), it.optString("title")) }?.takeIf { it.name.isNotEmpty() }
+        val langs = o.optJSONObject("languages")
+        return ServerModelNames(
+            cleanup = model(o.optJSONObject("cleanup")),
+            speech = model(o.optJSONObject("speech")),
+            languages = langs?.keys()?.asSequence()?.mapNotNull { k -> model(langs.optJSONObject(k))?.let { k to it } }?.toMap()?.toSortedMap() ?: emptyMap(),
+        )
+    }
 
     fun decodeRouteStatus(json: String): RouteStatus = try {
         val o = JSONObject(json)
@@ -241,6 +272,7 @@ object RouterJson {
             customMonthCostUsd = o.optDoubleOrNull("custom_month_cost_usd") ?: 0.0,
             serverLlm = o.optBoolOrNull("server_llm"),
             serverCircuit = o.optJSONObject("server_circuit")?.let(::circuitOf),
+            serverLlmModel = o.optStringOrNull("server_llm_model")?.takeIf { it.isNotEmpty() },
             provider = o.optString("provider", "openrouter").ifEmpty { "openrouter" },
             host = o.optString("host"),
         )

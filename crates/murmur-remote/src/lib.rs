@@ -346,6 +346,7 @@ impl Backend for RemoteBackend {
             llm: Some(hello.llm),
             workers: Some(hello.workers),
             busy: Some(conn.last_busy().unwrap_or(hello.busy)),
+            models: *hello.models,
             checked_at_ms: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(0, |d| d.as_millis() as u64),

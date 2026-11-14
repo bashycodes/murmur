@@ -25,6 +25,13 @@ class ServerHealth {
     fun fresh(d: DevSettings, nowMs: Long, maxAgeMs: Long = MAX_AGE_MS): Probe? =
         last?.takeIf { it.key == key(d) && isFresh(it.probe.atMs, nowMs, maxAgeMs) }?.probe
 
+    /**
+     * The newest known state of the server [d] names, whatever its age: this process's recorded probe
+     * or the router's own last health ([router], [newer]). No network; callers judge freshness.
+     */
+    fun latest(d: DevSettings, router: HealthReport?): Probe? =
+        newer(last?.takeIf { it.key == key(d) }?.probe, router)
+
     companion object {
         /** A probe younger than this is shown as is (else the Settings page probes once). */
         const val MAX_AGE_MS = 60_000L

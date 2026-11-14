@@ -124,6 +124,20 @@ class RouterJsonTest {
         assertEquals("cleanup", u.providers[1].purpose)
     }
 
+    /** D98: a newer server's probe names its models; an older one's (`health_ok.json`) names none. */
+    @Test fun healthFixtureNamesTheServersModels() {
+        val h = RouterJson.decodeHealth(fixture("health_ok_models.json"))
+        assertEquals(ServerModelName("qwen2.5-1.5b-instruct-q4_k_m", "Qwen 2.5 1.5B (cleanup)"), h.models.cleanup)
+        assertEquals("parakeet-unified-en-0.6b-int8", h.models.speech!!.name)
+        assertEquals(mapOf("he" to ServerModelName("zipformer-he", "Hebrew (zipformer)")), h.models.languages)
+        assertEquals(ServerModelNames(), RouterJson.decodeHealth(fixture("health_ok.json")).models)
+        // A title-less entry falls back to its id; one with neither is no model.
+        val m = RouterJson.decodeServerModelNames(JSONObject("""{"speech":{"id":"whisper-small"},"cleanup":{}}"""))
+        assertEquals("whisper-small", m.speech!!.name); assertNull(m.cleanup)
+        assertNull(RouterJson.decodeCleanupStatus("{}").serverLlmModel)
+        assertEquals("Qwen 2.5 1.5B", RouterJson.decodeCleanupStatus("""{"server_llm_model":"Qwen 2.5 1.5B"}""").serverLlmModel)
+    }
+
     /** D28 `nativeCleanupStatus` (`cleanup_status.json`) and its status line. */
     @Test fun cleanupStatusFixture() {
         val c = RouterJson.decodeCleanupStatus(fixture("cleanup_status.json"))

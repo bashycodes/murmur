@@ -36,6 +36,7 @@ import dev.murmur.data.SettingsPages
 import dev.murmur.data.SettingsPages.Field
 import dev.murmur.data.SettingsPages.Page
 import dev.murmur.data.SettingsSummary
+import dev.murmur.data.serverModelNames
 import dev.murmur.data.ShellPages
 import dev.murmur.server.ServerModels
 import java.io.File
@@ -203,7 +204,7 @@ class SettingsActivity : Activity() {
         checking = true
         refreshServer()
         thread(name = "settings-health") {
-            var p = ServerHealth.newer(shared, runCatching { r.routeStatus().health }.getOrNull())
+            var p = app.serverHealth.latest(e, runCatching { r.routeStatus().health }.getOrNull())
             if (!ServerHealth.isFresh(p?.atMs, System.currentTimeMillis())) {
                 runCatching { r.probeSaved() }.getOrNull()?.let { h ->
                     val now = System.currentTimeMillis()
@@ -341,11 +342,10 @@ class SettingsActivity : Activity() {
                 bubble.setSubtitle(SettingsSummary.bubble(s))
                 apps.setSubtitle(SettingsSummary.apps(s))
                 timing.setSubtitle(SettingsSummary.timing(s))
-                speechRow.setSubtitle(SettingsSummary.speech(d, caps, app.engine.phoneSpeechReady(s)))
-                cleanup?.setSubtitle(SettingsSummary.cleanupRow(
-                    s, d.effective(caps), caps,
-                    serverLlm = if (d.serverConfigured) app.engine.router()?.cleanupStatus()?.serverLlm else null,
-                ))
+                val st = if (d.serverConfigured) app.engine.router()?.cleanupStatus() else null
+                val models = health.serverModelNames(st?.serverLlmModel)
+                speechRow.setSubtitle(SettingsSummary.speech(d, caps, app.engine.phoneSpeechReady(s), models))
+                cleanup?.setSubtitle(SettingsSummary.cleanupRow(s, d.effective(caps), caps, serverLlm = st?.serverLlm, server = models))
                 server?.setSubtitle(SettingsSummary.server(d, caps, health, checking))
                 cloudRow?.setSubtitle(
                     SettingsSummary.cloud(d, app.cloudKeys.has(OpenRouter.ID), CloudUsage.decode(app.engine.router()?.cloudUsageJson() ?: app.dev.cloudUsageJson)),

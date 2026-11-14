@@ -1,6 +1,7 @@
 package dev.murmur.data
 
 import dev.murmur.core.HealthReport
+import dev.murmur.core.ServerModelNames
 import dev.murmur.data.DevSettings.CleanupRoute
 
 /**
@@ -104,11 +105,20 @@ object CleanupEngines {
      * ([circuitOpen] = recently failing) or a failed health probe ([h]: Server → Test connection's or the
      * settings pages', fresh on page open). The hello's "has a model" ([serverLlm], null = none yet) is
      * kept by the router with no expiry, so it must not hide a server that is down now. Then the hello,
-     * else the probe ([checking] while one runs).
+     * else the probe ([checking] while one runs). D98: a ready server names its cleanup
+     * model ([server], [cleanupLabel]): "Ready · Qwen 2.5 1.5B (cleanup)"; an older server names none.
      */
     fun serverLine(
         d: DevSettings, caps: BuildCaps, serverLlm: Boolean?, circuitOpen: Boolean = false,
-        h: HealthReport? = null, checking: Boolean = false,
+        h: HealthReport? = null, checking: Boolean = false, server: ServerModelNames = ServerModelNames(),
+    ): String {
+        val line = serverState(d, caps, serverLlm, circuitOpen, h, checking)
+        return if (line == READY) withModel("Ready", server.cleanupLabel() ?: return line) else line
+    }
+
+    private fun serverState(
+        d: DevSettings, caps: BuildCaps, serverLlm: Boolean?, circuitOpen: Boolean,
+        h: HealthReport?, checking: Boolean,
     ): String = when {
         !caps.remote -> "Not in this build"
         !d.serverConfigured -> "Not set up"

@@ -2,6 +2,7 @@ package dev.murmur.data
 
 import dev.murmur.core.AsrEngine
 import dev.murmur.core.CleanupLevel
+import dev.murmur.core.ServerModelNames
 
 /**
  * Main Settings is a hub with focused sub-pages (ui/SettingsActivity), like Developer settings.
@@ -270,26 +271,34 @@ object SettingsSummary {
      * Speech to text row, and the drawer's line ([ShellPages.speechLine]): the engines a dictation
      * will try, in order ("Your server, then this phone"; [SpeechEngines.planned]), then the engines
      * that are on but cannot run ("This phone · server not set up"), or "Not set up: …" when none
-     * can run yet. [phoneReady] = [dev.murmur.EngineHolder.phoneSpeechReady].
+     * can run yet. [phoneReady] = [dev.murmur.EngineHolder.phoneSpeechReady]. D98: names the
+     * models the [server] runs ([speechLabel]): "Your server · Parakeet · Hebrew: Zipformer, then this phone".
      */
-    fun speech(d: DevSettings, caps: BuildCaps, phoneReady: Boolean): String {
+    fun speech(d: DevSettings, caps: BuildCaps, phoneReady: Boolean, server: ServerModelNames = ServerModelNames()): String {
         val on = SpeechEngines.on(d, caps)
         if (on.isEmpty()) return "Off: no engine is on"
         val planned = SpeechEngines.planned(d, caps, phoneReady)
         val waiting = on - planned.toSet()
         if (planned.isEmpty()) return "Not set up: " + Prose.list(waiting.map { SpeechEngines.setupHint(it) }, "or")
-        val chain = if (planned.size == 1 && waiting.isEmpty()) "${engineName(planned[0])} only"
-        else planned.mapIndexed { i, r -> if (i == 0) engineName(r) else engineName(r).replaceFirstChar { it.lowercase() } }.joinToString(", then ")
+        fun name(r: DevSettings.Route) = if (r == DevSettings.Route.SERVER) withModel(engineName(r), server.speechLabel()) else engineName(r)
+        val chain = if (planned.size == 1 && waiting.isEmpty()) "${name(planned[0])} only"
+        else planned.mapIndexed { i, r -> if (i == 0) name(r) else name(r).replaceFirstChar { it.lowercase() } }.joinToString(", then ")
         return (listOf(chain) + waiting.map { SpeechEngines.notReady(it) }).joinToString(" · ")
     }
 
     /**
      * AI cleanup row: strength, then the engines in the order they are tried, then the formatting
      * rules ("Medium · Cloud, then rules"). [d] = the effective DevSettings (D36 cleanup order);
-     * [serverLlm] from `cleanup_status` ([CleanupEngines.planned]).
+     * [serverLlm] from `cleanup_status` ([CleanupEngines.planned]). D98: names the
+     * [server]'s cleanup model ([cleanupLabel]): "Medium · Your server · Qwen 2.5 1.5B (cleanup), then rules".
      */
-    fun cleanupRow(s: Settings, d: DevSettings, caps: BuildCaps, serverLlm: Boolean? = null): String {
-        val engines = CleanupEngines.plannedFor(s, d, caps, serverLlm).map(CleanupEngines::planName)
+    fun cleanupRow(
+        s: Settings, d: DevSettings, caps: BuildCaps, serverLlm: Boolean? = null,
+        server: ServerModelNames = ServerModelNames(),
+    ): String {
+        val engines = CleanupEngines.plannedFor(s, d, caps, serverLlm).map { r ->
+            if (r == DevSettings.CleanupRoute.SERVER) withModel(CleanupEngines.planName(r), server.cleanupLabel()) else CleanupEngines.planName(r)
+        }
         val chain = engines + listOfNotNull(if (s.spokenCleanup) "rules" else null)
         if (engines.isEmpty()) return if (s.spokenCleanup) "Rules only" else "Off"
         return levelName(s.cleanupFor(d.offPhoneCleanup)) + " · " + chain.mapIndexed { i, e -> if (i == 0) e.replaceFirstChar { it.uppercase() } else e }.joinToString(", then ")
@@ -307,6 +316,13 @@ object SettingsSummary {
         h.ok -> "Connected" + (h.rttMs?.let { " · ${it.median} ms" } ?: "")
         else -> "Not reachable"
     }
+
+    /**
+     * D98: Speech to text's "Your server" engine row: [server], then the server's speech models once
+     * connected ("Connected · 41 ms · Parakeet · Hebrew: Zipformer"). An older server names none: [server] as is.
+     */
+    fun serverEngine(d: DevSettings, caps: BuildCaps, h: dev.murmur.core.HealthReport?, checking: Boolean = false): String =
+        withModel(server(d, caps, h, checking), h.serverModelNames().speechLabel())
 
     /**
      * D78 "Cloud" row, named by the provider (usage counted on this phone only):

@@ -163,6 +163,26 @@ fn health_ok() -> HealthReport {
     }
 }
 
+/// D98: a newer server's probe names its models (an older one omits `models`).
+fn health_ok_models() -> HealthReport {
+    let m = |id: &str, title: &str| murmur_protocol::ServerModel {
+        id: id.into(),
+        title: title.into(),
+    };
+    HealthReport {
+        llm: Some(true),
+        models: murmur_protocol::ServerModels {
+            cleanup: Some(m("qwen2.5-1.5b-instruct-q4_k_m", "Qwen 2.5 1.5B (cleanup)")),
+            speech: Some(m(
+                "parakeet-unified-en-0.6b-int8",
+                "parakeet-unified-en-0.6b-int8",
+            )),
+            languages: [("he".to_string(), m("zipformer-he", "Hebrew (zipformer)"))].into(),
+        },
+        ..health_ok()
+    }
+}
+
 fn health_auth_failed() -> HealthReport {
     HealthReport {
         ok: false,
@@ -367,6 +387,10 @@ fn all() -> Vec<(String, Value)> {
         serde_json::to_value(health_ok()).unwrap(),
     ));
     v.push((
+        "health_ok_models".into(),
+        serde_json::to_value(health_ok_models()).unwrap(),
+    ));
+    v.push((
         "health_auth_failed".into(),
         serde_json::to_value(health_auth_failed()).unwrap(),
     ));
@@ -537,7 +561,7 @@ fn every_fixture_parses_and_round_trips() {
         assert_eq!(back, v, "{name}");
         n += 1;
     }
-    assert_eq!(n, 26);
+    assert_eq!(n, 27);
 }
 
 #[test]

@@ -4,6 +4,9 @@ import dev.murmur.core.AsrEngine
 import dev.murmur.core.CleanupLevel
 import dev.murmur.core.HealthReport
 import dev.murmur.core.Rtt
+import dev.murmur.core.RouterJson
+import dev.murmur.core.ServerModelName
+import dev.murmur.core.ServerModelNames
 import dev.murmur.data.SettingsPages.Field
 import dev.murmur.data.SettingsPages.Page
 import org.junit.Assert.assertEquals
@@ -317,6 +320,38 @@ class SettingsPagesTest {
         assertEquals("Not set up", SettingsSummary.server(DevSettings.defaults(caps), caps, ok))
         assertEquals("Off · 100.64.0.10", SettingsSummary.server(dev.copy(allowServer = false), caps, ok))
         assertEquals("Not in this build", SettingsSummary.server(dev, BuildCaps.LOCAL, ok))
+    }
+
+    /**
+     * D98: the server's engine rows name its models by their titles (the router fixture's real ones,
+     * "(cleanup)" included, never nested in brackets) and languages by name; an older server's probe
+     * names none and reads as before.
+     */
+    @Test fun serverRowsNameTheServersModels() {
+        val caps = BuildCaps.ALL
+        val newer = RouterJson.decodeHealth(requireNotNull(javaClass.classLoader!!.getResource("health_ok_models.json")).readText())
+        val older = newer.copy(models = ServerModelNames())
+        val models = newer.serverModelNames()
+        val speech = "parakeet-unified-en-0.6b-int8 · Hebrew: Hebrew (zipformer)"
+        assertEquals("Connected · 4 ms · $speech", SettingsSummary.serverEngine(dev, caps, newer))
+        assertEquals("Connected · 4 ms", SettingsSummary.serverEngine(dev, caps, older))
+        assertEquals("Not reachable", SettingsSummary.serverEngine(dev, caps, newer.copy(ok = false)))
+        assertEquals("Your server · $speech, then this phone", SettingsSummary.speech(dev, caps, true, models))
+        assertEquals("This phone, then your server · $speech",
+            SettingsSummary.speech(dev.copy(routeOrder = listOf(DevSettings.Route.CLIENT, DevSettings.Route.SERVER)), caps, true, models))
+        assertEquals("Your server, then this phone", SettingsSummary.speech(dev, caps, true, older.serverModelNames()))
+        // A language with no known name keeps its code.
+        assertEquals("fr: whisper-fr", ServerModelNames(languages = mapOf("fr" to ServerModelName("whisper-fr"))).speechLabel())
+        // Cleanup: the router's hello (cleanup_status) ahead of the probe's; none from an older server or a failed probe.
+        assertEquals("Qwen 2.5 1.5B (cleanup)", models.cleanupLabel())
+        assertEquals("Gemma 3 12B", newer.serverModelNames("Gemma 3 12B").cleanupLabel())
+        assertNull(older.serverModelNames().cleanupLabel())
+        assertNull(newer.copy(ok = false).serverModelNames().cleanupLabel())
+        assertEquals("Light · Your server · Qwen 2.5 1.5B (cleanup), then rules", SettingsSummary.cleanupRow(s, dev, caps, true, models))
+        assertEquals("Light · Your server, then rules", SettingsSummary.cleanupRow(s, dev, caps, true, older.serverModelNames()))
+        // The drawer's Engines card shows the same text.
+        assertEquals("Your server · $speech, then this phone", ShellPages.speechLine(dev, caps, true, models).text)
+        assertEquals("Light · Your server · Qwen 2.5 1.5B (cleanup), then rules", ShellPages.cleanupLine(s, dev, caps, true, models).text)
     }
 
     @Test fun cloudRowNamesTheProviderKeyAndThisMonthsCost() {

@@ -18,8 +18,10 @@ import dev.murmur.EngineHolder
 import dev.murmur.MurmurApp
 import dev.murmur.R
 import dev.murmur.core.NativeMurmurCore
+import dev.murmur.core.ServerModelNames
 import dev.murmur.data.AppVersion
 import dev.murmur.data.SettingsPages
+import dev.murmur.data.serverModelNames
 import dev.murmur.data.SetupChecklist
 import dev.murmur.data.ShellPages
 import dev.murmur.data.ShellPages.Extra
@@ -196,12 +198,14 @@ class MainActivity : Activity() {
                 val s = runCatching { app.insights.summary() }.getOrNull() ?: return@thread
                 runOnUiThread { ShellPages.stats(s).forEachIndexed { i, (n, u) -> stats.set(i, n, u) } }
             }
+            // D98: the server's models from this process's last probe of it (in memory, no router or
+            // network call on the UI thread) and the router's hello (cleanup_status).
+            val effective = dev.effective(app.caps)
+            val st = if (dev.serverConfigured) app.engine.router()?.cleanupStatus() else null
+            val models = if (dev.serverConfigured) app.serverHealth.latest(effective, null)?.report.serverModelNames(st?.serverLlmModel) else ServerModelNames()
             enginesCard(
-                ShellPages.speechLine(dev, app.caps, app.engine.phoneSpeechReady(settings)),
-                ShellPages.cleanupLine(
-                    settings, dev.effective(app.caps), app.caps,
-                    serverLlm = if (dev.serverConfigured) app.engine.router()?.cleanupStatus()?.serverLlm else null,
-                ),
+                ShellPages.speechLine(dev, app.caps, app.engine.phoneSpeechReady(settings), models),
+                ShellPages.cleanupLine(settings, effective, app.caps, serverLlm = st?.serverLlm, server = models),
             )
             card {
                 navRow(R.drawable.ic_lw_settings, "Settings", chevron = false) { go { startActivity(SettingsActivity.intent(this@MainActivity)) } }
