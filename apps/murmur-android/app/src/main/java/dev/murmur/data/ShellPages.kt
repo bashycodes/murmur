@@ -1,5 +1,6 @@
 package dev.murmur.data
 
+import dev.murmur.core.ServerModelNames
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -105,13 +106,13 @@ object ShellPages {
      * ([SettingsSummary.speech]), so the two never disagree. The dot is the first engine's that can
      * run; red when none can (all off, or on but not set up). Opens Settings → Speech to text.
      */
-    fun speechLine(d: DevSettings, caps: BuildCaps, phoneReady: Boolean, serverModels: String? = null): EngineLine {
+    fun speechLine(d: DevSettings, caps: BuildCaps, phoneReady: Boolean, server: ServerModelNames = ServerModelNames()): EngineLine {
         val dot = when (SpeechEngines.planned(d, caps, phoneReady).firstOrNull()) {
             null -> Dot.BAD
             DevSettings.Route.CLOUD -> Dot.CLOUD
             else -> Dot.OK
         }
-        return EngineLine("Speech to text", SettingsSummary.speech(d, caps, phoneReady, serverModels), dot, Dest.Page(SettingsPages.Page.SPEECH))
+        return EngineLine("Speech to text", SettingsSummary.speech(d, caps, phoneReady, server), dot, Dest.Page(SettingsPages.Page.SPEECH))
     }
 
     /**
@@ -119,14 +120,14 @@ object ShellPages {
      * ([SettingsSummary.cleanupRow], [d] = the effective settings, [serverLlm] from `cleanup_status`),
      * so the two never disagree. The dot is the first engine's; grey when no AI engine runs.
      */
-    fun cleanupLine(s: Settings, d: DevSettings, caps: BuildCaps, serverLlm: Boolean? = null, serverModel: String? = null): EngineLine {
+    fun cleanupLine(s: Settings, d: DevSettings, caps: BuildCaps, serverLlm: Boolean? = null, server: ServerModelNames = ServerModelNames()): EngineLine {
         val plan = CleanupEngines.plannedFor(s, d, caps, serverLlm)
         val dot = when (plan.firstOrNull()) {
             null -> Dot.OFF
             DevSettings.CleanupRoute.CLOUD -> Dot.CLOUD
             else -> Dot.OK
         }
-        return EngineLine("AI cleanup", SettingsSummary.cleanupRow(s, d, caps, serverLlm, serverModel), dot, cleanupDest(caps) ?: Dest.Page(SettingsPages.Page.HUB))
+        return EngineLine("AI cleanup", SettingsSummary.cleanupRow(s, d, caps, serverLlm, server), dot, cleanupDest(caps) ?: Dest.Page(SettingsPages.Page.HUB))
     }
 
     /**

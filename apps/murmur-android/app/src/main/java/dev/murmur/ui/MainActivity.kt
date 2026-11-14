@@ -18,10 +18,10 @@ import dev.murmur.EngineHolder
 import dev.murmur.MurmurApp
 import dev.murmur.R
 import dev.murmur.core.NativeMurmurCore
+import dev.murmur.core.ServerModelNames
 import dev.murmur.data.AppVersion
-import dev.murmur.data.ServerHealth
 import dev.murmur.data.SettingsPages
-import dev.murmur.data.SettingsSummary
+import dev.murmur.data.serverModelNames
 import dev.murmur.data.SetupChecklist
 import dev.murmur.data.ShellPages
 import dev.murmur.data.ShellPages.Extra
@@ -198,19 +198,14 @@ class MainActivity : Activity() {
                 val s = runCatching { app.insights.summary() }.getOrNull() ?: return@thread
                 runOnUiThread { ShellPages.stats(s).forEachIndexed { i, (n, u) -> stats.set(i, n, u) } }
             }
-            // D98: the server's models from the last probe of this server (no network here) and the router's hello.
-            val router = if (dev.serverConfigured) app.engine.router() else null
-            val st = router?.cleanupStatus()
-            val health = router?.let { r ->
-                val e = dev.effective(app.caps)
-                ServerHealth.newer(app.serverHealth.fresh(e, System.currentTimeMillis(), Long.MAX_VALUE), runCatching { r.routeStatus().health }.getOrNull())?.report
-            }
+            // D98: the server's models from this process's last probe of it (in memory, no router or
+            // network call on the UI thread) and the router's hello (cleanup_status).
+            val effective = dev.effective(app.caps)
+            val st = if (dev.serverConfigured) app.engine.router()?.cleanupStatus() else null
+            val models = if (dev.serverConfigured) app.serverHealth.latest(effective, null)?.report.serverModelNames(st?.serverLlmModel) else ServerModelNames()
             enginesCard(
-                ShellPages.speechLine(dev, app.caps, app.engine.phoneSpeechReady(settings), SettingsSummary.serverSpeechModels(health)),
-                ShellPages.cleanupLine(
-                    settings, dev.effective(app.caps), app.caps,
-                    serverLlm = st?.serverLlm, serverModel = SettingsSummary.serverCleanupModel(st?.serverLlmModel, health),
-                ),
+                ShellPages.speechLine(dev, app.caps, app.engine.phoneSpeechReady(settings), models),
+                ShellPages.cleanupLine(settings, effective, app.caps, serverLlm = st?.serverLlm, server = models),
             )
             card {
                 navRow(R.drawable.ic_lw_settings, "Settings", chevron = false) { go { startActivity(SettingsActivity.intent(this@MainActivity)) } }
