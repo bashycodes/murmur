@@ -20,6 +20,10 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 - **Windows: "Allow an unencrypted connection" for your server.** On a network you trust, such as an air-gapped company network that uses public address ranges inside, Settings → Your server can now connect without TLS to any address. It is off by default and shown for a public IP address; the page warns that audio, text and the access token then cross the network unencrypted. The server must accept such clients too (`--insecure-bind-any`, Docker `MURMUR_INSECURE_BIND_ANY=1`). Android follows later (D100).
 
+### Removed
+
+- **The pick-up of data from before the Murmur rename.** The Windows app no longer copies an old `%APPDATA%\FlowClone` folder on start, its uninstaller no longer deletes that folder (delete it by hand if one is left), and Android's Restore no longer accepts a `flow-clone-backup` file. Every install already ran the one-time pick-up (D83).
+
 ### Fixed
 
 - **Windows: the help links in Settings open again.** The "Your server" and hybrid-architecture help links pointed at a branch that no longer exists on GitHub; they now open the docs on `main`.

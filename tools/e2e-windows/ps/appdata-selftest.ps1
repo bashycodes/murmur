@@ -17,7 +17,6 @@ function ADo([string]$action, [hashtable]$more = @{}) {
 function Live([string]$label) {
     switch ($label) {
         'Roaming-Murmur' { Join-Path $base 'Roaming\Murmur' }
-        'Roaming-FlowClone' { Join-Path $base 'Roaming\FlowClone' }
         'Local-dev.murmur.windows' { Join-Path $base 'Local\dev.murmur.windows' }
     }
 }
@@ -34,7 +33,6 @@ function Fresh {
     if (Test-Path $base) { Remove-Item $base -Recurse -Force }
     Put 'Roaming-Murmur' 'owner'
     Put 'Local-dev.murmur.windows' 'owner'
-    # no FlowClone: absent
 }
 function Journal { Get-Content (Join-Path $base 'backups\t1\manifest.json') -Raw | ConvertFrom-Json }
 function SetJournal($m) { $m | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $base 'backups\t1\manifest.json') }
@@ -42,14 +40,14 @@ function Check([string]$case, [bool]$ok, [string]$why) {
     if ($ok) { "PASS $case" } else { "FAIL $case : $why"; $script:fails++ }
 }
 function OwnerBack([string]$case) {
-    $m = Who 'Roaming-Murmur'; $l = Who 'Local-dev.murmur.windows'; $f = Who 'Roaming-FlowClone'
-    Check $case ($m -eq 'owner' -and $l -eq 'owner' -and $f -eq 'none' -and -not (Test-Path (Join-Path $base 'backups\PENDING'))) "Murmur=$m Local=$l FlowClone=$f"
+    $m = Who 'Roaming-Murmur'; $l = Who 'Local-dev.murmur.windows'
+    Check $case ($m -eq 'owner' -and $l -eq 'owner' -and -not (Test-Path (Join-Path $base 'backups\PENDING'))) "Murmur=$m Local=$l"
 }
 
 # 1. Normal cycle: backup, wipe, test data everywhere, restore.
 Fresh
 AD backup @{ Id = 't1' }; AD wipe
-'Roaming-Murmur', 'Roaming-FlowClone', 'Local-dev.murmur.windows' | ForEach-Object { Put $_ 'test' }
+'Roaming-Murmur', 'Local-dev.murmur.windows' | ForEach-Object { Put $_ 'test' }
 AD restore
 OwnerBack 'normal cycle'
 
@@ -83,7 +81,7 @@ Fresh
 AD backup @{ Id = 't1' }; AD restore     # leaves backups\t1; reuse it as a cut-off journal
 Remove-Item (Join-Path $base 'backups\t1') -Recurse -Force
 New-Item -ItemType Directory -Path (Join-Path $base 'backups\t1') | Out-Null
-SetJournal ([pscustomobject]@{ id = 't1'; was_running = $false; states = [pscustomobject]@{ 'Roaming-Murmur' = 'moving'; 'Roaming-FlowClone' = 'absent'; 'Local-dev.murmur.windows' = 'live' } })
+SetJournal ([pscustomobject]@{ id = 't1'; was_running = $false; states = [pscustomobject]@{ 'Roaming-Murmur' = 'moving'; 'Local-dev.murmur.windows' = 'live' } })
 Set-Content (Join-Path $base 'backups\PENDING') 't1'
 $wipeRefused = $false
 try { AD wipe } catch { $wipeRefused = $true }
@@ -94,7 +92,7 @@ OwnerBack 'backup cut off before the move'
 # 6. Backup cut off after the move, before the journal said backed_up.
 Fresh
 New-Item -ItemType Directory -Force -Path (Join-Path $base 'backups\t1') | Out-Null
-SetJournal ([pscustomobject]@{ id = 't1'; was_running = $false; states = [pscustomobject]@{ 'Roaming-Murmur' = 'moving'; 'Roaming-FlowClone' = 'absent'; 'Local-dev.murmur.windows' = 'live' } })
+SetJournal ([pscustomobject]@{ id = 't1'; was_running = $false; states = [pscustomobject]@{ 'Roaming-Murmur' = 'moving'; 'Local-dev.murmur.windows' = 'live' } })
 Set-Content (Join-Path $base 'backups\PENDING') 't1'
 Move-Item (Live 'Roaming-Murmur') (Join-Path $base 'backups\t1\Roaming-Murmur')
 Put 'Roaming-Murmur' 'test'

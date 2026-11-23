@@ -305,21 +305,6 @@ read as off (e.g. *Allow server* in `local`).
 Updating keeps your data. Uninstalling deletes the imported model, the dictionary and the
 history.
 
-### Moving from the app before the rename (D83)
-
-Murmur is a new app (`dev.murmur`), so it installs next to the old one and starts empty. To
-bring your data over:
-
-1. In the **old** app: Settings → Back up & restore → *Export all data*. Save the file to
-   Downloads or Drive.
-2. Install Murmur (above) and grant its permissions (§4).
-3. In Murmur: Settings → Back up & restore → *Restore from a backup* → pick that file. Backups
-   from the old app are accepted.
-4. Enter the server token (Developer settings) and any API key again: they are never in a
-   backup. Import the speech model again (§5) if you used one; models aren't in a backup either.
-5. Turn Accessibility on for Murmur and off for the old app, then uninstall the old app once
-   Murmur works.
-
 ## 4. Grant permissions (in order)
 
 Open **Murmur**. The **Permissions** page (menu ☰ → Permissions) lists each permission with its state on

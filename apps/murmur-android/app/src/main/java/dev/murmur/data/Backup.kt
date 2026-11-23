@@ -22,8 +22,6 @@ import org.json.JSONObject
 object Backup {
     const val FORMAT = "murmur-backup"
 
-    /** D83: the format name before the Murmur rename. Same layout, so a backup exported from the old app restores here. */
-    const val OLD_FORMAT = "flow-clone-backup"
     const val VERSION = 1
 
     /** Larger than any real backup (text only); a bigger file is refused before parsing. */
@@ -159,7 +157,7 @@ object Backup {
         } catch (_: JSONException) {
             return Parsed.Rejected("This file is not a Murmur backup (not JSON).")
         }
-        if (root.optString("format") !in setOf(FORMAT, OLD_FORMAT)) return Parsed.Rejected("This file is not a Murmur backup.")
+        if (root.optString("format") != FORMAT) return Parsed.Rejected("This file is not a Murmur backup.")
         val v = root.opt("version")
         if (v !is Int || v < 1) return Parsed.Rejected("This backup is damaged (no valid format version).")
         if (v > VERSION) {

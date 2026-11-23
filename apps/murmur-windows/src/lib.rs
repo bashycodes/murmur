@@ -30,7 +30,6 @@ pub mod meetings;
 pub mod model_download;
 pub mod model_import;
 pub mod notes;
-pub mod old_data;
 pub mod openrouter;
 pub mod overlay;
 pub mod paste;

@@ -3342,18 +3342,6 @@ pub fn run() {
     // window forward and exits (one tray icon, one hook).
     let instance = crate::single_instance::win::claim_or_exit();
     let appdata = std::env::var("APPDATA").ok();
-    // D83: pick up the data folder from before the rename, once.
-    if let Some(a) = appdata.as_deref() {
-        match crate::old_data::copy_once(std::path::Path::new(a)) {
-            Ok(crate::old_data::Outcome::Copied { files, linked }) => eprintln!(
-                "[rename] copied the data folder of the app before the Murmur rename ({files} files copied, {linked} model files linked); the old folder is unchanged (D83)"
-            ),
-            Ok(_) => {}
-            Err(e) => eprintln!(
-                "[rename] could not copy the data folder of the app before the Murmur rename: {e}; trying again on the next start (D83)"
-            ),
-        }
-    }
     let path = Prefs::default_path(appdata.as_deref());
     let (mut prefs, outcome) = Prefs::load(&path);
     if let LoadOutcome::Corrupt(bak) = &outcome {

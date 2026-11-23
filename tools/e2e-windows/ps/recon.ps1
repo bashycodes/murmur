@@ -1,4 +1,4 @@
-# Read-only look at the laptop: Murmur / Flow Clone installs, data dirs,
+# Read-only look at the laptop: Murmur installs, data dirs,
 # processes, installers, VB-Cable. Prints no file contents.
 $ErrorActionPreference = 'Continue'
 "ps=" + $PSVersionTable.PSVersion.ToString()

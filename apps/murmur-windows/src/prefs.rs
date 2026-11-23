@@ -838,9 +838,8 @@ mod tests {
 
     /// The window opens by itself at start exactly while setup is not
     /// finished: with no prefs file, and also with a file that setup saved
-    /// before it was finished (a step's choice, then the app quit; or such
-    /// a file copied from the old folder, D83). Before this, only a missing
-    /// file opened it, and an unfinished setup waited in a hidden window.
+    /// before it was finished (a step's choice, then the app quit). Before
+    /// this, only a missing file opened it, and an unfinished setup waited in a hidden window.
     #[test]
     fn window_opens_at_start_until_setup_is_finished() {
         let d = tmpdir("start-fresh");

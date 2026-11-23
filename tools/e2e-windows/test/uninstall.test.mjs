@@ -5,16 +5,13 @@ import { isStateChanging } from "../lib/stepmark.mjs";
 import { SCENARIOS } from "../scenarios/index.mjs";
 import { gradeDialog, gradePhase, installerPath } from "../scenarios/h-uninstall-data.mjs";
 
-const gone = { murmur: "absent", flowclone: "absent", local: "absent", installed: "False" };
-const kept = { murmur: "present", flowclone: "present", local: "present", installed: "False" };
+const gone = { murmur: "absent", local: "absent", installed: "False" };
+const kept = { murmur: "present", local: "present", installed: "False" };
 
-test("ticked: both app folders and Tauri's folder must be gone", () => {
+test("ticked: the app folder and Tauri's folder must be gone", () => {
   assert.deepEqual(gradePhase("ticked", gone), []);
   // The bug: Tauri's folder went, ours stayed.
-  assert.deepEqual(gradePhase("ticked", { ...gone, murmur: "present", flowclone: "present" }), [
-    "ticked: murmur=present, want absent",
-    "ticked: flowclone=present, want absent",
-  ]);
+  assert.deepEqual(gradePhase("ticked", { ...gone, murmur: "present" }), ["ticked: murmur=present, want absent"]);
   assert.equal(gradePhase("ticked", { ...gone, installed: "True" }).length, 1);
 });
 
@@ -22,13 +19,13 @@ test("unticked and installs over: the data stays", () => {
   assert.deepEqual(gradePhase("unticked", kept), []);
   // Tauri's own folder is not graded when unticked.
   assert.deepEqual(gradePhase("unticked", { ...kept, local: "absent" }), []);
-  assert.equal(gradePhase("unticked", gone).length, 2);
+  assert.equal(gradePhase("unticked", gone).length, 1);
   for (const p of ["installed", "silent-over", "update"]) {
     assert.deepEqual(gradePhase(p, { ...kept, installed: "True" }), []);
-    assert.equal(gradePhase(p, { ...kept, installed: "True", flowclone: "absent" }).length, 1);
+    assert.equal(gradePhase(p, { ...kept, installed: "True", murmur: "absent" }).length, 1);
     assert.equal(gradePhase(p, kept).length, 1, `${p}: must still be installed`);
   }
-  assert.deepEqual(gradePhase("unticked", {}), ["unticked: murmur=?, want present", "unticked: flowclone=?, want present", "unticked: installed=?, want False"]);
+  assert.deepEqual(gradePhase("unticked", {}), ["unticked: murmur=?, want present", "unticked: installed=?, want False"]);
   assert.throws(() => gradePhase("nope", {}), /unknown phase/);
 });
 

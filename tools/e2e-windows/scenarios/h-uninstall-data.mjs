@@ -1,6 +1,5 @@
 // (h) The uninstaller's "Delete the application data" box removes the app's
-// own data folders (%APPDATA%\Murmur, the pre-rename %APPDATA%\FlowClone)
-// as well as Tauri's %LOCALAPPDATA%\dev.murmur.windows; unticked, or when an
+// own data folder (%APPDATA%\Murmur) as well as Tauri's %LOCALAPPDATA%\dev.murmur.windows; unticked, or when an
 // installer runs over an existing install, nothing is deleted.
 //
 // The box is only on the uninstaller's confirm page, which /S never shows,
@@ -9,11 +8,11 @@
 //
 // Steps (dummy data only: the owner's is in this run's backup, and the
 // seed refuses otherwise):
-//   1. the run's install + seed  -> uninstall, box ticked   -> both gone
-//   2. install + seed            -> uninstall, box unticked -> both stay
+//   1. the run's install + seed  -> uninstall, box ticked   -> all gone
+//   2. install + seed            -> uninstall, box unticked -> it stays
 //   3. install over that data (fresh install), then the same installer
 //      again over the install with /S, then with /P /UPDATE (as the
-//      updater runs it)                                     -> both stay
+//      updater runs it)                                     -> it stays
 // The test build stays installed; the harness then restores the owner's data.
 // Runs last: it uninstalls and reinstalls the app under the other scenarios.
 import { join } from "node:path";
@@ -23,12 +22,12 @@ const REG_KEY = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\
 
 /** What each check expects (`check` output of uninstall-data.ps1). */
 export const EXPECT = {
-  seeded: { murmur: "present", flowclone: "present" },
-  ticked: { murmur: "absent", flowclone: "absent", local: "absent", installed: "False" },
-  unticked: { murmur: "present", flowclone: "present", installed: "False" },
-  installed: { murmur: "present", flowclone: "present", installed: "True" },
-  "silent-over": { murmur: "present", flowclone: "present", installed: "True" },
-  update: { murmur: "present", flowclone: "present", installed: "True" },
+  seeded: { murmur: "present" },
+  ticked: { murmur: "absent", local: "absent", installed: "False" },
+  unticked: { murmur: "present", installed: "False" },
+  installed: { murmur: "present", installed: "True" },
+  "silent-over": { murmur: "present", installed: "True" },
+  update: { murmur: "present", installed: "True" },
 };
 
 /** Mismatches between a check's key=value map and what `phase` expects. */
@@ -68,7 +67,7 @@ export default {
       details.checks[phase] = kv;
       const bad = gradePhase(phase, kv);
       problems.push(...bad);
-      evidence.push(`${phase}: Murmur ${kv.murmur}, FlowClone ${kv.flowclone}, Local\\dev.murmur.windows ${kv.local}, installed ${kv.installed}${bad.length ? " (UNEXPECTED)" : ""}`);
+      evidence.push(`${phase}: Murmur ${kv.murmur}, Local\\dev.murmur.windows ${kv.local}, installed ${kv.installed}${bad.length ? " (UNEXPECTED)" : ""}`);
       return kv;
     };
     const seed = () => {
@@ -132,7 +131,7 @@ export default {
     const pass = problems.length === 0;
     if (!pass) evidence.push(...problems.map((p) => `FAIL ${p}`));
     const summary = pass
-      ? "ticked: Murmur + FlowClone deleted; unticked, install over, /S over and /P /UPDATE: kept"
+      ? "ticked: Murmur deleted; unticked, install over, /S over and /P /UPDATE: kept"
       : problems.join("; ");
     return { status: pass ? "pass" : "fail", summary, details, evidence };
   },

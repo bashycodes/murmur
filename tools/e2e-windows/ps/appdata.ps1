@@ -45,12 +45,9 @@ if ($TestBase) {
     $localAppData = Join-Path $TestBase 'Local'
 }
 $pending = Join-Path $root 'PENDING'
-# label -> live path. FlowClone is moved too: the renamed app copies an old
-# FlowClone folder into Murmur on first start (D83), which would make a
-# "fresh" install not fresh.
+# label -> live path.
 $dirs = [ordered]@{
     'Roaming-Murmur'           = Join-Path $appData 'Murmur'
-    'Roaming-FlowClone'        = Join-Path $appData 'FlowClone'
     'Local-dev.murmur.windows' = Join-Path $localAppData 'dev.murmur.windows'
 }
 
@@ -201,8 +198,6 @@ switch ($Action) {
         Remove-TestLive $m
         $live = $dirs['Roaming-Murmur']
         New-Item -ItemType Directory -Force -Path $live | Out-Null
-        # The pick-up of an old FlowClone folder has run already (D83).
-        Set-Content (Join-Path $live 'old-data-copied.txt') 'e2e seed: not copied' -Encoding UTF8
         $prefs = [ordered]@{}
         $srcPrefs = Join-Path $src 'prefs.json'
         if (Test-Path $srcPrefs) {

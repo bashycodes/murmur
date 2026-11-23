@@ -1,8 +1,8 @@
 //! The NSIS uninstaller's "Delete the application data" box must also
-//! remove the app's own data folders (`%APPDATA%\Murmur` and the pre-D83
-//! `%APPDATA%\FlowClone`), not only Tauri's `%APPDATA%\<identifier>`, and
-//! only when ticked and not during an update. The hook is NSIS, so this
-//! checks the wiring and the folder names, not the uninstaller itself.
+//! remove the app's own data folder (`%APPDATA%\Murmur`), not only Tauri's
+//! `%APPDATA%\<identifier>`, and only when ticked and not during an update.
+//! The hook is NSIS, so this checks the wiring and the folder name, not the
+//! uninstaller itself.
 
 use std::path::Path;
 
@@ -47,15 +47,11 @@ fn uninstall_hook_is_wired_into_the_bundle() {
 }
 
 #[test]
-fn delete_app_data_removes_the_app_folders() {
+fn delete_app_data_removes_the_app_folder() {
     let body = post_uninstall();
-    for dir in [
-        str_const("src/prefs.rs", "APP_DIR"),
-        str_const("src/old_data.rs", "OLD_APP_DIR"),
-    ] {
-        let rm = format!("RmDir /r \"$APPDATA\\{dir}\"");
-        assert!(body.contains(&rm), "hook lacks {rm}");
-    }
+    let dir = str_const("src/prefs.rs", "APP_DIR");
+    let rm = format!("RmDir /r \"$APPDATA\\{dir}\"");
+    assert!(body.contains(&rm), "hook lacks {rm}");
 }
 
 #[test]
@@ -74,5 +70,5 @@ fn deletes_only_when_ticked_and_not_updating() {
         "RmDir outside the guard"
     );
     assert!(body[first_rm..].contains("${EndIf}"));
-    assert_eq!(body.matches("RmDir").count(), 2, "only the two app folders");
+    assert_eq!(body.matches("RmDir").count(), 1, "only the app folder");
 }

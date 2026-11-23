@@ -48,8 +48,7 @@ always has it.
 Updates install over the old version and keep your settings, history and
 models. To start fresh, uninstall and tick *Delete the application data*:
 that removes `%APPDATA%\Murmur` (settings, history, notes, downloaded
-models) and the older `%APPDATA%\FlowClone`. Left unticked, everything
-stays for the next install.
+models). Left unticked, everything stays for the next install.
 
 <!-- notetaker -->
 ### Meetings (Notetaker)

@@ -17,7 +17,7 @@ owner's data back.
 | `appdata.ps1` | backup / wipe / seed / restore of the owner's data (see below). |
 | `install.ps1` | Silent uninstall (`/S`), then silent install of the given installer. `-VersionOnly` only reads the installer's version. |
 | `models.ps1` | Scenario b: `seed` copies setup's recommended speech model (the catalogue's `dest` and file sizes, from `model_catalog`) into the test profile from a complete copy already on the laptop: `murmur-e2e\models-cache`, then this run's backup of the owner's models, then the folder the owner's backed-up prefs name (`parakeet_model_dir`). `stash` copies a model that setup downloaded into `models-cache` for the next run. Both refuse unless the owner's data is in a pending backup; only copies, never links. |
-| `uninstall-data.ps1` | Scenario h: `check` reports whether `%APPDATA%\Murmur`, `%APPDATA%\FlowClone` and `%LOCALAPPDATA%\dev.murmur.windows` exist and whether Murmur is installed; `seed` writes dummy data there, and refuses unless the owner's data is in this run's backup. |
+| `uninstall-data.ps1` | Scenario h: `check` reports whether `%APPDATA%\Murmur` and `%LOCALAPPDATA%\dev.murmur.windows` exist and whether Murmur is installed; `seed` writes dummy data there, and refuses unless the owner's data is in this run's backup. |
 | `pad.ps1`, `pads.ps1`, `common.ps1` | Our text pad (a window titled `murmur-e2e-pad <name>`); the clean-up that stops leftover pads; the shared pad-title constant and matchers. |
 | `lock.ps1` | Time since the laptop lock's last heartbeat. |
 | `run-step.ps1`, `stepguard.ps1`, `lib/stepmark.mjs` | Every state-changing script runs as a *step* through `run-step.ps1`: it writes `murmur-e2e\step.json` (pid, script, start) and removes it in its own `finally`. See "Orphaned laptop steps". Read-only calls (status, lock age) run directly. |
@@ -31,7 +31,6 @@ owner's data back.
 plus a `backups\PENDING` marker. It covers these folders:
 
 - `%APPDATA%\Murmur`
-- `%APPDATA%\FlowClone`: the old folder, copied once into Murmur on first start (D83)
 - `%LOCALAPPDATA%\dev.murmur.windows`: WebView2 data
 
 **Backup** writes the journal and `PENDING` first, recording whether the
@@ -225,7 +224,7 @@ and aborts otherwise. On a locked laptop no window can take the foreground
 | d | Double-tap over every combination of profile × key × tap length × gap, `--tries` each, round-robin, with ±`--jitter` ms on every tap and gap. See the next section. A try locks if the overlay pill reaches `active_locked` within 1.5 s; Esc then cancels. Every try is graded, slow ones too: its measured press-to-press time tells whether it was inside the app's 500 ms window. | Every combination on the bound push-to-talk key whose nominal tap + gap is at most 450 ms locks at least 90% of the time. |
 | e | Settings → Scratchpad → New note: the notes window and its webview (URL, readyState, editor), then a dictation into the note and the notes folder on disk. | The editor loads and the clip lands in the note. |
 | f | Hebrew, English and mixed clips into the pad with no language pinned. The language is read from the debug log (`language`, `language_source`) or, when the log has none (server route in 1.3.0), from the history entry, plus the share of Hebrew letters in the text. | Hebrew is detected as he with mostly Hebrew text, and English as en. The mixed clip is reported, not graded. |
-| h | Runs last. The uninstaller's *Delete the application data* box. The box is only on the confirm page, which `/S` never shows, so there is no silent way to tick it: the agent starts the uninstaller in the interactive session and drives the page with Win32 messages. Steps, each on dummy data seeded into `%APPDATA%\Murmur` and `%APPDATA%\FlowClone`: (1) uninstall with the box ticked; (2) reinstall, re-seed, uninstall with it unticked; (3) install over that data, then the same installer over the install with `/S`, then with `/P /UPDATE` (as the updater runs it). The test build stays installed. | (1) both folders and `%LOCALAPPDATA%\dev.murmur.windows` are gone; (2) and (3) both folders stay. The box starts unticked each time. |
+| h | Runs last. The uninstaller's *Delete the application data* box. The box is only on the confirm page, which `/S` never shows, so there is no silent way to tick it: the agent starts the uninstaller in the interactive session and drives the page with Win32 messages. Steps, each on dummy data seeded into `%APPDATA%\Murmur`: (1) uninstall with the box ticked; (2) reinstall, re-seed, uninstall with it unticked; (3) install over that data, then the same installer over the install with `/S`, then with `/P /UPDATE` (as the updater runs it). The test build stays installed. | (1) `%APPDATA%\Murmur` and `%LOCALAPPDATA%\dev.murmur.windows` are gone; (2) and (3) `%APPDATA%\Murmur` stays. The box starts unticked each time. |
 
 ### Scenario d dimensions
 

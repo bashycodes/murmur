@@ -1,14 +1,14 @@
 # Scenario h (uninstall data): dummy data in the app's data folders, and
 # what is there now. Prints key=value lines.
 #
-#   -Action check              murmur= flowclone= local= present|absent,
+#   -Action check              murmur= local= present|absent,
 #                              installed=True|False, uninstaller=<path>,
 #                              install_dir=<path>.
-#   -Action seed -Id <run id>  %APPDATA%\Murmur and %APPDATA%\FlowClone get a
-#                              dummy prefs.json (onboarded true), a marker file
-#                              and (Murmur) a tiny models\ file. Refuses unless
+#   -Action seed -Id <run id>  %APPDATA%\Murmur gets a dummy prefs.json
+#                              (onboarded true), a marker file and a tiny
+#                              models\ file. Refuses unless
 #                              the owner's data is in this run's backup
-#                              (appdata.ps1 PENDING = <run id>): the folders
+#                              (appdata.ps1 PENDING = <run id>): the folder
 #                              it writes, and the uninstaller then deletes,
 #                              must be test data.
 #
@@ -21,7 +21,6 @@ $ErrorActionPreference = 'Stop'
 $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Murmur'
 $dirs = [ordered]@{
     murmur    = Join-Path $env:APPDATA 'Murmur'
-    flowclone = Join-Path $env:APPDATA 'FlowClone'
     local     = Join-Path $env:LOCALAPPDATA 'dev.murmur.windows'
 }
 $marker = 'e2e-uninstall-data.txt'
@@ -44,15 +43,13 @@ switch ($Action) {
             throw "refusing to seed: the owner's data is not in this run's backup (PENDING='$pending', run '$Id')"
         }
         $utf8 = New-Object System.Text.UTF8Encoding $false
-        foreach ($k in 'murmur', 'flowclone') {
-            $d = $dirs[$k]
-            New-Item -ItemType Directory -Force $d | Out-Null
-            [IO.File]::WriteAllText((Join-Path $d 'prefs.json'), '{"onboarded":true}', $utf8)
-            [IO.File]::WriteAllText((Join-Path $d $marker), "e2e scenario h, run $Id", $utf8)
-        }
+        $d = $dirs.murmur
+        New-Item -ItemType Directory -Force $d | Out-Null
+        [IO.File]::WriteAllText((Join-Path $d 'prefs.json'), '{"onboarded":true}', $utf8)
+        [IO.File]::WriteAllText((Join-Path $d $marker), "e2e scenario h, run $Id", $utf8)
         $models = Join-Path $dirs.murmur 'models'
         New-Item -ItemType Directory -Force $models | Out-Null
         [IO.File]::WriteAllBytes((Join-Path $models 'e2e-dummy.bin'), [byte[]](1..64))
-        "seeded=murmur,flowclone"
+        "seeded=murmur"
     }
 }
