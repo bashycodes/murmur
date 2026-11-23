@@ -67,6 +67,22 @@ async fn the_server_picks_the_murmur_subprotocol() {
     assert_eq!(hello(&mut ws).await.proto, 1);
 }
 
+/// D102: the name before the rename (`flow.v1`) is no longer spoken; a
+/// client offering only it gets no subprotocol back, which the client
+/// side of the handshake rejects.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_client_offering_only_the_old_subprotocol_gets_none() {
+    let s = start(mock_cfg(TEXT)).await;
+    let e = connect_offering(s.addr(), Some(TOKEN), "flow.v1")
+        .await
+        .err()
+        .expect("handshake without a subprotocol must fail");
+    assert!(
+        e.to_string().to_lowercase().contains("subprotocol"),
+        "unexpected error: {e}"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn session_result_equals_murmurcore_directly() {
     let s = start(mock_cfg(TEXT)).await;

@@ -41,6 +41,11 @@
 # * MURMUR_INSECURE_BIND_ANY=1 adds --insecure-bind-any (warns).
 set -eu
 
+# D102: the FLOW_* names from before the rename are no longer read; say so.
+for old in $(env | sed -n 's/^FLOW_\([A-Za-z0-9_]*\)=.*/\1/p'); do
+    echo "murmur-server: warning: FLOW_$old is no longer read; use MURMUR_$old (D102)" >&2
+done
+
 BIN="${MURMUR_BIN:-/opt/murmur-server/bin/murmur-server}"
 DATA="${MURMUR_DATA:-/data}"
 MODELS="${MURMUR_MODELS_DIR:-/models}"
