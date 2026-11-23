@@ -103,7 +103,7 @@ Python rules.
 
 ## 6. Tags and releases
 
-* Annotated tags **`vX.Y.Z`** on `integration`, created only by
+* Annotated tags **`vX.Y.Z`** on `main`, created only by
   `tools/release.sh`, never moved or deleted once pushed.
 * `CHANGELOG.md` ([Keep a Changelog](https://keepachangelog.com/en/1.1.0/)):
   notes go under `## [Unreleased]` as work lands (Added / Changed / Fixed /
@@ -115,12 +115,12 @@ Cutting a release:
 ```sh
 tools/release.sh 0.2.0            # dry run: refusals, the full diff, the notes; changes nothing
 tools/release.sh 0.2.0 --apply    # stamp VERSION + copies, date CHANGELOG, check, commit "Release 0.2.0", tag v0.2.0
-git push origin integration v0.2.0
+git push origin main v0.2.0
 ```
 
 `--apply` refuses a version not newer than `VERSION`, an existing tag, an
 empty `[Unreleased]`, uncommitted changes to tracked files, a branch other
-than `integration` (`MURMUR_RELEASE_ANY_BRANCH=1` overrides) and lockfiles cargo
+than `main` (`MURMUR_RELEASE_ANY_BRANCH=1` overrides) and lockfiles cargo
 would rewrite. It never pushes. `MURMUR_RELEASE_DATE` / `MURMUR_REPO_URL` set the
 date and add compare links.
 

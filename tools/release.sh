@@ -10,7 +10,7 @@
 # Refuses: a version that is not MAJOR.MINOR.PATCH or not newer than VERSION,
 # an existing tag, an empty [Unreleased], a tree whose copies already
 # disagree, and (with --apply) uncommitted changes to tracked files or a
-# branch other than `integration` (MURMUR_RELEASE_ANY_BRANCH=1 allows one).
+# branch other than `main` (MURMUR_RELEASE_ANY_BRANCH=1 allows one).
 # Env: MURMUR_RELEASE_DATE=YYYY-MM-DD (default today, UTC);
 #      MURMUR_REPO_URL=https://… adds Keep-a-Changelog compare links.
 set -euo pipefail
@@ -36,8 +36,8 @@ tag="v$new"
 if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then die "tag $tag already exists"; fi
 
 branch=$(git symbolic-ref --short -q HEAD || echo "(detached)")
-if [[ $branch != integration ]]; then
-  msg="on branch $branch, releases are tagged on integration"
+if [[ $branch != main ]]; then
+  msg="on branch $branch, releases are tagged on main"
   if [[ $apply == 1 && -z ${MURMUR_RELEASE_ANY_BRANCH:-} ]]; then die "$msg (MURMUR_RELEASE_ANY_BRANCH=1 to override)"; fi
   warn "$msg"
 fi
@@ -105,4 +105,3 @@ git commit -q -m "Release $new" -m "$notes"
 git tag -a "$tag" -m "Murmur $new" -m "$notes"
 echo "release: committed $(git rev-parse --short HEAD) and tagged $tag (local only)."
 echo "next: git push origin $branch $tag   # CI builds and attaches the $tag artifacts"
-echo "then: tools/public/sync.sh --tags $tag   # once pushed: dry run, then --push publishes it (docs/public-release/sync.md)"

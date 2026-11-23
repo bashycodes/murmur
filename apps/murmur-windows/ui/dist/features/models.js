@@ -51,7 +51,7 @@ export function progressLine(p, entry) {
 }
 // ------------------------------------------------------------ pickers + links
 /** Where "Set up a server" points (murmur-server's instructions). */
-export const SERVER_HELP = "https://github.com/bashycodes/murmur/blob/integration/docs/server-setup.md";
+export const SERVER_HELP = "https://github.com/bashycodes/murmur/blob/main/docs/server-setup.md";
 export async function pickPath(kind, title, filters) {
     return invoke("pick_path", { kind, title, filters: filters ?? null });
 }

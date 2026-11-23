@@ -31,7 +31,7 @@ the pattern name, the location and at most 4 characters of the value
 (tailnet addresses as `100.x.x.x`). Errors (bad range, bad pattern file)
 exit 2.
 
-Run it before pushing: `tools/checks/leak-scan.py origin/integration...HEAD`.
+Run it before pushing: `tools/checks/leak-scan.py origin/main...HEAD`.
 Tests: `tools/checks/leak-scan_test.sh`.
 
 ## GitHub settings for the public repo (`bashycodes/murmur`)
@@ -43,12 +43,12 @@ Repository, Settings → Code security:
       token format.
 - [ ] Dependabot alerts on (optional, cheap).
 
-Repository, Settings → Rules (ruleset on `integration`):
+Repository, Settings → Rules (ruleset on `main`):
 
-- [ ] Block force pushes and deletion of `integration`, and of `v*` tags.
+- [ ] Block force pushes and deletion of `main`, and of `v*` tags.
 - [ ] Require a pull request before merging, with the `repo-checks` status
       check passing, or restrict who can push, so nothing lands on
-      `integration` without the CI leak scan.
+      `main` without the CI leak scan.
 - [ ] If merges are ever done in the web UI: only after the account settings
       below, since a web merge is authored with the account's commit email.
 

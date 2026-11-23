@@ -22,6 +22,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Fixed
 
+- **Windows: the help links in Settings open again.** The "Your server" and hybrid-architecture help links pointed at a branch that no longer exists on GitHub; they now open the docs on `main`.
 - **Windows: a company server name no longer counts as public before it is looked up.** For a server name such as `asr.corp.example.com`, TLS was forced on when saved, even when it pointed at a private 10.x address. Names are now judged by the addresses they resolve to when the app connects, as `.local` names already were. Android follows later (D100).
 
 ## [1.6.1] - 2026-11-14

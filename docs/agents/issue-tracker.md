@@ -1,7 +1,8 @@
 # Issue tracker: TickTick
 
 Issues and specs for this repo live as tasks in the TickTick list **Murmur**
-(project id `<project-id>`, in the owner's "Projects" folder).
+(in the owner's "Projects" folder). The project id is not kept in the repo:
+look it up once per session with `list_projects` (the project named Murmur).
 Agents reach it through the TickTick MCP tools (`mcp__claude_ai_TickTick__*`).
 Code, branches and pull requests stay on GitHub (`bashycodes/murmur`);
 TickTick holds only the work items.
@@ -24,7 +25,7 @@ TickTick holds only the work items.
 ## Call shapes
 
 The write tools disagree on casing and wrapping, and a wrong guess fails
-validation. Copy these (`P` = `<project-id>`):
+validation. Copy these (`P` = the Murmur project id from `list_projects`):
 
 | Tool | Arguments |
 |---|---|

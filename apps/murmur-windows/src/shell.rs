@@ -289,7 +289,7 @@ mod tests {
             "https://github.com/bashycodes/murmur",
             "https://github.com/bashycodes/murmur/",
             "https://github.com/bashycodes/murmur#set-up-a-server",
-            "https://github.com/bashycodes/murmur/blob/integration/docs/hybrid-architecture.md",
+            "https://github.com/bashycodes/murmur/blob/main/docs/hybrid-architecture.md",
             "https://huggingface.co/ggerganov/whisper.cpp",
             "https://HuggingFace.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8",
             "https://openrouter.ai/settings/keys",

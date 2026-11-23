@@ -487,7 +487,7 @@ Linking a Windows binary on Linux is not supported (no MSVC linker or SDK).
 ## Live test on Windows (CI installers)
 
 The `windows-build` workflow (`.github/workflows/windows-build.yml`) builds the
-real MSVC app on `windows-latest` (on every push to `integration` that touches
+real MSVC app on `windows-latest` (on every push to `main` that touches
 `apps/murmur-windows/**` or `crates/**`, or by hand: `gh workflow run
 windows-build.yml --ref <branch>`), runs `cargo test` for both feature sets
 and clippy, and uploads two artifacts, each with an MSI and an NSIS setup:

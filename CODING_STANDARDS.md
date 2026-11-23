@@ -1,7 +1,7 @@
 # Coding standards
 
 Read at review time by the reviewer (`/mattpocock-skills:code-review` on a
-`feat/` branch against `origin/integration`), not by implementers. Only
+`feat/` branch against `origin/main`), not by implementers. Only
 judgement calls live here; anything a script can decide is a check in CI
 (`tools/checks/`, `tools/check-*.sh`, clippy `-D warnings`), and the reviewer
 skips it.
@@ -29,7 +29,7 @@ Each rule comes from a problem a review caught before merge.
 
 - **Reuse before extracting.** When the diff pulls a helper out of shared
   code (server connection setup, model download, settings I/O), check
-  whether integration already has one from a branch merged meanwhile. Two
+  whether main already has one from a branch merged meanwhile. Two
   versions of the same seam is a hard finding.
 - **Shared crates mean both apps.** A change under `crates/` that one app
   calls is checked for the other app's call sites too: CI runs both builds,
@@ -41,7 +41,7 @@ Each rule comes from a problem a review caught before merge.
   what the app does or lacks must match the code and past tests. A wrong
   "never ran on Windows" or "feature missing" is a hard finding.
 - **CHANGELOG under `[Unreleased]`**, one line per user-visible change, and a
-  merge must not bring back a line integration deliberately removed.
+  merge must not bring back a line main deliberately removed.
 - **Decisions** get the next free `D` number on the rebased branch; a
   renumber updates every reference to the old id.
 

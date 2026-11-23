@@ -17,7 +17,7 @@ On the connected machine:
 
 1. **Get the newest release.** It must be newer than 1.0.0 (see
    `docs/findings/2026-11-04-air-gap-readiness.md` for why). A release is
-   cut from `integration` with `tools/release.sh X.Y.Z --apply` and
+   cut from `main` with `tools/release.sh X.Y.Z --apply` and
    pushing the tag; the agent that runs this repo can do it for you. Then
    download from GitHub → Releases the files listed in [Also
    bring](#also-bring).

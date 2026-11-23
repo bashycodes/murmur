@@ -3,7 +3,7 @@
 # link and that the image starts. Build only: no GPU on the runner and nothing
 # is pushed. Its own workflow so it is never a required check: it is the
 # slowest build in the repo. Runs when the CUDA build's inputs change, on pull
-# requests and on integration/main (feature-branch pushes are covered by
+# requests and on main (feature-branch pushes are covered by
 # their pull request: push + pull_request would build twice, in two
 # concurrency groups), and by hand (workflow_dispatch, which can also build
 # every GPU architecture).
@@ -18,7 +18,7 @@ on:
         description: "GPU architectures (CUDAARCHS); the image's default is 75;80;86;89;90;120"
         default: "86"
   push:
-    branches: [integration, main]
+    branches: [main]
     paths:
       # Everything the build context carries (.dockerignore): the cuda
       # target also builds the CPU server from the whole workspace.

@@ -131,7 +131,7 @@ export function progressLine(p: DlProgress & { started?: number; via?: "import" 
 // ------------------------------------------------------------ pickers + links
 
 /** Where "Set up a server" points (murmur-server's instructions). */
-export const SERVER_HELP = "https://github.com/bashycodes/murmur/blob/integration/docs/server-setup.md";
+export const SERVER_HELP = "https://github.com/bashycodes/murmur/blob/main/docs/server-setup.md";
 
 export async function pickPath(kind: "folder" | "file", title: string, filters?: Filter[]): Promise<string | null> {
   return invoke<string | null>("pick_path", { kind, title, filters: filters ?? null });
