@@ -18,7 +18,6 @@ crate-type = ["cdylib", "rlib"]
 # repetition guard, prompt) is murmur-core's WhisperEngine, so the plugin
 # transcribes exactly like the built-in engine.
 murmur-core = { path = "../murmur-core", features = ["whisper"] }
-murmur-build-info = { path = "../murmur-build-info" }
 # raw-api: ggml's device list (backend.rs).
 whisper-rs = { version = "0.16", features = ["raw-api"] }
 serde.workspace = true

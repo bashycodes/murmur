@@ -112,7 +112,7 @@ fn backend() -> Result<&'static LlamaBackend, String> {
     BACKEND
         .get_or_init(|| {
             let mut b = LlamaBackend::init().map_err(|e| e.to_string())?;
-            if murmur_build_info::env::var_os("MURMUR_LLAMA_LOG").is_none() {
+            if std::env::var_os("MURMUR_LLAMA_LOG").is_none() {
                 b.void_logs();
             }
             Ok(b)
@@ -730,7 +730,7 @@ const DRAFT_DEFAULT: usize = 0;
 fn env_draft() -> Option<usize> {
     static D: OnceLock<Option<usize>> = OnceLock::new();
     *D.get_or_init(|| {
-        murmur_build_info::env::var("MURMUR_LLM_DRAFT")
+        std::env::var("MURMUR_LLM_DRAFT")
             .ok()
             .and_then(|s| s.parse().ok())
             .map(|d: usize| d.min(DRAFT_MAX))

@@ -89,7 +89,7 @@ pub fn plugin_candidates(explicit: Option<&str>) -> Vec<PathBuf> {
         v.push(PathBuf::from(p));
         return v;
     }
-    if let Some(p) = murmur_build_info::env::var_os("MURMUR_LLM_LIB") {
+    if let Some(p) = std::env::var_os("MURMUR_LLM_LIB") {
         v.push(PathBuf::from(p));
         return v;
     }

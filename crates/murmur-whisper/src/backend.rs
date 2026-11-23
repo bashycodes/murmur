@@ -95,8 +95,7 @@ fn is_real_gpu(d: &Device) -> bool {
 
 /// `MURMUR_WHISPER_DEVICE`: "cpu" forces the CPU; anything else (or unset) = auto.
 pub fn force_cpu_from_env() -> bool {
-    murmur_build_info::env::var("MURMUR_WHISPER_DEVICE")
-        .is_ok_and(|v| v.trim().eq_ignore_ascii_case("cpu"))
+    std::env::var("MURMUR_WHISPER_DEVICE").is_ok_and(|v| v.trim().eq_ignore_ascii_case("cpu"))
 }
 
 /// See the module docs.
