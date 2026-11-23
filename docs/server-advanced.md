@@ -180,13 +180,18 @@ carries the decoded `language`; a Hebrew session's result has
 * If the VPN's 100.x address is not up yet at boot, the bind fails and systemd restarts the server (`RestartSec=3`).
 * Plain `ws://` is fine on a WireGuard VPN, because it already encrypts the
   traffic. The clients allow `ws://` only to private, LAN and VPN
-  addresses. A VPN DNS name works too, because the
+  addresses, unless you allow an unencrypted connection to this server in
+  the app (D100). A VPN DNS name works too, because the
   client resolves it and requires every address it gets back to be private.
 * Optional: restrict port 7313 to your own devices with your VPN's access rules.
 
 `0.0.0.0`, `::` or a public bind address is refused unless `[tls]` is set. Even
 then, peers outside loopback, LAN and VPN are dropped before any byte is
-read. Never add `--insecure-bind-any` to the unit.
+read. Never add `--insecure-bind-any` to the unit on a machine that is
+reachable from the internet. The one exception is a closed network you trust
+whose clients use public address ranges (an air-gapped company network,
+D100): there the peer filter would drop every client, so the server needs
+`--insecure-bind-any` and the apps need "Allow an unencrypted connection".
 
 ## 4. Keys (who may connect)
 
@@ -310,7 +315,7 @@ the `DOCKER-USER` iptables chain.
 | Prefer / order | "Server first" to use the server whenever it is up, with the local model as fallback (`allow_client` on) |
 | Server host (`server.host`) | VPN: `100.x.y.z` (or its VPN DNS name). LAN: the LAN IP. Host only, without port or scheme |
 | Port (`server.port`) | `7313` (or your `--port`) |
-| Use TLS (`server.tls`) | off on a VPN and plain LAN. On when `[tls]` is configured (forced on for public names) |
+| Use TLS (`server.tls`) | off on a VPN and plain LAN. On when `[tls]` is configured (forced on for a public IP address, unless "Allow an unencrypted connection" is on; Android also forces it for dotted names) |
 | Certificate pin (`server.tls_pin_sha256`) | the `sha256sum` above (TLS only) |
 | Token (`server.token`) | a key's secret (`keys add`), or the token file's content for the `owner` key |
 | Timeouts | defaults (connect 800 ms, commit base 3000 ms) |

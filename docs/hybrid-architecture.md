@@ -435,7 +435,8 @@ are marked (ui).
 | `prefer` | segmented "Server first / Client first" (visible when both on) | server | — |
 | `server.host` | text | "" | trim; no scheme/path/port/whitespace; one of: IPv4 dotted quad (4 parts 0-255, no leading zeros), IPv6 literal (brackets optional, stored without), hostname (labels 1-63 `[A-Za-z0-9-]`, no leading/trailing `-`, total ≤ 253). Inline error text; Save disabled while invalid |
 | `server.port` | number | 7313 | integer 1-65535 |
-| `server.tls` | toggle "Use TLS (wss)" | off | forced on (and locked) when host classifies public (§2.6) |
+| `server.tls` | toggle "Use TLS (wss)" | off | forced on (and locked) when the host is a public IP (§2.6), unless `server.allow_plaintext` |
+| `server.allow_plaintext` | toggle "Allow an unencrypted connection" (Windows; D100) | off | plain `ws://` to any address; shown for a public IP, after a "plaintext refused" result, or while on |
 | `server.tls_pin_sha256` | text (shown when TLS on) | "" | empty or 64 hex (colons stripped) |
 | `server.token` | password field + show/paste/clear | "" | empty or ≥ 16 chars; never logged, never in exported settings |
 | `server.connect_timeout_ms` | number | 2500 (D24; a stored 800 migrates once) | 100-10000; the router raises it to `rtt × 6` (1.5-10 s) after a probe measured a slow path |
@@ -683,7 +684,7 @@ accept an `OpenRouterConfig` JSON. A legacy entry of another adapter is refused 
   * `RouterError` = `NoEngineEnabled | LocalNotReady | ServerNotConfigured | ServerUnavailable(String) | BadConfig(String)`, `kind()` = the §1.2 snake_case strings; `Display` = `"<kind>: <detail>"`.
 * `Backend::session_failure(&self) -> Option<BackendError>` — new trait method **with a default** (`None`); shells' local wrappers need not implement it. The router polls it on every push to detect a dead remote session (busy, lost connection, no `started` in time).
 * New `Router` methods: `with_local_capability(bool)` (builder: declare a local engine before its models are loaded, so `allow_client` with no model gives `local_not_ready`, not `no_engine_enabled`; default = a local backend was passed to `new`/`set_local`), `with_local_info(asr_engines, llm)` (fills `capabilities()`), `config()`, `probe_config(&ServerConfig)` (Test connection with the unsaved form; touches no router state), `reset_circuit()`.
-* Validation: `RouterConfig::validate() -> Result<(), RouterError::BadConfig>` implements the §5 rules (host syntax via `murmur_router::net::validate_host`, public host requires `tls`, pin 64 hex, token empty or ≥ 16, timeout ranges). `ServerConfig::addr()` gives "host:port" (IPv6 bracketed). `murmur_router::net::classify(host)` is the §2.6 address class.
+* Validation: `RouterConfig::validate() -> Result<(), RouterError::BadConfig>` implements the §5 rules (host syntax via `murmur_router::net::validate_host`, a public IP requires `tls` unless `allow_plaintext` (D100), pin 64 hex, token empty or ≥ 16, timeout ranges). `ServerConfig::addr()` gives "host:port" (IPv6 bracketed). `murmur_router::net::classify(host)` is the §2.6 address class; the speech server's config-time rule is `net::plaintext_ok_before_resolve(host)` (names wait for the resolved-address check, D100).
 * murmur-core: besides `CommitResult.route` / `RouteInfo` / `POSTPROCESS_REV`, `murmur_core::VERSION` (crate version, used for `Capabilities.core_version` and `hello.core`).
 * Behaviour decisions:
   * Server-only (`allow_client` off) and the server is unreachable at start: `start_session` returns `Err(server_unavailable: …)` (or `server_not_configured`) **and** a following `commit()` returns ERROR with `route.fallback` set, so either check works.

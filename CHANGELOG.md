@@ -22,7 +22,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Fixed
 
-- **A company server name no longer counts as public before it is looked up.** A server name such as `asr.corp.example.com` was refused without TLS when saved, even when it pointed at a private 10.x address. Names are now judged by the addresses they resolve to when the app connects, as `.local` names already were (D100).
+- **Windows: a company server name no longer counts as public before it is looked up.** For a server name such as `asr.corp.example.com`, TLS was forced on when saved, even when it pointed at a private 10.x address. Names are now judged by the addresses they resolve to when the app connects, as `.local` names already were. Android follows later (D100).
 
 ## [1.6.1] - 2026-11-14
 
