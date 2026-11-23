@@ -10,7 +10,7 @@
 #
 # Memory rules (shared box with the home murmur-server): every cargo build and
 # every run that loads a local LLM is serial under
-# $HOME/.cache/flow-clone-build.lock, as an earlyoom-first (choom 1000),
+# $HOME/.cache/murmur-build.lock, as an earlyoom-first (choom 1000),
 # nice 10 process; builds are --release -j 2 and need >= 4000 MB available,
 # local-model runs need model size + 2000 MB.
 #
@@ -20,7 +20,7 @@
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/../.." && pwd)"
-lock="$HOME/.cache/flow-clone-build.lock"
+lock="$HOME/.cache/murmur-build.lock"
 mkdir -p "$(dirname "$lock")"
 avail_mb() { awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo; }
 

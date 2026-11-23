@@ -223,7 +223,7 @@ Spec file: `docs/protocol.md` (normative; this section is its outline). Types:
 
 ### 2.1 Transport
 
-* `GET /v1/stream` → WebSocket, subprotocol `murmur.v1` (the old name `flow.v1` is still accepted, D83). `Authorization: Bearer <token>` on the upgrade request (fallback `?token=` is **not** offered: tokens must not land in access logs).
+* `GET /v1/stream` → WebSocket, subprotocol `murmur.v1`. `Authorization: Bearer <token>` on the upgrade request (fallback `?token=` is **not** offered: tokens must not land in access logs).
 * `GET /v1/health` (same auth) → `HelloOk` JSON, for `curl`/monitoring.
 * Path major `/v1/` changes only on breaking change; minor `proto` integer is negotiated in `hello`.
 * TCP_NODELAY on both ends. WS-level ping every 15 s; 45 s silence = dead.

@@ -21,7 +21,7 @@ for _ in $(seq 1 90); do
   sleep 20
 done
 if (( avail < 4000 )); then echo "skip $TAG: $avail MB available" >&2; exit 1; fi
-exec 9>"$HOME/.cache/flow-clone-build.lock"
+exec 9>"$HOME/.cache/murmur-build.lock"
 flock 9
 choom -n 1000 -- nice -n 10 "$SERVER" --config "$CONFIG" > "$OUT/$TAG.log" 2>&1 &
 pid=$!

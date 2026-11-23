@@ -14,7 +14,6 @@ pub mod capture;
 pub mod config;
 mod health;
 pub mod keys;
-pub mod legacy;
 pub mod library;
 pub mod limits;
 pub mod logging;
@@ -455,18 +454,11 @@ async fn stream_handler(
         tracing::info!(%peer, "rejected: bad or missing token");
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
     };
-    let offered = headers
-        .get(axum::http::header::SEC_WEBSOCKET_PROTOCOL)
-        .and_then(|v| v.to_str().ok());
-    legacy::note_subprotocol(offered, peer);
-    ws.protocols([
-        murmur_protocol::SUBPROTOCOL,
-        murmur_protocol::OLD_SUBPROTOCOL,
-    ])
-    .max_message_size(limits::MAX_WS_MESSAGE_BYTES)
-    .max_frame_size(limits::MAX_WS_MESSAGE_BYTES)
-    .on_upgrade(move |socket| async move {
-        let _slot = slot; // the WebSocket keeps its connection slot
-        ws::run(socket, state, peer, key).await
-    })
+    ws.protocols([murmur_protocol::SUBPROTOCOL])
+        .max_message_size(limits::MAX_WS_MESSAGE_BYTES)
+        .max_frame_size(limits::MAX_WS_MESSAGE_BYTES)
+        .on_upgrade(move |socket| async move {
+            let _slot = slot; // the WebSocket keeps its connection slot
+            ws::run(socket, state, peer, key).await
+        })
 }

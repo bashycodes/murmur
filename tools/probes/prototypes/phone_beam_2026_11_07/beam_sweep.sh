@@ -15,7 +15,7 @@ set -uo pipefail
 mkdir -p "$OUT"
 export LD_LIBRARY_PATH=${SHERPA_ONNX_LIB_DIR:-}:${LD_LIBRARY_PATH:-}
 HW=$(cat "$HOTWORDS")
-LOCK=${LOCK:-$HOME/.cache/flow-clone-build.lock}
+LOCK=${LOCK:-$HOME/.cache/murmur-build.lock}
 run() {
   local tag=$1
   shift

@@ -56,24 +56,31 @@ async fn hello_ok_describes_the_server() {
     assert!(!h.llm);
 }
 
-/// D83: an app from before the Murmur rename offers only the old
-/// subprotocol; the server still speaks it. A new client offers both and
-/// gets the new name.
+/// The server answers with the one subprotocol it speaks.
 #[tokio::test(flavor = "multi_thread")]
-async fn the_old_subprotocol_name_is_still_accepted() {
+async fn the_server_picks_the_murmur_subprotocol() {
     let s = start(mock_cfg(TEXT)).await;
-    let (mut old, picked) = connect_offering(s.addr(), Some(TOKEN), "flow.v1")
+    let (mut ws, picked) = connect_offering(s.addr(), Some(TOKEN), murmur_protocol::SUBPROTOCOL)
         .await
         .unwrap();
-    assert_eq!(picked.as_deref(), Some(murmur_protocol::OLD_SUBPROTOCOL));
-    assert_eq!(hello(&mut old).await.proto, 1);
-
-    let (mut new, picked) =
-        connect_offering(s.addr(), Some(TOKEN), murmur_protocol::CLIENT_SUBPROTOCOLS)
-            .await
-            .unwrap();
     assert_eq!(picked.as_deref(), Some(murmur_protocol::SUBPROTOCOL));
-    assert_eq!(hello(&mut new).await.proto, 1);
+    assert_eq!(hello(&mut ws).await.proto, 1);
+}
+
+/// D102: the name before the rename (`flow.v1`) is no longer spoken; a
+/// client offering only it gets no subprotocol back, which the client
+/// side of the handshake rejects.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_client_offering_only_the_old_subprotocol_gets_none() {
+    let s = start(mock_cfg(TEXT)).await;
+    let e = connect_offering(s.addr(), Some(TOKEN), "flow.v1")
+        .await
+        .err()
+        .expect("handshake without a subprotocol must fail");
+    assert!(
+        e.to_string().to_lowercase().contains("subprotocol"),
+        "unexpected error: {e}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

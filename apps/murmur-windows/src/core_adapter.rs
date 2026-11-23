@@ -160,8 +160,7 @@ impl CpuReason {
 /// `MURMUR_WHISPER_DEVICE=cpu`, read the way the plugin reads it
 /// (murmur-whisper `backend::force_cpu_from_env`).
 pub fn whisper_cpu_forced() -> bool {
-    murmur_build_info::env::var("MURMUR_WHISPER_DEVICE")
-        .is_ok_and(|v| v.trim().eq_ignore_ascii_case("cpu"))
+    std::env::var("MURMUR_WHISPER_DEVICE").is_ok_and(|v| v.trim().eq_ignore_ascii_case("cpu"))
 }
 
 /// First line of an error, at most 100 characters (Settings shows it inline).

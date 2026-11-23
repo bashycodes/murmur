@@ -2561,7 +2561,6 @@ dependencies = [
  "hound",
  "libloading 0.8.9",
  "murmur-asr-sherpa",
- "murmur-build-info",
  "regex",
  "rtrb",
  "serde",

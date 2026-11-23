@@ -1295,7 +1295,7 @@ enum JoinMode {
 
 impl JoinMode {
     fn from_env() -> Self {
-        match murmur_build_info::env::var("MURMUR_SEGMENT_JOIN").as_deref() {
+        match std::env::var("MURMUR_SEGMENT_JOIN").as_deref() {
             Ok("plain") => Self::Plain,
             Ok("smooth") => Self::Smooth,
             _ => Self::Bridge,

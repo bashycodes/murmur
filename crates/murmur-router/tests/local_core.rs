@@ -30,7 +30,7 @@ fn session() -> SessionConfig {
 }
 
 #[test]
-fn local_route_equals_flowcore_directly() {
+fn local_route_equals_murmurcore_directly() {
     let asr_text = "um so zephyr is great press enter";
     let direct = MurmurCore::from_engines(Arc::new(MockAsr::new(asr_text)), None);
     direct.start_session(session()).unwrap();

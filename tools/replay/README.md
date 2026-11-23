@@ -78,7 +78,7 @@ p50, cloud cost. The total OpenRouter spend is printed at the end.
 
 * Every cargo build goes through `tools/replay/run.sh cargo <args>` (or the
   build `run.sh` does itself): `--release -j 2`, serial under
-  `$HOME/.cache/flow-clone-build.lock`, `choom -n 1000` (earlyoom kills it
+  `$HOME/.cache/murmur-build.lock`, `choom -n 1000` (earlyoom kills it
   first), `nice -n 10`, and only with >= 4000 MB available.
 * A run that loads the local LLM (`--cleanup local` or `--llm`) runs under
   the same lock (one local model at a time, serial with builds) and only

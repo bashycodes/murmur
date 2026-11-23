@@ -10,8 +10,6 @@
 
 include!("describe.rs");
 
-pub mod env;
-
 /// Product version, `MAJOR.MINOR.PATCH`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Short commit (7 hex) or empty when git was unavailable.

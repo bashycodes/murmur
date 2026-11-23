@@ -1334,7 +1334,6 @@ dependencies = [
  "hound",
  "libloading",
  "murmur-asr-sherpa",
- "murmur-build-info",
  "regex",
  "rtrb",
  "serde",
@@ -1368,7 +1367,6 @@ name = "murmur-llm"
 version = "1.6.1"
 dependencies = [
  "llama-cpp-2",
- "murmur-build-info",
  "serde",
  "serde_json",
 ]
@@ -1460,7 +1458,6 @@ dependencies = [
 name = "murmur-whisper"
 version = "1.6.1"
 dependencies = [
- "murmur-build-info",
  "murmur-core",
  "serde",
  "serde_json",

@@ -41,16 +41,6 @@
 # * MURMUR_INSECURE_BIND_ANY=1 adds --insecure-bind-any (warns).
 set -eu
 
-# D83: before the Murmur rename these variables were FLOW_*. For one
-# transition period an unset MURMUR_<X> takes FLOW_<X>'s value, with a
-# notice (the server binary does the same for the ones it reads itself).
-for old in $(env | sed -n 's/^FLOW_\([A-Za-z0-9_]*\)=.*/\1/p'); do
-    if [ -z "$(printenv "MURMUR_$old" || true)" ]; then
-        export "MURMUR_$old=$(printenv "FLOW_$old")"
-        echo "murmur-server: notice: FLOW_$old is the old name of MURMUR_$old; still read for now, rename it (D83)" >&2
-    fi
-done
-
 BIN="${MURMUR_BIN:-/opt/murmur-server/bin/murmur-server}"
 DATA="${MURMUR_DATA:-/data}"
 MODELS="${MURMUR_MODELS_DIR:-/models}"

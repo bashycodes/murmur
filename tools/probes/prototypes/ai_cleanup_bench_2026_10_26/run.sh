@@ -22,6 +22,6 @@ fi
 [[ -n "$prompt" && "$prompt" != - ]] && args+=(--prompt "$here/$prompt")
 [[ -n "${5:-}" ]] && args+=(--from "$here/$5")
 echo "== $label $(date +%T) load $(cut -d' ' -f1 /proc/loadavg) avail $(awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo) MB" >&2
-flock "$HOME/.cache/flow-clone-build.lock" choom -n 1000 -- nice -n 10 \
+flock "$HOME/.cache/murmur-build.lock" choom -n 1000 -- nice -n 10 \
   /usr/bin/time -v -o "$here/results/$label.time" "$bin" "${args[@]}" > "$here/results/$label.jsonl"
 grep -E 'Maximum resident|Elapsed' "$here/results/$label.time" >&2

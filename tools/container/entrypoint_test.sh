@@ -87,14 +87,6 @@ run "$D" MURMUR_STT=qwen2.5-1.5b-instruct-q4_k_m && fail "wrong-kind MURMUR_STT 
 grep -q 'is not a "stt" model' "$T/out" || fail "wrong-kind message"
 ok "MURMUR_STT / MURMUR_LLM=none / wrong kind"
 
-# 3b. D83: the old FLOW_* name still works with a notice; the new one wins.
-run "$D" FLOW_STT=another-stt || { cat "$T/out"; fail "old FLOW_STT"; }
-grep -q "^asr_path = \"$M/another-stt\"" "$G" || fail "FLOW_STT not read"
-grep -q 'notice: FLOW_STT is the old name of MURMUR_STT' "$T/out" || fail "no FLOW_ notice"
-run "$D" FLOW_STT=another-stt MURMUR_STT=parakeet-tdt-0.6b-v2-int8 || { cat "$T/out"; fail "both names"; }
-grep -q "^asr_path = \"$M/parakeet-tdt-0.6b-v2-int8\"" "$G" || fail "MURMUR_STT did not win"
-ok "old FLOW_* names: read with a notice, the new name wins"
-
 # 3c. D84: the two whisper turbo models (the GPU image's options): stock turbo
 # as the main speech engine, ivrit.ai turbo as the Hebrew route.
 model "$M" whisper-large-v3-turbo-q5_0 stt whisper ggml-large-v3-turbo-q5_0.bin

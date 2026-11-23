@@ -74,7 +74,7 @@ pub fn plugin_candidates(explicit: Option<&str>) -> Vec<PathBuf> {
     if let Some(p) = explicit.filter(|p| !p.is_empty()) {
         return vec![PathBuf::from(p)];
     }
-    if let Some(p) = murmur_build_info::env::var_os("MURMUR_WHISPER_LIB") {
+    if let Some(p) = std::env::var_os("MURMUR_WHISPER_LIB") {
         return vec![PathBuf::from(p)];
     }
     let mut v = Vec::new();
