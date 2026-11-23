@@ -56,24 +56,15 @@ async fn hello_ok_describes_the_server() {
     assert!(!h.llm);
 }
 
-/// D83: an app from before the Murmur rename offers only the old
-/// subprotocol; the server still speaks it. A new client offers both and
-/// gets the new name.
+/// The server answers with the one subprotocol it speaks.
 #[tokio::test(flavor = "multi_thread")]
-async fn the_old_subprotocol_name_is_still_accepted() {
+async fn the_server_picks_the_murmur_subprotocol() {
     let s = start(mock_cfg(TEXT)).await;
-    let (mut old, picked) = connect_offering(s.addr(), Some(TOKEN), "flow.v1")
+    let (mut ws, picked) = connect_offering(s.addr(), Some(TOKEN), murmur_protocol::SUBPROTOCOL)
         .await
         .unwrap();
-    assert_eq!(picked.as_deref(), Some(murmur_protocol::OLD_SUBPROTOCOL));
-    assert_eq!(hello(&mut old).await.proto, 1);
-
-    let (mut new, picked) =
-        connect_offering(s.addr(), Some(TOKEN), murmur_protocol::CLIENT_SUBPROTOCOLS)
-            .await
-            .unwrap();
     assert_eq!(picked.as_deref(), Some(murmur_protocol::SUBPROTOCOL));
-    assert_eq!(hello(&mut new).await.proto, 1);
+    assert_eq!(hello(&mut ws).await.proto, 1);
 }
 
 #[tokio::test(flavor = "multi_thread")]

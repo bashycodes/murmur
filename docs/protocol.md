@@ -11,7 +11,7 @@ Design rationale: `docs/hybrid-architecture.md` §2.
 
 | Item | Rule |
 |---|---|
-| Stream endpoint | `GET /v1/stream`, upgraded to WebSocket. The client offers subprotocols `murmur.v1, flow.v1`; the server echoes the first it knows (`flow.v1` is the name before the rename, still accepted for now, D83) |
+| Stream endpoint | `GET /v1/stream`, upgraded to WebSocket. The client offers subprotocol `murmur.v1`; the server echoes it |
 | Auth | `Authorization: Bearer <token>` on the upgrade request. No query-string token (it would land in access logs). Missing/wrong token → HTTP 401 before the upgrade (clients report `auth_failed`) |
 | Health | `GET /v1/health` with the same auth → `200` + a `hello_ok` JSON body (without `"t"`) |
 | Model library (D40) | `GET /v1/models` with the same auth → `200` + `{"models":[{id, title, kind, language?, catalogue_id?, engine?, files:[{name, size, sha256}]}]}` (`murmur_protocol::library::ModelList`; `kind` = `stt`/`hebrew`/`llm`/`lid`/`vad`). `GET /v1/models/{id}/files/{name}` → the file (`application/octet-stream`, `ETag` = `"<sha256>"`, `Accept-Ranges: bytes`); one `Range: bytes=` range → `206` + `Content-Range`, unsatisfiable → `416`, `If-Range` with another ETag → whole file. Unknown id/file → `404`; file changed since the last scan → `503` + `Retry-After`. Ids and names use only `A-Z a-z 0-9 . _ -` (plus `/` inside a file name), so paths need no escaping. Clients verify every file against the listed `sha256`, and a model with a `catalogue_id` against their built-in pins |

@@ -9,9 +9,7 @@ use std::time::{Duration, Instant};
 
 use futures_util::{SinkExt, StreamExt};
 use murmur_core::config::SessionConfig;
-use murmur_protocol::{
-    ClientMsg, HelloOk, ServerModel, ServerModels, ServerMsg, OLD_SUBPROTOCOL, SUBPROTOCOL,
-};
+use murmur_protocol::{ClientMsg, HelloOk, ServerModel, ServerModels, ServerMsg, SUBPROTOCOL};
 use murmur_remote::RemoteBackend;
 use murmur_router::{Backend, Failure, ServerConfig};
 use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
@@ -199,18 +197,6 @@ fn allow_plaintext_lets_ws_reach_a_public_address() {
         "the opt-in must skip the cleartext rule: {}",
         e.message
     );
-}
-
-/// D83: a server from before the Murmur rename answers with the old
-/// subprotocol name; the client still offers it, so the session starts.
-#[test]
-fn a_server_speaking_the_old_subprotocol_name_still_works() {
-    let srv = SilentServer::start_speaking(OLD_SUBPROTOCOL);
-    let b = RemoteBackend::new(server_cfg("127.0.0.1", srv.port), "test");
-    b.start_session(&SessionConfig::default())
-        .expect("old server accepted");
-    assert!(srv.got("hello"));
-    b.cancel();
 }
 
 #[test]

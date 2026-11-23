@@ -10,8 +10,8 @@ use futures_util::{SinkExt, StreamExt};
 use murmur_core::CommitResult;
 use murmur_protocol::{
     code, Cleaned, ClientMsg, ErrorMsg, Hello, HelloOk, ServerMsg, ServerTimings,
-    CLIENT_SUBPROTOCOLS, CLOSE_PROTO_MISMATCH, CLOSE_UNAUTHORIZED, IDLE_KEEPALIVE_S, PATH_STREAM,
-    PROTO_MAX, PROTO_MIN, WS_DEAD_S, WS_PING_S,
+    CLOSE_PROTO_MISMATCH, CLOSE_UNAUTHORIZED, IDLE_KEEPALIVE_S, PATH_STREAM, PROTO_MAX, PROTO_MIN,
+    SUBPROTOCOL, WS_DEAD_S, WS_PING_S,
 };
 use murmur_router::{net, BackendError, Failure, ServerConfig};
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -107,7 +107,7 @@ pub async fn connect(cfg: &ServerConfig, client: &str) -> Result<Arc<Conn>, Back
     let h = req.headers_mut();
     h.insert(
         SEC_WEBSOCKET_PROTOCOL,
-        HeaderValue::from_static(CLIENT_SUBPROTOCOLS),
+        HeaderValue::from_static(SUBPROTOCOL),
     );
     if !cfg.token.is_empty() {
         let v = HeaderValue::from_str(&format!("Bearer {}", cfg.token))
