@@ -268,10 +268,18 @@ Spec file: `docs/protocol.md` (normative; this section is its outline). Types:
 
 ### 2.6 Transport security
 
-| Server address (client-side check, `murmur_router::net::classify`) | `ws://` | `wss://` |
+| Server address (client-side check: `murmur_router::net::plaintext_ok_before_resolve` when saved, `plaintext_ok_resolved` when connecting) | `ws://` | `wss://` |
 |---|---|---|
-| loopback, RFC 1918, 100.64.0.0/10 (VPN/CGNAT), fd7a:115c:a1e0::/48 (VPN overlay), fc00::/7, link-local, `*.ts.net`, `*.local`, single-label names | allowed; Developer page shows "unencrypted: OK only on your LAN or over an encrypted VPN" | allowed |
-| anything else (public IP or public DNS name) | **refused** (`connect_failed: plaintext to public address`) | required |
+| loopback, RFC 1918, 100.64.0.0/10 (VPN/CGNAT), fd7a:115c:a1e0::/48 (VPN overlay), fc00::/7, link-local IP; any name that resolves only to those | allowed; Developer page shows "unencrypted: OK only on your LAN or over an encrypted VPN" | allowed |
+| a public IP | **refused** when saved (`connect_failed: plaintext to public address`) | required |
+| a name that resolves to any public address | **refused** when connecting (`connect_failed: … plaintext refused …`) | required |
+| any address, with **Allow an unencrypted connection** on for this server (`ServerConfig::allow_plaintext`, D100) | allowed (warned) | allowed |
+
+D100: before it, every dotted name other than `*.local` / `*.ts.net` counted as public when
+saved, so a company name such as `asr.corp.example.com` was refused even when it resolved to
+10.x. The server has its own peer filter (loopback/LAN/VPN clients only); on a network with
+public address ranges inside it must run with `--insecure-bind-any`
+(Docker: `MURMUR_INSECURE_BIND_ANY=1`) as well.
 
 Recommended: a WireGuard-based VPN (it already encrypts; bind the server to its 100.x address).
 TLS (server `[tls] cert/key`, rustls) for LAN without a VPN; self-signed certs pinned
@@ -427,7 +435,8 @@ are marked (ui).
 | `prefer` | segmented "Server first / Client first" (visible when both on) | server | — |
 | `server.host` | text | "" | trim; no scheme/path/port/whitespace; one of: IPv4 dotted quad (4 parts 0-255, no leading zeros), IPv6 literal (brackets optional, stored without), hostname (labels 1-63 `[A-Za-z0-9-]`, no leading/trailing `-`, total ≤ 253). Inline error text; Save disabled while invalid |
 | `server.port` | number | 7313 | integer 1-65535 |
-| `server.tls` | toggle "Use TLS (wss)" | off | forced on (and locked) when host classifies public (§2.6) |
+| `server.tls` | toggle "Use TLS (wss)" | off | forced on (and locked) when the host is a public IP (§2.6), unless `server.allow_plaintext` |
+| `server.allow_plaintext` | toggle "Allow an unencrypted connection" (Windows; D100) | off | plain `ws://` to any address; shown for a public IP, after a "plaintext refused" result, or while on |
 | `server.tls_pin_sha256` | text (shown when TLS on) | "" | empty or 64 hex (colons stripped) |
 | `server.token` | password field + show/paste/clear | "" | empty or ≥ 16 chars; never logged, never in exported settings |
 | `server.connect_timeout_ms` | number | 2500 (D24; a stored 800 migrates once) | 100-10000; the router raises it to `rtt × 6` (1.5-10 s) after a probe measured a slow path |
@@ -675,7 +684,7 @@ accept an `OpenRouterConfig` JSON. A legacy entry of another adapter is refused 
   * `RouterError` = `NoEngineEnabled | LocalNotReady | ServerNotConfigured | ServerUnavailable(String) | BadConfig(String)`, `kind()` = the §1.2 snake_case strings; `Display` = `"<kind>: <detail>"`.
 * `Backend::session_failure(&self) -> Option<BackendError>` — new trait method **with a default** (`None`); shells' local wrappers need not implement it. The router polls it on every push to detect a dead remote session (busy, lost connection, no `started` in time).
 * New `Router` methods: `with_local_capability(bool)` (builder: declare a local engine before its models are loaded, so `allow_client` with no model gives `local_not_ready`, not `no_engine_enabled`; default = a local backend was passed to `new`/`set_local`), `with_local_info(asr_engines, llm)` (fills `capabilities()`), `config()`, `probe_config(&ServerConfig)` (Test connection with the unsaved form; touches no router state), `reset_circuit()`.
-* Validation: `RouterConfig::validate() -> Result<(), RouterError::BadConfig>` implements the §5 rules (host syntax via `murmur_router::net::validate_host`, public host requires `tls`, pin 64 hex, token empty or ≥ 16, timeout ranges). `ServerConfig::addr()` gives "host:port" (IPv6 bracketed). `murmur_router::net::classify(host)` is the §2.6 address class.
+* Validation: `RouterConfig::validate() -> Result<(), RouterError::BadConfig>` implements the §5 rules (host syntax via `murmur_router::net::validate_host`, a public IP requires `tls` unless `allow_plaintext` (D100), pin 64 hex, token empty or ≥ 16, timeout ranges). `ServerConfig::addr()` gives "host:port" (IPv6 bracketed). `murmur_router::net::classify(host)` is the §2.6 address class; the speech server's config-time rule is `net::plaintext_ok_before_resolve(host)` (names wait for the resolved-address check, D100).
 * murmur-core: besides `CommitResult.route` / `RouteInfo` / `POSTPROCESS_REV`, `murmur_core::VERSION` (crate version, used for `Capabilities.core_version` and `hello.core`).
 * Behaviour decisions:
   * Server-only (`allow_client` off) and the server is unreachable at start: `start_session` returns `Err(server_unavailable: …)` (or `server_not_configured`) **and** a following `commit()` returns ERROR with `route.fallback` set, so either check works.
@@ -827,8 +836,8 @@ can adapt. Server-side items (S7-S10, C5, the server half of C4) are on branch `
   (and cloud `http://`) to a name resolves it and requires **every** address to be loopback, RFC 1918,
   ULA, link-local, or VPN (100.64/10, fd7a:115c:a1e0::/48) reached through an interface that holds
   a VPN address (`net::plaintext_ok_resolved`, `net::route_source`); the connection then goes to
-  exactly those addresses. `*.local`, single-label and `*.ts.net` names still pass the config-time
-  check (`ServerConfig::validate`) but no longer count as private by name. Choice/limit: carrier CGNAT
+  exactly those addresses. Names pass the config-time check (`ServerConfig::validate`; since
+  D100 every name, not only `*.local`, single-label and `*.ts.net`) but none counts as private by name. Choice/limit: carrier CGNAT
   also uses 100.64/10, so a phone on such a network with its VPN down cannot be told apart here;
   that case needs `wss://`. Failure: `connect_failed` "…: plaintext refused: … (enable TLS)"; shells
   may show it as "Use TLS for this server".

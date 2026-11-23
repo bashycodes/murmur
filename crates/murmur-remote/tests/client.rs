@@ -176,6 +176,31 @@ fn cleartext_to_a_name_is_decided_by_its_resolved_addresses() {
     );
 }
 
+/// D100: a public-range address (here TEST-NET-3, which goes nowhere) is
+/// refused over `ws://` before any socket, unless the owner allowed
+/// plaintext for this server; then the app really tries to connect and
+/// fails only for the network's reasons.
+#[test]
+fn allow_plaintext_lets_ws_reach_a_public_address() {
+    let public = |allow: bool| ServerConfig {
+        allow_plaintext: allow,
+        connect_timeout_ms: 300,
+        ..server_cfg("203.0.113.5", 7313)
+    };
+    let e = RemoteBackend::new(public(false), "test")
+        .start_session(&SessionConfig::default())
+        .unwrap_err();
+    assert!(e.message.contains("enable TLS"), "{}", e.message);
+    let e = RemoteBackend::new(public(true), "test")
+        .start_session(&SessionConfig::default())
+        .unwrap_err();
+    assert!(
+        !e.message.contains("enable TLS") && !e.message.contains("plaintext"),
+        "the opt-in must skip the cleartext rule: {}",
+        e.message
+    );
+}
+
 /// D83: a server from before the Murmur rename answers with the old
 /// subprotocol name; the client still offers it, so the session starts.
 #[test]

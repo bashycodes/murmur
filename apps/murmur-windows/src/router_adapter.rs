@@ -744,9 +744,10 @@ impl RouterAdapter {
 }
 
 /// Pill text for murmur-remote's `connect_failed … plaintext refused …`:
-/// `ws://` to an address that is not private/VPN (review S6).
-pub const SERVER_NEEDS_TLS: &str =
-    "Server needs TLS — its address is not private; turn on TLS in Developer settings";
+/// `ws://` to an address that is not private/VPN (review S6). D100: or the
+/// owner allows an unencrypted connection on Settings → Your server.
+pub const SERVER_NEEDS_TLS: &str = "Server needs TLS — its address is not private; turn on TLS \
+     or allow an unencrypted connection in Settings → Your server";
 
 /// A router/remote error that means "plaintext refused".
 pub fn needs_tls(detail: &str) -> bool {
@@ -2114,7 +2115,7 @@ mod tests {
             assert!(router_config(&d, BOTH).is_ok(), "{h}");
             assert_eq!(
                 crate::dev_settings::host_is_public(&d.server.host),
-                !murmur_router::net::classify(&d.server.host).plaintext_ok(),
+                !murmur_router::net::plaintext_ok_before_resolve(&d.server.host),
                 "{h}"
             );
         }

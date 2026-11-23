@@ -161,6 +161,10 @@ pub struct ServerSettings {
     pub host: String,
     pub port: u16,
     pub tls: bool,
+    /// D100: the owner trusts the network to this server (an air-gapped
+    /// company network with public address ranges inside): plain `ws://`
+    /// whatever the address. Off by default.
+    pub allow_plaintext: bool,
     /// SHA-256 of the server's leaf certificate, 64 lowercase hex.
     pub tls_pin_sha256: String,
     pub connect_timeout_ms: u64,
@@ -174,6 +178,7 @@ impl Default for ServerSettings {
             host: String::new(),
             port: DEFAULT_PORT,
             tls: false,
+            allow_plaintext: false,
             tls_pin_sha256: String::new(),
             connect_timeout_ms: murmur_router::DEFAULT_CONNECT_TIMEOUT_MS,
             commit_timeout_base_ms: 3000,
@@ -555,7 +560,7 @@ impl DevSettings {
             "server": {
                 "host": s.host,
                 "port": s.port,
-                "tls": s.tls || (!s.host.is_empty() && host_is_public(&s.host)),
+                "tls": s.tls || tls_required(&s.host, s.allow_plaintext),
                 "tls_pin_sha256": if s.tls_pin_sha256.is_empty() {
                     serde_json::Value::Null
                 } else {
@@ -568,6 +573,10 @@ impl DevSettings {
             },
             "keep_local_warm": self.keep_local_warm,
         });
+        // D100: only while on, like the router's own serialisation.
+        if s.allow_plaintext {
+            j["server"]["allow_plaintext"] = serde_json::Value::Bool(true);
+        }
         // D36: always the whole cleanup order, so the router never falls
         // back to the pre-D36 rule; an engine the user or the build switched
         // off keeps its place in `cleanup_off`.
@@ -625,8 +634,10 @@ impl DevSettings {
             });
         }
         if srv && !self.server.host.is_empty() && !self.server.tls {
-            if host_is_public(&self.server.host) {
+            if tls_required(&self.server.host, self.server.allow_plaintext) {
                 w.push("Public address: TLS (wss) is required and turned on.".into());
+            } else if self.server.allow_plaintext {
+                w.push(ALLOW_PLAINTEXT_WARNING.into());
             } else {
                 w.push("Unencrypted: OK only on your LAN or over an encrypted VPN.".into());
             }
@@ -747,6 +758,7 @@ pub struct DevForm {
     pub host: String,
     pub port: i64,
     pub tls: bool,
+    pub allow_plaintext: bool,
     pub tls_pin_sha256: String,
     pub token: String,
     /// A token is saved but not sent to the page (review S18): an empty
@@ -783,6 +795,16 @@ fn err(field: &'static str, message: impl Into<String>) -> FieldError {
 }
 
 impl DevForm {
+    /// The Your server page's TLS state (D100), whether or not the rest of
+    /// the form validates: `(tls_forced, host_public)`. `host_public` = the
+    /// address is a public IP (the page offers "Allow an unencrypted
+    /// connection"); `tls_forced` = that, without the opt-in (the TLS switch
+    /// is on and locked).
+    pub fn tls_lock(&self) -> (bool, bool) {
+        let public = normalize_host(&self.host).is_ok_and(|h| tls_required(&h, false));
+        (public && !self.allow_plaintext, public)
+    }
+
     pub fn from_settings(s: &DevSettings, token: &str) -> Self {
         DevForm {
             allow_server: s.allow_server,
@@ -791,6 +813,7 @@ impl DevForm {
             host: s.server.host.clone(),
             port: s.server.port.into(),
             tls: s.server.tls,
+            allow_plaintext: s.server.allow_plaintext,
             tls_pin_sha256: s.server.tls_pin_sha256.clone(),
             token: token.to_string(),
             token_saved: false,
@@ -899,7 +922,7 @@ impl DevForm {
             return Err(errs);
         }
         // A toggle the build cannot serve stays off (and disabled in the UI).
-        let tls = self.tls || (!host.is_empty() && host_is_public(&host));
+        let tls = self.tls || tls_required(&host, self.allow_plaintext);
         let mut order: Vec<Route> = Vec::new();
         for r in &self.route_order {
             if !order.contains(r) {
@@ -914,6 +937,7 @@ impl DevForm {
                 host,
                 port,
                 tls,
+                allow_plaintext: self.allow_plaintext,
                 tls_pin_sha256: pin,
                 connect_timeout_ms: connect,
                 commit_timeout_base_ms: commit,
@@ -1024,17 +1048,28 @@ fn parse_ipv4_strict(s: &str) -> Option<Ipv4Addr> {
 }
 
 /// §2.6: is plaintext `ws://` refused for this (normalised) host at
-/// config time? The router's classifier decides (`murmur_router::net`, the
-/// same one `ServerConfig::validate` uses), so the form can never disagree
-/// with the gate. Private = loopback, RFC 1918, link-local, ULA, VPN
-/// (100.64/10, fd7a:115c:a1e0::/48), `*.ts.net`, `*.local`, `localhost`
-/// and single-label names. That is only the form rule: at connect time
-/// murmur-remote resolves a name and requires every address to be private
-/// (review S6), so a `*.ts.net` or LAN name that resolves publicly is
-/// refused then ("server needs TLS").
+/// config time? The router's rule decides
+/// (`murmur_router::net::plaintext_ok_before_resolve`, the same one
+/// `ServerConfig::validate` uses), so the form can never disagree with the
+/// gate. Public = an IP literal outside loopback, RFC 1918, link-local,
+/// ULA and VPN (100.64/10, fd7a:115c:a1e0::/48). A name is never public
+/// here (D100): at connect time murmur-remote resolves it and requires
+/// every address to be private (review S6), so a name that resolves
+/// publicly is refused then ("server needs TLS").
 pub fn host_is_public(host: &str) -> bool {
-    !murmur_router::net::classify(host).plaintext_ok()
+    !murmur_router::net::plaintext_ok_before_resolve(host)
 }
+
+/// TLS is forced on (and its switch locked): a public address the owner
+/// has not allowed plaintext to (D100).
+pub fn tls_required(host: &str, allow_plaintext: bool) -> bool {
+    !host.is_empty() && !allow_plaintext && host_is_public(host)
+}
+
+/// Shown while plaintext to this server is allowed (D100).
+pub const ALLOW_PLAINTEXT_WARNING: &str = "Unencrypted connection allowed for this server: \
+     audio, text and the token can be read by anyone on the network path. \
+     Use only on a network you trust.";
 
 /// Setup re-run (D95): the saved server (address, port, TLS and the
 /// encrypted token) when setup opened, so "Keep my old setup" can put it
@@ -1222,17 +1257,13 @@ mod tests {
             "localhost",
             "pc.tail1234.ts.net",
             "nas.local",
+            // D100: names wait for the connect-time resolved check.
+            "example.com",
+            "asr.corp.example.org",
         ] {
             assert!(!host_is_public(private), "{private}");
         }
-        for public in [
-            "8.8.8.8",
-            "100.128.0.1",
-            "172.32.0.1",
-            "2001:4860::8888",
-            "example.com",
-            "box.example.org",
-        ] {
+        for public in ["8.8.8.8", "100.128.0.1", "172.32.0.1", "2001:4860::8888"] {
             assert!(host_is_public(public), "{public}");
         }
     }
@@ -1282,11 +1313,54 @@ mod tests {
     #[test]
     fn public_host_forces_tls() {
         let mut f = form();
-        f.host = "example.com".into();
+        f.host = "30.1.2.3".into();
         let (s, _) = f.validate(BOTH).unwrap();
         assert!(s.server.tls);
         f.host = "100.64.0.10".into();
         assert!(!f.validate(BOTH).unwrap().0.server.tls);
+        f.host = "asr.corp.example.org".into();
+        assert!(
+            !f.validate(BOTH).unwrap().0.server.tls,
+            "names: decided at connect"
+        );
+    }
+
+    #[test]
+    fn tls_lock_follows_public_ips_and_the_opt_in() {
+        let lock = |host: &str, allow: bool| {
+            let mut f = form();
+            f.host = host.into();
+            f.allow_plaintext = allow;
+            f.tls_lock()
+        };
+        assert_eq!(lock("30.1.2.3", false), (true, true));
+        assert_eq!(lock("30.1.2.3", true), (false, true));
+        assert_eq!(lock(" [2001:4860::8888] ", false), (true, true));
+        assert_eq!(lock("asr.corp.example.com", false), (false, false));
+        assert_eq!(lock("10.0.0.5", false), (false, false));
+        assert_eq!(lock("", false), (false, false));
+        assert_eq!(lock("not a host!", false), (false, false));
+    }
+
+    /// D100: the owner's opt-in keeps TLS off for a public address, goes
+    /// to the router config, and is warned about.
+    #[test]
+    fn allow_plaintext_keeps_tls_off_for_a_public_address() {
+        let mut f = form();
+        f.host = "30.1.2.3".into();
+        f.allow_plaintext = true;
+        let (s, _) = f.validate(BOTH).unwrap();
+        assert!(!s.server.tls);
+        assert!(s.server.allow_plaintext);
+        let j = s.router_config_json(BOTH, "0123456789abcdef0123");
+        assert_eq!(j["server"]["tls"], false);
+        assert_eq!(j["server"]["allow_plaintext"], true);
+        let c: murmur_router::RouterConfig = serde_json::from_value(j).unwrap();
+        c.validate().unwrap();
+        assert!(s
+            .warnings(BOTH)
+            .contains(&ALLOW_PLAINTEXT_WARNING.to_string()));
+        assert!(DevForm::from_settings(&s, "").allow_plaintext);
     }
 
     #[test]

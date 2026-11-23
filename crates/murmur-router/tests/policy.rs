@@ -763,6 +763,13 @@ fn config_validation() {
     assert!(c.validate().is_ok());
     c.server.host = "8.8.8.8".into();
     assert_eq!(c.validate().unwrap_err().kind(), "bad_config");
+    // D100: the owner's opt-in allows ws:// to it; names wait for DNS.
+    c.server.allow_plaintext = true;
+    assert!(c.validate().is_ok());
+    c.server.allow_plaintext = false;
+    c.server.host = "asr.corp.example.com".into();
+    assert!(c.validate().is_ok(), "decided by its resolved addresses");
+    c.server.host = "8.8.8.8".into();
     c.server.tls = true;
     assert!(c.validate().is_ok());
     c.server.token = "short".into();

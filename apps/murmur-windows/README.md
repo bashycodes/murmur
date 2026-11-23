@@ -145,7 +145,8 @@ hides it again):
   client in Developer settings".
 * Server **host/IP** (IPv4, IPv6, or a name such as `mybox.local`;
   no `ws://`, path or port) and **port** (default 7313), TLS + optional
-  certificate pin (required and forced for a public address), **token**
+  certificate pin (required and forced for a public IP address, unless
+  "Allow an unencrypted connection" is on, D100), **token**
   (from `murmur-server gen-token`; stored DPAPI-encrypted for your Windows
   account, never logged), connect / commit timeouts, health cache, keep the
   local model warm, S/L badge on the Murmur bar.

@@ -16,6 +16,14 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Added
+
+- **Windows: "Allow an unencrypted connection" for your server.** On a network you trust, such as an air-gapped company network that uses public address ranges inside, Settings → Your server can now connect without TLS to any address. It is off by default and shown for a public IP address; the page warns that audio, text and the access token then cross the network unencrypted. The server must accept such clients too (`--insecure-bind-any`, Docker `MURMUR_INSECURE_BIND_ANY=1`). Android follows later (D100).
+
+### Fixed
+
+- **Windows: a company server name no longer counts as public before it is looked up.** For a server name such as `asr.corp.example.com`, TLS was forced on when saved, even when it pointed at a private 10.x address. Names are now judged by the addresses they resolve to when the app connects, as `.local` names already were. Android follows later (D100).
+
 ## [1.6.1] - 2026-11-14
 
 ### Changed

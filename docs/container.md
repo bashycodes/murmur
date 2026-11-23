@@ -309,6 +309,10 @@ peers outside loopback / LAN / VPN (`docs/server-advanced.md` §3, config.rs
   peer filter**. The entrypoint and the server both warn at startup. Only
   for a LAN-only host where the default does not work (an unusual container
   network); publish the port on a LAN or VPN address, never on a public one.
+  The one other case is a closed network you trust whose clients use public
+  address ranges (an air-gapped company network, D100): the peer filter
+  would drop them all, so set this and turn on "Allow an unencrypted
+  connection" in the apps.
 
 ## 11. Health checks
 
