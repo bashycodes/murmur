@@ -289,45 +289,5 @@ if [ "$(id -u)" != 0 ]; then
     chmod 644 "$T/badlib/libonnxruntime.so"
 fi
 
-# 13. D83: an install from before the rename (flow-server paths) and no new
-# config: its config and token are copied once (keys are not), the old
-# files and the old unit are left alone (with a warning about the shared port).
-printf '#!/usr/bin/env bash\ncase "$1" in gen-token) echo new >"$3";; esac\nexit 0\n' >"$T/target/release/murmur-server"
-chmod +x "$T/target/release/murmur-server"
-H="$T/home2"
-OC="$H/.config/flow-server"
-mkdir -p "$OC" "$H/.local/state/flow-server" "$H/.config/systemd/user"
-cat >"$OC/config.toml" <<EOC
-bind = ["127.0.0.1:7313"]
-token_file = "$OC/token"
-[model]
-asr_engine = "parakeet"
-asr_path = "$P"
-llm_path = "$M/q.gguf"
-llm_lib = "$H/.local/lib/flow-server/libflow_llm.so"
-EOC
-echo "old-synthetic-token" >"$OC/token"
-echo '{"keys":["synthetic"]}' >"$H/.local/state/flow-server/keys.json"
-touch "$H/.config/systemd/user/flow-server.service"
-cp "$OC/config.toml" "$T/oldconf.before"
-o="$(env -u DBUS_SESSION_BUS_ADDRESS -u XDG_STATE_HOME PATH="$T/bin:$PATH" HOME="$H" XDG_CONFIG_HOME="$H/.config" \
-    MURMUR_INSTALL_RUN_USER="$T/run" XDG_RUNTIME_DIR="$R" MURMUR_PARAKEET_DIR= \
-    bash "$HERE/install.sh" --user --sherpa-lib "$T/lib" --bind 127.0.0.1:7313 --no-build 2>&1; echo "rc=$?")"
-NC="$H/.config/murmur-server"
-check "old install: completes" "$o" "rc=0"
-check "old install: note" "$o" "copying the config and token of the install from before the rename"
-check "old install: model from the old config" "$o" "upgrading in place; model from .*flow-server/config.toml: $P"
-check "old install: llm on from the old config" "$o" "llm      on"
-check "old install: token copied" "$(cat "$NC/token")" "^old-synthetic-token$"
-check "old install: token_file rewritten" "$(cat "$NC/config.toml")" "^token_file = \"$NC/token\"$"
-check "old install: llm_lib rewritten" "$(cat "$NC/config.toml")" "^llm_lib = \"$H/.local/lib/murmur-server/libmurmur_llm.so\"$"
-check "old install: keys not carried over" "$(ls "$H/.local/state")" "murmur-server" "!"
-check "old install: keys note" "$o" "keys of the old install are not carried over"
-check "old install: old config unchanged" "$(cmp "$T/oldconf.before" "$OC/config.toml" && echo same)" "same"
-check "old install: old keys kept" "$(cat "$H/.local/state/flow-server/keys.json")" "synthetic"
-check "old install: old unit warning" "$o" "warning: the unit from before the rename"
-check "old install: old unit not touched" "$o" "disable --now flow-server"
-check "old install: old unit still there" "$(ls "$H/.config/systemd/user")" "flow-server.service"
-
 if [ "$fails" != 0 ]; then echo "$fails failed"; exit 1; fi
 echo "all passed"

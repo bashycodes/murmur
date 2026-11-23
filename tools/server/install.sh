@@ -51,11 +51,6 @@
 # Never downloads anything: fetch the model first (tools/fetch-models.sh
 # --parakeet) and build sherpa-onnx (or point --sherpa-lib at its libs).
 # Existing config and token files are never overwritten.
-#
-# An install from before the Murmur rename (flow-server paths, D83) is
-# picked up once: its config and token are copied (not moved) into the new
-# config dir, and the old unit is left alone with a warning (it listens on
-# the same port). Its keys are not carried over: add them again.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -124,17 +119,6 @@ TOKEN="$CONF_DIR/token"
 BIN="$BIN_DIR/murmur-server"
 PLUGIN="$LIB_DIR/libmurmur_llm.so"
 
-# D83: the same install under the old name, read once and never changed.
-OLD_CONF_DIR="$(dirname "$CONF_DIR")/flow-server"
-OLD_UNIT="$(dirname "$UNIT_PATH")/flow-server.service"
-PICK_UP=0
-if [ ! -e "$CONF" ] && [ -r "$OLD_CONF_DIR/config.toml" ]; then
-    PICK_UP=1
-    echo "note: no $CONF yet; copying the config and token of the install from before the rename ($OLD_CONF_DIR, kept as is)" >&2
-fi
-READ_CONF="$CONF"
-[ "$PICK_UP" = 1 ] && READ_CONF="$OLD_CONF_DIR/config.toml"
-
 # ---- preflight (read-only) ---------------------------------------------------
 # An existing config (re-install / upgrade) decides what the build needs;
 # it is never edited.
@@ -142,8 +126,8 @@ CONF_LLM_PATH=""
 CONF_LLM_LIB=""
 CONF_ASR_PATH=""
 CONF_WHISPER=""
-if [ -r "$READ_CONF" ]; then
-    toml_str() { sed -n -E "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*\"([^\"]*)\".*/\1/p" "$READ_CONF" | head -n 1; }
+if [ -r "$CONF" ]; then
+    toml_str() { sed -n -E "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*\"([^\"]*)\".*/\1/p" "$CONF" | head -n 1; }
     CONF_LLM_PATH="$(toml_str llm_path)"
     CONF_LLM_LIB="$(toml_str llm_lib)"
     CONF_ASR_PATH="$(toml_str asr_path)"
@@ -151,13 +135,12 @@ if [ -r "$READ_CONF" ]; then
     for k in lid_path vad_model_path; do
         [ -n "$(toml_str "$k")" ] && CONF_WHISPER="$CONF_WHISPER $k"
     done
-    grep -q -E '^[[:space:]]*asr_(engine|backend)[[:space:]]*=[[:space:]]*"whisper"' "$READ_CONF" \
+    grep -q -E '^[[:space:]]*asr_(engine|backend)[[:space:]]*=[[:space:]]*"whisper"' "$CONF" \
         && CONF_WHISPER="$CONF_WHISPER asr_engine=whisper"
-    [ "$PICK_UP" = 1 ] && CONF_LLM_LIB="" # rewritten to $PLUGIN in the copy
 fi
 # Upgrade in place: without --model, keep serving the installed model.
 if [ -z "$MODEL" ] && [ -n "$CONF_ASR_PATH" ] && [ -f "$CONF_ASR_PATH/tokens.txt" ]; then
-    echo "note: upgrading in place; model from $READ_CONF: $CONF_ASR_PATH" >&2
+    echo "note: upgrading in place; model from $CONF: $CONF_ASR_PATH" >&2
     MODEL="$CONF_ASR_PATH"
 fi
 MODEL="${MODEL:-$ROOT/models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8}"
@@ -177,11 +160,11 @@ done
 # startup ("lid_path set but built without the `whisper` feature", same for
 # llm_path), so a plain re-install would take the server down.
 if [ -n "$CONF_WHISPER" ] && [ "$WHISPER" = 0 ]; then
-    echo "note: $READ_CONF uses${CONF_WHISPER}; building with whisper despite --no-whisper" >&2
+    echo "note: $CONF uses${CONF_WHISPER}; building with whisper despite --no-whisper" >&2
     WHISPER=1
 fi
 if [ -n "$CONF_LLM_PATH" ] && [ "$LLM" = 0 ]; then
-    echo "note: $READ_CONF sets llm_path; building with LLM cleanup (as --llm)" >&2
+    echo "note: $CONF sets llm_path; building with LLM cleanup (as --llm)" >&2
     LLM=1
 fi
 if [ -n "$LLM_MODEL" ]; then
@@ -189,7 +172,7 @@ if [ -n "$LLM_MODEL" ]; then
     LLM_MODEL_DST="$MODEL_ROOT/$(basename "$LLM_MODEL")"
 fi
 if [ -n "$CONF_LLM_LIB" ] && [ "$CONF_LLM_LIB" != "$PLUGIN" ]; then
-    echo "warning: $READ_CONF has llm_lib = \"$CONF_LLM_LIB\"; this install puts the plugin at $PLUGIN, which that config does not load" >&2
+    echo "warning: $CONF has llm_lib = \"$CONF_LLM_LIB\"; this install puts the plugin at $PLUGIN, which that config does not load" >&2
 fi
 # bindgen (llama-cpp-sys-2) runs libclang, which does not find the compiler's
 # own headers (stdbool.h) on some distros (Ubuntu with gcc 13). Point it at
@@ -367,8 +350,6 @@ fi
 step "3. token"
 if [ "$DRY" = 0 ] && exists "$TOKEN"; then
     echo "    $TOKEN exists, kept"
-elif [ "$PICK_UP" = 1 ] && exists "$OLD_CONF_DIR/token"; then
-    priv cp -p "$OLD_CONF_DIR/token" "$TOKEN"
 else
     priv env LD_LIBRARY_PATH="$LIB_DIR" "$BIN" gen-token --out "$TOKEN"
 fi
@@ -377,12 +358,6 @@ fi
 step "4. config"
 if [ "$DRY" = 0 ] && exists "$CONF"; then
     echo "    $CONF exists, kept (compare with crates/murmur-server/dist/config.example.toml)"
-elif [ "$PICK_UP" = 1 ]; then
-    # The old config with the token and plugin paths of this install.
-    sed -E -e "s|^([[:space:]]*token_file[[:space:]]*=[[:space:]]*)\"$OLD_CONF_DIR/token\"|\1\"$TOKEN\"|" \
-        -e "s|^([[:space:]]*llm_lib[[:space:]]*=[[:space:]]*)\"[^\"]*\"|\1\"$PLUGIN\"|" \
-        "$READ_CONF" | priv_write "$CONF" 0644
-    echo "    keys of the old install are not carried over: add them again with murmur-server keys add"
 else
     priv_write "$CONF" 0644 <<EOF
 # murmur-server config, written by tools/server/install.sh. Reference:
@@ -457,10 +432,6 @@ priv "${SYSTEMCTL[@]}" daemon-reload
 
 # ---- 6. start ------------------------------------------------------------------
 step "6. start"
-if [ -e "$OLD_UNIT" ]; then
-    echo "    warning: the unit from before the rename ($OLD_UNIT) is still installed and uses the same port;"
-    echo "    it is left alone. Stop it first: ${SYSTEMCTL[*]} disable --now flow-server$( [ "$MODE" = system ] && echo " (sudo)" )"
-fi
 SUDO=""
 [ "$MODE" = system ] && SUDO="sudo "
 if [ "$START" = 1 ]; then
