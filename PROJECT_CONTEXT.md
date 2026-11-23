@@ -266,7 +266,7 @@ Spec `docs/versioning.md`. Not yet tagged: the first release is `tools/release.s
 
 | Capability | Proof (test) |
 |---|---|
-| No compatibility with the names before the rename is left (D102): only `murmur.v1`, `MURMUR_*` env vars, `murmur-server` paths, `show_murmur_bar_always`; no pick-up of `%APPDATA%\FlowClone` or old backups | `ws_protocol::the_server_picks_the_murmur_subprotocol`, `ws_protocol::a_client_offering_only_the_old_subprotocol_gets_none`, `entrypoint_test.sh` 3b (`FLOW_STT` ignored with a warning), `test-install.sh` |
+| No compatibility with the names before the rename is left (D102): only `murmur.v1`, `MURMUR_*` env vars, `murmur-server` paths, `show_murmur_bar_always`; no pick-up of `%APPDATA%\FlowClone` or old backups | `ws_protocol::the_server_picks_the_murmur_subprotocol`, `ws_protocol::a_client_offering_only_the_old_subprotocol_gets_none`, `entrypoint_test.sh`, `test-install.sh` |
 
 ## Outstanding work — priority order
 **Next: live testing** (user action). Everything is merged into `integration` and green locally and on CI; the remaining step is one pass on real devices, in order: server on this box (`tools/server/install.sh --user`), Windows installer from the green CI run, hybrid APK on the phone, optional cloud keys. Guide: `docs/LIVE-TESTING.md` (it links the detailed checklists). Covers hybrid D17 §6.4 DoD 2-4, the cloud D18 live smoke (keys from the user) and the device-only review confirmations (S16, S17). Record results here and fix whatever the reports show. Server + phone pass done 2026-10-23 (see "Live test 2026-10-23 (phone)"); Windows and the optional cloud keys remain.
