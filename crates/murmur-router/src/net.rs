@@ -4,10 +4,12 @@
 //! on the open internet: loopback, RFC 1918, CGNAT 100.64/10 (VPN overlays),
 //! the VPN overlay IPv6 range fd7a:115c:a1e0::/48, ULA fc00::/7, link-local,
 //! `*.ts.net`, `*.local` and single-label names. Everything else is
-//! public and needs `wss://`. [`classify`] is the config-time check (pure
-//! string/IP logic, no DNS); names pass it, and the connection then
-//! resolves them and applies [`plaintext_ok_resolved`] to every address
-//! (review S6).
+//! public and needs `wss://`, unless the owner allowed plaintext for that
+//! server (`ServerConfig::allow_plaintext`, D100). For the speech server,
+//! [`plaintext_ok_before_resolve`] is the config-time check (pure
+//! string/IP logic, no DNS): public IP literals fail it, names pass it, and
+//! the connection then resolves them and applies [`plaintext_ok_resolved`]
+//! to every address (review S6).
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
@@ -90,6 +92,20 @@ fn classify_v6(ip: Ipv6Addr) -> AddrClass {
         AddrClass::Lan
     } else {
         AddrClass::Public
+    }
+}
+
+/// The speech server's config-time cleartext rule: an IP literal must not
+/// be [`AddrClass::Public`]; a name always passes here, because what it
+/// resolves to decides ([`plaintext_ok_resolved`] at connect time). A
+/// company DNS name such as `asr.corp.example.com` that resolves to a
+/// private address therefore works over `ws://`; one that resolves to a
+/// public address is refused when the app connects (D100). [`classify`]
+/// alone would call every dotted name public before it is ever resolved.
+pub fn plaintext_ok_before_resolve(host: &str) -> bool {
+    match bare_host(host).parse::<IpAddr>() {
+        Ok(ip) => classify_ip(ip).plaintext_ok(),
+        Err(_) => true,
     }
 }
 
@@ -246,6 +262,36 @@ mod tests {
         }
         assert!(!classify("8.8.8.8").plaintext_ok());
         assert!(classify("100.64.0.10").plaintext_ok());
+    }
+
+    #[test]
+    fn names_are_left_to_the_resolved_check() {
+        for h in [
+            "asr.corp.example.com",
+            "example.com",
+            "desktop.local",
+            "box",
+            "localhost",
+        ] {
+            assert!(plaintext_ok_before_resolve(h), "{h}");
+        }
+        for h in [
+            "10.1.2.3",
+            "192.168.1.20",
+            "[fd00::1]",
+            "::1",
+            "100.64.0.10",
+        ] {
+            assert!(plaintext_ok_before_resolve(h), "{h}");
+        }
+        for h in [
+            "8.8.8.8",
+            "30.1.2.3",
+            "[2001:4860:4860::8888]",
+            "::ffff:8.8.8.8",
+        ] {
+            assert!(!plaintext_ok_before_resolve(h), "{h}");
+        }
     }
 
     #[test]

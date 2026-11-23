@@ -25,8 +25,8 @@ use murmur_core::config::{FieldContext, SessionConfig};
 use murmur_core::{CommitResult, RouteInfo};
 use murmur_protocol::{code, encode_pcm, ClientMsg, MAX_FRAME_BYTES};
 use murmur_router::{
-    net, Backend, BackendError, EngineKind, Failure, HealthReport, RemoteFactory, Rtt,
-    ServerConfig, StartInfo,
+    Backend, BackendError, EngineKind, Failure, HealthReport, RemoteFactory, Rtt, ServerConfig,
+    StartInfo,
 };
 
 use conn::{Conn, Outgoing};
@@ -414,7 +414,9 @@ pub(crate) fn clean_refusal(
     }
 }
 
-/// Refuse plaintext to public addresses before any socket exists (§2.6).
+/// Refuse plaintext to public IP literals before any socket exists (§2.6);
+/// names are decided by their resolved addresses in `conn::dial`. The
+/// owner's opt-in (`allow_plaintext`, D100) skips both.
 pub(crate) fn check_address(c: &ServerConfig) -> Result<(), BackendError> {
     if !c.is_configured() {
         return Err(BackendError::new(
@@ -422,7 +424,7 @@ pub(crate) fn check_address(c: &ServerConfig) -> Result<(), BackendError> {
             "no server host set",
         ));
     }
-    if !c.tls && !net::classify(&c.host).plaintext_ok() {
+    if !c.plaintext_allowed_before_resolve() {
         return Err(BackendError::new(
             Failure::ConnectFailed,
             "plaintext to public address (enable TLS)",

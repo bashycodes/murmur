@@ -1918,7 +1918,11 @@ fn ensure_local(state: &AppState, prefs: &Prefs) {
 struct DevCheck {
     errors: Vec<FieldError>,
     warnings: Vec<String>,
+    /// TLS is required and its switch locked (public address, no opt-in).
     tls_forced: bool,
+    /// The address is a public IP literal (D100: the page then offers
+    /// "Allow an unencrypted connection").
+    host_public: bool,
 }
 
 fn dev_check(form: &DevForm, saved: &DevSettings, creds: &dyn CredentialStore) -> DevCheck {
@@ -1948,17 +1952,23 @@ fn dev_check(form: &DevForm, saved: &DevSettings, creds: &dyn CredentialStore) -
             DevCheck {
                 errors,
                 warnings,
-                tls_forced: !s.server.host.is_empty()
-                    && crate::dev_settings::host_is_public(&s.server.host),
+                tls_forced: crate::dev_settings::tls_required(
+                    &s.server.host,
+                    s.server.allow_plaintext,
+                ),
+                host_public: crate::dev_settings::tls_required(&s.server.host, false),
             }
         }
-        Err(errors) => DevCheck {
-            errors,
-            warnings: Vec::new(),
-            tls_forced: !form.host.trim().is_empty()
-                && crate::dev_settings::normalize_host(&form.host)
-                    .is_ok_and(|h| crate::dev_settings::host_is_public(&h)),
-        },
+        Err(errors) => {
+            let public = crate::dev_settings::normalize_host(&form.host)
+                .is_ok_and(|h| crate::dev_settings::tls_required(&h, false));
+            DevCheck {
+                errors,
+                warnings: Vec::new(),
+                tls_forced: public && !form.allow_plaintext,
+                host_public: public,
+            }
+        }
     }
 }
 

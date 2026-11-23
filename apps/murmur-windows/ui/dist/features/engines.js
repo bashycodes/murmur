@@ -31,6 +31,10 @@ let devValid = true;
 let serverDirty = false;
 /** Clear was pressed: the saved token is removed on Save. */
 let tokenCleared = false;
+/** D100: the last check found a public IP address. */
+let hostPublic = false;
+/** D100: a connection was refused as plaintext to a public address (e.g. a name that resolves publicly). */
+let plaintextRefused = false;
 const HINTS = {
     auth_failed: "token rejected — copy it again from the server's token file",
     connect_failed: "is murmur-server running / LAN or VPN up?",
@@ -44,7 +48,10 @@ function hint(code) {
 }
 /** The Your server page's fields as a form patch. */
 function readServer() {
-    const f = { tls: $("dev_tls").checked };
+    const f = {
+        tls: $("dev_tls").checked,
+        allow_plaintext: $("dev_allow_plaintext").checked,
+    };
     for (const k of SRV_TEXT)
         f[k] = $(`dev_${k}`).value;
     for (const k of SRV_NUM) {
@@ -74,6 +81,8 @@ function setNum(field, v) {
 }
 function fillServer(f) {
     $("dev_tls").checked = f.tls;
+    $("dev_allow_plaintext").checked = !!f.allow_plaintext;
+    showPlaintextRow();
     for (const k of SRV_TEXT)
         $(`dev_${k}`).value = f[k];
     for (const k of SRV_NUM) {
@@ -280,6 +289,12 @@ function meetingToggled(r) {
     const on = $(`meet_on_${r}`).checked;
     void saveMeetings(meetingRoutes().map((e) => (e.route === r ? { ...e, enabled: on } : { ...e })));
 }
+/** D100: offer "Allow an unencrypted connection" where TLS would otherwise be
+ *  required, and keep it shown while it is on (so it can be turned off). */
+function showPlaintextRow() {
+    const on = $("dev_allow_plaintext").checked;
+    $("dev_plaintext_row").hidden = !hostPublic && !plaintextRefused && !on;
+}
 function showCheck(c) {
     for (const s of document.querySelectorAll("[data-err]"))
         s.textContent = "";
@@ -300,6 +315,8 @@ function showCheck(c) {
     $("dev_save").disabled = !devValid;
     $("dev_test_conn").disabled = !devValid;
     $("dev_tls_forced").hidden = !c.tls_forced;
+    hostPublic = c.host_public;
+    showPlaintextRow();
     const tls = $("dev_tls");
     if (c.tls_forced)
         tls.checked = true;
@@ -320,7 +337,7 @@ function scheduleCheck() {
 function errorText(e) {
     const errs = e;
     if (Array.isArray(errs)) {
-        showCheck({ errors: errs, warnings: [], tls_forced: false });
+        showCheck({ errors: errs, warnings: [], tls_forced: false, host_public: false });
         const fields = errs.map((x) => x.message).join("; ");
         return `Your server needs fixing first: ${fields}`;
     }
@@ -343,7 +360,9 @@ function healthText(h) {
         const code = h.error ?? "error";
         // murmur-remote refuses ws:// to an address that is not private/VPN (S6).
         if (/plaintext (refused|to public address)/.test(h.message ?? "")) {
-            return "Server needs TLS — its address is not private (or resolves to a public one); turn on TLS and set a certificate pin";
+            plaintextRefused = true;
+            showPlaintextRow();
+            return "Server needs TLS — its address is not private (or resolves to a public one); turn on TLS and set a certificate pin, or allow an unencrypted connection if you trust this network";
         }
         const why = hint(code);
         return `${code}${h.message ? `: ${h.message}` : ""}${why ? ` — ${why}` : ""}`;
@@ -610,6 +629,12 @@ export const engines = {
             i.addEventListener("input", edited);
             i.addEventListener("change", edited);
         }
+        // D100: allowing plaintext releases the forced TLS switch; turn it off with it.
+        $("dev_allow_plaintext").addEventListener("change", (e) => {
+            const tls = $("dev_tls");
+            if (e.target.checked && tls.disabled)
+                tls.checked = false;
+        });
         $("dev_save").addEventListener("click", () => void serverSave());
         $("dev_test_conn").addEventListener("click", () => void devTestConnection());
         $("dev_test_session").addEventListener("click", () => void devTestSession(showDiag));

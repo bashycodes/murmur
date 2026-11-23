@@ -75,11 +75,12 @@ pub(crate) async fn dial(cfg: &ServerConfig) -> Result<BoxIo, BackendError> {
     // Resolve first; plain ws:// only if *every* address is private /
     // loopback / link-local / VPN-via-VPN-interface (review S6), and then
     // connect to exactly those addresses (no second lookup to rebind).
+    // The owner's opt-in (`allow_plaintext`, D100) skips the rule.
     let addrs: Vec<std::net::SocketAddr> = tokio::net::lookup_host((host.as_str(), cfg.port))
         .await
         .map_err(|e| connect_failed(format!("{}: cannot resolve: {e}", cfg.addr())))?
         .collect();
-    if !cfg.tls {
+    if !cfg.tls && !cfg.allow_plaintext {
         let ips: Vec<std::net::IpAddr> = addrs.iter().map(|a| a.ip()).collect();
         net::plaintext_ok_resolved(&ips, &net::route_source)
             .map_err(|e| connect_failed(format!("{}: plaintext refused: {e}", cfg.addr())))?;

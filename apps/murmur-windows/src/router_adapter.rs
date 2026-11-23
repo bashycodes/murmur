@@ -2114,7 +2114,7 @@ mod tests {
             assert!(router_config(&d, BOTH).is_ok(), "{h}");
             assert_eq!(
                 crate::dev_settings::host_is_public(&d.server.host),
-                !murmur_router::net::classify(&d.server.host).plaintext_ok(),
+                !murmur_router::net::plaintext_ok_before_resolve(&d.server.host),
                 "{h}"
             );
         }

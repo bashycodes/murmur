@@ -10,6 +10,8 @@ export interface DevForm {
   host: string;
   port: number;
   tls: boolean;
+  /** D100: plain ws:// to this server whatever its address (a trusted network). */
+  allow_plaintext: boolean;
   tls_pin_sha256: string;
   token: string;
   token_saved?: boolean;
@@ -32,6 +34,8 @@ export interface DevCheck {
   errors: FieldError[];
   warnings: string[];
   tls_forced: boolean;
+  /** The address is a public IP: the page offers "Allow an unencrypted connection" (D100). */
+  host_public: boolean;
 }
 
 /** D98: one model a server runs (murmur-protocol `ServerModel`). */
