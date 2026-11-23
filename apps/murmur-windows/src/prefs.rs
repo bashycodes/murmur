@@ -171,8 +171,6 @@ pub struct Prefs {
     pub launch_at_login: bool,
     /// Keep the Murmur bar up while idle. Off by default: the bar shows only
     /// while dictating (or recording a meeting).
-    /// D83: `show_flow_bar_always` in a `prefs.json` from before the rename.
-    #[serde(alias = "show_flow_bar_always")]
     pub show_murmur_bar_always: bool,
     /// `system` / `light` / `dark`.
     pub theme: Theme,
@@ -735,12 +733,6 @@ mod tests {
         p.save(&path).unwrap();
         assert_eq!(Prefs::load(&path).0.developer.cloud, p.developer.cloud);
         let _ = std::fs::remove_dir_all(&d);
-    }
-
-    #[test]
-    fn the_bar_setting_saved_under_its_old_name_is_read() {
-        let p: Prefs = serde_json::from_str(r#"{"show_flow_bar_always":true}"#).unwrap();
-        assert!(p.show_murmur_bar_always);
     }
 
     #[test]
