@@ -266,10 +266,7 @@ Spec `docs/versioning.md`. Not yet tagged: the first release is `tools/release.s
 
 | Capability | Proof (test) |
 |---|---|
-| Old wire / env names still work, with a notice: subprotocol `flow.v1`, `FLOW_*` env vars (binaries and container) | `ws_protocol::the_old_subprotocol_name_is_still_accepted`, `client::a_server_speaking_the_old_subprotocol_name_still_works`, `murmur-build-info` env tests, `entrypoint_test.sh` 3b |
-| `install.sh` copies the old `flow-server` config (token, plugin paths rewritten) and token once, keys not, and leaves the old unit alone | `test-install.sh` 13 |
-| Windows copies `%APPDATA%\FlowClone` once (models hard-linked); the old app's transcripts show in History; old bar pref key | `old_data::transcripts_of_the_old_app_show_in_the_new_history` and the other `old_data` tests, `prefs` alias test |
-| Android Restore brings back the transcriptions (and the rest) of an export made by the old app | `BackupIoTest.restoringAnExportOfTheAppBeforeTheRenameBringsBackItsTranscriptions`, `BackupTest.aBackupFromTheAppBeforeTheRenameRestores` (frozen file in the old format) |
+| No compatibility with the names before the rename is left (D102): only `murmur.v1`, `MURMUR_*` env vars, `murmur-server` paths, `show_murmur_bar_always`; no pick-up of `%APPDATA%\FlowClone` or old backups | `ws_protocol::the_server_picks_the_murmur_subprotocol`, `test-install.sh`, `entrypoint_test.sh` |
 
 ## Outstanding work — priority order
 **Next: live testing** (user action). Everything is merged into `integration` and green locally and on CI; the remaining step is one pass on real devices, in order: server on this box (`tools/server/install.sh --user`), Windows installer from the green CI run, hybrid APK on the phone, optional cloud keys. Guide: `docs/LIVE-TESTING.md` (it links the detailed checklists). Covers hybrid D17 §6.4 DoD 2-4, the cloud D18 live smoke (keys from the user) and the device-only review confirmations (S16, S17). Record results here and fix whatever the reports show. Server + phone pass done 2026-10-23 (see "Live test 2026-10-23 (phone)"); Windows and the optional cloud keys remain.
