@@ -7,7 +7,7 @@ import java.io.File
 /**
  * Debug "WAV as microphone" (debug builds only: the receiver lives in src/debug and MurmurService
  * acts on [ACTION] only when BuildConfig.DEBUG). The host pushes a 16 kHz mono WAV into
- * `files/debug/` and broadcasts to `.debug.WavMicReceiver` (tools/phone/play-wav.sh); one
+ * `files/debug/` and broadcasts to `.debug.WavMicReceiver` (INSTALL.md, "Feed a WAV file as the microphone"); one
  * normal dictation then runs on that audio instead of the mic.
  */
 object DebugWav {

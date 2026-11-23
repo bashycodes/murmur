@@ -3,7 +3,7 @@
      verify<Variant>NoDebugWavReceiver and NoDebugWavReceiverTest check that). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
-        <!-- "WAV as microphone" (tools/phone/play-wav.sh). Exported so the platform tools' shell
+        <!-- "WAV as microphone" (INSTALL.md). Exported so the platform tools' shell
              can send the explicit broadcast; guarded by DUMP, which the shell holds and no
              third-party app can be granted (signature|privileged|development), so other apps
              cannot trigger a dictation. -->
@@ -15,7 +15,7 @@
                 <action android:name="dev.murmur.debug.PLAY_WAV" />
             </intent-filter>
         </receiver>
-        <!-- D46 Calls device check (tools/phone/call-decode.sh): decodes a file under
+        <!-- D46 Calls device check: decodes a file under
              files/debug/ with the Calls decoder and reports what came out. Same DUMP guard. -->
         <receiver
             android:name=".debug.CallDecodeReceiver"

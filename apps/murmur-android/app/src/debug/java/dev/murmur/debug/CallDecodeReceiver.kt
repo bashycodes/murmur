@@ -15,7 +15,7 @@ import kotlin.math.sqrt
 /**
  * Debug builds only (src/debug), D46 Calls device check. The host broadcasts
  * `dev.murmur.debug.DECODE_CALL --es path files/debug/calls-in/x.m4a [--ez transcribe true --es lang en]`
- * (tools/phone/call-decode.sh). The file is decoded with the Calls decoder (MediaCodec for
+ * (from the platform tools' shell). The file is decoded with the Calls decoder (MediaCodec for
  * m4a) to 16 kHz mono and the result data says what came out: input format, output samples,
  * length and level. With `transcribe`, the same file then goes through the Calls job (its own
  * engine); the transcript lands on the Calls page, progress in logcat (tag MurmurCallDecode).

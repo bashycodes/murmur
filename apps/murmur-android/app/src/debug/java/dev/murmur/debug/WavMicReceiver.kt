@@ -9,7 +9,7 @@ import dev.murmur.service.MurmurService
 /**
  * Debug builds only (src/debug): "WAV as microphone". The host broadcasts
  * `dev.murmur.debug.PLAY_WAV --es path files/debug/wav-in/x.wav [--ez fast true] [--ez tap true]`
- * (tools/phone/play-wav.sh); this hands it to the running MurmurService, which runs one normal
+ * (INSTALL.md, "Feed a WAV file as the microphone"); this hands it to the running MurmurService, which runs one normal
  * dictation on that audio. Guarded by android.permission.DUMP in the manifest (shell only).
  * The result data says what happened, so `am broadcast` prints it.
  */

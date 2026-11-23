@@ -132,7 +132,7 @@ data class DictationTrace(
     val llmGenerationId: String? = null,
     /** D28: what the cloud speech-to-text of this dictation cost (`route.cost_usd`). */
     val sttCostUsd: Double? = null,
-    /** Where the audio came from: "mic", or "wav" (debug builds: "WAV as microphone", tools/phone/play-wav.sh). */
+    /** Where the audio came from: "mic", or "wav" (debug builds: "WAV as microphone", see INSTALL.md). */
     val source: String? = null,
 )
 
