@@ -6,7 +6,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/../../../.." && pwd)"
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cache/murmur-agents-target-cleanroom}"
 export BINDGEN_EXTRA_CLANG_ARGS="-I/usr/lib/gcc/x86_64-linux-gnu/13/include"
-lock=(flock "$HOME/.cache/flow-clone-build.lock" choom -n 1000 -- nice -n 10)
+lock=(flock "$HOME/.cache/murmur-build.lock" choom -n 1000 -- nice -n 10)
 cd "$root"
 case "$1" in
   test) "${lock[@]}" cargo test -j 2 --offline --workspace --exclude murmur-replay --no-fail-fast ;;

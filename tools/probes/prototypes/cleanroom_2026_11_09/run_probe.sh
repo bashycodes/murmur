@@ -10,7 +10,7 @@ export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cache/murmur-agents-target-c
 export BINDGEN_EXTRA_CLANG_ARGS="-I/usr/lib/gcc/x86_64-linux-gnu/13/include"
 export PROBE_CASES="$here/cases.json"
 cd "$root"
-flock "$HOME/.cache/flow-clone-build.lock" choom -n 1000 -- nice -n 10 \
+flock "$HOME/.cache/murmur-build.lock" choom -n 1000 -- nice -n 10 \
   cargo test -j 2 --offline -p murmur-core --test zz_probe -- --nocapture 2>"$out.log" \
   | grep '^{' >"$out"
 wc -l "$out"

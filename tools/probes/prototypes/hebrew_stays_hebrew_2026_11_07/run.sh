@@ -10,7 +10,7 @@ label="$1"; cases="$2"; lang="$3"; shift 3
 avail=$(awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo)
 if (( avail < 4000 )); then echo "skip $label: $avail MB available" >&2; exit 3; fi
 echo "== $label $(date +%T) load $(cut -d' ' -f1 /proc/loadavg) avail $avail MB" >&2
-flock "$HOME/.cache/flow-clone-build.lock" choom -n 1000 -- nice -n 10 \
+flock "$HOME/.cache/murmur-build.lock" choom -n 1000 -- nice -n 10 \
   "$BIN" --mode local --cases "$cases" --session "$here/session-phone.json" \
   --llm "$MODEL" --llm-lib "$MURMUR_LLM_LIB" --threads 4 --language "$lang" "$@" \
   > "$here/results/$label.jsonl"

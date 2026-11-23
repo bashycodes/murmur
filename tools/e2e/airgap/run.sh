@@ -24,7 +24,7 @@
 # address that is not loopback.
 #
 # Builds honour CARGO_TARGET_DIR and BUILD_PREFIX (e.g.
-# BUILD_PREFIX="flock $HOME/.cache/flow-clone-build.lock nice -n 10").
+# BUILD_PREFIX="flock $HOME/.cache/murmur-build.lock nice -n 10").
 # Secrets (the admin key, the user key) stay in a mode-0600 temp file and in
 # the client's memory; nothing here prints them.
 set -euo pipefail

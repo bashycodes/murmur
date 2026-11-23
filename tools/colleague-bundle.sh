@@ -377,10 +377,10 @@ if [ "$NO_SERVER" = 0 ]; then
     (cd "$src" && export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cache/murmur-bundle-target}" &&
       export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }$remap" CFLAGS="${CFLAGS:+$CFLAGS }$cmap" \
         CXXFLAGS="${CXXFLAGS:+$CXXFLAGS }$cmap" &&
-      flock "$HOME/.cache/flow-clone-build.lock" choom -n 1000 -- nice -n 10 \
+      flock "$HOME/.cache/murmur-build.lock" choom -n 1000 -- nice -n 10 \
         env SHERPA_ONNX_LIB_DIR="$SHERPA_LIB" cargo build --release --offline --locked -j 2 -p murmur-server \
           --no-default-features --features whisper,parakeet,tls,llm &&
-      flock "$HOME/.cache/flow-clone-build.lock" choom -n 1000 -- nice -n 10 \
+      flock "$HOME/.cache/murmur-build.lock" choom -n 1000 -- nice -n 10 \
         env BINDGEN_EXTRA_CLANG_ARGS="${BINDGEN_EXTRA_CLANG_ARGS:--I$gcc_inc}" \
         cargo build --release --offline --locked -j 2 -p murmur-llm)
   fi
@@ -432,7 +432,7 @@ if [ "$NO_IMAGE" = 0 ]; then
   tar -xzf "$BUNDLE/docker/$SOURCE_TGZ" -C "$WORK"
   # The builder's own murmur-server:latest, if any, gets its tag back after.
   prev_latest=$(docker image inspect -f '{{.Id}}' murmur-server:latest 2>/dev/null || true)
-  flock "$HOME/.cache/flow-clone-build.lock" choom -n 1000 -- nice -n 10 \
+  flock "$HOME/.cache/murmur-build.lock" choom -n 1000 -- nice -n 10 \
     docker build -t "murmur-server:$VERSION" -t murmur-server:latest -f "$WORK/$SRC_DIR/deploy/docker/Dockerfile" \
       --build-arg MURMUR_GIT_SHA="$SHA7" --build-arg CARGO_BUILD_JOBS=2 "$WORK/$SRC_DIR"
   restore_latest() {

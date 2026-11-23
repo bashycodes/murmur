@@ -142,7 +142,7 @@ fn whisper_lid_he_vs_en() {
 /// The whole path: `ModelConfig.lid_path` + a language map, real speech,
 /// mock decoders (the text says which engine decoded).
 #[test]
-fn flowcore_routes_real_speech_by_language() {
+fn murmurcore_routes_real_speech_by_language() {
     use std::collections::BTreeMap;
 
     use murmur_core::config::{AsrBackend, LanguageModel, ModelConfig, SessionConfig};

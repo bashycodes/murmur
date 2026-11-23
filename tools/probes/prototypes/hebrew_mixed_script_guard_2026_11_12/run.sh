@@ -10,6 +10,6 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 he="$here/../hebrew_stays_hebrew_2026_11_07"
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$here/target}"
-flock "$HOME/.cache/flow-clone-build.lock" choom -n 1000 -- nice -n 10 \
+flock "$HOME/.cache/murmur-build.lock" choom -n 1000 -- nice -n 10 \
   cargo run -q -j 2 --offline --manifest-path "$here/Cargo.toml" -- \
   "$he" "$he/results" "$@"

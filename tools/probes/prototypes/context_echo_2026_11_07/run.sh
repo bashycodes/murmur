@@ -10,7 +10,7 @@ label="$1"; mode="$2"; shift 2
 avail=$(awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo)
 if (( avail < 4000 )); then echo "skip $label: $avail MB available" >&2; exit 3; fi
 mkdir -p "$here/results"
-flock "$HOME/.cache/flow-clone-build.lock" choom -n 1000 -- nice -n 10 \
+flock "$HOME/.cache/murmur-build.lock" choom -n 1000 -- nice -n 10 \
   "$BIN" --mode "$mode" --cases "$here/cases.jsonl" --session "$here/session-pc.json" \
   --llm "$MODEL" --llm-lib "$MURMUR_LLM_LIB" --threads 4 "$@" \
   > "$here/results/$label.jsonl" 2> "$here/results/$label.log"

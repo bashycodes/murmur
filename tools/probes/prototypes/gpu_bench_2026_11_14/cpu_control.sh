@@ -8,7 +8,7 @@
 # env: BIN (gpu-model-clean), LIB (libmurmur_llm.so), MODEL (14B GGUF).
 set -uo pipefail
 if [ -z "${RUN_LOCKED:-}" ]; then
-  RUN_LOCKED=1 exec flock "$HOME/.cache/flow-clone-build.lock" "$0" "$@"
+  RUN_LOCKED=1 exec flock "$HOME/.cache/murmur-build.lock" "$0" "$@"
 fi
 here="$(cd "$(dirname "$0")" && pwd)"
 O="$here/../gpu_cleanup_model_2026_11_12"

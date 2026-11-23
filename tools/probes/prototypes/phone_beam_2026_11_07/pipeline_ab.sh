@@ -12,7 +12,7 @@
 set -uo pipefail
 : "${RUNNER:?}" "${CLI:?}" "${MODEL:?}" "${CLIPS:?}" "${DICT:?}" "${SESSION:?}" "${OUT:?}"
 export LD_LIBRARY_PATH=${SHERPA_ONNX_LIB_DIR:-}:${LD_LIBRARY_PATH:-}
-LOCK=${LOCK:-$HOME/.cache/flow-clone-build.lock}
+LOCK=${LOCK:-$HOME/.cache/murmur-build.lock}
 P="--engine parakeet --model $MODEL --threads 4"
 if [ -n "${MURMUR_PARAKEET_BEAM:-}" ]; then
   # Beam width probe: only the beam spec, labelled with the width (murmur-cli reads the env knob).

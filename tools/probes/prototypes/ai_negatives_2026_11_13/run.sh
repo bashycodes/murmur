@@ -40,6 +40,6 @@ args=(--mode cloud --cases "$C" --session "$S" --llm "$G" --llm-lib "$LIB" --thr
 [ -n "$OVR" ] && args+=(--override "$OVR")
 [ -n "${DUMP:-}" ] && args+=(--dump-prompt "$DUMP")
 [ -n "${SUFFIX:-}" ] && args+=(--user-suffix "$SUFFIX")
-lock=(flock "$HOME/.cache/flow-clone-build.lock"); [ -n "${HOLDS_LOCK:-}" ] && lock=()
+lock=(flock "$HOME/.cache/murmur-build.lock"); [ -n "${HOLDS_LOCK:-}" ] && lock=()
 "${lock[@]}" choom -n 1000 -- nice -n 10 "$BIN" "${args[@]}" > "$o.tmp" && mv "$o.tmp" "$o"
 echo "wrote $o" >&2

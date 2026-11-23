@@ -11,7 +11,7 @@
 # jobs' builds between suites cost hours of queueing), at low priority.
 set -uo pipefail
 if [ -z "${RUN_LOCKED:-}" ]; then
-  RUN_LOCKED=1 exec flock "$HOME/.cache/flow-clone-build.lock" "$0" "$@"
+  RUN_LOCKED=1 exec flock "$HOME/.cache/murmur-build.lock" "$0" "$@"
 fi
 here="$(cd "$(dirname "$0")" && pwd)"
 TAG=$1; MODEL=$2
