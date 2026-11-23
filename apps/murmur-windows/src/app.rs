@@ -1949,24 +1949,21 @@ fn dev_check(form: &DevForm, saved: &DevSettings, creds: &dyn CredentialStore) -
                 caps,
                 credentials::key_state(creds, credentials::OPENROUTER).set,
             ));
+            let (tls_forced, host_public) = form.tls_lock();
             DevCheck {
                 errors,
                 warnings,
-                tls_forced: crate::dev_settings::tls_required(
-                    &s.server.host,
-                    s.server.allow_plaintext,
-                ),
-                host_public: crate::dev_settings::tls_required(&s.server.host, false),
+                tls_forced,
+                host_public,
             }
         }
         Err(errors) => {
-            let public = crate::dev_settings::normalize_host(&form.host)
-                .is_ok_and(|h| crate::dev_settings::tls_required(&h, false));
+            let (tls_forced, host_public) = form.tls_lock();
             DevCheck {
                 errors,
                 warnings: Vec::new(),
-                tls_forced: public && !form.allow_plaintext,
-                host_public: public,
+                tls_forced,
+                host_public,
             }
         }
     }

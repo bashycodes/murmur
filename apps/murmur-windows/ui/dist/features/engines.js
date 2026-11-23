@@ -7,6 +7,7 @@
 // through the dev store: switches save at once, the server form on Save.
 import { $, el, setStatus } from "../lib/dom.js";
 import { devStore } from "../lib/dev-store.js";
+import { isPlaintextRefusal, optInFor } from "../lib/plaintext.js";
 import { cloudHint } from "../lib/format.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { engineWord, HISTORY_PEEK, historyLastText, latestOnly, pickDictation } from "../lib/last-dictation.js";
@@ -359,10 +360,10 @@ function healthText(h) {
     if (!h.ok) {
         const code = h.error ?? "error";
         // murmur-remote refuses ws:// to an address that is not private/VPN (S6).
-        if (/plaintext (refused|to public address)/.test(h.message ?? "")) {
+        if (isPlaintextRefusal(h.message)) {
             plaintextRefused = true;
             showPlaintextRow();
-            return "Server needs TLS — its address is not private (or resolves to a public one); turn on TLS and set a certificate pin, or allow an unencrypted connection if you trust this network";
+            return "Server needs TLS — its address is not private (or resolves to a public one). If your server has a certificate, turn on TLS (and set its fingerprint); only on a network you trust, allow an unencrypted connection instead";
         }
         const why = hint(code);
         return `${code}${h.message ? `: ${h.message}` : ""}${why ? ` — ${why}` : ""}`;
@@ -629,6 +630,15 @@ export const engines = {
             i.addEventListener("input", edited);
             i.addEventListener("change", edited);
         }
+        // D100: the opt-in is per server. A new address starts without it (and
+        // without the last address's refusal); the saved address gets it back.
+        $("dev_host").addEventListener("input", () => {
+            const saved = views.dev?.form;
+            const host = $("dev_host").value;
+            $("dev_allow_plaintext").checked = optInFor(saved?.host ?? "", !!saved?.allow_plaintext, host);
+            plaintextRefused = false;
+            showPlaintextRow();
+        });
         // D100: allowing plaintext releases the forced TLS switch; turn it off with it.
         $("dev_allow_plaintext").addEventListener("change", (e) => {
             const tls = $("dev_tls");

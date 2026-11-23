@@ -43,7 +43,7 @@ ${group(
     ) +
     row(
       "Encrypt the connection (TLS)",
-      `Always on for public addresses, unless you allow an unencrypted connection.<span id="dev_tls_forced" hidden> Required for this address.</span>`,
+      `Turn on for a server on the internet. Always on for a public IP address, unless you allow an unencrypted connection.<span id="dev_tls_forced" hidden> Required for this address.</span>`,
       toggle("dev_tls", "Encrypt the connection (TLS)", "data-dev-field"),
     ) +
     row(

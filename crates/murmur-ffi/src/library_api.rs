@@ -127,7 +127,7 @@ mod tests {
 
     #[test]
     fn cleartext_to_a_public_host_is_refused_before_any_socket() {
-        let r = parse(&list(r#"{"host":"example.com","port":7313,"tls":false}"#));
+        let r = parse(&list(r#"{"host":"203.0.113.5","port":7313,"tls":false}"#));
         assert_eq!(r["error"], "network", "{r}");
     }
 
@@ -162,7 +162,7 @@ mod tests {
     #[test]
     fn the_key_never_appears_in_an_error() {
         let token = "secret-token-0123456789";
-        let j = format!(r#"{{"host":"example.com","port":7313,"tls":false,"token":"{token}"}}"#);
+        let j = format!(r#"{{"host":"203.0.113.5","port":7313,"tls":false,"token":"{token}"}}"#);
         assert!(!list(&j).contains(token));
     }
 }

@@ -795,6 +795,16 @@ fn err(field: &'static str, message: impl Into<String>) -> FieldError {
 }
 
 impl DevForm {
+    /// The Your server page's TLS state (D100), whether or not the rest of
+    /// the form validates: `(tls_forced, host_public)`. `host_public` = the
+    /// address is a public IP (the page offers "Allow an unencrypted
+    /// connection"); `tls_forced` = that, without the opt-in (the TLS switch
+    /// is on and locked).
+    pub fn tls_lock(&self) -> (bool, bool) {
+        let public = normalize_host(&self.host).is_ok_and(|h| tls_required(&h, false));
+        (public && !self.allow_plaintext, public)
+    }
+
     pub fn from_settings(s: &DevSettings, token: &str) -> Self {
         DevForm {
             allow_server: s.allow_server,
@@ -1313,6 +1323,23 @@ mod tests {
             !f.validate(BOTH).unwrap().0.server.tls,
             "names: decided at connect"
         );
+    }
+
+    #[test]
+    fn tls_lock_follows_public_ips_and_the_opt_in() {
+        let lock = |host: &str, allow: bool| {
+            let mut f = form();
+            f.host = host.into();
+            f.allow_plaintext = allow;
+            f.tls_lock()
+        };
+        assert_eq!(lock("30.1.2.3", false), (true, true));
+        assert_eq!(lock("30.1.2.3", true), (false, true));
+        assert_eq!(lock(" [2001:4860::8888] ", false), (true, true));
+        assert_eq!(lock("asr.corp.example.com", false), (false, false));
+        assert_eq!(lock("10.0.0.5", false), (false, false));
+        assert_eq!(lock("", false), (false, false));
+        assert_eq!(lock("not a host!", false), (false, false));
     }
 
     /// D100: the owner's opt-in keeps TLS off for a public address, goes

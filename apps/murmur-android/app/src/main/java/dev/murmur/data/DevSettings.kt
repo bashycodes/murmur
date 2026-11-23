@@ -304,6 +304,9 @@ data class BuildCaps(val local: Boolean, val remote: Boolean, val cloud: Boolean
 /**
  * Kotlin twin of `murmur_router::net` (validate_host / classify, §2.6 + §5). The router validates
  * again; this one drives inline errors and the TLS lock before anything reaches native code.
+ * Not yet D100: the router now leaves dotted names to the connect-time check
+ * (`plaintext_ok_before_resolve`) and has a per-server `allow_plaintext`; this twin still locks
+ * TLS on for dotted names (stricter, so the router never refuses what this allows).
  */
 object HostRules {
     enum class AddrClass { LOOPBACK, LAN, TAILNET, LOCAL_NAME, PUBLIC }
