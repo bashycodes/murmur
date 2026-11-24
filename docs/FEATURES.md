@@ -48,12 +48,12 @@ the target at the bottom of the screen to hide it for 10 minutes. Shake
 the phone to bring it back sooner, or to show a hidden bubble for a few
 seconds.
 *How:* drag it down to snooze. Shaking is on by default: *Settings →
-Bubble → Shake to restore*.
+Bubble size → Shake to restore*.
 
 **A smaller bubble while you're not using it** (Android). After a few idle
 seconds the bubble shrinks, down to a small dot if you like. You can also
 change its size.
-*How:* *Settings → Bubble* (Shrink, Shrink to a dot, size 75–150%).
+*How:* *Settings → Bubble size* (Shrink, Shrink to a dot, size 75–150%).
 
 **Launcher shortcuts for notes** (Android). Long-press the Murmur icon to
 dictate straight into a **New note** or the **Quick note**.
@@ -80,11 +80,13 @@ the message.
 *How:* say it as the last words. "Send it press enter." types "Send it."
 and sends it.
 
-**Spoken lists become real lists** (Both, with cloud AI cleanup). Say "a few things for the trip: tent, stove and maps"
-and you get a list. Numbered items ("first … second …") become a numbered
-list.
-*How:* turn on cloud AI cleanup (OpenRouter, or your own OpenAI-compatible
-server); see Privacy and self-hosting below.
+**Spoken lists become real lists** (Both). Items you number out loud
+("first … second …") become a numbered list. Other lists of three or more
+items ("a few things for the trip: tent, stove and maps") become a list
+when AI cleanup is on.
+*How:* numbered lists come from Auto-format, which is on by default
+(English). For other lists, turn on AI cleanup on the device, your server
+or the cloud.
 
 **Transforms: Polish and Prompt Builder** (Windows). Select text in any
 app, press a shortcut, and the AI rewrites it in place. **Polish** makes
@@ -102,8 +104,12 @@ shows in a card, and your text is left alone. With nothing selected, what
 you say is written new at the cursor (Android: only with Command Mode set
 to *Always*).
 *How:* Windows: hold **Ctrl+Win+Alt** and speak. Android: tap ✎ next to
-the bubble; *Settings → Bubble → Command Mode* sets when ✎ shows. You need
-AI cleanup (on the device, your server or the cloud).
+the bubble; *Settings → Bubble size → Command Mode* sets when ✎ shows. You need
+AI cleanup on the device or in the cloud; your server is not used for
+Command Mode. The cloud is used only if you allow it to get the text
+around the cursor (Windows: *AI cleanup → Advanced → Also send to the
+cloud → Text around the cursor*; Android: *Settings → Cloud → Send text
+around the cursor*).
 
 **Snippets** (Both). Say a short phrase and get a long text you saved,
 such as "my calendar link" → the link.
@@ -163,7 +169,7 @@ comes out as Hebrew and Hebrew as English.
 *How:* Windows: hold **Ctrl+Win+Shift**. The target language is under
 *Settings → General → Translate into*. Android: tap ⇄ next to the bubble.
 It shows while two or more keyboard languages are on; see *Settings →
-Bubble → Translate*. It works best with your server or the cloud; the
+Bubble size → Translate*. It works best with your server or the cloud; the
 on-device model translates poorly.
 
 **The language follows your keyboard** (Both). Murmur uses the language of
@@ -183,7 +189,7 @@ removes the wait when you switch, at the cost of about 1 GB of memory.
 **Stop after a pause** (Both). A hands-free dictation ends by itself after
 1.5 seconds of silence. Holding a key or the bubble is never cut off.
 *How:* Windows: *Settings → General → Hands-free stops after*. Android:
-*Settings → Timing & limits → Stop after silence*. 0 or "Never" means only
+*Settings → Timing and limits → Stop after silence (ms)*. 0 or "Never" means only
 you stop it.
 
 **Live transcription** (Both). Murmur transcribes while you speak, so a
@@ -195,7 +201,7 @@ speak*.
 **Live preview** (Both). Shows the words next to the Murmur bar or the
 bubble as you speak.
 *How:* this is off by default. Windows: *Settings → General → Live
-preview*. Android: *Settings → Bubble → Live preview*.
+preview*. Android: *Settings → Bubble size → Live preview*.
 
 ## Notes and recordings
 
@@ -225,7 +231,7 @@ server is used* (Android, on by default).
 **Engine order** (Both). Choose which engines are tried in which order:
 this device, your server, the cloud. If one fails, the next one gets the
 same audio.
-*How:* Android: *Settings → Speech to text*. Windows: *Settings → Speech
+*How:* Android: *Settings → Speech to text* and *AI cleanup*. Windows: *Settings → Speech
 to text* and *AI cleanup*.
 
 **One key per person or device** (murmur-server, Windows admin). Give each
