@@ -259,6 +259,27 @@ its fingerprint. What isn't there can be downloaded or skipped; files it
 doesn't know, or that fail the check, are listed.
 *How:* setup → *Add a speech model* → *Use model files on this PC*, or
 *Settings → Speech to text → Advanced → Import from folder…*.
+The unzipped models bundle looks like this; pick `library/` (or the folder
+above it):
+
+```
+library/
+  parakeet-tdt-0.6b-v2-int8/     English speech model
+    encoder.int8.onnx  decoder.int8.onnx  joiner.int8.onnx  tokens.txt
+  zipformer-he-int8/             Hebrew speech model
+    encoder.int8.onnx  decoder.int8.onnx  joiner.int8.onnx  tokens.txt
+  whisper-tiny-lid/              language auto-detect model
+    ggml-tiny-q5_1.bin
+  …                              other models: listed, imported separately
+```
+
+Folder names don't matter (the files and their fingerprints do), so the
+app's own models folder, renamed folders or all the files in one folder
+work too. The search goes four folders deep and up to 10,000 files; past
+that, the checklist says the folder is large. With all three models there,
+the language becomes *Detect automatically* and *Keyboard language* is
+turned off, since it would otherwise choose the language for each
+dictation itself.
 
 **Models from your own server** (Both). The apps download speech and
 cleanup models from your server's model library, so a network with no
