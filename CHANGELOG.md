@@ -18,6 +18,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- **Windows: set up English, Hebrew and auto-detect from one folder of model files.** Setup's model step has "Use model files on this PC": pick a folder (such as the unzipped models bundle) and a checklist shows the English speech model, the Hebrew speech model and the language auto-detect model it found, each with its size, or "not found" with Download or Skip. "Use these" copies them with the usual fingerprint checks and, with all three, sets the language to Detect automatically. This also turns off "Keyboard language", which would otherwise pick each dictation's language from the keyboard layout so auto-detect never ran; a Download from the checklist that completes the three does the same. Models are recognised by their files, so renamed folders and loose files work; damaged or unknown files are listed. The same checklist is in Settings → Speech to text → Advanced → "Import from folder…".
 - **Server: context counts in the log.** The `result` and `cleaned` lines end with `ctx_screen_words= hotwords= dict_terms_in_prompt= screen_names_in_prompt=` (numbers only, never the words); `dict_terms_in_prompt` counts only dictionary entries.
 
 ### Changed

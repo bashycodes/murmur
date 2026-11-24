@@ -3,11 +3,13 @@
 // this PC with its status chip (features/general.ts), live transcription,
 // cloud speech to text on OpenRouter or (D85) the LiteLLM proxy
 // (features/openrouter.ts), and an Advanced fold with the model plumbing
-// (Hebrew model, keep loaded, download source, other models, model file).
+// (Hebrew model, keep loaded, download source, other models, a folder of
+// model files (features/model-folder.ts), model file).
 // The server's model library is on Settings → Your server. Markup only.
 import { ICON, iconSvg } from "../../lib/icons.js";
 import { advanced, group, heading, row, toggle } from "../../lib/markup.js";
 import { NOTETAKER_ENABLED } from "../notetaker.js";
+import { FOLDER_ROW } from "../../features/model-folder.js";
 import { browseButton, DOWNLOAD_ROW, HEBREW_ROW, SOURCE_ROW } from "../../features/models.js";
 /** One engine in a ranked list (`<prefix>_row_<key>`, `_desc_`, `_badge_`):
  *  rank, tile, text, status badge, move up/down, switch. The feature module
@@ -82,6 +84,7 @@ ${advanced(HEBREW_ROW +
         row("Use dictionary words when listening", "Better at names; uses about 0.6 GB more memory.", toggle("dev_parakeet_decoding", "Use dictionary words when listening"), `data-needs="dev" id="dict_words_row"`) +
         SOURCE_ROW +
         DOWNLOAD_ROW +
+        FOLDER_ROW +
         row("Model file", `Empty = the default. Your models folder: <code class="lw-mono" data-models-dir></code>`, `<input id="model_path" class="fl-input is-wide lw-mono-input" data-save="prefs" spellcheck="false" aria-label="Whisper model file" />${browseButton("model_path")}`, `data-engine="whisper"`) +
         row("Model folder", `Empty = the default. Your models folder: <code class="lw-mono" data-models-dir></code>`, `<input id="parakeet_model_dir" class="fl-input is-wide lw-mono-input" data-save="prefs" spellcheck="false" aria-label="Parakeet model folder" />${browseButton("parakeet_model_dir")}`, `data-engine="parakeet"`), `id="stt_advanced" data-needs="local"`)}`,
 };

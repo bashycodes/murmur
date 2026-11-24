@@ -3,13 +3,15 @@
 // this PC with its status chip (features/general.ts), live transcription,
 // cloud speech to text on OpenRouter or (D85) the LiteLLM proxy
 // (features/openrouter.ts), and an Advanced fold with the model plumbing
-// (Hebrew model, keep loaded, download source, other models, model file).
+// (Hebrew model, keep loaded, download source, other models, a folder of
+// model files (features/model-folder.ts), model file).
 // The server's model library is on Settings → Your server. Markup only.
 
 import { ICON, iconSvg } from "../../lib/icons.js";
 import { advanced, group, heading, row, toggle } from "../../lib/markup.js";
 import type { Page } from "../../lib/router.js";
 import { NOTETAKER_ENABLED } from "../notetaker.js";
+import { FOLDER_ROW } from "../../features/model-folder.js";
 import { browseButton, DOWNLOAD_ROW, HEBREW_ROW, SOURCE_ROW } from "../../features/models.js";
 
 /** One engine in a ranked list (`<prefix>_row_<key>`, `_desc_`, `_badge_`):
@@ -146,6 +148,7 @@ ${advanced(
     ) +
     SOURCE_ROW +
     DOWNLOAD_ROW +
+    FOLDER_ROW +
     row(
       "Model file",
       `Empty = the default. Your models folder: <code class="lw-mono" data-models-dir></code>`,

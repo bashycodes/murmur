@@ -111,6 +111,9 @@ test("Change goes to the step of the choice", () => {
     host: "engine",
     token: "engine",
     model: "model",
+    hebrew: "model",
+    lid: "model",
+    language: "model",
     source: "cleanup",
     cleanup: "cleanup",
     llmPath: "cleanup",
@@ -130,4 +133,24 @@ test("savedEngine: the first route in the order that would be used", () => {
   assert.equal(savedEngine({ ...routes, route_order: ["cloud", "server", "client"] }), "server");
   assert.equal(savedEngine({ ...routes, route_order: ["cloud", "server", "client"], cloudStt: true }), "cloud");
   assert.equal(savedEngine({ ...routes, allow_client: false, allow_server: false }), null);
+});
+
+test("a folder import's Hebrew model, language-ID file and language are listed, and old configs compare equal", () => {
+  const before = { ...cfg, hebrew: { model: "auto", dir: null }, lid: "C:\\m\\lid.bin", language: { codes: ["en"], keyboard: true } };
+  const after = { ...cfg, hebrew: { model: "zipformer", dir: null }, lid: null, language: { codes: [], keyboard: false } };
+  const L2 = { ...L, hebrewName: (m) => `H(${m})` };
+  const ch = setupChanges(before, after, L2);
+  assert.deepEqual(
+    ch.map((c) => [c.key, c.from, c.to]),
+    [
+      ["hebrew", "H(auto)", "H(zipformer)"],
+      ["lid", "lid.bin", "In the models folder"],
+      ["language", "Keyboard language", "Detect automatically"],
+    ],
+  );
+  assert.ok(ch.every((c) => STEP_OF[c.key] === "model"));
+  assert.equal(choiceLabel("language", { ...cfg, language: { codes: ["en", "he"], keyboard: false } }, L), "en, he");
+  // Settings saved before these were tracked: no change.
+  assert.deepEqual(setupChanges(cfg, { ...cfg }, L), []);
+  assert.deepEqual(setupChanges(after, { ...after, language: { codes: [], keyboard: false } }, L), []);
 });

@@ -1428,15 +1428,21 @@ async fn llm_backend(
 /// "Download from" is Your server (D41/D79: its copy must match the
 /// built-in pins; never Hugging Face then), else from Hugging Face.
 /// Progress arrives as `model:download` events; on `done` the prefs point
-/// the local engine at it and it loads.
+/// the local engine at it and it loads. `auto_detect` (setup's folder
+/// checklist): with English, Hebrew and language detection all there once
+/// it is done, the language becomes "Detect automatically", as after the
+/// checklist's own import (`model_import::auto_detect_when_ready`).
 #[tauri::command]
 fn model_download_start(
     app: AppHandle,
     state: tauri::State<'_, AppState>,
     id: String,
+    auto_detect: Option<bool>,
 ) -> Result<(), String> {
     use crate::model_download as md;
     let entry = md::entry(&id).ok_or_else(|| format!("unknown model {id}"))?;
+    let appdata = state.appdata.clone();
+    let auto_detect = auto_detect.unwrap_or(false);
     #[cfg(feature = "remote")]
     let job = {
         let origin = download_origin(&state);
@@ -1470,7 +1476,12 @@ fn model_download_start(
         entry.size(),
         "download",
         job,
-        move |prefs, _path, dir| entry.apply_to(prefs, dir),
+        move |prefs, _path, dir| {
+            entry.apply_to(prefs, dir);
+            if auto_detect {
+                crate::model_import::auto_detect_when_ready(prefs, appdata.as_deref());
+            }
+        },
     )
 }
 
@@ -1512,6 +1523,129 @@ fn model_import_start(
         move |dir, cancel, emit| crate::model_import::run_import(entry, dir, &src, cancel, emit),
         move |prefs, _path, dir| entry.apply_to(prefs, dir),
     )
+}
+
+/// The latest folder scan: an older one still hashing stops.
+static FOLDER_SCAN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Payload of `model:folder-scan`: the file a folder scan is reading to
+/// tell which model it is (relative to the picked folder).
+#[derive(Clone, serde::Serialize)]
+struct FolderScanTick {
+    path: String,
+    file: String,
+}
+
+/// Setup's "Use model files on this PC" and Settings' "Import from
+/// folder…": which English, Hebrew and language-ID model the folder `path`
+/// holds, by their files (`model_import::scan_folder`), and what in it can't
+/// be used. Reads the listing, plus files whose size is ambiguous: each of
+/// those is announced as `model:folder-scan` first. The newest scan wins: a
+/// scan started meanwhile stops this one (`model_import::SCAN_STOPPED`).
+#[tauri::command]
+async fn model_folder_scan(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    path: String,
+) -> Result<crate::model_import::FolderScan, String> {
+    use std::sync::atomic::Ordering;
+    let src = picked_path(&path)?;
+    let dir = core_adapter::models_dir(state.appdata.as_deref());
+    let gen = FOLDER_SCAN.fetch_add(1, Ordering::SeqCst) + 1;
+    tauri::async_runtime::spawn_blocking(move || {
+        let stop = || FOLDER_SCAN.load(Ordering::SeqCst) != gen;
+        let mut checking = |file: &str| {
+            let tick = FolderScanTick {
+                path: path.clone(),
+                file: file.to_string(),
+            };
+            let _ = app.emit_to(SETTINGS, "model:folder-scan", tick);
+        };
+        crate::model_import::scan_folder(&src, &dir, &mut checking, &stop)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Install the `pick`ed rows of `model_folder_scan` (copied and checked
+/// like "Import from file…", each model all or nothing), point the prefs at
+/// them and, with English, Hebrew and language detection all there, set the
+/// language to "Detect automatically". Progress: `model:download` with id
+/// `folder-import`, which `model_download_cancel` stops. Answers each row's
+/// outcome once done.
+#[tauri::command]
+async fn model_folder_import(
+    app: AppHandle,
+    path: String,
+    pick: crate::model_import::FolderPick,
+) -> Result<crate::model_import::FolderImportView, String> {
+    use crate::model_download::{Progress, State};
+    use crate::model_import::FOLDER_JOB_ID;
+    let src = picked_path(&path)?;
+    let state = app.state::<AppState>();
+    let cancel = state.downloads.begin(FOLDER_JOB_ID)?;
+    let appdata = state.appdata.clone();
+    let dir = core_adapter::models_dir(appdata.as_deref());
+    let job = {
+        let (app, dir) = (app.clone(), dir.clone());
+        tauri::async_runtime::spawn_blocking(move || {
+            crate::model_import::import_folder(&src, &dir, pick, &cancel, &mut |p| {
+                let _ = app.emit_to(SETTINGS, "model:download", p);
+            })
+        })
+    };
+    let r = job.await;
+    state.downloads.finish(FOLDER_JOB_ID);
+    let (state_end, error, view) = match r {
+        Err(e) => (State::Error, Some(e.to_string()), None),
+        Ok(Err(crate::model_download::Stop::Cancelled)) => (State::Cancelled, None, None),
+        Ok(Err(crate::model_download::Stop::Failed(e))) => (State::Error, Some(e), None),
+        Ok(Ok(mut done)) => {
+            let mut saved = Ok(());
+            if done.any() {
+                let mut prefs = state.prefs.read().unwrap().clone();
+                done.apply(&mut prefs, &dir, appdata.as_deref());
+                saved = save_prefs(&app, &state, prefs);
+            }
+            let errors = done.errors();
+            match saved {
+                Err(e) => (
+                    State::Error,
+                    Some(format!("installed, but the setting was not saved: {e}")),
+                    None,
+                ),
+                Ok(()) if done.view.cancelled => (State::Cancelled, None, Some(done.view)),
+                Ok(()) if !errors.is_empty() => {
+                    (State::Error, Some(errors.join(" ")), Some(done.view))
+                }
+                Ok(()) => (State::Done, None, Some(done.view)),
+            }
+        }
+    };
+    eprintln!("model folder import: {state_end:?}");
+    let _ = app.emit_to(
+        SETTINGS,
+        "model:download",
+        Progress {
+            id: FOLDER_JOB_ID.to_string(),
+            received: 0,
+            total: 0,
+            state: state_end,
+            error: error.clone(),
+            path: None,
+        },
+    );
+    view.ok_or_else(|| error.unwrap_or_else(|| "cancelled".into()))
+}
+
+/// A path from the picker: absolute, else refused.
+fn picked_path(path: &str) -> Result<std::path::PathBuf, String> {
+    let src = std::path::PathBuf::from(path.trim());
+    if src.is_absolute() {
+        Ok(src)
+    } else {
+        Err("choose the folder with the picker".into())
+    }
 }
 
 /// Run a download or import (`id` = its `model:download` id, `total` its
@@ -3819,6 +3953,8 @@ pub fn run() {
             server_models,
             server_model_download,
             model_import_start,
+            model_folder_scan,
+            model_folder_import,
             model_download_cancel,
             model_delete,
             transforms_reset,

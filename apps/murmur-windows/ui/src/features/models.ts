@@ -245,15 +245,17 @@ export const models = {
       notify();
     }
   },
-  /** The confirm dialog (3a); downloads only when the user presses Download there. */
-  async confirmAndStart(id: string): Promise<void> {
+  /** The confirm dialog (3a); downloads only when the user presses Download there.
+   *  `autoDetect` (the folder checklist): once English, Hebrew and language
+   *  detection are all there, the language becomes "Detect automatically". */
+  async confirmAndStart(id: string, opts: { autoDetect?: boolean } = {}): Promise<void> {
     const e = models.entry(id);
     if (!e || !models.canStart(e) || models.busy()) return;
     if (!(await confirm(e))) return;
     progress.set(id, { id, received: 0, total: e.size, state: "downloading", started: Date.now() });
     notify();
     try {
-      await invoke("model_download_start", { id });
+      await invoke("model_download_start", { id, autoDetect: opts.autoDetect === true });
     } catch (err) {
       progress.set(id, { id, received: 0, total: e.size, state: "error", error: String(err), started: 0 });
       notify();

@@ -35,10 +35,19 @@ the apps.
    script or software deployment): `{{WIN_EXE}} /S`.
 2. Windows SmartScreen may warn that the publisher is unknown (the
    installer is not code-signed): *More info* → *Run anyway*.
-3. The app starts in the tray. Open it and go to Settings → Speech to
-   text. Pick a model and press **Import from file…**, then choose that
-   model's folder from the unzipped models (see [Models](#models)). Each
-   file is checked against a fingerprint built into the app.
+3. The app starts in the tray and opens setup. At *Add a speech model*,
+   press **Use model files on this PC…** and choose the unzipped
+   `library/` folder (see [Models](#models)). Setup lists the English
+   speech model, the Hebrew speech model and the language auto-detect
+   model it found, with each one's size; press **Use these**. Each file is
+   copied and checked against a fingerprint built into the app, and with
+   all three the language becomes *Detect automatically*. A model that
+   isn't in the folder can be downloaded there or skipped. Models are
+   recognised by their files, so renamed folders, or all the files in one
+   folder, work too; files the app doesn't know are listed, not ignored.
+   After setup the same checklist is in Settings → Speech to text →
+   Advanced → **Import from folder…**, and **Import from file…** next to
+   a model imports just that one.
 4. Hold **Right Alt** (the default push-to-talk key; change it in
    Settings → General → Shortcuts), speak, let go.
 
