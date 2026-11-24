@@ -23,7 +23,9 @@ Each rule comes from a problem a review caught before merge.
   on fallback hops. A provider is only ever reached through OpenRouter,
   except AI cleanup's custom server (D52), whose host the user typed and
   consented to, and (D85) audio to that same LiteLLM proxy for speech to
-  text, only after a separate audio consent for that host.
+  text, only after a separate audio consent for that host, and (D105) the
+  Windows webhook: setting its URL, which the user typed, and its own
+  shortcut is the consent for what Settings says is sent there.
 
 ## Shared code
 
