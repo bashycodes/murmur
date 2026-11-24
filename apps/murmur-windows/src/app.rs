@@ -1229,6 +1229,17 @@ async fn open_external(url: String) -> Result<(), String> {
         .map_err(|e| e.to_string())?
 }
 
+/// Whether the language-ID model (D34) is on disk: Settings warns when
+/// "Detect automatically" has a Hebrew model but no language ID.
+#[tauri::command]
+fn lid_model_present(state: tauri::State<'_, AppState>) -> bool {
+    state
+        .prefs
+        .read()
+        .unwrap()
+        .lid_model_present(state.appdata.as_deref())
+}
+
 /// The speech and AI cleanup models this build can download (D31), with
 /// where each is saved and whether it is already there. With a server set
 /// and "Download from" on Your server (D41/D79) they come from its library
@@ -3466,6 +3477,7 @@ pub fn run() {
             pick_path,
             open_external,
             model_catalog,
+            lid_model_present,
             llm_backend,
             whisper_backend,
             model_download_start,

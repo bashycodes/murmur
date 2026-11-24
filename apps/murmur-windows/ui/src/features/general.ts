@@ -10,7 +10,8 @@ import { invoke, onEvent } from "../lib/ipc.js";
 import { captureChord, RECORDING_TEXT, stopCapture } from "../lib/keycapture.js";
 import { prefsStore, type Prefs } from "../lib/prefs-store.js";
 import type { Feature } from "../lib/router.js";
-import { hebrewChosen, hebrewReady, mb, models, type CatalogEntry } from "./models.js";
+import { hebrewChosen, hebrewEntry, hebrewReady, hebrewServerDir, mb, models, type CatalogEntry } from "./models.js";
+import { lidWarning } from "../lib/lid-warning.js";
 import { languageNames, pcModelChip, pcModelEntry } from "../lib/model-pages.js";
 import type { ModelStatus } from "../lib/types.js";
 import { setTheme } from "../lib/theme.js";
@@ -273,7 +274,43 @@ function showLanguages(prefs: Prefs, typed?: string, keyboard?: boolean): void {
   $<HTMLElement>("languages_parakeet").hidden = prefs.asr_engine !== "parakeet" || (he && heModel);
   // Only once the catalogue is known (it says what is downloaded).
   $<HTMLElement>("languages_hebrew").hidden = !he || heModel || models.catalog().length === 0;
+  showLid(prefs, codes, kb, heModel);
   showLanguagePick(codes, kb);
+}
+
+/** The catalogue Hebrew model a download completes with the language-ID file (installed, not a server folder). */
+function lidTarget(prefs: Prefs): CatalogEntry | undefined {
+  if (hebrewServerDir(prefs)) return undefined;
+  const e = hebrewEntry(prefs.hebrew_model);
+  return e?.installed ? e : undefined;
+}
+
+/** D34: auto-detect with a Hebrew model but no language-ID model stays English; say so, with its download. */
+function showLid(prefs: Prefs, codes: string[], keyboard: boolean, heModel: boolean): void {
+  const e = lidTarget(prefs);
+  const w = lidWarning({
+    keyboard,
+    languages: codes,
+    hebrewModel: heModel,
+    lidPresent: models.lidPresent(),
+    serverHebrew: Boolean(hebrewServerDir(prefs)),
+    target: e && { canStart: models.canStart(e), busy: models.busy(e.id), missing: e.missing ?? 0 },
+  });
+  $<HTMLElement>("languages_lid").hidden = !w.show;
+  const dl = $<HTMLButtonElement>("languages_lid_dl");
+  const go = $<HTMLButtonElement>("languages_lid_go");
+  dl.hidden = !(w.show && w.download);
+  go.hidden = !(w.show && w.go);
+  if (!w.show) return;
+  $<HTMLElement>("languages_lid_text").textContent = w.text;
+  if (w.download) {
+    dl.textContent = w.download;
+    dl.disabled = models.busy();
+  }
+  if (w.go) {
+    go.textContent = w.go.label;
+    go.dataset.go = w.go.page;
+  } else delete go.dataset.go;
 }
 
 /** Re-read the keyboard layout's language, then show the languages again. */
@@ -389,6 +426,11 @@ export const general: Feature = {
       const p = prefsStore.get();
       if (p) showLanguages(p);
       showModelChip();
+    });
+    $<HTMLButtonElement>("languages_lid_dl").addEventListener("click", () => {
+      const p = prefsStore.get();
+      const e = p && lidTarget(p);
+      if (e) void models.confirmAndStart(e.id);
     });
     $<HTMLButtonElement>("pc_model_dl").addEventListener("click", () => {
       const e = pcEntry();

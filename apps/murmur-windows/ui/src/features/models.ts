@@ -14,6 +14,8 @@
 import { $, askDialog, html } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { onServer, type ModelSource } from "../lib/model-source.js";
+import { confirmFacts } from "../lib/download-confirm.js";
+import { isHebrewCode } from "../lib/lid-warning.js";
 import { llmModelChip } from "../lib/model-pages.js";
 import { prefsStore } from "../lib/prefs-store.js";
 import type { Feature } from "../lib/router.js";
@@ -95,6 +97,8 @@ interface Filter {
 }
 
 let catalog: CatalogEntry[] = [];
+/** The language-ID model is on disk (`lid_model_present`, D34); undefined = not known (older backend). */
+let lidPresent: boolean | undefined;
 /** undefined = not asked yet. */
 let serverLib: ServerLibrary | undefined;
 /** `via`: "import" while (and after) a model is imported from a file, else a download. */
@@ -190,8 +194,17 @@ export const models = {
   onChange(l: () => void): void {
     listeners.push(l);
   },
+  /** The language-ID model (D34) is on disk; undefined until the first refresh answers. */
+  lidPresent(): boolean | undefined {
+    return lidPresent;
+  },
   async refresh(): Promise<CatalogEntry[]> {
-    catalog = await invoke<CatalogEntry[]>("model_catalog");
+    const [c, lid] = await Promise.all([
+      invoke<CatalogEntry[]>("model_catalog"),
+      invoke<boolean>("lid_model_present").catch(() => undefined),
+    ]);
+    catalog = c;
+    lidPresent = lid;
     notify();
     return catalog;
   },
@@ -325,9 +338,8 @@ function askImport(e: CatalogEntry): Promise<string | null> {
 const isSpeech = (c: CatalogEntry): boolean => c.engine !== "llm";
 
 function confirm(e: CatalogEntry): Promise<boolean> {
-  if (e.from_server) return askDownload(e.title, serverName(), e.size, e.files.length, e.dest, CHECK_PINNED_SERVER);
-  const many = e.files.length > 1;
-  return askDownload(e.title, many ? e.page : e.files[0].url, e.size, e.files.length, e.dest, CHECK_PINNED);
+  const f = confirmFacts(e, serverName());
+  return askDownload(f.title, f.from, f.size, f.files, f.dest, e.from_server ? CHECK_PINNED_SERVER : CHECK_PINNED);
 }
 
 /** The configured server's host ("" before the engine settings load). */
@@ -751,9 +763,12 @@ function wouldRunLine(e: CatalogEntry, rec: CatalogEntry | undefined): string {
 
 /** True when `languages` forces Hebrew (exactly one, `he`/`he-IL`/`iw`). */
 export function hebrewChosen(languages: string[] | undefined): boolean {
-  if (!languages || languages.length !== 1) return false;
-  const p = languages[0].trim().toLowerCase().split(/[-_]/)[0];
-  return p === "he" || p === "iw" || p === "hebrew";
+  return languages?.length === 1 && isHebrewCode(languages[0]);
+}
+
+/** The Hebrew model folder from the server's library (D41) the prefs use instead of the catalogue one; "" = none. */
+export function hebrewServerDir(prefs: { hebrew_model_dir?: string | null } | null | undefined = prefsStore.get()): string {
+  return prefs?.hebrew_model_dir?.trim() ?? "";
 }
 
 /** The catalogue entry of the chosen Hebrew model (undefined = none). */
@@ -763,7 +778,7 @@ export function hebrewEntry(choice: string | undefined): CatalogEntry | undefine
 
 /** A Hebrew model is chosen and on disk (catalogue `installed`). */
 export function hebrewReady(choice: string | undefined): boolean {
-  if (choice !== "none" && prefsStore.get()?.hebrew_model_dir?.trim()) return true;
+  if (choice !== "none" && hebrewServerDir()) return true;
   return Boolean(hebrewEntry(choice)?.installed);
 }
 
@@ -825,7 +840,7 @@ function renderHebrewRow(): void {
     set(progressLine(p, e), "err");
     return;
   }
-  const custom = prefsStore.get()?.hebrew_model_dir?.trim();
+  const custom = hebrewServerDir();
   if (custom) {
     set(`Uses ${custom} (from your server).`, "ok");
     return;

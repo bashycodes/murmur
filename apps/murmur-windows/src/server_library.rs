@@ -773,6 +773,12 @@ mod tests {
         ] {
             let mut p = Prefs::default();
             let path = d.join(format!("{slot:?}"));
+            if slot == Slot::Lid {
+                // The LID override counts only while its file is there
+                // (a stale one falls back to the models folder).
+                std::fs::create_dir_all(&d).unwrap();
+                std::fs::write(&path, b"x").unwrap();
+            }
             assert!(!in_use(slot, &path, &p, None), "{slot:?}");
             apply(slot, &path, &mut p);
             assert!(in_use(slot, &path, &p, None), "{slot:?}");
