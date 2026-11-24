@@ -50,7 +50,7 @@ import kotlin.concurrent.thread
  *             to text, AI cleanup), Connections (your server's latency from the router's health
  *             probe, OpenRouter's key + this month's cost), Data & privacy (keep history, learn
  *             from my edits, debug log), back up & restore, Developer settings + Mock engine,
- *             About (version, 7-tap unlock). Warnings sit in a callout at the top.
+ *             About (version, 7-tap unlock; source on GitHub). Warnings sit in a callout at the top.
  *   language  dictation language, auto-format
  *   style     writing style per bucket (personal / work / email / other), D27
  *   app_styles  per-app bucket overrides: app list + "Add app" picker, from the style page
@@ -376,7 +376,7 @@ class SettingsActivity : Activity() {
             card {
                 // §5 Access: in builds without `remote`, 7 taps here reveal Developer settings.
                 val unlock = DevUnlock({ android.os.SystemClock.elapsedRealtime() })
-                navRow(null, versionLabel(), chevron = false) {
+                navRow(null, dev.murmur.data.AppVersion.current.label(app.caps.flavor), chevron = false) {
                     if (app.dev.visible) return@navRow
                     if (unlock.tap()) {
                         app.dev.devUnlocked = true
@@ -386,6 +386,9 @@ class SettingsActivity : Activity() {
                         Toast.makeText(this@SettingsActivity, "${unlock.remaining} more taps", Toast.LENGTH_SHORT).show()
                     }
                 }
+                navRow(null, ShellPages.SOURCE_TITLE, endIcon = R.drawable.ic_lw_external) {
+                    openInBrowser(ShellPages.PROJECT_URL)
+                }.view.contentDescription = ShellPages.SOURCE_DESCRIPTION
             }
         }
     }
@@ -496,9 +499,6 @@ class SettingsActivity : Activity() {
             }
         }
     }
-
-    /** The About row: the same build label as the main screen (D26), e.g. `Version 0.2.0 (hybrid) · 1a2b3c4`. */
-    private fun versionLabel() = dev.murmur.data.AppVersion.current.label(app.caps.flavor)
 
     // =====================================================================================
     // Language

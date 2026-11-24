@@ -19,8 +19,15 @@ object ShellPages {
     /** The app's name: Home top bar, drawer title. */
     const val APP_NAME = "Murmur"
 
-    /** Help in the drawer opens the project page. */
-    const val HELP_URL = "https://github.com/bashycodes/murmur"
+    /** The project page: Help in the drawer and Settings → About's source row open it. */
+    const val PROJECT_URL = "https://github.com/bashycodes/murmur"
+
+    /**
+     * Settings → About: under the build line ([AppBuild.label], "Version 1.3.0 (hybrid) · abc1234", D26),
+     * a row that opens [PROJECT_URL]. TalkBack gets [SOURCE_DESCRIPTION]: the arrow alone does not say it leaves the app.
+     */
+    const val SOURCE_TITLE = "Source on GitHub"
+    const val SOURCE_DESCRIPTION = "$SOURCE_TITLE, opens in your browser"
 
     /** Home shows this many recent dictations; History (drawer) has them all. */
     const val HOME_LIMIT = 100

@@ -2,7 +2,6 @@ package dev.murmur.ui
 
 import android.app.Activity
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -218,7 +217,7 @@ class MainActivity : Activity() {
                     perm.view.contentDescription = "Permissions, $fix: ${ShellPages.missing(rows)}"
                 }
                 navRow(R.drawable.ic_lw_help, "Help", chevron = false) {
-                    go { runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(ShellPages.HELP_URL))) } }
+                    go { openInBrowser(ShellPages.PROJECT_URL) }
                 }
             }
             sectionLabel("More")

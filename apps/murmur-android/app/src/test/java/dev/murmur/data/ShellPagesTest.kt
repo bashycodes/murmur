@@ -201,6 +201,17 @@ class ShellPagesTest {
         assertEquals("Murmur 0.6.0", ShellPages.versionLine("0.6.0"))
     }
 
+    /** Settings → About: version + flavour + commit, then the source row (no byline). */
+    @Test fun aboutNamesTheBuildAndLinksTheSource() {
+        val build = AppBuild(version = "1.3.0", code = 10300, build = "abc1234", full = "1.3.0+abc1234")
+        assertEquals("Version 1.3.0 (hybrid) · abc1234", build.label("hybrid"))
+        assertEquals("Version 1.3.0 (local) · abc1234-dirty", build.copy(build = "abc1234-dirty").label("local"))
+        assertEquals("Source on GitHub", ShellPages.SOURCE_TITLE)
+        assertEquals("Source on GitHub, opens in your browser", ShellPages.SOURCE_DESCRIPTION)
+        assertEquals("https://github.com/bashycodes/murmur", ShellPages.PROJECT_URL)
+        assertEquals(false, listOf(build.label("hybrid"), ShellPages.SOURCE_TITLE, ShellPages.SOURCE_DESCRIPTION).any { " by " in it })
+    }
+
     private fun row(route: String?, final: String = "Hi", asr: String = "hi") =
         HistoryRow(1, 0, "app", "FORMATTED", asr, final, true, 0, route = route)
 
