@@ -111,9 +111,11 @@ jobs:
       # to fetch maven artifact ... android-all-instrumented"). So the jars come
       # from a cache keyed on the Robolectric version (it pins them) and the
       # SDKs the tests run on, and on a miss tools/robolectric-jars.sh fetches
-      # them with retries and checks their SHA-512 before the tests start. The
-      # cache is saved right after that check, so a red test run (or a cold
-      # cache, run 45376226463) still leaves it warm for the next one.
+      # them before the tests, from Maven Central or Google's mirror of it
+      # (Central kept answering 429 in run 45378026028), each checked against
+      # a pinned SHA-512. The cache is saved right after that, so a red test
+      # run still leaves it warm; when only some jars came through, they are
+      # saved under a partial key that the next run restores and completes.
       - name: Robolectric jars key
         run: echo "ROBOLECTRIC_JARS_KEY=$(apps/murmur-android/tools/robolectric-jars.sh key)" >> "$GITHUB_ENV"
 
@@ -123,16 +125,36 @@ jobs:
         with:
           path: ~/.m2/repository/org/robolectric
           key: ${{ env.ROBOLECTRIC_JARS_KEY }}
+          restore-keys: ${{ env.ROBOLECTRIC_JARS_KEY }}-partial-
 
-      - name: Robolectric runtime jars (fetch + check)
+      - name: Robolectric runtime jars (fetch)
+        id: robolectric-fetch
+        continue-on-error: true
         run: apps/murmur-android/tools/robolectric-jars.sh fetch
 
+      - name: Robolectric runtime jars (status)
+        id: robolectric-jars
+        run: apps/murmur-android/tools/robolectric-jars.sh status | tee -a "$GITHUB_OUTPUT"
+
       - name: Robolectric runtime jars (save)
-        if: steps.robolectric-cache.outputs.cache-hit != 'true'
+        if: steps.robolectric-cache.outputs.cache-hit != 'true' && steps.robolectric-jars.outputs.complete == 'true'
         uses: actions/cache/save@v4
         with:
           path: ~/.m2/repository/org/robolectric
           key: ${{ env.ROBOLECTRIC_JARS_KEY }}
+
+      - name: Robolectric runtime jars (save the part that came through)
+        if: steps.robolectric-jars.outputs.complete != 'true' && steps.robolectric-jars.outputs.some == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: ${{ env.ROBOLECTRIC_JARS_KEY }}-partial-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Robolectric runtime jars (complete?)
+        if: steps.robolectric-jars.outputs.complete != 'true'
+        run: |
+          echo "::error::Robolectric's runtime jars could not all be fetched (see the fetch step); the ones that came through are cached for the next run"
+          exit 1
 
       - name: Rust toolchain + cargo-ndk
         run: |
