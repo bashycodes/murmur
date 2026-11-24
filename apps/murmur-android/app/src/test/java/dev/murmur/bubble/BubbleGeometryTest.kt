@@ -9,6 +9,8 @@ import dev.murmur.bubble.BubbleButton.PASTE
 import dev.murmur.session.DictationState
 import dev.murmur.session.DictationState.ErrorKind
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BubbleGeometryTest {
@@ -161,5 +163,17 @@ class BubbleGeometryTest {
         assertEquals(230f to 56f, size(rec))
         assertEquals(CANCEL, hit(rec, 28f))
         assertEquals(DONE, hit(rec, 200f))
+    }
+
+    // ---- Resting glyph: the Murmur mark while Idle / Ready, today's glyphs everywhere else ----
+
+    @Test fun idleAndReadyShowTheMarkFullOrMinimised() {
+        for (u in listOf(idle, ready, readyCopy, minimised, minimised.copy(dot = false), ready.copy(scale = 0.75f)))
+            assertTrue(u.toString(), BubbleGeometry.showsMark(u))
+    }
+
+    @Test fun otherStatesKeepTheirGlyphs() {
+        for (u in listOf(repair, ready.copy(repair = true), recTap, recHold, procTap, procHold, failedPaste, otherError, answer))
+            assertFalse(u.toString(), BubbleGeometry.showsMark(u))
     }
 }

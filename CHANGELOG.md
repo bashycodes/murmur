@@ -21,6 +21,10 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 - **Windows: "Allow an unencrypted connection" for your server.** On a network you trust, such as an air-gapped company network that uses public address ranges inside, Settings → Your server can now connect without TLS to any address. It is off by default and shown for a public IP address; the page warns that audio, text and the access token then cross the network unencrypted. The server must accept such clients too (`--insecure-bind-any`, Docker `MURMUR_INSECURE_BIND_ANY=1`). Android follows later (D100).
 - **Android: "Source on GitHub" in Settings → About.** Under the version line ("Version X (hybrid) · commit"), a new row with an external-link arrow opens the project page in the browser.
 
+### Changed
+
+- **Android: the resting dictation bubble shows the Murmur mark.** While the bubble waits (full or shrunk to the small circle), its main button shows the violet Murmur mark instead of the white microphone, drawn straight on the dark pill without the grey disc so the mark's darker violet keeps 3:1 contrast. Recording, processing, errors, the repair alert and the dot look as before; hold-to-talk still shows the microphone. `tools/brand/gen-icons.py` now also writes the bubble's drawable from `docs/brand/murmur-mark.svg`.
+
 ### Removed
 
 - **The pick-up of data from before the Murmur rename.** The Windows app no longer copies an old `%APPDATA%\FlowClone` folder on start, its uninstaller no longer deletes that folder (delete it by hand if one is left), and Android's Restore no longer accepts a `flow-clone-backup` file. Every install already ran the one-time pick-up (D83).
