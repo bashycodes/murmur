@@ -152,7 +152,10 @@ Use text on screen*.
 get the app's name, the text around the cursor and the words on screen
 (Windows: the window title; Android: the visible text of the app's window,
 up to 2000 characters, never password or sensitive fields nor the field you
-type in). Each one is off until you turn it on.
+type in). Each one is off until you turn it on. On Android, the words on
+screen, once on, also help speech recognition on the phone and on your
+server, as the text around the cursor does; cloud speech-to-text never gets
+them, and cloud cleanup only with its consent.
 *How:* Windows: *Settings → AI cleanup → Advanced → Also send to the cloud*
 (App name, Text around the cursor, Words on screen). Android: *Settings →
 Cloud → Send text around the cursor* and *Send on-screen words*.

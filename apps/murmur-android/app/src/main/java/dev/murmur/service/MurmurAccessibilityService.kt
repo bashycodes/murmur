@@ -245,21 +245,23 @@ class MurmurAccessibilityService : AccessibilityService(), AccessibilityBridge {
         )
         if (node?.isPassword == true) return FieldContextBuilder.build(pkg, 0x81, null, 0, 0)
         val s = inputMethod?.readSurrounding(500, 500)
+        // The node's whole text (without its hint); the IME only gives a window around the cursor.
+        val nodeText = node?.takeIf { s == null || screenWords }?.let { NodeAdapter(it).snapshot() }?.let {
+            dev.murmur.insert.TextMatching.readNodeText(it, editor.hintText, emptySet())
+        }
         val ctx = if (s != null) {
             FieldContextBuilder.build(pkg, type, s.first, s.second, s.third)
         } else {
             // IME read null → node text with selection.
-            val text = node?.let { NodeAdapter(it).snapshot() }?.let {
-                dev.murmur.insert.TextMatching.readNodeText(it, editor.hintText, emptySet())
-            }
-            FieldContextBuilder.build(pkg, type, text, node?.textSelectionStart ?: -1, node?.textSelectionEnd ?: -1)
+            FieldContextBuilder.build(pkg, type, nodeText, node?.textSelectionStart ?: -1, node?.textSelectionEnd ?: -1)
         }
-        val fieldProtected = startFieldProtected || EditorInputType.isContentExtractionExcluded(type)
-        if (!ScreenWords.allowed(screenWords, pkg ?: node?.packageName?.toString(), fieldProtected, app.settings.load().userDenylist)) return ctx
-        val words = runCatching {
-            ScreenWords.collect(rootForInsert()?.let { ScreenNode(it, node) }, s?.first ?: node?.text?.toString())
-        }.getOrDefault(emptyList())
-        return ctx.copy(screenWords = words)
+        val gate = ScreenWords.Gate(
+            enabled = screenWords,
+            pkg = pkg ?: node?.packageName?.toString(),
+            fieldProtected = startFieldProtected || EditorInputType.isContentExtractionExcluded(type),
+            userDenylist = app.settings.load().userDenylist,
+        )
+        return ScreenWords.attach(ctx, gate, { rootForInsert()?.let { ScreenNode(it, node) } }, nodeText, s?.first)
     }
 
     /**
