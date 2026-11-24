@@ -1014,7 +1014,10 @@ mod tests {
         assert_eq!(p.validate(), Ok(()));
         let (fresh, outcome) = Prefs::load(Path::new("no-such-dir/prefs.json"));
         assert_eq!(outcome, LoadOutcome::Missing);
-        assert_eq!(fresh.session_config_for(Mode::Locked).endpoint_silence_ms, None);
+        assert_eq!(
+            fresh.session_config_for(Mode::Locked).endpoint_silence_ms,
+            None
+        );
         p.hands_free_silence_ms = murmur_core::endpoint::RECOMMENDED_SILENCE_MS;
         assert_eq!(p.session_config_for(Mode::Ptt).endpoint_silence_ms, None);
         assert_eq!(
