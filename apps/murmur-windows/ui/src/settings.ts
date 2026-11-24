@@ -9,6 +9,7 @@ import { enginesCard } from "./engines-card.js";
 import { ai, collectAi } from "./features/ai.js";
 import { engines, versionTapped } from "./features/engines.js";
 import { collectGeneral, general } from "./features/general.js";
+import { modelFolderFeature } from "./features/model-folder.js";
 import { modelsFeature } from "./features/models.js";
 import { openrouter } from "./features/openrouter.js";
 import { shouldOpenSettings, type WindowState } from "./lib/app-keys.js";
@@ -62,7 +63,7 @@ const PAGES: Page[] = [
   settingsDeveloperPage,
 ];
 
-const FEATURES: Feature[] = [general, ai, engines, openrouter, modelsFeature];
+const FEATURES: Feature[] = [general, ai, engines, openrouter, modelsFeature, modelFolderFeature];
 
 interface NavItem {
   page?: string;

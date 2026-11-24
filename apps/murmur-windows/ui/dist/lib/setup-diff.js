@@ -12,6 +12,9 @@ const WHAT = {
     host: "Server address",
     token: "Server token",
     model: "Speech model",
+    hebrew: "Hebrew model",
+    lid: "Language detection model",
+    language: "Language",
     source: "Download from",
     cleanup: "Cleanup",
     llmPath: "Cleanup model",
@@ -27,19 +30,35 @@ const sameModel = (a, b) => a === b ||
         a.asr_engine === b.asr_engine &&
         // Only the engine's own file matters: Parakeet keeps a Whisper path set, and the other way round.
         (a.asr_engine === "parakeet" ? (a.parakeet_model_dir ?? "") === (b.parakeet_model_dir ?? "") : (a.model_path ?? "") === (b.model_path ?? "")));
+const sameHebrew = (a, b) => (a.hebrew?.model ?? "") === (b.hebrew?.model ?? "") && (a.hebrew?.dir ?? null) === (b.hebrew?.dir ?? null);
+const languageKey = (c) => (c.language?.keyboard ? "keyboard" : (c.language?.codes ?? []).join(","));
 /** Each choice: whether two configs differ, and how one reads. */
 const CHOICES = {
     engine: { same: (a, b) => a.engine === b.engine, label: (c, l) => (c.engine === "cloud" ? cloudShortName(l.provider) : c.engine ? ENGINE_LABEL[c.engine] : "Not set up") },
     host: { same: (a, b) => a.host.trim() === b.host.trim(), label: (c) => c.host.trim() || "None" },
     token: { same: (a, b) => a.tokenSaves === b.tokenSaves, label: (c) => (c.tokenSaves ? "Replaced" : "As it was") },
     model: { same: (a, b) => sameModel(a.model, b.model), label: (c, l) => (c.model ? l.modelName(c.model) : "None") },
+    hebrew: {
+        same: sameHebrew,
+        label: (c, l) => (c.hebrew?.dir ? fileName(c.hebrew.dir) : c.hebrew?.model ? (l.hebrewName?.(c.hebrew.model) ?? c.hebrew.model) : "None"),
+    },
+    lid: { same: (a, b) => (a.lid ?? null) === (b.lid ?? null), label: (c) => (c.lid ? fileName(c.lid) : "In the models folder") },
+    language: {
+        same: (a, b) => languageKey(a) === languageKey(b),
+        label: (c, l) => {
+            if (c.language?.keyboard)
+                return "Keyboard language";
+            const codes = c.language?.codes ?? [];
+            return codes.length ? (l.languageNames?.(codes) ?? codes).join(", ") : "Detect automatically";
+        },
+    },
     source: { same: (a, b) => a.source === b.source, label: (c) => SOURCE[c.source] ?? c.source },
     cleanup: { same: (a, b) => a.cleanup === b.cleanup, label: (c, l) => (c.cleanup === "cloud" ? cloudShortName(l.provider) : CLEANUP[c.cleanup]) },
     llmPath: { same: (a, b) => (a.llmPath ?? "") === (b.llmPath ?? ""), label: (c) => (c.llmPath ? fileName(c.llmPath) : "None") },
     ptt: { same: (a, b) => a.ptt === b.ptt, label: (c) => c.ptt.replace(/\+/g, " + ") },
     mic: { same: (a, b) => (a.mic || "") === (b.mic || ""), label: (c) => c.mic || "System default" },
 };
-const ORDER = ["engine", "host", "token", "model", "source", "cleanup", "llmPath", "ptt", "mic"];
+const ORDER = ["engine", "host", "token", "model", "hebrew", "lid", "language", "source", "cleanup", "llmPath", "ptt", "mic"];
 /** A choice in setup's own words. */
 export function choiceLabel(key, c, l) {
     return CHOICES[key].label(c, l);
@@ -66,6 +85,9 @@ export const STEP_OF = {
     host: "engine",
     token: "engine",
     model: "model",
+    hebrew: "model",
+    lid: "model",
+    language: "model",
     source: "cleanup",
     cleanup: "cleanup",
     llmPath: "cleanup",

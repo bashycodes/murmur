@@ -9,18 +9,22 @@
 // (only when speech runs on this PC, lib/setup-model.ts) offers one
 // recommended model and "More languages ▸", each with its state, and
 // downloads one after the user pressed Download and confirmed it (3a/3b,
-// through features/models.ts); files of the user's own and "Download from"
-// (D79) are set in Settings → Speech to text. Step 4 offers "Download from"
+// through features/models.ts). "Use model files on this PC" picks one
+// folder instead and sets up the English, Hebrew and auto-detect models it
+// holds (features/model-folder.ts, the same checklist as Settings → Speech
+// to text → Import from folder…); "Download from" (D79) is set in Settings. Step 4 offers "Download from"
 // for the cleanup model (picking Your server with none saved shows step 2's
 // server fields right there), and "Your server" (D36 server cleanup,
 // lib/setup-cleanup.ts) once a server is saved. A server test or an
 // OpenRouter key/consent happens only on the user's own click.
-import { downloadSource, hasServer, mb, models, pickPath, progressLine, recommendedLlm, setDownloadSource } from "../features/models.js";
+import { FolderChecklist } from "../features/model-folder.js";
+import { downloadSource, hasServer, hebrewEntry, mb, models, pickPath, progressLine, recommendedLlm, setDownloadSource } from "../features/models.js";
 import { devStore } from "../lib/dev-store.js";
 import { isPlaintextRefusal, optInFor, PLAINTEXT_REFUSED_TEXT } from "../lib/plaintext.js";
 import { $, el, html } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { captureChord, stopCapture } from "../lib/keycapture.js";
+import { languageNames } from "../lib/model-pages.js";
 import { sourceHint, sourceView } from "../lib/model-source.js";
 import { prefsStore } from "../lib/prefs-store.js";
 import { chip, fileState, initialModel, PARAKEET_TITLE, setupSteps, whisperRow } from "../lib/setup-model.js";
@@ -69,6 +73,10 @@ const st = {
     tokenSaves: 0,
 };
 let onDone = () => { };
+/** Step 3's "Use model files on this PC" checklist (made at init). */
+let folder = null;
+/** Step 3's side note as the template has it (folder mode says something else). */
+let modelNote = "";
 // ------------------------------------------------------------ capabilities
 function has(e) {
     const caps = views.dev?.caps;
@@ -338,7 +346,26 @@ function pickModelRow(id) {
     st.modelPick = id;
     renderModel();
 }
+/** Step 3 with a folder picked: its checklist instead of the download rows. */
+function renderFolderMode() {
+    const on = !!folder?.open;
+    $("ob_model_rows").hidden = on;
+    $("ob_files_line").hidden = on || !models.canImport();
+    $("ob_files_back").hidden = !on || !!folder?.busy;
+    $("ob_model_note").textContent = on
+        ? "The models are copied from that folder and checked against fingerprints built into Murmur. Nothing is downloaded unless you press Download."
+        : modelNote;
+    if (!on)
+        return false;
+    status("ob_model_status", "");
+    const next = nextBtn("model");
+    next.disabled = !!folder?.busy;
+    $("ob_model_hint").textContent = folder?.busy ? "Copying the models…" : "";
+    return true;
+}
 function renderModel() {
+    if (renderFolderMode())
+        return;
     const w = whisper();
     const other = $("ob_model_other");
     const more = $("ob_model_more");
@@ -382,7 +409,7 @@ function renderModel() {
                 ? ""
                 : e && models.notOnServer(e)
                     ? "Your server doesn't have this model. After setup, download it from the internet in Settings → Speech to text."
-                    : "This version of Murmur can't download it. Add the file after setup in Settings → Speech to text.";
+                    : "This version of Murmur can't download it. Copy the model to this PC and press Use model files on this PC… below.";
             picked = { installed, busy, canDownload: canStart, why };
         }
     }
@@ -401,6 +428,9 @@ function renderModel() {
 }
 /** Continue on the model step: the picked model becomes the one in use (a download sets it when done). */
 async function applyModel() {
+    // A folder's models were set up by their import (or skipped on purpose).
+    if (folder?.open)
+        return true;
     const pick = st.modelPick;
     if (pick === activeModel() || rowFile(pick, rowEntry(pick)) !== "present")
         return true;
@@ -932,6 +962,8 @@ function savedSpeech() {
 /** Names for the line only; choices are compared as saved. */
 const LABELS = {
     modelName: (m) => (m.asr_engine === "parakeet" ? PARAKEET_TITLE : whisperRow(m.model_path, models.catalog()).title),
+    hebrewName: (model) => hebrewEntry(model)?.title ?? model,
+    languageNames,
     get provider() {
         return providerOf(views.or);
     },
@@ -949,6 +981,10 @@ function savedConfig() {
         llmPath: p?.llm_model_path ?? null,
         ptt: p?.shortcuts.ptt || "Right Alt",
         mic: p?.microphone ?? null,
+        // Setup's folder import (features/model-folder.ts) sets these too.
+        hebrew: p ? { model: p.hebrew_model ?? "", dir: p.hebrew_model_dir ?? null } : undefined,
+        lid: p?.lid_model_path ?? null,
+        language: p ? { codes: [...p.languages], keyboard: p.keyboard_language === true } : undefined,
     };
 }
 async function snapshot() {
@@ -976,6 +1012,11 @@ async function snapshot() {
                 llm_model_path: p.llm_model_path,
                 shortcuts: { ...p.shortcuts },
                 microphone: p.microphone,
+                hebrew_model: p.hebrew_model,
+                hebrew_model_dir: p.hebrew_model_dir ?? null,
+                lid_model_path: p.lid_model_path ?? null,
+                languages: [...p.languages],
+                keyboard_language: p.keyboard_language === true,
             }
             : {},
     };
@@ -1043,6 +1084,12 @@ async function keepBefore() {
         const back = {};
         if (keys.has("model"))
             Object.assign(back, savedPrefs("asr_engine", "model_path", "parakeet_model_dir"));
+        if (keys.has("hebrew"))
+            Object.assign(back, savedPrefs("hebrew_model", "hebrew_model_dir"));
+        if (keys.has("lid"))
+            Object.assign(back, savedPrefs("lid_model_path"));
+        if (keys.has("language"))
+            Object.assign(back, savedPrefs("languages", "keyboard_language"));
         if (keys.has("source"))
             Object.assign(back, savedPrefs("model_source"));
         if (keys.has("cleanup") || keys.has("llmPath")) {
@@ -1110,6 +1157,19 @@ export const onboarding = {
         onDone = done;
         document.body.append(html(TEMPLATE));
         const root = $("onboarding");
+        modelNote = $("ob_model_note").textContent ?? "";
+        folder = new FolderChecklist($("ob_folder"));
+        folder.onChange(() => {
+            if (st.step === "model")
+                renderFolderMode();
+        });
+        $("ob_files").addEventListener("click", () => {
+            void folder?.choose().then((picked) => picked && renderModel());
+        });
+        $("ob_files_back").addEventListener("click", () => {
+            folder?.reset();
+            renderModel();
+        });
         root.addEventListener("click", (e) => {
             const t = e.target;
             const act = t.closest("[data-ob]")?.dataset.ob;
@@ -1266,6 +1326,7 @@ export const onboarding = {
             console.error("setup: model status failed", e);
         }
         initialChoices();
+        folder?.reset();
         // A re-run keeps the current setup and says before Finish what it changes (D95).
         st.tokenSaves = 0;
         st.rerunSnapshot = prefsStore.get()?.onboarded ? await snapshot() : null;

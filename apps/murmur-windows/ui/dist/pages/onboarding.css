@@ -513,8 +513,18 @@ body.lw-ob-open .lw-settings {
   padding-left: 34px;
 }
 .lw-ob-speech + .lw-ob-more,
-#ob_model_other + .lw-ob-status {
+.lw-ob-rows + .lw-ob-status {
   align-self: flex-start;
+}
+.lw-ob-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.lw-ob-rows[hidden],
+#ob_files_line[hidden],
+#ob_files_back[hidden] {
+  display: none;
 }
 #ob_model_other[hidden] {
   display: none;
@@ -811,4 +821,119 @@ dialog.fl-dialog .lw-dl-lead {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* ---- a folder of model files (features/model-folder.ts): setup's
+   "Use model files on this PC" and Settings' "Import from folder…" ---- */
+
+.lw-mf {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.lw-mf[hidden],
+.lw-mf [hidden] {
+  display: none;
+}
+.lw-mf-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.lw-mf-folder {
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--foreground-tertiary);
+  overflow-wrap: anywhere;
+}
+.lw-mf-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lw-mf-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.lw-mf-row[data-tone="ok"] {
+  border-color: var(--green-200, var(--border));
+}
+.lw-mf-tick {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--primary);
+}
+.lw-mf-text {
+  flex: 1 1 200px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.lw-mf-label {
+  font: 550 14px/20px var(--font-sans);
+  color: var(--foreground);
+}
+.lw-mf-name,
+.lw-mf-detail {
+  font: 400 13px/20px var(--font-sans);
+  color: var(--foreground-tertiary);
+  overflow-wrap: anywhere;
+}
+.lw-mf-row[data-tone="err"] .lw-mf-detail {
+  color: var(--destructive);
+}
+.lw-mf-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lw-mf-line {
+  margin: 0;
+  font: 400 14px/20px var(--font-sans);
+  color: var(--foreground-tertiary);
+}
+.lw-mf-line.ok {
+  color: var(--success);
+}
+.lw-mf-line.err {
+  color: var(--destructive);
+}
+.lw-mf-notes {
+  margin: 0;
+  padding-left: 18px;
+  font: 400 12px/18px var(--font-sans);
+  color: var(--foreground-tertiary);
+  overflow-wrap: anywhere;
+}
+.lw-mf-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.lw-mf-progress > button {
+  align-self: flex-start;
+}
+.lw-mf-foot {
+  display: flex;
+  justify-content: flex-end;
+}
+.lw-mf-dialog {
+  width: min(640px, calc(100vw - 48px));
+}
+.lw-mf-dialog .lw-mf {
+  max-height: min(60vh, 520px);
+  overflow-y: auto;
 }
