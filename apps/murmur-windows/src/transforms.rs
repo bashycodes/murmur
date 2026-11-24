@@ -34,19 +34,36 @@ pub struct TransformPrefs {
     pub items: Vec<Item>,
 }
 
-/// Win+Alt+`c` (the design's defaults: Win+Alt+1, 2 … and Win+Alt+O).
+/// Win+Alt+`c` ("view changes" is Win+Alt+O).
 fn win_alt(c: char) -> Chord {
     Chord::new([Key::Win, Key::Alt, Key::Vk(c as u16)])
 }
 
-/// The built-ins with their default shortcuts Win+Alt+1, 2.
+/// Win+Shift+`c`.
+fn win_shift(c: char) -> Chord {
+    Chord::new([Key::Win, Key::Shift, Key::Vk(c as u16)])
+}
+
+/// The built-ins' default shortcuts: (id, before D109 = prefs rev ≤ 5,
+/// now). Win+Alt+digit is Windows 11's taskbar jump list.
+const BUILTIN_SHORTCUTS: [(&str, char, char); 2] =
+    [(core::POLISH, '1', 'Q'), (core::PROMPT_ENGINEER, '2', 'W')];
+
+/// A built-in's (old, current) default shortcut.
+fn builtin_shortcuts(id: &str) -> Option<(Chord, Chord)> {
+    BUILTIN_SHORTCUTS
+        .iter()
+        .find(|(b, _, _)| *b == id)
+        .map(|&(_, old, new)| (win_alt(old), win_shift(new)))
+}
+
+/// The built-ins with their default shortcuts ([`BUILTIN_SHORTCUTS`]).
 pub fn default_items() -> Vec<Item> {
     core::builtins()
         .into_iter()
-        .enumerate()
-        .map(|(i, transform)| Item {
+        .map(|transform| Item {
+            shortcut: builtin_shortcuts(&transform.id).map(|(_, new)| new),
             transform,
-            shortcut: char::from_digit(i as u32 + 1, 10).map(win_alt),
         })
         .collect()
 }
@@ -74,6 +91,14 @@ impl TransformPrefs {
 
     pub fn find(&self, id: &str) -> Option<&Item> {
         self.items.iter().find(|i| i.transform.id == id)
+    }
+
+    /// D109: item `i`'s new default shortcut when it is a built-in still
+    /// on its old default (the user never changed it); `None` otherwise.
+    pub fn migrated_default(&self, i: usize) -> Option<Chord> {
+        let it = self.items.get(i)?;
+        let (old, new) = builtin_shortcuts(&it.transform.id)?;
+        (it.shortcut.as_ref() == Some(&old)).then_some(new)
     }
 
     /// The chords to register: one per item (in order) and the view
@@ -235,7 +260,7 @@ mod tests {
     }
 
     #[test]
-    fn defaults_are_off_with_the_builtins_on_win_alt_digits() {
+    fn defaults_are_off_with_the_builtins_on_win_shift_q_w() {
         let t = TransformPrefs::default();
         assert!(!t.enabled);
         assert_eq!(t.auto_apply, None);
@@ -247,7 +272,7 @@ mod tests {
             .iter()
             .map(|i| i.shortcut.as_ref().unwrap().to_string())
             .collect();
-        assert_eq!(keys, ["Win+Alt+1", "Win+Alt+2"]);
+        assert_eq!(keys, ["Win+Shift+Q", "Win+Shift+W"]);
         assert_eq!(t.validate(), Ok(()));
         assert_eq!(t.chords(), (Vec::new(), None), "off: nothing registered");
     }
@@ -285,14 +310,14 @@ mod tests {
         let mut t = TransformPrefs::default();
         t.items[0].transform.instruction = "changed".into();
         t.items.remove(1);
-        t.items.push(custom("mine", "Mine", Some("Win+Alt+2")));
+        t.items.push(custom("mine", "Mine", Some("Win+Shift+W")));
         t.reset_builtins();
         let ids: Vec<_> = t.items.iter().map(|i| i.transform.id.as_str()).collect();
         assert_eq!(ids, [core::POLISH, core::PROMPT_ENGINEER, "mine"]);
         assert_eq!(t.items[0], default_items()[0]);
         assert_eq!(
             t.items[1].shortcut, None,
-            "Win+Alt+2 is the custom one's now"
+            "Win+Shift+W is the custom one's now"
         );
         assert_eq!(t.validate(), Ok(()));
     }
@@ -349,7 +374,7 @@ mod tests {
         assert_eq!(t.view_changes, None);
         let j = serde_json::to_value(TransformPrefs::default()).unwrap();
         assert_eq!(j["items"][0]["transform"]["id"], "polish");
-        assert_eq!(j["items"][0]["shortcut"], "Win+Alt+1");
+        assert_eq!(j["items"][0]["shortcut"], "Win+Shift+Q");
         assert_eq!(j["view_changes"], "Win+Alt+O");
         assert_eq!(j["auto_apply"], serde_json::Value::Null);
     }

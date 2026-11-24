@@ -18,7 +18,7 @@ import dev.murmur.core.FieldContext
  * ones are learned from. Android addition: [EndReason.STABLE] ends the watch early once an
  * edit has stopped changing for [WatchOpts.stableMs], so the field isn't read longer than needed.
  *
- * Timing (D109): besides the [WatchOpts.pollMs] timer, the field is read
+ * Timing (D110): besides the [WatchOpts.pollMs] timer, the field is read
  * [WatchOpts.settleMs] after each text-changed accessibility event ([FieldChanges]), never
  * closer than [WatchOpts.minReadGapMs] to the previous read, so a fix that stays in the field
  * for 300 ms is seen before a send or clear. A cleared field ([EndReason.CLEARED]) learns from

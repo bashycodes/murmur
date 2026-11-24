@@ -45,17 +45,43 @@ with sync_playwright() as p:
     pg.click("[data-page=transforms]")
     pg.wait_for_timeout(200)
     check("cards: built-ins + add a transform", texts("#tf_grid .lw-tf-card") == [
-        "Win Alt 1 Polish Clearer, tighter wording",
-        "Win Alt 2 Prompt Builder Turns a rough ask into a clear prompt",
+        "Win Shift Q Polish Clearer, tighter wording",
+        "Win Shift W Prompt Builder Turns a rough ask into a clear prompt",
         "Add a transform Your instruction, your shortcut",
     ], texts("#tf_grid .lw-tf-card"))
     check("view keys Win Alt O", texts("#tf_view kbd") == ["Win", "Alt", "O"] and "shows the last before and after" in pg.inner_text("#tf_view"), texts("#tf_view kbd"))
     check("opt in off by default", not pg.is_checked("#tf_enabled"))
     check("auto apply needs the opt in", pg.is_disabled("#tf_auto") and pg.is_disabled("#tf_auto_pick"))
 
-    pg.click("#tf_enabled")
+    # Opted out: the page is locked (greyed out, not hidden), with a banner.
+    locked = lambda: pg.evaluate("""() => {
+        const region = document.getElementById('tf_region');
+        const ctl = [...region.querySelectorAll('button, input, select, textarea')];
+        return { region: region.disabled, all: ctl.length > 0 && ctl.every((c) => c.matches(':disabled')),
+                 none: ctl.every((c) => !c.matches(':disabled') || ['tf_auto', 'tf_auto_pick'].includes(c.id)),
+                 banner: !document.getElementById('tf_off').hidden };
+    }""")
+    s = locked()
+    check("off: every control disabled, banner shown", s["region"] and s["all"] and s["banner"], s)
+    check("off: cards still shown", len(texts("#tf_grid .lw-tf-card")) == 3 and pg.is_visible("#tf_grid"))
+    check("off: the opt in switch stays usable", pg.is_enabled("#tf_enabled"))
+    check("off: the region is named", pg.get_attribute("#tf_region", "aria-label") == "Transforms settings")
+    check("off: the status holds only the text", pg.locator("#tf_off [role=status] button").count() == 0 and "Transforms is off." in pg.inner_text("#tf_off [role=status]"))
+    pg.screenshot(path=str(out / "transforms-locked.png"), full_page=True)
+    pg.click("#tf_turn_on")
     pg.wait_for_timeout(100)
     check("opt in saved", saved()["enabled"] is True)
+    s = locked()
+    check("on: unlocked at once, banner gone", not s["region"] and s["none"] and not s["banner"], s)
+    check("on: the switch follows", pg.is_checked("#tf_enabled"))
+    check("on: focus on the switch", pg.evaluate("document.activeElement.id") == "tf_enabled", pg.evaluate("document.activeElement.id"))
+    pg.click("#tf_enabled")
+    pg.wait_for_timeout(100)
+    s = locked()
+    check("switch off: locked again, transforms kept", s["region"] and s["banner"] and len(saved()["items"]) == 2, s)
+    pg.click("#tf_enabled")
+    pg.wait_for_timeout(100)
+    check("switch on: unlocked", not locked()["region"] and saved()["enabled"] is True)
     check("auto toggle usable, pick still off", pg.is_enabled("#tf_auto") and pg.is_disabled("#tf_auto_pick"))
     pg.click("#tf_auto")
     pg.wait_for_timeout(100)
@@ -67,7 +93,7 @@ with sync_playwright() as p:
     # Create.
     pg.click("#tf_new")
     check("editor opens", pg.is_visible("#tf_edit_dlg"))
-    check("next free shortcut offered", pg.input_value("#tf_shortcut") == "Win+Alt+3", pg.input_value("#tf_shortcut"))
+    check("next free shortcut offered", pg.input_value("#tf_shortcut") == "Win+Shift+B", pg.input_value("#tf_shortcut"))
     check("no delete on a new one", pg.is_hidden("#tf_edit_delete"))
     pg.click("#tf_edit_save")
     check("empty name refused", "name" in pg.inner_text("#tf_edit_err"))
@@ -79,18 +105,18 @@ with sync_playwright() as p:
     pg.click("#tf_edit_save")
     pg.wait_for_timeout(150)
     items = saved()["items"]
-    check("created with a slug id", len(items) == 3 and items[2]["transform"]["id"] == "make-it-friendly" and items[2]["shortcut"] == "Win+Alt+3", items[-1])
+    check("created with a slug id", len(items) == 3 and items[2]["transform"]["id"] == "make-it-friendly" and items[2]["shortcut"] == "Win+Shift+B", items[-1])
     check("dialog closed", not pg.is_visible("#tf_edit_dlg"))
     check("card shown", "Make it friendly!" in pg.inner_text("#tf_grid"))
 
     # Edit: a clashing shortcut is refused and the dialog stays open.
     pg.click("#tf_grid .lw-tf-card[data-id=make-it-friendly]")
     check("editor filled", pg.input_value("#tf_name") == "Make it friendly!" and pg.is_visible("#tf_edit_delete"))
-    pg.fill("#tf_shortcut", "Win+Alt+1")
+    pg.fill("#tf_shortcut", "Win+Shift+Q")
     pg.click("#tf_edit_save")
     pg.wait_for_timeout(150)
     check("clash refused in the dialog", pg.is_visible("#tf_edit_dlg") and "twice" in pg.inner_text("#tf_edit_err"), pg.inner_text("#tf_edit_err"))
-    check("nothing saved on a clash", saved()["items"][2]["shortcut"] == "Win+Alt+3")
+    check("nothing saved on a clash", saved()["items"][2]["shortcut"] == "Win+Shift+B")
     pg.fill("#tf_shortcut", "")
     pg.click("#tf_edit_save")
     pg.wait_for_timeout(150)
@@ -113,17 +139,17 @@ with sync_playwright() as p:
     pg.click("#tf_new")
     pg.fill("#tf_name", "Shorter")
     pg.fill("#tf_instruction", "Make it half as long.")
-    pg.fill("#tf_shortcut", "Win+Alt+1")
+    pg.fill("#tf_shortcut", "Win+Shift+Q")
     pg.click("#tf_edit_save")
     pg.wait_for_timeout(150)
-    check("edits saved", saved()["items"][0]["transform"]["description"] == "Mine now" and saved()["items"][2]["shortcut"] == "Win+Alt+1")
+    check("edits saved", saved()["items"][0]["transform"]["description"] == "Mine now" and saved()["items"][2]["shortcut"] == "Win+Shift+Q")
     pg.click("#tf_reset")
     pg.click("#tf_reset_ok")
     pg.wait_for_timeout(150)
     items = saved()["items"]
     check("reset: built-in wording back, custom kept", items[0]["transform"]["description"] == "Clearer, tighter wording" and items[2]["transform"]["name"] == "Shorter", items)
-    check("reset: built-in loses a shortcut a custom took", items[0]["shortcut"] is None and items[1]["shortcut"] == "Win+Alt+2")
-    check("reset shown", "Win Alt 1 Shorter" in texts("#tf_grid .lw-tf-card")[2])
+    check("reset: built-in loses a shortcut a custom took", items[0]["shortcut"] is None and items[1]["shortcut"] == "Win+Shift+W")
+    check("reset shown", "Win Shift Q Shorter" in texts("#tf_grid .lw-tf-card")[2])
 
     # Try on sample text.
     pg.click("#tf_try")

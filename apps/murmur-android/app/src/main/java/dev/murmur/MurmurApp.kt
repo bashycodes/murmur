@@ -364,7 +364,7 @@ interface AccessibilityBridge {
     fun editReader(): dev.murmur.learn.FieldReader? = null
 
     /**
-     * Learn from my edits (D109): text-changed events of the app [editReader] reads, while the
+     * Learn from my edits (D110): text-changed events of the app [editReader] reads, while the
      * returned handle is open. Null = no events; the watch falls back to its timer.
      */
     fun editChanges(): dev.murmur.learn.FieldChanges? = null

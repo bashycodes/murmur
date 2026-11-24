@@ -12,9 +12,9 @@
 //!
 //! End reasons: anchor mismatch / region removed / paste never observed don't count (no
 //! learning); a timeout or a focus change keep the last observation, and a
-//! cleared field (a chat box after send) keeps the last good one (D109).
+//! cleared field (a chat box after send) keeps the last good one (D110).
 //!
-//! Timing (D109): the field is read every [`WatchOpts::poll_ms`] (250 ms by
+//! Timing (D110): the field is read every [`WatchOpts::poll_ms`] (250 ms by
 //! default) at a fixed rate, so a fix that stays in the field for 300 ms is
 //! seen before a send or clear. When focus leaves, the old control is read
 //! once more ([`FieldReader::final_read`]). A clear can't be read ahead of:
@@ -63,7 +63,7 @@ pub struct WatchOpts {
     pub poll_ms: u64,
 }
 
-/// Default re-read interval (D109; was 1000 ms).
+/// Default re-read interval (D110; was 1000 ms).
 pub const DEFAULT_POLL_MS: u64 = 250;
 /// Cost bound: at most one field read per this many ms.
 pub const MIN_POLL_MS: u64 = 250;
