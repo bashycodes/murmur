@@ -14,6 +14,7 @@ import { hebrewChosen, hebrewReady, mb, models, type CatalogEntry } from "./mode
 import { languageNames, pcModelChip, pcModelEntry } from "../lib/model-pages.js";
 import type { ModelStatus } from "../lib/types.js";
 import { setTheme } from "../lib/theme.js";
+import { webhookStatus } from "../lib/webhook.js";
 
 
 export interface ModelInfo {
@@ -104,6 +105,9 @@ function fill(prefs: Prefs): void {
   setValue("scratchpad", prefs.shortcuts.scratchpad ?? "");
   setValue("new_note", prefs.shortcuts.new_note ?? "");
   setValue("meeting", prefs.shortcuts.meeting ?? "");
+  setValue("webhook", prefs.shortcuts.webhook ?? "");
+  setValue("webhook_url", prefs.webhook_url ?? "");
+  showWebhook();
   $<HTMLSelectElement>("microphone").value = prefs.microphone ?? "";
   for (const f of BOOL_FIELDS) $<HTMLInputElement>(f).checked = Boolean(prefs[f]);
   $<HTMLSelectElement>("paste_method").value = prefs.paste_method;
@@ -118,6 +122,12 @@ function fill(prefs: Prefs): void {
   for (const e of document.querySelectorAll<HTMLElement>(".lw-edit")) showEdit(e);
   showLanguages(prefs);
   if (prefs.keyboard_language) refreshKeyboard();
+}
+
+/** D105: the line under Send to webhook (off until both fields are set). */
+function showWebhook(): void {
+  const s = webhookStatus($<HTMLInputElement>("webhook_url").value, $<HTMLInputElement>("webhook").value);
+  $<HTMLElement>("webhook_status").textContent = s.text;
 }
 
 /** Select `value`, adding it as an option first when the list lacks it
@@ -333,8 +343,10 @@ export function collectGeneral(): Partial<Prefs> {
       scratchpad: $<HTMLInputElement>("scratchpad").value.trim(),
       new_note: $<HTMLInputElement>("new_note").value.trim(),
       meeting: $<HTMLInputElement>("meeting").value.trim(),
+      webhook: $<HTMLInputElement>("webhook").value.trim(),
     },
   };
+  next.webhook_url = $<HTMLInputElement>("webhook_url").value.trim();
   next.model_path = $<HTMLInputElement>("model_path").value.trim() || null;
   next.asr_engine = $<HTMLSelectElement>("asr_engine").value;
   next.parakeet_model_dir = $<HTMLInputElement>("parakeet_model_dir").value.trim() || null;
@@ -367,6 +379,7 @@ export const general: Feature = {
   init(): void {
     $<HTMLSelectElement>("asr_engine").addEventListener("change", showEngineFields);
     $<HTMLSelectElement>("language_pick").addEventListener("change", pickLanguage);
+    $<HTMLInputElement>("webhook_url").addEventListener("input", showWebhook);
     // D37: the layout may have changed while Settings was in the background.
     window.addEventListener("focus", () => {
       if (prefsStore.get()?.keyboard_language) refreshKeyboard();

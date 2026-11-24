@@ -28,6 +28,9 @@ use std::time::Duration;
 pub type AudioSink = Box<dyn FnMut(&[i16]) + Send + 'static>;
 /// Reports a capture stream that failed mid-dictation.
 pub type CaptureError = Box<dyn Fn(String) + Send + Sync>;
+/// D105: POSTs a JSON body to a webhook URL (`webhook::post`; tests fake it).
+pub type WebhookSend =
+    Arc<dyn Fn(&str, &str) -> Result<u16, crate::webhook::Failure> + Send + Sync>;
 
 /// Everything OS-specific the controller needs.
 pub trait Platform: Send + Sync + 'static {
@@ -291,6 +294,8 @@ pub struct Controller {
     debug: Option<Arc<DebugLog>>,
     /// Debug `insert.outcome` of a `CancelSession` (Esc vs timeout).
     cancel_outcome: &'static str,
+    /// D105: sends a webhook dictation.
+    webhook_send: WebhookSend,
 }
 
 impl Controller {
@@ -322,7 +327,14 @@ impl Controller {
             route_shown: None,
             debug: None,
             cancel_outcome: outcome::CANCELLED,
+            webhook_send: Arc::new(crate::webhook::post),
         }
+    }
+
+    /// Replace the webhook sender (tests: a fake server).
+    pub fn with_webhook_sender(mut self, send: WebhookSend) -> Self {
+        self.webhook_send = send;
+        self
     }
 
     /// One debug line per dictation while `log` is enabled (Developer
@@ -452,6 +464,22 @@ impl Controller {
                 }
                 self.record(*session, result)
             }
+            Input::WebhookFinished { session, result } => {
+                if self.debug_on() {
+                    let insert = match result {
+                        Ok(()) => outcome::WEBHOOK_SENT,
+                        Err(m) if m == PASTE_CANCELLED => outcome::CANCELLED,
+                        Err(_) => outcome::WEBHOOK_FAILED,
+                    };
+                    self.debug_emit(*session, insert, result.clone().err());
+                }
+                // Sent or not, the text stays in History; nothing was pasted.
+                let not_pasted = match result {
+                    Err(m) if m == PASTE_CANCELLED => Err(PASTE_CANCELLED.to_string()),
+                    _ => Err(WEBHOOK_NOT_PASTED.to_string()),
+                };
+                self.record(*session, &not_pasted)
+            }
             Input::Committed { session, outcome }
                 if self.debug_on() && self.current_session() == Some(*session) =>
             {
@@ -546,6 +574,7 @@ impl Controller {
                 crate::dictation::Mode::Locked => "handsfree",
                 crate::dictation::Mode::Command => "command",
                 crate::dictation::Mode::Translate => "translate",
+                crate::dictation::Mode::Webhook => "webhook",
             };
         }
     }
@@ -1231,6 +1260,7 @@ impl Controller {
             Effect::Transform { session, index } => self.run_transform(session, index),
             Effect::AutoTransform { session, text } => self.run_auto_transform(session, text),
             Effect::Translate { session, text } => self.run_translate(session, text),
+            Effect::Webhook { session, text } => self.run_webhook(session, text, &prefs),
             Effect::Paste { session, text } => {
                 // The core's paste plan (core-p1): text runs, Tab/Break and
                 // a trailing Enter. `text` is only the fallback for a result
@@ -1675,6 +1705,82 @@ impl Controller {
         }
     }
 
+    /// D105: POST a dictation to the webhook URL (off-thread) instead of
+    /// pasting it; the outcome comes back as `WebhookFinished`. One
+    /// attempt (`webhook::TIMEOUT`), no retry. Esc before the send drops
+    /// it, like a paste not yet started.
+    fn run_webhook(&self, session: SessionId, text: String, prefs: &Prefs) {
+        let (cancelled, snapshot) = {
+            let mut g = self.shared.sessions.lock().unwrap();
+            match g.get_mut(&session) {
+                Some(i) => {
+                    // Kept until `WebhookFinished`, so its History row is
+                    // written.
+                    i.pasting = true;
+                    (i.cancelled.clone(), i.context_done.clone())
+                }
+                None => (Arc::default(), None),
+            }
+        };
+        let shared = self.shared.clone();
+        let body = move || {
+            // The app comes from the field snapshot, which may still run.
+            if let Some(done) = snapshot {
+                let _ = done.wait(CONTEXT_WAIT);
+            }
+            let g = shared.sessions.lock().unwrap();
+            let i = g.get(&session);
+            let r = i.and_then(|i| i.result.as_ref());
+            let cleaned = r.map_or_else(|| crate::paste::plain_text(&text), |r| r.plain());
+            let raw = r.map_or("", |r| r.asr_text.as_str());
+            // The app the dictation targeted: the field snapshot's, or the
+            // foreground window's exe at the start.
+            let app = i
+                .and_then(|i| {
+                    i.context
+                        .as_ref()
+                        .map(|c| c.app_id.clone())
+                        .filter(|a| !a.is_empty())
+                        .or_else(|| i.target.as_ref().map(|t| t.exe.to_ascii_lowercase()))
+                })
+                .unwrap_or_default();
+            crate::webhook::body(&cleaned, raw, &app, crate::debug_log::now_unix_ms())
+        };
+        let url = prefs.webhook_url.trim().to_string();
+        let send = self.webhook_send.clone();
+        let tx = self.tx.clone();
+        let debug = self.debug.clone();
+        let spawned = std::thread::Builder::new()
+            .name("murmur-webhook".into())
+            .spawn(move || {
+                let body = body();
+                let result = if cancelled.load(Ordering::SeqCst) {
+                    Err(PASTE_CANCELLED.to_string())
+                } else if url.is_empty() {
+                    Err(crate::webhook::Failure::Other("no webhook URL is set".into()).message())
+                } else {
+                    send(&url, &body).map(|_| ()).map_err(|f| {
+                        // Never the full URL: its query may hold a token.
+                        let m = f.message();
+                        if let Some(d) = &debug {
+                            d.event(
+                                "webhook",
+                                &format!("{m} ({})", crate::webhook::redact(&url)),
+                            );
+                        }
+                        m
+                    })
+                };
+                let _ = tx.send(Input::WebhookFinished { session, result });
+            });
+        if let Err(e) = spawned {
+            let _ = self.tx.send(Input::WebhookFinished {
+                session,
+                result: Err(crate::webhook::Failure::Other(e.to_string()).message()),
+            });
+        }
+    }
+
     /// "View changes": Home with the last transform's row expanded.
     fn view_changes(&self) {
         let row = self.history.as_ref().and_then(|h| {
@@ -1693,6 +1799,9 @@ impl Controller {
 /// D90: a translation only the on-device model could make (no server or
 /// cloud answered): shown with the L badge.
 pub const TRANSLATED_ON_DEVICE: &str = "Translated on this PC: lower quality";
+/// D105: the "paste" outcome of a dictation sent to the webhook: its
+/// History row has no pasted text and no edit is watched.
+pub const WEBHOOK_NOT_PASTED: &str = "Sent to the webhook, not pasted";
 /// The recording of a history row is no longer kept.
 pub const RETRY_GONE: &str = "The recording of this dictation is no longer kept";
 /// Retry refused while a dictation runs (the engine serves one at a time).
@@ -2785,6 +2894,80 @@ mod tests {
         let e = history_latest(&r).unwrap();
         assert_eq!(e.transform, None);
         assert_eq!(e.pasted.as_deref(), Some("[stub: 1.0 s of audio]"));
+    }
+
+    // ---- D105: send to webhook ----
+
+    type Sent = Arc<Mutex<Vec<(String, String)>>>;
+
+    /// A rig with History whose webhook sender records each POST and
+    /// answers `answer`.
+    fn webhook_rig(answer: Result<u16, crate::webhook::Failure>) -> (Rig, Sent) {
+        let prefs = Prefs {
+            webhook_url: "https://hooks.example.com/in?token=abc".into(),
+            ..Prefs::default()
+        };
+        let mut r = rig(Fake::default(), prefs);
+        let sent: Sent = Arc::default();
+        let log = sent.clone();
+        r.c =
+            r.c.with_history(Arc::new(Mutex::new(History::open_in_memory().unwrap())))
+                .with_webhook_sender(Arc::new(move |url: &str, body: &str| {
+                    log.lock().unwrap().push((url.into(), body.into()));
+                    answer.clone()
+                }));
+        (r, sent)
+    }
+
+    fn dictate_to_webhook(r: &mut Rig) {
+        r.at(0, Input::Hotkey(HotkeyAction::WebhookDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        r.at(1000, Input::Hotkey(HotkeyAction::WebhookUp));
+        r.pump(); // Committed -> Webhook
+        r.pump(); // WebhookFinished
+    }
+
+    #[test]
+    fn a_webhook_dictation_is_posted_as_json_and_never_pasted() {
+        let (mut r, sent) = webhook_rig(Ok(204));
+        dictate_to_webhook(&mut r);
+        let sent = sent.lock().unwrap().clone();
+        assert_eq!(sent.len(), 1, "one attempt");
+        let (url, body) = &sent[0];
+        assert_eq!(url, "https://hooks.example.com/in?token=abc");
+        let v: serde_json::Value = serde_json::from_str(body).unwrap();
+        assert_eq!(v["text"], "[stub: 1.0 s of audio]");
+        assert_eq!(v["raw"], "[stub: 1.0 s of audio]");
+        assert_eq!(v["app"], "slack.exe", "the app dictated into");
+        assert!(v["time"].as_str().unwrap().ends_with('Z'), "{v}");
+        let log = r.fake.log();
+        assert!(!log.iter().any(|l| l.starts_with("paste")), "{log:?}");
+        assert!(
+            log.iter().any(|l| l.contains(crate::webhook::SENT)),
+            "{log:?}"
+        );
+        let e = history_latest(&r).expect("kept in History");
+        assert_eq!(e.raw, "[stub: 1.0 s of audio]");
+        assert_eq!(e.pasted, None);
+    }
+
+    #[test]
+    fn a_failed_webhook_says_its_status_and_keeps_the_text_in_history() {
+        let (mut r, sent) = webhook_rig(Err(crate::webhook::Failure::Status(500)));
+        dictate_to_webhook(&mut r);
+        assert_eq!(sent.lock().unwrap().len(), 1, "no retry");
+        let log = r.fake.log();
+        assert!(
+            log.iter()
+                .any(|l| l.contains("Error") && l.contains("Webhook failed (HTTP 500)")),
+            "{log:?}"
+        );
+        assert!(!log.iter().any(|l| l.starts_with("paste")), "{log:?}");
+        assert!(matches!(r.c.machine().phase(), Phase::Error { .. }));
+        let e = history_latest(&r).expect("the text stays in History");
+        assert_eq!(e.raw, "[stub: 1.0 s of audio]");
+        assert_eq!(e.pasted, None);
+        assert_eq!(r.c.last_text().as_deref(), Some("[stub: 1.0 s of audio]"));
     }
 
     // ---- D90: translation ----

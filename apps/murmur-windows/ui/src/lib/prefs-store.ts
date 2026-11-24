@@ -26,6 +26,8 @@ export interface Prefs {
     scratchpad?: string;
     new_note?: string;
     meeting?: string;
+    /** D105: hold to send the dictation to `webhook_url` instead of pasting it. */
+    webhook?: string;
   };
   microphone: string | null;
   languages: string[];
@@ -33,6 +35,8 @@ export interface Prefs {
   keyboard_language?: boolean;
   /** D90: the Translate shortcut's language ("" = the other keyboard language). */
   translate_to?: string;
+  /** D105: where the webhook shortcut's dictations are POSTed ("" = none). */
+  webhook_url?: string;
   enable_sounds: boolean;
   mute_audio_while_dictating: boolean;
   launch_at_login: boolean;

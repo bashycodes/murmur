@@ -165,6 +165,10 @@ pub struct Prefs {
     /// D90: the language the Translate shortcut pastes in (`he`, `en`, …);
     /// empty = automatic: the other installed keyboard language (D58).
     pub translate_to: String,
+    /// D105: where the webhook shortcut's dictations are POSTed (`""` =
+    /// none). User config, not a secret, but its query string may hold a
+    /// token: show and log it only through `webhook::redact`.
+    pub webhook_url: String,
     pub enable_sounds: bool,
     /// Mute other apps while dictating (on by default).
     pub mute_audio_while_dictating: bool,
@@ -282,6 +286,7 @@ impl Default for Prefs {
             languages: Vec::new(),
             keyboard_language: true,
             translate_to: String::new(),
+            webhook_url: String::new(),
             enable_sounds: true,
             mute_audio_while_dictating: true,
             launch_at_login: false,
@@ -469,6 +474,15 @@ impl Prefs {
         if let Some(c) = &s.meeting {
             check("meeting", c, false)?;
         }
+        if let Some(c) = &s.webhook {
+            check("webhook", c, false)?;
+        }
+        if !self.webhook_url.trim().is_empty() {
+            if !crate::webhook::CAN_WEBHOOK {
+                return Err("webhook: this build cannot send to a webhook".into());
+            }
+            crate::webhook::check_url(&self.webhook_url)?;
+        }
         check("command", &s.command, false)?;
         check("translate", &s.translate, false)?;
         let t = &self.translate_to;
@@ -518,6 +532,7 @@ impl Prefs {
         all.extend(s.scratchpad.as_ref());
         all.extend(s.new_note.as_ref());
         all.extend(s.meeting.as_ref());
+        all.extend(s.webhook.as_ref());
         all.extend(self.transforms.all_chords());
         all.iter()
             .enumerate()
@@ -534,7 +549,19 @@ impl Prefs {
         if !crate::meetings::NOTETAKER_ENABLED {
             b.meeting = None;
         }
+        // D105: the webhook shortcut works only once a URL is set too.
+        if !self.webhook_on() {
+            b.webhook = None;
+        }
         b
+    }
+
+    /// D105: Send to webhook is on: a URL and a shortcut are both set
+    /// (and this build has the network code for it).
+    pub fn webhook_on(&self) -> bool {
+        crate::webhook::CAN_WEBHOOK
+            && self.shortcuts.webhook.is_some()
+            && !self.webhook_url.trim().is_empty()
     }
 
     /// `SessionConfig.endpoint_silence_ms` for a hands-free session
@@ -1436,6 +1463,44 @@ mod tests {
         let b = p.hotkey_bindings();
         assert_eq!(b.transforms.len(), 2);
         assert_eq!(b.view_changes.unwrap().to_string(), "Win+Alt+O");
+    }
+
+    #[test]
+    fn webhook_chord_is_installed_only_with_a_url_too() {
+        let mut p = Prefs::default();
+        assert!(p.hotkey_bindings().webhook.is_none(), "off by default");
+        p.shortcuts.webhook = Some("Ctrl+Alt+W".parse().unwrap());
+        assert!(p.hotkey_bindings().webhook.is_none(), "no URL yet");
+        assert!(!p.webhook_on());
+        p.webhook_url = "https://hooks.example.com/in".into();
+        assert_eq!(
+            p.hotkey_bindings().webhook.is_some(),
+            crate::webhook::CAN_WEBHOOK
+        );
+        p.shortcuts.webhook = None;
+        assert!(p.hotkey_bindings().webhook.is_none(), "no shortcut");
+    }
+
+    #[test]
+    fn webhook_settings_are_validated() {
+        let mut p = Prefs::default();
+        p.shortcuts.webhook = Some("Ctrl+Win+Space".parse().unwrap());
+        assert!(p.validate().unwrap_err().contains("differ"), "hands-free's");
+        p.shortcuts.webhook = Some("Ctrl+Alt+W".parse().unwrap());
+        assert!(
+            p.validate().is_ok(),
+            "a shortcut alone is fine (feature off)"
+        );
+        p.webhook_url = "http://203.0.113.9/hook".into();
+        assert!(p.validate().is_err(), "public cleartext");
+        p.webhook_url = "https://hooks.example.com/in?token=abc".into();
+        assert_eq!(p.validate().is_ok(), crate::webhook::CAN_WEBHOOK);
+        // Round trip, and an old file without the fields loads off.
+        let (old, _) = load_str("webhook-old", r#"{"enable_sounds": true}"#);
+        assert!(old.webhook_url.is_empty() && old.shortcuts.webhook.is_none());
+        let back: Prefs = serde_json::from_str(&serde_json::to_string(&p).unwrap()).unwrap();
+        assert_eq!(back.webhook_url, p.webhook_url);
+        assert_eq!(back.shortcuts.webhook, p.shortcuts.webhook);
     }
 
     #[test]

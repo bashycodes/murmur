@@ -54,6 +54,10 @@ pub mod outcome {
     pub const CANCELLED: &str = "cancelled";
     /// A Command Mode question: the answer was shown, nothing inserted.
     pub const ANSWERED: &str = "answered";
+    /// D105: POSTed to the webhook (2xx); nothing inserted.
+    pub const WEBHOOK_SENT: &str = "webhook_sent";
+    /// D105: the webhook POST failed; nothing inserted.
+    pub const WEBHOOK_FAILED: &str = "webhook_failed";
 }
 
 /// `insert`: `{"outcome": …, "steps": […]}`. Steps = the paste plan that
