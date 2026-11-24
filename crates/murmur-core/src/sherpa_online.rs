@@ -91,4 +91,8 @@ impl AsrEngine for SherpaOnlineAsr {
             ..Default::default()
         })
     }
+
+    fn hotwords_used(&self, req: &AsrRequest) -> usize {
+        crate::parakeet::hotwords_passed(self.engine.supports_hotwords(), req)
+    }
 }

@@ -561,15 +561,19 @@ impl Conn {
             };
             let queue_ms = t0.elapsed().as_millis() as u64;
             let chars = req.text.chars().count();
-            let out = tokio::task::spawn_blocking(move || {
+            let screen_words = req.ctx.screen_words.len();
+            let (out, dict_terms) = tokio::task::spawn_blocking(move || {
                 let Some(cl) = lease.core.cleaner() else {
-                    return Cleaned {
+                    let out = Cleaned {
                         id,
                         error: Some("no_llm".into()),
                         queue_ms,
                         ..Default::default()
                     };
+                    return (out, 0);
                 };
+                let dict_terms = murmur_core::cleanup::clean_text_prompt(&req, cl.prompt_scope())
+                    .dictionary_terms();
                 let (r, usage, took) =
                     murmur_core::cleanup::clean_text(cl, &req, crate::limits::MAX_LLM_TIMEOUT_MS);
                 drop(lease); // the worker is free once its LLM call ended
@@ -577,31 +581,26 @@ impl Conn {
                     Ok(t) => (Some(t), None),
                     Err(e) => (None, Some(e)),
                 };
-                Cleaned {
+                let out = Cleaned {
                     id,
                     text,
                     error,
                     llm_ms: took.as_millis() as u64,
                     queue_ms,
                     model: usage.model,
-                }
+                };
+                (out, dict_terms)
             })
             .await
-            .unwrap_or_else(|_| Cleaned {
-                id,
-                error: Some(code::SERVER_ERROR.into()),
-                ..Default::default()
+            .unwrap_or_else(|_| {
+                let out = Cleaned {
+                    id,
+                    error: Some(code::SERVER_ERROR.into()),
+                    ..Default::default()
+                };
+                (out, 0)
             });
-            // Timings and sizes only, never text.
-            tracing::info!(
-                id,
-                peer = %peer,
-                chars,
-                llm_ms = out.llm_ms,
-                queue_ms = out.queue_ms,
-                error = out.error.as_deref().unwrap_or(""),
-                "cleaned"
-            );
+            log_cleaned(peer, &out, chars, screen_words, dict_terms);
             let _ = ev.send(Event::Cleaned(out));
         });
     }
@@ -820,6 +819,7 @@ impl Conn {
                     &r,
                     s.queue_ms,
                     s.start_to_commit_ms,
+                    s.ctx.as_ref().map_or(0, |c| c.screen_words.len()),
                 );
                 if let (Some(store), Some(id)) = (&self.state.keys, &self.key) {
                     store.record_dictation(id, samples_to_ms(s.samples));
@@ -902,9 +902,36 @@ impl Conn {
     }
 }
 
-/// The per-dictation `result` log line (timings only, never text). Optional
-/// values print as bare numbers and are omitted when unknown (tracing
-/// records `Option<T>` only when `Some`), not as `Some(7200)`.
+/// The text-only cleanup's `cleaned` log line: timings, sizes and context
+/// counts, never text. No ASR ran, so `hotwords=0`.
+fn log_cleaned(
+    peer: SocketAddr,
+    out: &Cleaned,
+    chars: usize,
+    ctx_screen_words: usize,
+    dict_terms_in_prompt: usize,
+) {
+    tracing::info!(
+        id = out.id,
+        peer = %peer,
+        chars,
+        llm_ms = out.llm_ms,
+        queue_ms = out.queue_ms,
+        error = out.error.as_deref().unwrap_or(""),
+        ctx_screen_words,
+        hotwords = 0,
+        dict_terms_in_prompt,
+        "cleaned"
+    );
+}
+
+/// The per-dictation `result` log line (timings and counts only, never
+/// text). Optional values print as bare numbers and are omitted when
+/// unknown (tracing records `Option<T>` only when `Some`), not as
+/// `Some(7200)`. `ctx_screen_words` is how many screen words the client
+/// sent; `hotwords` and `dict_terms_in_prompt` are what the decoder and
+/// the cleanup prompt actually got (0 when none, or when no LLM ran).
+#[allow(clippy::too_many_arguments)]
 fn log_result(
     sid: u64,
     peer: SocketAddr,
@@ -912,6 +939,7 @@ fn log_result(
     r: &CommitResult,
     queue_ms: u64,
     start_to_commit_ms: Option<u64>,
+    ctx_screen_words: usize,
 ) {
     let t = &r.timings;
     tracing::info!(
@@ -934,6 +962,9 @@ fn log_result(
         language = r.language.as_deref(),
         empty_reason = r.empty_reason.as_deref().unwrap_or(""),
         fallback_reason = r.fallback_reason.as_deref().unwrap_or(""),
+        ctx_screen_words,
+        hotwords = t.hotwords,
+        dict_terms_in_prompt = t.dict_terms,
         "result"
     );
 }
@@ -986,6 +1017,7 @@ mod tests {
                 r,
                 12,
                 Some(7400),
+                3,
             );
         })
     }
@@ -1071,6 +1103,10 @@ mod tests {
         assert!(line.contains("speech_ms=7200"), "{line}");
         assert!(line.contains("peak_dbfs=-2"), "{line}");
         assert!(line.contains("start_to_commit_ms=7400"), "{line}");
+        assert!(
+            line.contains("ctx_screen_words=3 hotwords=0 dict_terms_in_prompt=0"),
+            "{line}"
+        );
         assert!(line.contains("key=\"k-0123456789abcdef\""), "{line}");
         assert!(!line.contains("Some("), "{line}");
         r.language = Some("he".into());

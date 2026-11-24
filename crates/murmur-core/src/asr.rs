@@ -151,6 +151,12 @@ pub trait AsrEngine: Send + Sync {
     fn segmentable(&self) -> bool {
         true
     }
+
+    /// How many hotword phrases a decode of `req` passes to the decoder
+    /// (the server's `hotwords=` log field). 0 for engines that take none.
+    fn hotwords_used(&self, _req: &AsrRequest) -> usize {
+        0
+    }
 }
 
 /// Test engine whose text is a function of the audio: one word `w<k>` per

@@ -187,6 +187,17 @@ pub fn needs_fallback(pcm: &[f32]) -> bool {
     pcm.len() > 2 * SAMPLE_RATE && speech_ms(pcm) >= FALLBACK_MIN_SPEECH_MS
 }
 
+/// How many of `req`'s hotword phrases a sherpa decode receives: what
+/// `hotwords_arg` keeps (deduped, at most `MAX_HOTWORDS`), 0 when the
+/// engine has no beam search to take them.
+pub fn hotwords_passed(supports_hotwords: bool, req: &AsrRequest) -> usize {
+    if !supports_hotwords {
+        return 0;
+    }
+    let arg = murmur_asr_sherpa::hotwords_arg(&crate::asr::hotword_phrases(req));
+    arg.split('/').filter(|p| !p.is_empty()).count()
+}
+
 /// Decode pieces: ≤ 20 s, and at least two (an empty clip shorter than
 /// 20 s is halved at its longest pause).
 pub fn fallback_pieces(pcm: &[f32]) -> Vec<std::ops::Range<usize>> {
@@ -230,6 +241,10 @@ impl AsrEngine for ParakeetAsr {
             ..Default::default()
         })
     }
+
+    fn hotwords_used(&self, req: &AsrRequest) -> usize {
+        hotwords_passed(self.engine.supports_hotwords(), req)
+    }
 }
 
 #[cfg(test)]
@@ -257,5 +272,19 @@ mod tests {
         let kept: Vec<&str> = arg.split('/').collect();
         assert_eq!(kept.len(), MAX_HOTWORDS);
         assert_eq!(kept[..3], ["Quorvel", "Tamsik Lintrava", "sw0"]);
+    }
+
+    #[test]
+    fn hotwords_passed_counts_what_sherpa_keeps() {
+        let screen: Vec<String> = (0..2 * MAX_HOTWORDS).map(|i| format!("sw{i}")).collect();
+        let req = AsrRequest {
+            initial_prompt: build_initial_prompt(&Dictionary::default(), &screen),
+            // Repeats a screen word: deduped, not counted twice.
+            dictionary_terms: vec!["SW0".into()],
+            ..Default::default()
+        };
+        assert_eq!(super::hotwords_passed(true, &req), MAX_HOTWORDS);
+        assert_eq!(super::hotwords_passed(false, &req), 0);
+        assert_eq!(super::hotwords_passed(true, &AsrRequest::default()), 0);
     }
 }

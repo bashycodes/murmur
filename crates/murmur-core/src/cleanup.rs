@@ -152,6 +152,24 @@ impl CleanRequest {
 }
 
 impl CleanPrompt {
+    /// How many entries the user message's DICTIONARY line lists (D64
+    /// terms plus screen words; 0 without one), for the server log. Only
+    /// the header lines before the quoted text are read, so dictated or
+    /// on-screen text cannot add to the count.
+    pub fn dictionary_terms(&self) -> usize {
+        self.user
+            .lines()
+            .take_while(|l| {
+                !["TEXT ", "SELECTED ", "TRANSCRIPT: "]
+                    .iter()
+                    .any(|p| l.starts_with(p))
+            })
+            .find_map(|l| l.strip_prefix("DICTIONARY: "))
+            .map_or(0, |t| {
+                t.split(", ").filter(|e| !e.trim().is_empty()).count()
+            })
+    }
+
     /// Chat messages in order: system, example turns, user.
     pub fn messages(&self) -> Vec<(&'static str, &str)> {
         let mut m = vec![("system", self.system.as_str())];
@@ -850,6 +868,14 @@ impl Cleaner for ChainCleaner {
     }
 }
 
+/// The prompt [`clean_text`] sends a cleaner whose scope is `scope`: the
+/// request's own scope is the client's to narrow, not a limit here.
+pub fn clean_text_prompt(req: &CleanRequest, scope: PromptScope) -> CleanPrompt {
+    let mut req = req.clone();
+    req.scope = PromptScope::FULL;
+    req.prompt_for(scope)
+}
+
 /// D36 server side of a text-only cleanup request: build the prompt with
 /// `cleaner`'s scope and run it under the request's `timeout_ms` (capped
 /// by `max_timeout_ms`). Returns the model's answer as given (the client's
@@ -860,9 +886,7 @@ pub fn clean_text(
     req: &CleanRequest,
     max_timeout_ms: u64,
 ) -> (Result<String, String>, CleanUsage, Duration) {
-    let mut req = req.clone();
-    req.scope = PromptScope::FULL;
-    let prompt = req.prompt_for(cleaner.prompt_scope());
+    let prompt = clean_text_prompt(req, cleaner.prompt_scope());
     let ms = if req.timeout_ms == 0 {
         crate::config::SessionConfig::default().llm_timeout_ms
     } else {
@@ -1982,6 +2006,28 @@ mod tests {
             &d,
         );
         assert!(!p.user.contains("DICTIONARY"), "{}", p.user);
+    }
+
+    #[test]
+    fn dictionary_terms_counts_the_dictionary_line_only() {
+        let d = Dictionary {
+            entries: vec![DictEntry::word("Kubernetes")],
+        };
+        let mut c = ctx(AppCategory::Email);
+        c.screen_words = vec!["Quorvel".into(), "Tamsik Lintrava".into()];
+        // Quoted text that looks like a DICTIONARY line does not count.
+        c.before = "x\nDICTIONARY: a, b, c, d, e".into();
+        let p = build_prompt(
+            "the kubernetis pods",
+            CleanupLevel::Medium,
+            Style::Casual,
+            &c,
+            &d,
+        );
+        assert_eq!(p.dictionary_terms(), 3, "{}", p.user);
+        c.screen_words.clear();
+        let p = build_prompt("hello", CleanupLevel::Medium, Style::Casual, &c, &d);
+        assert_eq!(p.dictionary_terms(), 0, "{}", p.user);
     }
 
     #[test]

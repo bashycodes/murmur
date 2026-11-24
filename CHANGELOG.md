@@ -16,6 +16,10 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Added
+
+- **Server: context counts in the log.** murmur-server's `result` and `cleaned` log lines now end with `ctx_screen_words=<n> hotwords=<n> dict_terms_in_prompt=<n>`: how many screen words the client sent, how many hotword phrases went to the speech decoder (0 for an engine that takes none, and always 0 for a text-only cleanup), and how many dictionary and screen-word entries the AI cleanup prompt carried (0 when no AI cleanup ran). Only numbers are logged, never the words.
+
 ## [1.7.0] - 2026-11-24
 
 ### Added
