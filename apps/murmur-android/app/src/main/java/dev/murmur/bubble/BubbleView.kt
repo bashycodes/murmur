@@ -104,18 +104,19 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
         }
         canvas.drawRoundRect(RectF(0f, 0f, width.toFloat(), h), r, r, pill)
         when (s) {
-            DictationState.Idle, DictationState.Ready -> if (ui.repair) {
+            DictationState.Idle, DictationState.Ready -> if (!BubbleGeometry.showsMark(ui)) {
+                // Repair: the pulsing alert.
                 val pulse = 0.6f + 0.4f * kotlin.math.abs(((SystemClock.uptimeMillis() % 2000) / 1000f) - 1f)
                 danger.alpha = (255 * pulse).toInt()
                 circleButton(canvas, danger, BubbleButton.MAIN) { cx, cy -> drawGlyph(canvas, "!", cx, cy) }
                 danger.alpha = 255
                 postInvalidateOnAnimation()
             } else if (BubbleGeometry.isMinimisedLook(ui)) {
-                circleButton(canvas, null, BubbleButton.MAIN) { cx, cy -> drawIconDrawable(canvas, restingIcon(), cx, cy, 9f) }
+                circleButton(canvas, null, BubbleButton.MAIN) { cx, cy -> drawIcon(canvas, mark, cx, cy, 9f) }
             } else {
                 // The mark sits on the pill itself: its dark violet end needs the vast-950 behind it for 3:1
                 // contrast (on the vast-875 disc it falls to about 2.2:1).
-                circleButton(canvas, null, BubbleButton.MAIN) { cx, cy -> drawIconDrawable(canvas, restingIcon(), cx, cy) }
+                circleButton(canvas, null, BubbleButton.MAIN) { cx, cy -> drawIcon(canvas, mark, cx, cy) }
                 if (ui.showCommand) circleButton(canvas, null, BubbleButton.COMMAND) { cx, cy -> drawGlyph(canvas, "✎", cx, cy) }
                 if (ui.showTranslate) circleButton(canvas, null, BubbleButton.TRANSLATE) { cx, cy -> drawGlyph(canvas, "⇄", cx, cy) }
                 if (ui.showCopy) circleButton(canvas, null, BubbleButton.COPY) { cx, cy -> drawGlyph(canvas, "⧉", cx, cy) }
@@ -174,12 +175,10 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
         content(rect.centerX(), rect.centerY())
     }
 
-    private fun restingIcon(): Drawable = if (BubbleGeometry.showsMark(ui)) mark else mic
-
-    private fun drawMic(c: Canvas, cx: Float, cy: Float) = drawIconDrawable(c, mic, cx, cy)
+    private fun drawMic(c: Canvas, cx: Float, cy: Float) = drawIcon(c, mic, cx, cy)
 
     /** Draws [icon] in a 2×[halfDp] square centred on ([cx], [cy]). */
-    private fun drawIconDrawable(c: Canvas, icon: Drawable, cx: Float, cy: Float, halfDp: Float = 14f) {
+    private fun drawIcon(c: Canvas, icon: Drawable, cx: Float, cy: Float, halfDp: Float = 14f) {
         val half = dp(halfDp).toInt()
         icon.setBounds((cx - half).toInt(), (cy - half).toInt(), (cx + half).toInt(), (cy + half).toInt())
         icon.draw(c)

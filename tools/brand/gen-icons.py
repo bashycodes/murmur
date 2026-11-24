@@ -8,15 +8,17 @@ Writes:
   apps/murmur-android/app/src/main/res/drawable/ic_launcher_background.xml
       the tile gradient of docs/brand/murmur-app.svg
   apps/murmur-android/app/src/main/res/drawable/ic_bubble_mark.xml
-      the colour mark of docs/brand/murmur-mark.svg (each bar its own gradient,
-      as SVG's objectBoundingBox does): the dictation bubble's resting glyph
+      the colour mark of docs/brand/murmur-mark.svg: the dictation bubble's
+      resting glyph (each bar its own corner-to-corner gradient, which
+      approximates SVG's objectBoundingBox one; on the tall bars it runs
+      nearly top to bottom)
   apps/murmur-windows/icons/{32x32.png,icon.png,icon.ico}
       rendered from docs/brand/murmur-app.svg; icon.ico holds 16-256 px
   docs/brand/murmur-social.png
       1280x640 GitHub social preview: the mark and the "Murmur" wordmark
 
 The bars (x, y, width, height, rx) are read from
-docs/brand/murmur-mark-mono.svg and the tile gradient from
+docs/brand/murmur-mark-mono.svg (and murmur-mark.svg), the tile gradient from
 docs/brand/murmur-app.svg, so a change to the mark only needs the SVGs edited
 and this script re-run.
 
@@ -54,34 +56,29 @@ def parse_svg(name):
     return root
 
 
-def read_bars():
-    """(x, y, w, h, rx) of each bar in the 256-unit mark viewBox."""
-    rects = list(parse_svg("murmur-mark-mono.svg").iter(f"{SVG_NS}rect"))
+def read_bars(name):
+    """(x, y, w, h, rx) of each bar in the 256-unit mark viewBox of name."""
+    rects = list(parse_svg(name).iter(f"{SVG_NS}rect"))
     if not rects:
-        sys.exit("murmur-mark-mono.svg: no <rect> bars found")
+        sys.exit(f"{name}: no <rect> bars found")
     return [tuple(float(r.get(k, 0)) for k in ("x", "y", "width", "height", "rx")) for r in rects]
 
 
-def read_mark_gradient():
-    """(x1, y1, x2, y2) as bar-box fractions and [(offset, colour)] of the colour mark."""
-    grads = list(parse_svg("murmur-mark.svg").iter(f"{SVG_NS}linearGradient"))
+def read_gradient(name):
+    """(x1, y1, x2, y2) as box fractions and [(offset, colour)] of name's one linearGradient."""
+    grads = list(parse_svg(name).iter(f"{SVG_NS}linearGradient"))
     if len(grads) != 1:
-        sys.exit(f"murmur-mark.svg: expected one linearGradient, found {len(grads)}")
+        sys.exit(f"{name}: expected one linearGradient, found {len(grads)}")
     g = grads[0]
     ends = tuple(float(g.get(k)) for k in ("x1", "y1", "x2", "y2"))
     stops = [(float(s.get("offset")), s.get("stop-color").upper()) for s in g.iter(f"{SVG_NS}stop")]
     return ends, stops
 
 
-def read_tile_gradient():
-    """(x1, y1, x2, y2) as box fractions and [(offset, colour)] of the tile."""
-    grads = list(parse_svg("murmur-app.svg").iter(f"{SVG_NS}linearGradient"))
-    if len(grads) != 1:
-        sys.exit(f"murmur-app.svg: expected one linearGradient, found {len(grads)}")
-    g = grads[0]
-    ends = tuple(float(g.get(k)) for k in ("x1", "y1", "x2", "y2"))
-    stops = [(float(s.get("offset")), s.get("stop-color").upper()) for s in g.iter(f"{SVG_NS}stop")]
-    return ends, stops
+def gradient_items(stops):
+    """The <item> stop list of a VectorDrawable <gradient>, indented for an aapt:attr fill."""
+    return "\n".join(f'                <item android:offset="{o:g}" android:color="#FF{c[1:]}" />'
+                     for o, c in stops)
 
 
 def bar_path(x, y, w, h, rx):
@@ -98,7 +95,7 @@ def bar_path(x, y, w, h, rx):
 
 
 def android_foreground():
-    bars = read_bars()
+    bars = read_bars("murmur-mark-mono.svg")
     left = min(x for x, _, _, _, _ in bars)
     right = max(x + w for x, _, w, _, _ in bars)
     top = min(y for _, y, _, _, _ in bars)
@@ -129,14 +126,10 @@ def android_foreground():
 
 
 def android_bubble_mark():
-    """The colour mark in its own 256-unit viewBox, one path per bar (the gradient is per bar)."""
-    rects = list(parse_svg("murmur-mark.svg").iter(f"{SVG_NS}rect"))
-    if not rects:
-        sys.exit("murmur-mark.svg: no <rect> bars found")
-    bars = [tuple(float(r.get(k, 0)) for k in ("x", "y", "width", "height", "rx")) for r in rects]
-    (x1, y1, x2, y2), stops = read_mark_gradient()
-    items = "\n".join(f'                <item android:offset="{o:g}" android:color="#FF{c[1:]}" />'
-                      for o, c in stops)
+    """The colour mark in its own 256-unit viewBox, one path per bar, each with its own gradient."""
+    bars = read_bars("murmur-mark.svg")
+    (x1, y1, x2, y2), stops = read_gradient("murmur-mark.svg")
+    items = gradient_items(stops)
     paths = "\n".join(f"""    <path android:pathData="{bar_path(x, y, w, h, rx)}">
         <aapt:attr name="android:fillColor">
             <gradient
@@ -164,9 +157,8 @@ def android_bubble_mark():
 
 
 def android_background():
-    (x1, y1, x2, y2), stops = read_tile_gradient()
-    items = "\n".join(f'                <item android:offset="{o:g}" android:color="#FF{c[1:]}" />'
-                      for o, c in stops)
+    (x1, y1, x2, y2), stops = read_gradient("murmur-app.svg")
+    items = gradient_items(stops)
     return f"""<?xml version="1.0" encoding="utf-8"?>
 <!-- Generated by tools/brand/gen-icons.py from the tile gradient of docs/brand/murmur-app.svg;
      edit the SVG and re-run instead of editing this file. Launcher background. -->
@@ -205,7 +197,7 @@ def sized_svg(name, px, fill=None):
 
 
 def social_html():
-    (x1, y1, x2, y2), stops = read_tile_gradient()
+    (x1, y1, x2, y2), stops = read_gradient("murmur-app.svg")
     angle = 135 if (x1, y1, x2, y2) == (0, 0, 1, 1) else 180
     css_stops = ", ".join(f"{c} {o * 100:g}%" for o, c in stops)
     mark = sized_svg("murmur-mark-mono.svg", 240, fill="#FFFFFF")
