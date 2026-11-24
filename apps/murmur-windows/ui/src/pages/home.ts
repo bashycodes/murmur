@@ -209,7 +209,6 @@ function historyRow(h: HistoryItem): HTMLElement {
   const actions = el("div", "lw-hist-actions");
   actions.append(
     iconButton("Copy", ICON.copy, () => void act(invoke("history_copy", { id: h.id, raw: false }), "Copied")),
-    iconButton("Paste again", ICON.paste, () => void act(invoke("history_repaste", { id: h.id, raw: false }), "Pasted")),
   );
   if (h.has_audio && !h.command) {
     const b = iconButton("Retry with current settings", ICON.retry, () => void retry(h.id, b));

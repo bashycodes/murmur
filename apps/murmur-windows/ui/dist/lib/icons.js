@@ -18,7 +18,6 @@ export const ICON = {
     developer: "M8 7l-5 5 5 5M16 7l5 5-5 5",
     close: "M6 6l12 12M18 6L6 18",
     copy: "M8 8h12v12H8zM4 16V4h12",
-    paste: "M9 4h6v3H9zM7 5.5H5V21h14V5.5h-2",
     undo: "M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3",
     trash: "M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3",
     up: "M6 15l6-6 6 6",
