@@ -12,8 +12,10 @@
 //! window shrunk to the first [`LID_SAMPLES`] of speech. Built into every
 //! shell already (server, Windows, Android); see D34 for the numbers.
 
+use std::ops::Range;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
+use std::time::Duration;
 
 use crate::config::SAMPLE_RATE;
 
@@ -50,21 +52,116 @@ pub fn choose(scores: &[(String, f32)], default: &str) -> Option<String> {
         .map(|(l, _)| l.clone())
 }
 
+/// One window of a dictation's speech and the identifier's answer for it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LidWindow {
+    pub scores: LidScores,
+    /// Samples of speech the window covers.
+    pub samples: usize,
+}
+
+/// Where the next window starts after `from` in speech that ends at `end`
+/// (exclusive): a full [`LID_SAMPLES`] window when it fits, else, once the
+/// speech is over (`ended`), the tail when it is at least a third of a
+/// window (shorter is too little to tell). The engine and the
+/// language-detect probe both window speech this way.
+pub fn window_after(from: usize, end: usize, ended: bool) -> Option<Range<usize>> {
+    if from + LID_SAMPLES <= end {
+        Some(from..from + LID_SAMPLES)
+    } else if ended && end.saturating_sub(from) >= LID_SAMPLES / 3 {
+        Some(from..end)
+    } else {
+        None
+    }
+}
+
+/// The first window of speech `speech`: its first [`LID_SAMPLES`], or all
+/// of it when shorter (D34).
+pub fn first_window(speech: Range<usize>) -> Range<usize> {
+    speech.start..speech.end.min(speech.start + LID_SAMPLES)
+}
+
+/// The language of a whole dictation from the identifier's answers for its
+/// windows of speech (D106): every window votes [`choose`]'s answer,
+/// weighted by its samples, and the language with the most speech wins.
+/// A tie goes to the routed language heard first, so the default model
+/// wins only outright: the same lean towards routing as D34's low
+/// per-window floor ([`ROUTE_MIN_PROB`]), and measured better than keeping
+/// the current route (93.2 % vs 92.2 % on the probe). `None` = the
+/// default model (also for no windows).
+///
+/// The first window alone decides wrongly when the dictation switches
+/// language after it, or starts with a breath or a click the identifier
+/// hears as English (`docs/findings/2026-11-24-language-detect.md`).
+pub fn choose_whole(windows: &[LidWindow], default: &str) -> Option<String> {
+    let time = speech_time(windows, default);
+    let top = time.iter().map(|t| t.1).max()?;
+    let leaders: Vec<&Option<String>> = time.iter().filter(|t| t.1 == top).map(|t| &t.0).collect();
+    leaders
+        .iter()
+        .find(|l| l.is_some())
+        .or(leaders.first())
+        .and_then(|l| (*l).clone())
+}
+
+/// True when `remaining` more samples of speech cannot change
+/// [`choose_whole`]'s answer: the leader is ahead of the runner-up by more.
+pub fn decided_without(windows: &[LidWindow], default: &str, remaining: usize) -> bool {
+    let mut time: Vec<usize> = speech_time(windows, default)
+        .into_iter()
+        .map(|t| t.1)
+        .collect();
+    time.sort_unstable_by(|a, b| b.cmp(a));
+    let second = time.get(1).copied().unwrap_or(0);
+    time.first().is_some_and(|&t| t > second + remaining)
+}
+
+/// Samples of speech per [`choose`] answer (`None` = the default), in the
+/// order first heard.
+fn speech_time(windows: &[LidWindow], default: &str) -> Vec<(Option<String>, usize)> {
+    let mut time: Vec<(Option<String>, usize)> = Vec::new();
+    for w in windows {
+        let l = choose(&w.scores, default);
+        match time.iter_mut().find(|(k, _)| *k == l) {
+            Some((_, t)) => *t += w.samples,
+            None => time.push((l, w.samples)),
+        }
+    }
+    time
+}
+
 /// Test identifier: gives `language` probability 1 (when it is a
 /// candidate) and records what it heard.
 pub struct MockLid {
-    language: String,
+    /// The answer of each call in turn; the last one repeats.
+    languages: Vec<String>,
+    /// Time each call takes (a slow model).
+    delay: Duration,
     calls: AtomicUsize,
     heard: Mutex<Vec<(usize, Vec<String>)>>,
 }
 
 impl MockLid {
     pub fn new(language: &str) -> Self {
+        Self::sequence(&[language])
+    }
+
+    /// Answers `languages[k]` on call `k` (the last one from then on): a
+    /// dictation that switches language between windows.
+    pub fn sequence(languages: &[&str]) -> Self {
+        assert!(!languages.is_empty());
         Self {
-            language: language.into(),
+            languages: languages.iter().map(|l| l.to_string()).collect(),
+            delay: Duration::ZERO,
             calls: AtomicUsize::new(0),
             heard: Mutex::new(Vec::new()),
         }
+    }
+
+    /// Each call takes `delay` (a slow identifier).
+    pub fn with_delay(mut self, delay: Duration) -> Self {
+        self.delay = delay;
+        self
     }
 
     pub fn calls(&self) -> usize {
@@ -79,14 +176,16 @@ impl MockLid {
 
 impl LanguageId for MockLid {
     fn scores(&self, pcm: &[f32], candidates: &[String]) -> Result<LidScores, String> {
-        self.calls.fetch_add(1, Ordering::SeqCst);
+        std::thread::sleep(self.delay);
+        let k = self.calls.fetch_add(1, Ordering::SeqCst);
+        let language = &self.languages[k.min(self.languages.len() - 1)];
         self.heard
             .lock()
             .unwrap()
             .push((pcm.len(), candidates.to_vec()));
         Ok(candidates
             .iter()
-            .map(|c| (c.clone(), if *c == self.language { 1.0 } else { 0.0 }))
+            .map(|c| (c.clone(), if c == language { 1.0 } else { 0.0 }))
             .collect())
     }
 }
@@ -200,6 +299,92 @@ mod tests {
             choose(&s(&[("en", 0.2), ("he", 0.3), ("ar", 0.5)]), "en"),
             Some("ar".into())
         );
+    }
+
+    fn w(v: &[(&LidScores, usize)]) -> Vec<LidWindow> {
+        v.iter()
+            .map(|(sc, n)| LidWindow {
+                scores: (*sc).clone(),
+                samples: *n,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn choose_whole_takes_the_language_with_the_most_speech() {
+        let en = s(&[("en", 0.95), ("he", 0.05)]);
+        let he = s(&[("en", 0.8), ("he", 0.2)]);
+        assert_eq!(choose_whole(&[], "en"), None);
+        assert_eq!(choose_whole(&w(&[(&en, 48000)]), "en"), None);
+        assert_eq!(choose_whole(&w(&[(&he, 48000)]), "en"), Some("he".into()));
+        // English start, then mostly Hebrew.
+        let v = w(&[(&en, 48000), (&he, 48000), (&he, 20000)]);
+        assert_eq!(choose_whole(&v, "en"), Some("he".into()));
+        // Hebrew start, then mostly English.
+        let v = w(&[(&he, 48000), (&en, 48000), (&en, 20000)]);
+        assert_eq!(choose_whole(&v, "en"), None);
+    }
+
+    #[test]
+    fn a_tie_goes_to_the_routed_language_heard_first() {
+        let en = s(&[("en", 0.9), ("he", 0.05), ("ar", 0.05)]);
+        let he = s(&[("en", 0.1), ("he", 0.8), ("ar", 0.1)]);
+        let ar = s(&[("en", 0.1), ("he", 0.1), ("ar", 0.8)]);
+        // Three-way tie, in every order: never the default, always the
+        // first route heard.
+        for (order, want) in [
+            ([&en, &he, &ar], "he"),
+            ([&en, &ar, &he], "ar"),
+            ([&he, &en, &ar], "he"),
+            ([&ar, &he, &en], "ar"),
+        ] {
+            let v = w(&order.map(|sc| (sc, 48000)));
+            assert_eq!(choose_whole(&v, "en"), Some(want.into()));
+            // Ties are never decided early.
+            assert!(!decided_without(&v, "en", 0));
+        }
+        // A tie between the default and one route.
+        assert_eq!(
+            choose_whole(&w(&[(&en, 48000), (&he, 48000)]), "en"),
+            Some("he".into())
+        );
+        // An outright default win stays.
+        assert_eq!(
+            choose_whole(&w(&[(&en, 48000), (&en, 1), (&he, 48000)]), "en"),
+            None
+        );
+    }
+
+    #[test]
+    fn decided_when_the_rest_cannot_outvote_the_leader() {
+        let en = s(&[("en", 0.95), ("he", 0.05)]);
+        let he = s(&[("en", 0.8), ("he", 0.2)]);
+        let v = w(&[(&he, 48000), (&he, 48000), (&en, 48000)]);
+        assert!(decided_without(&v, "en", 47999));
+        assert!(!decided_without(&v, "en", 48000));
+        assert!(decided_without(&w(&[(&he, 48000)]), "en", 16000));
+        assert!(!decided_without(&[], "en", 0));
+    }
+
+    #[test]
+    fn windows_are_full_until_the_tail_and_a_short_tail_is_dropped() {
+        let n = LID_SAMPLES;
+        assert_eq!(first_window(100..100 + 2 * n), 100..100 + n);
+        assert_eq!(first_window(100..200), 100..200);
+        assert_eq!(window_after(n, 3 * n, false), Some(n..2 * n));
+        assert_eq!(window_after(n, 2 * n - 1, false), None);
+        assert_eq!(window_after(n, n + n / 3, true), Some(n..n + n / 3));
+        assert_eq!(window_after(n, n + n / 3 - 1, true), None);
+    }
+
+    #[test]
+    fn mock_sequence_answers_in_turn_then_repeats() {
+        let m = MockLid::sequence(&["en", "he"]);
+        let c = vec!["en".to_string(), "he".to_string()];
+        let top = |sc: LidScores| choose(&sc, "en");
+        assert_eq!(top(m.scores(&[0.0; 4], &c).unwrap()), None);
+        assert_eq!(top(m.scores(&[0.0; 4], &c).unwrap()), Some("he".into()));
+        assert_eq!(top(m.scores(&[0.0; 4], &c).unwrap()), Some("he".into()));
     }
 
     #[test]

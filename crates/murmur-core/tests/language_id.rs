@@ -249,3 +249,133 @@ fn segmented_dictation_holds_its_pieces_until_identified() {
     assert_eq!(r.en.calls(), 0, "no piece decoded on English");
     assert_eq!(r.lid.calls(), 1);
 }
+
+/// D106: a rig whose identifier answers `heard[k]` for window `k`.
+fn rig_seq(heard: &[&str]) -> Rig {
+    let (en, he) = (
+        Arc::new(MockAsr::new("hello there")),
+        Arc::new(MockAsr::new("שלום לכולם")),
+    );
+    let lid = Arc::new(MockLid::sequence(heard));
+    let core = MurmurCore::from_language_engines_with_lid(
+        en.clone(),
+        vec![("he".into(), he.clone())],
+        Some(lid.clone()),
+        None,
+    );
+    Rig { core, en, he, lid }
+}
+
+/// `pieces` × (speech of `ms`, a pause the segmenter cuts at).
+fn dictate_pieces(core: &MurmurCore, cfg: SessionConfig, pieces: usize, ms: usize) -> CommitResult {
+    core.start_session(cfg).unwrap();
+    for _ in 0..pieces {
+        let mut pcm = speech(ms);
+        pcm.extend(std::iter::repeat_n(0i16, 16 * 900));
+        for c in pcm.chunks(640) {
+            core.push_audio(c);
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+    core.commit()
+}
+
+#[test]
+fn a_dictation_that_switches_to_hebrew_after_its_first_seconds_decodes_in_hebrew() {
+    let r = rig_seq(&["en", "he"]);
+    let out = dictate_ms(&r.core, SessionConfig::default(), 10_000);
+    assert_eq!(out.asr_text, "שלום לכולם", "{out:?}");
+    assert_eq!(out.language.as_deref(), Some("he"));
+    assert_eq!(r.lid.calls(), 3, "every 3 s window of the 10 s");
+    assert!(r.lid.heard().iter().all(|(n, _)| *n == LID_SAMPLES));
+}
+
+#[test]
+fn a_dictation_that_switches_to_english_after_its_first_seconds_decodes_in_english() {
+    let r = rig_seq(&["he", "en"]);
+    let out = dictate_ms(&r.core, SessionConfig::default(), 10_000);
+    assert_eq!(out.asr_text, "hello there", "{out:?}");
+    assert_eq!(out.language.as_deref(), Some("en"));
+}
+
+#[test]
+fn one_language_throughout_keeps_the_first_route_and_skips_a_tail_that_cannot_change_it() {
+    let r = rig("he");
+    let out = dictate_ms(&r.core, SessionConfig::default(), 7_000);
+    assert_eq!(out.asr_text, "שלום לכולם");
+    assert_eq!(r.en.calls(), 0);
+    // Two full windows; the 1 s tail cannot outvote 6 s of Hebrew.
+    assert_eq!(r.lid.calls(), 2);
+}
+
+#[test]
+fn segmented_pieces_decoded_before_a_switch_are_decoded_again_on_the_new_engine() {
+    let r = rig_seq(&["en", "he"]);
+    let out = dictate_pieces(
+        &r.core,
+        SessionConfig {
+            segment_pause_ms: Some(400),
+            segment_min_ms: Some(500),
+            ..Default::default()
+        },
+        4,
+        2500,
+    );
+    assert!(out.asr_text.contains("שלום לכולם"), "{out:?}");
+    assert!(!out.asr_text.contains("hello"), "{out:?}");
+    assert_eq!(out.language.as_deref(), Some("he"));
+}
+
+#[test]
+fn a_listed_language_set_stays_the_candidates_after_routing() {
+    let r = rig_seq(&["he"]);
+    dictate_ms(
+        &r.core,
+        SessionConfig {
+            languages: vec!["en".into(), "he".into(), "fr".into()],
+            ..Default::default()
+        },
+        10_000,
+    );
+    assert!(r.lid.heard().len() >= 2);
+    assert!(r.lid.heard().iter().all(|(_, c)| c == &["en", "he", "fr"]));
+}
+
+#[test]
+fn cancel_during_commit_time_language_id_returns_promptly() {
+    // A slow identifier and a long dictation pushed at once (a History
+    // retry): commit has ~20 windows left to score, and they never settle
+    // (the answers alternate).
+    let (en, he) = (
+        Arc::new(MockAsr::new("hello there")),
+        Arc::new(MockAsr::new("שלום לכולם")),
+    );
+    let answers: Vec<&str> = (0..40)
+        .map(|k| if k % 2 == 0 { "en" } else { "he" })
+        .collect();
+    let lid = Arc::new(MockLid::sequence(&answers).with_delay(Duration::from_millis(150)));
+    let core = Arc::new(MurmurCore::from_language_engines_with_lid(
+        en,
+        vec![("he".into(), he)],
+        Some(lid.clone()),
+        None,
+    ));
+    core.start_session(SessionConfig {
+        ring_capacity_samples: 16_000 * 70,
+        ..Default::default()
+    })
+    .unwrap();
+    for c in speech(60_000).chunks(640) {
+        core.push_audio(c);
+    }
+    let c2 = core.clone();
+    let commit = std::thread::spawn(move || c2.commit());
+    std::thread::sleep(Duration::from_millis(600));
+    let t = std::time::Instant::now();
+    core.cancel();
+    let out = commit.join().unwrap();
+    let after = t.elapsed();
+    assert_eq!(out.error.as_deref(), Some("cancelled"), "{out:?}");
+    assert!(after < Duration::from_millis(1000), "{after:?}");
+    assert!(lid.calls() < 12, "{} windows scored", lid.calls());
+}

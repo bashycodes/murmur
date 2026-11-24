@@ -22,7 +22,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use murmur_core::config::{AsrBackend, LanguageModel, ModelConfig, SessionConfig};
-use murmur_core::lid::{LanguageId, WhisperLid, LID_SAMPLES};
+use murmur_core::lid::{self, LanguageId, WhisperLid};
 use murmur_core::{audio, vad, MurmurCore};
 use serde_json::{json, Value};
 
@@ -173,19 +173,20 @@ fn lang_detect_scores() {
             writeln!(e.out, "{}", json!({"id": row["id"], "windows": []})).unwrap();
             continue;
         };
+        // The engine's windows (D106): the first from the speech start, then
+        // every further window that holds speech, and a long enough tail.
+        // All of them, without the engine's skip of undecidable ones.
         let mut windows = Vec::new();
-        let mut at = sp.start;
-        while at < sp.end {
-            let end = (at + LID_SAMPLES).min(sp.end);
-            // A short tail is only scored when it is the whole speech.
-            if end - at < LID_SAMPLES / 3 && at > sp.start {
-                break;
+        let mut next = Some(lid::first_window(sp.start..sp.end));
+        while let Some(r) = next {
+            next = lid::window_after(r.end, sp.end, true);
+            if r.start > sp.start && vad::detect(&pcm[r.clone()]).is_none() {
+                continue;
             }
-            let x = vad::asr_level(&pcm[at..end]);
+            let x = vad::asr_level(&pcm[r.clone()]);
             let sc = lid.scores(&x, &cands).unwrap();
             let p = |l: &str| sc.iter().find(|(c, _)| c == l).map_or(0.0, |(_, p)| *p);
-            windows.push(json!([p("en"), p("he"), (end - at) as f32 / 16000.0]));
-            at = end;
+            windows.push(json!([p("en"), p("he"), r.len() as f32 / 16000.0]));
         }
         writeln!(
             e.out,
