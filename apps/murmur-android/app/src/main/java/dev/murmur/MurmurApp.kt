@@ -43,6 +43,7 @@ import dev.murmur.core.MurmurCore
 import dev.murmur.core.MurmurCoreLoader
 import dev.murmur.session.LoadWait
 import dev.murmur.session.LoadedEngine
+import dev.murmur.ui.ThemeMode
 import kotlinx.coroutines.flow.first
 import dev.murmur.core.NativeMurmurCore
 import dev.murmur.core.CustomModels
@@ -200,6 +201,7 @@ class MurmurApp : Application() {
         BlockingCalls.isMainThread = { android.os.Looper.myLooper() == android.os.Looper.getMainLooper() }
         BlockingCalls.onViolation = { Log.e("MurmurEngine", "blocking native call on the main thread: $it", Throwable("C2")) }
         settings = SettingsStore(this)
+        ThemeMode.apply(this, settings.load().theme)
         dictionary = DictionaryStore(this)
         suggestions = SuggestionStore(this)
         history = HistoryStore(this)

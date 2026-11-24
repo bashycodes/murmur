@@ -27,6 +27,19 @@ enum class Retention(val key: String) {
     }
 }
 
+/**
+ * Light / dark for the app's screens (Settings → Theme). Dark when nothing is stored: a fresh
+ * install starts dark; an install from before the setting keeps System ([ThemeDefault], D104).
+ * The bubble is always dark either way.
+ */
+enum class AppTheme(val key: String) {
+    SYSTEM("system"), LIGHT("light"), DARK("dark");
+
+    companion object {
+        fun fromKey(k: String?): AppTheme = entries.firstOrNull { it.key == k } ?: DARK
+    }
+}
+
 object DictionaryMerge {
     /** Import semantics: an incoming row replaces any existing row with the same word (case-insensitive). */
     fun merge(existing: List<DictEntry>, incoming: List<DictEntry>): List<DictEntry> {
@@ -75,7 +88,10 @@ data class Settings(
     val spokenCleanup: Boolean = true,
     /** On-device ASR engine; Parakeet is English-only (D4/D12). */
     val asrEngine: dev.murmur.core.AsrEngine = dev.murmur.core.AsrEngine.WHISPER,
-    /** D19: a hands-free (tap) dictation ends after this much trailing silence; 0 = only when tapped again. */
+    /**
+     * D19: a hands-free (tap) dictation ends after this much trailing silence; 0 = only when tapped
+     * again, the default since D104 (it was 1.5 s; an install from before keeps that, [EndpointDefault]).
+     */
     val endpointSilenceMs: Int = DEFAULT_ENDPOINT_SILENCE_MS,
     /**
      * D22 "Decode while speaking": decode finished phrases during recording so release → text
@@ -98,6 +114,8 @@ data class Settings(
      * base + Zipformer Hebrew, up to ≈ 1.1 GB with Parakeet). Off by default.
      */
     val keepBothLanguages: Boolean = false,
+    /** Light / dark for the app's screens ([AppTheme]); dark by default (D104). */
+    val theme: AppTheme = AppTheme.DARK,
 ) {
     /** D37 / D58: the dictation language follows the keyboard (read at the start and again at the stop). */
     val followsKeyboard: Boolean get() = language == LANGUAGE_KEYBOARD
@@ -167,8 +185,13 @@ data class Settings(
          * (docs/proposals/streaming-asr-latency.md). A stored choice is kept as is.
          */
         const val DEFAULT_LIVE_PREVIEW = false
-        /** D22: `murmur_core::endpoint::RECOMMENDED_SILENCE_MS` (was 2000 until 2026-10-23). */
-        const val DEFAULT_ENDPOINT_SILENCE_MS = 1_500
+        /** D104: a tap dictation ends only when tapped again, unless a silence is set. */
+        const val DEFAULT_ENDPOINT_SILENCE_MS = 0
+        /**
+         * D22: `murmur_core::endpoint::RECOMMENDED_SILENCE_MS` (was 2000 until 2026-10-23); the
+         * default until D104, which installs from before keep.
+         */
+        const val RECOMMENDED_ENDPOINT_SILENCE_MS = 1_500
         const val OLD_DEFAULT_ENDPOINT_SILENCE_MS = 2_000
         val ENDPOINT_RANGE_MS = 300..10_000
         /** D22: `murmur_core::segment::RECOMMENDED_PAUSE_MS`. */
@@ -177,12 +200,13 @@ data class Settings(
         /**
          * The stored hands-free endpoint after the D22 default change. Settings are saved as a
          * whole, so a stored 2000 from before the change is almost always the untouched old
-         * default: it becomes the new default once ([migrated] false). Any other value, and
-         * anything saved after the migration ran, is the user's and is kept.
+         * default: it becomes 1500 once ([migrated] false). Any other value, and anything saved
+         * after the migration ran, is the user's and is kept. Nothing stored is a fresh install
+         * (D104: [EndpointDefault] writes 1500 down for an install from before), so the default.
          */
         fun migrateEndpointMs(stored: Int?, migrated: Boolean): Int = when {
             stored == null -> DEFAULT_ENDPOINT_SILENCE_MS
-            !migrated && stored == OLD_DEFAULT_ENDPOINT_SILENCE_MS -> DEFAULT_ENDPOINT_SILENCE_MS
+            !migrated && stored == OLD_DEFAULT_ENDPOINT_SILENCE_MS -> RECOMMENDED_ENDPOINT_SILENCE_MS
             else -> stored
         }
 

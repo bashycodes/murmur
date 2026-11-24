@@ -64,6 +64,13 @@ fn yes() -> bool {
     true
 }
 
+/// A prefs file without `theme` was written before the pref (0.7.1 and
+/// earlier shipped without it): that install followed Windows and keeps
+/// doing so (D104). Only a fresh install starts Dark.
+fn theme_before_pref() -> Theme {
+    Theme::System
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PasteMethod {
@@ -91,13 +98,14 @@ pub enum Retention {
 }
 
 /// App colour scheme (design: Settings → General → Appearance). `system`
-/// follows the Windows light/dark setting.
+/// follows the Windows light/dark setting. A fresh install starts Dark
+/// (D104; it was System).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Theme {
-    #[default]
     System,
     Light,
+    #[default]
     Dark,
 }
 
@@ -176,7 +184,9 @@ pub struct Prefs {
     /// Keep the Murmur bar up while idle. Off by default: the bar shows only
     /// while dictating (or recording a meeting).
     pub show_murmur_bar_always: bool,
-    /// `system` / `light` / `dark`.
+    /// `system` / `light` / `dark`; Dark on a fresh install, System for a
+    /// file from before the pref ([`theme_before_pref`]).
+    #[serde(default = "theme_before_pref")]
     pub theme: Theme,
     /// First-run setup finished (or skipped). False only on a fresh
     /// install: a file from before this field reads as true.
@@ -244,7 +254,10 @@ pub struct Prefs {
     pub live_preview_interval_ms: u32,
     /// Hands-free dictation stops by itself after this much silence
     /// following speech (D19; 300-10000 ms, 0 = never). Push-to-talk is
-    /// never ended by silence.
+    /// never ended by silence. A fresh install starts at 0 (D104; it was
+    /// 1.5 s). The field predates the first release and `save` writes every
+    /// field, so every released file holds it and keeps its value; only a
+    /// hand-made file without the key gets 0.
     pub hands_free_silence_ms: u32,
     /// Local LLM cleanup (llama.cpp via the `murmur_llm` plugin). Off by
     /// default (DECISIONS D5): deterministic post-processing always runs.
@@ -291,7 +304,7 @@ impl Default for Prefs {
             mute_audio_while_dictating: true,
             launch_at_login: false,
             show_murmur_bar_always: false,
-            theme: Theme::System,
+            theme: Theme::default(),
             onboarded: false,
             use_ax_context: true,
             cleanup_level: CleanupLevel::Medium,
@@ -317,7 +330,7 @@ impl Default for Prefs {
             spoken_cleanup: true,
             live_preview: false,
             live_preview_interval_ms: 1500,
-            hands_free_silence_ms: murmur_core::endpoint::RECOMMENDED_SILENCE_MS,
+            hands_free_silence_ms: 0,
             llm_enabled: false,
             llm_model_path: None,
             llm_lib_path: None,
@@ -823,10 +836,23 @@ mod tests {
     }
 
     #[test]
-    fn theme_defaults_to_system_and_round_trips() {
-        assert_eq!(Prefs::default().theme, Theme::System);
+    fn theme_defaults_to_dark_and_round_trips() {
+        // D104: a fresh install (no file) starts Dark.
+        assert_eq!(Prefs::default().theme, Theme::Dark);
+        let (fresh, outcome) = Prefs::load(Path::new("no-such-dir/prefs.json"));
+        assert_eq!(outcome, LoadOutcome::Missing);
+        assert_eq!(fresh.theme, Theme::Dark);
+        // A file from before the pref followed Windows and still does.
         let (old, _) = load_str("theme-old", r#"{"enable_sounds": true}"#);
         assert_eq!(old.theme, Theme::System, "files from before the pref");
+        // A saved choice stays, System included.
+        let (sys, _) = load_str("theme-system", r#"{"theme": "system"}"#);
+        assert_eq!(sys.theme, Theme::System);
+        let (light, _) = load_str("theme-light", r#"{"theme": "light"}"#);
+        assert_eq!(light.theme, Theme::Light);
+        // A fresh install's first save writes Dark down.
+        let j = serde_json::to_value(Prefs::default()).unwrap();
+        assert_eq!(j["theme"], "dark");
         let (dark, _) = load_str("theme-dark", r#"{"theme": "dark"}"#);
         assert_eq!(dark.theme, Theme::Dark);
         let j = serde_json::to_value(&dark).unwrap();
@@ -1009,27 +1035,38 @@ mod tests {
     fn hands_free_endpoint_only_for_locked_sessions() {
         use crate::dictation::Mode;
         let mut p = Prefs::default();
-        // D22: murmur_core::endpoint::RECOMMENDED_SILENCE_MS.
-        assert_eq!(p.hands_free_silence_ms, 1500);
+        // D104: a fresh install never ends a dictation on silence.
+        assert_eq!(p.hands_free_silence_ms, 0);
+        assert_eq!(p.session_config_for(Mode::Locked).endpoint_silence_ms, None);
+        assert_eq!(p.validate(), Ok(()));
+        let (fresh, outcome) = Prefs::load(Path::new("no-such-dir/prefs.json"));
+        assert_eq!(outcome, LoadOutcome::Missing);
         assert_eq!(
-            p.hands_free_silence_ms,
-            murmur_core::endpoint::RECOMMENDED_SILENCE_MS
+            fresh.session_config_for(Mode::Locked).endpoint_silence_ms,
+            None
         );
+        p.hands_free_silence_ms = murmur_core::endpoint::RECOMMENDED_SILENCE_MS;
         assert_eq!(p.session_config_for(Mode::Ptt).endpoint_silence_ms, None);
         assert_eq!(
             p.session_config_for(Mode::Locked).endpoint_silence_ms,
             Some(1500)
         );
-        p.hands_free_silence_ms = 0;
-        assert_eq!(p.session_config_for(Mode::Locked).endpoint_silence_ms, None);
-        assert_eq!(p.validate(), Ok(()));
         p.hands_free_silence_ms = 100;
         assert!(p.validate().is_err());
         p.hands_free_silence_ms = 10_001;
         assert!(p.validate().is_err());
-        // Old prefs.json without the field: the new default.
+        // Every released file holds the field: its value stays, 1.5 s included.
+        let (old, _) = load_str(
+            "hf-1500",
+            &format!(r#"{{"prefs_rev":{PREFS_REV},"hands_free_silence_ms":1500}}"#),
+        );
+        assert_eq!(
+            old.session_config_for(Mode::Locked).endpoint_silence_ms,
+            Some(1500)
+        );
+        // A hand-made file without it: the new default.
         let (old, _) = load_str("nofield", "{}");
-        assert_eq!(old.hands_free_silence_ms, 1500);
+        assert_eq!(old.hands_free_silence_ms, 0);
     }
 
     fn load_str(tag: &str, json: &str) -> (Prefs, LoadOutcome) {

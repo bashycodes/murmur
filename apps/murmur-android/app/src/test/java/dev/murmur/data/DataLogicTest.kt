@@ -91,7 +91,8 @@ class FieldContextBuilderTest {
     }
 
     @Test fun handsFreeEndpointPref() {
-        assertEquals("D22: 2000 -> 1500", 1500, Settings().handsFreeEndpointMs())
+        assertEquals("D104: off by default", null, Settings().handsFreeEndpointMs())
+        assertEquals(1500, Settings(endpointSilenceMs = 1500).handsFreeEndpointMs())
         assertEquals(null, Settings(endpointSilenceMs = 0).handsFreeEndpointMs())
         assertEquals(300, Settings(endpointSilenceMs = 10).handsFreeEndpointMs())
         assertEquals(0, Settings.parseEndpointMs(""))
@@ -123,7 +124,7 @@ class FieldContextBuilderTest {
     }
 
     @Test fun endpointDefaultMigratesOnlyTheOldDefault() {
-        assertEquals("never saved", 1500, Settings.migrateEndpointMs(stored = null, migrated = false))
+        assertEquals("never saved: a fresh install (D104 writes 1500 for one from before)", 0, Settings.migrateEndpointMs(stored = null, migrated = false))
         assertEquals("still at the old default", 1500, Settings.migrateEndpointMs(stored = 2000, migrated = false))
         assertEquals("user value kept", 3000, Settings.migrateEndpointMs(stored = 3000, migrated = false))
         assertEquals("user turned it off", 0, Settings.migrateEndpointMs(stored = 0, migrated = false))

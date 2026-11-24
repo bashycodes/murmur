@@ -85,10 +85,10 @@ or the host is a public address. For on-device fallback, either import a model (
 *Settings → Mock engine*.
 
 **4. Smoke checklist (10 minutes).** Note the phone model, Android version and pass/fail per line.
-- [ ] Notes app, **tap** the bubble, say a sentence, stop talking: the preview says
-      `via server`, and after ~1.5 s of silence the dictation ends by itself and the text is
-      inserted (hands-free endpointing; *Settings → Timing & limits → Stop after silence*, default
-      1500 ms since D22; a value you set yourself is kept, an untouched old 2000 becomes 1500).
+- [ ] Notes app, **tap** the bubble, say a sentence, tap again: the preview says `via server` and
+      the text is inserted. With *Settings → Timing & limits → Stop after silence* set to 1500 (off,
+      0, by default on a fresh install since D104; an install from before keeps 1500), stop talking
+      instead: after ~1.5 s of silence the dictation ends by itself (hands-free endpointing).
 - [ ] Long dictation (30 s+, with pauses), *Settings → Timing & limits → Decode while speaking* on (default): the
       text appears well under a second after you stop; the debug line shows `segments` ≥ 2 and
       `pre_asr_ms` > 0. Toggle it off: `segments` 0 and the wait grows with the length.

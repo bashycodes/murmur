@@ -113,7 +113,7 @@ class SettingsUiTest {
         assertTrue(t.toString(), "100% · shrinks to a dot · shake to restore" in t)
         assertTrue("Banking apps" in t)
         assertTrue("Until you delete it. Stored only on this phone." in t)
-        assertTrue(t.any { it.startsWith("Stops after a 1.5 s pause") })
+        assertTrue("D104: a fresh install never auto-ends", t.any { it.startsWith("Stops when you tap") })
         val row = rowTitled(a, "Bubble size")
         assertTrue(row.contentDescription.toString(), row.contentDescription.startsWith("Bubble size, 100%"))
     }

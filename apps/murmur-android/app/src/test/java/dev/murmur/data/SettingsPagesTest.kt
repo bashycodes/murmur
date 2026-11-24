@@ -213,7 +213,8 @@ class SettingsPagesTest {
 
     @Test fun timingBubbleAppsHistorySubtitles() {
         // AndroidSettings.dc.html: "Stops after a 2 s pause · 5 min max", "Banking apps and 2 more", "1 day. Stored only on this phone."
-        assertEquals("Stops after a 1.5 s pause · 5 min max", SettingsSummary.timing(s))
+        assertEquals("D104 default", "Stops when you tap · 5 min max", SettingsSummary.timing(s))
+        assertEquals("Stops after a 1.5 s pause · 5 min max", SettingsSummary.timing(s.copy(endpointSilenceMs = 1500)))
         assertEquals("Stops when you tap · 20 min max", SettingsSummary.timing(s.copy(endpointSilenceMs = 0, capMinutes = 20)))
         assertEquals("Stops after a 2 s pause · 1 min max", SettingsSummary.timing(s.copy(endpointSilenceMs = 2000, capMinutes = 1)))
         assertEquals("100% · shrinks to a dot · shake to restore", SettingsSummary.bubble(s))

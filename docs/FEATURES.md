@@ -186,11 +186,13 @@ removes the wait when you switch, at the cost of about 1 GB of memory.
 
 ## Hands-free and live text
 
-**Stop after a pause** (Both). A hands-free dictation ends by itself after
-1.5 seconds of silence. Holding a key or the bubble is never cut off.
+**Stop after a pause** (Both). A hands-free dictation can end by itself after
+a pause you choose (for example 1.5 seconds of silence). Off by default: a
+hands-free dictation runs until you stop it. Holding a key or the bubble is
+never cut off.
 *How:* Windows: *Settings → General → Hands-free stops after*. Android:
-*Settings → Timing and limits → Stop after silence (ms)*. 0 or "Never" means only
-you stop it.
+*Settings → Timing and limits → Stop after silence (ms)*. "Never" (Windows) or
+0 (Android) turns it off.
 
 **Live transcription** (Both). Murmur transcribes while you speak, so a
 long dictation is ready soon after you stop.

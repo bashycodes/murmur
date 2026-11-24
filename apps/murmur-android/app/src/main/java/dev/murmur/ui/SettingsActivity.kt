@@ -19,6 +19,7 @@ import dev.murmur.R
 import dev.murmur.core.AsrEngine
 import dev.murmur.core.HealthReport
 import dev.murmur.data.showsTranslate
+import dev.murmur.data.AppTheme
 import dev.murmur.data.Backup
 import dev.murmur.data.BackupIo
 import dev.murmur.data.CloudUsage
@@ -177,6 +178,7 @@ class SettingsActivity : Activity() {
         // Review P3: database work off the main thread (the engine reload is non-blocking since C1).
         if (e.purgeHistory) thread(name = "history-purge") { runCatching { app.history.purge(n.retention) } }
         if (e.pruneRecordings) thread(name = "history-recordings") { runCatching { app.history.pruneAudio(n.retryAudioKeep) } }
+        if (n.theme != old.theme) ThemeMode.apply(this, n.theme)
         if (e.reloadEngine) app.engine.reload()
         // H5: Hebrew with a Hebrew model installed loads that model instead (one model in RAM).
         else if (n.language != old.language) app.engine.ensureLanguage()
@@ -302,6 +304,18 @@ class SettingsActivity : Activity() {
             val bubble = rowCard("Bubble size") { open(Page.BUBBLE) }
             val apps = rowCard("Excluded apps") { open(Page.APPS) }
             val timing = rowCard("Timing and limits") { open(Page.TIMING) }
+
+            sectionLabel("Theme")
+            card {
+                choiceRows(
+                    listOf(
+                        DevUi.Choice(AppTheme.DARK, "Dark"),
+                        DevUi.Choice(AppTheme.LIGHT, "Light"),
+                        DevUi.Choice(AppTheme.SYSTEM, "System", "Follows the phone's dark theme setting"),
+                    ),
+                    app.settings.load().theme,
+                ) { t -> applyNow { copy(theme = t) } }
+            }
 
             sectionLabel("Models")
             val speechRow = rowCard("Speech to text") { open(Page.SPEECH) }
@@ -488,6 +502,8 @@ class SettingsActivity : Activity() {
             runOnUiThread {
                 if (r.isSuccess) {
                     Toast.makeText(this, "Restored. Enter your API keys again if you use them.", Toast.LENGTH_LONG).show()
+                    // The backup's theme (or the kept System of an older one) applies now, not at the next start.
+                    ThemeMode.apply(this, app.settings.load().theme)
                     if (alive()) recreate()
                 } else if (alive()) {
                     AlertDialog.Builder(this)
