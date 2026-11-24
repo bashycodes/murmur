@@ -194,3 +194,15 @@ input.fl-input { font-size: 15px; line-height: 20px; padding: 7px 12px; }
 .fl-row-control > .fl-input.is-wide, .fl-row-control > .fl-select.is-wide { width: 280px; }
 .fl-row-control > .fl-input.is-narrow { width: 96px; }
 .fl-badge-dot { width: 8px; height: 8px; padding: 0; border-radius: 50%; }
+
+/* Opt-out lock (src/lib/opt-out-lock.ts): the "<feature> is off" banner and
+   the fieldset around a locked page's controls. The fieldset adds no box of
+   its own (its children stay the page's flex items); while disabled its
+   controls are greyed out and can't be used, and keep their own states. */
+.lw-optout { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 12px; background: var(--background-secondary); color: var(--foreground); font: 400 15px/20px var(--font-sans); }
+.lw-optout[hidden] { display: none; }
+.lw-optout-text { flex: 1; margin: 0; }
+.lw-optout .fl-btn { flex: none; }
+fieldset.lw-optout-region { display: contents; border: 0; margin: 0; padding: 0; min-width: 0; }
+fieldset.lw-optout-region:disabled > * { opacity: .5; cursor: not-allowed; }
+fieldset.lw-optout-region:disabled > * * { pointer-events: none; }
