@@ -447,6 +447,7 @@ impl CleanupCall {
             generation_id: self.generation_id.clone(),
             ttft_ms: self.ttft_ms,
             latency_ms: self.latency_ms,
+            ..Default::default()
         }
     }
 }

@@ -104,6 +104,18 @@ pub struct Timings {
     /// when 0 (language ID off).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub lid_ms: u64,
+    /// Hotword phrases the decoder got for this dictation
+    /// ([`AsrEngine::hotwords_used`]); 0 for engines that take none and
+    /// when nothing was decoded (no speech). A count, never the phrases.
+    /// Omitted when 0.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub hotwords: u64,
+    /// Dictionary and screen-word entries on the DICTIONARY line of the
+    /// prompt the cleaner that ran was given
+    /// ([`cleanup::CleanUsage::dict_terms_in_prompt`]; 0 when none ran). A count,
+    /// never the terms. Omitted when 0.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub dict_terms_in_prompt: u64,
 }
 
 fn is_zero(v: &u64) -> bool {
@@ -2040,6 +2052,8 @@ impl Worker {
             }
         };
         r.timings.asr_ms = t.elapsed().as_millis() as u64;
+        // A decode ran: the decoder got the hotwords.
+        r.timings.hotwords = s.asr.hotwords_used(&req) as u64;
         r.language = out.language.or_else(|| s.route_language.clone());
         r.asr_text = out.text.trim().to_string();
         if r.asr_text.is_empty() {
@@ -2110,9 +2124,12 @@ impl Worker {
         r.timings.asr_audio_ms =
             (pieces.iter().map(|p| p.asr_samples).sum::<usize>() * 1000 / SAMPLE_RATE) as u64;
         if spoken.is_empty() {
+            // No piece had speech: nothing was decoded, so no hotwords.
             r.empty_reason = Some("no_speech".into());
             return r;
         }
+        // A decode ran: the decoder got the hotwords.
+        r.timings.hotwords = s.asr.hotwords_used(&base) as u64;
         // The language of the piece with the most audio.
         r.language = spoken
             .iter()
@@ -2309,6 +2326,9 @@ fn finish_text(
             language.as_deref(),
         );
         r.timings.llm_ms = t.elapsed().as_millis() as u64;
+        if let Some(n) = usage.dict_terms_in_prompt {
+            r.timings.dict_terms_in_prompt = n as u64;
+        }
         r.llm = usage.engine.is_some().then_some(usage);
         match outcome {
             CleanOutcome::Formatted(f) => {
@@ -2396,6 +2416,9 @@ fn finish_text(
             language.as_deref(),
         );
         // `None` when every backend refused up front (nothing ran).
+        if let Some(n) = usage.dict_terms_in_prompt {
+            r.timings.dict_terms_in_prompt = n as u64;
+        }
         r.llm = usage.engine.is_some().then_some(usage);
         match outcome {
             CleanOutcome::Formatted(f) => {

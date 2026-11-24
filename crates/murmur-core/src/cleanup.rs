@@ -40,6 +40,10 @@ pub struct CleanPrompt {
     /// scope can rebuild it. `None` for prompts not built from a
     /// dictation (commands, transforms, tests).
     pub source: Option<Arc<CleanRequest>>,
+    /// Entries on the user message's DICTIONARY line (D64 terms plus
+    /// screen words), set where the line is built; 0 without one. Only a
+    /// count, for the server log.
+    pub dict_terms_in_prompt: usize,
 }
 
 /// What a [`CleanRequest`] asks for (D53). Cleanup is the default and is
@@ -326,6 +330,24 @@ pub struct CleanUsage {
     pub ttft_ms: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub latency_ms: Option<u32>,
+    /// [`CleanPrompt::dict_terms_in_prompt`] of the prompt the cleaner
+    /// that ran was given (a [`ChainCleaner`] hop's own, narrower one);
+    /// `None` when none ran. Server log only, never on the wire.
+    #[serde(skip)]
+    pub dict_terms_in_prompt: Option<usize>,
+}
+
+impl CleanUsage {
+    /// Record that a cleaner given a prompt with `n` DICTIONARY entries
+    /// produced this usage: a [`ChainCleaner`] hop's own count is kept,
+    /// and there is none when no cleaner ran (`engine` unset).
+    fn note_dict_terms(&mut self, n: usize) {
+        if self.engine.is_none() {
+            self.dict_terms_in_prompt = None;
+        } else {
+            self.dict_terms_in_prompt.get_or_insert(n);
+        }
+    }
 }
 
 pub trait Cleaner: Send + Sync {
@@ -772,7 +794,10 @@ impl Cleaner for ChainCleaner {
                 }
                 _ => deadline,
             };
-            let r = run_hop(hop, p, hop_deadline, deadline, cancel);
+            let n = p.dict_terms_in_prompt;
+            let mut r = run_hop(hop, p, hop_deadline, deadline, cancel);
+            // This hop's own prompt, which may be narrower than the chain's.
+            r.1.note_dict_terms(n);
             if r.0.is_ok() {
                 return r;
             }
@@ -873,6 +898,7 @@ pub fn clean_text(
     let mut req = req.clone();
     req.scope = PromptScope::FULL;
     let prompt = req.prompt_for(cleaner.prompt_scope());
+    let n = prompt.dict_terms_in_prompt;
     let ms = if req.timeout_ms == 0 {
         crate::config::SessionConfig::default().llm_timeout_ms
     } else {
@@ -887,19 +913,21 @@ pub fn clean_text(
     let pending = CleanUsage {
         engine: Some(cleaner.engine().into()),
         model: cleaner.model(),
+        dict_terms_in_prompt: Some(n),
         ..Default::default()
     };
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         let _ = tx.send(cleaner.clean_metered(&prompt, deadline, &flag));
     });
-    let (res, usage) = match rx.recv_timeout(timeout) {
+    let (res, mut usage) = match rx.recv_timeout(timeout) {
         Ok(v) => v,
         Err(_) => {
             cancel.store(true, Ordering::Relaxed);
             return (Err(FallbackReason::Timeout.as_str()), pending, t.elapsed());
         }
     };
+    usage.note_dict_terms(n);
     let out = match res {
         Ok(s) => Ok(s),
         Err(e) => Err(FallbackReason::Error(e.code().to_string()).as_str()),
@@ -1466,6 +1494,7 @@ pub fn build_prompt_versioned(
         terms.extend(ctx.screen_words.iter().map(String::as_str));
     }
     terms.truncate(200);
+    let dict_terms_in_prompt = terms.iter().filter(|t| !t.trim().is_empty()).count();
     let terms = terms.join(", ");
     let (before, selected, after) = if scope.surrounding_text {
         (prompt_before(ctx), ctx.selected.clone(), prompt_after(ctx))
@@ -1502,6 +1531,7 @@ pub fn build_prompt_versioned(
     // Never sent to a cleaner (IDE file names are unused since D82).
     ctx.file_names.clear();
     CleanPrompt {
+        dict_terms_in_prompt,
         system,
         examples,
         user,
@@ -1808,18 +1838,20 @@ fn run_metered(
         .source
         .as_ref()
         .is_none_or(|s| s.task.keeps_language());
+    let n = prompt.dict_terms_in_prompt;
     let cancel = Arc::new(AtomicBool::new(false));
     let flag = AbortFlag(Some(cancel.clone()));
     let pending = CleanUsage {
         engine: Some(cleaner.engine().into()),
         model: cleaner.model(),
+        dict_terms_in_prompt: Some(n),
         ..Default::default()
     };
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         let _ = tx.send(cleaner.clean_metered(&prompt, deadline, &flag));
     });
-    let (res, usage) = match rx.recv_timeout(timeout) {
+    let (res, mut usage) = match rx.recv_timeout(timeout) {
         Ok(v) => v,
         Err(_) => {
             cancel.store(true, Ordering::Relaxed);
@@ -1831,6 +1863,7 @@ fn run_metered(
             );
         }
     };
+    usage.note_dict_terms(n);
     let unwrap = |s: &str| unwrap_output_for(s, asr_text);
     let out = match res {
         Ok(s) if ai => {
@@ -1995,6 +2028,78 @@ mod tests {
     }
 
     #[test]
+    fn dict_terms_in_prompt_counts_the_dictionary_line() {
+        let d = Dictionary {
+            entries: vec![DictEntry::word("Kubernetes")],
+        };
+        let mut c = ctx(AppCategory::Email);
+        // An entry with a comma in it is still one entry.
+        c.screen_words = vec!["Quorvel".into(), "Lintrava, Ashby".into()];
+        let p = build_prompt(
+            "the kubernetis pods",
+            CleanupLevel::Medium,
+            Style::Casual,
+            &c,
+            &d,
+        );
+        assert_eq!(p.dict_terms_in_prompt, 3, "{}", p.user);
+        c.screen_words.clear();
+        let p = build_prompt("hello", CleanupLevel::Medium, Style::Casual, &c, &d);
+        assert_eq!(p.dict_terms_in_prompt, 0, "{}", p.user);
+    }
+
+    #[test]
+    fn usage_counts_the_prompt_of_the_chain_hop_that_ran() {
+        /// Refuses up front, reporting no usage (nothing ran).
+        struct Refuse;
+        impl Cleaner for Refuse {
+            fn clean(&self, _: &CleanPrompt, _: Instant) -> Result<String, CleanError> {
+                Err(CleanError::Unavailable("down".into()))
+            }
+            fn clean_metered(
+                &self,
+                p: &CleanPrompt,
+                d: Instant,
+                _: &AbortFlag,
+            ) -> (Result<String, CleanError>, CleanUsage) {
+                (self.clean(p, d), CleanUsage::default())
+            }
+        }
+        /// Answers, but may not see screen words.
+        struct NoScreen;
+        impl Cleaner for NoScreen {
+            fn clean(&self, p: &CleanPrompt, _: Instant) -> Result<String, CleanError> {
+                Ok(p.transcript.clone())
+            }
+            fn prompt_scope(&self) -> PromptScope {
+                PromptScope {
+                    screen_words: false,
+                    ..PromptScope::FULL
+                }
+            }
+        }
+        let d = Dictionary {
+            entries: vec![DictEntry::word("Kubernetes")],
+        };
+        let mut c = ctx(AppCategory::Email);
+        c.screen_words = vec!["Quorvel".into(), "Marbleford".into()];
+        let text = "the kubernetis pods";
+        let p = build_prompt(text, CleanupLevel::Medium, Style::Casual, &c, &d);
+        assert_eq!(p.dict_terms_in_prompt, 3);
+        let run = |hops: Vec<Arc<dyn Cleaner>>| {
+            let chain: Arc<dyn Cleaner> = Arc::new(ChainCleaner::new(hops));
+            run_cleanup_metered(chain, p.clone(), text, Duration::from_secs(5)).1
+        };
+        // The narrow hop answered with only the dictionary term.
+        let u = run(vec![Arc::new(Refuse), Arc::new(NoScreen)]);
+        assert!(u.engine.is_some(), "{u:?}");
+        assert_eq!(u.dict_terms_in_prompt, Some(1));
+        // Nothing ran: no count.
+        let u = run(vec![Arc::new(Refuse), Arc::new(Refuse)]);
+        assert_eq!(u.dict_terms_in_prompt, None);
+    }
+
+    #[test]
     fn prompt_names_a_non_english_language() {
         let ctx = FieldContext::default();
         let base = build_prompt(
@@ -2134,6 +2239,7 @@ mod tests {
             user: String::new(),
             transcript: asr.into(),
             source: None,
+            dict_terms_in_prompt: 0,
         };
         run_cleanup(cl, p, asr, Duration::from_millis(timeout_ms))
     }

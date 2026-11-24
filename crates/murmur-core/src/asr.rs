@@ -151,6 +151,12 @@ pub trait AsrEngine: Send + Sync {
     fn segmentable(&self) -> bool {
         true
     }
+
+    /// How many hotword phrases a decode of `req` passes to the decoder
+    /// (the server's `hotwords=` log field). 0 for engines that take none.
+    fn hotwords_used(&self, _req: &AsrRequest) -> usize {
+        0
+    }
 }
 
 /// Test engine whose text is a function of the audio: one word `w<k>` per
@@ -300,6 +306,16 @@ pub fn hotword_phrases(req: &AsrRequest) -> Vec<String> {
         .cloned()
         .chain(prompt_phrases(&req.initial_prompt))
         .collect()
+}
+
+/// How many of [`hotword_phrases`] a sherpa engine's decode is given
+/// (deduped, at most `MAX_HOTWORDS`); 0 without beam search to take them.
+#[cfg(feature = "parakeet")]
+pub fn sherpa_hotwords_used(supports_hotwords: bool, req: &AsrRequest) -> usize {
+    if !supports_hotwords {
+        return 0;
+    }
+    murmur_asr_sherpa::hotwords_count(&hotword_phrases(req))
 }
 
 /// The phrase list of a [`build_initial_prompt`] string (`"a, b c, d."`).

@@ -292,6 +292,7 @@ pub fn build_prompt(instruction: &str, selected: Option<&str>) -> CleanPrompt {
                 user: locked_user(user_transform(instruction, sel), lock),
                 transcript: budget_source(sel, TRANSFORM_BUDGET_CHARS),
                 source: None,
+                dict_terms_in_prompt: 0,
             }
         }
         None => CleanPrompt {
@@ -305,6 +306,7 @@ pub fn build_prompt(instruction: &str, selected: Option<&str>) -> CleanPrompt {
             user: user_generate(instruction),
             transcript: budget_source(instruction, GENERATE_BUDGET_CHARS),
             source: None,
+            dict_terms_in_prompt: 0,
         },
     }
 }

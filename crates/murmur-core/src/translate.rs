@@ -240,7 +240,8 @@ pub fn build_prompt(
     let target = primary_language(target).unwrap_or_else(|| target.to_string());
     let source = source.and_then(primary_language);
     let vocab = dictionary.vocabulary();
-    let terms = terms::select_terms(&vocab, text, terms::MAX_PROMPT_TERMS).join(", ");
+    let picked = terms::select_terms(&vocab, text, terms::MAX_PROMPT_TERMS);
+    let terms = picked.join(", ");
     let examples = EXAMPLES
         .iter()
         .map(|(src, said, out)| {
@@ -267,6 +268,7 @@ pub fn build_prompt(
             scope: PromptScope::MINIMAL,
             ..Default::default()
         })),
+        dict_terms_in_prompt: picked.len(),
     }
 }
 
