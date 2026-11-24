@@ -14,6 +14,14 @@
 //! repeats both with a full capture: older messages (the other screens'
 //! bubbles, names and all) above the screen, up to the phone's 2000-char
 //! cap (`ScreenWords.MAX_CHARS`), as a chat scrolled further would give.
+//! Screens with no English `said` (the Hebrew ones) get no `*_full` rows.
+//!
+//! The request carries the words as `screen_terms` too, as `engine.rs`
+//! `asr_request` does, so they get the screen hotword score
+//! (`SCREEN_HOTWORDS_SCORE`, or `MURMUR_SCREEN_HOTWORDS_SCORE` for a
+//! sweep). `MURMUR_SCREEN_ENGINE=sherpa_online` decodes with the streaming
+//! zipformer instead of Parakeet (`MURMUR_SCREEN_ASR` = its folder,
+//! language `MURMUR_SCREEN_LANG`, default `he`).
 //!
 //! `cargo test -p murmur-core --features wav,parakeet --release --test screen_names_e2e -- --nocapture`
 
@@ -25,6 +33,7 @@ use murmur_core::audio;
 use murmur_core::dictionary::Dictionary;
 use murmur_core::parakeet::ParakeetAsr;
 use murmur_core::screen_names::name_candidates;
+use murmur_core::sherpa_online::SherpaOnlineAsr;
 use serde_json::{json, Value};
 
 fn screens() -> Vec<Value> {
@@ -46,14 +55,16 @@ const PHONE_MAX_CHARS: usize = 2000;
 
 /// `own` below older messages: the bubbles (entries of more than 3 words)
 /// of the other English screens, from the next one on, while the whole
-/// stays within [`PHONE_MAX_CHARS`].
+/// stays within [`PHONE_MAX_CHARS`]. Empty for a non-English screen.
 fn full_capture(screens: &[Value], id: &Value, own: &[String]) -> Vec<String> {
     let own_chars: usize = own.iter().map(|e| e.chars().count()).sum();
     let english: Vec<&Value> = screens
         .iter()
         .filter(|s| !s["said"].as_array().unwrap().is_empty())
         .collect();
-    let at = english.iter().position(|s| &s["id"] == id).unwrap();
+    let Some(at) = english.iter().position(|s| &s["id"] == id) else {
+        return Vec::new();
+    };
     let mut older = Vec::new();
     let mut chars = own_chars;
     'fill: for k in 1..english.len() {
@@ -86,7 +97,13 @@ fn screen_words_as_hotwords() {
         .ok()
         .and_then(|t| t.parse().ok())
         .unwrap_or(4);
-    let engine = ParakeetAsr::load(&asr, threads).expect("load parakeet");
+    let engine: Box<dyn AsrEngine> = match std::env::var("MURMUR_SCREEN_ENGINE").as_deref() {
+        Ok("sherpa_online") => {
+            let lang = std::env::var("MURMUR_SCREEN_LANG").unwrap_or_else(|_| "he".into());
+            Box::new(SherpaOnlineAsr::load(&asr, threads, Some(&lang)).expect("load zipformer"))
+        }
+        _ => Box::new(ParakeetAsr::load(&asr, threads).expect("load parakeet")),
+    };
     let screens = screens();
     let mut out = std::fs::File::create(out).unwrap();
     for line in std::fs::read_to_string(m).unwrap().lines() {
@@ -99,16 +116,24 @@ fn screen_words_as_hotwords() {
         let full = full_capture(&screens, &screen["id"], &bubbles);
         let pcm16 = audio::read_wav_16k_mono(Path::new(row["path"].as_str().unwrap())).unwrap();
         let pcm: Vec<f32> = pcm16.iter().map(|&s| s as f32 / 32768.0).collect();
+        // As the session does for quiet speech: the Hebrew FLEURS bench
+        // clips sit below the engines' silence gate (no-op for the rest).
+        let pcm = murmur_core::vad::asr_level(&pcm).into_owned();
         let mut rec = json!({"id": row["id"], "set": row["set"]});
-        for (mode, words) in [
+        let modes = [
             ("none", Vec::new()),
             ("bubbles", bubbles.clone()),
             ("candidates", name_candidates(&bubbles)),
             ("bubbles_full", full.clone()),
             ("candidates_full", name_candidates(&full)),
-        ] {
+        ];
+        for (mode, words) in modes {
+            if mode.ends_with("_full") && full.is_empty() {
+                continue;
+            }
             let req = AsrRequest {
                 initial_prompt: build_initial_prompt(&Dictionary::default(), &words),
+                screen_terms: words.clone(),
                 ..Default::default()
             };
             let text = engine.transcribe(&pcm, &req).unwrap().text;

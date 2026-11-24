@@ -11,7 +11,7 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use murmur_asr_sherpa::{OnlineConfig, OnlineEngine, Search};
+use murmur_asr_sherpa::{Hotword, OnlineConfig, OnlineEngine, Search};
 
 use crate::asr::{AsrEngine, AsrError, AsrOutput, AsrRequest};
 use crate::parakeet::implausibly_short;
@@ -23,6 +23,9 @@ pub struct SherpaOnlineAsr {
     language: Option<String>,
     /// Beam results re-decoded greedy (tests, logs).
     greedy_retries: AtomicU64,
+    /// Hotword score of the screen's name candidates
+    /// ([`crate::asr::SCREEN_HOTWORDS_SCORE`] unless overridden).
+    screen_score: f32,
 }
 
 impl SherpaOnlineAsr {
@@ -35,6 +38,7 @@ impl SherpaOnlineAsr {
             engine,
             language: language.map(str::to_string),
             greedy_retries: AtomicU64::new(0),
+            screen_score: crate::asr::screen_hotwords_score(),
         })
     }
 
@@ -51,7 +55,7 @@ impl SherpaOnlineAsr {
         self.greedy_retries.load(Ordering::Relaxed)
     }
 
-    fn decode(&self, pcm: &[f32], hotwords: &[String], s: Search) -> Result<String, AsrError> {
+    fn decode(&self, pcm: &[f32], hotwords: &[Hotword], s: Search) -> Result<String, AsrError> {
         self.engine
             .transcribe_with(pcm, hotwords, s)
             .map_err(|e| AsrError::Transcribe(e.to_string()))
@@ -65,7 +69,7 @@ impl AsrEngine for SherpaOnlineAsr {
         if req.abort.is_set() {
             return Err(AsrError::Transcribe("aborted".into()));
         }
-        let hotwords = crate::asr::hotword_phrases(req);
+        let hotwords = crate::asr::sherpa_hotwords_scored(req, self.screen_score);
         let search = self.engine.default_search(&hotwords);
         let mut text = self.decode(pcm, &hotwords, search)?;
         // Same guard as Parakeet: a beam result that is empty or

@@ -308,6 +308,65 @@ pub fn hotword_phrases(req: &AsrRequest) -> Vec<String> {
         .collect()
 }
 
+/// Per-token hotword bonus for the screen's name candidates
+/// (`AsrRequest::screen_terms`) on sherpa engines; dictionary terms and the
+/// prompt's other phrases keep the recognizer's default
+/// (`murmur_asr_sherpa::DEFAULT_HOTWORDS_SCORE`, 1.0). Swept on the
+/// screen-names probe (docs/findings/2026-11-24-screen-names.md, 1.0-4.0):
+/// the bench WER stayed flat up to 3.5 (English, Parakeet) and 4.0
+/// (Hebrew, zipformer), and Parakeet's name accuracy stopped rising at 1.5
+/// (35 % -> 40 %), so the ticket's range top, 2.5, keeps a margin below
+/// the 4.0 where English rose (+0.3 pt).
+pub const SCREEN_HOTWORDS_SCORE: f32 = 2.5;
+
+/// [`hotword_phrases`] for a sherpa decode: each phrase that is one of
+/// `screen_terms` (and not a dictionary term) gets
+/// [`SCREEN_HOTWORDS_SCORE`], every other phrase the recognizer's default.
+#[cfg(feature = "parakeet")]
+pub fn sherpa_hotwords(req: &AsrRequest) -> Vec<murmur_asr_sherpa::Hotword> {
+    sherpa_hotwords_scored(req, SCREEN_HOTWORDS_SCORE)
+}
+
+/// The screen score a sherpa adapter uses: `MURMUR_SCREEN_HOTWORDS_SCORE`
+/// when set to a positive number (a tuning knob for probes and field
+/// tests, like `MURMUR_PARAKEET_HOTWORDS_SCORE`), else
+/// [`SCREEN_HOTWORDS_SCORE`].
+#[cfg(feature = "parakeet")]
+pub(crate) fn screen_hotwords_score() -> f32 {
+    std::env::var("MURMUR_SCREEN_HOTWORDS_SCORE")
+        .ok()
+        .and_then(|s| s.parse::<f32>().ok())
+        .filter(|s| s.is_finite() && *s > 0.0)
+        .unwrap_or(SCREEN_HOTWORDS_SCORE)
+}
+
+/// [`sherpa_hotwords`] with another screen score.
+#[cfg(feature = "parakeet")]
+pub fn sherpa_hotwords_scored(
+    req: &AsrRequest,
+    screen_score: f32,
+) -> Vec<murmur_asr_sherpa::Hotword> {
+    use murmur_asr_sherpa::Hotword;
+    let key = |s: &str| s.trim().to_lowercase();
+    let dict: Vec<String> = req.dictionary_terms.iter().map(|t| key(t)).collect();
+    let screen: Vec<String> = req
+        .screen_terms
+        .iter()
+        .map(|t| key(t))
+        .filter(|k| !dict.contains(k))
+        .collect();
+    hotword_phrases(req)
+        .into_iter()
+        .map(|p| {
+            if screen.contains(&key(&p)) {
+                Hotword::scored(p, screen_score)
+            } else {
+                Hotword::new(p)
+            }
+        })
+        .collect()
+}
+
 /// How many of [`hotword_phrases`] a sherpa engine's decode is given
 /// (deduped, at most `MAX_HOTWORDS`); 0 without beam search to take them.
 #[cfg(feature = "parakeet")]
@@ -315,7 +374,7 @@ pub fn sherpa_hotwords_used(supports_hotwords: bool, req: &AsrRequest) -> usize 
     if !supports_hotwords {
         return 0;
     }
-    murmur_asr_sherpa::hotwords_count(&hotword_phrases(req))
+    murmur_asr_sherpa::hotwords_count(&sherpa_hotwords(req))
 }
 
 /// The phrase list of a [`build_initial_prompt`] string (`"a, b c, d."`).
