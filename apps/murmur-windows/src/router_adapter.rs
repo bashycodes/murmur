@@ -928,11 +928,13 @@ impl CoreApi for RouterAdapter {
         &self,
         req: &murmur_core::translate::Request,
         timeout: std::time::Duration,
-    ) -> Result<murmur_core::translate::Translation, String> {
+    ) -> Result<murmur_core::translate::Translation, murmur_core::translate::TranslateError> {
         let base = self.local.as_ref().and_then(|a| a.cleaner());
         let cleaner = self.router.cleanup_cleaner(base);
         if cleaner.is_none() && self.local_llm_loading() && !req.text.trim().is_empty() {
-            return Err(LLM_LOADING_MSG.into());
+            return Err(murmur_core::translate::TranslateError::Backend(
+                LLM_LOADING_MSG.into(),
+            ));
         }
         crate::core_api::translate_on(cleaner, req, timeout)
     }
@@ -969,6 +971,23 @@ impl RouterAdapter {
 
 /// Command Mode pill while the on-device LLM is still loading.
 pub const LLM_LOADING_MSG: &str = "AI model is still loading, try again in a moment";
+
+/// D90: the translate pill's notice after a dictation was typed as said
+/// because this PC's LLM was still loading (`translate` refuses with
+/// [`LLM_LOADING_MSG`]).
+pub const TRANSLATE_LOADING_NOTICE: &str = "AI still loading. Typed as said.";
+
+/// D90: what the translate pill says for `e`: the core's
+/// `TranslateError::notice`, or [`TRANSLATE_LOADING_NOTICE`] for this
+/// shell's own "still loading" refusal.
+pub fn translate_notice(e: &murmur_core::translate::TranslateError) -> String {
+    match e {
+        murmur_core::translate::TranslateError::Backend(m) if m == LLM_LOADING_MSG => {
+            TRANSLATE_LOADING_NOTICE.into()
+        }
+        e => e.notice(),
+    }
+}
 
 // ------------------------------------------------------------------ meetings
 
@@ -1328,7 +1347,7 @@ mod tests {
             ("HELLO THERE", "fr", true)
         );
         let e = command_rig(false).translate(&req, t).unwrap_err();
-        assert!(e.contains("needs AI"), "{e}");
+        assert_eq!(e, murmur_core::translate::TranslateError::NoLlm);
     }
 
     #[test]

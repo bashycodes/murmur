@@ -33,7 +33,9 @@ fn input(v: &Value) -> Result<Translation, TranslateError> {
         "no_llm" => TranslateError::NoLlm,
         "timeout" => TranslateError::Timeout { secs: num("secs") },
         "empty" => TranslateError::Empty,
-        "not_translated" => TranslateError::NotTranslated,
+        "not_translated" => TranslateError::NotTranslated {
+            target: v["target"].as_str().unwrap().into(),
+        },
         "backend" => TranslateError::Backend(v["detail"].as_str().unwrap().into()),
         other => panic!("unknown kind {other}"),
     })
@@ -47,6 +49,7 @@ fn result_json_matches_the_shared_vectors() {
         let r = input(&c["input"]);
         if let Err(e) = &r {
             kinds.insert(e.kind());
+            assert_eq!(e.notice(), c["notice"].as_str().unwrap(), "{}", c["input"]);
         }
         assert_eq!(result_json(&r), c["json"], "{}", c["input"]);
     }
