@@ -260,8 +260,14 @@ internal class DevUi(val activity: Activity) {
         }
     }
 
-    /** Icon + title + current value + chevron; the whole row is one touch target / a11y node. */
-    fun LinearLayout.navRow(iconRes: Int?, title: String, subtitle: String = "", danger: Boolean = false, chevron: Boolean = true, onClick: () -> Unit): NavRow {
+    /**
+     * Icon + title + current value + chevron; the whole row is one touch target / a11y node.
+     * [endIcon] replaces the chevron, e.g. the external-link arrow of a row that opens the browser.
+     */
+    fun LinearLayout.navRow(
+        iconRes: Int?, title: String, subtitle: String = "", danger: Boolean = false, chevron: Boolean = true,
+        endIcon: Int = R.drawable.ic_lw_chevron, onClick: () -> Unit,
+    ): NavRow {
         val (texts, ts) = titleSub(title, subtitle, if (danger) p.danger else p.text)
         val row = LinearLayout(ctx).apply {
             rowBox(true, endPad = 16)
@@ -270,7 +276,7 @@ internal class DevUi(val activity: Activity) {
                 (layoutParams as LinearLayout.LayoutParams).marginEnd = dp(16)
             })
             addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(12) })
-            if (chevron) addView(icon(R.drawable.ic_lw_chevron, p.text, 22))
+            if (chevron) addView(icon(endIcon, p.text, 22))
         }
         addView(row)
         return NavRow(row, ts.first, ts.second).also { it.setSubtitle(subtitle) }
