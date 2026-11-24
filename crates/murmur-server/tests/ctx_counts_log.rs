@@ -10,8 +10,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use common::*;
-use murmur_core::asr::{AsrEngine, AsrError, AsrOutput, AsrRequest};
-use murmur_core::cleanup::{CleanError, CleanPrompt, CleanRequest, Cleaner};
+use murmur_core::asr::{AbortFlag, AsrEngine, AsrError, AsrOutput, AsrRequest};
+use murmur_core::cleanup::{CleanError, CleanPrompt, CleanRequest, CleanUsage, Cleaner};
 use murmur_core::config::{CleanupLevel, FieldContext, SessionConfig};
 use murmur_core::dictionary::{DictEntry, Dictionary};
 use murmur_core::MurmurCore;
@@ -77,12 +77,30 @@ impl Cleaner for Upper {
     }
 }
 
-async fn server() -> ServerHandle {
+/// Refuses every request up front: no LLM call runs.
+struct Refuse;
+
+impl Cleaner for Refuse {
+    fn clean(&self, _: &CleanPrompt, _: Instant) -> Result<String, CleanError> {
+        Err(CleanError::Unavailable("down".into()))
+    }
+
+    fn clean_metered(
+        &self,
+        p: &CleanPrompt,
+        d: Instant,
+        _: &AbortFlag,
+    ) -> (Result<String, CleanError>, CleanUsage) {
+        (self.clean(p, d), CleanUsage::default())
+    }
+}
+
+async fn server(cleaner: impl Cleaner + 'static) -> ServerHandle {
     logs();
     let cfg = mock_cfg("unused");
     let core = MurmurCore::from_engines(
         Arc::new(HotwordAsr),
-        Some(Arc::new(Upper) as Arc<dyn Cleaner>),
+        Some(Arc::new(cleaner) as Arc<dyn Cleaner>),
     );
     let pool = Pool::from_cores(vec![Arc::new(core)], &cfg.model, cfg.max_queue);
     let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -140,7 +158,7 @@ async fn line(msg: &str, peer: SocketAddr) -> String {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn result_line_counts_screen_words_hotwords_and_prompt_terms() {
-    let s = server().await;
+    let s = server(Upper).await;
     let mut ws = connect(s.addr(), Some(TOKEN)).await.unwrap();
     let peer = local_addr(&ws);
     hello(&mut ws).await;
@@ -183,9 +201,10 @@ async fn result_line_counts_screen_words_hotwords_and_prompt_terms() {
     );
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn cleaned_line_counts_screen_words_and_prompt_terms() {
-    let s = server().await;
+/// Sends a text-only cleanup of `HEARD` with the invented context; returns
+/// whether it came back cleaned, and the `cleaned` log line.
+async fn clean_with(cleaner: impl Cleaner + 'static) -> (bool, String) {
+    let s = server(cleaner).await;
     let mut ws = connect(s.addr(), Some(TOKEN)).await.unwrap();
     let peer = local_addr(&ws);
     hello(&mut ws).await;
@@ -205,14 +224,30 @@ async fn cleaned_line_counts_screen_words_and_prompt_terms() {
         },
     )
     .await;
-    match recv(&mut ws).await {
-        Some(ServerMsg::Cleaned(c)) => assert!(c.text.is_some(), "{c:?}"),
+    let ok = match recv(&mut ws).await {
+        Some(ServerMsg::Cleaned(c)) => c.text.is_some(),
         other => panic!("expected cleaned, got {other:?}"),
-    }
-    let l = line(" cleaned", peer).await;
+    };
+    (ok, line(" cleaned", peer).await)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cleaned_line_counts_screen_words_and_prompt_terms() {
+    let (ok, l) = clean_with(Upper).await;
+    assert!(ok, "{l}");
     // No ASR on a text-only cleanup: no hotwords.
     assert!(
         l.contains("ctx_screen_words=3 hotwords=0 dict_terms_in_prompt=4"),
+        "{l}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cleaned_line_counts_no_prompt_terms_when_no_llm_ran() {
+    let (ok, l) = clean_with(Refuse).await;
+    assert!(!ok, "{l}");
+    assert!(
+        l.contains("ctx_screen_words=3 hotwords=0 dict_terms_in_prompt=0"),
         "{l}"
     );
 }

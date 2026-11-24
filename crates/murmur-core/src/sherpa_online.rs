@@ -93,6 +93,6 @@ impl AsrEngine for SherpaOnlineAsr {
     }
 
     fn hotwords_used(&self, req: &AsrRequest) -> usize {
-        crate::parakeet::hotwords_passed(self.engine.supports_hotwords(), req)
+        crate::asr::sherpa_hotwords_used(self.engine.supports_hotwords(), req)
     }
 }

@@ -274,6 +274,17 @@ pub fn hotwords_arg<S: AsRef<str>>(phrases: &[S]) -> String {
     out.join("/")
 }
 
+/// How many phrases [`hotwords_arg`] keeps of `phrases`: the count a
+/// beam-search decode is given.
+pub fn hotwords_count<S: AsRef<str>>(phrases: &[S]) -> usize {
+    let arg = hotwords_arg(phrases);
+    if arg.is_empty() {
+        0
+    } else {
+        arg.split('/').count()
+    }
+}
+
 pub fn is_silent(pcm: &[f32]) -> bool {
     if pcm.is_empty() {
         return true;
@@ -613,6 +624,17 @@ mod tests {
         let many: Vec<String> = (0..500).map(|i| format!("w{i}")).collect();
         assert_eq!(hotwords_arg(&many).split('/').count(), MAX_HOTWORDS);
         assert_eq!(hotwords_arg::<&str>(&[]), "");
+    }
+
+    #[test]
+    fn hotwords_count_is_what_hotwords_arg_keeps() {
+        assert_eq!(
+            hotwords_count(&["Kubernetes", " kubernetes ", "", "TCP/IP", "a\nb"]),
+            3
+        );
+        let many: Vec<String> = (0..500).map(|i| format!("w{i}")).collect();
+        assert_eq!(hotwords_count(&many), MAX_HOTWORDS);
+        assert_eq!(hotwords_count::<&str>(&[]), 0);
     }
 
     #[test]

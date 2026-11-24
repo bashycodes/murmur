@@ -308,6 +308,16 @@ pub fn hotword_phrases(req: &AsrRequest) -> Vec<String> {
         .collect()
 }
 
+/// How many of [`hotword_phrases`] a sherpa engine's decode is given
+/// (deduped, at most `MAX_HOTWORDS`); 0 without beam search to take them.
+#[cfg(feature = "parakeet")]
+pub fn sherpa_hotwords_used(supports_hotwords: bool, req: &AsrRequest) -> usize {
+    if !supports_hotwords {
+        return 0;
+    }
+    murmur_asr_sherpa::hotwords_count(&hotword_phrases(req))
+}
+
 /// The phrase list of a [`build_initial_prompt`] string (`"a, b c, d."`).
 pub fn prompt_phrases(prompt: &str) -> Vec<String> {
     let p = prompt.trim();
