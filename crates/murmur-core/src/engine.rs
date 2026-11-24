@@ -1821,9 +1821,12 @@ impl Worker {
     fn asr_request(cfg: &SessionConfig, ctx: &FieldContext, purpose: AsrPurpose) -> AsrRequest {
         let mut seen = Vec::new();
         let dictionary_terms = dedupe_terms(cfg.dictionary.vocabulary(), &mut seen);
-        let screen_terms = dedupe_terms(ctx.screen_words.iter().map(String::as_str), &mut seen);
+        // D107: ASR hints get the screen's name candidates, newest first;
+        // the context keeps the raw words for cleanup.
+        let names = crate::screen_names::name_candidates(&ctx.screen_words);
+        let screen_terms = dedupe_terms(names.iter().map(String::as_str), &mut seen);
         AsrRequest {
-            initial_prompt: build_initial_prompt(&cfg.dictionary, &ctx.screen_words),
+            initial_prompt: build_initial_prompt(&cfg.dictionary, &names),
             language: cfg.forced_language().map(str::to_string),
             abort: AbortFlag::default(),
             dictionary_terms,

@@ -414,6 +414,29 @@ fn queued_start_without_fallback_waits_for_the_server() {
 }
 
 #[test]
+fn the_server_gets_the_raw_screen_words() {
+    // D107: the server's cleanup uses the raw words; its core derives the
+    // ASR name candidates itself.
+    let k = rig_with(
+        cfg(true, false),
+        Fake::new(EngineKind::Local),
+        Fake::new(EngineKind::Remote),
+    );
+    k.router.start_session(SessionConfig::default()).unwrap();
+    // Synthetic screen: a sender label and one bubble.
+    let bubbles = vec![
+        "Orla Venning".to_string(),
+        "Can you ask Piet Harlow to bring the projector on Friday?".to_string(),
+    ];
+    k.router.set_context(FieldContext {
+        screen_words: bubbles.clone(),
+        ..Default::default()
+    });
+    let ctxs = k.remote.contexts.lock().unwrap();
+    assert_eq!(ctxs[0].screen_words, bubbles);
+}
+
+#[test]
 fn mid_session_death_replays_the_whole_buffer_into_local() {
     let k = rig_with(
         cfg(true, true),

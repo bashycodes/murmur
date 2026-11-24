@@ -136,11 +136,13 @@ impl Run<'_> {
                 self.punctuate(t)
             };
         }
+        // D107: the screen's name candidates, not whole bubbles.
+        let screen_names = crate::screen_names::name_candidates(&ctx.screen_words);
         let names: Vec<String> = self
             .cfg
             .user_names
             .iter()
-            .chain(&ctx.screen_words)
+            .chain(&screen_names)
             .cloned()
             .collect();
         let proper = Proper {
