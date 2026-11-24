@@ -148,13 +148,17 @@ done on the device, and never in password fields.
 *How:* this is on by default. Windows: *Settings → AI cleanup → Advanced →
 Use text on screen*.
 
-**App and on-screen context for cloud cleanup** (Windows; Android sends
-only the text around the cursor). Cloud cleanup can also get the app's
-name, the text around the cursor and the words on screen (taken from the
-window title). Each one is off until you turn it on.
+**App and on-screen context for cloud cleanup**. Cloud cleanup can also
+get the app's name, the text around the cursor and the words on screen
+(Windows: the window title; Android: the visible text of the app's window,
+up to 2000 characters, never password or sensitive fields nor the field you
+type in). Each one is off until you turn it on. On Android, the words on
+screen, once on, also help speech recognition on the phone and on your
+server, as the text around the cursor does; cloud speech-to-text never gets
+them, and cloud cleanup only with its consent.
 *How:* Windows: *Settings → AI cleanup → Advanced → Also send to the cloud*
 (App name, Text around the cursor, Words on screen). Android: *Settings →
-Cloud → Send text around the cursor*.
+Cloud → Send text around the cursor* and *Send on-screen words*.
 
 **Excluded apps** (Android). The bubble stays away from banking and
 payment apps; this built-in list is always on. You can add more apps.

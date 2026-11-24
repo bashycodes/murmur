@@ -3,9 +3,11 @@ package dev.murmur.service
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.InputMethod
 import android.graphics.Rect
+import android.os.Build
 import android.os.Bundle
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.inputmethod.EditorInfo
+import dev.murmur.data.ScreenWords
 import dev.murmur.insert.EditableNode
 import dev.murmur.insert.InputConnectionPort
 import dev.murmur.insert.NodeSnapshot
@@ -191,4 +193,21 @@ object FocusedNodeFinder {
         if (withBounds) { val r = Rect(); n.getBoundsInScreen(r); mix(r.flattenToString()) }
         return h
     }
+}
+
+/**
+ * [ScreenWords.Node] over a live node. [focused] is the dictation's field (skipped: the text
+ * around the cursor covers it); a password, sensitive / URI-typed or (API 34+)
+ * accessibility-data-sensitive node is protected.
+ */
+class ScreenNode(private val node: AccessibilityNodeInfo, private val focused: AccessibilityNodeInfo?) : ScreenWords.Node {
+    override val text: String? get() = node.text?.toString()
+    override val description: String? get() = node.contentDescription?.toString()
+    override val isProtected: Boolean
+        get() = FocusedNodeFinder.isExcludedField(node) ||
+            (Build.VERSION.SDK_INT >= 34 && node.isAccessibilityDataSensitive)
+    override val isVisible: Boolean get() = node.isVisibleToUser
+    override val isFocusedField: Boolean get() = focused != null && node == focused
+    override val childCount: Int get() = node.childCount
+    override fun child(i: Int): ScreenWords.Node? = node.getChild(i)?.let { ScreenNode(it, focused) }
 }

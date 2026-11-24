@@ -21,6 +21,7 @@ import dev.murmur.command.CommandTarget
 import dev.murmur.command.SelectionSnapshot
 import dev.murmur.core.FieldContext
 import dev.murmur.data.FieldContextBuilder
+import dev.murmur.data.ScreenWords
 import dev.murmur.health.AccessibilityHealth
 import dev.murmur.health.ServiceWatchdog
 import dev.murmur.insert.ClipboardPort
@@ -233,7 +234,7 @@ class MurmurAccessibilityService : AccessibilityService(), AccessibilityBridge {
         )
     }
 
-    override fun captureFieldContext(): FieldContext? {
+    override fun captureFieldContext(screenWords: Boolean): FieldContext? {
         val pkg = currentPackageName
         val node = focusedNode()
         pinStart(pkg, node)
@@ -244,12 +245,23 @@ class MurmurAccessibilityService : AccessibilityService(), AccessibilityBridge {
         )
         if (node?.isPassword == true) return FieldContextBuilder.build(pkg, 0x81, null, 0, 0)
         val s = inputMethod?.readSurrounding(500, 500)
-        if (s != null) return FieldContextBuilder.build(pkg, type, s.first, s.second, s.third)
-        // IME read null → node text with selection.
-        val text = node?.let { NodeAdapter(it).snapshot() }?.let {
+        // The node's whole text (without its hint); the IME only gives a window around the cursor.
+        val nodeText = node?.takeIf { s == null || screenWords }?.let { NodeAdapter(it).snapshot() }?.let {
             dev.murmur.insert.TextMatching.readNodeText(it, editor.hintText, emptySet())
         }
-        return FieldContextBuilder.build(pkg, type, text, node?.textSelectionStart ?: -1, node?.textSelectionEnd ?: -1)
+        val ctx = if (s != null) {
+            FieldContextBuilder.build(pkg, type, s.first, s.second, s.third)
+        } else {
+            // IME read null → node text with selection.
+            FieldContextBuilder.build(pkg, type, nodeText, node?.textSelectionStart ?: -1, node?.textSelectionEnd ?: -1)
+        }
+        val gate = ScreenWords.Gate(
+            enabled = screenWords,
+            pkg = pkg ?: node?.packageName?.toString(),
+            fieldProtected = startFieldProtected || EditorInputType.isContentExtractionExcluded(type),
+            userDenylist = app.settings.load().userDenylist,
+        )
+        return ScreenWords.attach(ctx, gate, { rootForInsert()?.let { ScreenNode(it, node) } }, nodeText, s?.first)
     }
 
     /**

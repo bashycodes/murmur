@@ -346,7 +346,8 @@ interface AccessibilityBridge {
     suspend fun insertTextAndVerify(text: String): Boolean
     /** Enter / Tab through the a11y InputMethod's connection (paste segments). */
     suspend fun sendKey(key: PasteKey): Boolean
-    fun captureFieldContext(): FieldContext?
+    /** [screenWords]: also read the words on screen ("Send on-screen words", [dev.murmur.data.ScreenWords]). */
+    fun captureFieldContext(screenWords: Boolean): FieldContext?
     fun onDictationActive(active: Boolean)
     /** S12: may the transcript go into the field focused now (see [dev.murmur.policy.InsertGuard])? */
     fun insertTarget(explicit: Boolean): dev.murmur.session.InsertTarget = dev.murmur.session.InsertTarget.OK

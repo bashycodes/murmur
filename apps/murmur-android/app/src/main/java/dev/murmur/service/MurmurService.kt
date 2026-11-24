@@ -712,7 +712,8 @@ class MurmurService : Service() {
 
         // "Writing style → Apps" overrides the built-in bucket of the target app (D27).
         override fun captureContext(): FieldContext? =
-            app.accessibility?.captureFieldContext()?.let { app.settings.load().withAppBucket(it) }
+            app.accessibility?.captureFieldContext(screenWords = app.dev.load().cloud.cleanup.sendScreenWords)
+                ?.let { app.settings.load().withAppBucket(it) }
 
         override fun sessionConfig() = app.settings.load().let {
             // D28 / D36: an engine off the phone (OpenRouter, your server) may clean even with the

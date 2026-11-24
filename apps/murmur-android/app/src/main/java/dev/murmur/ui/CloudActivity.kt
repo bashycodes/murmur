@@ -242,7 +242,7 @@ class CloudActivity : Activity() {
         card {
             val always = note("")
             val around = toggleRow("Send text around the cursor", "Up to 300 characters before and 150 after, and a selection", s0.cloud.cleanup.sendSurroundingText)
-            val screen = toggleRow("Send on-screen words", "Names and words visible in the app", s0.cloud.cleanup.sendScreenWords)
+            val screen = toggleRow("Send on-screen words", "Names and words visible in the app, up to 2000 characters. Also help speech recognition on your phone or server", s0.cloud.cleanup.sendScreenWords)
             val appName = toggleRow("Send app name", "The app's package name, not just its kind", s0.cloud.cleanup.sendAppName)
             around.onChange { v -> if (!quiet) change { CloudPage.withCleanup(it) { copy(sendSurroundingText = v) } } }
             screen.onChange { v -> if (!quiet) change { CloudPage.withCleanup(it) { copy(sendScreenWords = v) } } }
