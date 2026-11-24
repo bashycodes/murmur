@@ -13,10 +13,13 @@
 import { $, askDialog, html } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { onServer } from "../lib/model-source.js";
+import { isHebrewCode } from "../lib/lid-warning.js";
 import { llmModelChip } from "../lib/model-pages.js";
 import { prefsStore } from "../lib/prefs-store.js";
 import { views } from "../lib/views.js";
 let catalog = [];
+/** The language-ID model is on disk (`lid_model_present`, D34); undefined = not known (older backend). */
+let lidPresent;
 /** undefined = not asked yet. */
 let serverLib;
 const progress = new Map();
@@ -105,8 +108,17 @@ export const models = {
     onChange(l) {
         listeners.push(l);
     },
+    /** The language-ID model (D34) is on disk; undefined until the first refresh answers. */
+    lidPresent() {
+        return lidPresent;
+    },
     async refresh() {
-        catalog = await invoke("model_catalog");
+        const [c, lid] = await Promise.all([
+            invoke("model_catalog"),
+            invoke("lid_model_present").catch(() => undefined),
+        ]);
+        catalog = c;
+        lidPresent = lid;
         notify();
         return catalog;
     },
@@ -247,6 +259,14 @@ function askImport(e) {
 /** Speech models (Settings → Speech to text, onboarding). */
 const isSpeech = (c) => c.engine !== "llm";
 function confirm(e) {
+    // Installed without its extras (a Hebrew model without the language-ID
+    // model, D34): only those are fetched, into the models folder.
+    const extras = e.files.filter((f) => f.extra);
+    if (e.installed && !(e.complete ?? true) && extras.length > 0 && e.missing) {
+        const dir = e.dest.slice(0, Math.max(e.dest.lastIndexOf("\\"), e.dest.lastIndexOf("/"))) || e.dest;
+        const from = e.from_server ? serverName() : extras[0].url;
+        return askDownload("the language-detection model", from, e.missing, extras.length, dir, e.from_server ? CHECK_PINNED_SERVER : CHECK_PINNED);
+    }
     if (e.from_server)
         return askDownload(e.title, serverName(), e.size, e.files.length, e.dest, CHECK_PINNED_SERVER);
     const many = e.files.length > 1;
@@ -626,10 +646,7 @@ function wouldRunLine(e, rec) {
 }
 /** True when `languages` forces Hebrew (exactly one, `he`/`he-IL`/`iw`). */
 export function hebrewChosen(languages) {
-    if (!languages || languages.length !== 1)
-        return false;
-    const p = languages[0].trim().toLowerCase().split(/[-_]/)[0];
-    return p === "he" || p === "iw" || p === "hebrew";
+    return languages?.length === 1 && isHebrewCode(languages[0]);
 }
 /** The catalogue entry of the chosen Hebrew model (undefined = none). */
 export function hebrewEntry(choice) {

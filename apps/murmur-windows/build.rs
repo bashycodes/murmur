@@ -53,6 +53,7 @@ fn main() {
             "pick_path",
             "open_external",
             "model_catalog",
+            "lid_model_present",
             "llm_backend",
             "whisper_backend",
             "model_download_start",

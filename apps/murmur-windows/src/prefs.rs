@@ -688,6 +688,13 @@ impl Prefs {
         }
     }
 
+    /// The language-ID model is on disk, so auto-detect can route to the
+    /// Hebrew model (D34); without it auto-detect stays English. Settings
+    /// warns about that (`lid_model_present`).
+    pub fn lid_model_present(&self, appdata: Option<&str>) -> bool {
+        self.resolved_lid_path(appdata).is_file()
+    }
+
     /// `%APPDATA%\Murmur\models\ggml-base.bin` unless overridden.
     pub fn resolved_model_path(&self, appdata: Option<&str>) -> PathBuf {
         match self.model_path.as_deref().map(str::trim) {
@@ -718,6 +725,22 @@ mod tests {
             Prefs::default_path(None),
             PathBuf::from(APP_DIR).join(FILE_NAME)
         );
+    }
+
+    #[test]
+    fn lid_model_present_follows_the_resolved_file() {
+        let d = tmpdir("lid");
+        std::fs::create_dir_all(&d).unwrap();
+        let f = d.join("server-lid.bin");
+        let mut p = Prefs::default();
+        p.lid_model_path = Some(f.display().to_string());
+        assert!(!p.lid_model_present(None));
+        std::fs::write(&f, b"x").unwrap();
+        assert!(p.lid_model_present(None));
+        // A folder at that path is not the model.
+        p.lid_model_path = Some(d.display().to_string());
+        assert!(!p.lid_model_present(None));
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
