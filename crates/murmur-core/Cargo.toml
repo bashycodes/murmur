@@ -59,6 +59,10 @@ name = "lid_e2e"
 required-features = ["whisper", "wav"]
 
 [[test]]
+name = "lang_detect_e2e"
+required-features = ["whisper", "wav"]
+
+[[test]]
 name = "whisper_tails_bench"
 required-features = ["whisper", "wav"]
 

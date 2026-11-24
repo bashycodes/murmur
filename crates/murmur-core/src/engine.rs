@@ -1,6 +1,7 @@
 //! Session engine: handle, ring buffer, core-owned worker thread, commit
 //! pipeline (ASR -> optional LLM -> deterministic post-processing).
 
+use std::ops::Range;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
@@ -96,9 +97,11 @@ pub struct Timings {
     /// 2026-10-24.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub peak_dbfs: Option<i32>,
-    /// H6 (D34): time spent identifying the spoken language of an
-    /// auto-detect dictation (while recording, or at commit for a short
-    /// one). Omitted when 0 (language ID off).
+    /// H6 (D34, D106): total time spent identifying the spoken language of
+    /// an auto-detect dictation, summed over all its windows, whether they
+    /// were scored while recording (hidden from the user) or at commit.
+    /// Not a release-latency figure: `asr_ms` / `total_ms` are. Omitted
+    /// when 0 (language ID off).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub lid_ms: u64,
 }
@@ -1189,6 +1192,27 @@ impl Drop for MurmurCore {
     }
 }
 
+/// A session's language identification (H6, D34, D106).
+struct LidState {
+    /// The language is not identified yet; segment decodes and previews
+    /// wait for it (they would run on the wrong engine).
+    pending: bool,
+    /// Buffer length at the last speech check for the first window.
+    checked: usize,
+    /// Time spent on language ID, all windows (`Timings::lid_ms`).
+    ms: u64,
+    /// The identifier's answer for each window of speech so far; empty
+    /// unless the session is identified (auto-detect).
+    windows: Vec<lid::LidWindow>,
+    /// Buffer offset where the next window starts.
+    next: usize,
+    /// The languages the identifier chooses between (fixed at the start).
+    candidates: Vec<String>,
+    /// The session's own `cfg.languages`, restored when the dictation
+    /// turns out to be in the default language.
+    own_languages: Vec<String>,
+}
+
 struct Session {
     id: u64,
     cfg: SessionConfig,
@@ -1196,13 +1220,8 @@ struct Session {
     asr: Arc<dyn AsrEngine>,
     /// The language key of a per-language route (`None` = default engine).
     route_language: Option<String>,
-    /// H6 (D34): the language is not identified yet; segment decodes and
-    /// previews wait for it (they would run on the wrong engine).
-    lid_pending: bool,
-    /// Buffer length at the last language-ID speech check.
-    lid_checked: usize,
-    /// Time spent on language ID (`Timings::lid_ms`).
-    lid_ms: u64,
+    /// H6 (D34, D106): language identification of an auto-detect session.
+    lid: LidState,
     consumer: rtrb::Consumer<i16>,
     buf: Vec<f32>,
     truncated: bool,
@@ -1501,44 +1520,138 @@ const LID_RECHECK: usize = SAMPLE_RATE / 4;
 /// decided; the session then decodes as if that language were forced.
 fn identify_language(routes: &AsrRoutes, s: &mut Session, at_commit: bool) -> bool {
     let Some(id) = routes.lid.as_ref() else {
-        s.lid_pending = false;
+        s.lid.pending = false;
         return true;
     };
-    if !at_commit && s.buf.len() < s.lid_checked + LID_RECHECK {
+    if !at_commit && s.buf.len() < s.lid.checked + LID_RECHECK {
         return false;
     }
-    s.lid_checked = s.buf.len();
+    s.lid.checked = s.buf.len();
     let range = match vad::detect(&s.buf) {
-        Some(sp) if at_commit => sp.start..sp.end.min(sp.start + lid::LID_SAMPLES),
+        Some(sp) if at_commit => lid::first_window(sp.start..sp.end),
         Some(sp) if s.buf.len() >= sp.start + lid::LID_SAMPLES => {
             sp.start..sp.start + lid::LID_SAMPLES
         }
         // No speech at commit: nothing to decode, the default engine says so.
         None if at_commit => {
-            s.lid_pending = false;
+            s.lid.pending = false;
             return true;
         }
         _ => return false,
     };
-    s.lid_pending = false;
-    let t = Instant::now();
-    let pcm = vad::asr_level(&s.buf[range]);
-    let scores = id.scores(&pcm, &routes.lid_candidates(&s.cfg));
-    s.lid_ms = (t.elapsed().as_millis() as u64).max(1);
-    // An identifier error leaves the dictation on the default engine.
-    let Some((key, engine)) = scores
-        .ok()
-        .and_then(|sc| lid::choose(&sc, DEFAULT_LANGUAGE))
-        .and_then(|l| routes.route(&l))
-    else {
+    s.lid.pending = false;
+    s.lid.next = range.end;
+    let samples = range.len();
+    let Some(scores) = score_window(&**id, s, range) else {
+        // An identifier error leaves the dictation on the default engine.
         return true;
     };
+    let language = lid::choose(&scores, DEFAULT_LANGUAGE);
+    s.lid.windows.push(lid::LidWindow { scores, samples });
+    route_session(routes, s, language.as_deref());
+    true
+}
+
+/// The identifier's scores for `range` of the session's audio, timed into
+/// `lid_ms`; `None` on an identifier error.
+fn score_window(
+    id: &dyn LanguageId,
+    s: &mut Session,
+    range: Range<usize>,
+) -> Option<lid::LidScores> {
+    let t = Instant::now();
+    let pcm = vad::asr_level(&s.buf[range]);
+    let scores = id.scores(&pcm, &s.lid.candidates);
+    s.lid.ms += (t.elapsed().as_millis() as u64).max(1);
+    scores.ok()
+}
+
+/// D106, while recording: after the first window has routed the session,
+/// identify the next [`lid::LID_SAMPLES`] of speech once they are in (one
+/// window per tick keeps the worker responsive). The answers are used at
+/// commit ([`identify_at_commit`]).
+fn identify_while_recording(routes: &AsrRoutes, s: &mut Session) {
+    let Some(id) = routes.lid.as_ref() else {
+        return;
+    };
+    if s.lid.windows.is_empty() {
+        return;
+    }
+    if let Some(range) = lid::window_after(s.lid.next, s.buf.len(), false) {
+        s.lid.next = range.end;
+        score_speech(&**id, s, range);
+    }
+}
+
+/// D106, at commit: identify the speech not heard yet (skipping what cannot
+/// change the answer) and move the session to the language most of its
+/// speech is in ([`lid::choose_whole`]). A move re-decodes what was decoded
+/// on the other engine (its pieces' requests no longer match), so it costs
+/// time only for dictations that switch. Stops at once when the commit is
+/// cancelled (`abort`).
+fn identify_at_commit(routes: &AsrRoutes, s: &mut Session, abort: &AtomicBool) {
+    let Some(id) = routes.lid.as_ref() else {
+        return;
+    };
+    if s.lid.windows.is_empty() {
+        return;
+    }
+    let Some(speech) = vad::detect(&s.buf) else {
+        return;
+    };
+    loop {
+        if abort.load(Ordering::SeqCst) {
+            return;
+        }
+        let remaining = speech.end.saturating_sub(s.lid.next);
+        if lid::decided_without(&s.lid.windows, DEFAULT_LANGUAGE, remaining) {
+            break;
+        }
+        let Some(range) = lid::window_after(s.lid.next, speech.end, true) else {
+            break;
+        };
+        s.lid.next = range.end;
+        score_speech(&**id, s, range);
+    }
+    let now = s.route_language.as_deref().and_then(primary_language);
+    let whole = lid::choose_whole(&s.lid.windows, DEFAULT_LANGUAGE);
+    if whole != now {
+        route_session(routes, s, whole.as_deref());
+    }
+}
+
+/// Score `range` as one more window when it holds speech.
+fn score_speech(id: &dyn LanguageId, s: &mut Session, range: Range<usize>) {
+    if vad::detect(&s.buf[range.clone()]).is_none() {
+        return;
+    }
+    let samples = range.len();
+    if let Some(scores) = score_window(id, s, range) {
+        s.lid.windows.push(lid::LidWindow { scores, samples });
+    }
+}
+
+/// Decode the session on `language`'s route, or on the default engine
+/// (`None`, or a language without a route), as if that language were
+/// forced; the default restores the session's own languages.
+fn route_session(routes: &AsrRoutes, s: &mut Session, language: Option<&str>) {
+    let (engine, key) = match language.and_then(|l| routes.route(l)) {
+        Some((k, e)) => (e.clone(), Some(k.clone())),
+        None => (routes.default.clone(), None),
+    };
+    if key == s.route_language && Arc::ptr_eq(&engine, &s.asr) {
+        return;
+    }
     let was_segmentable = s.asr.segmentable();
-    s.asr = engine.clone();
-    s.route_language = Some(key.clone());
-    s.cfg.languages = vec![key.clone()];
-    if engine.segmentable() != was_segmentable {
-        // Nothing was decoded yet; rebuild the listeners over the audio so far.
+    s.asr = engine;
+    s.cfg.languages = match &key {
+        Some(k) => vec![k.clone()],
+        None => s.lid.own_languages.clone(),
+    };
+    s.route_language = key;
+    if s.asr.segmentable() != was_segmentable {
+        // Rebuild the listeners over the audio so far; pieces decoded on
+        // the other engine are redone at commit (their requests differ).
         let (mut seg, mut track) = listeners(&s.cfg, &*s.asr);
         if let Some(sg) = seg.as_mut() {
             sg.push(&s.buf);
@@ -1550,7 +1663,6 @@ fn identify_language(routes: &AsrRoutes, s: &mut Session, at_commit: bool) -> bo
         }
         (s.seg, s.track) = (seg, track);
     }
-    true
 }
 
 struct Worker {
@@ -1573,16 +1685,22 @@ impl Worker {
                 }) => {
                     let matcher = self.matcher_for(&cfg.dictionary);
                     let (asr, route_language) = self.routes.pick(&cfg);
-                    let lid_pending = self.routes.needs_lid(&cfg);
                     let (seg, track) = listeners(&cfg, &*asr);
+                    let lid = LidState {
+                        pending: self.routes.needs_lid(&cfg),
+                        checked: 0,
+                        ms: 0,
+                        windows: Vec::new(),
+                        next: 0,
+                        candidates: self.routes.lid_candidates(&cfg),
+                        own_languages: cfg.languages.clone(),
+                    };
                     self.session = Some(Session {
                         id,
                         cfg: *cfg,
                         asr,
                         route_language,
-                        lid_pending,
-                        lid_checked: 0,
-                        lid_ms: 0,
+                        lid,
                         consumer,
                         buf: Vec::new(),
                         truncated: false,
@@ -1613,9 +1731,10 @@ impl Worker {
                                 cl.cancel_prefill();
                             }
                             s.drain();
-                            if s.lid_pending {
+                            if s.lid.pending {
                                 identify_language(&self.routes, &mut s, true);
                             }
+                            identify_at_commit(&self.routes, &mut s, &abort);
                             let r = self.finalize(s, &ctx, &abort);
                             if abort.load(Ordering::SeqCst) {
                                 CommitResult::error("cancelled")
@@ -1802,9 +1921,10 @@ impl Worker {
         };
         s.drain();
         // H6: nothing is decoded before the language is known.
-        if s.lid_pending && !identify_language(&self.routes, s, false) {
+        if s.lid.pending && !identify_language(&self.routes, s, false) {
             return;
         }
+        identify_while_recording(&self.routes, s);
         // D22: closed segments first (their text is part of the result);
         // previews only cover the open one.
         if self.decode_closed_segment() || self.decode_bridge() {
@@ -1869,7 +1989,7 @@ impl Worker {
         let mut r = CommitResult::status(CommitStatus::Empty);
         r.truncated = s.truncated;
         r.timings.audio_ms = audio_ms;
-        r.timings.lid_ms = s.lid_ms;
+        r.timings.lid_ms = s.lid.ms;
         if s.buf.is_empty() {
             r.empty_reason = Some("no_audio".into());
             return r;
