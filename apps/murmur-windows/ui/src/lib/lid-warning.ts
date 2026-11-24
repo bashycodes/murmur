@@ -42,11 +42,29 @@ export function isHebrewCode(code: string): boolean {
   return p === "he" || p === "iw" || p === "hebrew";
 }
 
-/** Auto-detect picks the language: no fixed language, or several of them including Hebrew (D34). */
+/**
+ * The session's forced language, by murmur-core's rule
+ * (`SessionConfig::forced_language`): exactly one entry, not "auto".
+ */
+export function forcedLanguage(languages: string[]): string | undefined {
+  return languages.length === 1 && languages[0] !== "auto" ? languages[0] : undefined;
+}
+
+/**
+ * Language ID (D34) would choose between English and Hebrew: no forced
+ * language (murmur-core `needs_lid`), and Hebrew among the candidates
+ * (`lid_candidates`: the session's own list when it names two or more,
+ * else English plus the routes, i.e. Hebrew). "Keyboard language" (D37)
+ * is left out on purpose: it falls back to this only for a layout it
+ * doesn't know, which depends on the app dictated into, not on Settings.
+ */
 export function autoDetects(keyboard: boolean, languages: string[]): boolean {
-  if (keyboard) return false;
-  const codes = languages.map((c) => c.trim()).filter(Boolean);
-  return codes.length === 0 || (codes.length > 1 && codes.some(isHebrewCode));
+  if (keyboard || forcedLanguage(languages) !== undefined) return false;
+  const listed = languages.filter((l) => {
+    const p = l.trim().toLowerCase().split(/[-_]/)[0];
+    return p !== "" && p !== "auto";
+  });
+  return listed.length < 2 || listed.some(isHebrewCode);
 }
 
 export function lidWarning(i: LidInput): LidWarning {

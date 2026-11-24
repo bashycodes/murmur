@@ -14,6 +14,7 @@
 import { $, askDialog, html } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { onServer, type ModelSource } from "../lib/model-source.js";
+import { confirmFacts } from "../lib/download-confirm.js";
 import { isHebrewCode } from "../lib/lid-warning.js";
 import { llmModelChip } from "../lib/model-pages.js";
 import { prefsStore } from "../lib/prefs-store.js";
@@ -337,17 +338,8 @@ function askImport(e: CatalogEntry): Promise<string | null> {
 const isSpeech = (c: CatalogEntry): boolean => c.engine !== "llm";
 
 function confirm(e: CatalogEntry): Promise<boolean> {
-  // Installed without its extras (a Hebrew model without the language-ID
-  // model, D34): only those are fetched, into the models folder.
-  const extras = e.files.filter((f) => f.extra);
-  if (e.installed && !(e.complete ?? true) && extras.length > 0 && e.missing) {
-    const dir = e.dest.slice(0, Math.max(e.dest.lastIndexOf("\\"), e.dest.lastIndexOf("/"))) || e.dest;
-    const from = e.from_server ? serverName() : extras[0].url;
-    return askDownload("the language-detection model", from, e.missing, extras.length, dir, e.from_server ? CHECK_PINNED_SERVER : CHECK_PINNED);
-  }
-  if (e.from_server) return askDownload(e.title, serverName(), e.size, e.files.length, e.dest, CHECK_PINNED_SERVER);
-  const many = e.files.length > 1;
-  return askDownload(e.title, many ? e.page : e.files[0].url, e.size, e.files.length, e.dest, CHECK_PINNED);
+  const f = confirmFacts(e, serverName());
+  return askDownload(f.title, f.from, f.size, f.files, f.dest, e.from_server ? CHECK_PINNED_SERVER : CHECK_PINNED);
 }
 
 /** The configured server's host ("" before the engine settings load). */
@@ -774,6 +766,11 @@ export function hebrewChosen(languages: string[] | undefined): boolean {
   return languages?.length === 1 && isHebrewCode(languages[0]);
 }
 
+/** The Hebrew model folder from the server's library (D41) the prefs use instead of the catalogue one; "" = none. */
+export function hebrewServerDir(prefs: { hebrew_model_dir?: string | null } | null | undefined = prefsStore.get()): string {
+  return prefs?.hebrew_model_dir?.trim() ?? "";
+}
+
 /** The catalogue entry of the chosen Hebrew model (undefined = none). */
 export function hebrewEntry(choice: string | undefined): CatalogEntry | undefined {
   return models.entry(HEBREW_IDS[choice ?? ""] ?? "");
@@ -781,7 +778,7 @@ export function hebrewEntry(choice: string | undefined): CatalogEntry | undefine
 
 /** A Hebrew model is chosen and on disk (catalogue `installed`). */
 export function hebrewReady(choice: string | undefined): boolean {
-  if (choice !== "none" && prefsStore.get()?.hebrew_model_dir?.trim()) return true;
+  if (choice !== "none" && hebrewServerDir()) return true;
   return Boolean(hebrewEntry(choice)?.installed);
 }
 
@@ -843,7 +840,7 @@ function renderHebrewRow(): void {
     set(progressLine(p, e), "err");
     return;
   }
-  const custom = prefsStore.get()?.hebrew_model_dir?.trim();
+  const custom = hebrewServerDir();
   if (custom) {
     set(`Uses ${custom} (from your server).`, "ok");
     return;

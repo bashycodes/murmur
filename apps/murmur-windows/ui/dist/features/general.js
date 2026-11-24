@@ -7,7 +7,7 @@ import { $, el, setStatus, setValue } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { captureChord, RECORDING_TEXT, stopCapture } from "../lib/keycapture.js";
 import { prefsStore } from "../lib/prefs-store.js";
-import { hebrewChosen, hebrewEntry, hebrewReady, mb, models } from "./models.js";
+import { hebrewChosen, hebrewEntry, hebrewReady, hebrewServerDir, mb, models } from "./models.js";
 import { lidWarning } from "../lib/lid-warning.js";
 import { languageNames, pcModelChip, pcModelEntry } from "../lib/model-pages.js";
 import { setTheme } from "../lib/theme.js";
@@ -264,7 +264,7 @@ function showLanguages(prefs, typed, keyboard) {
 }
 /** The catalogue Hebrew model a download completes with the language-ID file (installed, not a server folder). */
 function lidTarget(prefs) {
-    if (prefs.hebrew_model_dir?.trim())
+    if (hebrewServerDir(prefs))
         return undefined;
     const e = hebrewEntry(prefs.hebrew_model);
     return e?.installed ? e : undefined;
@@ -277,7 +277,7 @@ function showLid(prefs, codes, keyboard, heModel) {
         languages: codes,
         hebrewModel: heModel,
         lidPresent: models.lidPresent(),
-        serverHebrew: Boolean(prefs.hebrew_model_dir?.trim()),
+        serverHebrew: Boolean(hebrewServerDir(prefs)),
         target: e && { canStart: models.canStart(e), busy: models.busy(e.id), missing: e.missing ?? 0 },
     });
     $("languages_lid").hidden = !w.show;

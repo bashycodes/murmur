@@ -1,7 +1,7 @@
 // D34: Settings → General → Languages, auto-detect without the language-ID model. Runs on the built dist: `npm test`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { autoDetects, lidWarning } from "../dist/lib/lid-warning.js";
+import { autoDetects, forcedLanguage, lidWarning } from "../dist/lib/lid-warning.js";
 
 const base = {
   keyboard: false,
@@ -56,11 +56,23 @@ test("while it downloads, the warning says so and offers no second button", () =
   assert.match(w.text, /Downloading/);
 });
 
-test("auto-detect: no fixed language, or several including Hebrew", () => {
+test("auto-detect follows murmur-core's forced-language rule and LID candidates", () => {
+  // Pinned against SessionConfig::forced_language / Routes::lid_candidates.
+  assert.equal(forcedLanguage([]), undefined);
+  assert.equal(forcedLanguage(["auto"]), undefined);
+  assert.equal(forcedLanguage(["en"]), "en");
+  assert.equal(forcedLanguage(["en", "he"]), undefined);
   assert.equal(autoDetects(false, []), true);
-  assert.equal(autoDetects(false, [" "]), true);
+  assert.equal(autoDetects(false, ["auto"]), true);
+  assert.equal(autoDetects(false, ["auto", "he"]), true);
   assert.equal(autoDetects(false, ["en", "he-IL"]), true);
+  assert.equal(autoDetects(false, ["en", "iw"]), true);
   assert.equal(autoDetects(false, ["en", "de"]), false);
   assert.equal(autoDetects(false, ["iw"]), false);
+  assert.equal(autoDetects(false, ["en"]), false);
   assert.equal(autoDetects(true, []), false);
+});
+
+test("languages = [\"auto\"] warns like an empty list", () => {
+  assert.equal(lidWarning({ ...base, languages: ["auto"] }).show, true);
 });

@@ -679,11 +679,13 @@ impl Prefs {
         })
     }
 
-    /// The language-ID model file: [`Prefs::lid_model_path`] when set, else
-    /// `<models>\ggml-tiny-q5_1.bin`.
+    /// The language-ID model file: [`Prefs::lid_model_path`] when set and
+    /// the file is there, else `<models>\ggml-tiny-q5_1.bin`. A stale
+    /// override (its file gone) falls back to the models folder, so a
+    /// catalogue download of the file reaches the engine and Settings.
     pub fn resolved_lid_path(&self, appdata: Option<&str>) -> PathBuf {
         match self.lid_model_path.as_deref().map(str::trim) {
-            Some(p) if !p.is_empty() => PathBuf::from(p),
+            Some(p) if !p.is_empty() && Path::new(p).is_file() => PathBuf::from(p),
             _ => crate::core_adapter::models_dir(appdata).join(crate::core_adapter::LID_FILE),
         }
     }
@@ -730,16 +732,41 @@ mod tests {
     #[test]
     fn lid_model_present_follows_the_resolved_file() {
         let d = tmpdir("lid");
-        std::fs::create_dir_all(&d).unwrap();
+        let appdata = d.join("appdata");
+        let ad = appdata.to_str();
+        let models = crate::core_adapter::models_dir(ad);
+        std::fs::create_dir_all(&models).unwrap();
         let f = d.join("server-lid.bin");
         let mut p = Prefs::default();
         p.lid_model_path = Some(f.display().to_string());
-        assert!(!p.lid_model_present(None));
+        assert!(!p.lid_model_present(ad));
         std::fs::write(&f, b"x").unwrap();
-        assert!(p.lid_model_present(None));
+        assert!(p.lid_model_present(ad));
+        assert_eq!(p.resolved_lid_path(ad), f);
         // A folder at that path is not the model.
         p.lid_model_path = Some(d.display().to_string());
-        assert!(!p.lid_model_present(None));
+        assert!(!p.lid_model_present(ad));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_stale_lid_override_falls_back_to_the_models_folder() {
+        let d = tmpdir("lid-stale");
+        let appdata = d.join("appdata");
+        let ad = appdata.to_str();
+        let models = crate::core_adapter::models_dir(ad);
+        std::fs::create_dir_all(&models).unwrap();
+        let mut p = Prefs::default();
+        p.lid_model_path = Some(d.join("gone.bin").display().to_string());
+        let catalogue = models.join(crate::core_adapter::LID_FILE);
+        assert_eq!(p.resolved_lid_path(ad), catalogue);
+        assert!(!p.lid_model_present(ad));
+        // The catalogue download lands in the models folder: engine and
+        // Settings both see it, without touching the override.
+        std::fs::write(&catalogue, b"x").unwrap();
+        assert!(p.lid_model_present(ad));
+        let spec = crate::core_adapter::LanguageSpec::from_prefs(&p, ad).unwrap();
+        assert_eq!(spec.lid_path, Some(catalogue.display().to_string()));
         let _ = std::fs::remove_dir_all(&d);
     }
 
