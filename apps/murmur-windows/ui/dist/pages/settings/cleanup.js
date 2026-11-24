@@ -11,6 +11,7 @@
 // Markup only.
 import { ICON } from "../../lib/icons.js";
 import { advanced, group, heading, row, toggle } from "../../lib/markup.js";
+import { CLEANUP_LOCK } from "../../lib/cloud-lock.js";
 import { browseButton, LLM_DOWNLOAD_ROW } from "../../features/models.js";
 import { engineRow } from "./speech.js";
 /** A small switch after its label, for a stacked list of switches in one row. */
@@ -63,7 +64,9 @@ ${group("", LLM_DOWNLOAD_ROW, `data-needs="local"`)}
 
 <section class="lw-section" id="or_cleanup_group" data-needs="cloud">
   <h3 class="fl-group-title lw-title-badge" id="or_cleanup_title"><span id="or_cleanup_title_name">Cloud · OpenRouter</span> <button type="button" class="lw-link lw-link-sm" data-go="settings-openrouter">Change provider →</button></h3>
+  ${CLEANUP_LOCK.banner}
   <div class="fl-group" id="or_cleanup_box">
+    ${CLEANUP_LOCK.open}
     ${row("Model", `From your own AI server's list, or type its name. <span id="cu_models_out"></span>`, `<input id="cu_model" class="fl-input lw-w220 lw-mono-input" list="cu_model_list" spellcheck="false" autocomplete="off" placeholder="gpt-4o-mini" aria-label="Model id" />
        <datalist id="cu_model_list"></datalist>
        <button type="button" class="fl-btn fl-btn-secondary" id="cu_models_load">Load models</button>`, `data-provider="custom"`)}
@@ -76,6 +79,7 @@ ${group("", LLM_DOWNLOAD_ROW, `data-needs="local"`)}
       </select>`, `data-provider="openrouter"`)}
     ${row("Try it", `<span id="or_cleanup_test_out"></span> <span id="or_cleanup_state"></span> <span id="or_cleanup_msg"></span>`, `<button type="button" class="fl-btn fl-btn-secondary" id="or_cleanup_test">Test</button>`)}
     ${row("Selected text", `<span id="or_cleanup_sel_ask"></span>`, `<button type="button" class="fl-btn fl-btn-secondary" id="or_cleanup_sel_on">Also send it</button>`, `id="or_cleanup_sel_row" hidden`)}
+    ${CLEANUP_LOCK.close}
   </div>
 </section>
 

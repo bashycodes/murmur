@@ -14,6 +14,10 @@ import { iconEl } from "../lib/icons.js";
 import { cleanupBlockedLine, cleanupEngineName, cleanupTestFailText, plainHint } from "../lib/cleanup-state.js";
 import { cloudRouteInSentence, cloudRouteTitle, ownServerOr, providerModelLabel } from "../lib/provider-names.js";
 import { selectionAsk } from "../lib/selection-ask.js";
+import { type CloudLocks, wireCloudLocks } from "../lib/cloud-lock.js";
+
+/** The provider cards' opt-out locks; wired in `wire()`, applied by `showOr`. */
+let locks: CloudLocks = { stt: () => {}, cleanup: () => {} };
 import { cleanupMonthCost, failText, money, usd } from "../lib/format.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { cloudTimeout } from "../lib/model-pages.js";
@@ -207,7 +211,7 @@ export function showOr(v: OrView): void {
   $<HTMLInputElement>("or_stt_allow").checked = s.allow;
   $<HTMLElement>("or_stt_consent").textContent = consentLine(s.consent_at_ms, s.consent, "audio");
   showModelRow("or_stt", s.model, v.stt_model_info);
-  $<HTMLElement>("or_stt_box").classList.toggle("lw-dim", !s.allow);
+  locks.stt(s.allow);
   $<HTMLElement>("or_stt_used_badge").hidden = s.allow;
   setValue("or_stt_language", s.language);
   $<HTMLInputElement>("or_stt_send_dictionary").checked = s.send_dictionary;
@@ -223,7 +227,7 @@ export function showOr(v: OrView): void {
   const orSpent = cleanupMonthCost(c.status).openrouter;
   const spent = orSpent > 0 ? `${money(orSpent)} so far this month` : "";
   showModelRow("or_cleanup", c.model, v.cleanup_model_info, spent);
-  $<HTMLElement>("or_cleanup_box").classList.toggle("lw-dim", !c.allow);
+  locks.cleanup(c.allow);
   $<HTMLSelectElement>("or_cleanup_sort").value = c.sort;
   $<HTMLInputElement>("or_cleanup_send_surrounding_text").checked = c.send_surrounding_text;
   $<HTMLInputElement>("or_cleanup_send_screen_words").checked = c.send_screen_words;
@@ -1086,6 +1090,17 @@ function wire(): void {
   $<HTMLInputElement>("or_dc_deny").addEventListener("change", () => void orPrivacyChanged());
 
   $<HTMLInputElement>("or_stt_allow").addEventListener("change", () => void orSttToggled());
+  // A locked card's "Turn on" is its switch: checked, then the usual consent flow.
+  locks = wireCloudLocks((id) => $(id), {
+    stt: () => {
+      $<HTMLInputElement>("or_stt_allow").checked = true;
+      void orSttToggled();
+    },
+    cleanup: () => {
+      $<HTMLInputElement>("or_cleanup_allow").checked = true;
+      void writes.run(orCleanupToggled);
+    },
+  });
   for (const id of ["or_stt_language", "or_stt_send_dictionary", "or_stt_path"]) {
     $<HTMLElement>(id).addEventListener("change", () => void orApplyStt(false));
   }

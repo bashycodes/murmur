@@ -10,6 +10,7 @@
 import { ICON, iconSvg } from "../../lib/icons.js";
 import { advanced, group, heading, row, toggle } from "../../lib/markup.js";
 import type { Page } from "../../lib/router.js";
+import { STT_LOCK } from "../../lib/cloud-lock.js";
 import { NOTETAKER_ENABLED } from "../notetaker.js";
 import { FOLDER_ROW } from "../../features/model-folder.js";
 import { browseButton, DOWNLOAD_ROW, HEBREW_ROW, SOURCE_ROW } from "../../features/models.js";
@@ -94,7 +95,9 @@ ${group(
 
 <section class="lw-section" id="or_stt_group" data-needs="cloud">
   <h3 class="fl-group-title lw-title-badge"><span id="or_stt_provider_name">Cloud · OpenRouter</span> <span class="fl-badge fl-badge-light" id="or_stt_used_badge">Used only when on above</span> <button type="button" class="lw-link lw-link-sm" data-go="settings-openrouter">Change provider →</button></h3>
+  ${STT_LOCK.banner}
   <div class="fl-group" id="or_stt_box">
+    ${STT_LOCK.open}
     ${row(
       `<span id="or_stt_model_name"></span> <span id="or_stt_model_badges" class="pills"></span>`,
       `<span id="or_stt_model_desc"></span> <code id="or_stt_model_id" class="lw-mono"></code>`,
@@ -129,6 +132,7 @@ ${group(
       `<span id="or_stt_consent"></span> <span id="or_stt_test_out"></span> <span id="or_stt_status"></span>`,
       `<button type="button" class="fl-btn fl-btn-secondary" id="or_stt_test">Test</button>`,
     )}
+    ${STT_LOCK.close}
   </div>
 </section>
 

@@ -296,6 +296,10 @@ dialog::backdrop {
 .lw-section > .fl-group-title {
   margin: 0 0 8px;
 }
+/* A locked provider card's banner (lib/cloud-lock.ts), above its rows. */
+.lw-section > .lw-optout {
+  margin: 0 0 8px;
+}
 .lw-group-help {
   margin: 8px 0 0;
 }
