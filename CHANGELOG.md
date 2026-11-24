@@ -16,6 +16,10 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Changed
+
+- **Android: the resting dictation bubble is a violet Murmur tile.** While it waits, the bubble is a rounded violet square with the dark Murmur mark, instead of the mark on a round dark pill; it takes the same space (smaller when shrunk) and the dot, recording, errors and hold-to-talk look as before.
+
 ## [1.7.0] - 2026-11-24
 
 ### Added
