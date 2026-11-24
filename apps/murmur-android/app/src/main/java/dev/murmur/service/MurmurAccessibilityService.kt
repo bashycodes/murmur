@@ -21,6 +21,7 @@ import dev.murmur.command.CommandTarget
 import dev.murmur.command.SelectionSnapshot
 import dev.murmur.core.FieldContext
 import dev.murmur.data.FieldContextBuilder
+import dev.murmur.data.ScreenWords
 import dev.murmur.health.AccessibilityHealth
 import dev.murmur.health.ServiceWatchdog
 import dev.murmur.insert.ClipboardPort
@@ -233,7 +234,7 @@ class MurmurAccessibilityService : AccessibilityService(), AccessibilityBridge {
         )
     }
 
-    override fun captureFieldContext(): FieldContext? {
+    override fun captureFieldContext(screenWords: Boolean): FieldContext? {
         val pkg = currentPackageName
         val node = focusedNode()
         pinStart(pkg, node)
@@ -244,12 +245,21 @@ class MurmurAccessibilityService : AccessibilityService(), AccessibilityBridge {
         )
         if (node?.isPassword == true) return FieldContextBuilder.build(pkg, 0x81, null, 0, 0)
         val s = inputMethod?.readSurrounding(500, 500)
-        if (s != null) return FieldContextBuilder.build(pkg, type, s.first, s.second, s.third)
-        // IME read null → node text with selection.
-        val text = node?.let { NodeAdapter(it).snapshot() }?.let {
-            dev.murmur.insert.TextMatching.readNodeText(it, editor.hintText, emptySet())
+        val ctx = if (s != null) {
+            FieldContextBuilder.build(pkg, type, s.first, s.second, s.third)
+        } else {
+            // IME read null → node text with selection.
+            val text = node?.let { NodeAdapter(it).snapshot() }?.let {
+                dev.murmur.insert.TextMatching.readNodeText(it, editor.hintText, emptySet())
+            }
+            FieldContextBuilder.build(pkg, type, text, node?.textSelectionStart ?: -1, node?.textSelectionEnd ?: -1)
         }
-        return FieldContextBuilder.build(pkg, type, text, node?.textSelectionStart ?: -1, node?.textSelectionEnd ?: -1)
+        val fieldProtected = startFieldProtected || EditorInputType.isContentExtractionExcluded(type)
+        if (!ScreenWords.allowed(screenWords, pkg ?: node?.packageName?.toString(), fieldProtected, app.settings.load().userDenylist)) return ctx
+        val words = runCatching {
+            ScreenWords.collect(rootForInsert()?.let { ScreenNode(it, node) }, s?.first ?: node?.text?.toString())
+        }.getOrDefault(emptyList())
+        return ctx.copy(screenWords = words)
     }
 
     /**
