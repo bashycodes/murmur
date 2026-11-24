@@ -121,9 +121,52 @@ class TranslateModeTest {
         speakTranslated(c)
         assertEquals(1, host.inserted.size)
         assertTrue(host.inserted.single(), host.inserted.single().contains("demo"))
-        assertEquals(DictationHint.NotTranslated, c.hint.value)
+        assertEquals(DictationHint.NotTranslated(TranslateOutcome.NO_LLM), c.hint.value)
+        assertEquals(dev.murmur.bubble.PreviewContent.NO_AI_FOR_TRANSLATION, bar(c))
         assertEquals(DictationState.Ready, c.state.value)
         assertFalse("the dictation itself may be learned from", host.learned.isEmpty())
+    }
+
+    private fun bar(c: DictationController) =
+        dev.murmur.bubble.PreviewContent.line(DictationState.Ready, null, c.hint.value, enabled = false)?.text
+
+    @Test fun aWrongScriptAnswerSaysWhichLanguageFailed() = runTest {
+        core.translateReply = { _, _ -> TranslateOutcome.Failed(TranslateOutcome.NOT_TRANSLATED, "Couldn't translate to Hebrew", "he", "Hebrew") }
+        val c = controller()
+        speakTranslated(c)
+        assertTrue("typed as said", host.inserted.single().contains("demo"))
+        assertEquals("Couldn't translate to Hebrew. Typed as said.", bar(c))
+    }
+
+    @Test fun theCoresLanguageNameWins() = runTest {
+        // A made-up name shows the bar takes the core's name, not the phone's locale's.
+        core.translateReply = { _, _ -> TranslateOutcome.Failed(TranslateOutcome.NOT_TRANSLATED, "x", "he", "Core Hebrew") }
+        val c = controller()
+        speakTranslated(c)
+        assertEquals("Couldn't translate to Core Hebrew. Typed as said.", bar(c))
+    }
+
+    @Test fun anOlderLibraryWithoutTheTargetNamesTheChosenOne() = runTest {
+        host.target = "fr"
+        core.translateReply = { _, _ -> TranslateOutcome.Failed(TranslateOutcome.NOT_TRANSLATED, "Couldn't translate the text") }
+        val c = controller()
+        speakTranslated(c)
+        assertEquals("Couldn't translate to French. Typed as said.", bar(c))
+    }
+
+    @Test fun aTimeoutSaysSo() = runTest {
+        core.translateReply = { _, _ -> TranslateOutcome.Failed(TranslateOutcome.TIMEOUT, "AI didn't translate within 25 s") }
+        val c = controller()
+        speakTranslated(c)
+        assertTrue("typed as said", host.inserted.single().contains("demo"))
+        assertEquals(dev.murmur.bubble.PreviewContent.TRANSLATION_TIMED_OUT, bar(c))
+    }
+
+    @Test fun anyOtherFailureKeepsTheGeneralText() = runTest {
+        core.translateReply = { _, _ -> TranslateOutcome.Failed(TranslateOutcome.BACKEND, "Translation failed: connect_failed") }
+        val c = controller()
+        speakTranslated(c)
+        assertEquals("Not translated. Typed as said.", bar(c))
     }
 
     @Test fun aPlainDictationIsNeverTranslated() = runTest {

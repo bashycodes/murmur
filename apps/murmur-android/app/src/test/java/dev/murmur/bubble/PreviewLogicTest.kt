@@ -30,6 +30,20 @@ class PreviewLogicTest {
         assertEquals(PreviewContent.NO_SPEECH, PreviewContent.line(DictationState.Ready, null, DictationHint.NoSpeechDetected, false)!!.text)
     }
 
+    @Test fun aFailedTranslationSaysWhy() {
+        val line = { kind: String, target: String ->
+            PreviewContent.line(DictationState.Ready, null, DictationHint.NotTranslated(kind, target), false)!!.text
+        }
+        assertEquals("Couldn't translate to Hebrew. Typed as said.", line("not_translated", "he"))
+        assertEquals("a regional code names the language", "Couldn't translate to Hebrew. Typed as said.", line("not_translated", "he-IL"))
+        assertEquals("target unknown", "Not translated. Typed as said.", line("not_translated", ""))
+        assertEquals("Translation timed out. Typed as said.", line("timeout", "he"))
+        assertEquals("No AI set up for translation.", line("no_llm", ""))
+        for (other in listOf("backend", "empty", "no_text", "no_target", "text_too_long")) {
+            assertEquals(other, "Not translated. Typed as said.", line(other, "he"))
+        }
+    }
+
     @Test fun tailKeepsNewestWords() {
         val long = (1..100).joinToString(" ") { "word$it" }
         val t = PreviewContent.tail(long, 40)

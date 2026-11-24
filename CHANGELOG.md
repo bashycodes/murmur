@@ -19,6 +19,16 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 ### Changed
 
 - **Android: the resting dictation bubble is a violet Murmur tile.** While it waits, the bubble is a rounded violet square with the dark Murmur mark, instead of the mark on a round dark pill; it takes the same space (smaller when shrunk) and the dot, recording, errors and hold-to-talk look as before.
+- **Translate: the bar says why a translation failed.** Instead of "Not translated" for every failure, Android's bar and the Windows pill say "Couldn't translate to Hebrew. Typed as said.", "Translation timed out. Typed as said." or "No AI set up for translation." (Windows, while this PC's model is still loading: "AI still loading. Typed as said."); anything else is "Not translated. Typed as said." (D90).
+- **murmur-server: the log line for a cleanup request names its task** (`task=translate`, `task=cleanup` …), still without any text.
+
+### Fixed
+
+- **Translate: when one AI can't translate, the next one tries.** An answer not fully in the target language used to end the translation, even with the cloud set up. Now the next AI on your cleanup route tries: the cloud only when it is already set up and allowed for cleanup, then the on-device model. With the server as the only AI, nothing changes (D90).
+
+### Known issues
+
+- **Translate: English → Hebrew needs the cloud or a stronger model on your server.** The server's default 1.5B model leaves English words in its Hebrew, so with the server alone such a dictation is typed as said.
 
 ### Fixed
 
