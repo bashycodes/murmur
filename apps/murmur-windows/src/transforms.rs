@@ -39,32 +39,30 @@ fn win_alt(c: char) -> Chord {
     Chord::new([Key::Win, Key::Alt, Key::Vk(c as u16)])
 }
 
-/// D108: a built-in's default shortcut, Polish Win+Shift+Q and Prompt
-/// Builder Win+Shift+W (Win+Alt+digit is Windows 11's taskbar jump list).
-fn default_shortcut(id: &str) -> Option<Chord> {
-    let key = match id {
-        core::POLISH => 'Q',
-        core::PROMPT_ENGINEER => 'W',
-        _ => return None,
-    };
-    Some(Chord::new([Key::Win, Key::Shift, Key::Vk(key as u16)]))
+/// Win+Shift+`c`.
+fn win_shift(c: char) -> Chord {
+    Chord::new([Key::Win, Key::Shift, Key::Vk(c as u16)])
 }
 
-/// A built-in's default shortcut before D108 (prefs rev ≤ 5).
-fn old_default_shortcut(id: &str) -> Option<Chord> {
-    match id {
-        core::POLISH => Some(win_alt('1')),
-        core::PROMPT_ENGINEER => Some(win_alt('2')),
-        _ => None,
-    }
+/// The built-ins' default shortcuts: (id, before D109 = prefs rev ≤ 5,
+/// now). Win+Alt+digit is Windows 11's taskbar jump list.
+const BUILTIN_SHORTCUTS: [(&str, char, char); 2] =
+    [(core::POLISH, '1', 'Q'), (core::PROMPT_ENGINEER, '2', 'W')];
+
+/// A built-in's (old, current) default shortcut.
+fn builtin_shortcuts(id: &str) -> Option<(Chord, Chord)> {
+    BUILTIN_SHORTCUTS
+        .iter()
+        .find(|(b, _, _)| *b == id)
+        .map(|&(_, old, new)| (win_alt(old), win_shift(new)))
 }
 
-/// The built-ins with their default shortcuts ([`default_shortcut`]).
+/// The built-ins with their default shortcuts ([`BUILTIN_SHORTCUTS`]).
 pub fn default_items() -> Vec<Item> {
     core::builtins()
         .into_iter()
         .map(|transform| Item {
-            shortcut: default_shortcut(&transform.id),
+            shortcut: builtin_shortcuts(&transform.id).map(|(_, new)| new),
             transform,
         })
         .collect()
@@ -95,16 +93,12 @@ impl TransformPrefs {
         self.items.iter().find(|i| i.transform.id == id)
     }
 
-    /// D108: item `i`'s new default shortcut when it is a built-in still
+    /// D109: item `i`'s new default shortcut when it is a built-in still
     /// on its old default (the user never changed it); `None` otherwise.
-    pub fn d108_new_default(&self, i: usize) -> Option<Chord> {
+    pub fn migrated_default(&self, i: usize) -> Option<Chord> {
         let it = self.items.get(i)?;
-        let id = &it.transform.id;
-        if it.shortcut.is_some() && it.shortcut == old_default_shortcut(id) {
-            default_shortcut(id)
-        } else {
-            None
-        }
+        let (old, new) = builtin_shortcuts(&it.transform.id)?;
+        (it.shortcut.as_ref() == Some(&old)).then_some(new)
     }
 
     /// The chords to register: one per item (in order) and the view

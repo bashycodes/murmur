@@ -25,7 +25,7 @@ pub const FILE_NAME: &str = "prefs.json";
 /// * 5 (D57): push to talk defaults to Right Alt instead of Ctrl+Win: a
 ///   saved Ctrl+Win (the untouched old default) moves to Right Alt unless
 ///   another shortcut already uses it; any other shortcut stays.
-/// * 6 (D108): the built-in transforms' shortcuts went Win+Alt+1 / 2 →
+/// * 6 (D109): the built-in transforms' shortcuts went Win+Alt+1 / 2 →
 ///   Win+Shift+Q / W (Polish / Prompt Builder): a saved Win+Alt+1 / 2 on
 ///   that built-in moves unless another shortcut already uses the new
 ///   chord; any other shortcut stays.
@@ -456,11 +456,11 @@ impl Prefs {
         // built-ins by serde; ids and the auto-apply choice are tidied.
         self.transforms.normalize();
         if self.prefs_rev < 6 {
-            // D108: a built-in still on Win+Alt+1 / 2 (the untouched old
+            // D109: a built-in still on Win+Alt+1 / 2 (the untouched old
             // default) moves to Win+Shift+Q / W once, unless another
             // shortcut already holds the new chord.
             for i in 0..self.transforms.items.len() {
-                let Some(new) = self.transforms.d108_new_default(i) else {
+                let Some(new) = self.transforms.migrated_default(i) else {
                     continue;
                 };
                 let old = self.transforms.items[i].shortcut.replace(new);
@@ -469,7 +469,9 @@ impl Prefs {
                 }
             }
         }
-        self.prefs_rev = PREFS_REV;
+        // Never lower it: a file a newer build wrote keeps its revision, so
+        // after a downgrade and upgrade the newer migrations don't run again.
+        self.prefs_rev = self.prefs_rev.max(PREFS_REV);
     }
 
     /// Atomic write (tmp + rename) so a crash never leaves half a file.
@@ -1243,7 +1245,7 @@ mod tests {
     }
 
     #[test]
-    fn d108_untouched_transform_shortcuts_move_to_win_shift_once() {
+    fn d109_untouched_transform_shortcuts_move_to_win_shift_once() {
         let keys = |p: &Prefs| -> Vec<String> {
             p.transforms
                 .items
@@ -1297,13 +1299,36 @@ mod tests {
         );
         assert_eq!(keys(&p), ["Win+Alt+1", "Win+Shift+W"]);
         assert_eq!(p.validate(), Ok(()));
-        // Win+Alt+1 picked after D108 is a choice: kept, also after a save.
+        // Win+Alt+1 picked after D109 is a choice: kept, also after a save.
         let p = old("tf-new", PREFS_REV, "Win+Alt+1", "Win+Alt+2", "");
         assert_eq!(keys(&p), ["Win+Alt+1", "Win+Alt+2"]);
         let d = tmpdir("tf-rt");
         let path = d.join(FILE_NAME);
         p.save(&path).unwrap();
         assert_eq!(keys(&Prefs::load(&path).0), ["Win+Alt+1", "Win+Alt+2"]);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_newer_revision_is_kept_so_migrations_never_run_twice() {
+        // A newer build wrote the file; this one loads and saves it.
+        let newer = PREFS_REV + 1;
+        let (p, _) = load_str(
+            "rev-newer",
+            &format!(
+                r#"{{"prefs_rev":{newer},"hands_free_silence_ms":2000,"shortcuts":{{"ptt":"Ctrl+Win"}}}}"#
+            ),
+        );
+        assert_eq!(p.prefs_rev, newer, "not lowered");
+        assert_eq!(
+            p.hands_free_silence_ms, OLD_HANDS_FREE_SILENCE_MS,
+            "D22 not rerun"
+        );
+        assert_eq!(p.shortcuts.ptt.to_string(), "Ctrl+Win", "D57 not rerun");
+        let d = tmpdir("rev-newer-rt");
+        let path = d.join(FILE_NAME);
+        p.save(&path).unwrap();
+        assert_eq!(Prefs::load(&path).0.prefs_rev, newer, "and survives a save");
         let _ = std::fs::remove_dir_all(&d);
     }
 

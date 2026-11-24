@@ -2413,16 +2413,10 @@ mod tests {
 
     #[test]
     fn default_transform_chords_win_shift_q_w_fire_beside_the_defaults() {
-        // D108: the built-ins' defaults with every other default shortcut
+        // D109: the built-ins' defaults with every other default shortcut
         // bound; Win+Shift (a subset of Translate's Ctrl+Win+Shift) must
         // not start a translation, and Q / W must not reach the app.
-        let win_shift = |k: char| Chord::new([Key::Win, Key::Shift, Key::Vk(k as u16)]);
-        let b = Bindings {
-            transforms: vec![Some(win_shift('Q')), Some(win_shift('W'))],
-            view_changes: Some(win_alt('O')),
-            ..Default::default()
-        };
-        let mut m = ChordMatcher::new(b);
+        let mut m = win_shift_q_w();
         assert!(m.handle(KeyEvent::down(Key::Win), false).actions.is_empty());
         assert!(m
             .handle(KeyEvent::down(Key::LShift), false)
@@ -2439,6 +2433,50 @@ mod tests {
             m.handle(KeyEvent::up(Key::Win), false).mask_release,
             "a lone Win release would open Start"
         );
+    }
+
+    /// Every default shortcut plus the built-in transforms' D109 chords.
+    fn win_shift_q_w() -> ChordMatcher {
+        let win_shift = |k: char| Chord::new([Key::Win, Key::Shift, Key::Vk(k as u16)]);
+        ChordMatcher::new(Bindings {
+            transforms: vec![Some(win_shift('Q')), Some(win_shift('W'))],
+            view_changes: Some(win_alt('O')),
+            ..Default::default()
+        })
+    }
+
+    #[test]
+    fn win_shift_q_with_win_released_first_still_masks_start_and_the_letter() {
+        let mut m = win_shift_q_w();
+        m.handle(KeyEvent::down(Key::Win), false);
+        m.handle(KeyEvent::down(Key::LShift), false);
+        let d = m.handle(KeyEvent::down(Key::Vk(b'Q' as u16)), false);
+        assert_eq!(d.actions, vec![Transform(0)]);
+        assert!(
+            m.handle(KeyEvent::up(Key::Win), false).mask_release,
+            "Win let go first must not open Start"
+        );
+        assert!(
+            m.handle(KeyEvent::up(Key::Vk(b'Q' as u16)), false).suppress,
+            "the letter's key-up stays swallowed"
+        );
+        let d = m.handle(KeyEvent::up(Key::LShift), false);
+        assert!(d.actions.is_empty() && !d.suppress);
+    }
+
+    #[test]
+    fn unbound_win_shift_s_passes_through_to_windows() {
+        // Win+Shift+S is Windows' screen snip: nothing of it is ours.
+        let mut m = win_shift_q_w();
+        for k in [Key::Win, Key::LShift, Key::Vk(b'S' as u16)] {
+            let d = m.handle(KeyEvent::down(k), false);
+            assert!(d.actions.is_empty() && !d.suppress, "{k:?} down");
+        }
+        for k in [Key::Vk(b'S' as u16), Key::LShift, Key::Win] {
+            let d = m.handle(KeyEvent::up(k), false);
+            assert!(d.actions.is_empty() && !d.suppress, "{k:?} up");
+            assert!(!d.mask_release, "{k:?} up: Windows handles its own chord");
+        }
     }
 
     #[test]
