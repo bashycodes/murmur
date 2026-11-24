@@ -327,17 +327,30 @@ pub fn sherpa_hotwords(req: &AsrRequest) -> Vec<murmur_asr_sherpa::Hotword> {
     sherpa_hotwords_scored(req, SCREEN_HOTWORDS_SCORE)
 }
 
+/// The highest screen score [`screen_hotwords_score`] takes from the
+/// environment. Far above anything swept (the bench WER rose at 4.0); a
+/// typo such as `25` would otherwise let screen names win over any audio.
+pub const MAX_SCREEN_HOTWORDS_SCORE: f32 = 10.0;
+
 /// The screen score a sherpa adapter uses: `MURMUR_SCREEN_HOTWORDS_SCORE`
 /// when set to a positive number (a tuning knob for probes and field
-/// tests, like `MURMUR_PARAKEET_HOTWORDS_SCORE`), else
-/// [`SCREEN_HOTWORDS_SCORE`].
+/// tests, like `MURMUR_PARAKEET_HOTWORDS_SCORE`), at most
+/// [`MAX_SCREEN_HOTWORDS_SCORE`], else [`SCREEN_HOTWORDS_SCORE`].
 #[cfg(feature = "parakeet")]
 pub(crate) fn screen_hotwords_score() -> f32 {
-    std::env::var("MURMUR_SCREEN_HOTWORDS_SCORE")
-        .ok()
-        .and_then(|s| s.parse::<f32>().ok())
+    parse_screen_hotwords_score(
+        std::env::var("MURMUR_SCREEN_HOTWORDS_SCORE")
+            .ok()
+            .as_deref(),
+    )
+}
+
+/// [`screen_hotwords_score`] for a given environment value.
+#[cfg(any(test, feature = "parakeet"))]
+fn parse_screen_hotwords_score(v: Option<&str>) -> f32 {
+    v.and_then(|s| s.trim().parse::<f32>().ok())
         .filter(|s| s.is_finite() && *s > 0.0)
-        .unwrap_or(SCREEN_HOTWORDS_SCORE)
+        .map_or(SCREEN_HOTWORDS_SCORE, |s| s.min(MAX_SCREEN_HOTWORDS_SCORE))
 }
 
 /// [`sherpa_hotwords`] with another screen score.
@@ -349,10 +362,14 @@ pub fn sherpa_hotwords_scored(
     use murmur_asr_sherpa::Hotword;
     let key = |s: &str| s.trim().to_lowercase();
     let dict: Vec<String> = req.dictionary_terms.iter().map(|t| key(t)).collect();
+    // A term with ", " in it reaches `hotword_phrases` split at it
+    // (`build_initial_prompt` joins with ", "), so its pieces count too
+    // (and the last loses a final ".").
     let screen: Vec<String> = req
         .screen_terms
         .iter()
-        .map(|t| key(t))
+        .flat_map(|t| std::iter::once(t.clone()).chain(prompt_phrases(t)))
+        .map(|t| key(&t))
         .filter(|k| !dict.contains(k))
         .collect();
     hotword_phrases(req)
@@ -453,6 +470,43 @@ impl AsrEngine for MockAsr {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_screen_score_from_the_environment_is_capped() {
+        use super::{
+            parse_screen_hotwords_score as parse, MAX_SCREEN_HOTWORDS_SCORE, SCREEN_HOTWORDS_SCORE,
+        };
+        assert_eq!(parse(None), SCREEN_HOTWORDS_SCORE);
+        assert_eq!(parse(Some("3.5")), 3.5);
+        assert_eq!(parse(Some(" 4 ")), 4.0);
+        assert_eq!(parse(Some("25")), MAX_SCREEN_HOTWORDS_SCORE);
+        assert_eq!(parse(Some("inf")), SCREEN_HOTWORDS_SCORE);
+        for bad in ["0", "-1", "NaN", "x", ""] {
+            assert_eq!(parse(Some(bad)), SCREEN_HOTWORDS_SCORE, "{bad}");
+        }
+    }
+
+    #[cfg(feature = "parakeet")]
+    #[test]
+    fn a_screen_term_split_at_a_comma_keeps_the_screen_score() {
+        use super::{sherpa_hotwords, AsrRequest, SCREEN_HOTWORDS_SCORE};
+        use murmur_asr_sherpa::Hotword;
+        let terms = vec!["Vashel, Odrin".to_string(), "Mireth.".to_string()];
+        let req = AsrRequest {
+            initial_prompt: super::build_initial_prompt(&Default::default(), &terms),
+            screen_terms: terms,
+            ..Default::default()
+        };
+        let s = SCREEN_HOTWORDS_SCORE;
+        assert_eq!(
+            sherpa_hotwords(&req),
+            [
+                Hotword::scored("Vashel", s),
+                Hotword::scored("Odrin", s),
+                Hotword::scored("Mireth.", s),
+            ]
+        );
+    }
+
     use super::*;
     use crate::dictionary::{DictEntry, Dictionary};
 
