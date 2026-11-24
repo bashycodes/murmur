@@ -16,6 +16,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-24
+
 ### Added
 
 - **Windows: "Allow an unencrypted connection" for your server.** On a network you trust, such as an air-gapped company network that uses public address ranges inside, Settings → Your server can now connect without TLS to any address. It is off by default and shown for a public IP address; the page warns that audio, text and the access token then cross the network unencrypted. The server must accept such clients too (`--insecure-bind-any`, Docker `MURMUR_INSECURE_BIND_ANY=1`). Android follows later (D100).
@@ -1492,7 +1494,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   adaptive connect timeout, connection pre-warm.
 - All P1/P2 findings of the 2026-10-22 review (`docs/reviews/2026-10-22-integration.md`).
 
-[Unreleased]: https://github.com/bashycodes/murmur/compare/v1.6.1...HEAD
+[Unreleased]: https://github.com/bashycodes/murmur/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/bashycodes/murmur/compare/v1.6.1...v1.7.0
 [1.6.1]: https://github.com/bashycodes/murmur/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/bashycodes/murmur/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/bashycodes/murmur/compare/v1.4.0...v1.5.0
