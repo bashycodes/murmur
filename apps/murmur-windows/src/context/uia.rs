@@ -306,6 +306,13 @@ impl crate::learn::FieldReader for UiaFieldReader {
             }
         }
     }
+    /// The old control after focus left: still a live UIA element while the
+    /// app keeps it (a tab-away, a click elsewhere), so the fix typed just
+    /// before is read even when the last poll missed it. Gone → `None`.
+    fn final_read(&mut self) -> Option<String> {
+        let (_, el) = self.com.as_ref()?;
+        unsafe { read_whole(el) }
+    }
 }
 
 impl Drop for UiaFieldReader {

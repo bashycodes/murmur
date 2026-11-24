@@ -2368,6 +2368,15 @@ impl FieldReader for StopOnNewDictation<'_> {
         }
         self.inner.read()
     }
+
+    /// No final read once the next dictation started: the field may
+    /// already hold its paste.
+    fn final_read(&mut self) -> Option<String> {
+        if self.watch_gen.load(Ordering::SeqCst) != self.gen {
+            return None;
+        }
+        self.inner.final_read()
+    }
 }
 
 #[cfg(test)]

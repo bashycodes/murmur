@@ -25,7 +25,13 @@ pub const FILE_NAME: &str = "prefs.json";
 /// * 5 (D57): push to talk defaults to Right Alt instead of Ctrl+Win: a
 ///   saved Ctrl+Win (the untouched old default) moves to Right Alt unless
 ///   another shortcut already uses it; any other shortcut stays.
-pub const PREFS_REV: u32 = 5;
+/// * 6 (D109): learn-from-edits re-reads the field every 250 ms instead of
+///   every second: a saved 1000 (the untouched old default) moves to 250;
+///   any other value stays.
+pub const PREFS_REV: u32 = 6;
+
+/// The learn-from-edits re-read interval before D109 (rev ≤ 5).
+const OLD_LEARN_POLL_MS: u64 = 1_000;
 
 /// The LLM budget default before D27 (rev ≤ 2): it timed out on nearly
 /// every dictation (docs/findings/2026-10-23-server-llm-cleanup-cost.md).
@@ -275,7 +281,7 @@ pub struct Prefs {
     pub learn_from_edits: bool,
     /// How long to watch after a paste.
     pub learn_window_ms: u64,
-    /// Re-read interval while watching.
+    /// Re-read interval while watching (D109: 250 ms; never below 250).
     pub learn_poll_ms: u64,
     /// Notetaker meeting detection (D48): off (default), ask before
     /// recording a Zoom / Webex / Jabber call, or record it automatically.
@@ -337,7 +343,7 @@ impl Default for Prefs {
             llm_timeout_ms: DEFAULT_LLM_TIMEOUT_MS,
             learn_from_edits: true,
             learn_window_ms: 45_000,
-            learn_poll_ms: 1_000,
+            learn_poll_ms: crate::learn::DEFAULT_POLL_MS,
             meeting_detection: crate::meetings::detect::Mode::Off,
             developer: crate::dev_settings::DevSettings::default(),
             transforms: crate::transforms::TransformPrefs::default(),
@@ -437,6 +443,10 @@ impl Prefs {
             if !self.shortcuts_distinct() {
                 self.shortcuts.ptt = old;
             }
+        }
+        if self.prefs_rev < 6 && self.learn_poll_ms == OLD_LEARN_POLL_MS {
+            // D109: every field is saved, so 1000 is the untouched default.
+            self.learn_poll_ms = crate::learn::DEFAULT_POLL_MS;
         }
         // D36: the cleanup order holds all three engines (idempotent, so
         // not tied to a revision: an older shell may have saved over it).
@@ -643,7 +653,7 @@ impl Prefs {
         crate::learn::WatchOpts {
             window_ms,
             baseline_ms: 3_000.min(window_ms),
-            poll_ms: self.learn_poll_ms.clamp(100, 5_000),
+            poll_ms: self.learn_poll_ms.clamp(crate::learn::MIN_POLL_MS, 5_000),
         }
     }
 
@@ -1247,6 +1257,28 @@ mod tests {
             "chosen after D24"
         );
         assert_eq!(Prefs::default().developer.server.connect_timeout_ms, 2500);
+    }
+
+    #[test]
+    fn old_learn_poll_default_migrates_once() {
+        let (p, _) = load_str("mig-lp-old", r#"{"prefs_rev":5,"learn_poll_ms":1000}"#);
+        assert_eq!(p.learn_poll_ms, 250);
+        assert_eq!(p.watch_opts().poll_ms, 250);
+        let (p, _) = load_str("mig-lp-user", r#"{"prefs_rev":5,"learn_poll_ms":2000}"#);
+        assert_eq!(p.learn_poll_ms, 2000, "a value the user chose stays");
+        let (p, _) = load_str(
+            "mig-lp-new",
+            &format!(r#"{{"prefs_rev":{PREFS_REV},"learn_poll_ms":1000}}"#),
+        );
+        assert_eq!(p.learn_poll_ms, 1000, "chosen after D109");
+        let (p, _) = load_str("mig-lp-none", r#"{"prefs_rev":5}"#);
+        assert_eq!(p.learn_poll_ms, 250);
+        // Cost bound: never more than one read per 250 ms.
+        let p = Prefs {
+            learn_poll_ms: 50,
+            ..Prefs::default()
+        };
+        assert_eq!(p.watch_opts().poll_ms, 250);
     }
 
     #[test]

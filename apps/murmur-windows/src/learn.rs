@@ -11,7 +11,15 @@
 //! ever added to the dictionary automatically.
 //!
 //! End reasons: anchor mismatch / region removed / paste never observed don't count (no
-//! learning); a timeout or a focus change keep the last observation.
+//! learning); a timeout or a focus change keep the last observation, and a
+//! cleared field (a chat box after send) keeps the last good one (D109).
+//!
+//! Timing (D109): the field is read every [`WatchOpts::poll_ms`] (250 ms by
+//! default) at a fixed rate, so a fix that stays in the field for 300 ms is
+//! seen before a send or clear. When focus leaves, the old control is read
+//! once more ([`FieldReader::final_read`]). A clear can't be read ahead of:
+//! the app empties the field in reply to Enter or its send button, and UIA
+//! only reports a text change after it happened.
 
 use crate::context::{head_chars, tail_chars};
 use crate::core_api::FieldContext;
@@ -35,6 +43,13 @@ pub enum Read {
 /// used on the watch thread (UIA objects are apartment-bound).
 pub trait FieldReader {
     fn read(&mut self) -> Read;
+
+    /// The watched control's text after [`Read::FocusChanged`], read without
+    /// the focus check (focus is already elsewhere). `None` when the control
+    /// is gone or this reader can't tell.
+    fn final_read(&mut self) -> Option<String> {
+        None
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,15 +58,22 @@ pub struct WatchOpts {
     pub window_ms: u64,
     /// The pasted text must show up in the field within this time.
     pub baseline_ms: u64,
+    /// Time between the starts of two reads (fixed rate, never below
+    /// [`MIN_POLL_MS`]).
     pub poll_ms: u64,
 }
+
+/// Default re-read interval (D109; was 1000 ms).
+pub const DEFAULT_POLL_MS: u64 = 250;
+/// Cost bound: at most one field read per this many ms.
+pub const MIN_POLL_MS: u64 = 250;
 
 impl Default for WatchOpts {
     fn default() -> Self {
         WatchOpts {
             window_ms: 45_000,
             baseline_ms: 3_000,
-            poll_ms: 1_000,
+            poll_ms: DEFAULT_POLL_MS,
         }
     }
 }
@@ -67,13 +89,19 @@ pub enum EndReason {
     RegionRemoved,
     /// The pasted text never appeared between the anchors.
     PasteNotObserved,
+    /// The whole field became empty (sent or cleared): the last good
+    /// observation before it counts, the empty field never does.
+    Cleared,
 }
 
 impl EndReason {
     /// Whether the last observation may be learned from (an anchor
     /// mismatch or a removed region says nothing reliable about the edit).
     pub fn counts(self) -> bool {
-        matches!(self, EndReason::Timeout | EndReason::FocusChanged)
+        matches!(
+            self,
+            EndReason::Timeout | EndReason::FocusChanged | EndReason::Cleared
+        )
     }
 }
 
@@ -151,6 +179,15 @@ pub struct EditWatch {
     opts: WatchOpts,
     baseline_seen: bool,
     last_region: Option<String>,
+    /// The last region that wasn't just a cut of the one before (backspacing
+    /// from the end): what a clear learns from, so holding Backspace down to
+    /// an empty field isn't read as a correction.
+    last_good: Option<String>,
+}
+
+/// `next` is `prev` with characters removed from its end.
+fn is_cut_of(next: &str, prev: &str) -> bool {
+    next.len() < prev.len() && prev.starts_with(next)
 }
 
 impl EditWatch {
@@ -163,7 +200,34 @@ impl EditWatch {
             opts,
             baseline_seen: false,
             last_region: None,
+            last_good: None,
         }
+    }
+
+    fn remember(&mut self, r: String) {
+        if !self.last_good.as_deref().is_some_and(|g| is_cut_of(&r, g)) {
+            self.last_good = Some(r.clone());
+        }
+        self.last_region = Some(r);
+    }
+
+    /// Focus left the control; `final_text` is its text read once more
+    /// afterwards ([`FieldReader::final_read`]). A final text whose region
+    /// can't be found is ignored (the last observation stands); an empty one
+    /// is a clear.
+    pub fn focus_left(&mut self, final_text: Option<&str>) -> Outcome {
+        if let (true, Some(t)) = (self.baseline_seen, final_text) {
+            if normalize(t).is_empty() {
+                return self.outcome(EndReason::Cleared);
+            }
+            if let Some(r) = region(t, &self.anchors, self.pasted_len) {
+                let r = normalize(r);
+                if !r.is_empty() {
+                    self.remember(r);
+                }
+            }
+        }
+        self.outcome(EndReason::FocusChanged)
     }
 
     pub fn observe(&mut self, now_ms: u64, read: Read) -> Step {
@@ -172,6 +236,9 @@ impl EditWatch {
         match read {
             Read::FocusChanged => return self.finish(EndReason::FocusChanged),
             Read::Unavailable => {}
+            Read::Text(t) if self.baseline_seen && normalize(&t).is_empty() => {
+                return self.finish(EndReason::Cleared);
+            }
             Read::Text(t) => match region(&t, &self.anchors, self.pasted_len) {
                 None if !self.baseline_seen => {
                     if baseline_over {
@@ -184,14 +251,14 @@ impl EditWatch {
                     if !self.baseline_seen {
                         if r == self.pasted_norm {
                             self.baseline_seen = true;
-                            self.last_region = Some(r);
+                            self.remember(r);
                         } else if baseline_over {
                             return self.finish(EndReason::PasteNotObserved);
                         }
                     } else if r.is_empty() {
                         return self.finish(EndReason::RegionRemoved);
                     } else {
-                        self.last_region = Some(r);
+                        self.remember(r);
                     }
                 }
             },
@@ -208,30 +275,50 @@ impl EditWatch {
     }
 
     fn finish(&self, reason: EndReason) -> Step {
+        Step::Done(self.outcome(reason))
+    }
+
+    fn outcome(&self, reason: EndReason) -> Outcome {
+        let last = if reason == EndReason::Cleared {
+            &self.last_good
+        } else {
+            &self.last_region
+        };
         let edited = if reason.counts() && self.baseline_seen {
-            self.last_region
-                .clone()
+            last.clone()
                 .filter(|r| *r != self.pasted_norm && !r.is_empty())
         } else {
             None
         };
-        Step::Done(Outcome { reason, edited })
+        Outcome { reason, edited }
     }
 }
 
-/// Drive `reader` until the watch ends. `now` / `sleep` are injected so
-/// tests run in virtual time.
+/// Drive `reader` until the watch ends. Reads start every
+/// [`WatchOpts::poll_ms`] (fixed rate, so a slow read doesn't stretch the
+/// gap a quick fix can slip through), never closer than [`MIN_POLL_MS`].
+/// `now` / `sleep` are injected so tests run in virtual time.
 pub fn run_watch(
     reader: &mut dyn FieldReader,
     watch: &mut EditWatch,
     now: &dyn Fn() -> u64,
     sleep: &dyn Fn(u64),
 ) -> Outcome {
+    let period = watch.opts.poll_ms.max(MIN_POLL_MS);
     loop {
-        if let Step::Done(o) = watch.observe(now(), reader.read()) {
+        let started = now();
+        let step = match reader.read() {
+            Read::FocusChanged => {
+                let last = reader.final_read();
+                Step::Done(watch.focus_left(last.as_deref()))
+            }
+            read => watch.observe(started, read),
+        };
+        if let Step::Done(o) = step {
             return o;
         }
-        sleep(watch.opts.poll_ms.max(1));
+        let spent = now().saturating_sub(started);
+        sleep(period.saturating_sub(spent).max(1));
     }
 }
 
@@ -380,13 +467,58 @@ mod tests {
     }
 
     #[test]
-    fn sent_or_deleted_text_does_not_count() {
+    fn a_clear_without_a_fix_learns_nothing() {
         let mut w = EditWatch::new("ship it", a("", ""), 0, FAST);
         w.observe(0, Read::Text("ship it".into()));
         assert_eq!(
-            w.observe(800, Read::Text(String::new())),
+            w.observe(800, Read::Text(" \r\n".into())),
+            Step::Done(Outcome {
+                reason: EndReason::Cleared,
+                edited: None
+            }),
+            "the clear itself is not an edit"
+        );
+    }
+
+    #[test]
+    fn deleting_only_the_dictation_does_not_count() {
+        let mut w = EditWatch::new("ship it", a("Note: ", ""), 0, FAST);
+        w.observe(0, Read::Text("Note: ship it".into()));
+        assert_eq!(
+            w.observe(800, Read::Text("Note: ".into())),
             Step::Done(Outcome {
                 reason: EndReason::RegionRemoved,
+                edited: None
+            })
+        );
+    }
+
+    #[test]
+    fn a_clear_keeps_the_fix_seen_before_it() {
+        // Anchors around the caret are gone once the field empties: still a
+        // clear, not an anchor mismatch.
+        let mut w = EditWatch::new("teh plan", a("Re: ", " ok"), 0, FAST);
+        w.observe(0, Read::Text("Re: teh plan ok".into()));
+        w.observe(250, Read::Text("Re: the plan ok".into()));
+        assert_eq!(
+            w.observe(500, Read::Text(String::new())),
+            Step::Done(Outcome {
+                reason: EndReason::Cleared,
+                edited: Some("the plan".into())
+            })
+        );
+    }
+
+    #[test]
+    fn backspacing_to_empty_is_not_a_fix() {
+        let mut w = EditWatch::new("see you at noon", a("", ""), 0, FAST);
+        w.observe(0, Read::Text("see you at noon".into()));
+        w.observe(250, Read::Text("see you at no".into()));
+        w.observe(500, Read::Text("see you".into()));
+        assert_eq!(
+            w.observe(750, Read::Text(String::new())),
+            Step::Done(Outcome {
+                reason: EndReason::Cleared,
                 edited: None
             })
         );
@@ -417,6 +549,112 @@ mod tests {
                 edited: None
             })
         );
+    }
+
+    /// The field as a function of virtual time; focus leaves at `focus_ms`.
+    struct Timed<'a> {
+        t: &'a Cell<u64>,
+        text: fn(u64) -> &'static str,
+        focus_ms: u64,
+        read_cost_ms: u64,
+        reads: Vec<u64>,
+    }
+    impl FieldReader for Timed<'_> {
+        fn read(&mut self) -> Read {
+            let now = self.t.get();
+            self.reads.push(now);
+            self.t.set(now + self.read_cost_ms);
+            if now >= self.focus_ms {
+                Read::FocusChanged
+            } else {
+                Read::Text((self.text)(now).into())
+            }
+        }
+        fn final_read(&mut self) -> Option<String> {
+            Some((self.text)(self.t.get()).into())
+        }
+    }
+
+    fn timed(t: &Cell<u64>, text: fn(u64) -> &'static str, focus_ms: u64) -> Outcome {
+        let mut r = Timed {
+            t,
+            text,
+            focus_ms,
+            read_cost_ms: 40,
+            reads: Vec::new(),
+        };
+        let mut w = EditWatch::new("I use cora daily", a("", ""), 0, WatchOpts::default());
+        let o = run_watch(&mut r, &mut w, &|| t.get(), &|ms| t.set(t.get() + ms));
+        // Fixed rate: reads start every 250 ms even though each takes 40.
+        assert!(
+            r.reads.windows(2).all(|p| p[1] - p[0] == 250),
+            "{:?}",
+            r.reads
+        );
+        o
+    }
+
+    #[test]
+    fn a_quick_fix_then_clear_is_learned() {
+        // Fixed at 1.01 s, sent 290 ms later.
+        let o = timed(
+            &Cell::new(0),
+            |t| match t {
+                0..1_010 => "I use cora daily",
+                1_010..1_300 => "I use Korra daily",
+                _ => "",
+            },
+            u64::MAX,
+        );
+        assert_eq!(o.reason, EndReason::Cleared);
+        assert_eq!(o.edited.as_deref(), Some("I use Korra daily"));
+    }
+
+    #[test]
+    fn a_quick_fix_then_focus_change_is_learned() {
+        // Fixed at 1.01 s, focus leaves at 1.1 s, before the next read:
+        // the final read of the old control still sees it.
+        let o = timed(
+            &Cell::new(0),
+            |t| {
+                if t < 1_010 {
+                    "I use cora daily"
+                } else {
+                    "I use Korra daily"
+                }
+            },
+            1_100,
+        );
+        assert_eq!(o.reason, EndReason::FocusChanged);
+        assert_eq!(o.edited.as_deref(), Some("I use Korra daily"));
+    }
+
+    #[test]
+    fn no_fix_then_clear_or_focus_change_learns_nothing() {
+        let o = timed(
+            &Cell::new(0),
+            |t| if t < 1_300 { "I use cora daily" } else { "" },
+            u64::MAX,
+        );
+        assert_eq!((o.reason, o.edited), (EndReason::Cleared, None));
+        let o = timed(&Cell::new(0), |_| "I use cora daily", 1_100);
+        assert_eq!((o.reason, o.edited), (EndReason::FocusChanged, None));
+    }
+
+    #[test]
+    fn a_final_read_after_focus_left_that_lost_the_anchors_is_ignored() {
+        let mut w = EditWatch::new("teh plan", a("Re: ", ""), 0, FAST);
+        w.observe(0, Read::Text("Re: teh plan".into()));
+        w.observe(250, Read::Text("Re: the plan".into()));
+        let o = w.focus_left(Some("something else"));
+        assert_eq!(o.reason, EndReason::FocusChanged);
+        assert_eq!(o.edited.as_deref(), Some("the plan"));
+    }
+
+    #[test]
+    fn cleared_counts() {
+        assert!(EndReason::Cleared.counts());
+        assert!(!EndReason::RegionRemoved.counts());
     }
 
     struct Script(VecDeque<Read>);

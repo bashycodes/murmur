@@ -69,10 +69,87 @@ class EditWatchTest {
         assertEquals(Outcome(EndReason.FOCUS_CHANGED, null), w.observe(0, FieldRead.FocusChanged))
     }
 
-    @Test fun sentOrDeletedTextDoesNotCount() {
+    @Test fun aClearWithoutAFixLearnsNothing() {
         val w = EditWatch("ship it", a("", ""), 0, fast)
         w.observe(0, t("ship it"))
-        assertEquals(Outcome(EndReason.REGION_REMOVED, null), w.observe(800, t("")))
+        assertEquals("the clear itself is not an edit", Outcome(EndReason.CLEARED, null), w.observe(800, t(" \n")))
+    }
+
+    @Test fun deletingOnlyTheDictationDoesNotCount() {
+        val w = EditWatch("ship it", a("Note: ", ""), 0, fast)
+        w.observe(0, t("Note: ship it"))
+        assertEquals(Outcome(EndReason.REGION_REMOVED, null), w.observe(800, t("Note: ")))
+    }
+
+    @Test fun aClearKeepsTheFixSeenBeforeIt() {
+        // The anchors are gone once the field empties: still a clear, not an anchor mismatch.
+        val w = EditWatch("teh plan", a("Re: ", " ok"), 0, fast)
+        w.observe(0, t("Re: teh plan ok"))
+        w.observe(250, t("Re: the plan ok"))
+        assertEquals(Outcome(EndReason.CLEARED, "the plan"), w.observe(500, t("")))
+    }
+
+    @Test fun backspacingToEmptyIsNotAFix() {
+        val w = EditWatch("see you at noon", a("", ""), 0, fast)
+        w.observe(0, t("see you at noon"))
+        w.observe(250, t("see you at no"))
+        w.observe(500, t("see you"))
+        assertEquals(Outcome(EndReason.CLEARED, null), w.observe(750, t("")))
+    }
+
+    /** Text-changed events at fixed virtual times; pending ones answer at once. */
+    private class Events(private val clock: LongArray, times: List<Long>) : FieldChanges {
+        private val left = ArrayDeque(times)
+        override suspend fun await(timeoutMs: Long): Boolean {
+            val now = clock[0]
+            if (left.firstOrNull()?.let { it <= now } == true) { while (left.firstOrNull()?.let { it <= now } == true) left.removeFirst(); return true }
+            val next = left.firstOrNull()
+            if (next != null && next <= now + timeoutMs) { left.removeFirst(); clock[0] = next; return true }
+            clock[0] = now + timeoutMs
+            return false
+        }
+        override fun close() = Unit
+    }
+
+    /**
+     * Default timings, the field as a function of time, a text-changed event at each [events]
+     * time, focus leaving at [focusMs]. Returns the outcome and the read times.
+     */
+    private fun timed(text: (Long) -> String, events: List<Long>, focusMs: Long = Long.MAX_VALUE): Pair<Outcome, List<Long>> = runBlocking {
+        val clock = longArrayOf(0)
+        val reads = ArrayList<Long>()
+        val o = runWatch(
+            { val n = clock[0]; reads += n; clock[0] = n + 20; if (n >= focusMs) FieldRead.FocusChanged else t(text(n)) },
+            EditWatch("I use cora daily", a("", ""), 0), { clock[0] }, { clock[0] += it },
+            changes = Events(clock, events),
+        )
+        assertTrue("reads ≥ 250 ms apart: $reads", reads.zipWithNext().all { (x, y) -> y - x >= 250 })
+        o to reads
+    }
+
+    @Test fun aQuickFixThenClearIsLearned() {
+        // Fixed at 1.05 s (keystrokes at 1.0 / 1.05), sent 290 ms later; the 1 s timer alone
+        // would read at 1.0 and 2.0 and miss it.
+        val (o, _) = timed({ n -> when { n < 1_050 -> "I use cora daily"; n < 1_340 -> "I use Korra daily"; else -> "" } }, listOf(1_000, 1_050, 1_340))
+        assertEquals(Outcome(EndReason.CLEARED, "I use Korra daily"), o)
+    }
+
+    @Test fun aQuickFixThenFocusChangeIsLearned() {
+        val (o, _) = timed({ n -> if (n < 1_050) "I use cora daily" else "I use Korra daily" }, listOf(1_050), focusMs = 1_300)
+        assertEquals(Outcome(EndReason.FOCUS_CHANGED, "I use Korra daily"), o)
+    }
+
+    @Test fun noFixLearnsNothing() {
+        val (cleared, _) = timed({ n -> if (n < 1_300) "I use cora daily" else "" }, listOf(1_300))
+        assertEquals(Outcome(EndReason.CLEARED, null), cleared)
+        val (left, _) = timed({ "I use cora daily" }, emptyList(), focusMs = 1_300)
+        assertEquals(Outcome(EndReason.FOCUS_CHANGED, null), left)
+    }
+
+    @Test fun aBurstOfEventsIsThrottled() {
+        // 40 keystrokes 10 ms apart: reads stay ≥ 250 ms apart (checked in timed) and few.
+        val (_, reads) = timed({ n -> if (n < 400) "I use cora daily" else "I use Korra daily" }, (0 until 40).map { 100L + it * 10 }, focusMs = 1_000)
+        assertTrue("$reads", reads.size <= 5)
     }
 
     @Test fun rewrittenSurroundingsAreAnAnchorMismatch() {
@@ -89,7 +166,7 @@ class EditWatchTest {
     }
 
     @Test fun endReasonsThatCount() {
-        assertTrue(EndReason.TIMEOUT.counts && EndReason.FOCUS_CHANGED.counts && EndReason.STABLE.counts)
+        assertTrue(EndReason.TIMEOUT.counts && EndReason.FOCUS_CHANGED.counts && EndReason.STABLE.counts && EndReason.CLEARED.counts)
         for (r in listOf(EndReason.ANCHOR_MISMATCH, EndReason.REGION_REMOVED, EndReason.PASTE_NOT_OBSERVED, EndReason.CANCELLED)) assertFalse(r.name, r.counts)
     }
 

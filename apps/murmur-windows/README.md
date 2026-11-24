@@ -675,7 +675,7 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - The UIPI pre-check compares token integrity levels only. UIAccess targets and protected processes (level unreadable) fall through to the normal paste.
 - The hook watchdog probes only while the user is active and at most every 5 s, so a dead hook is noticed after the next input, not instantly.
 - There is no mouse-button shortcut (`WH_MOUSE_LL`) and no Caps Lock single-key shortcut.
-- Learn-from-edits polls (default every 1 s for 45 s) instead of subscribing to UIA `TextChanged` events, and uses no local LLM to vet candidates ("is this a proper noun?"): murmur-core's alignment filters plus the user's explicit accept do that job. Controls without TextPattern/ValuePattern (some Electron/canvas editors) are not watched.
+- Learn-from-edits polls (default every 250 ms for 45 s, plus one last read when focus leaves; D109) instead of subscribing to UIA `TextChanged` events, and uses no local LLM to vet candidates ("is this a proper noun?"): murmur-core's alignment filters plus the user's explicit accept do that job. Controls without TextPattern/ValuePattern (some Electron/canvas editors) are not watched.
 - LLM cleanup load is 10-50 s on CPU and quality with the default 1.5B model is 8/8 on the core's messy-dictation set (74 % on the 88-suite; the old 0.5B default: 4/8, 43 %, ~2x faster); see `docs/core-architecture.md`.
 - "Re-paste" from the History tab hides Settings and pastes into whatever window Windows activates next (normally the one used before Settings).
 - Cue sounds are synthesised tones; see [Custom sounds](#custom-sounds) to use your own.
