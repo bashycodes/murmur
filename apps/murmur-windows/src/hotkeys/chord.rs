@@ -347,6 +347,14 @@ pub struct Bindings {
         deserialize_with = "optional_chord"
     )]
     pub meeting: Option<Chord>,
+    /// Hold to dictate text that is POSTed to the webhook URL instead of
+    /// pasted (D105). Unset by default; registered only while a webhook
+    /// URL is set too (`Prefs::hotkey_bindings`).
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "optional_chord"
+    )]
+    pub webhook: Option<Chord>,
     /// Transforms (docs/proposals/transforms.md): one entry per saved
     /// transform, in its order (`None` = no shortcut). Not saved here (the
     /// transforms own them, `Prefs::hotkey_bindings`); empty while
@@ -379,6 +387,7 @@ impl Default for Bindings {
             scratchpad: None,
             new_note: None,
             meeting: None,
+            webhook: None,
             command: Chord::new([Key::Ctrl, Key::Win, Key::Alt]),
             translate: Chord::new([Key::Ctrl, Key::Win, Key::Shift]),
             transforms: Vec::new(),
@@ -422,6 +431,11 @@ pub enum HotkeyAction {
     TranslateDown,
     /// Translate chord released (after a `TranslateDown`).
     TranslateUp,
+    /// Webhook chord became fully held (D105; supersedes a push-to-talk
+    /// that started on the way).
+    WebhookDown,
+    /// Webhook chord released (after a `WebhookDown`).
+    WebhookUp,
     /// The shortcut of the transform at this index was pressed.
     Transform(u8),
     /// Transforms' "view changes" shortcut was pressed.
@@ -465,6 +479,8 @@ pub struct ChordMatcher {
     command_active: bool,
     /// The Translate chord fired and none of its keys was released yet.
     translate_active: bool,
+    /// The webhook chord fired and none of its keys was released yet.
+    webhook_active: bool,
     /// Keys whose key-down we swallowed: their key-up must be swallowed
     /// too, so it outlives [`reset`](Self::reset) (the app never saw the
     /// key go down). Only [`forget`](Self::forget) clears it: after missed
@@ -491,6 +507,7 @@ impl ChordMatcher {
             ptt_active: false,
             command_active: false,
             translate_active: false,
+            webhook_active: false,
             swallowed: BTreeSet::new(),
             needs_mask: BTreeSet::new(),
             altgr_ctrl: false,
@@ -602,7 +619,8 @@ impl ChordMatcher {
         if b == self.bindings {
             return Vec::new();
         }
-        let held = self.ptt_active || self.command_active || self.translate_active;
+        let held =
+            self.ptt_active || self.command_active || self.translate_active || self.webhook_active;
         self.bindings = b;
         self.reset();
         if held {
@@ -619,6 +637,7 @@ impl ChordMatcher {
         self.ptt_active = false;
         self.command_active = false;
         self.translate_active = false;
+        self.webhook_active = false;
         self.needs_mask.clear();
         self.altgr_ctrl = false;
     }
@@ -721,6 +740,26 @@ impl ChordMatcher {
                 if !ev.key.is_modifier() {
                     d.suppress = true;
                 }
+            } else if self
+                .bindings
+                .webhook
+                .as_ref()
+                .is_some_and(|c| self.newly_matches(c, ev.key))
+            {
+                // Webhook supersedes a PTT that started on the way.
+                self.ptt_active = false;
+                self.webhook_active = true;
+                d.actions.push(HotkeyAction::WebhookDown);
+                self.chord_fired();
+                // A chord may hold both layout-switch keys (as Translate's).
+                for k in self.pressed.iter().copied() {
+                    if k.flips_layout() {
+                        self.needs_mask.insert(k);
+                    }
+                }
+                if !ev.key.is_modifier() {
+                    d.suppress = true;
+                }
             } else if self.newly_matches(&self.bindings.ptt, ev.key) {
                 self.ptt_active = true;
                 d.actions.push(HotkeyAction::PttDown);
@@ -800,6 +839,7 @@ impl ChordMatcher {
                 && !self.bindings.hands_free.covers(ev.key)
                 && !self.bindings.command.covers(ev.key)
                 && !self.bindings.translate.covers(ev.key)
+                && !self.webhook_covers(ev.key)
             {
                 self.ptt_active = false;
                 d.actions.push(HotkeyAction::PttAborted);
@@ -808,6 +848,9 @@ impl ChordMatcher {
                 d.actions.push(HotkeyAction::PttAborted);
             } else if self.translate_active && !self.bindings.translate.covers(ev.key) {
                 self.translate_active = false;
+                d.actions.push(HotkeyAction::PttAborted);
+            } else if self.webhook_active && !self.webhook_covers(ev.key) {
+                self.webhook_active = false;
                 d.actions.push(HotkeyAction::PttAborted);
             }
             if ev.key == Key::RAlt && self.swallows_right_alt() {
@@ -838,6 +881,10 @@ impl ChordMatcher {
                 self.translate_active = false;
                 d.actions.push(HotkeyAction::TranslateUp);
             }
+            if self.webhook_active && self.webhook_covers(ev.key) {
+                self.webhook_active = false;
+                d.actions.push(HotkeyAction::WebhookUp);
+            }
             // A swallowed key-up needs no mask: the app never saw it down.
             let mask = self.needs_mask.remove(&ev.key);
             d.suppress = self.swallowed.remove(&ev.key);
@@ -847,6 +894,14 @@ impl ChordMatcher {
             }
         }
         d
+    }
+
+    /// `key` belongs to the webhook chord (none set = no key does).
+    fn webhook_covers(&self, key: Key) -> bool {
+        self.bindings
+            .webhook
+            .as_ref()
+            .is_some_and(|c| c.covers(key))
     }
 
     /// Index of the transform whose shortcut `key` just completed.
@@ -984,6 +1039,73 @@ mod tests {
             let up = m.handle(KeyEvent::up(k), false);
             assert!(up.suppress && up.mask_release, "{k:?} release masked");
         }
+    }
+
+    fn webhook_matcher(chord: &str) -> ChordMatcher {
+        ChordMatcher::new(Bindings {
+            webhook: Some(chord.parse().unwrap()),
+            ..Bindings::default()
+        })
+    }
+
+    #[test]
+    fn webhook_chord_fires_down_and_up_and_swallows_its_letter() {
+        let mut m = webhook_matcher("Ctrl+Alt+W");
+        let w = Key::Vk(b'W' as u16);
+        let d = feed(
+            &mut m,
+            &[KeyEvent::down(Key::LCtrl), KeyEvent::down(Key::LAlt)],
+        );
+        assert!(d.is_empty());
+        let down = m.handle(KeyEvent::down(w), false);
+        assert_eq!(down.actions, vec![WebhookDown]);
+        assert!(down.suppress, "W must not reach the app");
+        let up = m.handle(KeyEvent::up(w), false);
+        assert_eq!(up.actions, vec![WebhookUp]);
+        assert!(
+            feed(&mut m, &[KeyEvent::up(Key::LAlt), KeyEvent::up(Key::LCtrl)]).is_empty(),
+            "one release only"
+        );
+    }
+
+    #[test]
+    fn webhook_chord_extends_a_push_to_talk_and_a_foreign_key_aborts_it() {
+        // Right Alt push-to-talk, then W: the dictation goes to the webhook.
+        let mut m = webhook_matcher("Right Alt+W");
+        let w = Key::Vk(b'W' as u16);
+        let a = feed(&mut m, &[KeyEvent::down(Key::RAlt), KeyEvent::down(w)]);
+        assert_eq!(a, vec![PttDown, WebhookDown]);
+        assert_eq!(
+            m.handle(KeyEvent::up(Key::RAlt), false).actions,
+            vec![WebhookUp]
+        );
+        m.handle(KeyEvent::up(w), false);
+        // Held, then a key outside the chord: an OS shortcut, not dictation.
+        let mut m = webhook_matcher("Ctrl+Alt+W");
+        feed(
+            &mut m,
+            &[
+                KeyEvent::down(Key::LCtrl),
+                KeyEvent::down(Key::LAlt),
+                KeyEvent::down(w),
+            ],
+        );
+        let tab = m.handle(KeyEvent::down(Key::Vk(0x09)), false);
+        assert_eq!(tab.actions, vec![PttAborted]);
+    }
+
+    #[test]
+    fn no_webhook_chord_fires_nothing() {
+        let mut m = ChordMatcher::new(Bindings::default());
+        let a = feed(
+            &mut m,
+            &[
+                KeyEvent::down(Key::LCtrl),
+                KeyEvent::down(Key::LAlt),
+                KeyEvent::down(Key::Vk(b'W' as u16)),
+            ],
+        );
+        assert!(!a.contains(&WebhookDown));
     }
 
     #[test]

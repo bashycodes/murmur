@@ -10,6 +10,7 @@ import { prefsStore } from "../lib/prefs-store.js";
 import { hebrewChosen, hebrewReady, mb, models } from "./models.js";
 import { languageNames, pcModelChip, pcModelEntry } from "../lib/model-pages.js";
 import { setTheme } from "../lib/theme.js";
+import { webhookStatus } from "../lib/webhook.js";
 const BOOL_FIELDS = [
     "enable_sounds",
     "mute_audio_while_dictating",
@@ -83,6 +84,9 @@ function fill(prefs) {
     setValue("scratchpad", prefs.shortcuts.scratchpad ?? "");
     setValue("new_note", prefs.shortcuts.new_note ?? "");
     setValue("meeting", prefs.shortcuts.meeting ?? "");
+    setValue("webhook", prefs.shortcuts.webhook ?? "");
+    setValue("webhook_url", prefs.webhook_url ?? "");
+    showWebhook();
     $("microphone").value = prefs.microphone ?? "";
     for (const f of BOOL_FIELDS)
         $(f).checked = Boolean(prefs[f]);
@@ -96,6 +100,11 @@ function fill(prefs) {
     showLanguages(prefs);
     if (prefs.keyboard_language)
         refreshKeyboard();
+}
+/** D105: the line under Send to webhook (off until both fields are set). */
+function showWebhook() {
+    const s = webhookStatus($("webhook_url").value, $("webhook").value);
+    $("webhook_status").textContent = s.text;
 }
 /** Select `value`, adding it as an option first when the list lacks it
  *  (a value saved by hand or by an older version). */
@@ -323,8 +332,10 @@ export function collectGeneral() {
             scratchpad: $("scratchpad").value.trim(),
             new_note: $("new_note").value.trim(),
             meeting: $("meeting").value.trim(),
+            webhook: $("webhook").value.trim(),
         },
     };
+    next.webhook_url = $("webhook_url").value.trim();
     next.model_path = $("model_path").value.trim() || null;
     next.asr_engine = $("asr_engine").value;
     next.parakeet_model_dir = $("parakeet_model_dir").value.trim() || null;
@@ -355,6 +366,7 @@ export const general = {
     init() {
         $("asr_engine").addEventListener("change", showEngineFields);
         $("language_pick").addEventListener("change", pickLanguage);
+        $("webhook_url").addEventListener("input", showWebhook);
         // D37: the layout may have changed while Settings was in the background.
         window.addEventListener("focus", () => {
             if (prefsStore.get()?.keyboard_language)

@@ -22,6 +22,15 @@
 //! untranslated text is pasted with a "Not translated" notice, like a
 //! skipped auto-apply transform.
 //!
+//! Send to webhook (D105): a `webhook` session records like push-to-talk
+//! and is cleaned up as usual, but its text goes out as
+//! `Effect::Webhook` (an HTTP POST) instead of a paste; the answer comes
+//! back as `Input::WebhookFinished` and the pill says sent or failed. A
+//! POST cannot be called back: Esc (or the processing timeout) while it is
+//! in flight ends the dictation, and its real outcome, when it arrives,
+//! still shows ("Already sent to webhook", or the failure).
+//! Nothing is pasted either way.
+//!
 //! Pure: inputs are hotkey actions, core/paste completions and clock ticks
 //! (`now_ms` is passed in); outputs are `Effect`s the shell executes. Session
 //! ids let late completions from a cancelled session be dropped.
@@ -39,6 +48,9 @@ pub enum Mode {
     Command,
     /// Translate chord held (D90): release = paste the dictation translated.
     Translate,
+    /// Webhook chord held (D105): release = POST the dictation to the
+    /// webhook URL instead of pasting it.
+    Webhook,
 }
 
 impl Mode {
@@ -185,6 +197,12 @@ pub enum Input {
         original: String,
         result: Result<String, String>,
     },
+    /// D105: the webhook POST of a dictation finished (or was dropped
+    /// before it went out).
+    WebhookFinished {
+        session: SessionId,
+        outcome: crate::webhook::Outcome,
+    },
     /// The auto-apply transform ran on a dictation's `original` text:
     /// the transformed text, or why it was skipped.
     AutoTransformFinished {
@@ -238,6 +256,12 @@ pub enum Effect {
     /// D90: translate a dictation's `text` before it is pasted
     /// (off-thread; reply = `TranslateFinished`).
     Translate {
+        session: SessionId,
+        text: String,
+    },
+    /// D105: POST a dictation's cleaned `text` to the webhook URL instead
+    /// of pasting it (off-thread; reply = `WebhookFinished`).
+    Webhook {
         session: SessionId,
         text: String,
     },
@@ -354,6 +378,11 @@ pub struct Dictation {
     rerun: Option<SessionId>,
     /// D90: this session's text is translated before the paste.
     translate: Option<SessionId>,
+    /// D105: this session's text goes to the webhook, not the paste.
+    webhook: Option<SessionId>,
+    /// D105: this session's `Effect::Webhook` went out and its
+    /// `WebhookFinished` has not come back yet.
+    webhook_sending: Option<SessionId>,
 }
 
 impl Dictation {
@@ -367,6 +396,8 @@ impl Dictation {
             after_paste: None,
             rerun: None,
             translate: None,
+            webhook: None,
+            webhook_sending: None,
         }
     }
 
@@ -458,6 +489,7 @@ impl Dictation {
             // transform; with Ctrl+Win push-to-talk their chords start
             // with a PttDown): the user meant that, not a double tap.
             HotkeyAction::TranslateDown
+            | HotkeyAction::WebhookDown
             | HotkeyAction::CommandDown
             | HotkeyAction::HandsFreeToggle
             | HotkeyAction::Transform(_) => *t = BusyTap::default(),
@@ -506,6 +538,7 @@ impl Dictation {
             (_, Input::Hotkey(HotkeyAction::HandsFreeToggle)) => self.begin(Mode::Locked, now_ms),
             (_, Input::Hotkey(HotkeyAction::CommandDown)) => self.begin(Mode::Command, now_ms),
             (_, Input::Hotkey(HotkeyAction::TranslateDown)) => self.begin(Mode::Translate, now_ms),
+            (_, Input::Hotkey(HotkeyAction::WebhookDown)) => self.begin(Mode::Webhook, now_ms),
             (_, Input::Hotkey(HotkeyAction::Transform(index))) => {
                 self.begin_transform(index, now_ms)
             }
@@ -534,6 +567,13 @@ impl Dictation {
             ) if now_ms.saturating_sub(*since_ms) >= *linger_ms => {
                 self.phase = Phase::Idle;
                 vec![Effect::Overlay(OverlayState::Resting)]
+            }
+            // D105: a POST that was in flight when Esc (or the timeout)
+            // ended its dictation: say what really happened.
+            (_, Input::WebhookFinished { session, outcome })
+                if self.webhook_sending == Some(session) =>
+            {
+                self.webhook_finished(outcome, crate::webhook::ALREADY_SENT, now_ms)
             }
             // Esc closes the answer card (the key still reaches the app).
             (Phase::Answer { .. }, Input::Hotkey(HotkeyAction::Cancel)) => {
@@ -616,6 +656,23 @@ impl Dictation {
                 }
             }
             (Mode::Translate, Input::Hotkey(PttAborted)) => self.cancel_listening(l.session),
+
+            // ---- webhook (held like push-to-talk, D105) ----
+            // Push-to-talk, then the rest of the webhook chord.
+            (Mode::Ptt, Input::Hotkey(WebhookDown)) => {
+                l.mode = Mode::Webhook;
+                l.released_at = None;
+                self.phase = Phase::Listening(l);
+                Vec::new()
+            }
+            (Mode::Webhook, Input::Hotkey(WebhookUp)) => {
+                if elapsed < p.debounce_ms {
+                    self.cancel_listening(l.session) // a tap: nothing said
+                } else {
+                    self.stop_listening(&l, now_ms)
+                }
+            }
+            (Mode::Webhook, Input::Hotkey(PttAborted)) => self.cancel_listening(l.session),
 
             // ---- locked (hands-free) ----
             (Mode::Locked, Input::Hotkey(PttDown)) => {
@@ -726,6 +783,21 @@ impl Dictation {
                     }]
                 }
             },
+            // D105: the cleaned text goes to the webhook (no auto-apply
+            // transform), never to the paste.
+            Input::Committed {
+                session: s,
+                outcome: CommitOutcome::Text(text),
+            } if s == session && self.webhook == Some(session) => {
+                self.webhook_sending = Some(session);
+                vec![Effect::Webhook { session, text }]
+            }
+            Input::WebhookFinished {
+                session: s,
+                outcome,
+            } if s == session && self.webhook_sending == Some(session) => {
+                self.webhook_finished(outcome, crate::webhook::SENT, now_ms)
+            }
             Input::Committed {
                 session: s,
                 outcome: CommitOutcome::Text(text),
@@ -782,6 +854,8 @@ impl Dictation {
                     "Command timed out"
                 } else if self.translate == Some(session) {
                     "Translation timed out"
+                } else if self.webhook_sending == Some(session) {
+                    "Webhook timed out"
                 } else {
                     "Transcription timed out"
                 };
@@ -807,6 +881,8 @@ impl Dictation {
         let (sound, overlay) = match mode {
             Mode::Ptt => (Sound::Start, OverlayState::ActivePtt),
             Mode::Locked => (Sound::Lock, OverlayState::ActiveLocked),
+            // D105: dictated as usual; only where the text goes differs.
+            Mode::Webhook => (Sound::Start, OverlayState::ActivePtt),
             _ => (Sound::Start, OverlayState::ActiveCommand),
         };
         vec![
@@ -853,6 +929,9 @@ impl Dictation {
             }
             return fx;
         }
+        if l.mode == Mode::Webhook {
+            self.webhook = Some(l.session);
+        }
         self.stop(l.session, l.mode == Mode::Command, now_ms)
     }
 
@@ -873,6 +952,33 @@ impl Dictation {
                 OverlayState::Processing
             }),
         ]
+    }
+
+    /// D105: the pill for a webhook outcome (`sent` = its text on a 2xx);
+    /// a failure stays as long as a notice, so its status can be read.
+    fn webhook_finished(
+        &mut self,
+        outcome: crate::webhook::Outcome,
+        sent: &str,
+        now_ms: u64,
+    ) -> Vec<Effect> {
+        self.webhook_sending = None;
+        if outcome == crate::webhook::Outcome::Sent {
+            let mut fx = vec![Effect::Sound(Sound::Paste)];
+            fx.extend(self.notice(sent.into(), now_ms));
+            return fx;
+        }
+        let Some(message) = outcome.failure() else {
+            // Dropped before it went out: nothing to say.
+            self.phase = Phase::Idle;
+            return vec![Effect::Overlay(OverlayState::Resting)];
+        };
+        let fx = self.fail(message, now_ms);
+        self.phase = Phase::Error {
+            since_ms: now_ms,
+            linger_ms: self.policy.notice_linger_ms,
+        };
+        fx
     }
 
     /// Informational pill (no error sound) for `notice_linger_ms`.
@@ -2218,6 +2324,245 @@ mod tests {
     fn a_plain_dictation_after_a_translation_is_not_translated() {
         let mut d = d();
         let s = translated(&mut d);
+        d.handle(
+            Input::Committed {
+                session: s,
+                outcome: CommitOutcome::Empty,
+            },
+            1100,
+        );
+        assert_eq!(d.phase(), &Phase::Idle);
+        let s = session_of(&hk(&mut d, PttDown, 5000));
+        hk(&mut d, PttUp, 6000);
+        let fx = d.handle(
+            Input::Committed {
+                session: s,
+                outcome: CommitOutcome::Text("plain".into()),
+            },
+            6100,
+        );
+        assert_eq!(
+            fx,
+            vec![Effect::Paste {
+                session: s,
+                text: "plain".into()
+            }]
+        );
+    }
+
+    /// A webhook session held past the debounce and released.
+    fn sent_to_webhook(d: &mut Dictation) -> SessionId {
+        let fx = hk(d, WebhookDown, 0);
+        let s = session_of(&fx);
+        assert!(fx.contains(&Effect::Overlay(OverlayState::ActivePtt)));
+        assert_eq!(listening(d).mode, Mode::Webhook);
+        let fx = hk(d, WebhookUp, 1000);
+        assert!(fx.contains(&Effect::Commit(s)));
+        s
+    }
+
+    #[test]
+    fn a_webhook_dictation_is_sent_not_pasted() {
+        let mut d = d();
+        d.set_auto_transform(true); // never applied to a webhook dictation
+        let s = sent_to_webhook(&mut d);
+        let fx = d.handle(
+            Input::Committed {
+                session: s,
+                outcome: CommitOutcome::Text("Clean words.".into()),
+            },
+            1100,
+        );
+        assert_eq!(
+            fx,
+            vec![Effect::Webhook {
+                session: s,
+                text: "Clean words.".into()
+            }]
+        );
+        let fx = d.handle(
+            Input::WebhookFinished {
+                session: s,
+                outcome: crate::webhook::Outcome::Sent,
+            },
+            1200,
+        );
+        assert_eq!(
+            fx,
+            vec![
+                Effect::Sound(Sound::Paste),
+                Effect::Overlay(OverlayState::Notice {
+                    message: crate::webhook::SENT.into()
+                })
+            ]
+        );
+        assert!(!fx.iter().any(|e| matches!(e, Effect::Paste { .. })));
+    }
+
+    #[test]
+    fn a_failed_webhook_shows_its_status_long_enough_to_read() {
+        let mut d = d();
+        let s = sent_to_webhook(&mut d);
+        d.handle(
+            Input::Committed {
+                session: s,
+                outcome: CommitOutcome::Text("words".into()),
+            },
+            1100,
+        );
+        let fx = d.handle(
+            Input::WebhookFinished {
+                session: s,
+                outcome: crate::webhook::Outcome::Status(500),
+            },
+            1200,
+        );
+        assert_eq!(
+            fx,
+            vec![
+                Effect::Sound(Sound::Error),
+                Effect::Overlay(OverlayState::Error {
+                    message: "Webhook failed (HTTP 500)".into()
+                })
+            ]
+        );
+        let linger = d.policy().notice_linger_ms;
+        assert!(d.handle(Input::Tick, 1200 + linger - 1).is_empty());
+        assert_eq!(
+            d.handle(Input::Tick, 1200 + linger),
+            vec![Effect::Overlay(OverlayState::Resting)]
+        );
+    }
+
+    #[test]
+    fn webhook_extends_a_push_to_talk_and_a_tap_or_abort_cancels() {
+        let mut d = d();
+        let s = session_of(&hk(&mut d, PttDown, 0));
+        assert!(hk(&mut d, WebhookDown, 100).is_empty());
+        assert_eq!(listening(&d).mode, Mode::Webhook);
+        assert!(hk(&mut d, WebhookUp, 900).contains(&Effect::Commit(s)));
+        let fx = d.handle(
+            Input::Committed {
+                session: s,
+                outcome: CommitOutcome::Text("t".into()),
+            },
+            1000,
+        );
+        assert!(matches!(fx[..], [Effect::Webhook { .. }]));
+        d.handle(
+            Input::WebhookFinished {
+                session: s,
+                outcome: crate::webhook::Outcome::Sent,
+            },
+            1100,
+        );
+        d.handle(Input::Tick, 5000);
+        let s = session_of(&hk(&mut d, WebhookDown, 6000));
+        assert_eq!(hk(&mut d, WebhookUp, 6200), cancel_fx(s), "tap");
+        let s = session_of(&hk(&mut d, WebhookDown, 7000));
+        assert_eq!(hk(&mut d, PttAborted, 7100), cancel_fx(s), "abort");
+    }
+
+    /// A webhook dictation whose POST is in flight (`Effect::Webhook` out).
+    fn webhook_in_flight(d: &mut Dictation) -> SessionId {
+        let s = sent_to_webhook(d);
+        let fx = d.handle(
+            Input::Committed {
+                session: s,
+                outcome: CommitOutcome::Text("words".into()),
+            },
+            1100,
+        );
+        assert!(matches!(fx[..], [Effect::Webhook { .. }]));
+        s
+    }
+
+    #[test]
+    fn esc_during_the_post_still_shows_what_really_happened() {
+        use crate::webhook::Outcome;
+        // Sent anyway: the pill says so, after Esc rested it.
+        let mut d = d();
+        let s = webhook_in_flight(&mut d);
+        assert!(hk(&mut d, Cancel, 1200).contains(&Effect::CancelSession(s)));
+        assert_eq!(d.phase(), &Phase::Idle);
+        let fx = d.handle(
+            Input::WebhookFinished {
+                session: s,
+                outcome: Outcome::Sent,
+            },
+            1300,
+        );
+        assert_eq!(
+            fx,
+            vec![
+                Effect::Sound(Sound::Paste),
+                Effect::Overlay(OverlayState::Notice {
+                    message: crate::webhook::ALREADY_SENT.into()
+                })
+            ]
+        );
+        // Failed anyway: the failure shows.
+        let mut d = d_at_rest_after(Outcome::Status(502));
+        assert!(matches!(d.phase(), Phase::Error { .. }));
+        // Dropped before it went out: nothing more to say.
+        d = d_at_rest_after(Outcome::Cancelled);
+        assert_eq!(d.phase(), &Phase::Idle);
+        // Only once: a second (stale) result is ignored.
+        let s2 = webhook_in_flight(&mut d);
+        hk(&mut d, Cancel, 1200);
+        let done = Input::WebhookFinished {
+            session: s2,
+            outcome: Outcome::Sent,
+        };
+        assert!(!d.handle(done.clone(), 1300).is_empty());
+        d.handle(Input::Tick, 9000);
+        assert!(d.handle(done, 9100).is_empty());
+    }
+
+    /// Esc during the POST, then its `outcome` arrives.
+    fn d_at_rest_after(outcome: crate::webhook::Outcome) -> Dictation {
+        let mut d = d();
+        let s = webhook_in_flight(&mut d);
+        hk(&mut d, Cancel, 1200);
+        d.handle(
+            Input::WebhookFinished {
+                session: s,
+                outcome,
+            },
+            1300,
+        );
+        d
+    }
+
+    #[test]
+    fn webhook_timed_out_only_once_the_post_went_out() {
+        let overlay = |fx: &[Effect]| {
+            fx.iter()
+                .find_map(|e| match e {
+                    Effect::Overlay(OverlayState::Error { message }) => Some(message.clone()),
+                    _ => None,
+                })
+                .unwrap()
+        };
+        let limit = Policy::default().processing_timeout_ms;
+        let mut early = d();
+        sent_to_webhook(&mut early); // still transcribing
+        assert_eq!(
+            overlay(&early.handle(Input::Tick, 1000 + limit)),
+            "Transcription timed out"
+        );
+        let mut late = d();
+        webhook_in_flight(&mut late);
+        assert_eq!(
+            overlay(&late.handle(Input::Tick, 1000 + limit)),
+            "Webhook timed out"
+        );
+    }
+
+    #[test]
+    fn a_plain_dictation_after_a_webhook_one_is_pasted() {
+        let mut d = d();
+        let s = sent_to_webhook(&mut d);
         d.handle(
             Input::Committed {
                 session: s,

@@ -27,7 +27,7 @@ required-features = ["app"]
 # Hybrid build (D17): on-device engine + self-hosted server.
 #   client-only: --no-default-features --features local,app
 #   server-only: --no-default-features --features remote,app
-default = ["local", "remote", "tls", "cloud", "download"]
+default = ["local", "remote", "tls", "cloud", "download", "webhook"]
 # On-device ASR ("client"): the MurmurCoreAdapter local backend + whisper.
 local = ["whisper"]
 # The local backend without a native ASR engine: what the MSVC cross-check
@@ -55,6 +55,10 @@ cloud = ["dep:murmur-cloud"]
 # presses Download for a catalogue model (src/model_download.rs). In the
 # default (hybrid) build; never in `local,app` (no network code there).
 download = ["dep:reqwest"]
+# Send to webhook (D105): one HTTPS (or private-network HTTP) POST of a
+# dictation to the URL the user set (src/webhook.rs). In the default
+# (hybrid) build; never in `local,app` (no network code there).
+webhook = ["dep:reqwest"]
 # The Tauri shell (tray, overlay window, event loop). Off by default so the
 # platform-independent logic can be built/tested on any host without webkit.
 app = ["dep:tauri", "dep:tauri-build"]
@@ -83,7 +87,8 @@ murmur-remote = { path = "../../crates/murmur-remote", optional = true }
 murmur-protocol = { path = "../../crates/murmur-protocol" }
 murmur-cloud = { path = "../../crates/murmur-cloud", optional = true }
 rusqlite = { version = "0.32", features = ["bundled"] }
-# Model downloader (feature `download`, D31): same client stack as murmur-cloud.
+# Model downloader (feature `download`, D31) and webhooks (`webhook`, D105):
+# same client stack as murmur-cloud.
 reqwest = { version = "0.12", optional = true, default-features = false, features = ["blocking", "rustls-tls-webpki-roots"] }
 # Pinned SHA-256 of downloaded models (pure Rust, no network).
 sha2 = "0.10"

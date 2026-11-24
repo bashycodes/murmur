@@ -462,10 +462,10 @@ rustup target add x86_64-pc-windows-msvc
 # default `whisper` feature off; the Rust side of whisper is covered by the
 # host build.
 # Each flavour without whisper/sherpa (they can't cross-build): hybrid
-# with cloud STT and the model downloader (reqwest + rustls/ring), with
+# with cloud STT, the model downloader and webhooks (reqwest + rustls/ring), with
 # cloud STT only, hybrid with and without TLS,
 # client-only and server-only.
-for f in app,local-engine,remote,cloud,download app,local-engine,remote,cloud app,local-engine,remote,tls app,local-engine,remote app,local-engine app,remote; do
+for f in app,local-engine,remote,cloud,download,webhook app,local-engine,remote,cloud app,local-engine,remote,tls app,local-engine,remote app,local-engine app,remote; do
   RC=$PWD/tools/check-shims/fake-windres AR_x86_64_pc_windows_msvc=$PWD/tools/check-shims/fake-lib \
     cargo clippy --all-targets --target x86_64-pc-windows-msvc --no-default-features --features $f -- -D warnings
 done
