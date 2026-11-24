@@ -45,8 +45,9 @@ object BubbleGeometry {
         u.resting && u.minimized && !u.repair && !u.showCopy && !u.showCommand && !u.showTranslate
 
     /**
-     * The main button shows the colour Murmur mark (R.drawable.ic_bubble_mark, from docs/brand/murmur-mark.svg)
-     * while the bubble rests: Idle / Ready, full or minimised, but not the repair alert. Every other state keeps its glyphs.
+     * The main button shows the Murmur mark ([isTileLook]: the violet tile from docs/brand) while the bubble
+     * rests: Idle / Ready, full or minimised, but not the repair alert (the plain dot, [isDot], is drawn before
+     * any glyph and shows none). Every other state keeps its glyphs.
      */
     fun showsMark(u: BubbleUi): Boolean =
         (u.state == DictationState.Idle || u.state == DictationState.Ready) && !u.repair
@@ -75,6 +76,25 @@ object BubbleGeometry {
 
     fun widthDp(u: BubbleUi): Float = baseWidthDp(u) * u.scale
     fun heightDp(u: BubbleUi): Float = baseHeightDp(u) * u.scale
+
+    /**
+     * Corner radius of the resting tile over its edge: 72 of 256 units, tools/brand/gen-icons.py
+     * BUBBLE_TILE_RX. The tile's shadow is drawn to this shape.
+     */
+    const val TILE_CORNER_FRACTION = 72f / 256f
+
+    /**
+     * The resting bubble is the violet tile itself (R.drawable.ic_bubble_tile over its whole h×h
+     * square, no round pill there): [showsMark] and not the plain dot. Same window, touch target
+     * and slots as the round look it replaces; resting extras keep their pill to the right of it.
+     */
+    fun isTileLook(u: BubbleUi): Boolean = showsMark(u) && !isDot(u)
+
+    /**
+     * The tile look still has its round pill: Ready with a resting extra (✎, ⇄ or ⧉) to the right, so the
+     * pill holds those buttons and runs out from under the tile. Without extras the bubble is just the tile.
+     */
+    fun tileHasPill(u: BubbleUi): Boolean = isTileLook(u) && u.state == DictationState.Ready && extras(u).isNotEmpty()
 
     /** Diameter of the plain minimised dot, unscaled ("Shrink to a dot"). */
     const val DOT_DP = 16f

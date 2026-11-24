@@ -18,7 +18,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Changed
 
-- **On-screen words now send the names on screen, not whole chat bubbles.** With "Send on-screen words" on, the core turns what the phone reads on screen into at most 50 short name-like candidates (capitalised names, @mentions, sender and header labels, uncommon words; for Hebrew, short labels such as sender names) before speech recognition, casing and AI cleanup use them. Whole bubbles had used up the hint budget on sentences and gave the names in them almost no boost. Applies to the phone, the Windows app and murmur-server alike.
+- **Android: the resting dictation bubble is a violet Murmur tile.** While it waits, the bubble is a rounded violet square with the dark Murmur mark, instead of the mark on a round dark pill; it takes the same space (smaller when shrunk) and the dot, recording, errors and hold-to-talk look as before.
+- **Speech recognition: on-screen words give the names on screen as hints, not whole chat bubbles.** With "Send on-screen words" on, the speech-recognition hints (Parakeet and Hebrew hotwords, the Whisper prompt) and mid-sentence casing now use up to 50 short name-like candidates from the screen (capitalised names, @mentions, sender and header labels), newest messages first. Whole bubbles filled the hint budget with the oldest sentences on a long screen and cut the names further down. On a full screen in a synthetic test the names came out right in 30 % of clips instead of 10 %, at the same English error rate; on short screens there was no change. AI cleanup still gets the on-screen words as before (D107).
 
 ## [1.7.0] - 2026-11-24
 
