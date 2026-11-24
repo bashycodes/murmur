@@ -7,7 +7,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use futures_util::{SinkExt, StreamExt};
-use murmur_core::cleanup::CleanRequest;
+use murmur_core::cleanup::{CleanRequest, PromptCounts};
 use murmur_core::config::{FieldContext, SessionConfig, SAMPLE_RATE};
 use murmur_core::{CommitResult, MurmurCore};
 use murmur_protocol::{
@@ -563,7 +563,7 @@ impl Conn {
             let chars = req.text.chars().count();
             let task = req.task.as_str();
             let screen_words = req.ctx.screen_words.len();
-            let (out, dict_terms_in_prompt) = tokio::task::spawn_blocking(move || {
+            let (out, counts) = tokio::task::spawn_blocking(move || {
                 let Some(cl) = lease.core.cleaner() else {
                     let out = Cleaned {
                         id,
@@ -571,7 +571,7 @@ impl Conn {
                         queue_ms,
                         ..Default::default()
                     };
-                    return (out, 0);
+                    return (out, PromptCounts::default());
                 };
                 let (r, usage, took) =
                     murmur_core::cleanup::clean_text(cl, &req, crate::limits::MAX_LLM_TIMEOUT_MS);
@@ -589,7 +589,7 @@ impl Conn {
                     model: usage.model,
                 };
                 // 0 unless an LLM call ran (as on the `result` line).
-                (out, usage.dict_terms_in_prompt.unwrap_or(0))
+                (out, usage.prompt_counts.unwrap_or_default())
             })
             .await
             .unwrap_or_else(|_| {
@@ -598,9 +598,9 @@ impl Conn {
                     error: Some(code::SERVER_ERROR.into()),
                     ..Default::default()
                 };
-                (out, 0)
+                (out, PromptCounts::default())
             });
-            log_cleaned(peer, &out, task, chars, screen_words, dict_terms_in_prompt);
+            log_cleaned(peer, &out, task, chars, screen_words, counts);
             let _ = ev.send(Event::Cleaned(out));
         });
     }
@@ -912,7 +912,7 @@ fn log_cleaned(
     task: &str,
     chars: usize,
     ctx_screen_words: usize,
-    dict_terms_in_prompt: usize,
+    counts: PromptCounts,
 ) {
     tracing::info!(
         id = out.id,
@@ -924,7 +924,8 @@ fn log_cleaned(
         error = out.error.as_deref().unwrap_or(""),
         ctx_screen_words,
         hotwords = 0,
-        dict_terms_in_prompt,
+        dict_terms_in_prompt = counts.dict_terms,
+        screen_names_in_prompt = counts.screen_names,
         "cleaned"
     );
 }
@@ -940,8 +941,9 @@ struct SessLog {
 /// The per-dictation `result` log line (timings and counts only, never
 /// text). Optional values print as bare numbers and are omitted when
 /// unknown (tracing records `Option<T>` only when `Some`), not as
-/// `Some(7200)`. `hotwords` and `dict_terms_in_prompt` are what the
-/// decoder and the cleanup prompt actually got (0 when none, or when no
+/// `Some(7200)`. `hotwords`, `dict_terms_in_prompt` and
+/// `screen_names_in_prompt` are what the decoder and the cleanup prompt
+/// actually got (0 when none, or when no
 /// LLM ran).
 fn log_result(sid: u64, peer: SocketAddr, key: Option<&str>, r: &CommitResult, s: &SessLog) {
     let t = &r.timings;
@@ -967,7 +969,8 @@ fn log_result(sid: u64, peer: SocketAddr, key: Option<&str>, r: &CommitResult, s
         fallback_reason = r.fallback_reason.as_deref().unwrap_or(""),
         ctx_screen_words = s.ctx_screen_words,
         hotwords = t.hotwords,
-        dict_terms_in_prompt = t.dict_terms_in_prompt,
+        dict_terms_in_prompt = t.prompt_counts.dict_terms,
+        screen_names_in_prompt = t.prompt_counts.screen_names,
         "result"
     );
 }
@@ -1109,7 +1112,9 @@ mod tests {
         assert!(line.contains("peak_dbfs=-2"), "{line}");
         assert!(line.contains("start_to_commit_ms=7400"), "{line}");
         assert!(
-            line.contains("ctx_screen_words=3 hotwords=0 dict_terms_in_prompt=0"),
+            line.contains(
+                "ctx_screen_words=3 hotwords=0 dict_terms_in_prompt=0 screen_names_in_prompt=0"
+            ),
             "{line}"
         );
         assert!(line.contains("key=\"k-0123456789abcdef\""), "{line}");

@@ -9,6 +9,8 @@
 import { $, askDialog, el } from "../lib/dom.js";
 import { ICON, iconEl, iconSvg } from "../lib/icons.js";
 import { invoke } from "../lib/ipc.js";
+import { firstFreeChord } from "../lib/free-chord.js";
+import { optOutMarkup, wireOptOut } from "../lib/opt-out-lock.js";
 import { captureChord, RECORDING_TEXT, stopCapture } from "../lib/keycapture.js";
 import { prefsStore, type Prefs, type TransformItem, type TransformPrefs } from "../lib/prefs-store.js";
 import type { Page } from "../lib/router.js";
@@ -25,6 +27,14 @@ const MAX_INSTRUCTION = 2000;
 
 const REFRESH_ICON = "M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7";
 
+/** Opted out: the page below the header is locked, saved transforms kept. */
+const LOCK = optOutMarkup(
+  "tf",
+  "Transforms",
+  "Your transforms are kept, but no shortcut works and nothing is applied after dictation.",
+);
+let applyLock: (on: boolean) => void = () => {};
+
 const TEMPLATE = `
 <div class="lw-page lw-tf">
   <div class="lw-page-head lw-tf-head">
@@ -36,6 +46,8 @@ const TEMPLATE = `
     <span class="fl-kbd-group lw-tf-view" id="tf_view" title="Opens Home with the last transform's before and after"><span id="tf_view_keys"></span><span class="fl-kbd-text">shows the last before and after</span></span>
   </div>
 
+  ${LOCK.banner}
+  ${LOCK.open}
   <div class="fl-banner fl-banner-mist">
     <h3 class="fl-banner-title">Rewrite selected text in any app</h3>
     <p class="fl-banner-body">Select text in any app, press a shortcut, and it's rewritten in place. <span id="tf_engines"></span></p>
@@ -58,6 +70,7 @@ const TEMPLATE = `
   </div>
 
   <div class="lw-tf-grid" id="tf_grid"></div>
+  ${LOCK.close}
   <p class="fl-help"><span id="tf_status" role="status"></span></p>
 
   <dialog id="tf_edit_dlg" class="fl-dialog lw-tf-dialog" aria-labelledby="tf_edit_title">
@@ -69,7 +82,7 @@ const TEMPLATE = `
     <label class="lw-tf-field"><span>Instruction</span>
       <textarea class="fl-input" id="tf_instruction" rows="5" maxlength="${MAX_INSTRUCTION}" placeholder="Rewrite the text so it sounds warm and friendly. Keep it short."></textarea></label>
     <div class="lw-tf-field"><label for="tf_shortcut">Shortcut <em>(optional)</em></label>
-      <span class="lw-tf-keyrow"><input class="fl-input" id="tf_shortcut" placeholder="Win+Alt+3" spellcheck="false" />
+      <span class="lw-tf-keyrow"><input class="fl-input" id="tf_shortcut" placeholder="Win+Shift+E" spellcheck="false" />
       <button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" id="tf_shortcut_rec">Press keys</button></span></div>
     <p class="lw-tf-hint" id="tf_builtin_hint" hidden>A built-in transform: Reset to defaults puts back its shipped wording.</p>
     <p class="lw-tf-err" id="tf_edit_err" role="alert"></p>
@@ -155,14 +168,11 @@ export function newId(name: string, taken: string[]): string {
   return id;
 }
 
-/** The first Win+Alt+digit no shortcut uses yet ("" when all are taken). */
+/** A new transform's offered shortcut: the first free Win+Shift letter
+ *  (lib/free-chord.ts) beside every other Murmur shortcut. */
 function freeChord(t: TransformPrefs): string {
-  const used = new Set(t.items.map((i) => (i.shortcut ?? "").toLowerCase()));
-  for (let d = 1; d <= 9; d++) {
-    const c = `Win+Alt+${d}`;
-    if (!used.has(c.toLowerCase())) return c;
-  }
-  return "";
+  const shortcuts = Object.values(prefsStore.get()?.shortcuts ?? {});
+  return firstFreeChord([...shortcuts, ...t.items.map((i) => i.shortcut), t.view_changes]);
 }
 
 function card(item: TransformItem): HTMLElement {
@@ -183,6 +193,7 @@ function card(item: TransformItem): HTMLElement {
 function render(p: Prefs): void {
   const t = p.transforms ?? DEFAULTS;
   $<HTMLInputElement>("tf_enabled").checked = t.enabled;
+  applyLock(t.enabled);
   $<HTMLElement>("tf_view_keys").replaceChildren(...keys(t.view_changes));
   $<HTMLElement>("tf_view").hidden = !t.view_changes;
 
@@ -230,7 +241,7 @@ let recordingKeys = false;
 function showRecordingKeys(on: boolean): void {
   recordingKeys = on;
   const input = $<HTMLInputElement>("tf_shortcut");
-  input.placeholder = on ? RECORDING_TEXT : "Win+Alt+3";
+  input.placeholder = on ? RECORDING_TEXT : "Win+Shift+E";
   input.classList.toggle("is-recording", on);
   $<HTMLButtonElement>("tf_shortcut_rec").textContent = on ? "Stop" : "Press keys";
 }
@@ -391,14 +402,17 @@ export const transformsPage: Page = {
   area: "main",
   template: TEMPLATE,
   init(): void {
+    // The opt-in switch and the off banner's button turn it on the same way.
+    const setEnabled = (on: boolean): void =>
+      void save({ ...current(), enabled: on }, on ? "Transforms on: the shortcuts work in any app" : "Transforms off");
+    applyLock = wireOptOut("tf", (id) => $(id), { turnOn: () => setEnabled(true), switchId: "tf_enabled" });
     prefsStore.subscribe(render);
     prefsStore.subscribe(renderEngines);
     views.onDev(renderEngines);
     views.onOr(renderEngines);
 
     $<HTMLInputElement>("tf_enabled").addEventListener("change", (e) => {
-      const on = (e.target as HTMLInputElement).checked;
-      void save({ ...current(), enabled: on }, on ? "Transforms on: the shortcuts work in any app" : "Transforms off");
+      setEnabled((e.target as HTMLInputElement).checked);
     });
     $<HTMLInputElement>("tf_auto").addEventListener("change", (e) => {
       const on = (e.target as HTMLInputElement).checked;

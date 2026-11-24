@@ -184,7 +184,7 @@ pub fn build_prompt(instruction: &str, text: &str) -> CleanPrompt {
         user: command::locked_user(user_turn(instruction.trim(), text), lock),
         transcript: command::budget_source(text, command::TRANSFORM_BUDGET_CHARS),
         source: None,
-        dict_terms_in_prompt: 0,
+        counts: crate::cleanup::PromptCounts::default(),
     }
 }
 

@@ -260,7 +260,11 @@ fn cloud_timeout_falls_back_to_the_local_pipeline() {
     // full scope.
     let lp = local.prompt(0);
     assert_eq!(lp.transcript, "The demo is on thursday at three, right?");
-    assert!(lp.user.contains("SCREENSECRET"));
+    // Full scope keeps the screen words in the request; the transcript
+    // comes near none of them, so no SCREEN NAMES line (D108).
+    let src = lp.source.as_ref().unwrap();
+    assert_eq!(src.ctx.screen_words, ["SCREENSECRET"]);
+    assert!(!lp.user.contains("SCREEN NAMES"), "{}", lp.user);
     assert_eq!(lp.system, build_v2(&lp.transcript).system);
     assert_eq!(cloud.calls(), 1);
 }

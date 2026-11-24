@@ -94,7 +94,7 @@ it clearer and shorter. **Prompt Builder** turns a rough request into a
 well-structured prompt for an AI assistant. You can add your own
 transforms ("Make it friendlier"), and set one to run on every dictation.
 *How:* left sidebar **Transforms → Opt in to Transforms** (off by default).
-Then **Win+Alt+1** runs Polish, **Win+Alt+2** runs Prompt Builder, and
+Then **Win+Shift+Q** runs Polish, **Win+Shift+W** runs Prompt Builder, and
 **Win+Alt+O** shows what the last transform changed.
 
 **Command Mode** (Both). Select text and say what to do with it: "make it
