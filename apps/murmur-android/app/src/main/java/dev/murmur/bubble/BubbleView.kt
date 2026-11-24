@@ -16,7 +16,7 @@ import dev.murmur.session.DictationState
 import dev.murmur.session.DictationState.ErrorKind
 
 /**
- * Canvas-drawn bubble: circle (Ready), minimised dot or small circle, recording row X·waveform·✓ (tap mode),
+ * Canvas-drawn bubble: circle with the Murmur mark (Ready), minimised dot or small circle, recording row X·waveform·✓ (tap mode),
  * mic+waveform (hold mode), paste/copy/dismiss (FailedToPaste), copy/dismiss (a command's answer, shown in the
  * preview card), pulsing … (model still loading), alert (other errors).
  * Gestures go through [BubbleGesture]; the host decides what each action means.
@@ -42,6 +42,8 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
     /** The buttons as last drawn, for hit-testing a touch. */
     private var slots = emptyList<BubbleGeometry.Slot>()
     private val mic: Drawable = context.getDrawable(R.drawable.ic_murmur)!!.mutate().apply { setTint(BubbleColors.onSurface) }
+    /** The resting glyph ([BubbleGeometry.showsMark]): the brand gradient, never tinted. */
+    private val mark: Drawable = context.getDrawable(R.drawable.ic_bubble_mark)!!
 
     // Design: dark vast-950 pill, light sand-50 glyphs and bars, red only for errors (BubbleColors).
     private val pill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -109,9 +111,11 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
                 danger.alpha = 255
                 postInvalidateOnAnimation()
             } else if (BubbleGeometry.isMinimisedLook(ui)) {
-                circleButton(canvas, null, BubbleButton.MAIN) { cx, cy -> drawMic(canvas, cx, cy, 9f) }
+                circleButton(canvas, null, BubbleButton.MAIN) { cx, cy -> drawIconDrawable(canvas, restingIcon(), cx, cy, 9f) }
             } else {
-                circleButton(canvas, raised, BubbleButton.MAIN) { cx, cy -> drawMic(canvas, cx, cy) }
+                // The mark sits on the pill itself: its dark violet end needs the vast-950 behind it for 3:1
+                // contrast (on the vast-875 disc it falls to about 2.2:1).
+                circleButton(canvas, null, BubbleButton.MAIN) { cx, cy -> drawIconDrawable(canvas, restingIcon(), cx, cy) }
                 if (ui.showCommand) circleButton(canvas, null, BubbleButton.COMMAND) { cx, cy -> drawGlyph(canvas, "✎", cx, cy) }
                 if (ui.showTranslate) circleButton(canvas, null, BubbleButton.TRANSLATE) { cx, cy -> drawGlyph(canvas, "⇄", cx, cy) }
                 if (ui.showCopy) circleButton(canvas, null, BubbleButton.COPY) { cx, cy -> drawGlyph(canvas, "⧉", cx, cy) }
@@ -170,10 +174,15 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
         content(rect.centerX(), rect.centerY())
     }
 
-    private fun drawMic(c: Canvas, cx: Float, cy: Float, halfDp: Float = 14f) {
+    private fun restingIcon(): Drawable = if (BubbleGeometry.showsMark(ui)) mark else mic
+
+    private fun drawMic(c: Canvas, cx: Float, cy: Float) = drawIconDrawable(c, mic, cx, cy)
+
+    /** Draws [icon] in a 2×[halfDp] square centred on ([cx], [cy]). */
+    private fun drawIconDrawable(c: Canvas, icon: Drawable, cx: Float, cy: Float, halfDp: Float = 14f) {
         val half = dp(halfDp).toInt()
-        mic.setBounds((cx - half).toInt(), (cy - half).toInt(), (cx + half).toInt(), (cy + half).toInt())
-        mic.draw(c)
+        icon.setBounds((cx - half).toInt(), (cy - half).toInt(), (cx + half).toInt(), (cy + half).toInt())
+        icon.draw(c)
     }
 
     /** ✕ from the design: M6 6l12 12M18 6L6 18 in a 22dp box. */

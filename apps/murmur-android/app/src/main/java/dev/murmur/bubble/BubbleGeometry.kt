@@ -44,6 +44,13 @@ object BubbleGeometry {
     fun isMinimisedLook(u: BubbleUi): Boolean =
         u.resting && u.minimized && !u.repair && !u.showCopy && !u.showCommand && !u.showTranslate
 
+    /**
+     * The main button shows the colour Murmur mark (R.drawable.ic_bubble_mark, from docs/brand/murmur-mark.svg)
+     * while the bubble rests: Idle / Ready, full or minimised, but not the repair alert. Every other state keeps its glyphs.
+     */
+    fun showsMark(u: BubbleUi): Boolean =
+        (u.state == DictationState.Idle || u.state == DictationState.Ready) && !u.repair
+
     /** Resting buttons right of the mic, 64dp apart: ✎ (Command Mode), ⇄ (translate, D90), then ⧉ (copy last). */
     private fun extras(u: BubbleUi): List<BubbleButton> = listOfNotNull(
         BubbleButton.COMMAND.takeIf { u.showCommand },
