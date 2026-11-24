@@ -1516,6 +1516,103 @@ fn model_import_start(
     )
 }
 
+/// Setup's "Use model files on this PC" and Settings' "Import from
+/// folder…": which English, Hebrew and language-ID model the folder `path`
+/// holds, by their files (`model_import::scan_folder`), and what in it can't
+/// be used. Reads the listing only (plus files whose size is ambiguous).
+#[tauri::command]
+async fn model_folder_scan(
+    state: tauri::State<'_, AppState>,
+    path: String,
+) -> Result<crate::model_import::FolderScan, String> {
+    let src = picked_path(&path)?;
+    let dir = core_adapter::models_dir(state.appdata.as_deref());
+    tauri::async_runtime::spawn_blocking(move || crate::model_import::scan_folder(&src, &dir))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Install the `pick`ed rows of `model_folder_scan` (copied and checked
+/// like "Import from file…", each model all or nothing), point the prefs at
+/// them and, with English, Hebrew and language detection all there, set the
+/// language to "Detect automatically". Progress: `model:download` with id
+/// `folder-import`, which `model_download_cancel` stops. Answers each row's
+/// outcome once done.
+#[tauri::command]
+async fn model_folder_import(
+    app: AppHandle,
+    path: String,
+    pick: crate::model_import::FolderPick,
+) -> Result<crate::model_import::FolderImportView, String> {
+    use crate::model_download::{Progress, State};
+    use crate::model_import::FOLDER_JOB_ID;
+    let src = picked_path(&path)?;
+    let state = app.state::<AppState>();
+    let cancel = state.downloads.begin(FOLDER_JOB_ID)?;
+    let appdata = state.appdata.clone();
+    let dir = core_adapter::models_dir(appdata.as_deref());
+    let job = {
+        let (app, dir) = (app.clone(), dir.clone());
+        tauri::async_runtime::spawn_blocking(move || {
+            crate::model_import::import_folder(&src, &dir, pick, &cancel, &mut |p| {
+                let _ = app.emit_to(SETTINGS, "model:download", p);
+            })
+        })
+    };
+    let r = job.await;
+    state.downloads.finish(FOLDER_JOB_ID);
+    let (state_end, error, view) = match r {
+        Err(e) => (State::Error, Some(e.to_string()), None),
+        Ok(Err(crate::model_download::Stop::Cancelled)) => (State::Cancelled, None, None),
+        Ok(Err(crate::model_download::Stop::Failed(e))) => (State::Error, Some(e), None),
+        Ok(Ok(mut done)) => {
+            let mut saved = Ok(());
+            if done.any() {
+                let mut prefs = state.prefs.read().unwrap().clone();
+                done.apply(&mut prefs, &dir, appdata.as_deref());
+                saved = save_prefs(&app, &state, prefs);
+            }
+            let errors = done.errors();
+            match saved {
+                Err(e) => (
+                    State::Error,
+                    Some(format!("installed, but the setting was not saved: {e}")),
+                    None,
+                ),
+                Ok(()) if done.view.cancelled => (State::Cancelled, None, Some(done.view)),
+                Ok(()) if !errors.is_empty() => {
+                    (State::Error, Some(errors.join(" ")), Some(done.view))
+                }
+                Ok(()) => (State::Done, None, Some(done.view)),
+            }
+        }
+    };
+    eprintln!("model folder import: {state_end:?}");
+    let _ = app.emit_to(
+        SETTINGS,
+        "model:download",
+        Progress {
+            id: FOLDER_JOB_ID.to_string(),
+            received: 0,
+            total: 0,
+            state: state_end,
+            error: error.clone(),
+            path: None,
+        },
+    );
+    view.ok_or_else(|| error.unwrap_or_else(|| "cancelled".into()))
+}
+
+/// A path from the picker: absolute, else refused.
+fn picked_path(path: &str) -> Result<std::path::PathBuf, String> {
+    let src = std::path::PathBuf::from(path.trim());
+    if src.is_absolute() {
+        Ok(src)
+    } else {
+        Err("choose the folder with the picker".into())
+    }
+}
+
 /// Run a download or import (`id` = its `model:download` id, `total` its
 /// bytes) on its own thread (one at a time, cancellable with
 /// `model_download_cancel`), then `apply` the prefs for the installed
@@ -3484,6 +3581,8 @@ pub fn run() {
             server_models,
             server_model_download,
             model_import_start,
+            model_folder_scan,
+            model_folder_import,
             model_download_cancel,
             model_delete,
             transforms_reset,

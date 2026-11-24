@@ -2,6 +2,7 @@
 // static template per step. Static text only; user data goes in with
 // textContent from onboarding/index.ts. Ids are prefixed `ob_`.
 
+import { folderChecklist } from "../features/model-folder.js";
 import { extLink, SERVER_HELP } from "../features/models.js";
 import { ICON } from "../lib/icons.js";
 
@@ -205,14 +206,18 @@ const model = stepPanel(
         <span id="ob_model_note">A download only fetches the model. Nothing about you or your voice is sent.</span>
       </div>
     </div>
-    <div role="radiogroup" aria-label="Speech model" class="lw-ob-main">
-      ${speechRow("parakeet", "English — fast", "")}
-      <button type="button" class="lw-link lw-ob-copy lw-ob-more" id="ob_model_more" aria-expanded="false" aria-controls="ob_model_other">More languages <span class="lw-ob-chev" aria-hidden="true">▸</span></button>
-      <div id="ob_model_other" hidden>
-        ${speechRow("whisper", "Whisper base", "Many languages")}
+    <div class="lw-ob-main">
+      <div role="radiogroup" aria-label="Speech model" class="lw-ob-rows" id="ob_model_rows">
+        ${speechRow("parakeet", "English — fast", "")}
+        <button type="button" class="lw-link lw-ob-copy lw-ob-more" id="ob_model_more" aria-expanded="false" aria-controls="ob_model_other">More languages <span class="lw-ob-chev" aria-hidden="true">▸</span></button>
+        <div id="ob_model_other" hidden>
+          ${speechRow("whisper", "Whisper base", "Many languages")}
+        </div>
       </div>
       <div class="lw-ob-status" id="ob_model_status"></div>
-      <p class="lw-ob-small">Have a model file already? Choose it after setup in Settings → Speech to text.</p>
+      <p class="lw-ob-small" id="ob_files_line">Copied the models to this PC already? <button type="button" class="lw-link" id="ob_files">Use model files on this PC…</button></p>
+      ${folderChecklist("ob_folder")}
+      <button type="button" class="lw-link lw-ob-copy lw-ob-more" id="ob_files_back" hidden>Download instead</button>
     </div>
   </div>`,
   foot(true, "Continue", "ob_model_hint"),

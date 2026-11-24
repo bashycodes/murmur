@@ -420,7 +420,7 @@ pub fn recommended_llm(gpu: bool) -> &'static CatalogEntry {
 
 /// The language-ID model the Hebrew entries bring along (H6/D34; hash and
 /// size checked 2026-10-30 by downloading it once, equal to the HF LFS id).
-const LID_FILES: &[ModelFile] = &[model_file!(
+pub(crate) const LID_FILES: &[ModelFile] = &[model_file!(
     whisper_base!(),
     "ggml-tiny-q5_1.bin",
     32_152_673,
@@ -734,7 +734,7 @@ fn hex(d: &[u8]) -> String {
     d.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-fn sha256_file(p: &Path) -> std::io::Result<String> {
+pub(crate) fn sha256_file(p: &Path) -> std::io::Result<String> {
     let mut f = std::fs::File::open(p)?;
     let mut h = Sha256::new();
     let mut buf = vec![0u8; 1 << 20];

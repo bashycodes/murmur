@@ -58,6 +58,8 @@ fn main() {
             "whisper_backend",
             "model_download_start",
             "model_import_start",
+            "model_folder_scan",
+            "model_folder_import",
             "model_download_cancel",
             "server_models",
             "server_model_download",

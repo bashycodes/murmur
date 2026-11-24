@@ -16,6 +16,10 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Added
+
+- **Windows: set up English, Hebrew and auto-detect from one folder of model files.** Setup's model step has "Use model files on this PC": pick a folder (such as the unzipped models bundle) and a checklist shows the English speech model, the Hebrew speech model and the language auto-detect model it found, each with its size, or "not found" with Download or Skip. "Use these" copies them with the usual fingerprint checks and, with all three, sets the language to Detect automatically. Models are recognised by their files, so renamed folders and loose files work; damaged or unknown files are listed. The same checklist is in Settings → Speech to text → Advanced → "Import from folder…".
+
 ### Changed
 
 - **Android: the resting dictation bubble is a violet Murmur tile.** While it waits, the bubble is a rounded violet square with the dark Murmur mark, instead of the mark on a round dark pill; it takes the same space (smaller when shrunk) and the dot, recording, errors and hold-to-talk look as before.

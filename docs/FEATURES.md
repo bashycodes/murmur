@@ -251,6 +251,15 @@ device its own key, see when it was last used, and revoke it alone.
 keys* when the app uses an admin key. See
 [server-advanced.md](server-advanced.md) §4.
 
+**Models from a folder** (Windows). Point setup at one folder of model
+files, such as the unzipped models bundle, and it sets up English, Hebrew
+and language auto-detect from it with no download: each model is found by
+its files (whatever the folders are called), copied and checked against
+its fingerprint. What isn't there can be downloaded or skipped; files it
+doesn't know, or that fail the check, are listed.
+*How:* setup → *Add a speech model* → *Use model files on this PC*, or
+*Settings → Speech to text → Advanced → Import from folder…*.
+
 **Models from your own server** (Both). The apps download speech and
 cleanup models from your server's model library, so a network with no
 internet works.

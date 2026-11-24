@@ -9,13 +9,16 @@
 // (only when speech runs on this PC, lib/setup-model.ts) offers one
 // recommended model and "More languages ▸", each with its state, and
 // downloads one after the user pressed Download and confirmed it (3a/3b,
-// through features/models.ts); files of the user's own and "Download from"
-// (D79) are set in Settings → Speech to text. Step 4 offers "Download from"
+// through features/models.ts). "Use model files on this PC" picks one
+// folder instead and sets up the English, Hebrew and auto-detect models it
+// holds (features/model-folder.ts, the same checklist as Settings → Speech
+// to text → Import from folder…); "Download from" (D79) is set in Settings. Step 4 offers "Download from"
 // for the cleanup model (picking Your server with none saved shows step 2's
 // server fields right there), and "Your server" (D36 server cleanup,
 // lib/setup-cleanup.ts) once a server is saved. A server test or an
 // OpenRouter key/consent happens only on the user's own click.
 
+import { FolderChecklist } from "../features/model-folder.js";
 import { downloadSource, hasServer, mb, models, pickPath, progressLine, recommendedLlm, setDownloadSource, type CatalogEntry } from "../features/models.js";
 import { devStore } from "../lib/dev-store.js";
 import { isPlaintextRefusal, optInFor, PLAINTEXT_REFUSED_TEXT } from "../lib/plaintext.js";
@@ -102,6 +105,10 @@ interface Before {
   prefs: Partial<Prefs>;
 }
 let onDone: () => void = () => {};
+/** Step 3's "Use model files on this PC" checklist (made at init). */
+let folder: FolderChecklist | null = null;
+/** Step 3's side note as the template has it (folder mode says something else). */
+let modelNote = "";
 
 // ------------------------------------------------------------ capabilities
 
@@ -377,7 +384,25 @@ function pickModelRow(id: SpeechRow): void {
   renderModel();
 }
 
+/** Step 3 with a folder picked: its checklist instead of the download rows. */
+function renderFolderMode(): boolean {
+  const on = !!folder?.open;
+  $<HTMLElement>("ob_model_rows").hidden = on;
+  $<HTMLElement>("ob_files_line").hidden = on || !models.canImport();
+  $<HTMLElement>("ob_files_back").hidden = !on || !!folder?.busy;
+  $<HTMLElement>("ob_model_note").textContent = on
+    ? "The models are copied from that folder and checked against fingerprints built into Murmur. Nothing is downloaded unless you press Download."
+    : modelNote;
+  if (!on) return false;
+  status("ob_model_status", "");
+  const next = nextBtn("model");
+  next.disabled = !!folder?.busy;
+  $<HTMLElement>("ob_model_hint").textContent = folder?.busy ? "Copying the models…" : "";
+  return true;
+}
+
 function renderModel(): void {
+  if (renderFolderMode()) return;
   const w = whisper();
   const other = $<HTMLElement>("ob_model_other");
   const more = $<HTMLButtonElement>("ob_model_more");
@@ -447,6 +472,8 @@ function renderModel(): void {
 
 /** Continue on the model step: the picked model becomes the one in use (a download sets it when done). */
 async function applyModel(): Promise<boolean> {
+  // A folder's models were set up by their import (or skipped on purpose).
+  if (folder?.open) return true;
   const pick = st.modelPick;
   if (pick === activeModel() || rowFile(pick, rowEntry(pick)) !== "present") return true;
   try {
@@ -1150,6 +1177,18 @@ export const onboarding = {
     onDone = done;
     document.body.append(html(TEMPLATE));
     const root = $<HTMLElement>("onboarding");
+    modelNote = $<HTMLElement>("ob_model_note").textContent ?? "";
+    folder = new FolderChecklist($<HTMLElement>("ob_folder"));
+    folder.onChange(() => {
+      if (st.step === "model") renderFolderMode();
+    });
+    $<HTMLButtonElement>("ob_files").addEventListener("click", () => {
+      void folder?.choose().then((picked) => picked && renderModel());
+    });
+    $<HTMLButtonElement>("ob_files_back").addEventListener("click", () => {
+      folder?.reset();
+      renderModel();
+    });
     root.addEventListener("click", (e) => {
       const t = e.target as HTMLElement;
       const act = t.closest<HTMLElement>("[data-ob]")?.dataset.ob;
@@ -1282,6 +1321,7 @@ export const onboarding = {
       console.error("setup: model status failed", e);
     }
     initialChoices();
+    folder?.reset();
     // A re-run keeps the current setup and says before Finish what it changes (D95).
     st.tokenSaves = 0;
     st.rerunSnapshot = prefsStore.get()?.onboarded ? await snapshot() : null;
