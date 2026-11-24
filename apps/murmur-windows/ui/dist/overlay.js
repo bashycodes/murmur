@@ -186,12 +186,13 @@ void listen("dictation:status", (e) => apply(e.payload));
 // been painted, so it can tell a bar that is up but blank (a hidden
 // WebView2 slow to repaint) from one that is drawn. Two frames: the first
 // callback runs before that frame's paint.
+// `ready` once the listener is in place: shows before that are not watched.
 void listen("overlay:shown", (e) => {
     const seq = e.payload;
     requestAnimationFrame(() => requestAnimationFrame(() => {
         void overlayInvoke("overlay_action", { action: "painted", seq }).catch(() => { });
     }));
-});
+}).then(() => overlayInvoke("overlay_action", { action: "ready" }).catch(() => { }));
 void listen("audio:level", (e) => {
     if (!isActive())
         return;

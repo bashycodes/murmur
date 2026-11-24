@@ -15,6 +15,7 @@
 //! what the page may claim so it can never make the whole canvas opaque.
 
 use serde::Deserialize;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use crate::dictation::OverlayState;
 
@@ -138,6 +139,10 @@ impl PxRect {
     pub fn contains_rect(&self, r: &PxRect) -> bool {
         r.left >= self.left && r.top >= self.top && r.right <= self.right && r.bottom <= self.bottom
     }
+
+    pub fn intersects(&self, r: &PxRect) -> bool {
+        self.left < r.right && r.left < self.right && self.top < r.bottom && r.top < self.bottom
+    }
 }
 
 /// Gap (CSS px) between the canvas bottom and the work-area bottom.
@@ -158,10 +163,16 @@ pub fn scale_for_dpi(dpi: u32) -> f64 {
 /// [`BAR_BOTTOM_GAP`] above the work-area bottom, so above a bottom taskbar
 /// and at the screen bottom when the taskbar sits on another edge.
 /// Coordinates may be negative (a monitor left of or above the primary).
+///
+/// At a high scale on a small screen (175 % on 1080p) the canvas is taller
+/// (or wider) than the work area; it is then cut to the work area, so the
+/// window never reaches into the monitor above or beside. The pill sits at
+/// the canvas bottom and stays whole; only the top of the transparent room
+/// for the bubble above it is lost.
 pub fn bar_rect(work: PxRect, scale: f64) -> PxRect {
-    let w = (CANVAS_W * scale).round() as i32;
-    let h = (CANVAS_H * scale).round() as i32;
     let gap = (BAR_BOTTOM_GAP * scale).round() as i32;
+    let w = ((CANVAS_W * scale).round() as i32).min(work.width());
+    let h = ((CANVAS_H * scale).round() as i32).min(work.height() - gap);
     let left = work.left + (work.width() - w) / 2;
     let bottom = work.bottom - gap;
     PxRect {
@@ -207,10 +218,14 @@ pub fn starts_dictation(prev: &OverlayState, next: &OverlayState) -> bool {
 }
 
 /// What the shell saw right after showing the bar.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ShowCheck {
     pub visible: bool,
+    /// The window has `WS_EX_TOPMOST`.
     pub topmost: bool,
+    /// Window class (never the title) of a visible topmost window above the
+    /// bar in z-order that overlaps the pill, if any.
+    pub covered_by: Option<String>,
     /// Actual window rect (`GetWindowRect`).
     pub rect: PxRect,
     /// Work area of the monitor the bar was placed on.
@@ -224,14 +239,15 @@ impl ShowCheck {
             .contains_rect(&pill_screen_rect(self.rect, self.scale))
     }
 
-    /// The debug-log line for one show: geometry and flags only, never any
-    /// dictation text.
+    /// The debug-log line for one show: geometry, flags and a window class
+    /// at most, never any dictation text or window title.
     pub fn line(&self) -> String {
         let r = |r: PxRect| format!("{},{},{},{}", r.left, r.top, r.right, r.bottom);
         format!(
-            "show visible={} topmost={} rect={} work={} scale={:.2} pill_in_work={}",
+            "show visible={} topmost={} covered_by={} rect={} work={} scale={:.2} pill_in_work={}",
             self.visible,
             self.topmost,
+            self.covered_by.as_deref().unwrap_or("none"),
             r(self.rect),
             r(self.work),
             self.scale,
@@ -247,9 +263,53 @@ impl ShowCheck {
             Some("bar asked to show but the pill is outside the work area")
         } else if !self.topmost {
             Some("bar asked to show but the window is not topmost")
+        } else if self.covered_by.is_some() {
+            Some("bar asked to show but another topmost window covers the pill")
         } else {
             None
         }
+    }
+}
+
+/// Did the page draw the bar after a show? Each watched show gets a number
+/// (`begin`), the page acks it once a frame is painted (`ack`), and the
+/// shell's watchdog asks `waiting`. Nothing is watched until the page has
+/// registered its listener (`page_ready`): a show before that (the "always
+/// show" bar at startup) has no one to ack it.
+#[derive(Debug, Default)]
+pub struct PaintWatch {
+    ready: AtomicBool,
+    shown: AtomicU64,
+    painted: AtomicU64,
+}
+
+impl PaintWatch {
+    pub fn page_ready(&self) {
+        self.ready.store(true, Ordering::SeqCst);
+    }
+
+    /// Number a new show, or `None` while the page is not listening yet.
+    pub fn begin(&self) -> Option<u64> {
+        if !self.ready.load(Ordering::SeqCst) {
+            return None;
+        }
+        Some(self.shown.fetch_add(1, Ordering::SeqCst) + 1)
+    }
+
+    /// The page painted after show `seq`. A number never handed out is
+    /// refused, so the page cannot silence later warnings.
+    pub fn ack(&self, seq: u64) -> Result<(), String> {
+        if seq == 0 || seq > self.shown.load(Ordering::SeqCst) {
+            return Err(format!("painted ack for show {seq}, which never happened"));
+        }
+        self.painted.fetch_max(seq, Ordering::SeqCst);
+        Ok(())
+    }
+
+    /// Show `seq` is still unpainted and still the latest show (a newer
+    /// show has its own watchdog).
+    pub fn waiting(&self, seq: u64) -> bool {
+        self.painted.load(Ordering::SeqCst) < seq && self.shown.load(Ordering::SeqCst) == seq
     }
 }
 
@@ -346,6 +406,7 @@ mod tests {
         let ok = ShowCheck {
             visible: true,
             topmost: true,
+            covered_by: None,
             rect: bar_rect(work, 1.0),
             work,
             scale: 1.0,
@@ -353,33 +414,39 @@ mod tests {
         assert_eq!(ok.problem(), None);
         assert_eq!(
             ok.line(),
-            "show visible=true topmost=true rect=704,424,1216,1038 work=0,0,1920,1040 \
-             scale=1.00 pill_in_work=true"
+            "show visible=true topmost=true covered_by=none rect=704,424,1216,1038 \
+             work=0,0,1920,1040 scale=1.00 pill_in_work=true"
         );
         let hidden = ShowCheck {
             visible: false,
-            ..ok
+            ..ok.clone()
         };
         assert!(hidden.problem().unwrap().contains("hidden"));
         // Stale startup placement: placed before the taskbar reserved its
         // space, so the pill now sits under it.
         let stale = ShowCheck {
             rect: bar_rect(px(0, 0, 1920, 1080), 1.0),
-            ..ok
+            ..ok.clone()
         };
         assert!(!stale.pill_on_screen());
         assert!(stale.problem().unwrap().contains("outside"));
         // Left on a monitor that was unplugged.
         let gone = ShowCheck {
             rect: bar_rect(px(1920, 0, 3840, 1040), 1.0),
-            ..ok
+            ..ok.clone()
         };
         assert!(gone.problem().unwrap().contains("outside"));
         let below = ShowCheck {
             topmost: false,
+            ..ok.clone()
+        };
+        assert!(below.problem().unwrap().contains("not topmost"));
+        let covered = ShowCheck {
+            covered_by: Some("ExampleOverlayClass".into()),
             ..ok
         };
-        assert!(below.problem().unwrap().contains("topmost"));
+        assert!(covered.problem().unwrap().contains("covers the pill"));
+        assert!(covered.line().contains("covered_by=ExampleOverlayClass"));
     }
 
     fn win(scale: f64) -> Rect {
@@ -512,5 +579,65 @@ mod tests {
         ] {
             assert!(accept_link_rect(bad).is_err(), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn tall_canvas_is_cut_to_the_work_area_and_keeps_the_pill() {
+        // 1920x1080 with a taskbar: at 175 % (1075 px) and 200 % (1228 px)
+        // the canvas is taller than the 996 / 984 px work area.
+        for (scale, work) in [(1.75, px(0, 0, 1920, 996)), (2.0, px(0, 0, 1920, 984))] {
+            let r = bar_rect(work, scale);
+            let gap = (BAR_BOTTOM_GAP * scale).round() as i32;
+            assert!(work.contains_rect(&r), "{scale}: {r:?}");
+            assert_eq!(r.top, work.top, "{scale}");
+            assert_eq!(r.bottom, work.bottom - gap, "{scale}");
+            assert_eq!(r.width(), (CANVAS_W * scale).round() as i32, "{scale}");
+            assert!(work.contains_rect(&pill_screen_rect(r, scale)), "{scale}");
+        }
+        // Same on a monitor above the primary: never reaches past its top.
+        let above = px(0, -1080, 1920, -84);
+        let r = bar_rect(above, 2.0);
+        assert!(above.contains_rect(&r));
+        // A canvas wider than a narrow (portrait, scaled) work area.
+        let narrow = px(0, 0, 900, 1500);
+        let r = bar_rect(narrow, 2.0);
+        assert_eq!((r.left, r.right), (0, 900));
+        assert!(narrow.contains_rect(&pill_screen_rect(r, 2.0)));
+    }
+
+    #[test]
+    fn paint_watch_waits_only_for_the_latest_show_once_the_page_listens() {
+        let w = PaintWatch::default();
+        // Startup "always show": the page has no listener yet.
+        assert_eq!(w.begin(), None);
+        assert!(w.ack(1).is_err());
+        w.page_ready();
+        let first = w.begin().unwrap();
+        assert!(w.waiting(first));
+        w.ack(first).unwrap();
+        assert!(!w.waiting(first));
+        // A newer show supersedes an unacked one.
+        let a = w.begin().unwrap();
+        let b = w.begin().unwrap();
+        assert!(!w.waiting(a));
+        assert!(w.waiting(b));
+        // A late ack for the older show does not count for the newer one.
+        w.ack(a).unwrap();
+        assert!(w.waiting(b));
+        // Numbers never handed out are refused and change nothing.
+        assert!(w.ack(b + 1).is_err());
+        assert!(w.ack(0).is_err());
+        assert!(w.waiting(b));
+        w.ack(b).unwrap();
+        assert!(!w.waiting(b));
+    }
+
+    #[test]
+    fn rects_overlap_only_when_they_share_area() {
+        let a = px(0, 0, 10, 10);
+        assert!(a.intersects(&px(5, 5, 15, 15)));
+        assert!(a.intersects(&px(-5, -5, 1, 1)));
+        assert!(!a.intersects(&px(10, 0, 20, 10)), "touching edges");
+        assert!(!a.intersects(&px(0, 20, 10, 30)));
     }
 }

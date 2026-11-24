@@ -23,7 +23,6 @@ use crate::recent_apps::{self, RecentAppStore};
 use crate::router_adapter::{self, Readiness, RouteView, RouterAdapter, SessionTest};
 use crate::suggestions::{self as sugg, SuggestionStore};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::{Duration, Instant};
@@ -33,18 +32,22 @@ use tauri::{
     AppHandle, DeviceEventFilter, Emitter, Manager, PhysicalPosition, RunEvent, WebviewUrl,
     WebviewWindow, WebviewWindowBuilder, WindowEvent,
 };
-use windows::Win32::Foundation::{HWND, POINT, RECT};
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
 use windows::Win32::Graphics::Gdi::{
     GetMonitorInfoW, MonitorFromPoint, MonitorFromWindow, RedrawWindow, HMONITOR, HRGN,
     MONITORINFO, MONITOR_DEFAULTTONULL, MONITOR_DEFAULTTOPRIMARY, RDW_ALLCHILDREN, RDW_INVALIDATE,
     RDW_UPDATENOW,
 };
 use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
+use windows::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetCursorPos, GetForegroundWindow, GetWindowLongPtrW, GetWindowRect, IsWindowVisible,
-    SetWindowLongPtrW, SetWindowPos, ShowWindow, SystemParametersInfoW, GWL_EXSTYLE, HWND_TOPMOST,
-    SPI_GETWORKAREA, SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_HIDE, SW_SHOWNOACTIVATE,
-    SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+    GetClassNameW, GetCursorPos, GetForegroundWindow, GetWindow, GetWindowLongPtrW, GetWindowRect,
+    IsWindowVisible, SetWindowLongPtrW, SetWindowPos, ShowWindow, SystemParametersInfoW,
+    GWL_EXSTYLE, GW_HWNDPREV, HWND_TOPMOST, SPI_GETWORKAREA, SPI_SETWORKAREA, SWP_NOACTIVATE,
+    SWP_SHOWWINDOW, SW_HIDE, SW_SHOWNOACTIVATE, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS,
+    WM_DISPLAYCHANGE, WM_DPICHANGED, WM_SETTINGCHANGE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+    WS_EX_TOPMOST,
 };
 
 const OVERLAY: &str = "overlay";
@@ -99,10 +102,9 @@ struct AppState {
     meeting_detect: OnceLock<Arc<meetings::detect::AutoDetect>>,
     /// Last state sent to the pill (shared with [`WinPlatform`]).
     overlay_state: Arc<Mutex<OverlayState>>,
-    /// Show number of the bar's latest watched show, and the latest one
-    /// the page acked as painted (`overlay_action` painted).
-    overlay_shown: Arc<AtomicU64>,
-    overlay_painted: Arc<AtomicU64>,
+    /// Did the bar's page paint after a show (`overlay_action` ready /
+    /// painted).
+    paint: Arc<crate::overlay::PaintWatch>,
 }
 
 fn hwnd_of(w: &WebviewWindow) -> Option<HWND> {
@@ -527,7 +529,12 @@ fn save_prefs(app: &AppHandle, state: &AppState, mut prefs: Prefs) -> Result<(),
         s.data.pending.len()
     };
     let _ = app.emit_to(OVERLAY, "overlay:theme", prefs.theme);
+    let always_changed =
+        prefs.show_murmur_bar_always != state.prefs.read().unwrap().show_murmur_bar_always;
     *state.prefs.write().unwrap() = prefs;
+    if always_changed {
+        sync_overlay(app, false);
+    }
     show_suggestion_count(app, pending);
     Ok(())
 }
@@ -1791,8 +1798,8 @@ fn overlay_settings_page(page: Option<&str>) -> Result<&'static str, String> {
 /// `settings:tab` with the page id. `link_rect` + `rect` (CSS px, `null` =
 /// no link shown) tells the hover watcher where that link is, so it is
 /// clickable while the rest of the canvas stays click-through. `painted` +
-/// `seq` acks that the page drew a frame after show number `seq`
-/// ([`watch_paint`]).
+/// `seq` acks that the page drew a frame after show number `seq`; `ready`
+/// says the page now listens for shows ([`watch_paint`]).
 #[tauri::command]
 fn overlay_action(
     app: AppHandle,
@@ -1805,14 +1812,11 @@ fn overlay_action(
     let input = match action.as_str() {
         "cancel" => Input::Hotkey(hotkeys::HotkeyAction::Cancel),
         "finish" => Input::Finish,
-        "painted" => {
-            let seq = seq.ok_or("painted needs seq")?;
-            if seq > state.overlay_shown.load(Ordering::SeqCst) {
-                return Err(format!("painted ack for show {seq}, which never happened"));
-            }
-            state.overlay_painted.fetch_max(seq, Ordering::SeqCst);
+        "ready" => {
+            state.paint.page_ready();
             return Ok(());
         }
+        "painted" => return state.paint.ack(seq.ok_or("painted needs seq")?),
         "link_rect" => {
             let rect = rect.map(crate::overlay::accept_link_rect).transpose()?;
             *state.overlay_link.lock().unwrap() = rect;
@@ -3244,13 +3248,22 @@ fn spawn_hover_watch(
 // The bar sometimes did not appear while dictating, with several monitors
 // and with the laptop screen alone. So every show re-places it on the
 // active monitor's current work area (monitors, docking, DPI and a taskbar
-// that appeared after autostart all change that), re-asserts topmost, logs
-// what it got, and watches for the page to paint.
+// that appeared after autostart all change that) and re-asserts topmost; a
+// display, work-area or DPI change re-places a bar that is up. A fresh show
+// is logged and watched until the page paints.
 
-/// After a show, the page has this long to ack a painted frame before the
-/// window is told to repaint, and this long before the state is re-sent.
+/// After a show, the page has [`PAINT_NUDGE`] to ack a painted frame before
+/// the window is told to repaint, and [`PAINT_WARN`] before the state is
+/// re-sent; [`PAINT_RESEND_WAIT`] later the outcome of that is logged.
 const PAINT_NUDGE: Duration = Duration::from_millis(150);
 const PAINT_WARN: Duration = Duration::from_millis(500);
+const PAINT_RESEND_WAIT: Duration = Duration::from_millis(500);
+/// Most windows above the bar the z-order check looks at.
+const ZORDER_WALK_MAX: usize = 1024;
+
+fn overlay_hwnd(app: &AppHandle) -> Option<HWND> {
+    app.get_webview_window(OVERLAY).as_ref().and_then(hwnd_of)
+}
 
 fn px_rect(r: RECT) -> crate::overlay::PxRect {
     crate::overlay::PxRect {
@@ -3316,10 +3329,52 @@ fn window_rect(h: HWND) -> crate::overlay::PxRect {
     px_rect(r)
 }
 
+fn is_topmost(h: HWND) -> bool {
+    let ex = unsafe { GetWindowLongPtrW(h, GWL_EXSTYLE) };
+    ex & WS_EX_TOPMOST.0 as isize != 0
+}
+
+/// Hidden by DWM although "visible" (a suspended Store app, another
+/// virtual desktop): it draws nothing.
+fn is_cloaked(h: HWND) -> bool {
+    let mut cloaked = 0u32;
+    let got = unsafe {
+        DwmGetWindowAttribute(
+            h,
+            DWMWA_CLOAKED,
+            &mut cloaked as *mut u32 as *mut _,
+            std::mem::size_of::<u32>() as u32,
+        )
+    };
+    got.is_ok() && cloaked != 0
+}
+
+/// Window class name (never the title, which can hold the user's text).
+fn class_name(h: HWND) -> String {
+    let mut buf = [0u16; 128];
+    let n = unsafe { GetClassNameW(h, &mut buf) };
+    String::from_utf16_lossy(&buf[..n.max(0) as usize])
+}
+
+/// The class of a visible topmost window above the bar in z-order that
+/// overlaps `pill`, if one does.
+fn topmost_cover(h: HWND, pill: crate::overlay::PxRect) -> Option<String> {
+    let mut cur = h;
+    for _ in 0..ZORDER_WALK_MAX {
+        cur = unsafe { GetWindow(cur, GW_HWNDPREV) }.ok()?;
+        let shown = unsafe { IsWindowVisible(cur) }.as_bool();
+        if shown && is_topmost(cur) && !is_cloaked(cur) && window_rect(cur).intersects(&pill) {
+            return Some(class_name(cur));
+        }
+    }
+    None
+}
+
 /// Move the bar to its rect on monitor `m`, topmost, without activating it
 /// (`show`: and show it). Moving onto a monitor with another DPI makes the
 /// window resize itself (WM_DPICHANGED), so the rect is checked and set
-/// once more. Returns the work area and scale used.
+/// once more; a miss after that is logged. Returns the work area and scale
+/// used.
 fn place_overlay(h: HWND, m: HMONITOR, show: bool) -> (crate::overlay::PxRect, f64) {
     let (work, scale) = monitor_area(m);
     let want = crate::overlay::bar_rect(work, scale);
@@ -3328,6 +3383,7 @@ fn place_overlay(h: HWND, m: HMONITOR, show: bool) -> (crate::overlay::PxRect, f
     } else {
         SWP_NOACTIVATE
     };
+    let mut got = want;
     for _ in 0..2 {
         let _ = unsafe {
             SetWindowPos(
@@ -3340,10 +3396,19 @@ fn place_overlay(h: HWND, m: HMONITOR, show: bool) -> (crate::overlay::PxRect, f
                 flags,
             )
         };
-        if window_rect(h) == want {
-            break;
+        got = window_rect(h);
+        if got == want {
+            return (work, scale);
         }
     }
+    let r = |r: crate::overlay::PxRect| format!("{},{},{},{}", r.left, r.top, r.right, r.bottom);
+    let msg = format!(
+        "placement missed: want {} got {} scale={scale:.2}",
+        r(want),
+        r(got)
+    );
+    eprintln!("[overlay] {msg}");
+    debug_log::event("overlay_warn", &msg);
     (work, scale)
 }
 
@@ -3365,18 +3430,19 @@ fn overlay_wanted(app: &AppHandle) -> bool {
     always || recording || busy
 }
 
-/// Bring the bar in line with the current state. Runs on the UI thread, in
-/// call order, and decides from the state at that moment, so a caller that
-/// decided earlier (the meeting indicator) cannot hide a bar a dictation
-/// has just shown. `new_dictation`: move it to the active monitor even if
-/// it is already up.
+/// Bring the bar in line with the current state. It runs on the UI thread
+/// (queued from any other thread, at once when called on it) and decides
+/// from the state when it runs, not when it was asked. So a caller that
+/// looked earlier (the meeting indicator) cannot hide a bar a dictation has
+/// shown since. `new_dictation`: move it to the active monitor and re-raise
+/// it even if it is already up.
 fn sync_overlay(app: &AppHandle, new_dictation: bool) {
     let h = app.clone();
     let _ = app.run_on_main_thread(move || apply_overlay(&h, new_dictation));
 }
 
 fn apply_overlay(app: &AppHandle, new_dictation: bool) {
-    let Some(h) = app.get_webview_window(OVERLAY).as_ref().and_then(hwnd_of) else {
+    let Some(h) = overlay_hwnd(app) else {
         return;
     };
     let was_visible = unsafe { IsWindowVisible(h) }.as_bool();
@@ -3388,19 +3454,24 @@ fn apply_overlay(app: &AppHandle, new_dictation: bool) {
         }
         return;
     }
-    // A new show follows the user; while up, it stays on its monitor but
-    // takes that monitor's current work area and DPI.
-    let monitor = if new_dictation || !was_visible {
+    // A fresh show follows the user; a bar that is up stays on its monitor
+    // but takes that monitor's current work area and DPI.
+    let fresh = new_dictation || !was_visible;
+    let monitor = if fresh {
         active_monitor()
     } else {
         unsafe { MonitorFromWindow(h, MONITOR_DEFAULTTOPRIMARY) }
     };
     let (work, scale) = place_overlay(h, monitor, true);
-    let ex = unsafe { GetWindowLongPtrW(h, GWL_EXSTYLE) };
+    if !fresh {
+        return;
+    }
+    let rect = window_rect(h);
     let check = crate::overlay::ShowCheck {
         visible: unsafe { IsWindowVisible(h) }.as_bool(),
-        topmost: ex & WS_EX_TOPMOST.0 as isize != 0,
-        rect: window_rect(h),
+        topmost: is_topmost(h),
+        covered_by: topmost_cover(h, crate::overlay::pill_screen_rect(rect, scale)),
+        rect,
         work,
         scale,
     };
@@ -3409,14 +3480,55 @@ fn apply_overlay(app: &AppHandle, new_dictation: bool) {
         eprintln!("[overlay] {problem}: {}", check.line());
         debug_log::event("overlay_warn", problem);
     }
-    if new_dictation || !was_visible {
-        watch_paint(app);
+    watch_paint(app);
+}
+
+/// The app handle for [`display_change_proc`] (a plain Win32 callback).
+static OVERLAY_APP: OnceLock<AppHandle> = OnceLock::new();
+
+/// Re-place the bar when monitors change (WM_DISPLAYCHANGE), the work area
+/// changes (a taskbar moved, resized or appeared: WM_SETTINGCHANGE with
+/// SPI_SETWORKAREA) or the bar's DPI changes (WM_DPICHANGED). Must run on
+/// the UI thread, which owns the window.
+fn watch_display_changes(w: &WebviewWindow) {
+    let _ = OVERLAY_APP.set(w.app_handle().clone());
+    if let Some(h) = hwnd_of(w) {
+        unsafe {
+            let _ = SetWindowSubclass(h, Some(display_change_proc), 1, 0);
+        }
     }
+}
+
+unsafe extern "system" fn display_change_proc(
+    h: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+    _id: usize,
+    _data: usize,
+) -> LRESULT {
+    let changed = match msg {
+        WM_DISPLAYCHANGE | WM_DPICHANGED => true,
+        WM_SETTINGCHANGE => wparam.0 == SPI_SETWORKAREA.0 as usize,
+        _ => false,
+    };
+    let result = DefSubclassProc(h, msg, wparam, lparam);
+    if changed {
+        if let Some(app) = OVERLAY_APP.get().cloned() {
+            // From another thread, so the re-place is queued behind this
+            // message (and the window's own DPI resize) instead of nesting
+            // inside it.
+            let _ = std::thread::Builder::new()
+                .name("murmur-overlay-display".into())
+                .spawn(move || sync_overlay(&app, false));
+        }
+    }
+    result
 }
 
 /// Repaint the bar's window and its WebView2 child now.
 fn redraw_overlay(app: &AppHandle) {
-    if let Some(h) = app.get_webview_window(OVERLAY).as_ref().and_then(hwnd_of) {
+    if let Some(h) = overlay_hwnd(app) {
         unsafe {
             let _ = RedrawWindow(
                 h,
@@ -3432,19 +3544,16 @@ fn redraw_overlay(app: &AppHandle) {
 /// `overlay_action` painted once a frame is drawn. A hidden WebView2 can be
 /// slow to repaint after the window is shown, which leaves a blank (and
 /// so invisible) bar: no ack within [`PAINT_NUDGE`] → repaint the window;
-/// none within [`PAINT_WARN`] → warn and re-send the state once.
+/// none within [`PAINT_WARN`] → warn and re-send the state once. Not
+/// watched before the page listens ([`crate::overlay::PaintWatch`]).
 fn watch_paint(app: &AppHandle) {
-    let st = app.state::<AppState>();
-    let seq = st.overlay_shown.fetch_add(1, Ordering::SeqCst) + 1;
-    let _ = app.emit_to(OVERLAY, "overlay:shown", seq);
-    let (shown, painted) = (st.overlay_shown.clone(), st.overlay_painted.clone());
-    let app = app.clone();
-    // Still waiting: not acked, not superseded by a newer show, still up.
-    let waiting = move |app: &AppHandle| {
-        painted.load(Ordering::SeqCst) < seq
-            && shown.load(Ordering::SeqCst) == seq
-            && overlay_wanted(app)
+    let paint = app.state::<AppState>().paint.clone();
+    let Some(seq) = paint.begin() else {
+        return;
     };
+    let _ = app.emit_to(OVERLAY, "overlay:shown", seq);
+    let app = app.clone();
+    let waiting = move |app: &AppHandle| paint.waiting(seq) && overlay_wanted(app);
     let _ = std::thread::Builder::new()
         .name("murmur-overlay-paint".into())
         .spawn(move || {
@@ -3476,7 +3585,7 @@ fn watch_paint(app: &AppHandle) {
                 .clone();
             let _ = app.emit_to(OVERLAY, "dictation:status", &cur);
             let _ = app.emit_to(OVERLAY, "overlay:shown", seq);
-            std::thread::sleep(PAINT_WARN);
+            std::thread::sleep(PAINT_RESEND_WAIT);
             let outcome = if waiting(&app) {
                 "still no painted ack after re-send"
             } else {
@@ -3663,8 +3772,7 @@ pub fn run() {
             meeting_item: OnceLock::new(),
             meeting_detect: OnceLock::new(),
             overlay_state: Arc::new(Mutex::new(OverlayState::Resting)),
-            overlay_shown: Arc::new(AtomicU64::new(0)),
-            overlay_painted: Arc::new(AtomicU64::new(0)),
+            paint: Arc::new(crate::overlay::PaintWatch::default()),
         })
         .invoke_handler(tauri::generate_handler![
             get_prefs,
@@ -3876,6 +3984,7 @@ pub fn run() {
             if let Some(w) = app.get_webview_window(OVERLAY) {
                 make_overlay_passive(&w);
                 position_overlay(&w);
+                watch_display_changes(&w);
             }
 
             // Controller + hook.
