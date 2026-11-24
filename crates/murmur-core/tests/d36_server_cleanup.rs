@@ -279,7 +279,7 @@ fn a_prompt_without_source_never_reaches_a_narrower_hop() {
         user: "secret selection".into(),
         transcript: String::new(),
         source: None,
-        dict_terms_in_prompt: 0,
+        counts: murmur_core::cleanup::PromptCounts::default(),
     };
     let (r, _) = chain(&[&local, &cloud]).clean_metered(&p, far(), &AbortFlag::default());
     assert!(r.is_err());

@@ -1,7 +1,7 @@
 //! The `result` and `cleaned` log lines say how much context arrived and
-//! was used (`ctx_screen_words`, `hotwords`, `dict_terms_in_prompt`) as
-//! numbers only: the screen words and dictionary terms themselves never
-//! reach the log.
+//! was used (`ctx_screen_words`, `hotwords`, `dict_terms_in_prompt`,
+//! `screen_names_in_prompt`) as numbers only: the screen words and
+//! dictionary terms themselves never reach the log.
 
 mod common;
 
@@ -22,8 +22,10 @@ use tokio_tungstenite::MaybeTlsStream;
 /// Invented words: none of them may appear anywhere in the log.
 const SCREEN: [&str; 3] = ["Zorbletash", "Quindravel", "Plumtackery"];
 const TERM: &str = "Vexmorrin";
-/// What the test ASR hears: near `TERM`, so the cleanup prompt names it.
-const HEARD: &str = "please ask vexmorin about it";
+/// What the test ASR hears: near `TERM` and one screen word, so the
+/// cleanup prompt names the term on its DICTIONARY line and that word on
+/// its SCREEN NAMES line (D108).
+const HEARD: &str = "please ask vexmorin and quindrevel about it";
 
 /// Everything the server logs in this test binary.
 fn logs() -> &'static Arc<Mutex<Vec<u8>>> {
@@ -145,7 +147,7 @@ async fn line(msg: &str, peer: SocketAddr) -> String {
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
     let all = String::from_utf8_lossy(&logs().lock().unwrap()).to_lowercase();
-    for w in SCREEN.iter().chain([&TERM, &"vexmorin"]) {
+    for w in SCREEN.iter().chain([&TERM, &"vexmorin", &"quindrevel"]) {
         assert!(
             !all.contains(&w.to_lowercase()),
             "{w} reached the log:\n{all}"
@@ -193,10 +195,10 @@ async fn result_line_counts_screen_words_hotwords_and_prompt_terms() {
         other => panic!("expected a result, got {other:?}"),
     }
     let l = line(" result", peer).await;
-    // 3 screen words; the dictionary term plus them as hotwords; the
-    // term the transcript comes near plus the screen words in the prompt.
+    // 3 screen words; the dictionary term plus them as hotwords; in the
+    // prompt the term and the one screen name the transcript comes near.
     assert!(
-        l.contains("ctx_screen_words=3 hotwords=4 dict_terms_in_prompt=4"),
+        l.contains("ctx_screen_words=3 hotwords=4 dict_terms_in_prompt=1 screen_names_in_prompt=1"),
         "{l}"
     );
 }
@@ -238,7 +240,7 @@ async fn cleaned_line_counts_screen_words_and_prompt_terms() {
     assert!(l.contains("task=\"cleanup\""), "{l}");
     // No ASR on a text-only cleanup: no hotwords.
     assert!(
-        l.contains("ctx_screen_words=3 hotwords=0 dict_terms_in_prompt=4"),
+        l.contains("ctx_screen_words=3 hotwords=0 dict_terms_in_prompt=1 screen_names_in_prompt=1"),
         "{l}"
     );
 }
@@ -248,7 +250,7 @@ async fn cleaned_line_counts_no_prompt_terms_when_no_llm_ran() {
     let (ok, l) = clean_with(Refuse).await;
     assert!(!ok, "{l}");
     assert!(
-        l.contains("ctx_screen_words=3 hotwords=0 dict_terms_in_prompt=0"),
+        l.contains("ctx_screen_words=3 hotwords=0 dict_terms_in_prompt=0 screen_names_in_prompt=0"),
         "{l}"
     );
 }
