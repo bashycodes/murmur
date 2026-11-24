@@ -172,15 +172,21 @@ class BubbleGeometryTest {
             assertTrue(u.toString(), BubbleGeometry.showsMark(u))
     }
 
-    @Test fun restingTileFitsTheFullAndMinimisedButtons() {
-        // ic_bubble_tile's corner radius is 72 of its 256 units (tools/brand/gen-icons.py BUBBLE_TILE_RX).
-        fun cornerReach(edge: Float): Float {
-            val r = edge * 72f / 256f
-            return (edge / 2 - r) * kotlin.math.sqrt(2f) + r
-        }
-        assertTrue(BubbleGeometry.TILE_DP < 56f)
-        // The minimised look is a 36dp circle: the tile's rounded corners stay inside it.
-        assertTrue(cornerReach(BubbleGeometry.TILE_MINIMISED_DP) < 36f / 2)
+    @Test fun restingBubbleIsTheTileFullOrShrunkButNotTheDot() {
+        for (u in listOf(idle, ready, readyCopy, minimised.copy(dot = false), ready.copy(scale = 0.75f)))
+            assertTrue(u.toString(), BubbleGeometry.isTileLook(u))
+        for (u in listOf(minimised, repair, ready.copy(repair = true), recTap, recHold, procTap, procHold, failedPaste, otherError, answer))
+            assertFalse(u.toString(), BubbleGeometry.isTileLook(u))
+        // ic_bubble_tile's corners: 72 of its 256 units (tools/brand/gen-icons.py BUBBLE_TILE_RX), about 28 %.
+        assertEquals(0.28125f, BubbleGeometry.TILE_CORNER_FRACTION, 0f)
+    }
+
+    @Test fun tileLookKeepsTheRoundLooksWindowAndTouchTarget() {
+        // The tile fills the same h×h main slot the round look had: size and hit-testing unchanged.
+        assertEquals(56f to 56f, size(idle))
+        assertEquals(36f to 36f, size(minimised.copy(dot = false)))
+        assertEquals(MAIN, hit(idle, 2f))
+        assertEquals(MAIN, hit(idle, 54f))
     }
 
     @Test fun otherStatesKeepTheirGlyphs() {

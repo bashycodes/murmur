@@ -16,7 +16,7 @@ import dev.murmur.session.DictationState
 import dev.murmur.session.DictationState.ErrorKind
 
 /**
- * Canvas-drawn bubble: circle with the Murmur tile (Ready), minimised dot or small circle, recording row X·waveform·✓ (tap mode),
+ * Canvas-drawn bubble: the violet Murmur tile (Ready), minimised dot or small circle, recording row X·waveform·✓ (tap mode),
  * mic+waveform (hold mode), paste/copy/dismiss (FailedToPaste), copy/dismiss (a command's answer, shown in the
  * preview card), pulsing … (model still loading), alert (other errors).
  * Gestures go through [BubbleGesture]; the host decides what each action means.
@@ -42,7 +42,7 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
     /** The buttons as last drawn, for hit-testing a touch. */
     private var slots = emptyList<BubbleGeometry.Slot>()
     private val mic: Drawable = context.getDrawable(R.drawable.ic_murmur)!!.mutate().apply { setTint(BubbleColors.onSurface) }
-    /** The resting glyph ([BubbleGeometry.showsMark]): the violet brand tile with the mark knocked out, never tinted. */
+    /** The resting bubble ([BubbleGeometry.isTileLook]): violet brand tile, dark edge and mark, never tinted. */
     private val tile: Drawable = context.getDrawable(R.drawable.ic_bubble_tile)!!
 
     // Design: dark vast-950 pill, light sand-50 glyphs and bars, red only for errors (BubbleColors).
@@ -102,7 +102,8 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
             canvas.drawCircle(width / 2f, h / 2, rr - ring.strokeWidth / 2, ring)
             return
         }
-        canvas.drawRoundRect(RectF(0f, 0f, width.toFloat(), h), r, r, pill)
+        // The tile look has no round pill under the main button; resting extras keep theirs, to its right.
+        if (!BubbleGeometry.isTileLook(ui) || width > h) canvas.drawRoundRect(RectF(0f, 0f, width.toFloat(), h), r, r, pill)
         when (s) {
             DictationState.Idle, DictationState.Ready -> if (!BubbleGeometry.showsMark(ui)) {
                 // Repair: the pulsing alert.
@@ -111,12 +112,13 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
                 circleButton(canvas, danger, BubbleButton.MAIN) { cx, cy -> drawGlyph(canvas, "!", cx, cy) }
                 danger.alpha = 255
                 postInvalidateOnAnimation()
-            } else if (BubbleGeometry.isMinimisedLook(ui)) {
-                // The 26dp tile fits inside the 36dp circle: its rounded corners reach 15.5dp from the centre.
-                circleButton(canvas, null, BubbleButton.MAIN) { cx, cy -> drawIcon(canvas, tile, cx, cy, BubbleGeometry.TILE_MINIMISED_DP / 2) }
             } else {
-                // The tile sits on the pill itself, no disc: its holes show the vast-950 pill, 6.4:1 against the tile.
-                circleButton(canvas, null, BubbleButton.MAIN) { cx, cy -> drawIcon(canvas, tile, cx, cy, BubbleGeometry.TILE_DP / 2) }
+                // The bubble is the tile: the whole h×h main slot (56dp, or 36dp shrunk), over the pill's
+                // shadow drawn to the tile's shape. Its dark edge keeps it 3:1 on white and violet apps.
+                val corner = h * BubbleGeometry.TILE_CORNER_FRACTION
+                canvas.drawRoundRect(RectF(0f, 0f, h, h), corner, corner, pill)
+                tile.setBounds(0, 0, h.toInt(), h.toInt())
+                tile.draw(canvas)
                 if (ui.showCommand) circleButton(canvas, null, BubbleButton.COMMAND) { cx, cy -> drawGlyph(canvas, "✎", cx, cy) }
                 if (ui.showTranslate) circleButton(canvas, null, BubbleButton.TRANSLATE) { cx, cy -> drawGlyph(canvas, "⇄", cx, cy) }
                 if (ui.showCopy) circleButton(canvas, null, BubbleButton.COPY) { cx, cy -> drawGlyph(canvas, "⧉", cx, cy) }
