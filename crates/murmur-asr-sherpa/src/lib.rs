@@ -321,7 +321,11 @@ impl<T: AsHotword + ?Sized> AsHotword for &T {
 /// Separators and control characters inside a phrase become spaces, and a
 /// word's leading `:` is dropped (sherpa would read the word as a score:
 /// mid-phrase it rejects the whole list, and a non-number aborts the
-/// process); blanks and case-insensitive duplicates are dropped (the first
+/// process). So is a word's leading `#` or `@` (`#general`, `@odrin`).
+/// sherpa keeps them as tokens of their own, so the phrase would match only
+/// if the marker were spoken: on Parakeet, `@Taviel Marrow` boosted nothing
+/// while `Taviel Marrow` did (`tests/hotword_markers_e2e.rs`). The bare
+/// name stays. Blanks and case-insensitive duplicates are dropped (the first
 /// one, with its score, is kept); at most [`MAX_HOTWORDS`] phrases are
 /// kept, in order. A score that is not finite and positive is left out.
 pub fn hotwords_arg<H: AsHotword>(phrases: &[H]) -> String {
@@ -335,7 +339,7 @@ pub fn hotwords_arg<H: AsHotword>(phrases: &[H]) -> String {
             .collect();
         let clean = clean
             .split_whitespace()
-            .map(|w| w.trim_start_matches(':'))
+            .map(|w| w.trim_start_matches([':', '#', '@']))
             .filter(|w| !w.is_empty())
             .collect::<Vec<_>>()
             .join(" ");
@@ -733,6 +737,27 @@ mod tests {
             "Mireth 9/) hi/a:b"
         );
         assert_eq!(hotwords_arg(&[Hotword::scored("x :y", 2.0)]), "x y :2");
+    }
+
+    #[test]
+    fn a_mention_or_tag_keeps_its_bare_name() {
+        // A leading '#' or '@' would become a token the speaker never says.
+        assert_eq!(
+            hotwords_arg(&[
+                "@Odrin Vashel",
+                "#general",
+                "Mireth @Sabine",
+                "@",
+                "#",
+                "a#b",
+                "x@y"
+            ]),
+            "Odrin Vashel/general/Mireth Sabine/a#b/x@y"
+        );
+        assert_eq!(
+            hotwords_arg(&[Hotword::scored("@odrin", 2.5), Hotword::new("Odrin")]),
+            "odrin :2.5"
+        );
     }
 
     #[test]
