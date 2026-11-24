@@ -12,6 +12,7 @@ import { $, askDialog, el, setStatus, setValue, when } from "../lib/dom.js";
 import { iconEl } from "../lib/icons.js";
 import { cleanupBlockedLine, cleanupEngineName, cleanupTestFailText, plainHint } from "../lib/cleanup-state.js";
 import { cloudRouteInSentence, cloudRouteTitle, ownServerOr, providerModelLabel } from "../lib/provider-names.js";
+import { selectionAsk } from "../lib/selection-ask.js";
 import { cleanupMonthCost, failText, money, usd } from "../lib/format.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { cloudTimeout } from "../lib/model-pages.js";
@@ -162,6 +163,9 @@ export function showOr(v) {
     $("or_cleanup_send_surrounding_text").checked = c.send_surrounding_text;
     $("or_cleanup_send_screen_words").checked = c.send_screen_words;
     $("or_cleanup_send_app_name").checked = c.send_app_name;
+    const ask = selectionAsk({ cloudOn: c.allow, sendSurrounding: c.send_surrounding_text, provider: c.provider });
+    $("or_cleanup_sel_row").hidden = ask === null;
+    $("or_cleanup_sel_ask").textContent = ask ?? "";
     showCleanupStatus(c.status);
     // D78/D85: LiteLLM does speech only with a speech model set for the proxy.
     const sttAvailable = s.available ?? !custom;
@@ -1000,6 +1004,11 @@ function wire() {
     ]) {
         $(id).addEventListener("change", () => void writes.run(() => orApplyCleanup(false)));
     }
+    // The inline ask: the same switch as Advanced → Text around the cursor.
+    $("or_cleanup_sel_on").addEventListener("click", () => {
+        $("or_cleanup_send_surrounding_text").checked = true;
+        void writes.run(() => orApplyCleanup(false));
+    });
     $("or_cleanup_change").addEventListener("click", () => void openPicker("cleanup"));
     $("or_cleanup_test").addEventListener("click", () => void orTestCleanup());
     // The saved provider; the Cloud page's switch saves a new one (D78).

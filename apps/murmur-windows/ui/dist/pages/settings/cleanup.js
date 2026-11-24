@@ -4,7 +4,8 @@
 // warning, the model on this PC (features/models.ts), cloud cleanup on the
 // Cloud provider (D78): OpenRouter's model, or the model on the user's
 // LiteLLM proxy (D52), whose address is on the Cloud page
-// (features/openrouter.ts), and an Advanced fold: one time limit for every
+// (features/openrouter.ts), the inline ask to send selected text there
+// (lib/selection-ask.ts), and an Advanced fold: one time limit for every
 // engine, reading the screen, what else the cloud gets, the formatting
 // rules before AI and the model file. The engine library is on Developer.
 // Markup only.
@@ -74,6 +75,7 @@ ${group("", LLM_DOWNLOAD_ROW, `data-needs="local"`)}
         <option value="">OpenRouter default</option>
       </select>`, `data-provider="openrouter"`)}
     ${row("Try it", `<span id="or_cleanup_test_out"></span> <span id="or_cleanup_state"></span> <span id="or_cleanup_msg"></span>`, `<button type="button" class="fl-btn fl-btn-secondary" id="or_cleanup_test">Test</button>`)}
+    ${row("Selected text", `<span id="or_cleanup_sel_ask"></span>`, `<button type="button" class="fl-btn fl-btn-secondary" id="or_cleanup_sel_on">Also send it</button>`, `id="or_cleanup_sel_row" hidden`)}
   </div>
 </section>
 
@@ -85,7 +87,7 @@ ${advanced(row(`<label for="llm_timeout_ms">Give up after</label>`, `Then the ne
       <option value="15000">15 seconds</option>
     </select>`) +
         row("Use text on screen", "Reads the app you dictate into, on this PC only.", toggle("use_ax_context", "Use text on screen", `data-save="prefs"`)) +
-        row("Also send to the cloud", "Needs Use text on screen.", `<div class="lw-switch-stack">
+        row("Also send to the cloud", "Needs Use text on screen. Cleanup works without them.", `<div class="lw-switch-stack">
         ${small("or_cleanup_send_app_name", "App name")}
         ${small("or_cleanup_send_surrounding_text", "Text around the cursor")}
         ${small("or_cleanup_send_screen_words", "Words on screen")}
