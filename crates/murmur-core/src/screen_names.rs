@@ -1,73 +1,105 @@
-//! Name-like candidates from the text on screen (`FieldContext::screen_words`).
+//! Name-like candidates from the text on screen (`FieldContext::screen_words`),
+//! for speech-recognition hints (D107).
 //!
 //! A shell sends what it reads on screen: Android ("Send on-screen words")
-//! sends whole chat bubbles, Windows the window title's capitalised words.
-//! Everything downstream (Parakeet / sherpa hotwords, whisper's initial
-//! prompt, the cleanup prompt's DICTIONARY line, mid-sentence casing)
-//! wants the names in that text, not sentences: a bubble spent as one
-//! hotword boosts only a decode that starts the whole sentence, and a few
-//! bubbles fill the 900-char prompt budget. [`name_candidates`] keeps the
-//! names; the core applies it where screen words enter
-//! (`MurmurCore::set_context`, and the router's `set_context` so a hybrid
-//! phone sends the short list to its server). It is idempotent, so a list
-//! that went through it once comes back unchanged.
+//! sends whole chat bubbles, top to bottom; Windows the window title's
+//! capitalised words. As ASR hints (Parakeet / sherpa hotwords, whisper's
+//! initial prompt) a bubble boosts only a decode that starts the whole
+//! sentence, and the oldest bubbles fill the 900-char prompt budget, so
+//! the names further down were cut. [`name_candidates`] keeps the names,
+//! newest first. The core derives them where it builds an ASR request and
+//! for mid-sentence casing; the context keeps the raw screen words, which
+//! AI cleanup (its DICTIONARY line, the Hebrew script check) still uses.
 //!
 //! Rules, generic only (no list of real names):
-//! * an entry of at most [`MAX_CANDIDATE_WORDS`] words (a sender or
-//!   header label) is kept whole, less common words at its ends; this is
-//!   the only rule for Hebrew and other scripts without capitals;
-//! * from a longer entry: `@mentions` and `user_names` (`@orin_vale`
-//!   gives "orin vale", as it is said), runs of capitalised words (split
-//!   into [`MAX_CANDIDATE_WORDS`]-word pieces, common words trimmed from
-//!   their ends, so "Hey Maya" gives "Maya"), and, after all of those,
-//!   lower-case Latin words of at least 4 letters that are not common;
+//! * entries are read bottom to top (newest messages first);
+//! * an entry of at most [`MAX_CANDIDATE_WORDS`] words (a sender or header
+//!   label) is kept, less dropped words at its ends; a label written all
+//!   in capitals ("May", "Will Ashby") keeps its common words;
+//! * from a longer entry: `@mentions` (without the `@`, "@orin_vale" →
+//!   "orin vale", as it is said) and runs of capitalised words, emitted in
+//!   pairs ("Alder Fenwick Corin Malloy" → "Alder Fenwick", "Corin Malloy");
+//!   Hebrew and lower-case words of a long entry are not candidates;
+//! * a word is dropped when it is a never-name label (`data/screen-labels-en.txt`:
+//!   pronouns such as "I" and "You", weekdays, app labels, one-word replies), or common
+//!   (`data/common-words-{en,he}.txt`) and written in lower case, in Hebrew
+//!   (after its one-letter prefixes ו ה ב ל ש מ כ), or capitalised only
+//!   because it starts a sentence; "May" mid-sentence is kept;
+//! * tokens with digits ("10:42", "ב-10:42") are never words;
 //! * case-insensitive dedupe, at most [`MAX_CANDIDATES`].
-//!
-//! "Common" is the built-in list in `data/common-words-en.txt` (function
-//! words, frequent chat words, weekdays, months, app labels) and
-//! `data/common-words-he.txt` (very common Hebrew words and labels).
 
 use std::collections::HashSet;
 use std::sync::OnceLock;
 
-/// Cap on candidates sent on.
+/// Cap on candidates.
 pub const MAX_CANDIDATES: usize = 50;
 /// Cap on words per candidate.
 pub const MAX_CANDIDATE_WORDS: usize = 3;
-/// Shortest lower-case word kept as a "not common" candidate.
-const MIN_PLAIN_CHARS: usize = 4;
 
 const COMMON_EN: &str = include_str!("../data/common-words-en.txt");
 const COMMON_HE: &str = include_str!("../data/common-words-he.txt");
+const LABELS_EN: &str = include_str!("../data/screen-labels-en.txt");
+/// One-letter Hebrew prefixes (and, the, in, to, that, from, as).
+const HE_PREFIXES: [char; 7] = ['ו', 'ה', 'ב', 'ל', 'ש', 'מ', 'כ'];
+
+fn word_set(lists: &[&'static str]) -> HashSet<String> {
+    lists
+        .iter()
+        .flat_map(|l| l.lines())
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .map(str::to_lowercase)
+        .collect()
+}
 
 fn common() -> &'static HashSet<String> {
     static SET: OnceLock<HashSet<String>> = OnceLock::new();
-    SET.get_or_init(|| {
-        COMMON_EN
-            .lines()
-            .chain(COMMON_HE.lines())
-            .map(str::trim)
-            .filter(|l| !l.is_empty() && !l.starts_with('#'))
-            .map(str::to_lowercase)
-            .collect()
-    })
+    SET.get_or_init(|| word_set(&[COMMON_EN, COMMON_HE, LABELS_EN]))
 }
 
-/// Whether `w` is in the built-in common-word lists (any case).
+fn labels() -> &'static HashSet<String> {
+    static SET: OnceLock<HashSet<String>> = OnceLock::new();
+    SET.get_or_init(|| word_set(&[LABELS_EN]))
+}
+
+fn key(w: &str) -> String {
+    w.to_lowercase().replace('’', "'")
+}
+
+/// Whether `w` is in the built-in common-word lists (any case); a Hebrew
+/// word also with up to two one-letter prefixes removed.
 pub fn is_common(w: &str) -> bool {
-    common().contains(&w.to_lowercase().replace('’', "'"))
+    let mut k = key(w);
+    for _ in 0..3 {
+        if common().contains(&k) {
+            return true;
+        }
+        let mut cs = k.chars();
+        match cs.next() {
+            Some(c) if HE_PREFIXES.contains(&c) && cs.clone().count() >= 2 => {
+                k = cs.collect();
+            }
+            _ => return false,
+        }
+    }
+    false
+}
+
+fn is_label(w: &str) -> bool {
+    labels().contains(&key(w))
 }
 
 /// One word of an entry.
 struct Token {
-    /// One word, or a handle's words ("@orin_vale" → "orin vale", as it
-    /// is said; at most [`MAX_CANDIDATE_WORDS`]).
+    /// One word, or a mention's words ("@orin_vale" → "orin vale").
     text: String,
-    /// An `@mention` or a `user_name`: a name whatever its case.
-    handle: bool,
-    /// Followed by `,` `.` `;` `:` `!` `?` or a closing bracket: a run of
-    /// names stops here.
+    mention: bool,
+    /// Digits or no letters ("10:42"): not a word, and a run stops here.
+    gap: bool,
+    /// Followed by `,` `.` `;` `:` `!` `?` or a closing bracket.
     breaks: bool,
+    /// Followed by `.` `!` `?`: the next word starts a sentence.
+    ends_sentence: bool,
 }
 
 impl Token {
@@ -75,101 +107,140 @@ impl Token {
         self.text.chars().next().is_some_and(char::is_uppercase)
     }
 
-    fn lower_latin(&self) -> bool {
-        self.text
-            .chars()
-            .all(|c| c.is_ascii_lowercase() || c == '-' || c == '\'')
+    /// Written all in capitals ("OK", "LOL"), more than one letter.
+    fn shouted(&self) -> bool {
+        self.text.chars().filter(|c| c.is_alphabetic()).count() > 1
+            && !self.text.chars().any(char::is_lowercase)
     }
 }
 
 fn tokens(entry: &str) -> Vec<Token> {
     entry
-        .split_whitespace()
-        .filter_map(|raw| {
-            let breaks = raw
-                .trim_end_matches(['"', '\'', '’', '”', '*', '_'])
-                .ends_with([',', '.', ';', ':', '!', '?', ')', ']']);
+        .split(|c: char| c.is_whitespace() || c == '/')
+        .filter(|raw| !raw.is_empty())
+        .map(|raw| {
+            let tail = raw.trim_end_matches(['"', '\'', '’', '”', '*', '_']);
+            let breaks = tail.ends_with([',', '.', ';', ':', '!', '?', ')', ']']);
+            let ends_sentence = tail.ends_with(['.', '!', '?']);
+            let mention = raw.starts_with('@');
             let core = raw.trim_matches(|c: char| !c.is_alphanumeric());
             let core = ["'s", "’s"]
                 .iter()
                 .find_map(|s| core.strip_suffix(s))
                 .unwrap_or(core);
-            // A word has a letter; "10:42" and "3" are not words.
-            if !core.chars().any(char::is_alphabetic) {
-                return None;
-            }
-            let handle = raw.starts_with('@') || core.contains('_');
-            let text = if handle {
-                let said = core.replace(['_', '.'], " ");
-                let words: Vec<&str> = said.split_whitespace().take(MAX_CANDIDATE_WORDS).collect();
-                words.join(" ")
+            let text = if raw == "&" {
+                "and".to_string()
+            } else if mention {
+                core.replace(['_', '.'], " ")
+                    .split_whitespace()
+                    .take(MAX_CANDIDATE_WORDS)
+                    .collect::<Vec<_>>()
+                    .join(" ")
             } else {
                 core.to_string()
             };
-            Some(Token {
+            let gap =
+                text.chars().any(|c| c.is_ascii_digit()) || !text.chars().any(char::is_alphabetic);
+            Token {
                 text,
-                handle,
+                mention,
+                gap,
                 breaks,
-            })
+                ends_sentence,
+            }
         })
         .collect()
 }
 
-/// `words` without common words at either end, joined; `None` when
-/// nothing is left.
-fn trimmed(words: &[&str]) -> Option<String> {
-    let start = words.iter().position(|w| !is_common(w))?;
-    let end = words.iter().rposition(|w| !is_common(w))?;
-    Some(words[start..=end].join(" "))
+/// Whether `t` is no name: see the module docs. `starts` = it starts a
+/// sentence; `label` = it stands in a short all-capitals label.
+fn dropped(t: &Token, starts: bool, label: bool) -> bool {
+    if t.gap || is_label(&t.text) {
+        return true;
+    }
+    if t.capitalised() && !t.shouted() {
+        return starts && !label && is_common(&t.text);
+    }
+    is_common(&t.text)
 }
 
-/// Name-like candidates from `entries` (on-screen texts in screen
-/// order): see the module docs. Idempotent.
+/// A short entry (≤ [`MAX_CANDIDATE_WORDS`] words), less dropped words at
+/// its ends; `None` when nothing is left.
+fn short_entry(toks: &[&Token]) -> Option<String> {
+    let cased = toks.iter().filter(|t| {
+        t.text
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_uppercase() || c.is_lowercase())
+    });
+    let label = cased.clone().count() > 0 && cased.clone().all(|t| t.capitalised());
+    let keep: Vec<bool> = toks
+        .iter()
+        .enumerate()
+        .map(|(i, t)| !dropped(t, i == 0, label))
+        .collect();
+    let start = keep.iter().position(|&k| k)?;
+    let end = keep.iter().rposition(|&k| k)?;
+    Some(
+        toks[start..=end]
+            .iter()
+            .map(|t| t.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" "),
+    )
+}
+
+/// The names in a long entry: mentions and capitalised runs.
+fn long_entry(toks: &[Token], out: &mut Vec<String>) {
+    let mut run: Vec<&str> = Vec::new();
+    let flush = |run: &mut Vec<&str>, out: &mut Vec<String>| {
+        for pair in run.chunks(2) {
+            out.push(pair.join(" "));
+        }
+        run.clear();
+    };
+    let mut starts = true;
+    for t in toks {
+        let starts_here = starts;
+        starts = t.ends_sentence || (starts && t.gap);
+        if t.mention && !t.gap {
+            flush(&mut run, out);
+            if !is_label(&t.text) && !is_common(&t.text) {
+                out.push(t.text.clone());
+            }
+            continue;
+        }
+        if t.capitalised() && !dropped(t, starts_here, false) {
+            run.push(&t.text);
+            if t.breaks {
+                flush(&mut run, out);
+            }
+            continue;
+        }
+        flush(&mut run, out);
+    }
+    flush(&mut run, out);
+}
+
+/// Name-like candidates from `entries` (on-screen texts, top to bottom),
+/// newest (bottom) first: see the module docs.
 pub fn name_candidates(entries: &[String]) -> Vec<String> {
-    let mut names: Vec<String> = Vec::new();
-    let mut plain: Vec<String> = Vec::new();
-    for entry in entries {
+    let mut out: Vec<String> = Vec::new();
+    for entry in entries.iter().rev() {
         let toks = tokens(entry);
-        let words: Vec<&str> = toks.iter().flat_map(|t| t.text.split(' ')).collect();
+        let words: Vec<&Token> = toks.iter().filter(|t| !t.gap).collect();
         if words.is_empty() {
             continue;
         }
-        if words.len() <= MAX_CANDIDATE_WORDS {
-            names.extend(trimmed(&words));
-            continue;
+        let n: usize = words.iter().map(|t| t.text.split(' ').count()).sum();
+        if n <= MAX_CANDIDATE_WORDS {
+            out.extend(short_entry(&words));
+        } else {
+            long_entry(&toks, &mut out);
         }
-        let mut run: Vec<&str> = Vec::new();
-        let flush = |run: &mut Vec<&str>, names: &mut Vec<String>| {
-            for piece in run.chunks(MAX_CANDIDATE_WORDS) {
-                names.extend(trimmed(piece));
-            }
-            run.clear();
-        };
-        for t in &toks {
-            if t.handle {
-                flush(&mut run, &mut names);
-                let words: Vec<&str> = t.text.split(' ').collect();
-                names.extend(trimmed(&words));
-                continue;
-            }
-            if t.capitalised() {
-                run.push(&t.text);
-                if t.breaks {
-                    flush(&mut run, &mut names);
-                }
-                continue;
-            }
-            flush(&mut run, &mut names);
-            if t.lower_latin() && t.text.chars().count() >= MIN_PLAIN_CHARS && !is_common(&t.text) {
-                plain.push(t.text.clone());
-            }
-        }
-        flush(&mut run, &mut names);
     }
     let mut seen = HashSet::new();
-    names
-        .into_iter()
-        .chain(plain)
+    out.into_iter()
         .filter(|c| seen.insert(c.to_lowercase()))
         .take(MAX_CANDIDATES)
         .collect()
@@ -183,89 +254,135 @@ mod tests {
         xs.iter().map(|s| s.to_string()).collect()
     }
 
+    fn one(s: &str) -> Vec<String> {
+        name_candidates(&v(&[s]))
+    }
+
     #[test]
     fn a_bubble_gives_its_names_not_the_sentence() {
-        let got = name_candidates(&v(&[
-            "Hey Maren, did Tobiah Quell send the deck to the Lantern Works team yet?",
-        ]));
-        assert_eq!(got, v(&["Maren", "Tobiah Quell", "Lantern Works", "deck"]));
+        assert_eq!(
+            one("Hey Maren, did Tobiah Quell send the deck to the Lantern Works team yet?"),
+            v(&["Maren", "Tobiah Quell", "Lantern Works"])
+        );
     }
 
     #[test]
-    fn mentions_lose_the_at_sign() {
-        let got = name_candidates(&v(&["thanks for the review @orin_vale, merging now"]));
-        assert_eq!(got, v(&["orin vale", "review", "merging"]));
+    fn mentions_lose_the_at_sign_and_plain_words_are_not_candidates() {
+        assert_eq!(
+            one("thanks for the review @orin_vale, merging now"),
+            v(&["orin vale"])
+        );
+        // An underscore alone is not a mention.
+        assert!(one("see the file build_notes before the review today").is_empty());
     }
 
     #[test]
-    fn short_labels_are_kept_whole_less_common_words() {
+    fn short_labels_are_kept_less_dropped_words() {
         let got = name_candidates(&v(&[
-            "Ysolde Brannick",
-            "Reply to Kestrel",
-            "Type a message",
-            "10:42",
             "Online",
+            "10:42",
+            "Type a message",
+            "Reply to Kestrel",
+            "Ysolde Brannick",
         ]));
         assert_eq!(got, v(&["Ysolde Brannick", "Kestrel"]));
     }
 
     #[test]
-    fn long_capitalised_runs_are_split_into_three_word_pieces() {
-        let got = name_candidates(&v(&[
-            "minutes from Alder Fenwick Corin Malloy Sab Teague today",
-        ]));
+    fn newest_entries_come_first() {
+        let got = name_candidates(&v(&["Wren Hollis", "Pellam Oakes", "Ottoline Reyes"]));
+        assert_eq!(got, v(&["Ottoline Reyes", "Pellam Oakes", "Wren Hollis"]));
+    }
+
+    #[test]
+    fn long_capitalised_runs_come_in_pairs() {
         assert_eq!(
-            got,
-            v(&["Alder Fenwick Corin", "Malloy Sab Teague", "minutes"])
+            one("minutes from Alder Fenwick Corin Malloy today"),
+            v(&["Alder Fenwick", "Corin Malloy"])
+        );
+        assert_eq!(
+            one("notes from Sab Teague Ilse came in"),
+            v(&["Sab Teague", "Ilse"])
         );
     }
 
     #[test]
-    fn hebrew_keeps_short_entries_and_drops_common_ones() {
+    fn ampersand_is_said_and() {
+        assert_eq!(one("Harrow & Vane"), v(&["Harrow and Vane"]));
+    }
+
+    #[test]
+    fn common_word_names_are_kept_mid_sentence_and_as_labels() {
+        assert_eq!(one("I asked May about the venue for Saturday"), v(&["May"]));
+        assert_eq!(
+            one("then Will said the June draft is fine"),
+            v(&["Will", "June"])
+        );
+        assert_eq!(
+            name_candidates(&v(&["Hope", "Will Ashby"])),
+            v(&["Will Ashby", "Hope"])
+        );
+        // Sentence-initial and lower-case common words are not names.
+        assert!(one("Will you send it? May be late, hope not.").is_empty());
+        assert!(one("Good morning").is_empty());
+    }
+
+    #[test]
+    fn windows_title_words_drop_labels_but_keep_names() {
+        // Windows sends a title's capitalised words, one per entry.
+        let got = name_candidates(&v(&[
+            "Inbox", "Document", "May", "Falkner", "Outlook", "Thursday",
+        ]));
+        assert_eq!(got, v(&["Outlook", "Falkner", "May"]));
+    }
+
+    #[test]
+    fn hebrew_keeps_short_labels_with_an_uncommon_word() {
         let got = name_candidates(&v(&[
             "נויה טלמור",
+            "מה קורה?",
+            "היום ב-10:42",
             "תודה רבה",
-            "בסדר",
+            "ובסדר",
             "מישהו יכול להביא את המטען מחר בבוקר?",
         ]));
         assert_eq!(got, v(&["נויה טלמור"]));
     }
 
     #[test]
-    fn names_come_before_plain_words_and_the_list_is_capped() {
-        let plain: Vec<String> = (0..60u8)
-            .map(|i| format!("zq{}{}", (b'a' + i / 26) as char, (b'a' + i % 26) as char))
+    fn hebrew_prefixes_are_stripped_for_the_lookup() {
+        assert!(is_common("והיום"));
+        assert!(is_common("שבסדר"));
+        assert!(!is_common("טלמור"));
+    }
+
+    #[test]
+    fn the_list_is_capped() {
+        let names: Vec<String> = (0..60u8)
+            .map(|i| {
+                format!(
+                    "Zq{}{} Yv",
+                    (b'a' + i / 26) as char,
+                    (b'a' + i % 26) as char
+                )
+            })
             .collect();
-        let mut screen = vec![plain.join(" ")];
-        screen.push("Pellam Oakes".into());
-        let got = name_candidates(&screen);
+        let got = name_candidates(&names);
         assert_eq!(got.len(), MAX_CANDIDATES);
-        assert_eq!(got[0], "Pellam Oakes");
+        assert_eq!(got[0], names[59]);
     }
 
     #[test]
     fn dedupe_is_case_insensitive() {
         let got = name_candidates(&v(&["Wren Hollis", "wren hollis", "WREN HOLLIS"]));
-        assert_eq!(got, v(&["Wren Hollis"]));
+        assert_eq!(got, v(&["WREN HOLLIS"]));
     }
 
     #[test]
     fn possessives_and_punctuation_are_stripped() {
-        let got = name_candidates(&v(&[
-            "I think Brisa's (the new lead) is out until Thursday.",
-        ]));
-        assert_eq!(got, v(&["Brisa", "lead"]));
-    }
-
-    #[test]
-    fn running_twice_changes_nothing() {
-        let screen = v(&[
-            "Hey Maren, did Tobiah Quell send the deck to the Lantern Works team yet?",
-            "@orin_vale can you check the invoice from Dunmore Supply",
-            "נויה טלמור",
-            "Ysolde Brannick",
-        ]);
-        let once = name_candidates(&screen);
-        assert_eq!(name_candidates(&once), once);
+        assert_eq!(
+            one("I think Brisa's (the new lead) is out until Thursday."),
+            v(&["Brisa"])
+        );
     }
 }

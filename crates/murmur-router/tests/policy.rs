@@ -414,7 +414,9 @@ fn queued_start_without_fallback_waits_for_the_server() {
 }
 
 #[test]
-fn the_server_gets_screen_name_candidates_not_bubbles() {
+fn the_server_gets_the_raw_screen_words() {
+    // D107: the server's cleanup uses the raw words; its core derives the
+    // ASR name candidates itself.
     let k = rig_with(
         cfg(true, false),
         Fake::new(EngineKind::Local),
@@ -431,11 +433,7 @@ fn the_server_gets_screen_name_candidates_not_bubbles() {
         ..Default::default()
     });
     let ctxs = k.remote.contexts.lock().unwrap();
-    assert_eq!(
-        ctxs[0].screen_words,
-        murmur_core::screen_names::name_candidates(&bubbles)
-    );
-    assert_eq!(ctxs[0].screen_words[..2], ["Orla Venning", "Piet Harlow"]);
+    assert_eq!(ctxs[0].screen_words, bubbles);
 }
 
 #[test]

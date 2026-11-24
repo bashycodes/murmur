@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use murmur_core::asr::{AsrEngine, AsrError, AsrOutput, AsrRequest};
 use murmur_core::cleanup::{CleanError, CleanPrompt, Cleaner};
-use murmur_core::config::SessionConfig;
+use murmur_core::config::{FieldContext, SessionConfig};
 use murmur_core::{CommitResult, CommitStatus, MurmurCore};
 
 const HE: &str = "תזכיר לי לקנות לחם וחלב בדרך הביתה ואם יש זמן גם לעבור בדואר לאסוף את החבילה";
@@ -109,4 +109,35 @@ fn english_dictations_are_unchanged() {
     );
     assert_eq!(r.status, CommitStatus::Formatted);
     assert!(p.examples.iter().all(|(u, _)| !u.contains("LANGUAGE:")));
+}
+
+#[test]
+fn a_latin_word_from_a_screen_bubble_is_known_to_the_hebrew_check() {
+    // D107: ASR hints use name candidates, but the script check (and the
+    // cleanup prompt) keep the raw screen words, so a lower-case word that
+    // only a bubble shows is still known. Made-up text.
+    const SAID: &str = "תבדוק אם הסקריפט מוכן למחר";
+    const ANSWER: &str = "תבדוק אם הסקריפט של staging מוכן למחר.";
+    let local = Arc::new(Local(Some(ANSWER), Mutex::new(None)));
+    let core = MurmurCore::from_engines(Arc::new(Said(SAID, "he")), Some(local.clone()));
+    core.start_session(SessionConfig {
+        languages: vec!["he".into()],
+        llm_skip_clean: false,
+        ..Default::default()
+    })
+    .unwrap();
+    core.set_context(FieldContext {
+        screen_words: vec!["the staging script is ready for tomorrow".into()],
+        ..Default::default()
+    });
+    let tone: Vec<i16> = (0..16_000)
+        .map(|i| ((i as f32 * 0.05).sin() * 8000.0) as i16)
+        .collect();
+    core.push_audio(&tone);
+    let r = core.commit();
+    assert_eq!(r.fallback_reason, None, "{r:?}");
+    assert_eq!(r.status, CommitStatus::Formatted);
+    assert!(r.final_text.contains("staging"), "{}", r.final_text);
+    let p = local.1.lock().unwrap().clone().expect("the model ran");
+    assert!(format!("{p:?}").contains("the staging script is ready"));
 }

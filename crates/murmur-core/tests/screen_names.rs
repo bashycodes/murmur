@@ -25,9 +25,10 @@ fn strings(v: &Value) -> Vec<String> {
         .collect()
 }
 
-/// Letter words, lower case ("Harrow & Vane" → ["harrow", "vane"]).
+/// Letter words, lower case ("Harrow & Vane" → ["harrow", "and", "vane"]).
 fn words(s: &str) -> Vec<String> {
-    s.split(|c: char| !c.is_alphanumeric() && c != '-' && c != '\'')
+    s.replace('&', " and ")
+        .split(|c: char| !c.is_alphanumeric() && c != '-' && c != '\'')
         .filter(|w| w.chars().any(char::is_alphabetic))
         .map(str::to_lowercase)
         .collect()
@@ -78,18 +79,35 @@ fn a_whole_screen_shrinks_to_names() {
     let raw_chars: usize = raw.iter().map(|e| e.chars().count()).sum();
     let got_chars: usize = got.iter().map(|e| e.chars().count()).sum();
     assert!(
-        got_chars * 2 < raw_chars,
+        got_chars * 4 < raw_chars,
         "{got_chars} of {raw_chars} chars: {got:?}"
     );
-    assert!(!got.iter().any(|c| c.contains("cabin is confirmed")));
+    assert!(!got.iter().any(|c| c.contains("cabin")));
 }
 
 #[test]
-fn every_screen_is_unchanged_by_a_second_pass() {
-    for s in screens() {
-        let once = name_candidates(&strings(&s["screen"]));
-        assert_eq!(name_candidates(&once), once, "{}", s["id"]);
+fn a_name_in_the_newest_bubble_of_a_full_screen_reaches_the_prompt() {
+    // A full capture (the phone's 2000-char cap): older bubbles above,
+    // the planted name in the last (newest) one.
+    let mut screen: Vec<String> = Vec::new();
+    let mut chars = 0;
+    'fill: for s in screens() {
+        for e in strings(&s["screen"]) {
+            if chars + e.chars().count() > 1940 {
+                break 'fill;
+            }
+            chars += e.chars().count();
+            screen.push(e);
+        }
     }
+    screen.push("ok see you there, ask Ottoline Reyes too".into());
+    assert!(screen.iter().map(|e| e.chars().count()).sum::<usize>() > 1900);
+    let none = Dictionary::default();
+    // Whole bubbles: the budget is spent on the oldest ones.
+    assert!(!build_initial_prompt(&none, &screen).contains("Ottoline Reyes"));
+    let names = name_candidates(&screen);
+    assert_eq!(names[0], "Ottoline Reyes");
+    assert!(build_initial_prompt(&none, &names).contains("Ottoline Reyes"));
 }
 
 #[test]

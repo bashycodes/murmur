@@ -1047,11 +1047,8 @@ impl MurmurCore {
         true
     }
 
-    /// Field context; may arrive any time before `commit`. Its screen
-    /// words are reduced to name-like candidates here
-    /// ([`crate::screen_names`]), once for ASR, casing and cleanup.
-    pub fn set_context(&self, mut ctx: FieldContext) {
-        ctx.screen_words = crate::screen_names::name_candidates(&ctx.screen_words);
+    /// Field context; may arrive any time before `commit`.
+    pub fn set_context(&self, ctx: FieldContext) {
         *self.shared.context.lock().unwrap() = ctx;
         self.shared.context_ver.fetch_add(1, Ordering::Relaxed);
     }
@@ -1824,9 +1821,12 @@ impl Worker {
     fn asr_request(cfg: &SessionConfig, ctx: &FieldContext, purpose: AsrPurpose) -> AsrRequest {
         let mut seen = Vec::new();
         let dictionary_terms = dedupe_terms(cfg.dictionary.vocabulary(), &mut seen);
-        let screen_terms = dedupe_terms(ctx.screen_words.iter().map(String::as_str), &mut seen);
+        // D107: ASR hints get the screen's name candidates, newest first;
+        // the context keeps the raw words for cleanup.
+        let names = crate::screen_names::name_candidates(&ctx.screen_words);
+        let screen_terms = dedupe_terms(names.iter().map(String::as_str), &mut seen);
         AsrRequest {
-            initial_prompt: build_initial_prompt(&cfg.dictionary, &ctx.screen_words),
+            initial_prompt: build_initial_prompt(&cfg.dictionary, &names),
             language: cfg.forced_language().map(str::to_string),
             abort: AbortFlag::default(),
             dictionary_terms,
