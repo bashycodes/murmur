@@ -27,6 +27,19 @@ enum class Retention(val key: String) {
     }
 }
 
+/**
+ * Light / dark for the app's screens (Settings → Theme). Dark when nothing is stored: a fresh
+ * install starts dark; an install from before the setting keeps System ([ThemeDefault], D104).
+ * The bubble is always dark either way.
+ */
+enum class AppTheme(val key: String) {
+    SYSTEM("system"), LIGHT("light"), DARK("dark");
+
+    companion object {
+        fun fromKey(k: String?): AppTheme = entries.firstOrNull { it.key == k } ?: DARK
+    }
+}
+
 object DictionaryMerge {
     /** Import semantics: an incoming row replaces any existing row with the same word (case-insensitive). */
     fun merge(existing: List<DictEntry>, incoming: List<DictEntry>): List<DictEntry> {
@@ -98,6 +111,8 @@ data class Settings(
      * base + Zipformer Hebrew, up to ≈ 1.1 GB with Parakeet). Off by default.
      */
     val keepBothLanguages: Boolean = false,
+    /** Light / dark for the app's screens ([AppTheme]); dark by default (D104). */
+    val theme: AppTheme = AppTheme.DARK,
 ) {
     /** D37 / D58: the dictation language follows the keyboard (read at the start and again at the stop). */
     val followsKeyboard: Boolean get() = language == LANGUAGE_KEYBOARD

@@ -53,6 +53,7 @@ import dev.murmur.data.HistoryStore
 import dev.murmur.data.InsightsStore
 import dev.murmur.data.EnginePlan
 import dev.murmur.data.SettingsStore
+import dev.murmur.ui.ThemeMode
 import dev.murmur.data.SpeechEngines
 import dev.murmur.health.A11ySetting
 import dev.murmur.health.AccessibilityHealth
@@ -200,6 +201,7 @@ class MurmurApp : Application() {
         BlockingCalls.isMainThread = { android.os.Looper.myLooper() == android.os.Looper.getMainLooper() }
         BlockingCalls.onViolation = { Log.e("MurmurEngine", "blocking native call on the main thread: $it", Throwable("C2")) }
         settings = SettingsStore(this)
+        ThemeMode.apply(this, settings.load().theme)
         dictionary = DictionaryStore(this)
         suggestions = SuggestionStore(this)
         history = HistoryStore(this)

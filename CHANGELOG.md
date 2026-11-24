@@ -28,6 +28,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 ### Changed
 
 - **AI cleanup defaults to Medium strength** (was Light) on Windows and Android. Only a fresh install starts at Medium; on a fresh Android install, turning AI cleanup on without picking a strength cleans at Medium and the picker shows it. An existing install keeps the strength it runs at today: a saved Light, High or No AI stays, and an Android install that never picked a strength (including restores of older backups) keeps the Light it ran at. Whether AI cleanup is on by default does not change. The shared core's fallback for a config without a level stays Light.
+- **Dark is the default theme** (was System) on Windows and Android, and Android gets a theme setting: Settings → Theme (Dark, Light or System; until now the app always followed the phone). Only a fresh install starts dark; an existing install keeps what it shows today (System, or the theme picked on Windows), including Android restores of older backups. The Android bubble stays dark either way (D104).
 
 ### Removed
 

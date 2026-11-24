@@ -16,7 +16,7 @@ class SettingsStore(context: Context) {
     private val kv = PrefsKeyValue(sp)
 
     // Before anything else writes here: only a store that is still empty is a fresh install.
-    init { StrengthDefault.keepOld(kv, empty = sp.all.isEmpty()) }
+    init { keepOldDefaults(kv, empty = sp.all.isEmpty()) }
 
     private companion object {
         /** D22: the hands-free endpoint default moved 2000 → 1500 ms; set once that ran (or on any save). */
@@ -29,7 +29,7 @@ class SettingsStore(context: Context) {
 
     fun load(): Settings {
         // Again here: a Restore replaces these prefs, and an older backup has no flag.
-        StrengthDefault.keepOld(kv, empty = sp.all.isEmpty())
+        keepOldDefaults(kv, empty = sp.all.isEmpty())
         return loadSettings()
     }
 
@@ -58,6 +58,7 @@ class SettingsStore(context: Context) {
         appBuckets = WritingStyle.parseOverrides(sp.getString("app_buckets", null).orEmpty()).map,
         learnFromEdits = sp.getBoolean("learn_from_edits", true),
         keepBothLanguages = sp.getBoolean("keep_both_languages", false),
+        theme = AppTheme.fromKey(sp.getString(ThemeDefault.KEY, null)),
     )
 
     /** D27: nothing stored (every install before 0.3) = the [dev.murmur.core.Styles] defaults. */
@@ -123,6 +124,8 @@ class SettingsStore(context: Context) {
             .putBoolean(LANGUAGE_MIGRATED, true)
             .putBoolean(KEYBOARD_MIGRATED, true)
             .putBoolean(StrengthDefault.MIGRATED, true)
+            .putBoolean(ThemeDefault.MIGRATED, true)
+            .putString(ThemeDefault.KEY, s.theme.key)
             .putBoolean("decode_while_speaking", s.decodeWhileSpeaking)
             .putString("style_personal", s.styles.personal.wire)
             .putString("style_work", s.styles.work.wire)
@@ -603,4 +606,33 @@ internal object StrengthDefault {
             if (keepLight) putString("cleanup", CleanupLevel.LIGHT.wire)
         }
     }
+}
+
+/**
+ * D104: the theme default moved System → Dark ([AppTheme]). Same rule as [StrengthDefault]: an
+ * install from before had no setting and followed the phone, so [keepOld] writes System down
+ * once; only an [empty] store is a fresh install. A stored theme is never touched, and nothing
+ * changes after [MIGRATED] is set (by this or by any save).
+ */
+internal object ThemeDefault {
+    const val MIGRATED = "theme_default_dark"
+    const val KEY = "theme"
+
+    fun keepOld(kv: KeyValue, empty: Boolean) {
+        if (kv.getBoolean(MIGRATED, false)) return
+        kv.edit {
+            putBoolean(MIGRATED, true)
+            if (!empty && !kv.contains(KEY)) putString(KEY, AppTheme.SYSTEM.key)
+        }
+    }
+}
+
+/**
+ * Every one-time "an install from before keeps the old default" step, against one emptiness
+ * check taken before any of them writes (each sets its own flag, so the store is no longer empty
+ * after the first).
+ */
+internal fun keepOldDefaults(kv: KeyValue, empty: Boolean) {
+    StrengthDefault.keepOld(kv, empty)
+    ThemeDefault.keepOld(kv, empty)
 }

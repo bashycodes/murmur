@@ -34,7 +34,7 @@ import dev.murmur.R
 
 /**
  * Colour roles every screen uses, mapped onto the design tokens ([Tokens], from
- * docs/design/app-design/murmur-theme.css). Light / dark follows the system (uiMode).
+ * docs/design/app-design/murmur-theme.css). Light / dark follows uiMode: Settings → Theme ([ThemeMode]).
  * The design is monochrome: the "accent" role is the ink colour.
  */
 internal class DevPalette(
