@@ -23,8 +23,8 @@
     transforms: {
       enabled: false, auto_apply: null, view_changes: "Win+Alt+O",
       items: [
-        { transform: { id: "polish", name: "Polish", description: "Clearer, tighter wording", instruction: "Rewrite the text so it reads clearly and concisely. Keep the meaning, the language and the voice." }, shortcut: "Win+Alt+1" },
-        { transform: { id: "prompt_engineer", name: "Prompt Builder", description: "Turns a rough ask into a clear prompt", instruction: "Turn the text into a clear, specific prompt for an AI assistant." }, shortcut: "Win+Alt+2" },
+        { transform: { id: "polish", name: "Polish", description: "Clearer, tighter wording", instruction: "Rewrite the text so it reads clearly and concisely. Keep the meaning, the language and the voice." }, shortcut: "Win+Shift+Q" },
+        { transform: { id: "prompt_engineer", name: "Prompt Builder", description: "Turns a rough ask into a clear prompt", instruction: "Turn the text into a clear, specific prompt for an AI assistant." }, shortcut: "Win+Shift+W" },
       ],
     },
   };

@@ -2412,6 +2412,36 @@ mod tests {
     }
 
     #[test]
+    fn default_transform_chords_win_shift_q_w_fire_beside_the_defaults() {
+        // D108: the built-ins' defaults with every other default shortcut
+        // bound; Win+Shift (a subset of Translate's Ctrl+Win+Shift) must
+        // not start a translation, and Q / W must not reach the app.
+        let win_shift = |k: char| Chord::new([Key::Win, Key::Shift, Key::Vk(k as u16)]);
+        let b = Bindings {
+            transforms: vec![Some(win_shift('Q')), Some(win_shift('W'))],
+            view_changes: Some(win_alt('O')),
+            ..Default::default()
+        };
+        let mut m = ChordMatcher::new(b);
+        assert!(m.handle(KeyEvent::down(Key::Win), false).actions.is_empty());
+        assert!(m
+            .handle(KeyEvent::down(Key::LShift), false)
+            .actions
+            .is_empty());
+        for (k, n) in [(b'Q', 0), (b'W', 1)] {
+            let d = m.handle(KeyEvent::down(Key::Vk(k as u16)), false);
+            assert_eq!(d.actions, vec![Transform(n)]);
+            assert!(d.suppress, "the letter must not reach the app");
+            assert!(m.handle(KeyEvent::up(Key::Vk(k as u16)), false).suppress);
+        }
+        m.handle(KeyEvent::up(Key::LShift), false);
+        assert!(
+            m.handle(KeyEvent::up(Key::Win), false).mask_release,
+            "a lone Win release would open Start"
+        );
+    }
+
+    #[test]
     fn set_bindings_resets_state() {
         let mut m = ctrl_win_ptt();
         feed(

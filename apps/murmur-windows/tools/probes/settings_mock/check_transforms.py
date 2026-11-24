@@ -45,8 +45,8 @@ with sync_playwright() as p:
     pg.click("[data-page=transforms]")
     pg.wait_for_timeout(200)
     check("cards: built-ins + add a transform", texts("#tf_grid .lw-tf-card") == [
-        "Win Alt 1 Polish Clearer, tighter wording",
-        "Win Alt 2 Prompt Builder Turns a rough ask into a clear prompt",
+        "Win Shift Q Polish Clearer, tighter wording",
+        "Win Shift W Prompt Builder Turns a rough ask into a clear prompt",
         "Add a transform Your instruction, your shortcut",
     ], texts("#tf_grid .lw-tf-card"))
     check("view keys Win Alt O", texts("#tf_view kbd") == ["Win", "Alt", "O"] and "shows the last before and after" in pg.inner_text("#tf_view"), texts("#tf_view kbd"))
@@ -67,7 +67,7 @@ with sync_playwright() as p:
     # Create.
     pg.click("#tf_new")
     check("editor opens", pg.is_visible("#tf_edit_dlg"))
-    check("next free shortcut offered", pg.input_value("#tf_shortcut") == "Win+Alt+3", pg.input_value("#tf_shortcut"))
+    check("next free shortcut offered", pg.input_value("#tf_shortcut") == "Win+Alt+1", pg.input_value("#tf_shortcut"))
     check("no delete on a new one", pg.is_hidden("#tf_edit_delete"))
     pg.click("#tf_edit_save")
     check("empty name refused", "name" in pg.inner_text("#tf_edit_err"))
@@ -79,18 +79,18 @@ with sync_playwright() as p:
     pg.click("#tf_edit_save")
     pg.wait_for_timeout(150)
     items = saved()["items"]
-    check("created with a slug id", len(items) == 3 and items[2]["transform"]["id"] == "make-it-friendly" and items[2]["shortcut"] == "Win+Alt+3", items[-1])
+    check("created with a slug id", len(items) == 3 and items[2]["transform"]["id"] == "make-it-friendly" and items[2]["shortcut"] == "Win+Alt+1", items[-1])
     check("dialog closed", not pg.is_visible("#tf_edit_dlg"))
     check("card shown", "Make it friendly!" in pg.inner_text("#tf_grid"))
 
     # Edit: a clashing shortcut is refused and the dialog stays open.
     pg.click("#tf_grid .lw-tf-card[data-id=make-it-friendly]")
     check("editor filled", pg.input_value("#tf_name") == "Make it friendly!" and pg.is_visible("#tf_edit_delete"))
-    pg.fill("#tf_shortcut", "Win+Alt+1")
+    pg.fill("#tf_shortcut", "Win+Shift+Q")
     pg.click("#tf_edit_save")
     pg.wait_for_timeout(150)
     check("clash refused in the dialog", pg.is_visible("#tf_edit_dlg") and "twice" in pg.inner_text("#tf_edit_err"), pg.inner_text("#tf_edit_err"))
-    check("nothing saved on a clash", saved()["items"][2]["shortcut"] == "Win+Alt+3")
+    check("nothing saved on a clash", saved()["items"][2]["shortcut"] == "Win+Alt+1")
     pg.fill("#tf_shortcut", "")
     pg.click("#tf_edit_save")
     pg.wait_for_timeout(150)
@@ -113,17 +113,17 @@ with sync_playwright() as p:
     pg.click("#tf_new")
     pg.fill("#tf_name", "Shorter")
     pg.fill("#tf_instruction", "Make it half as long.")
-    pg.fill("#tf_shortcut", "Win+Alt+1")
+    pg.fill("#tf_shortcut", "Win+Shift+Q")
     pg.click("#tf_edit_save")
     pg.wait_for_timeout(150)
-    check("edits saved", saved()["items"][0]["transform"]["description"] == "Mine now" and saved()["items"][2]["shortcut"] == "Win+Alt+1")
+    check("edits saved", saved()["items"][0]["transform"]["description"] == "Mine now" and saved()["items"][2]["shortcut"] == "Win+Shift+Q")
     pg.click("#tf_reset")
     pg.click("#tf_reset_ok")
     pg.wait_for_timeout(150)
     items = saved()["items"]
     check("reset: built-in wording back, custom kept", items[0]["transform"]["description"] == "Clearer, tighter wording" and items[2]["transform"]["name"] == "Shorter", items)
-    check("reset: built-in loses a shortcut a custom took", items[0]["shortcut"] is None and items[1]["shortcut"] == "Win+Alt+2")
-    check("reset shown", "Win Alt 1 Shorter" in texts("#tf_grid .lw-tf-card")[2])
+    check("reset: built-in loses a shortcut a custom took", items[0]["shortcut"] is None and items[1]["shortcut"] == "Win+Shift+W")
+    check("reset shown", "Win Shift Q Shorter" in texts("#tf_grid .lw-tf-card")[2])
 
     # Try on sample text.
     pg.click("#tf_try")
