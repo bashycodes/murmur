@@ -110,12 +110,15 @@ pub struct Timings {
     /// Omitted when 0.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub hotwords: u64,
-    /// Dictionary and screen-word entries on the DICTIONARY line of the
-    /// prompt the cleaner that ran was given
-    /// ([`cleanup::CleanUsage::dict_terms_in_prompt`]; 0 when none ran). A count,
-    /// never the terms. Omitted when 0.
+    /// Dictionary entries on the DICTIONARY line of the prompt the cleaner
+    /// that ran was given ([`cleanup::CleanUsage::dict_terms_in_prompt`]; 0
+    /// when none ran). A count, never the terms. Omitted when 0.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub dict_terms_in_prompt: u64,
+    /// On-screen names on the SCREEN NAMES line of that prompt (D108,
+    /// [`cleanup::CleanUsage::screen_names_in_prompt`]). Omitted when 0.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub screen_names_in_prompt: u64,
 }
 
 fn is_zero(v: &u64) -> bool {
@@ -2329,6 +2332,9 @@ fn finish_text(
         if let Some(n) = usage.dict_terms_in_prompt {
             r.timings.dict_terms_in_prompt = n as u64;
         }
+        if let Some(n) = usage.screen_names_in_prompt {
+            r.timings.screen_names_in_prompt = n as u64;
+        }
         r.llm = usage.engine.is_some().then_some(usage);
         match outcome {
             CleanOutcome::Formatted(f) => {
@@ -2418,6 +2424,9 @@ fn finish_text(
         // `None` when every backend refused up front (nothing ran).
         if let Some(n) = usage.dict_terms_in_prompt {
             r.timings.dict_terms_in_prompt = n as u64;
+        }
+        if let Some(n) = usage.screen_names_in_prompt {
+            r.timings.screen_names_in_prompt = n as u64;
         }
         r.llm = usage.engine.is_some().then_some(usage);
         match outcome {

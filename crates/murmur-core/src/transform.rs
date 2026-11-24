@@ -185,6 +185,7 @@ pub fn build_prompt(instruction: &str, text: &str) -> CleanPrompt {
         transcript: command::budget_source(text, command::TRANSFORM_BUDGET_CHARS),
         source: None,
         dict_terms_in_prompt: 0,
+        screen_names_in_prompt: 0,
     }
 }
 

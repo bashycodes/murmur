@@ -293,6 +293,7 @@ pub fn build_prompt(instruction: &str, selected: Option<&str>) -> CleanPrompt {
                 transcript: budget_source(sel, TRANSFORM_BUDGET_CHARS),
                 source: None,
                 dict_terms_in_prompt: 0,
+                screen_names_in_prompt: 0,
             }
         }
         None => CleanPrompt {
@@ -307,6 +308,7 @@ pub fn build_prompt(instruction: &str, selected: Option<&str>) -> CleanPrompt {
             transcript: budget_source(instruction, GENERATE_BUDGET_CHARS),
             source: None,
             dict_terms_in_prompt: 0,
+            screen_names_in_prompt: 0,
         },
     }
 }

@@ -269,6 +269,7 @@ pub fn build_prompt(
             ..Default::default()
         })),
         dict_terms_in_prompt: picked.len(),
+        screen_names_in_prompt: 0,
     }
 }
 

@@ -178,6 +178,7 @@ pub fn build_prompt(task: CleanTask, text: &str, language: Option<&str>) -> Clea
             ..Default::default()
         })),
         dict_terms_in_prompt: 0,
+        screen_names_in_prompt: 0,
     }
 }
 

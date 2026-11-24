@@ -280,6 +280,7 @@ fn a_prompt_without_source_never_reaches_a_narrower_hop() {
         transcript: String::new(),
         source: None,
         dict_terms_in_prompt: 0,
+        screen_names_in_prompt: 0,
     };
     let (r, _) = chain(&[&local, &cloud]).clean_metered(&p, far(), &AbortFlag::default());
     assert!(r.is_err());
