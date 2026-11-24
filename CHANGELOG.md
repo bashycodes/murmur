@@ -33,6 +33,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 - **The pick-up of data from before the Murmur rename.** The Windows app no longer copies an old `%APPDATA%\FlowClone` folder on start, its uninstaller no longer deletes that folder (delete it by hand if one is left), and Android's Restore no longer accepts a `flow-clone-backup` file. Every install already ran the one-time pick-up (D83).
 - **The other compatibility with the names before the Murmur rename** (D102). murmur-server and the apps speak only the `murmur.v1` protocol name (no `flow.v1`), and read only `MURMUR_*` environment variables, in the binaries and the Docker image (`FLOW_*` names are no longer read). An app or server still on the old protocol name no longer connects. `tools/server/install.sh` no longer copies the config and token of an old `flow-server` install or warns about its unit. The Windows app no longer reads the old `show_flow_bar_always` setting. Every install already runs Murmur 1.6.x.
+- **Windows: the paste buttons in History ("Paste again" and "Paste what you said").** They hid the Settings window so the text could land in the app you were in before, which looked as if Murmur had closed. Use Copy and "Copy what you said" on the row instead, or the "paste last transcript" hotkey and tray item; all of them are unchanged.
 
 ### Fixed
 

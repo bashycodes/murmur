@@ -11,7 +11,7 @@
 //! field's, never a command's) sits in `history_audio`, so a row can be
 //! re-transcribed with the settings active now. Each retry adds a row to
 //! `history_versions` (version 0 = the original); the `history` row always
-//! holds the newest version, so copy / paste again / paste last / stats
+//! holds the newest version, so copy / paste last / stats
 //! read it unchanged. Both go with their row (delete, retention, clear).
 //!
 //! Retention pref (`keep` / `days_30` / `days_7` / `day` = 24 h / `never`)

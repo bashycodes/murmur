@@ -209,7 +209,6 @@ function historyRow(h: HistoryItem): HTMLElement {
   const actions = el("div", "lw-hist-actions");
   actions.append(
     iconButton("Copy", ICON.copy, () => void act(invoke("history_copy", { id: h.id, raw: false }), "Copied")),
-    iconButton("Paste again", ICON.paste, () => void act(invoke("history_repaste", { id: h.id, raw: false }), "Pasted")),
   );
   if (h.has_audio && !h.command) {
     const b = iconButton("Retry with current settings", ICON.retry, () => void retry(h.id, b));
@@ -228,16 +227,11 @@ function historyRow(h: HistoryItem): HTMLElement {
   if (h.ai_edited) {
     const undo = el("div", "lw-undo");
     undo.hidden = true;
-    const again = el("button", "fl-btn fl-btn-secondary fl-btn-sm", "Paste what you said");
-    again.type = "button";
-    again.addEventListener("click", () =>
-      void act(invoke("history_repaste", { id: h.id, raw: true }), "Pasted the original"),
-    );
-    const copy = el("button", "fl-btn fl-btn-ghost fl-btn-sm", "Copy what you said");
+    const copy = el("button", "fl-btn fl-btn-secondary fl-btn-sm", "Copy what you said");
     copy.type = "button";
     copy.addEventListener("click", () => void act(invoke("history_copy", { id: h.id, raw: true }), "Copied the original"));
     const btns = el("div", "lw-undo-actions");
-    btns.append(again, copy);
+    btns.append(copy);
     undo.append(
       el("p", "lw-hist-note", "What you said (struck = removed by AI, underlined = added):"),
       diffView(h.raw, h.final_text),
