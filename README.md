@@ -11,6 +11,7 @@ both on one shared Rust core.
 Current state, priorities and the evidence for each working capability:
 [`PROJECT_CONTEXT.md`](PROJECT_CONTEXT.md). Design decisions:
 [`docs/DECISIONS.md`](docs/DECISIONS.md).
+Easy-to-miss features (hotkeys, gestures, context, translation): [`docs/FEATURES.md`](docs/FEATURES.md).
 
 ## Layout
 
