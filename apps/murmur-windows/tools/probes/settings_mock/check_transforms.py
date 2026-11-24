@@ -53,9 +53,32 @@ with sync_playwright() as p:
     check("opt in off by default", not pg.is_checked("#tf_enabled"))
     check("auto apply needs the opt in", pg.is_disabled("#tf_auto") and pg.is_disabled("#tf_auto_pick"))
 
-    pg.click("#tf_enabled")
+    # Opted out: the page is locked (greyed out, not hidden), with a banner.
+    locked = lambda: pg.evaluate("""() => {
+        const region = document.getElementById('tf_region');
+        const ctl = [...region.querySelectorAll('button, input, select, textarea')];
+        return { region: region.disabled, all: ctl.length > 0 && ctl.every((c) => c.matches(':disabled')),
+                 none: ctl.every((c) => !c.matches(':disabled') || ['tf_auto', 'tf_auto_pick'].includes(c.id)),
+                 banner: !document.getElementById('tf_off').hidden };
+    }""")
+    s = locked()
+    check("off: every control disabled, banner shown", s["region"] and s["all"] and s["banner"], s)
+    check("off: cards still shown", len(texts("#tf_grid .lw-tf-card")) == 3 and pg.is_visible("#tf_grid"))
+    check("off: the opt in switch stays usable", pg.is_enabled("#tf_enabled"))
+    pg.screenshot(path=str(out / "transforms-locked.png"), full_page=True)
+    pg.click("#tf_turn_on")
     pg.wait_for_timeout(100)
     check("opt in saved", saved()["enabled"] is True)
+    s = locked()
+    check("on: unlocked at once, banner gone", not s["region"] and s["none"] and not s["banner"], s)
+    check("on: the switch follows", pg.is_checked("#tf_enabled"))
+    pg.click("#tf_enabled")
+    pg.wait_for_timeout(100)
+    s = locked()
+    check("switch off: locked again, transforms kept", s["region"] and s["banner"] and len(saved()["items"]) == 2, s)
+    pg.click("#tf_enabled")
+    pg.wait_for_timeout(100)
+    check("switch on: unlocked", not locked()["region"] and saved()["enabled"] is True)
     check("auto toggle usable, pick still off", pg.is_enabled("#tf_auto") and pg.is_disabled("#tf_auto_pick"))
     pg.click("#tf_auto")
     pg.wait_for_timeout(100)

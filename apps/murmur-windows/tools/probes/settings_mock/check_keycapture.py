@@ -123,6 +123,8 @@ with sync_playwright() as p:
     # Transforms: Press keys fills the field; Cancel puts the old one back.
     pg.evaluate("window.__goPage('transforms')")
     pg.wait_for_timeout(200)
+    pg.click("#tf_turn_on")  # the page is locked while Transforms is off
+    pg.wait_for_timeout(100)
     pg.click("#tf_grid .lw-tf-card[data-id=polish]")
     check("transform shortcut", pg.input_value("#tf_shortcut") == "Win+Shift+Q")
     pg.click("#tf_shortcut_rec")

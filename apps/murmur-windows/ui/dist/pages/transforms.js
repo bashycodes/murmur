@@ -8,6 +8,7 @@
 import { $, askDialog, el } from "../lib/dom.js";
 import { ICON, iconEl, iconSvg } from "../lib/icons.js";
 import { invoke } from "../lib/ipc.js";
+import { optOutMarkup, wireOptOut } from "../lib/opt-out-lock.js";
 import { captureChord, RECORDING_TEXT, stopCapture } from "../lib/keycapture.js";
 import { prefsStore } from "../lib/prefs-store.js";
 import { serverCleanupOn } from "../lib/cleanup-order.js";
@@ -20,6 +21,9 @@ const MAX_NAME = 40;
 const MAX_DESCRIPTION = 200;
 const MAX_INSTRUCTION = 2000;
 const REFRESH_ICON = "M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7";
+/** Opted out: the page below the header is locked, saved transforms kept. */
+const LOCK = optOutMarkup("tf", "Transforms", "Your transforms are kept, but no shortcut works and nothing is applied after dictation.");
+let applyLock = () => { };
 const TEMPLATE = `
 <div class="lw-page lw-tf">
   <div class="lw-page-head lw-tf-head">
@@ -31,6 +35,8 @@ const TEMPLATE = `
     <span class="fl-kbd-group lw-tf-view" id="tf_view" title="Opens Home with the last transform's before and after"><span id="tf_view_keys"></span><span class="fl-kbd-text">shows the last before and after</span></span>
   </div>
 
+  ${LOCK.banner}
+  ${LOCK.open}
   <div class="fl-banner fl-banner-mist">
     <h3 class="fl-banner-title">Rewrite selected text in any app</h3>
     <p class="fl-banner-body">Select text in any app, press a shortcut, and it's rewritten in place. <span id="tf_engines"></span></p>
@@ -53,6 +59,7 @@ const TEMPLATE = `
   </div>
 
   <div class="lw-tf-grid" id="tf_grid"></div>
+  ${LOCK.close}
   <p class="fl-help"><span id="tf_status" role="status"></span></p>
 
   <dialog id="tf_edit_dlg" class="fl-dialog lw-tf-dialog" aria-labelledby="tf_edit_title">
@@ -173,6 +180,7 @@ function card(item) {
 function render(p) {
     const t = p.transforms ?? DEFAULTS;
     $("tf_enabled").checked = t.enabled;
+    applyLock(t.enabled);
     $("tf_view_keys").replaceChildren(...keys(t.view_changes));
     $("tf_view").hidden = !t.view_changes;
     // Auto apply: the toggle saves the picked transform (or none).
@@ -371,13 +379,15 @@ export const transformsPage = {
     area: "main",
     template: TEMPLATE,
     init() {
+        // The opt-in switch and the off banner's button turn it on the same way.
+        const setEnabled = (on) => void save({ ...current(), enabled: on }, on ? "Transforms on: the shortcuts work in any app" : "Transforms off");
+        applyLock = wireOptOut("tf", (id) => $(id), () => setEnabled(true));
         prefsStore.subscribe(render);
         prefsStore.subscribe(renderEngines);
         views.onDev(renderEngines);
         views.onOr(renderEngines);
         $("tf_enabled").addEventListener("change", (e) => {
-            const on = e.target.checked;
-            void save({ ...current(), enabled: on }, on ? "Transforms on: the shortcuts work in any app" : "Transforms off");
+            setEnabled(e.target.checked);
         });
         $("tf_auto").addEventListener("change", (e) => {
             const on = e.target.checked;

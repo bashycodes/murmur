@@ -31,6 +31,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Fixed
 
+- **Windows: the Transforms page is locked while Transforms is off.** With the opt-in off, the page could still be edited, so the feature looked active when it wasn't. Now its controls are greyed out and a banner at the top says Transforms is off, with a "Turn on Transforms" button (the same as the Opt in switch); turning it on unlocks the page at once. Your saved transforms are kept.
 - **Translate: when one AI can't translate, the next one tries.** An answer not fully in the target language used to end the translation, even with the cloud set up. Now the next AI on your cleanup route tries: the cloud only when it is already set up and allowed for cleanup, then the on-device model. With the server as the only AI, nothing changes (D90).
 
 ### Known issues
