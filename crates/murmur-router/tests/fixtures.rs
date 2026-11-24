@@ -365,6 +365,7 @@ fn cloud_fixtures() -> Vec<(String, Value)> {
                 generation_id: Some("gen-0000000000-fixture".into()),
                 ttft_ms: Some(310),
                 latency_ms: Some(640),
+                ..Default::default()
             }),
             month_cost_usd: Usd(0.014),
             custom_month_cost_usd: Usd(0.0),

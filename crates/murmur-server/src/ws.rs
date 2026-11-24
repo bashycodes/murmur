@@ -562,14 +562,16 @@ impl Conn {
             let queue_ms = t0.elapsed().as_millis() as u64;
             let chars = req.text.chars().count();
             let task = req.task.as_str();
-            let out = tokio::task::spawn_blocking(move || {
+            let screen_words = req.ctx.screen_words.len();
+            let (out, dict_terms_in_prompt) = tokio::task::spawn_blocking(move || {
                 let Some(cl) = lease.core.cleaner() else {
-                    return Cleaned {
+                    let out = Cleaned {
                         id,
                         error: Some("no_llm".into()),
                         queue_ms,
                         ..Default::default()
                     };
+                    return (out, 0);
                 };
                 let (r, usage, took) =
                     murmur_core::cleanup::clean_text(cl, &req, crate::limits::MAX_LLM_TIMEOUT_MS);
@@ -578,32 +580,27 @@ impl Conn {
                     Ok(t) => (Some(t), None),
                     Err(e) => (None, Some(e)),
                 };
-                Cleaned {
+                let out = Cleaned {
                     id,
                     text,
                     error,
                     llm_ms: took.as_millis() as u64,
                     queue_ms,
                     model: usage.model,
-                }
+                };
+                // 0 unless an LLM call ran (as on the `result` line).
+                (out, usage.dict_terms_in_prompt.unwrap_or(0))
             })
             .await
-            .unwrap_or_else(|_| Cleaned {
-                id,
-                error: Some(code::SERVER_ERROR.into()),
-                ..Default::default()
+            .unwrap_or_else(|_| {
+                let out = Cleaned {
+                    id,
+                    error: Some(code::SERVER_ERROR.into()),
+                    ..Default::default()
+                };
+                (out, 0)
             });
-            // Timings and sizes only, never text.
-            tracing::info!(
-                id,
-                peer = %peer,
-                task,
-                chars,
-                llm_ms = out.llm_ms,
-                queue_ms = out.queue_ms,
-                error = out.error.as_deref().unwrap_or(""),
-                "cleaned"
-            );
+            log_cleaned(peer, &out, task, chars, screen_words, dict_terms_in_prompt);
             let _ = ev.send(Event::Cleaned(out));
         });
     }
@@ -820,8 +817,11 @@ impl Conn {
                     self.peer,
                     self.key.as_deref(),
                     &r,
-                    s.queue_ms,
-                    s.start_to_commit_ms,
+                    &SessLog {
+                        queue_ms: s.queue_ms,
+                        start_to_commit_ms: s.start_to_commit_ms,
+                        ctx_screen_words: s.ctx.as_ref().map_or(0, |c| c.screen_words.len()),
+                    },
                 );
                 if let (Some(store), Some(id)) = (&self.state.keys, &self.key) {
                     store.record_dictation(id, samples_to_ms(s.samples));
@@ -904,17 +904,46 @@ impl Conn {
     }
 }
 
-/// The per-dictation `result` log line (timings only, never text). Optional
-/// values print as bare numbers and are omitted when unknown (tracing
-/// records `Option<T>` only when `Some`), not as `Some(7200)`.
-fn log_result(
-    sid: u64,
+/// The text-only cleanup's `cleaned` log line: timings, sizes and context
+/// counts, never text. No ASR ran, so `hotwords=0`.
+fn log_cleaned(
     peer: SocketAddr,
-    key: Option<&str>,
-    r: &CommitResult,
+    out: &Cleaned,
+    task: &str,
+    chars: usize,
+    ctx_screen_words: usize,
+    dict_terms_in_prompt: usize,
+) {
+    tracing::info!(
+        id = out.id,
+        peer = %peer,
+        task,
+        chars,
+        llm_ms = out.llm_ms,
+        queue_ms = out.queue_ms,
+        error = out.error.as_deref().unwrap_or(""),
+        ctx_screen_words,
+        hotwords = 0,
+        dict_terms_in_prompt,
+        "cleaned"
+    );
+}
+
+/// What the `result` line reports about the server-side session.
+struct SessLog {
     queue_ms: u64,
     start_to_commit_ms: Option<u64>,
-) {
+    /// Screen words the client sent (its last `context`).
+    ctx_screen_words: usize,
+}
+
+/// The per-dictation `result` log line (timings and counts only, never
+/// text). Optional values print as bare numbers and are omitted when
+/// unknown (tracing records `Option<T>` only when `Some`), not as
+/// `Some(7200)`. `hotwords` and `dict_terms_in_prompt` are what the
+/// decoder and the cleanup prompt actually got (0 when none, or when no
+/// LLM ran).
+fn log_result(sid: u64, peer: SocketAddr, key: Option<&str>, r: &CommitResult, s: &SessLog) {
     let t = &r.timings;
     tracing::info!(
         sid,
@@ -928,14 +957,17 @@ fn log_result(
         pre_asr_ms = t.pre_asr_ms,
         llm_ms = t.llm_ms,
         total_ms = t.total_ms,
-        queue_ms,
-        start_to_commit_ms,
+        queue_ms = s.queue_ms,
+        start_to_commit_ms = s.start_to_commit_ms,
         speech_ms = t.speech_ms,
         peak_dbfs = t.peak_dbfs,
         status = ?r.status,
         language = r.language.as_deref(),
         empty_reason = r.empty_reason.as_deref().unwrap_or(""),
         fallback_reason = r.fallback_reason.as_deref().unwrap_or(""),
+        ctx_screen_words = s.ctx_screen_words,
+        hotwords = t.hotwords,
+        dict_terms_in_prompt = t.dict_terms_in_prompt,
         "result"
     );
 }
@@ -986,8 +1018,11 @@ mod tests {
                 "100.64.0.2:5000".parse().unwrap(),
                 Some("k-0123456789abcdef"),
                 r,
-                12,
-                Some(7400),
+                &SessLog {
+                    queue_ms: 12,
+                    start_to_commit_ms: Some(7400),
+                    ctx_screen_words: 3,
+                },
             );
         })
     }
@@ -1073,6 +1108,10 @@ mod tests {
         assert!(line.contains("speech_ms=7200"), "{line}");
         assert!(line.contains("peak_dbfs=-2"), "{line}");
         assert!(line.contains("start_to_commit_ms=7400"), "{line}");
+        assert!(
+            line.contains("ctx_screen_words=3 hotwords=0 dict_terms_in_prompt=0"),
+            "{line}"
+        );
         assert!(line.contains("key=\"k-0123456789abcdef\""), "{line}");
         assert!(!line.contains("Some("), "{line}");
         r.language = Some("he".into());

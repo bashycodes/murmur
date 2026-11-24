@@ -25,6 +25,7 @@ pub mod parakeet;
 pub mod paste;
 pub mod postprocess;
 pub mod recital;
+pub mod screen_names;
 pub mod script_lock;
 pub mod segment;
 #[cfg(feature = "parakeet")]

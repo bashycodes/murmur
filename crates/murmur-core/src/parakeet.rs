@@ -230,6 +230,10 @@ impl AsrEngine for ParakeetAsr {
             ..Default::default()
         })
     }
+
+    fn hotwords_used(&self, req: &AsrRequest) -> usize {
+        crate::asr::sherpa_hotwords_used(self.engine.supports_hotwords(), req)
+    }
 }
 
 #[cfg(test)]
@@ -257,5 +261,20 @@ mod tests {
         let kept: Vec<&str> = arg.split('/').collect();
         assert_eq!(kept.len(), MAX_HOTWORDS);
         assert_eq!(kept[..3], ["Quorvel", "Tamsik Lintrava", "sw0"]);
+    }
+
+    #[test]
+    fn sherpa_hotwords_used_counts_what_sherpa_keeps() {
+        use crate::asr::sherpa_hotwords_used;
+        let screen: Vec<String> = (0..2 * MAX_HOTWORDS).map(|i| format!("sw{i}")).collect();
+        let req = AsrRequest {
+            initial_prompt: build_initial_prompt(&Dictionary::default(), &screen),
+            // Repeats a screen word: deduped, not counted twice.
+            dictionary_terms: vec!["SW0".into()],
+            ..Default::default()
+        };
+        assert_eq!(sherpa_hotwords_used(true, &req), MAX_HOTWORDS);
+        assert_eq!(sherpa_hotwords_used(false, &req), 0);
+        assert_eq!(sherpa_hotwords_used(true, &AsrRequest::default()), 0);
     }
 }
