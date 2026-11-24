@@ -16,6 +16,10 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Changed
+
+- **Android: the resting dictation bubble shows the Murmur mark on a violet tile.** While the bubble waits, its main button is now a flat rounded square in the brand's light violet with the mark cut out of it, so the dark pill shows through the bars (6.4:1 contrast both ways), instead of the violet mark drawn straight on the pill. It shows full size and, smaller, in the shrunk circle; the "Shrink to a dot" dot stays a plain dot. Recording, processing, errors, the repair alert and hold-to-talk look as before. `tools/brand/gen-icons.py` now writes `ic_bubble_tile.xml` in place of `ic_bubble_mark.xml`.
+
 ## [1.7.0] - 2026-11-24
 
 ### Added

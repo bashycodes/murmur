@@ -172,6 +172,17 @@ class BubbleGeometryTest {
             assertTrue(u.toString(), BubbleGeometry.showsMark(u))
     }
 
+    @Test fun restingTileFitsTheFullAndMinimisedButtons() {
+        // ic_bubble_tile's corner radius is 72 of its 256 units (tools/brand/gen-icons.py BUBBLE_TILE_RX).
+        fun cornerReach(edge: Float): Float {
+            val r = edge * 72f / 256f
+            return (edge / 2 - r) * kotlin.math.sqrt(2f) + r
+        }
+        assertTrue(BubbleGeometry.TILE_DP < 56f)
+        // The minimised look is a 36dp circle: the tile's rounded corners stay inside it.
+        assertTrue(cornerReach(BubbleGeometry.TILE_MINIMISED_DP) < 36f / 2)
+    }
+
     @Test fun otherStatesKeepTheirGlyphs() {
         for (u in listOf(repair, ready.copy(repair = true), recTap, recHold, procTap, procHold, failedPaste, otherError, answer))
             assertFalse(u.toString(), BubbleGeometry.showsMark(u))

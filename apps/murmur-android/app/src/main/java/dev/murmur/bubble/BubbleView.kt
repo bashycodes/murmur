@@ -16,7 +16,7 @@ import dev.murmur.session.DictationState
 import dev.murmur.session.DictationState.ErrorKind
 
 /**
- * Canvas-drawn bubble: circle with the Murmur mark (Ready), minimised dot or small circle, recording row X·waveform·✓ (tap mode),
+ * Canvas-drawn bubble: circle with the Murmur tile (Ready), minimised dot or small circle, recording row X·waveform·✓ (tap mode),
  * mic+waveform (hold mode), paste/copy/dismiss (FailedToPaste), copy/dismiss (a command's answer, shown in the
  * preview card), pulsing … (model still loading), alert (other errors).
  * Gestures go through [BubbleGesture]; the host decides what each action means.
@@ -42,8 +42,8 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
     /** The buttons as last drawn, for hit-testing a touch. */
     private var slots = emptyList<BubbleGeometry.Slot>()
     private val mic: Drawable = context.getDrawable(R.drawable.ic_murmur)!!.mutate().apply { setTint(BubbleColors.onSurface) }
-    /** The resting glyph ([BubbleGeometry.showsMark]): the brand gradient, never tinted. */
-    private val mark: Drawable = context.getDrawable(R.drawable.ic_bubble_mark)!!
+    /** The resting glyph ([BubbleGeometry.showsMark]): the violet brand tile with the mark knocked out, never tinted. */
+    private val tile: Drawable = context.getDrawable(R.drawable.ic_bubble_tile)!!
 
     // Design: dark vast-950 pill, light sand-50 glyphs and bars, red only for errors (BubbleColors).
     private val pill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -112,11 +112,11 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
                 danger.alpha = 255
                 postInvalidateOnAnimation()
             } else if (BubbleGeometry.isMinimisedLook(ui)) {
-                circleButton(canvas, null, BubbleButton.MAIN) { cx, cy -> drawIcon(canvas, mark, cx, cy, 9f) }
+                // The 26dp tile fits inside the 36dp circle: its rounded corners reach 15.5dp from the centre.
+                circleButton(canvas, null, BubbleButton.MAIN) { cx, cy -> drawIcon(canvas, tile, cx, cy, BubbleGeometry.TILE_MINIMISED_DP / 2) }
             } else {
-                // The mark sits on the pill itself: its dark violet end needs the vast-950 behind it for 3:1
-                // contrast (on the vast-875 disc it falls to about 2.2:1).
-                circleButton(canvas, null, BubbleButton.MAIN) { cx, cy -> drawIcon(canvas, mark, cx, cy) }
+                // The tile sits on the pill itself, no disc: its holes show the vast-950 pill, 6.4:1 against the tile.
+                circleButton(canvas, null, BubbleButton.MAIN) { cx, cy -> drawIcon(canvas, tile, cx, cy, BubbleGeometry.TILE_DP / 2) }
                 if (ui.showCommand) circleButton(canvas, null, BubbleButton.COMMAND) { cx, cy -> drawGlyph(canvas, "✎", cx, cy) }
                 if (ui.showTranslate) circleButton(canvas, null, BubbleButton.TRANSLATE) { cx, cy -> drawGlyph(canvas, "⇄", cx, cy) }
                 if (ui.showCopy) circleButton(canvas, null, BubbleButton.COPY) { cx, cy -> drawGlyph(canvas, "⧉", cx, cy) }

@@ -45,8 +45,9 @@ object BubbleGeometry {
         u.resting && u.minimized && !u.repair && !u.showCopy && !u.showCommand && !u.showTranslate
 
     /**
-     * The main button shows the colour Murmur mark (R.drawable.ic_bubble_mark, from docs/brand/murmur-mark.svg)
-     * while the bubble rests: Idle / Ready, full or minimised, but not the repair alert. Every other state keeps its glyphs.
+     * The main button shows the Murmur tile (R.drawable.ic_bubble_tile, from docs/brand: a violet rounded square
+     * with the mark knocked out) while the bubble rests: Idle / Ready, full or minimised, but not the repair alert
+     * (the plain dot, [isDot], is drawn before any glyph and shows none). Every other state keeps its glyphs.
      */
     fun showsMark(u: BubbleUi): Boolean =
         (u.state == DictationState.Idle || u.state == DictationState.Ready) && !u.repair
@@ -75,6 +76,12 @@ object BubbleGeometry {
 
     fun widthDp(u: BubbleUi): Float = baseWidthDp(u) * u.scale
     fun heightDp(u: BubbleUi): Float = baseHeightDp(u) * u.scale
+
+    /** Edge of the resting tile in the 56dp bubble, unscaled: 8dp of pill round it. */
+    const val TILE_DP = 40f
+
+    /** Edge of the resting tile in the 36dp minimised circle, unscaled: its corners stay inside the circle. */
+    const val TILE_MINIMISED_DP = 26f
 
     /** Diameter of the plain minimised dot, unscaled ("Shrink to a dot"). */
     const val DOT_DP = 16f
