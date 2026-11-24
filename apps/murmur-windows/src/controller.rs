@@ -1696,18 +1696,19 @@ impl Controller {
                         }
                     }
                 }
-                let r = r.map(|t| t.text);
+                // The pill says why (D90): wrong script, timeout, no AI.
+                let r = r.map(|t| t.text).map_err(|e| e.notice());
                 let _ = tx.send(Input::TranslateFinished {
                     session,
                     original: text,
                     result: r,
                 });
             });
-        if let Err(e) = spawned {
+        if spawned.is_err() {
             let _ = self.tx.send(Input::TranslateFinished {
                 session,
                 original: fallback,
-                result: Err(e.to_string()),
+                result: Err(crate::dictation::TRANSLATE_SKIPPED.into()),
             });
         }
     }
@@ -3113,11 +3114,42 @@ mod tests {
         let log = r.fake.log();
         let pastes: Vec<_> = log.iter().filter(|l| l.starts_with("paste")).collect();
         assert_eq!(pastes, ["paste [stub: 1.0 s of audio]"]);
-        let notice = log.iter().position(|l| l.contains("Not translated"));
+        let notice = log
+            .iter()
+            .position(|l| l.contains(murmur_core::translate::NO_LLM_NOTICE));
         let paste = log.iter().position(|l| l.starts_with("paste"));
         assert!(notice > paste, "{log:?}");
         let e = history_latest(&r).unwrap();
         assert_eq!(e.transform, None);
+    }
+
+    #[test]
+    fn the_notice_says_why_a_translation_failed() {
+        use murmur_core::translate::TranslateError;
+        for (err, want) in [
+            (
+                TranslateError::NotTranslated {
+                    target: "he".into(),
+                },
+                "Couldn't translate to Hebrew. Typed as said.",
+            ),
+            (
+                TranslateError::Timeout { secs: 25 },
+                "Translation timed out. Typed as said.",
+            ),
+            (
+                TranslateError::Backend("connect_failed".into()),
+                "Not translated. Typed as said.",
+            ),
+        ] {
+            let mut r = translate_rig(Prefs::default());
+            r.core.set_translate_reply(Err(err));
+            dictate_translated(&mut r);
+            let log = r.fake.log();
+            let pastes: Vec<_> = log.iter().filter(|l| l.starts_with("paste")).collect();
+            assert_eq!(pastes, ["paste [stub: 1.0 s of audio]"], "typed as said");
+            assert!(log.iter().any(|l| l.contains(want)), "{want}: {log:?}");
+        }
     }
 
     #[test]
