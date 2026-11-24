@@ -43,6 +43,14 @@ export function recommendedCleanup(s: ServerFacts, hasPc: boolean): SetupCleanup
   return null;
 }
 
+/** The AI cleanup strength when none is set (a fresh install, or AI turned on from "none"). */
+export const DEFAULT_LEVEL = "medium";
+
+/** The level setup saves when it turns AI cleanup on: the saved strength, else {@link DEFAULT_LEVEL}. */
+export function levelWhenOn(saved: string): string {
+  return saved === "none" ? DEFAULT_LEVEL : saved;
+}
+
 /** What the saved settings say about cleanup, for the option selected when the step opens. */
 export interface SavedCleanup {
   cloudAllow: boolean;

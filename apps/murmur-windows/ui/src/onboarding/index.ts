@@ -29,7 +29,7 @@ import { changesLine, savedEngine, setupChanges, STEP_OF, type Labels, type Setu
 import { pillLine, readinessErrorLine, readinessLine, RECHECK_MS, type PillState, type Readiness, type TryLine, type TryLineSource } from "../lib/setup-try.js";
 import type { CleanupEngine, DevForm, DevView, FieldError, Health, KeyState, ModelStatus, OrView, Route, RouteView } from "../lib/types.js";
 import { initialEngine, recommendedEngine } from "../lib/setup-engine.js";
-import { cloudMissingLine, enginesFor, initialCleanup, recommendedCleanup, serverOption, type ServerFacts, type SetupCleanup } from "../lib/setup-cleanup.js";
+import { cloudMissingLine, enginesFor, initialCleanup, levelWhenOn, recommendedCleanup, serverOption, type ServerFacts, type SetupCleanup } from "../lib/setup-cleanup.js";
 import { cloudWhere, providerOf, setupCloudCopy } from "../lib/provider-names.js";
 import { views } from "../lib/views.js";
 import { engines as cleanupEngines, pollCleanupStatus } from "../features/ai.js";
@@ -693,7 +693,7 @@ async function applyCleanup(): Promise<boolean> {
   const p = prefsStore.get();
   if (!p) return true;
   if (cleanupKept()) return true;
-  const level = p.cleanup_level === "none" ? "light" : p.cleanup_level;
+  const level = levelWhenOn(p.cleanup_level);
   // Read before the saves below: each one redraws the step from the saved prefs.
   const llmPath = $<HTMLInputElement>("ob_llm_path").value.trim() || null;
   try {

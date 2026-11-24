@@ -80,8 +80,8 @@ object SettingsPages {
         CleanupLevel.LIGHT to "Light", CleanupLevel.MEDIUM to "Medium", CleanupLevel.HIGH to "High",
     )
 
-    /** Stored NONE (never picked) runs as LIGHT when AI cleanup is on, so the picker shows LIGHT. */
-    fun shownStrength(stored: CleanupLevel) = stored.takeIf { it != CleanupLevel.NONE } ?: CleanupLevel.LIGHT
+    /** Stored NONE (never picked) runs as [Settings.DEFAULT_STRENGTH] when AI cleanup is on, so the picker shows it. */
+    fun shownStrength(stored: CleanupLevel) = Settings.strengthOf(stored)
 
     data class Effects(val reloadEngine: Boolean, val purgeHistory: Boolean, val pruneRecordings: Boolean = false)
 

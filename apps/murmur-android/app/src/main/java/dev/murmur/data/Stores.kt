@@ -13,6 +13,10 @@ import java.io.File
 /** SharedPreferences-backed [Settings] + model path + bubble position. */
 class SettingsStore(context: Context) {
     private val sp = context.getSharedPreferences("murmur_settings", Context.MODE_PRIVATE)
+    private val kv = PrefsKeyValue(sp)
+
+    // Before anything else writes here: only a store that is still empty is a fresh install.
+    init { StrengthDefault.keepOld(kv, empty = sp.all.isEmpty()) }
 
     private companion object {
         /** D22: the hands-free endpoint default moved 2000 → 1500 ms; set once that ran (or on any save). */
@@ -23,7 +27,13 @@ class SettingsStore(context: Context) {
         const val KEYBOARD_MIGRATED = "language_default_keyboard"
     }
 
-    fun load() = Settings(
+    fun load(): Settings {
+        // Again here: a Restore replaces these prefs, and an older backup has no flag.
+        StrengthDefault.keepOld(kv, empty = sp.all.isEmpty())
+        return loadSettings()
+    }
+
+    private fun loadSettings() = Settings(
         language = loadLanguage(),
         cleanup = CleanupLevel.entries.firstOrNull { it.wire == sp.getString("cleanup", null) } ?: CleanupLevel.NONE,
         retention = Retention.fromKey(sp.getString("retention", null)),
@@ -112,6 +122,7 @@ class SettingsStore(context: Context) {
             .putBoolean(ENDPOINT_MIGRATED, true)
             .putBoolean(LANGUAGE_MIGRATED, true)
             .putBoolean(KEYBOARD_MIGRATED, true)
+            .putBoolean(StrengthDefault.MIGRATED, true)
             .putBoolean("decode_while_speaking", s.decodeWhileSpeaking)
             .putString("style_personal", s.styles.personal.wire)
             .putString("style_work", s.styles.work.wire)
@@ -570,5 +581,26 @@ class HistoryStore(
         writableDatabase.delete("history_versions", null, null)
         runCatching { audio.clear() }
         scrub(vacuum = true)
+    }
+}
+
+/**
+ * The AI cleanup strength default moved Light → Medium ([Settings.DEFAULT_STRENGTH]). An install
+ * from before that ran at Light whenever no strength was picked (stored NONE or no `cleanup` key
+ * at all), so [keepOld] writes that Light down once; only an [empty] store is a fresh install and
+ * runs at Medium. A picked strength is never touched, and nothing changes after [MIGRATED] is set
+ * (by this or by any save).
+ */
+internal object StrengthDefault {
+    const val MIGRATED = "strength_default_medium"
+
+    fun keepOld(kv: KeyValue, empty: Boolean) {
+        if (kv.getBoolean(MIGRATED, false)) return
+        val stored = CleanupLevel.entries.firstOrNull { it.wire == kv.getString("cleanup") } ?: CleanupLevel.NONE
+        val keepLight = !empty && stored == CleanupLevel.NONE
+        kv.edit {
+            putBoolean(MIGRATED, true)
+            if (keepLight) putString("cleanup", CleanupLevel.LIGHT.wire)
+        }
     }
 }

@@ -102,11 +102,11 @@ class ShellPagesTest {
         val ai = Settings(llmEnabled = true)
         val cloudFirst = CloudPage.enableCleanup(base, NOW).copy(cleanupOrder = listOf(CleanupRoute.CLOUD, CleanupRoute.LOCAL, CleanupRoute.SERVER))
         val cloud = ShellPages.cleanupLine(ai, cloudFirst, caps)
-        assertEquals("Light · Cloud, then this phone, then rules" to Dot.CLOUD, cloud.text to cloud.dot)
+        assertEquals("Medium · Cloud, then this phone, then rules" to Dot.CLOUD, cloud.text to cloud.dot)
         // The dot is the first engine's: the phone first, the cloud only as a fallback.
         val phoneFirst = ShellPages.cleanupLine(ai, CloudPage.enableCleanup(base, NOW), caps)
-        assertEquals("Light · This phone, then cloud, then rules" to Dot.OK, phoneFirst.text to phoneFirst.dot)
-        assertEquals("Light · This phone, then rules" to Dot.OK, ShellPages.cleanupLine(ai, base, caps).let { it.text to it.dot })
+        assertEquals("Medium · This phone, then cloud, then rules" to Dot.OK, phoneFirst.text to phoneFirst.dot)
+        assertEquals("Medium · This phone, then rules" to Dot.OK, ShellPages.cleanupLine(ai, base, caps).let { it.text to it.dot })
         // remote builds have no on-device LLM, whatever the stored switch says.
         assertEquals("Rules only" to Dot.OFF, ShellPages.cleanupLine(ai, base.effective(BuildCaps.REMOTE), BuildCaps.REMOTE).let { it.text to it.dot })
         assertEquals("Off" to Dot.OFF, ShellPages.cleanupLine(Settings(spokenCleanup = false), base, caps).let { it.text to it.dot })
@@ -119,18 +119,18 @@ class ShellPagesTest {
     @Test fun serverOnlyCleanupShowsAsOn() {
         // Owner report: AI cleanup only on your server, everything else off -> the drawer said "Off".
         val line = ShellPages.cleanupLine(Settings(llmEnabled = false), serverOnly, BuildCaps.ALL)
-        assertEquals("Light · Your server, then rules" to Dot.OK, line.text to line.dot)
-        assertEquals("Light · Your server, then rules", ShellPages.cleanupLine(Settings(), serverOnly, BuildCaps.ALL, serverLlm = true).text)
+        assertEquals("Medium · Your server, then rules" to Dot.OK, line.text to line.dot)
+        assertEquals("Medium · Your server, then rules", ShellPages.cleanupLine(Settings(), serverOnly, BuildCaps.ALL, serverLlm = true).text)
         // A server that is not set up, or known to have no AI model, cleans nothing.
         assertEquals("Rules only", ShellPages.cleanupLine(Settings(), serverOnly.copy(host = ""), BuildCaps.ALL).text)
         assertEquals("Rules only", ShellPages.cleanupLine(Settings(), serverOnly, BuildCaps.ALL, serverLlm = false).text)
     }
 
     @Test fun storedLevelNoneStillCleansOnTheServer() {
-        // NONE is never picked since D27: with an engine off the phone it runs as LIGHT, so the line stays on.
+        // NONE is never picked since D27: with an engine off the phone it runs as MEDIUM, so the line stays on.
         val s = Settings(llmEnabled = false, cleanup = CleanupLevel.NONE)
-        assertEquals(CleanupLevel.LIGHT, s.cleanupFor(serverOnly.offPhoneCleanup))
-        assertEquals("Light · Your server, then rules", ShellPages.cleanupLine(s, serverOnly, BuildCaps.ALL).text)
+        assertEquals(CleanupLevel.MEDIUM, s.cleanupFor(serverOnly.offPhoneCleanup))
+        assertEquals("Medium · Your server, then rules", ShellPages.cleanupLine(s, serverOnly, BuildCaps.ALL).text)
         // The phone's AI switch off: the phone is not named, whatever the build.
         assertEquals("Rules only", ShellPages.cleanupLine(s, DevSettings.defaults(BuildCaps.ALL), BuildCaps.ALL).text)
     }
@@ -187,7 +187,7 @@ class ShellPagesTest {
         val s = CloudPage.enableCleanup(base.copy(cloud = base.cloud.copy(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = custom)), NOW)
             .withCleanup(CleanupRoute.LOCAL, false).withCleanup(CleanupRoute.SERVER, false)
         val line = ShellPages.cleanupLine(Settings(), s, BuildCaps.ALL)
-        assertEquals("Light · Cloud, then rules" to Dot.CLOUD, line.text to line.dot)
+        assertEquals("Medium · Cloud, then rules" to Dot.CLOUD, line.text to line.dot)
         // Not usable (no model): sends nothing, so it is off, never "OpenRouter".
         val broken = CloudPage.withCustom(s) { copy(model = "") }
         assertEquals("Rules only", ShellPages.cleanupLine(Settings(), broken, BuildCaps.ALL).text)

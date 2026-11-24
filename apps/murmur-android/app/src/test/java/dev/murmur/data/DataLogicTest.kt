@@ -129,6 +129,7 @@ class FieldContextBuilderTest {
         assertEquals("user turned it off", 0, Settings.migrateEndpointMs(stored = 0, migrated = false))
         assertEquals("2000 chosen after the migration is kept", 2000, Settings.migrateEndpointMs(stored = 2000, migrated = true))
     }
+
 }
 
 /** 2026-10-23: English dictations came out as Bulgarian with `auto` on 2 s clips (findings). */

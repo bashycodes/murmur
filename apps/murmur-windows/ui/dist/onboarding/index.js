@@ -27,7 +27,7 @@ import { chip, fileState, initialModel, PARAKEET_TITLE, setupSteps, whisperRow }
 import { changesLine, savedEngine, setupChanges, STEP_OF } from "../lib/setup-diff.js";
 import { pillLine, readinessErrorLine, readinessLine, RECHECK_MS } from "../lib/setup-try.js";
 import { initialEngine, recommendedEngine } from "../lib/setup-engine.js";
-import { cloudMissingLine, enginesFor, initialCleanup, recommendedCleanup, serverOption } from "../lib/setup-cleanup.js";
+import { cloudMissingLine, enginesFor, initialCleanup, levelWhenOn, recommendedCleanup, serverOption } from "../lib/setup-cleanup.js";
 import { cloudWhere, providerOf, setupCloudCopy } from "../lib/provider-names.js";
 import { views } from "../lib/views.js";
 import { engines as cleanupEngines, pollCleanupStatus } from "../features/ai.js";
@@ -646,7 +646,7 @@ async function applyCleanup() {
         return true;
     if (cleanupKept())
         return true;
-    const level = p.cleanup_level === "none" ? "light" : p.cleanup_level;
+    const level = levelWhenOn(p.cleanup_level);
     // Read before the saves below: each one redraws the step from the saved prefs.
     const llmPath = $("ob_llm_path").value.trim() || null;
     try {

@@ -21,10 +21,12 @@ class LlmSettingsTest {
         assertTrue(c.rawMode)
     }
 
-    @Test fun llmOnUsesLevelAndDefaultsToLight() {
-        assertEquals(CleanupLevel.MEDIUM, Settings(llmEnabled = true, cleanup = CleanupLevel.MEDIUM).toSessionConfig(emptyList()).cleanupLevel)
+    @Test fun llmOnUsesLevelAndDefaultsToMedium() {
+        assertEquals(CleanupLevel.HIGH, Settings(llmEnabled = true, cleanup = CleanupLevel.HIGH).toSessionConfig(emptyList()).cleanupLevel)
+        // A picked Light is the user's and stays Light.
+        assertEquals(CleanupLevel.LIGHT, Settings(llmEnabled = true, cleanup = CleanupLevel.LIGHT).toSessionConfig(emptyList()).cleanupLevel)
         val c = Settings(llmEnabled = true, cleanup = CleanupLevel.NONE).toSessionConfig(emptyList())
-        assertEquals(CleanupLevel.LIGHT, c.cleanupLevel)
+        assertEquals(CleanupLevel.MEDIUM, c.cleanupLevel)
         assertFalse(c.rawMode)
         assertEquals(Settings.ANDROID_LLM_TIMEOUT_MS, c.llmTimeoutMs)
     }

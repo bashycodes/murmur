@@ -25,6 +25,10 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 - **Android: the resting dictation bubble shows the Murmur mark.** While the bubble waits (full or shrunk to the small circle), its main button shows the violet Murmur mark instead of the white microphone, drawn straight on the dark pill without the grey disc so the mark's darker violet keeps 3:1 contrast. Recording, processing, errors, the repair alert and the dot look as before; hold-to-talk still shows the microphone. `tools/brand/gen-icons.py` now also writes the bubble's drawable from `docs/brand/murmur-mark.svg`.
 
+### Changed
+
+- **AI cleanup defaults to Medium strength** (was Light) on Windows and Android. Only a fresh install starts at Medium; on a fresh Android install, turning AI cleanup on without picking a strength cleans at Medium and the picker shows it. An existing install keeps the strength it runs at today: a saved Light, High or No AI stays, and an Android install that never picked a strength (including restores of older backups) keeps the Light it ran at. Whether AI cleanup is on by default does not change. The shared core's fallback for a config without a level stays Light.
+
 ### Removed
 
 - **The pick-up of data from before the Murmur rename.** The Windows app no longer copies an old `%APPDATA%\FlowClone` folder on start, its uninstaller no longer deletes that folder (delete it by hand if one is left), and Android's Restore no longer accepts a `flow-clone-backup` file. Every install already ran the one-time pick-up (D83).

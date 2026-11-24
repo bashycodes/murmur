@@ -180,6 +180,12 @@ pub struct Prefs {
     pub onboarded: bool,
     /// Read the focused field via UIA (local only; never leaves the machine).
     pub use_ax_context: bool,
+    /// AI cleanup strength; `None` = "No AI" / "Verbatim". A fresh install
+    /// starts at Medium (it was Light). The field has been in `Prefs` since
+    /// the first `prefs.json`, and `save` writes every field, so every file a
+    /// released version wrote holds it: a saved level, Light included, stays.
+    /// Only a hand-made file without the key gets Medium. The setup UI's
+    /// `DEFAULT_LEVEL` (`ui/src/lib/setup-cleanup.ts`) must match.
     pub cleanup_level: CleanupLevel,
     pub raw_mode: bool,
     pub styles: Styles,
@@ -283,7 +289,7 @@ impl Default for Prefs {
             theme: Theme::System,
             onboarded: false,
             use_ax_context: true,
-            cleanup_level: CleanupLevel::Light,
+            cleanup_level: CleanupLevel::Medium,
             raw_mode: false,
             styles: default_styles(),
             app_buckets: BTreeMap::new(),
@@ -929,7 +935,7 @@ mod tests {
         assert!(c.dictionary[2].is_snippet);
         assert_eq!(c.partial_interval_ms, None, "live preview off by default");
         assert_eq!(c.max_samples, p.policy().max_samples());
-        assert_eq!(c.cleanup_level, CleanupLevel::Light);
+        assert_eq!(c.cleanup_level, CleanupLevel::Medium);
         assert!(c.spoken_cleanup, "core-p1 default on");
         p.spoken_cleanup = false;
         assert!(!p.session_config().spoken_cleanup);
@@ -1218,6 +1224,44 @@ mod tests {
         );
         assert_eq!(p.llm_timeout_ms, 1500);
         assert!(all_formal(&p.styles));
+    }
+
+    #[test]
+    fn fresh_install_cleans_at_medium_and_a_saved_level_stays() {
+        let d = tmpdir("level-fresh");
+        let (fresh, o) = Prefs::load(&d.join(FILE_NAME));
+        assert_eq!(o, LoadOutcome::Missing);
+        assert_eq!(fresh.cleanup_level, CleanupLevel::Medium);
+        // Only the strength moved: this PC's AI still starts off.
+        assert!(!fresh.llm_enabled);
+        for (wire, level) in [
+            ("light", CleanupLevel::Light),
+            ("none", CleanupLevel::None),
+            ("high", CleanupLevel::High),
+        ] {
+            let (p, _) = load_str(
+                &format!("level-{wire}"),
+                &format!(r#"{{"prefs_rev":{PREFS_REV},"cleanup_level":"{wire}"}}"#),
+            );
+            assert_eq!(p.cleanup_level, level, "a saved {wire} is kept");
+        }
+        // Every released prefs.json holds the key; a file without it is not
+        // an upgrade and takes the new default, on purpose.
+        let (p, _) = load_str(
+            "level-nokey",
+            &format!(r#"{{"prefs_rev":{PREFS_REV},"onboarded":true}}"#),
+        );
+        assert_eq!(p.cleanup_level, CleanupLevel::Medium);
+    }
+
+    #[test]
+    fn setup_ui_default_level_matches_the_prefs_default() {
+        let ts = include_str!("../ui/src/lib/setup-cleanup.ts");
+        let wire = serde_json::to_string(&Prefs::default().cleanup_level).unwrap();
+        assert!(
+            ts.contains(&format!("export const DEFAULT_LEVEL = {wire};")),
+            "ui/src/lib/setup-cleanup.ts DEFAULT_LEVEL must be {wire}"
+        );
     }
 
     #[test]

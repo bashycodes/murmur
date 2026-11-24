@@ -115,7 +115,7 @@ class CleanupOrderTest {
         assertFalse("a local build has no server", server.effective(BuildCaps.LOCAL).offPhoneCleanup)
         assertTrue(CloudPage.enableCleanup(d, now).effective(caps).offPhoneCleanup)
         val st = Settings(llmEnabled = false)
-        assertEquals(CleanupLevel.LIGHT, st.toSessionConfig(emptyList(), cloudCleanup = server.effective(caps).offPhoneCleanup).cleanupLevel)
+        assertEquals(CleanupLevel.MEDIUM, st.toSessionConfig(emptyList(), cloudCleanup = server.effective(caps).offPhoneCleanup).cleanupLevel)
     }
 
     @Test fun pageListsThisBuildsEnginesAndMovesThemPastHiddenOnes() {
