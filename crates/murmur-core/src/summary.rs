@@ -177,7 +177,7 @@ pub fn build_prompt(task: CleanTask, text: &str, language: Option<&str>) -> Clea
             scope: PromptScope::MINIMAL,
             ..Default::default()
         })),
-        dict_terms_in_prompt: 0,
+        counts: crate::cleanup::PromptCounts::default(),
     }
 }
 

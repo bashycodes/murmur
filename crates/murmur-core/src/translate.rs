@@ -268,7 +268,10 @@ pub fn build_prompt(
             scope: PromptScope::MINIMAL,
             ..Default::default()
         })),
-        dict_terms_in_prompt: picked.len(),
+        counts: cleanup::PromptCounts {
+            dict_terms: picked.len(),
+            screen_names: 0,
+        },
     }
 }
 

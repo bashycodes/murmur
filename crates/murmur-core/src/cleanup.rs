@@ -40,10 +40,35 @@ pub struct CleanPrompt {
     /// scope can rebuild it. `None` for prompts not built from a
     /// dictation (commands, transforms, tests).
     pub source: Option<Arc<CleanRequest>>,
-    /// Entries on the user message's DICTIONARY line (D64 terms plus
-    /// screen words), set where the line is built; 0 without one. Only a
-    /// count, for the server log.
-    pub dict_terms_in_prompt: usize,
+    /// How many entries the user message's DICTIONARY and SCREEN NAMES
+    /// lines carry, set where the lines are built; zero for prompts without
+    /// them. Only counts, for the server log.
+    pub counts: PromptCounts,
+}
+
+/// How many entries a cleanup prompt's per-dictation lines carry. Counts
+/// only, never the words: for the server log (`result` / `cleaned` lines)
+/// and [`crate::Timings`], under these names.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PromptCounts {
+    /// Entries on the DICTIONARY line (D64 dictionary terms only).
+    #[serde(
+        rename = "dict_terms_in_prompt",
+        default,
+        skip_serializing_if = "is_zero"
+    )]
+    pub dict_terms: usize,
+    /// Names on the SCREEN NAMES line (D108).
+    #[serde(
+        rename = "screen_names_in_prompt",
+        default,
+        skip_serializing_if = "is_zero"
+    )]
+    pub screen_names: usize,
+}
+
+fn is_zero(v: &usize) -> bool {
+    *v == 0
 }
 
 /// What a [`CleanRequest`] asks for (D53). Cleanup is the default and is
@@ -330,22 +355,22 @@ pub struct CleanUsage {
     pub ttft_ms: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub latency_ms: Option<u32>,
-    /// [`CleanPrompt::dict_terms_in_prompt`] of the prompt the cleaner
-    /// that ran was given (a [`ChainCleaner`] hop's own, narrower one);
-    /// `None` when none ran. Server log only, never on the wire.
+    /// [`CleanPrompt::counts`] of the prompt the cleaner that ran was
+    /// given (a [`ChainCleaner`] hop's own, narrower one); `None` when none
+    /// ran. Server log only, never on the wire.
     #[serde(skip)]
-    pub dict_terms_in_prompt: Option<usize>,
+    pub prompt_counts: Option<PromptCounts>,
 }
 
 impl CleanUsage {
-    /// Record that a cleaner given a prompt with `n` DICTIONARY entries
-    /// produced this usage: a [`ChainCleaner`] hop's own count is kept,
-    /// and there is none when no cleaner ran (`engine` unset).
-    fn note_dict_terms(&mut self, n: usize) {
+    /// Record that a cleaner given prompt `p` (its line counts) produced
+    /// this usage: a [`ChainCleaner`] hop's own counts are kept, and there
+    /// are none when no cleaner ran (`engine` unset).
+    fn note_prompt_counts(&mut self, p: PromptCounts) {
         if self.engine.is_none() {
-            self.dict_terms_in_prompt = None;
+            self.prompt_counts = None;
         } else {
-            self.dict_terms_in_prompt.get_or_insert(n);
+            self.prompt_counts.get_or_insert(p);
         }
     }
 }
@@ -794,10 +819,10 @@ impl Cleaner for ChainCleaner {
                 }
                 _ => deadline,
             };
-            let n = p.dict_terms_in_prompt;
+            let n = p.counts;
             let mut r = run_hop(hop, p, hop_deadline, deadline, cancel);
             // This hop's own prompt, which may be narrower than the chain's.
-            r.1.note_dict_terms(n);
+            r.1.note_prompt_counts(n);
             if r.0.is_ok() {
                 return r;
             }
@@ -898,7 +923,7 @@ pub fn clean_text(
     let mut req = req.clone();
     req.scope = PromptScope::FULL;
     let prompt = req.prompt_for(cleaner.prompt_scope());
-    let n = prompt.dict_terms_in_prompt;
+    let n = prompt.counts;
     let ms = if req.timeout_ms == 0 {
         crate::config::SessionConfig::default().llm_timeout_ms
     } else {
@@ -913,7 +938,7 @@ pub fn clean_text(
     let pending = CleanUsage {
         engine: Some(cleaner.engine().into()),
         model: cleaner.model(),
-        dict_terms_in_prompt: Some(n),
+        prompt_counts: Some(n),
         ..Default::default()
     };
     let (tx, rx) = mpsc::channel();
@@ -927,7 +952,7 @@ pub fn clean_text(
             return (Err(FallbackReason::Timeout.as_str()), pending, t.elapsed());
         }
     };
-    usage.note_dict_terms(n);
+    usage.note_prompt_counts(n);
     let out = match res {
         Ok(s) => Ok(s),
         Err(e) => Err(FallbackReason::Error(e.code().to_string()).as_str()),
@@ -1315,12 +1340,60 @@ fn prompt_after(ctx: &FieldContext) -> String {
     ctx.after.chars().take(150).collect()
 }
 
+/// D108: most names one prompt's SCREEN NAMES line carries.
+pub const MAX_SCREEN_NAMES: usize = 20;
+
+/// D108: the line after SCREEN NAMES. It sits in the per-dictation user
+/// message, only when the line does, so the cached system prompt of every
+/// [`PromptVersion`] stays the same.
+const SCREEN_NAMES_RULE: &str =
+    "(Names shown on screen: use one of these spellings only where the TRANSCRIPT \
+clearly refers to that name.)";
+
+/// D108: the on-screen names (`screen_names::name_candidates` of the raw
+/// screen words, newest first) that `transcript` plausibly misspells, picked
+/// like dictionary terms (`terms::select_terms`), at most
+/// [`MAX_SCREEN_NAMES`], without the ones `dict_terms` already names.
+fn screen_names_for(screen_words: &[String], transcript: &str, dict_terms: &[&str]) -> Vec<String> {
+    let candidates = crate::screen_names::name_candidates(screen_words);
+    let refs: Vec<&str> = candidates.iter().map(String::as_str).collect();
+    let named: Vec<String> = dict_terms.iter().map(|t| t.to_lowercase()).collect();
+    terms::select_terms(&refs, transcript, MAX_SCREEN_NAMES + named.len())
+        .into_iter()
+        .filter(|n| !named.contains(&n.to_lowercase()))
+        .take(MAX_SCREEN_NAMES)
+        .map(str::to_string)
+        .collect()
+}
+
+/// How a per-dictation context line of [`UserMsg`] is written.
+#[derive(Clone, Copy)]
+enum Line {
+    /// A comma-separated list, bare.
+    List,
+    /// A list followed by [`SCREEN_NAMES_RULE`] (D108).
+    ScreenNames,
+    /// Text from the field, quoted with « ».
+    Text,
+}
+
+impl Line {
+    fn render(self, label: &str, v: &str) -> String {
+        match self {
+            Line::List => format!("{label}{v}\n"),
+            Line::ScreenNames => format!("{label}{v}\n{SCREEN_NAMES_RULE}\n"),
+            Line::Text => format!("{label}\u{ab}{v}\u{bb}\n"),
+        }
+    }
+}
+
 struct UserMsg<'a> {
     app: &'a str,
     cat: AppCategory,
     style: Style,
     version: PromptVersion,
     terms: &'a str,
+    screen_names: &'a str,
     before: &'a str,
     selected: &'a str,
     after: &'a str,
@@ -1340,19 +1413,20 @@ impl UserMsg<'_> {
         if let Some(r) = style_rule_for(self.style, self.version) {
             s.push_str(&format!("STYLE: {r}\n"));
         }
-        for (label, v) in [
-            ("DICTIONARY: ", self.terms),
-            ("TEXT BEFORE CURSOR: ", self.before),
-            ("SELECTED TEXT (will be replaced): ", self.selected),
-            ("TEXT AFTER CURSOR: ", self.after),
-        ] {
-            if v.trim().is_empty() {
-                continue;
-            }
-            if label == "DICTIONARY: " {
-                s.push_str(&format!("{label}{v}\n"));
-            } else {
-                s.push_str(&format!("{label}\u{ab}{v}\u{bb}\n"));
+        let lines = [
+            ("DICTIONARY: ", self.terms, Line::List),
+            ("SCREEN NAMES: ", self.screen_names, Line::ScreenNames),
+            ("TEXT BEFORE CURSOR: ", self.before, Line::Text),
+            (
+                "SELECTED TEXT (will be replaced): ",
+                self.selected,
+                Line::Text,
+            ),
+            ("TEXT AFTER CURSOR: ", self.after, Line::Text),
+        ];
+        for (label, v, line) in lines {
+            if !v.trim().is_empty() {
+                s.push_str(&line.render(label, v));
             }
         }
         s.push_str(&format!("TRANSCRIPT: \u{ab}{}\u{bb}", self.transcript));
@@ -1489,13 +1563,20 @@ pub fn build_prompt_versioned(
         examples.push(hebrew_turn());
     }
     // D64: only the dictionary terms this text plausibly misspells.
-    let mut terms = terms::select_terms(&dict.vocabulary(), asr_text, terms::MAX_PROMPT_TERMS);
-    if scope.screen_words {
-        terms.extend(ctx.screen_words.iter().map(String::as_str));
-    }
-    terms.truncate(200);
-    let dict_terms_in_prompt = terms.iter().filter(|t| !t.trim().is_empty()).count();
+    let terms = terms::select_terms(&dict.vocabulary(), asr_text, terms::MAX_PROMPT_TERMS);
+    // D108: the screen gives only names this text plausibly misspells, on
+    // their own line; the raw screen words stay in `source` (D65's check).
+    let screen_names = if scope.screen_words {
+        screen_names_for(&ctx.screen_words, asr_text, &terms)
+    } else {
+        Vec::new()
+    };
+    let counts = PromptCounts {
+        dict_terms: terms.len(),
+        screen_names: screen_names.len(),
+    };
     let terms = terms.join(", ");
+    let screen_names = screen_names.join(", ");
     let (before, selected, after) = if scope.surrounding_text {
         (prompt_before(ctx), ctx.selected.clone(), prompt_after(ctx))
     } else {
@@ -1511,6 +1592,7 @@ pub fn build_prompt_versioned(
         style,
         version,
         terms: &terms,
+        screen_names: &screen_names,
         before: &before,
         selected: &selected,
         after: &after,
@@ -1531,7 +1613,7 @@ pub fn build_prompt_versioned(
     // Never sent to a cleaner (IDE file names are unused since D82).
     ctx.file_names.clear();
     CleanPrompt {
-        dict_terms_in_prompt,
+        counts,
         system,
         examples,
         user,
@@ -1588,6 +1670,7 @@ fn render_example(
         style,
         version,
         terms: "",
+        screen_names: "",
         before: "",
         selected: "",
         after: "",
@@ -1838,13 +1921,13 @@ fn run_metered(
         .source
         .as_ref()
         .is_none_or(|s| s.task.keeps_language());
-    let n = prompt.dict_terms_in_prompt;
+    let n = prompt.counts;
     let cancel = Arc::new(AtomicBool::new(false));
     let flag = AbortFlag(Some(cancel.clone()));
     let pending = CleanUsage {
         engine: Some(cleaner.engine().into()),
         model: cleaner.model(),
-        dict_terms_in_prompt: Some(n),
+        prompt_counts: Some(n),
         ..Default::default()
     };
     let (tx, rx) = mpsc::channel();
@@ -1863,7 +1946,7 @@ fn run_metered(
             );
         }
     };
-    usage.note_dict_terms(n);
+    usage.note_prompt_counts(n);
     let unwrap = |s: &str| unwrap_output_for(s, asr_text);
     let out = match res {
         Ok(s) if ai => {
@@ -2028,24 +2111,112 @@ mod tests {
     }
 
     #[test]
-    fn dict_terms_in_prompt_counts_the_dictionary_line() {
+    fn prompt_counts_its_dictionary_and_screen_names_lines() {
         let d = Dictionary {
             entries: vec![DictEntry::word("Kubernetes")],
         };
         let mut c = ctx(AppCategory::Email);
-        // An entry with a comma in it is still one entry.
-        c.screen_words = vec!["Quorvel".into(), "Lintrava, Ashby".into()];
+        c.screen_words = vec!["Quorvel".into(), "Lintrava Ashby".into()];
         let p = build_prompt(
-            "the kubernetis pods",
+            "the kubernetis pods for quorvell",
             CleanupLevel::Medium,
             Style::Casual,
             &c,
             &d,
         );
-        assert_eq!(p.dict_terms_in_prompt, 3, "{}", p.user);
+        let n = |dict_terms, screen_names| PromptCounts {
+            dict_terms,
+            screen_names,
+        };
+        assert_eq!(p.counts, n(1, 1), "{}", p.user);
         c.screen_words.clear();
         let p = build_prompt("hello", CleanupLevel::Medium, Style::Casual, &c, &d);
-        assert_eq!(p.dict_terms_in_prompt, 0, "{}", p.user);
+        assert_eq!(p.counts, n(0, 0), "{}", p.user);
+    }
+
+    fn line<'a>(p: &'a CleanPrompt, label: &str) -> Option<&'a str> {
+        p.user.lines().find_map(|l| l.strip_prefix(label))
+    }
+
+    #[test]
+    fn screen_words_give_only_the_names_the_transcript_comes_near() {
+        let d = Dictionary {
+            entries: vec![DictEntry::word("Kubernetes")],
+        };
+        let mut c = ctx(AppCategory::WorkChat);
+        c.screen_words = vec![
+            "Tamsin Okonkwo".into(),
+            "are we still on for the review on Thursday".into(),
+            "Brevik Halloran".into(),
+            "sure, I booked the room near Pellmora".into(),
+        ];
+        let p = build_prompt(
+            "ask tamsin okonkwa about the kubernetis review",
+            CleanupLevel::Light,
+            Style::Casual,
+            &c,
+            &d,
+        );
+        // D108: screen words never join the DICTIONARY line.
+        assert_eq!(line(&p, "DICTIONARY: "), Some("Kubernetes"), "{}", p.user);
+        assert_eq!(
+            line(&p, "SCREEN NAMES: "),
+            Some("Tamsin Okonkwo"),
+            "{}",
+            p.user
+        );
+        assert!(p.user.contains(SCREEN_NAMES_RULE), "{}", p.user);
+        assert!(!p.user.contains("Brevik") && !p.user.contains("booked"));
+        // The raw screen words stay in the request (D65's known words).
+        let src = p.source.as_ref().unwrap();
+        assert_eq!(src.ctx.screen_words, c.screen_words);
+        // No near name: no line and no rule.
+        let p = build_prompt("see you then", CleanupLevel::Light, Style::Casual, &c, &d);
+        assert_eq!(line(&p, "SCREEN NAMES: "), None, "{}", p.user);
+        assert!(!p.user.contains(SCREEN_NAMES_RULE), "{}", p.user);
+    }
+
+    #[test]
+    fn a_screen_name_already_in_the_dictionary_line_is_named_once() {
+        let d = Dictionary {
+            entries: vec![DictEntry::word("Quorvel")],
+        };
+        let mut c = ctx(AppCategory::WorkChat);
+        c.screen_words = vec!["Quorvel".into(), "Marbleford".into()];
+        let p = build_prompt(
+            "tell quorvell and marbelford",
+            CleanupLevel::Light,
+            Style::Casual,
+            &c,
+            &d,
+        );
+        assert_eq!(line(&p, "DICTIONARY: "), Some("Quorvel"), "{}", p.user);
+        assert_eq!(line(&p, "SCREEN NAMES: "), Some("Marbleford"), "{}", p.user);
+    }
+
+    #[test]
+    fn the_screen_names_line_holds_at_most_twenty() {
+        // 30 invented one-word labels, every one near a transcript word.
+        let names: Vec<String> = (0..30)
+            .map(|i| format!("Zarvek{}", char::from(b'a' + (i % 26) as u8)))
+            .collect();
+        let heard: String = names
+            .iter()
+            .map(|n| n.to_lowercase().replacen("zarvek", "zarvec", 1))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let mut c = ctx(AppCategory::WorkChat);
+        c.screen_words = names;
+        let p = build_prompt(
+            &heard,
+            CleanupLevel::Light,
+            Style::Casual,
+            &c,
+            &Dictionary::default(),
+        );
+        assert_eq!(p.counts.screen_names, MAX_SCREEN_NAMES, "{}", p.user);
+        let l = line(&p, "SCREEN NAMES: ").unwrap();
+        assert_eq!(l.split(", ").count(), MAX_SCREEN_NAMES, "{l}");
     }
 
     #[test]
@@ -2083,9 +2254,13 @@ mod tests {
         };
         let mut c = ctx(AppCategory::Email);
         c.screen_words = vec!["Quorvel".into(), "Marbleford".into()];
-        let text = "the kubernetis pods";
+        let text = "the kubernetis pods for quorvell and marbelford";
         let p = build_prompt(text, CleanupLevel::Medium, Style::Casual, &c, &d);
-        assert_eq!(p.dict_terms_in_prompt, 3);
+        let n = |dict_terms, screen_names| PromptCounts {
+            dict_terms,
+            screen_names,
+        };
+        assert_eq!(p.counts, n(1, 2));
         let run = |hops: Vec<Arc<dyn Cleaner>>| {
             let chain: Arc<dyn Cleaner> = Arc::new(ChainCleaner::new(hops));
             run_cleanup_metered(chain, p.clone(), text, Duration::from_secs(5)).1
@@ -2093,10 +2268,10 @@ mod tests {
         // The narrow hop answered with only the dictionary term.
         let u = run(vec![Arc::new(Refuse), Arc::new(NoScreen)]);
         assert!(u.engine.is_some(), "{u:?}");
-        assert_eq!(u.dict_terms_in_prompt, Some(1));
+        assert_eq!(u.prompt_counts, Some(n(1, 0)));
         // Nothing ran: no count.
         let u = run(vec![Arc::new(Refuse), Arc::new(Refuse)]);
-        assert_eq!(u.dict_terms_in_prompt, None);
+        assert_eq!(u.prompt_counts, None);
     }
 
     #[test]
@@ -2239,7 +2414,7 @@ mod tests {
             user: String::new(),
             transcript: asr.into(),
             source: None,
-            dict_terms_in_prompt: 0,
+            counts: PromptCounts::default(),
         };
         run_cleanup(cl, p, asr, Duration::from_millis(timeout_ms))
     }
