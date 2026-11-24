@@ -30,6 +30,12 @@ class TranslateVectorsTest {
                 got as TranslateOutcome.Failed
                 assertEquals(input.getString("err"), got.kind)
                 assertEquals(want.getString("error"), got.message)
+                assertEquals(input.optString("target", ""), got.target)
+                assertEquals(
+                    "the bar's text is the core's TranslateError::notice",
+                    c.getString("notice"),
+                    dev.murmur.bubble.PreviewContent.notTranslated(got.kind, got.target),
+                )
                 kinds += got.kind
             }
         }

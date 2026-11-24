@@ -16,6 +16,10 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Fixed
+
+- **Translate: a translation the server can't do now goes to the next AI, and the bar says why one failed.** The server's small default model answers English → Hebrew with English words left in, so the answer was refused and the dictation typed as said, even with the cloud set up. Each AI's answer is now checked on its own: a refused one moves on to the next AI your cleanup route already uses (the cloud only when it is set up and allowed for cleanup, then the on-device model). With the server as the only AI, nothing changes. Instead of "Not translated" for every failure, Android's bar and the Windows pill now say "Couldn't translate to Hebrew. Typed as said.", "Translation timed out. Typed as said." or "No AI set up for translation." (D90). murmur-server's log line for a cleanup request now names its task (`task=translate`).
+
 ## [1.7.0] - 2026-11-24
 
 ### Added

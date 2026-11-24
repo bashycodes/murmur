@@ -561,6 +561,7 @@ impl Conn {
             };
             let queue_ms = t0.elapsed().as_millis() as u64;
             let chars = req.text.chars().count();
+            let task = req.task.as_str();
             let out = tokio::task::spawn_blocking(move || {
                 let Some(cl) = lease.core.cleaner() else {
                     return Cleaned {
@@ -596,6 +597,7 @@ impl Conn {
             tracing::info!(
                 id,
                 peer = %peer,
+                task,
                 chars,
                 llm_ms = out.llm_ms,
                 queue_ms = out.queue_ms,

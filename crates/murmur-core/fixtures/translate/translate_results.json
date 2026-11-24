@@ -1,5 +1,5 @@
 {
-  "_comment": "Translation outcome wire shape (D90; murmur_core::translate::result_json; JNI nativeTranslate). Checked by crates/murmur-core/tests/translate_vectors.rs and the Android TranslateVectorsTest. `input` names the Rust value: ok = the translation (+ target, on_device), err = TranslateError::kind() (+ its field). Synthetic text only.",
+  "_comment": "Translation outcome wire shape (D90; murmur_core::translate::result_json; JNI nativeTranslate). Checked by crates/murmur-core/tests/translate_vectors.rs and the Android TranslateVectorsTest. `input` names the Rust value: ok = the translation (+ target, on_device), err = TranslateError::kind() (+ its field); `notice` = TranslateError::notice(), the text the shells show after typing the dictation as said. Synthetic text only.",
   "cases": [
     {
       "input": {"ok": "Remind me to buy milk tomorrow morning.", "target": "en", "on_device": false},
@@ -11,35 +11,43 @@
     },
     {
       "input": {"err": "no_text"},
-      "json": {"ok": false, "kind": "no_text", "error": "No speech to translate"}
+      "json": {"ok": false, "kind": "no_text", "error": "No speech to translate"},
+      "notice": "Not translated. Typed as said."
     },
     {
       "input": {"err": "text_too_long", "max": 4000},
-      "json": {"ok": false, "kind": "text_too_long", "error": "Text too long to translate (max 4000 characters)"}
+      "json": {"ok": false, "kind": "text_too_long", "error": "Text too long to translate (max 4000 characters)"},
+      "notice": "Not translated. Typed as said."
     },
     {
       "input": {"err": "no_target"},
-      "json": {"ok": false, "kind": "no_target", "error": "Pick a target language to translate into"}
+      "json": {"ok": false, "kind": "no_target", "error": "Pick a target language to translate into"},
+      "notice": "Not translated. Typed as said."
     },
     {
       "input": {"err": "no_llm"},
-      "json": {"ok": false, "kind": "no_llm", "error": "Translation needs AI: turn on AI cleanup (your server, the cloud or a local model)"}
+      "json": {"ok": false, "kind": "no_llm", "error": "Translation needs AI: turn on AI cleanup (your server, the cloud or a local model)"},
+      "notice": "No AI set up for translation."
     },
     {
       "input": {"err": "timeout", "secs": 25},
-      "json": {"ok": false, "kind": "timeout", "error": "AI didn't translate within 25 s"}
+      "json": {"ok": false, "kind": "timeout", "error": "AI didn't translate within 25 s"},
+      "notice": "Translation timed out. Typed as said."
     },
     {
       "input": {"err": "empty"},
-      "json": {"ok": false, "kind": "empty", "error": "AI returned no translation"}
+      "json": {"ok": false, "kind": "empty", "error": "AI returned no translation"},
+      "notice": "Not translated. Typed as said."
     },
     {
-      "input": {"err": "not_translated"},
-      "json": {"ok": false, "kind": "not_translated", "error": "Couldn't translate the text"}
+      "input": {"err": "not_translated", "target": "he"},
+      "json": {"ok": false, "kind": "not_translated", "error": "Couldn't translate to Hebrew", "target": "he"},
+      "notice": "Couldn't translate to Hebrew. Typed as said."
     },
     {
       "input": {"err": "backend", "detail": "cloud_consent_required"},
-      "json": {"ok": false, "kind": "backend", "error": "Translation failed: cloud_consent_required"}
+      "json": {"ok": false, "kind": "backend", "error": "Translation failed: cloud_consent_required"},
+      "notice": "Not translated. Typed as said."
     }
   ]
 }

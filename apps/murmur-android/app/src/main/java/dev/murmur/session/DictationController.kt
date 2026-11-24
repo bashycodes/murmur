@@ -97,17 +97,21 @@ sealed interface RetryOutcome {
 }
 
 /** Transient hint shown next to the bubble (live preview line). */
-enum class DictationHint {
+sealed interface DictationHint {
     /** Recording, but nothing above the speech threshold for 3 s: "Can't hear you". */
-    NoSpeechYet,
+    data object NoSpeechYet : DictationHint
     /** The core returned EMPTY (silence gate / blank ASR): nothing was inserted. */
-    NoSpeechDetected,
+    data object NoSpeechDetected : DictationHint
     /** EMPTY with `empty_reason = only_filler`: only "um"/"uh" was heard. */
-    OnlyFiller,
-    /** D90: the translation failed, so the dictation was typed as said. */
-    NotTranslated,
+    data object OnlyFiller : DictationHint
+    /**
+     * D90: the translation failed, so the dictation was typed as said. [kind] =
+     * `TranslateError::kind()` (the bar says why, [dev.murmur.bubble.PreviewContent.notTranslated]);
+     * [target] = the language asked for ("" = unknown).
+     */
+    data class NotTranslated(val kind: String, val target: String = "") : DictationHint
     /** D90: no server or cloud could, so the phone's own model translated (lower quality). */
-    TranslatedOnDevice,
+    data object TranslatedOnDevice : DictationHint
 }
 
 /** Idle → Ready → Recording(hold|tap) → Processing → Ready | Error. */
@@ -1225,7 +1229,7 @@ class DictationController(
     /**
      * D90: translate the transcribed dictation (off the caller's thread, bounded by
      * [TRANSLATE_TIMEOUT_MS]): the result and paste plan to type. A failure keeps the dictation
-     * as said, with the [DictationHint.NotTranslated] hint. Null = the dictation was dropped meanwhile.
+     * as said, with the [DictationHint.NotTranslated] hint, which says why. Null = the dictation was dropped meanwhile.
      */
     private suspend fun translated(
         c: MurmurCore, result: CommitResult, plan: List<PasteSegment>, gen: Long,
@@ -1250,7 +1254,7 @@ class DictationController(
                 result.copy(applied = dev.murmur.core.AppliedTransform(name, answer.text)) to typed
             }
             is TranslateOutcome.Failed -> {
-                showHint(DictationHint.NotTranslated)
+                showHint(DictationHint.NotTranslated(answer.kind, answer.target.ifEmpty { target.orEmpty() }))
                 result to plan
             }
         }
