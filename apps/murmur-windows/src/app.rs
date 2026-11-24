@@ -631,41 +631,6 @@ fn history_copy(state: tauri::State<'_, AppState>, id: i64, raw: bool) -> Result
     paste::win::copy_text(&history_text(&state, id, raw)?)
 }
 
-/// Hide Settings so focus returns to the app the user was in, then paste.
-#[tauri::command]
-fn history_repaste(
-    app: AppHandle,
-    state: tauri::State<'_, AppState>,
-    id: i64,
-    raw: bool,
-) -> Result<(), String> {
-    let text = history_text(&state, id, raw)?;
-    let prefs = state.prefs.read().unwrap().clone();
-    let settings = app.get_webview_window(SETTINGS);
-    // As an integer: HWND is not Send.
-    let own = settings.as_ref().and_then(hwnd_of).map(|h| h.0 as usize);
-    if let Some(w) = &settings {
-        let _ = w.hide();
-    }
-    std::thread::spawn(move || {
-        use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
-        let t0 = Instant::now();
-        while t0.elapsed() < Duration::from_millis(1500) {
-            std::thread::sleep(Duration::from_millis(50));
-            let fg = unsafe { GetForegroundWindow() };
-            if !fg.is_invalid() && Some(fg.0 as usize) != own {
-                break;
-            }
-        }
-        std::thread::sleep(Duration::from_millis(100));
-        if let Err(e) = paste::win::paste(&text, &PasteOptions::from_prefs(&prefs)) {
-            eprintln!("[history] re-paste: {e}");
-            debug_log::event("paste", &format!("history re-paste: {e}"));
-        }
-    });
-    Ok(())
-}
-
 #[tauri::command]
 fn clipboard_copy(text: String) -> Result<(), String> {
     paste::win::copy_text(&text)
@@ -3477,7 +3442,6 @@ pub fn run() {
             history_delete,
             history_clear,
             history_copy,
-            history_repaste,
             history_retry,
             insights_get,
             insights_reset,

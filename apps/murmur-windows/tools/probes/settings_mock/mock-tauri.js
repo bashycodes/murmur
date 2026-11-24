@@ -572,7 +572,7 @@
     history_list: ({ query }) => history.filter((h) => !query || JSON.stringify(h).toLowerCase().includes(query.toLowerCase())),
     history_delete: ({ id }) => { history = history.filter((h) => h.id !== id); return true; },
     history_clear: () => { const n = history.length; history = []; return n; },
-    history_copy: () => {}, history_repaste: () => {}, clipboard_copy: () => {},
+    history_copy: () => {}, clipboard_copy: () => {},
     // Retry: a new version a moment later (row 3's second retry fails, to
     // show the error path), reported like the app does.
     history_retry: ({ id }) => {

@@ -29,7 +29,6 @@ fn main() {
             "history_delete",
             "history_clear",
             "history_copy",
-            "history_repaste",
             "history_retry",
             "insights_get",
             "insights_reset",
