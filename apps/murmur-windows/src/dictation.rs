@@ -87,7 +87,8 @@ pub enum Phase {
     Pasted {
         since_ms: u64,
     },
-    /// Error pill, or a notice (EMPTY with a reason), shown for `linger_ms`.
+    /// Error pill, or a notice (EMPTY with a reason), shown for `linger_ms`
+    /// ([`Policy::notice_linger_ms`]) or until Esc or a new dictation.
     Error {
         since_ms: u64,
         linger_ms: u64,
@@ -295,10 +296,12 @@ pub struct Policy {
     /// whole recording is transcribed again (as Android's retry budget).
     pub rerun_timeout_ms: u64,
     pub pasted_linger_ms: u64,
-    /// Error pill shows this long, then rests (500 ms).
-    pub error_linger_ms: u64,
-    /// Notice pill ("No speech heard") shows this long.
-    pub notice_linger_ms: u64,
+    /// An error or notice pill ("No speech heard", "… Typed as said.")
+    /// shows at least this long (4 s), longer for long text, see
+    /// [`Policy::notice_linger_ms`].
+    pub notice_min_ms: u64,
+    /// ... and at most this long (8 s).
+    pub notice_max_ms: u64,
     /// A Command Mode answer card shows at least this long (longer
     /// answers get reading time, see [`Policy::answer_linger_ms`]).
     pub answer_min_ms: u64,
@@ -314,8 +317,8 @@ impl Default for Policy {
             processing_timeout_ms: 35_000,
             rerun_timeout_ms: 90_000,
             pasted_linger_ms: 0,
-            error_linger_ms: 500,
-            notice_linger_ms: 1500,
+            notice_min_ms: 4000,
+            notice_max_ms: 8000,
             answer_min_ms: 8000,
         }
     }
@@ -334,7 +337,24 @@ impl Policy {
         let read = answer.chars().count() as u64 * 1000 / READ_CHARS_PER_SEC;
         read.clamp(self.answer_min_ms, ANSWER_MAX_MS.max(self.answer_min_ms))
     }
+
+    /// How long an error or notice pill with `message` stays up before it
+    /// rests: [`Policy::notice_min_ms`], plus [`NOTICE_MS_PER_CHAR`] for
+    /// every character past [`NOTICE_SHORT_CHARS`], at most
+    /// [`Policy::notice_max_ms`]. Esc or a new dictation ends it sooner.
+    pub fn notice_linger_ms(&self, message: &str) -> u64 {
+        let extra = (message.chars().count() as u64).saturating_sub(NOTICE_SHORT_CHARS);
+        (self.notice_min_ms + extra * NOTICE_MS_PER_CHAR)
+            .min(self.notice_max_ms.max(self.notice_min_ms))
+    }
 }
+
+/// An error / notice this long reads in [`Policy::notice_min_ms`].
+pub const NOTICE_SHORT_CHARS: u64 = 40;
+
+/// Extra time an error / notice stays up per character past
+/// [`NOTICE_SHORT_CHARS`].
+pub const NOTICE_MS_PER_CHAR: u64 = 50;
 
 /// Longest an answer card stays up on its own (Esc closes it sooner).
 pub const ANSWER_MAX_MS: u64 = 60_000;
@@ -577,8 +597,9 @@ impl Dictation {
             {
                 self.webhook_finished(outcome, crate::webhook::ALREADY_SENT, now_ms)
             }
-            // Esc closes the answer card (the key still reaches the app).
-            (Phase::Answer { .. }, Input::Hotkey(HotkeyAction::Cancel)) => {
+            // Esc closes the answer card or an error / notice (the key
+            // still reaches the app).
+            (Phase::Answer { .. } | Phase::Error { .. }, Input::Hotkey(HotkeyAction::Cancel)) => {
                 self.phase = Phase::Idle;
                 vec![Effect::Overlay(OverlayState::Resting)]
             }
@@ -956,8 +977,7 @@ impl Dictation {
         ]
     }
 
-    /// D105: the pill for a webhook outcome (`sent` = its text on a 2xx);
-    /// a failure stays as long as a notice, so its status can be read.
+    /// D105: the pill for a webhook outcome (`sent` = its text on a 2xx).
     fn webhook_finished(
         &mut self,
         outcome: crate::webhook::Outcome,
@@ -975,19 +995,15 @@ impl Dictation {
             self.phase = Phase::Idle;
             return vec![Effect::Overlay(OverlayState::Resting)];
         };
-        let fx = self.fail(message, now_ms);
-        self.phase = Phase::Error {
-            since_ms: now_ms,
-            linger_ms: self.policy.notice_linger_ms,
-        };
-        fx
+        self.fail(message, now_ms)
     }
 
-    /// Informational pill (no error sound) for `notice_linger_ms`.
+    /// Informational pill (no error sound) for
+    /// [`Policy::notice_linger_ms`].
     fn notice(&mut self, message: String, now_ms: u64) -> Vec<Effect> {
         self.phase = Phase::Error {
             since_ms: now_ms,
-            linger_ms: self.policy.notice_linger_ms,
+            linger_ms: self.policy.notice_linger_ms(&message),
         };
         vec![Effect::Overlay(OverlayState::Notice { message })]
     }
@@ -1002,10 +1018,11 @@ impl Dictation {
         ]
     }
 
+    /// Error pill (with the error sound) for [`Policy::notice_linger_ms`].
     fn fail(&mut self, message: String, now_ms: u64) -> Vec<Effect> {
         self.phase = Phase::Error {
             since_ms: now_ms,
-            linger_ms: self.policy.error_linger_ms,
+            linger_ms: self.policy.notice_linger_ms(&message),
         };
         vec![
             Effect::Sound(Sound::Error),
@@ -1306,12 +1323,156 @@ mod tests {
                 })
             ]
         );
-        assert!(d.handle(Input::Tick, 1699).is_empty());
+        assert!(d.handle(Input::Tick, 5199).is_empty());
         assert_eq!(
-            d.handle(Input::Tick, 1700),
+            d.handle(Input::Tick, 5200),
             vec![Effect::Overlay(OverlayState::Resting)]
         );
         assert_eq!(d.phase(), &Phase::Idle);
+    }
+
+    // --- Error / notice hold: readable before the bar rests (and hides). ---
+
+    /// Dictate from `t`, then fail the start with `message`; returns the
+    /// time of the error.
+    fn start_fails(d: &mut Dictation, message: &str, t: u64) -> u64 {
+        let s = session_of(&hk(d, PttDown, t));
+        let fx = d.handle(
+            Input::StartFailed {
+                session: s,
+                message: message.into(),
+            },
+            t + 10,
+        );
+        assert!(fx.contains(&Effect::Overlay(OverlayState::Error {
+            message: message.into()
+        })));
+        t + 10
+    }
+
+    #[test]
+    fn notice_hold_is_4s_plus_50ms_a_char_past_40_capped_at_8s() {
+        let p = Policy::default();
+        assert_eq!(p.notice_linger_ms("No speech heard"), 4000);
+        assert_eq!(p.notice_linger_ms(&"x".repeat(40)), 4000);
+        assert_eq!(p.notice_linger_ms(&"x".repeat(41)), 4050);
+        assert_eq!(p.notice_linger_ms(&"x".repeat(60)), 5000);
+        assert_eq!(p.notice_linger_ms(&"x".repeat(120)), 8000);
+        assert_eq!(p.notice_linger_ms(&"x".repeat(5000)), 8000);
+        // Characters, not bytes.
+        assert_eq!(p.notice_linger_ms(&"é".repeat(40)), 4000);
+    }
+
+    #[test]
+    fn an_error_then_idle_waits_for_the_hold() {
+        let mut d = d();
+        let t = start_fails(&mut d, "Microphone unavailable", 0);
+        // The ticks of the old 500 ms linger no longer rest the pill.
+        for dt in [500, 1500, 3999] {
+            assert!(d.handle(Input::Tick, t + dt).is_empty(), "{dt}");
+        }
+        assert!(matches!(d.phase(), Phase::Error { .. }));
+        assert_eq!(
+            d.handle(Input::Tick, t + 4000),
+            vec![Effect::Overlay(OverlayState::Resting)]
+        );
+        assert_eq!(d.phase(), &Phase::Idle);
+    }
+
+    #[test]
+    fn a_long_error_stays_longer() {
+        let mut d = d();
+        let msg = "The server refused the request; check the token in Settings";
+        let hold = 4000 + (msg.chars().count() as u64 - 40) * 50;
+        let t = start_fails(&mut d, msg, 0);
+        assert!(d.handle(Input::Tick, t + hold - 1).is_empty());
+        assert_eq!(
+            d.handle(Input::Tick, t + hold),
+            vec![Effect::Overlay(OverlayState::Resting)]
+        );
+    }
+
+    #[test]
+    fn a_new_dictation_replaces_an_error_at_once() {
+        let mut d = d();
+        let t = start_fails(&mut d, "Microphone unavailable", 0);
+        let fx = hk(&mut d, PttDown, t + 1000);
+        assert!(
+            fx.contains(&Effect::Overlay(OverlayState::ActivePtt)),
+            "{fx:?}"
+        );
+        assert!(matches!(d.phase(), Phase::Listening(_)));
+        // The old error's hold ending does not rest the new dictation.
+        assert!(d.handle(Input::Tick, t + 4000).is_empty());
+    }
+
+    #[test]
+    fn a_second_error_gets_its_own_hold() {
+        let mut d = d();
+        let t1 = start_fails(&mut d, "first", 0);
+        let t2 = start_fails(&mut d, "second", t1 + 2000);
+        // The first error's hold would have ended here.
+        assert!(d.handle(Input::Tick, t1 + 4000).is_empty());
+        assert!(d.handle(Input::Tick, t2 + 3999).is_empty());
+        assert_eq!(
+            d.handle(Input::Tick, t2 + 4000),
+            vec![Effect::Overlay(OverlayState::Resting)]
+        );
+    }
+
+    #[test]
+    fn esc_dismisses_an_error() {
+        let mut d = d();
+        let t = start_fails(&mut d, "Microphone unavailable", 0);
+        assert_eq!(
+            hk(&mut d, Cancel, t + 500),
+            vec![Effect::Overlay(OverlayState::Resting)]
+        );
+        assert_eq!(d.phase(), &Phase::Idle);
+        assert!(d.handle(Input::Tick, t + 4000).is_empty());
+    }
+
+    #[test]
+    fn a_typed_as_said_notice_gets_the_same_hold() {
+        let mut d = d();
+        let s = session_of(&hk(&mut d, PttDown, 0));
+        hk(&mut d, PttUp, 1000);
+        let msg = "Not translated. Typed as said.";
+        let fx = d.handle(
+            Input::Committed {
+                session: s,
+                outcome: CommitOutcome::Notice(msg.into()),
+            },
+            1200,
+        );
+        assert_eq!(
+            fx,
+            vec![Effect::Overlay(OverlayState::Notice {
+                message: msg.into()
+            })]
+        );
+        assert!(d.handle(Input::Tick, 1200 + 3999).is_empty());
+        assert_eq!(
+            d.handle(Input::Tick, 1200 + 4000),
+            vec![Effect::Overlay(OverlayState::Resting)]
+        );
+    }
+
+    #[test]
+    fn the_hold_is_the_same_with_the_always_shown_bar() {
+        // The machine owns the hold; "always show" only keeps the window up
+        // after it rests (crate::overlay::bar_wanted).
+        let prefs = crate::prefs::Prefs {
+            show_murmur_bar_always: true,
+            ..Default::default()
+        };
+        let mut d = Dictation::new(prefs.policy());
+        let t = start_fails(&mut d, "Microphone unavailable", 0);
+        assert!(d.handle(Input::Tick, t + 3999).is_empty());
+        assert_eq!(
+            d.handle(Input::Tick, t + 4000),
+            vec![Effect::Overlay(OverlayState::Resting)]
+        );
     }
 
     #[test]
@@ -1426,9 +1587,9 @@ mod tests {
             })]
         );
         assert!(!d.is_active());
-        assert!(d.handle(Input::Tick, 2699).is_empty());
+        assert!(d.handle(Input::Tick, 5199).is_empty());
         assert_eq!(
-            d.handle(Input::Tick, 2700),
+            d.handle(Input::Tick, 5200),
             vec![Effect::Overlay(OverlayState::Resting)]
         );
     }
@@ -1497,7 +1658,7 @@ mod tests {
             d.phase(),
             &Phase::Error {
                 since_ms: 10,
-                linger_ms: 500
+                linger_ms: 4000
             }
         );
         assert!(hk(&mut d, PttUp, 500).is_empty());
@@ -2086,7 +2247,8 @@ mod tests {
         assert_eq!(p.debounce_ms, 500);
         assert_eq!(p.double_tap_gap_ms, 500);
         assert_eq!(p.processing_timeout_ms, 35_000);
-        assert_eq!(p.error_linger_ms, 500);
+        assert_eq!(p.notice_min_ms, 4000);
+        assert_eq!(p.notice_max_ms, 8000);
         assert_eq!(p.max_samples(), 20 * 60 * 16_000);
     }
 
@@ -2428,7 +2590,7 @@ mod tests {
                 })
             ]
         );
-        let linger = d.policy().notice_linger_ms;
+        let linger = d.policy().notice_linger_ms("Webhook failed (HTTP 500)");
         assert!(d.handle(Input::Tick, 1200 + linger - 1).is_empty());
         assert_eq!(
             d.handle(Input::Tick, 1200 + linger),
@@ -2827,7 +2989,7 @@ mod tests {
             1700,
         );
         assert!(matches!(d.phase(), Phase::Error { .. }));
-        d.handle(Input::Tick, 2300);
+        d.handle(Input::Tick, 5700);
         assert_eq!(d.phase(), &Phase::Idle);
         // Esc while processing.
         let mut d = Dictation::new(Policy::default());

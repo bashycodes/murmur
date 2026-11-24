@@ -201,7 +201,11 @@ previewFix.addEventListener("mousedown", (e) => {
   if (page) void overlayInvoke("overlay_action", { action: "open_settings", page });
 });
 
-void listen<string>("dictation:preview", (e) => showPreview(e.payload));
+// The live transcript only shows while recording. A late clear ("") after
+// the recording ended must not blank an error / notice bubble that is up.
+void listen<string>("dictation:preview", (e) => {
+  if (isActive()) showPreview(e.payload);
+});
 void listen<OverlayState>("dictation:status", (e) => apply(e.payload));
 // The shell showed the window (show number `seq`): ack once a frame has
 // been painted, so it can tell a bar that is up but blank (a hidden
