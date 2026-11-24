@@ -203,6 +203,13 @@ pub fn pill_screen_rect(win: PxRect, scale: f64) -> PxRect {
     }
 }
 
+/// Should the bar be up: a dictation state on it (an error or notice too,
+/// for as long as the machine holds it), a meeting recording (it carries
+/// the chip) or the "always show" pref.
+pub fn bar_wanted(state: &OverlayState, always: bool, meeting_recording: bool) -> bool {
+    always || meeting_recording || *state != OverlayState::Resting
+}
+
 fn listening(st: &OverlayState) -> bool {
     matches!(
         st,
@@ -398,6 +405,25 @@ mod tests {
         assert!(!starts_dictation(&ActivePtt, &Processing));
         assert!(!starts_dictation(&Processing, &Resting));
         assert!(!starts_dictation(&Resting, &notice));
+    }
+
+    #[test]
+    fn an_error_keeps_the_bar_up_until_it_rests() {
+        use OverlayState::*;
+        let error = Error {
+            message: "Microphone unavailable".into(),
+        };
+        let notice = Notice {
+            message: "No speech heard".into(),
+        };
+        for always in [false, true] {
+            assert!(bar_wanted(&error, always, false), "always={always}");
+            assert!(bar_wanted(&notice, always, false), "always={always}");
+        }
+        // Rested: hidden, unless "always show" (or a meeting) keeps it up.
+        assert!(!bar_wanted(&Resting, false, false));
+        assert!(bar_wanted(&Resting, true, false));
+        assert!(bar_wanted(&Resting, false, true));
     }
 
     #[test]
