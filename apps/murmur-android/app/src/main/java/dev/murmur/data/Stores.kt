@@ -19,8 +19,6 @@ class SettingsStore(context: Context) {
     init { keepOldDefaults(kv, empty = sp.all.isEmpty()) }
 
     private companion object {
-        /** D22: the hands-free endpoint default moved 2000 → 1500 ms; set once that ran (or on any save). */
-        const val ENDPOINT_MIGRATED = "endpoint_default_1500"
         /** 2026-10-23: the language default moved auto → phone language; set once that ran (or on any save). */
         const val LANGUAGE_MIGRATED = "language_default_device"
         /** D37: the default moved phone language → keyboard language; set once that ran (or on any save). */
@@ -52,13 +50,13 @@ class SettingsStore(context: Context) {
         translateTo = sp.getString("translate_to", null).orEmpty(),
         spokenCleanup = sp.getBoolean("spoken_cleanup", true),
         asrEngine = dev.murmur.core.AsrEngine.entries.firstOrNull { it.wire == sp.getString("asr_engine", null) } ?: dev.murmur.core.AsrEngine.WHISPER,
-        endpointSilenceMs = loadEndpointMs(),
+        endpointSilenceMs = EndpointDefault.load(kv),
         decodeWhileSpeaking = sp.getBoolean("decode_while_speaking", true),
         styles = loadStyles(),
         appBuckets = WritingStyle.parseOverrides(sp.getString("app_buckets", null).orEmpty()).map,
         learnFromEdits = sp.getBoolean("learn_from_edits", true),
         keepBothLanguages = sp.getBoolean("keep_both_languages", false),
-        theme = AppTheme.fromKey(sp.getString(ThemeDefault.KEY, null)),
+        theme = AppTheme.fromKey(sp.getString(ThemeDefault.key, null)),
     )
 
     /** D27: nothing stored (every install before 0.3) = the [dev.murmur.core.Styles] defaults. */
@@ -86,19 +84,6 @@ class SettingsStore(context: Context) {
         return v
     }
 
-    /** D22: one-time move of an untouched 2000 ms endpoint to the new 1500 default ([Settings.migrateEndpointMs]). */
-    private fun loadEndpointMs(): Int {
-        val stored = if (sp.contains("endpoint_silence_ms")) sp.getInt("endpoint_silence_ms", Settings.DEFAULT_ENDPOINT_SILENCE_MS) else null
-        val migrated = sp.getBoolean(ENDPOINT_MIGRATED, false)
-        val v = Settings.migrateEndpointMs(stored, migrated)
-        if (!migrated) {
-            val e = sp.edit().putBoolean(ENDPOINT_MIGRATED, true)
-            if (stored != null && v != stored) e.putInt("endpoint_silence_ms", v)
-            e.apply()
-        }
-        return v
-    }
-
     fun save(s: Settings) {
         sp.edit()
             .putString("language", s.language)
@@ -119,14 +104,12 @@ class SettingsStore(context: Context) {
             .putString("translate_to", s.translateTo)
             .putBoolean("spoken_cleanup", s.spokenCleanup)
             .putString("asr_engine", s.asrEngine.wire)
-            .putInt("endpoint_silence_ms", s.endpointSilenceMs)
-            .putBoolean(ENDPOINT_MIGRATED, true)
+            .putInt(EndpointDefault.key, s.endpointSilenceMs)
+            .putBoolean(EndpointDefault.D22_MIGRATED, true)
             .putBoolean(LANGUAGE_MIGRATED, true)
             .putBoolean(KEYBOARD_MIGRATED, true)
-            .putBoolean(StrengthDefault.MIGRATED, true)
-            .putBoolean(ThemeDefault.MIGRATED, true)
-            .putString(ThemeDefault.KEY, s.theme.key)
-            .putBoolean(EndpointDefault.MIGRATED, true)
+            .also { e -> for (d in OLD_DEFAULTS) e.putBoolean(d.flag, true) }
+            .putString(ThemeDefault.key, s.theme.key)
             .putBoolean("decode_while_speaking", s.decodeWhileSpeaking)
             .putString("style_personal", s.styles.personal.wire)
             .putString("style_work", s.styles.work.wire)
@@ -589,16 +572,33 @@ class HistoryStore(
 }
 
 /**
+ * A one-time "an install from before keeps the old default" step for a changed default. Each runs
+ * once (until its [flag] is set, by the step or by any save) against one emptiness check taken
+ * before any step writes ([keepOldDefaults]): only an empty store is a fresh install.
+ */
+internal interface OldDefault {
+    val flag: String
+    fun keepOld(kv: KeyValue, empty: Boolean)
+}
+
+/** Every [OldDefault], in order; [SettingsStore.save] sets all their flags. */
+internal val OLD_DEFAULTS: List<OldDefault> = listOf(StrengthDefault, ThemeDefault, EndpointDefault)
+
+internal fun keepOldDefaults(kv: KeyValue, empty: Boolean) {
+    for (d in OLD_DEFAULTS) d.keepOld(kv, empty)
+}
+
+/**
  * The AI cleanup strength default moved Light → Medium ([Settings.DEFAULT_STRENGTH]). An install
  * from before that ran at Light whenever no strength was picked (stored NONE or no `cleanup` key
  * at all), so [keepOld] writes that Light down once; only an [empty] store is a fresh install and
- * runs at Medium. A picked strength is never touched, and nothing changes after [MIGRATED] is set
- * (by this or by any save).
+ * runs at Medium. A picked strength is never touched.
  */
-internal object StrengthDefault {
+internal object StrengthDefault : OldDefault {
     const val MIGRATED = "strength_default_medium"
+    override val flag = MIGRATED
 
-    fun keepOld(kv: KeyValue, empty: Boolean) {
+    override fun keepOld(kv: KeyValue, empty: Boolean) {
         if (kv.getBoolean(MIGRATED, false)) return
         val stored = CleanupLevel.entries.firstOrNull { it.wire == kv.getString("cleanup") } ?: CleanupLevel.NONE
         val keepLight = !empty && stored == CleanupLevel.NONE
@@ -610,51 +610,50 @@ internal object StrengthDefault {
 }
 
 /**
- * D104: the theme default moved System → Dark ([AppTheme]). Same rule as [StrengthDefault]: an
- * install from before had no setting and followed the phone, so [keepOld] writes System down
- * once; only an [empty] store is a fresh install. A stored theme is never touched, and nothing
- * changes after [MIGRATED] is set (by this or by any save).
+ * An [OldDefault] whose old default was what a missing [key] meant: a non-empty store without
+ * [key] gets [writeOld] once; a stored value is never touched.
  */
-internal object ThemeDefault {
-    const val MIGRATED = "theme_default_dark"
-    const val KEY = "theme"
+internal abstract class KeepWhenMissing(override val flag: String, val key: String) : OldDefault {
+    protected abstract fun KeyValue.Editor.writeOld()
 
-    fun keepOld(kv: KeyValue, empty: Boolean) {
-        if (kv.getBoolean(MIGRATED, false)) return
+    override fun keepOld(kv: KeyValue, empty: Boolean) {
+        if (kv.getBoolean(flag, false)) return
         kv.edit {
-            putBoolean(MIGRATED, true)
-            if (!empty && !kv.contains(KEY)) putString(KEY, AppTheme.SYSTEM.key)
+            putBoolean(flag, true)
+            if (!empty && !kv.contains(key)) writeOld()
         }
     }
+}
+
+/**
+ * D104: the theme default moved System → Dark ([AppTheme]). An install from before had no
+ * setting and followed the phone, so it keeps System.
+ */
+internal object ThemeDefault : KeepWhenMissing("theme_default_dark", "theme") {
+    override fun KeyValue.Editor.writeOld() = putString(key, AppTheme.SYSTEM.key)
 }
 
 /**
  * D104: a tap (hands-free) dictation no longer ends by itself after silence by default
- * ([Settings.DEFAULT_ENDPOINT_SILENCE_MS] = 0; it was 1.5 s). Same rule as [StrengthDefault]: an
- * install from before stopped after 1.5 s whenever nothing was stored, so [keepOld] writes that
- * down once; only an [empty] store is a fresh install. A stored value (0 included) is never
- * touched, and nothing changes after [MIGRATED] is set (by this or by any save).
+ * ([Settings.DEFAULT_ENDPOINT_SILENCE_MS] = 0; it was 1.5 s). An install from before that never
+ * saved Settings stopped after 1.5 s, so it keeps that. A stored value (0 included) stays.
  */
-internal object EndpointDefault {
-    const val MIGRATED = "endpoint_default_off"
-    const val KEY = "endpoint_silence_ms"
+internal object EndpointDefault : KeepWhenMissing("endpoint_default_off", "endpoint_silence_ms") {
+    /** D22: the default moved 2000 → 1500 ms; set once that ran (or on any save). */
+    const val D22_MIGRATED = "endpoint_default_1500"
 
-    fun keepOld(kv: KeyValue, empty: Boolean) {
-        if (kv.getBoolean(MIGRATED, false)) return
-        kv.edit {
-            putBoolean(MIGRATED, true)
-            if (!empty && !kv.contains(KEY)) putInt(KEY, Settings.RECOMMENDED_ENDPOINT_SILENCE_MS)
+    override fun KeyValue.Editor.writeOld() = putInt(key, Settings.RECOMMENDED_ENDPOINT_SILENCE_MS)
+
+    /** The stored endpoint, after the one-time D22 move of an untouched 2000 ([Settings.migrateEndpointMs]). */
+    fun load(kv: KeyValue): Int {
+        val stored = if (kv.contains(key)) kv.getInt(key, Settings.DEFAULT_ENDPOINT_SILENCE_MS) else null
+        val migrated = kv.getBoolean(D22_MIGRATED, false)
+        val v = Settings.migrateEndpointMs(stored, migrated)
+        if (!migrated) kv.edit {
+            putBoolean(D22_MIGRATED, true)
+            if (stored != null && v != stored) putInt(key, v)
         }
+        return v
     }
 }
 
-/**
- * Every one-time "an install from before keeps the old default" step, against one emptiness
- * check taken before any of them writes (each sets its own flag, so the store is no longer empty
- * after the first).
- */
-internal fun keepOldDefaults(kv: KeyValue, empty: Boolean) {
-    StrengthDefault.keepOld(kv, empty)
-    ThemeDefault.keepOld(kv, empty)
-    EndpointDefault.keepOld(kv, empty)
-}

@@ -299,7 +299,7 @@ impl Default for Prefs {
             mute_audio_while_dictating: true,
             launch_at_login: false,
             show_murmur_bar_always: false,
-            theme: Theme::Dark,
+            theme: Theme::default(),
             onboarded: false,
             use_ax_context: true,
             cleanup_level: CleanupLevel::Medium,

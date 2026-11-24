@@ -10,7 +10,9 @@ export type ThemePref = "system" | "light" | "dark";
 
 const media = window.matchMedia("(prefers-color-scheme: dark)");
 const STORE_KEY = "lw-theme";
-let pref: ThemePref = "dark";
+/** `Prefs::default().theme` (D104): what a fresh install shows before prefs load. */
+export const DEFAULT_PREF: ThemePref = "dark";
+let pref: ThemePref = DEFAULT_PREF;
 
 function parse(v: unknown): ThemePref {
   return v === "light" || v === "dark" ? v : "system";
@@ -34,12 +36,12 @@ export function setTheme(t: unknown): void {
 
 /** Apply the remembered theme now, then follow the pref and Windows' mode. */
 export function followSystemTheme(): void {
-  // Nothing remembered yet (a fresh install): the prefs default, Dark (D104).
+  // Nothing remembered yet (a fresh install): the prefs default.
   try {
     const v = localStorage.getItem(STORE_KEY);
-    pref = v === null ? "dark" : parse(v);
+    pref = v === null ? DEFAULT_PREF : parse(v);
   } catch {
-    pref = "dark";
+    pref = DEFAULT_PREF;
   }
   apply();
   media.addEventListener("change", apply);

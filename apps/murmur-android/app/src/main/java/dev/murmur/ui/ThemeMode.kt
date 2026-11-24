@@ -5,7 +5,7 @@ import android.content.Context
 import dev.murmur.data.AppTheme
 
 /**
- * Applies Settings → Theme to the whole app: the per-app night mode (API 31+) switches the
+ * Applies Settings → Theme to the whole app: the per-app night mode switches the
  * app's configuration, so `values-night` and [Tokens.of] follow it, and open screens are
  * recreated by the system. System = follow the phone.
  */

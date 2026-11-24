@@ -6,6 +6,7 @@ internal class MemKV : KeyValue {
     override fun getString(k: String) = m[k] as String?
     override fun getBoolean(k: String, d: Boolean) = m[k] as Boolean? ?: d
     override fun getLong(k: String, d: Long) = m[k] as Long? ?: d
+    override fun getInt(k: String, d: Int) = m[k] as Int? ?: d
     override fun contains(k: String) = k in m
     override fun edit(block: KeyValue.Editor.() -> Unit) = object : KeyValue.Editor {
         override fun putString(k: String, v: String?) { if (v == null) m.remove(k) else m[k] = v }

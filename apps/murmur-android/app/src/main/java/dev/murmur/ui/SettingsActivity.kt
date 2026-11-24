@@ -502,6 +502,8 @@ class SettingsActivity : Activity() {
             runOnUiThread {
                 if (r.isSuccess) {
                     Toast.makeText(this, "Restored. Enter your API keys again if you use them.", Toast.LENGTH_LONG).show()
+                    // The backup's theme (or the kept System of an older one) applies now, not at the next start.
+                    ThemeMode.apply(this, app.settings.load().theme)
                     if (alive()) recreate()
                 } else if (alive()) {
                     AlertDialog.Builder(this)

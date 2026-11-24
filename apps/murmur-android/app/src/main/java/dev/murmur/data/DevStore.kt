@@ -16,6 +16,7 @@ interface KeyValue {
     fun getString(k: String): String?
     fun getBoolean(k: String, d: Boolean): Boolean
     fun getLong(k: String, d: Long): Long
+    fun getInt(k: String, d: Int): Int
     fun contains(k: String): Boolean
     fun edit(block: Editor.() -> Unit)
 
@@ -33,6 +34,7 @@ class PrefsKeyValue(private val sp: SharedPreferences) : KeyValue {
     override fun getString(k: String) = sp.getString(k, null)
     override fun getBoolean(k: String, d: Boolean) = sp.getBoolean(k, d)
     override fun getLong(k: String, d: Long) = sp.getLong(k, d)
+    override fun getInt(k: String, d: Int) = sp.getInt(k, d)
     override fun contains(k: String) = sp.contains(k)
     override fun edit(block: KeyValue.Editor.() -> Unit) {
         val e = sp.edit()
