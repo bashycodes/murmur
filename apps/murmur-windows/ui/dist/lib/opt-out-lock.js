@@ -6,14 +6,18 @@
 // fieldset only overrides the controls' own disabled states, so they
 // come back as the page left them. First used by Transforms.
 // No DOM access at import, so tests/opt-out-lock.test.mjs runs it in node.
-/** The banner and the locked region's markup; `id` prefixes their ids. */
+/**
+ * The banner and the locked region's markup; `id` prefixes their ids.
+ * Every argument goes into the HTML as is: pass the page's own constant
+ * text only, never user data.
+ */
 export function optOutMarkup(id, feature, body) {
     return {
-        banner: `<div class="lw-optout" id="${id}_off" role="status" hidden>` +
-            `<div class="lw-optout-text"><strong>${feature} is off.</strong> ${body}</div>` +
+        banner: `<div class="lw-optout" id="${id}_off" hidden>` +
+            `<p class="lw-optout-text" role="status"><strong>${feature} is off.</strong> ${body}</p>` +
             `<button type="button" class="fl-btn fl-btn-primary fl-btn-sm" id="${id}_turn_on">Turn on ${feature}</button>` +
             `</div>`,
-        open: `<fieldset class="lw-optout-region" id="${id}_region">`,
+        open: `<fieldset class="lw-optout-region" id="${id}_region" aria-label="${feature} settings">`,
         close: `</fieldset>`,
     };
 }
@@ -22,14 +26,17 @@ export function applyOptOut(view, on) {
     view.banner.hidden = on;
     view.region.disabled = !on;
 }
-/** Find the pieces `optOutMarkup(id, …)` made and wire the banner's button
- *  to `turnOn` (the feature's usual way of turning on). Returns `apply`,
- *  for the page's render to call with the feature's current state. */
-export function wireOptOut(id, find, turnOn) {
+/** Find the pieces `optOutMarkup(id, …)` made and wire the banner's button.
+ *  Returns `apply`, for the page's render to call with the feature's
+ *  current state. */
+export function wireOptOut(id, find, w) {
     const view = {
         banner: find(`${id}_off`),
         region: find(`${id}_region`),
     };
-    find(`${id}_turn_on`).addEventListener("click", turnOn);
+    find(`${id}_turn_on`).addEventListener("click", () => {
+        w.turnOn();
+        find(w.switchId).focus();
+    });
     return (on) => applyOptOut(view, on);
 }

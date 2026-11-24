@@ -201,7 +201,7 @@ input.fl-input { font-size: 15px; line-height: 20px; padding: 7px 12px; }
    controls are greyed out and can't be used, and keep their own states. */
 .lw-optout { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 12px; background: var(--background-secondary); color: var(--foreground); font: 400 15px/20px var(--font-sans); }
 .lw-optout[hidden] { display: none; }
-.lw-optout-text { flex: 1; }
+.lw-optout-text { flex: 1; margin: 0; }
 .lw-optout .fl-btn { flex: none; }
 fieldset.lw-optout-region { display: contents; border: 0; margin: 0; padding: 0; min-width: 0; }
 fieldset.lw-optout-region:disabled > * { opacity: .5; cursor: not-allowed; }

@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc -p .",
     "check": "tsc -p . --noEmit",
-    "test": "tsc -p . && node --test tests/serial.test.mjs tests/cleanup-state.test.mjs tests/setup-engine.test.mjs tests/setup-cleanup.test.mjs tests/setup-model.test.mjs tests/setup-diff.test.mjs tests/setup-try.test.mjs tests/setup-server-form.test.mjs tests/model-source.test.mjs tests/fix-for.test.mjs tests/app-keys.test.mjs tests/overlay-bubble.test.mjs tests/key-rows.test.mjs tests/model-pages.test.mjs tests/insights-text.test.mjs tests/last-dictation.test.mjs tests/provider-names.test.mjs tests/transforms-line.test.mjs tests/privacy-rows.test.mjs tests/plaintext.test.mjs tests/webhook.test.mjs tests/lid-warning.test.mjs tests/download-confirm.test.mjs tests/folder-checklist.test.mjs tests/opt-out-lock.test.mjs"
+    "test": "tsc -p . && node --test tests/serial.test.mjs tests/cleanup-state.test.mjs tests/setup-engine.test.mjs tests/setup-cleanup.test.mjs tests/setup-model.test.mjs tests/setup-diff.test.mjs tests/setup-try.test.mjs tests/setup-server-form.test.mjs tests/model-source.test.mjs tests/fix-for.test.mjs tests/app-keys.test.mjs tests/overlay-bubble.test.mjs tests/key-rows.test.mjs tests/model-pages.test.mjs tests/insights-text.test.mjs tests/last-dictation.test.mjs tests/provider-names.test.mjs tests/transforms-line.test.mjs tests/privacy-rows.test.mjs tests/plaintext.test.mjs tests/webhook.test.mjs tests/lid-warning.test.mjs tests/download-confirm.test.mjs tests/folder-checklist.test.mjs tests/opt-out-lock.test.mjs tests/free-chord.test.mjs"
   },
   "devDependencies": {
     "typescript": "5.6.3"

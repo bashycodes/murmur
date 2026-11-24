@@ -8,6 +8,7 @@
 import { $, askDialog, el } from "../lib/dom.js";
 import { ICON, iconEl, iconSvg } from "../lib/icons.js";
 import { invoke } from "../lib/ipc.js";
+import { firstFreeChord } from "../lib/free-chord.js";
 import { optOutMarkup, wireOptOut } from "../lib/opt-out-lock.js";
 import { captureChord, RECORDING_TEXT, stopCapture } from "../lib/keycapture.js";
 import { prefsStore } from "../lib/prefs-store.js";
@@ -71,7 +72,7 @@ const TEMPLATE = `
     <label class="lw-tf-field"><span>Instruction</span>
       <textarea class="fl-input" id="tf_instruction" rows="5" maxlength="${MAX_INSTRUCTION}" placeholder="Rewrite the text so it sounds warm and friendly. Keep it short."></textarea></label>
     <div class="lw-tf-field"><label for="tf_shortcut">Shortcut <em>(optional)</em></label>
-      <span class="lw-tf-keyrow"><input class="fl-input" id="tf_shortcut" placeholder="Win+Alt+3" spellcheck="false" />
+      <span class="lw-tf-keyrow"><input class="fl-input" id="tf_shortcut" placeholder="Win+Shift+E" spellcheck="false" />
       <button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" id="tf_shortcut_rec">Press keys</button></span></div>
     <p class="lw-tf-hint" id="tf_builtin_hint" hidden>A built-in transform: Reset to defaults puts back its shipped wording.</p>
     <p class="lw-tf-err" id="tf_edit_err" role="alert"></p>
@@ -152,15 +153,11 @@ export function newId(name, taken) {
         id = `${base}-${k}`;
     return id;
 }
-/** The first Win+Alt+digit no shortcut uses yet ("" when all are taken). */
+/** A new transform's offered shortcut: the first free Win+Shift letter
+ *  (lib/free-chord.ts) beside every other Murmur shortcut. */
 function freeChord(t) {
-    const used = new Set(t.items.map((i) => (i.shortcut ?? "").toLowerCase()));
-    for (let d = 1; d <= 9; d++) {
-        const c = `Win+Alt+${d}`;
-        if (!used.has(c.toLowerCase()))
-            return c;
-    }
-    return "";
+    const shortcuts = Object.values(prefsStore.get()?.shortcuts ?? {});
+    return firstFreeChord([...shortcuts, ...t.items.map((i) => i.shortcut), t.view_changes]);
 }
 function card(item) {
     const t = item.transform;
@@ -221,7 +218,7 @@ let recordingKeys = false;
 function showRecordingKeys(on) {
     recordingKeys = on;
     const input = $("tf_shortcut");
-    input.placeholder = on ? RECORDING_TEXT : "Win+Alt+3";
+    input.placeholder = on ? RECORDING_TEXT : "Win+Shift+E";
     input.classList.toggle("is-recording", on);
     $("tf_shortcut_rec").textContent = on ? "Stop" : "Press keys";
 }
@@ -381,7 +378,7 @@ export const transformsPage = {
     init() {
         // The opt-in switch and the off banner's button turn it on the same way.
         const setEnabled = (on) => void save({ ...current(), enabled: on }, on ? "Transforms on: the shortcuts work in any app" : "Transforms off");
-        applyLock = wireOptOut("tf", (id) => $(id), () => setEnabled(true));
+        applyLock = wireOptOut("tf", (id) => $(id), { turnOn: () => setEnabled(true), switchId: "tf_enabled" });
         prefsStore.subscribe(render);
         prefsStore.subscribe(renderEngines);
         views.onDev(renderEngines);

@@ -7,15 +7,19 @@
 // come back as the page left them. First used by Transforms.
 // No DOM access at import, so tests/opt-out-lock.test.mjs runs it in node.
 
-/** The banner and the locked region's markup; `id` prefixes their ids. */
+/**
+ * The banner and the locked region's markup; `id` prefixes their ids.
+ * Every argument goes into the HTML as is: pass the page's own constant
+ * text only, never user data.
+ */
 export function optOutMarkup(id: string, feature: string, body: string): { banner: string; open: string; close: string } {
   return {
     banner:
-      `<div class="lw-optout" id="${id}_off" role="status" hidden>` +
-      `<div class="lw-optout-text"><strong>${feature} is off.</strong> ${body}</div>` +
+      `<div class="lw-optout" id="${id}_off" hidden>` +
+      `<p class="lw-optout-text" role="status"><strong>${feature} is off.</strong> ${body}</p>` +
       `<button type="button" class="fl-btn fl-btn-primary fl-btn-sm" id="${id}_turn_on">Turn on ${feature}</button>` +
       `</div>`,
-    open: `<fieldset class="lw-optout-region" id="${id}_region">`,
+    open: `<fieldset class="lw-optout-region" id="${id}_region" aria-label="${feature} settings">`,
     close: `</fieldset>`,
   };
 }
@@ -36,18 +40,25 @@ interface Clickable {
   addEventListener(type: "click", fn: () => void): void;
 }
 
-/** Find the pieces `optOutMarkup(id, …)` made and wire the banner's button
- *  to `turnOn` (the feature's usual way of turning on). Returns `apply`,
- *  for the page's render to call with the feature's current state. */
-export function wireOptOut(
-  id: string,
-  find: (id: string) => unknown,
-  turnOn: () => void,
-): (on: boolean) => void {
+export interface OptOutWiring {
+  /** The feature's usual way of turning on (its consent flow). */
+  turnOn: () => void;
+  /** The feature's own on / off switch: focus moves there after "Turn on"
+   *  (the banner and its button go away). */
+  switchId: string;
+}
+
+/** Find the pieces `optOutMarkup(id, …)` made and wire the banner's button.
+ *  Returns `apply`, for the page's render to call with the feature's
+ *  current state. */
+export function wireOptOut(id: string, find: (id: string) => unknown, w: OptOutWiring): (on: boolean) => void {
   const view: OptOutView = {
     banner: find(`${id}_off`) as OptOutView["banner"],
     region: find(`${id}_region`) as OptOutView["region"],
   };
-  (find(`${id}_turn_on`) as Clickable).addEventListener("click", turnOn);
+  (find(`${id}_turn_on`) as Clickable).addEventListener("click", () => {
+    w.turnOn();
+    (find(w.switchId) as { focus(): void }).focus();
+  });
   return (on) => applyOptOut(view, on);
 }

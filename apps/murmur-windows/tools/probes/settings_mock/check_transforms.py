@@ -65,6 +65,8 @@ with sync_playwright() as p:
     check("off: every control disabled, banner shown", s["region"] and s["all"] and s["banner"], s)
     check("off: cards still shown", len(texts("#tf_grid .lw-tf-card")) == 3 and pg.is_visible("#tf_grid"))
     check("off: the opt in switch stays usable", pg.is_enabled("#tf_enabled"))
+    check("off: the region is named", pg.get_attribute("#tf_region", "aria-label") == "Transforms settings")
+    check("off: the status holds only the text", pg.locator("#tf_off [role=status] button").count() == 0 and "Transforms is off." in pg.inner_text("#tf_off [role=status]"))
     pg.screenshot(path=str(out / "transforms-locked.png"), full_page=True)
     pg.click("#tf_turn_on")
     pg.wait_for_timeout(100)
@@ -72,6 +74,7 @@ with sync_playwright() as p:
     s = locked()
     check("on: unlocked at once, banner gone", not s["region"] and s["none"] and not s["banner"], s)
     check("on: the switch follows", pg.is_checked("#tf_enabled"))
+    check("on: focus on the switch", pg.evaluate("document.activeElement.id") == "tf_enabled", pg.evaluate("document.activeElement.id"))
     pg.click("#tf_enabled")
     pg.wait_for_timeout(100)
     s = locked()
@@ -90,7 +93,7 @@ with sync_playwright() as p:
     # Create.
     pg.click("#tf_new")
     check("editor opens", pg.is_visible("#tf_edit_dlg"))
-    check("next free shortcut offered", pg.input_value("#tf_shortcut") == "Win+Alt+1", pg.input_value("#tf_shortcut"))
+    check("next free shortcut offered", pg.input_value("#tf_shortcut") == "Win+Shift+B", pg.input_value("#tf_shortcut"))
     check("no delete on a new one", pg.is_hidden("#tf_edit_delete"))
     pg.click("#tf_edit_save")
     check("empty name refused", "name" in pg.inner_text("#tf_edit_err"))
@@ -102,7 +105,7 @@ with sync_playwright() as p:
     pg.click("#tf_edit_save")
     pg.wait_for_timeout(150)
     items = saved()["items"]
-    check("created with a slug id", len(items) == 3 and items[2]["transform"]["id"] == "make-it-friendly" and items[2]["shortcut"] == "Win+Alt+1", items[-1])
+    check("created with a slug id", len(items) == 3 and items[2]["transform"]["id"] == "make-it-friendly" and items[2]["shortcut"] == "Win+Shift+B", items[-1])
     check("dialog closed", not pg.is_visible("#tf_edit_dlg"))
     check("card shown", "Make it friendly!" in pg.inner_text("#tf_grid"))
 
@@ -113,7 +116,7 @@ with sync_playwright() as p:
     pg.click("#tf_edit_save")
     pg.wait_for_timeout(150)
     check("clash refused in the dialog", pg.is_visible("#tf_edit_dlg") and "twice" in pg.inner_text("#tf_edit_err"), pg.inner_text("#tf_edit_err"))
-    check("nothing saved on a clash", saved()["items"][2]["shortcut"] == "Win+Alt+1")
+    check("nothing saved on a clash", saved()["items"][2]["shortcut"] == "Win+Shift+B")
     pg.fill("#tf_shortcut", "")
     pg.click("#tf_edit_save")
     pg.wait_for_timeout(150)
