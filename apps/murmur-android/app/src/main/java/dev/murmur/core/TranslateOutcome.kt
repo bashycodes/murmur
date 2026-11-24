@@ -15,8 +15,17 @@ sealed interface TranslateOutcome {
      */
     data class Text(val text: String, val target: String = "", val onDevice: Boolean = false) : TranslateOutcome
 
-    /** [kind] = `TranslateError::kind()`; [message] = its user-facing text. The dictation is typed as said. */
-    data class Failed(val kind: String, val message: String) : TranslateOutcome
+    /**
+     * [kind] = `TranslateError::kind()`; [message] = its user-facing text; [target] / [targetName] =
+     * the language asked for and the core's English name for it, for [NOT_TRANSLATED] ("" otherwise,
+     * or from an older library). The dictation is typed as said.
+     */
+    data class Failed(
+        val kind: String,
+        val message: String,
+        val target: String = "",
+        val targetName: String = "",
+    ) : TranslateOutcome
 
     companion object {
         const val NO_TEXT = "no_text"
@@ -43,7 +52,12 @@ sealed interface TranslateOutcome {
             } else if (o.optBoolean("ok")) {
                 Failed(EMPTY, "AI returned no translation")
             } else {
-                Failed(o.optString("kind", BACKEND).ifEmpty { BACKEND }, o.optString("error", "").ifEmpty { "Translation failed" })
+                Failed(
+                    o.optString("kind", BACKEND).ifEmpty { BACKEND },
+                    o.optString("error", "").ifEmpty { "Translation failed" },
+                    o.optString("target", ""),
+                    o.optString("target_name", ""),
+                )
             }
         } catch (e: JSONException) {
             Failed(BACKEND, "Translation failed: unreadable answer")

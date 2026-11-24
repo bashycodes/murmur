@@ -20,6 +20,16 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 - **Android: the resting dictation bubble is a violet Murmur tile.** While it waits, the bubble is a rounded violet square with the dark Murmur mark, instead of the mark on a round dark pill; it takes the same space (smaller when shrunk) and the dot, recording, errors and hold-to-talk look as before.
 - **Speech recognition: on-screen words give the names on screen as hints, not whole chat bubbles.** With "Send on-screen words" on, the speech-recognition hints (Parakeet and Hebrew hotwords, the Whisper prompt) and mid-sentence casing now use up to 50 short name-like candidates from the screen (capitalised names, @mentions, sender and header labels), newest messages first. Whole bubbles filled the hint budget with the oldest sentences on a long screen and cut the names further down. The gain is on long screens and in speech recognition only: on a full screen in a synthetic test the names came out right in 35 % of clips instead of 10 %, at the same English error rate; on a short screen 35 % instead of 30 %. AI cleanup still gets the on-screen words as before (D107).
+- **Translate: the bar says why a translation failed.** Instead of "Not translated" for every failure, Android's bar and the Windows pill say "Couldn't translate to Hebrew. Typed as said.", "Translation timed out. Typed as said." or "No AI set up for translation." (Windows, while this PC's model is still loading: "AI still loading. Typed as said."); anything else is "Not translated. Typed as said." (D90).
+- **murmur-server: the log line for a cleanup request names its task** (`task=translate`, `task=cleanup` …), still without any text.
+
+### Fixed
+
+- **Translate: when one AI can't translate, the next one tries.** An answer not fully in the target language used to end the translation, even with the cloud set up. Now the next AI on your cleanup route tries: the cloud only when it is already set up and allowed for cleanup, then the on-device model. With the server as the only AI, nothing changes (D90).
+
+### Known issues
+
+- **Translate: English → Hebrew needs the cloud or a stronger model on your server.** The server's default 1.5B model leaves English words in its Hebrew, so with the server alone such a dictation is typed as said.
 
 ## [1.7.0] - 2026-11-24
 

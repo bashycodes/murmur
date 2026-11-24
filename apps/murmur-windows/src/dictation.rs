@@ -19,8 +19,8 @@
 //! Translation (D90): a `translate` session records like push-to-talk;
 //! its transcript goes through `Effect::Translate` (one LLM call that
 //! cleans and translates) → `Input::TranslateFinished`. On failure the
-//! untranslated text is pasted with a "Not translated" notice, like a
-//! skipped auto-apply transform.
+//! untranslated text is pasted with a notice that says why (wrong script,
+//! timeout, no AI), like a skipped auto-apply transform.
 //!
 //! Send to webhook (D105): a `webhook` session records like push-to-talk
 //! and is cleaned up as usual, but its text goes out as
@@ -191,7 +191,8 @@ pub enum Input {
         answer: String,
     },
     /// D90: a translation ran on a dictation's `original` text: the
-    /// translated text, or why there is none.
+    /// translated text, or the notice that says why there is none
+    /// (`TranslateError::notice`).
     TranslateFinished {
         session: SessionId,
         original: String,
@@ -348,9 +349,10 @@ pub const TRANSFORM_NO_SELECTION: &str = "Select text to transform";
 /// was pasted.
 pub const TRANSFORM_SKIPPED: &str = "Transform skipped";
 
-/// D90: notice after a translation failed and the untranslated text was
-/// pasted.
-pub const TRANSLATE_SKIPPED: &str = "Not translated";
+/// D90: notice after a translation failed for no more specific reason
+/// and the untranslated text was pasted (the core's
+/// `TranslateError::notice` says why when it knows).
+pub const TRANSLATE_SKIPPED: &str = murmur_core::translate::NOT_TRANSLATED_NOTICE;
 /// D92: push-to-talk presses seen while no dictation could start
 /// (processing), so a double tap begun then still locks.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -775,8 +777,8 @@ impl Dictation {
                 result,
             } if s == session && self.translate == Some(session) => match result {
                 Ok(text) => vec![Effect::Paste { session, text }],
-                Err(_) => {
-                    self.after_paste = Some((session, TRANSLATE_SKIPPED.into()));
+                Err(notice) => {
+                    self.after_paste = Some((session, notice));
                     vec![Effect::Paste {
                         session,
                         text: original,
@@ -2272,7 +2274,7 @@ mod tests {
             Input::TranslateFinished {
                 session: s,
                 original: "keep me".into(),
-                result: Err("needs AI".into()),
+                result: Err(murmur_core::translate::NO_LLM_NOTICE.into()),
             },
             2000,
         );
@@ -2296,7 +2298,7 @@ mod tests {
             vec![
                 Effect::Sound(Sound::Paste),
                 Effect::Overlay(OverlayState::Notice {
-                    message: TRANSLATE_SKIPPED.into()
+                    message: murmur_core::translate::NO_LLM_NOTICE.into()
                 })
             ]
         );
