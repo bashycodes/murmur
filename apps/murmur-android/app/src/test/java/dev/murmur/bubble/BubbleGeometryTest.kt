@@ -12,6 +12,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 class BubbleGeometryTest {
     private val idle = BubbleUi(DictationState.Idle)
@@ -177,8 +178,22 @@ class BubbleGeometryTest {
             assertTrue(u.toString(), BubbleGeometry.isTileLook(u))
         for (u in listOf(minimised, repair, ready.copy(repair = true), recTap, recHold, procTap, procHold, failedPaste, otherError, answer))
             assertFalse(u.toString(), BubbleGeometry.isTileLook(u))
-        // ic_bubble_tile's corners: 72 of its 256 units (tools/brand/gen-icons.py BUBBLE_TILE_RX), about 28 %.
-        assertEquals(0.28125f, BubbleGeometry.TILE_CORNER_FRACTION, 0f)
+    }
+
+    @Test fun tileCornerFractionMatchesTheGeneratedDrawable() {
+        // The shadow is drawn to TILE_CORNER_FRACTION; the tile's shape comes from tools/brand/gen-icons.py.
+        // Its first path is the outer rounded square "M<rx>,0h…" in a <viewportWidth>-unit box.
+        val xml = File("src/main/res/drawable/ic_bubble_tile.xml").readText()
+        val viewport = Regex("""android:viewportWidth="([0-9.]+)"""").find(xml)!!.groupValues[1].toFloat()
+        val rx = Regex("""android:pathData="M([0-9.]+),0h""").find(xml)!!.groupValues[1].toFloat()
+        assertEquals(rx / viewport, BubbleGeometry.TILE_CORNER_FRACTION, 1e-6f)
+    }
+
+    @Test fun tileKeepsItsPillOnlyForTheRestingExtras() {
+        for (u in listOf(readyCopy, ready.copy(showCommand = true), ready.copy(showTranslate = true)))
+            assertTrue(u.toString(), BubbleGeometry.tileHasPill(u))
+        for (u in listOf(idle, ready, minimised.copy(dot = false), minimised, repair, readyCopy.copy(repair = true), recTap, procTap))
+            assertFalse(u.toString(), BubbleGeometry.tileHasPill(u))
     }
 
     @Test fun tileLookKeepsTheRoundLooksWindowAndTouchTarget() {

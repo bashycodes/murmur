@@ -90,6 +90,12 @@ object BubbleGeometry {
      */
     fun isTileLook(u: BubbleUi): Boolean = showsMark(u) && !isDot(u)
 
+    /**
+     * The tile look still has its round pill: Ready with a resting extra (✎, ⇄ or ⧉) to the right, so the
+     * pill holds those buttons and runs out from under the tile. Without extras the bubble is just the tile.
+     */
+    fun tileHasPill(u: BubbleUi): Boolean = isTileLook(u) && u.state == DictationState.Ready && extras(u).isNotEmpty()
+
     /** Diameter of the plain minimised dot, unscaled ("Shrink to a dot"). */
     const val DOT_DP = 16f
 

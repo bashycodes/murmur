@@ -42,13 +42,15 @@ def contrast(a, b):
 
 def tile(paths, x, y, edge):
     s = edge / 256
-    # The pill-coloured shadow caster has the tile's shape, as BubbleView's drawRoundRect (72/256 corners).
+    # The pill-coloured shadow caster has the tile's shape, as BubbleView's drawRoundRect: corners of
+    # the outer path's rx ("M<rx>,0h…", in the 256-unit viewBox).
+    rx = float(paths[0][1][1:].split(",")[0])
     body = "".join(f'<path fill="{f}" d="{d}"/>' for f, d in paths)
-    return (f'<rect {SHADOW} x="{x}" y="{y}" width="{edge}" height="{edge}" rx="{edge * 72 / 256}" fill="{PILL}"/>'
+    return (f'<rect {SHADOW} x="{x}" y="{y}" width="{edge}" height="{edge}" rx="{edge * rx / 256}" fill="{PILL}"/>'
             f'<g transform="translate({x} {y}) scale({s})">{body}</g>')
 
 
-def background(name, colour, y):
+def background(colour, y):
     if colour:
         return f'<rect x="0" y="{y}" width="{W}" height="{ROW_H}" fill="{colour}"/>'
     words = ("The quick brown fox jumps over the lazy dog while the meeting notes scroll by, "
@@ -59,8 +61,8 @@ def background(name, colour, y):
     return f'<rect x="0" y="{y}" width="{W}" height="{ROW_H}" fill="#FAFAF7"/>{lines}'
 
 
-def row(paths, name, colour, y):
-    parts = [background(name, colour, y)]
+def row(paths, colour, y):
+    parts = [background(colour, y)]
     top = y + 14
     parts.append(tile(paths, 16, top, 56))  # Idle / Ready: the bubble is the tile
     parts.append(tile(paths, 96, top + 10, 36))  # shrunk, "Shrink to a dot" off
@@ -86,7 +88,7 @@ def main():
         if bg:
             print(f"on {name} {bg}: tile {contrast(fill, bg):.2f}:1, edge {contrast(ink, bg):.2f}:1")
     h = ROW_H * len(BACKGROUNDS)
-    rows = "".join(row(paths, n, c, i * ROW_H) for i, (n, c) in enumerate(BACKGROUNDS))
+    rows = "".join(row(paths, c, i * ROW_H) for i, (_, c) in enumerate(BACKGROUNDS))
     svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{W * PX}" height="{h * PX}" viewBox="0 0 {W} {h}">'
            f'<defs><filter id="sh" x="-20%" y="-20%" width="140%" height="150%">'
            f'<feDropShadow dx="0" dy="2" stdDeviation="1.5" flood-color="#1A1A1A" flood-opacity="0.3"/>'

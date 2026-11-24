@@ -10,8 +10,9 @@ Writes:
   apps/murmur-android/app/src/main/res/drawable/ic_bubble_tile.xml
       the resting dictation bubble itself: a flat rounded-square tile in the
       light violet of docs/brand/murmur-app.svg's gradient, edged and marked
-      in the bubble's vast-950 (the mark of murmur-mark-mono.svg, sized within
-      the tile as in murmur-app.svg), so it reads on light, dark and violet apps
+      in the bubble's vast-950 (the bars of murmur-mark-mono.svg at
+      murmur-app.svg's mark scale, re-centred on the tile from the bars'
+      bounding box), so it reads on light, dark and violet apps
   apps/murmur-windows/icons/{32x32.png,icon.png,icon.ico}
       rendered from docs/brand/murmur-app.svg; icon.ico holds 16-256 px
   docs/brand/murmur-social.png

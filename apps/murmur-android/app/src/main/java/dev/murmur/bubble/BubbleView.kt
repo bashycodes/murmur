@@ -16,7 +16,8 @@ import dev.murmur.session.DictationState
 import dev.murmur.session.DictationState.ErrorKind
 
 /**
- * Canvas-drawn bubble: the violet Murmur tile (Ready), minimised dot or small circle, recording row X·waveform·✓ (tap mode),
+ * Canvas-drawn bubble: the violet Murmur tile while resting (full or shrunk; a pill to its right for the resting
+ * extras), the minimised plain dot, recording row X·waveform·✓ (tap mode),
  * mic+waveform (hold mode), paste/copy/dismiss (FailedToPaste), copy/dismiss (a command's answer, shown in the
  * preview card), pulsing … (model still loading), alert (other errors).
  * Gestures go through [BubbleGesture]; the host decides what each action means.
@@ -103,7 +104,7 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
             return
         }
         // The tile look has no round pill under the main button; resting extras keep theirs, to its right.
-        if (!BubbleGeometry.isTileLook(ui) || width > h) canvas.drawRoundRect(RectF(0f, 0f, width.toFloat(), h), r, r, pill)
+        if (!BubbleGeometry.isTileLook(ui) || BubbleGeometry.tileHasPill(ui)) canvas.drawRoundRect(RectF(0f, 0f, width.toFloat(), h), r, r, pill)
         when (s) {
             DictationState.Idle, DictationState.Ready -> if (!BubbleGeometry.showsMark(ui)) {
                 // Repair: the pulsing alert.
@@ -115,9 +116,11 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
             } else {
                 // The bubble is the tile: the whole h×h main slot (56dp, or 36dp shrunk), over the pill's
                 // shadow drawn to the tile's shape. Its dark edge keeps it 3:1 on white and violet apps.
-                val corner = h * BubbleGeometry.TILE_CORNER_FRACTION
-                canvas.drawRoundRect(RectF(0f, 0f, h, h), corner, corner, pill)
-                tile.setBounds(0, 0, h.toInt(), h.toInt())
+                // One rounded size for the shadow and the tile, so they never differ by a pixel at fractional scales.
+                val edge = kotlin.math.round(h).toInt()
+                val corner = edge * BubbleGeometry.TILE_CORNER_FRACTION
+                canvas.drawRoundRect(RectF(0f, 0f, edge.toFloat(), edge.toFloat()), corner, corner, pill)
+                tile.setBounds(0, 0, edge, edge)
                 tile.draw(canvas)
                 if (ui.showCommand) circleButton(canvas, null, BubbleButton.COMMAND) { cx, cy -> drawGlyph(canvas, "✎", cx, cy) }
                 if (ui.showTranslate) circleButton(canvas, null, BubbleButton.TRANSLATE) { cx, cy -> drawGlyph(canvas, "⇄", cx, cy) }
