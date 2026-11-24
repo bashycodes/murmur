@@ -1428,15 +1428,21 @@ async fn llm_backend(
 /// "Download from" is Your server (D41/D79: its copy must match the
 /// built-in pins; never Hugging Face then), else from Hugging Face.
 /// Progress arrives as `model:download` events; on `done` the prefs point
-/// the local engine at it and it loads.
+/// the local engine at it and it loads. `auto_detect` (setup's folder
+/// checklist): with English, Hebrew and language detection all there once
+/// it is done, the language becomes "Detect automatically", as after the
+/// checklist's own import (`model_import::auto_detect_when_ready`).
 #[tauri::command]
 fn model_download_start(
     app: AppHandle,
     state: tauri::State<'_, AppState>,
     id: String,
+    auto_detect: Option<bool>,
 ) -> Result<(), String> {
     use crate::model_download as md;
     let entry = md::entry(&id).ok_or_else(|| format!("unknown model {id}"))?;
+    let appdata = state.appdata.clone();
+    let auto_detect = auto_detect.unwrap_or(false);
     #[cfg(feature = "remote")]
     let job = {
         let origin = download_origin(&state);
@@ -1470,7 +1476,12 @@ fn model_download_start(
         entry.size(),
         "download",
         job,
-        move |prefs, _path, dir| entry.apply_to(prefs, dir),
+        move |prefs, _path, dir| {
+            entry.apply_to(prefs, dir);
+            if auto_detect {
+                crate::model_import::auto_detect_when_ready(prefs, appdata.as_deref());
+            }
+        },
     )
 }
 
@@ -1514,20 +1525,46 @@ fn model_import_start(
     )
 }
 
+/// The latest folder scan: an older one still hashing stops.
+static FOLDER_SCAN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Payload of `model:folder-scan`: the file a folder scan is reading to
+/// tell which model it is (relative to the picked folder).
+#[derive(Clone, serde::Serialize)]
+struct FolderScanTick {
+    path: String,
+    file: String,
+}
+
 /// Setup's "Use model files on this PC" and Settings' "Import from
 /// folder…": which English, Hebrew and language-ID model the folder `path`
 /// holds, by their files (`model_import::scan_folder`), and what in it can't
-/// be used. Reads the listing only (plus files whose size is ambiguous).
+/// be used. Reads the listing, plus files whose size is ambiguous: each of
+/// those is announced as `model:folder-scan` first. The newest scan wins: a
+/// scan started meanwhile stops this one (`model_import::SCAN_STOPPED`).
 #[tauri::command]
 async fn model_folder_scan(
+    app: AppHandle,
     state: tauri::State<'_, AppState>,
     path: String,
 ) -> Result<crate::model_import::FolderScan, String> {
+    use std::sync::atomic::Ordering;
     let src = picked_path(&path)?;
     let dir = core_adapter::models_dir(state.appdata.as_deref());
-    tauri::async_runtime::spawn_blocking(move || crate::model_import::scan_folder(&src, &dir))
-        .await
-        .map_err(|e| e.to_string())?
+    let gen = FOLDER_SCAN.fetch_add(1, Ordering::SeqCst) + 1;
+    tauri::async_runtime::spawn_blocking(move || {
+        let stop = || FOLDER_SCAN.load(Ordering::SeqCst) != gen;
+        let mut checking = |file: &str| {
+            let tick = FolderScanTick {
+                path: path.clone(),
+                file: file.to_string(),
+            };
+            let _ = app.emit_to(SETTINGS, "model:folder-scan", tick);
+        };
+        crate::model_import::scan_folder(&src, &dir, &mut checking, &stop)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Install the `pick`ed rows of `model_folder_scan` (copied and checked

@@ -31,22 +31,35 @@
 //! not taken for the wrong one. A same-named file of another size, a model
 //! with files missing, and model-like files nothing claims are reported, not
 //! skipped. Each picked model then installs as above (all or nothing per
-//! model, the others unaffected).
+//! model, the others unaffected). Fingerprints worked out during a scan are
+//! kept (by path, size and modification time), so the import's own scan
+//! doesn't read those files again. A folder bigger than [`LIMITS`] is
+//! searched only up to them, and the scan says so.
 
 use crate::model_download::{
-    copy_verified, intact, part_path, sha256_file, CatalogEntry, ModelEngine, ModelFile, Progress,
-    State, Stop,
+    copy_verified, intact, part_path, CatalogEntry, ModelEngine, ModelFile, Progress, State, Stop,
 };
 use crate::prefs::{AsrEngineChoice, Prefs};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
+use std::time::SystemTime;
 
 /// How deep a picked folder is searched, and how many files at most.
-const MAX_DEPTH: usize = 4;
-const MAX_FILES: usize = 10_000;
+#[derive(Debug, Clone, Copy)]
+struct Limits {
+    depth: usize,
+    files: usize,
+}
+
+const LIMITS: Limits = Limits {
+    depth: 4,
+    files: 10_000,
+};
 
 /// A file the source offers.
 #[derive(Debug, Clone)]
@@ -84,9 +97,7 @@ impl Source {
         let meta =
             std::fs::metadata(src).map_err(|e| format!("could not open {}: {e}", src.display()))?;
         if meta.is_dir() {
-            let mut out = vec![];
-            walk(src, "", 0, &mut out)?;
-            return Ok(Source::Files(out));
+            return Ok(Source::Files(list_folder(src, LIMITS)?.0));
         }
         if is_zip(src) {
             let f = std::fs::File::open(src)
@@ -94,7 +105,7 @@ impl Source {
             let mut z = zip::ZipArchive::new(f)
                 .map_err(|e| format!("{} is not a readable zip: {e}", src.display()))?;
             let mut out = vec![];
-            for i in 0..z.len().min(MAX_FILES) {
+            for i in 0..z.len().min(LIMITS.files) {
                 let e = z
                     .by_index_raw(i)
                     .map_err(|e| format!("{} is not a readable zip: {e}", src.display()))?;
@@ -142,15 +153,35 @@ fn is_zip(p: &Path) -> bool {
         && (head == *b"PK\x03\x04" || head == *b"PK\x05\x06")
 }
 
+/// The files in folder `src`, up to `lim`; true when there was more.
+fn list_folder(src: &Path, lim: Limits) -> Result<(Vec<Candidate>, bool), String> {
+    if !src.is_dir() {
+        return Err(format!("{} is not a folder", src.display()));
+    }
+    let mut out = vec![];
+    let mut cut = false;
+    walk(src, "", 0, lim, &mut out, &mut cut)?;
+    Ok((out, cut))
+}
+
 /// `rel`: `dir` relative to the picked folder ("" for the folder itself).
-fn walk(dir: &Path, rel: &str, depth: usize, out: &mut Vec<Candidate>) -> Result<(), String> {
+/// `cut` is set when something was left out for `lim`.
+fn walk(
+    dir: &Path,
+    rel: &str,
+    depth: usize,
+    lim: Limits,
+    out: &mut Vec<Candidate>,
+    cut: &mut bool,
+) -> Result<(), String> {
     let rd =
         std::fs::read_dir(dir).map_err(|e| format!("could not read {}: {e}", dir.display()))?;
     let mut ents: Vec<_> = rd.flatten().collect();
     // The same folder gives the same scan on every PC.
     ents.sort_by_key(|e| e.file_name());
     for ent in ents {
-        if out.len() >= MAX_FILES {
+        if out.len() >= lim.files {
+            *cut = true;
             break;
         }
         // file_type() does not follow symlinks: a linked folder is skipped.
@@ -163,8 +194,10 @@ fn walk(dir: &Path, rel: &str, depth: usize, out: &mut Vec<Candidate>) -> Result
             format!("{rel}/{name}")
         };
         if ft.is_dir() {
-            if depth + 1 < MAX_DEPTH {
-                walk(&p, &sub, depth + 1, out)?;
+            if depth + 1 < lim.depth {
+                walk(&p, &sub, depth + 1, lim, out, cut)?;
+            } else {
+                *cut = true;
             }
         } else if let Ok(m) = std::fs::metadata(&p) {
             // Our own leftovers are never a source.
@@ -193,6 +226,56 @@ enum Hit {
     None,
 }
 
+/// A scan ended early (a newer one started, or the import was cancelled).
+#[derive(Debug)]
+struct Stopped;
+
+/// A file as its fingerprint was worked out: path, size, modification time.
+type HashKey = (PathBuf, u64, Option<SystemTime>);
+
+/// Fingerprints already worked out. The import scans its folder again and
+/// finds the scan's ones here, so a big file of a shared size is read once to
+/// tell which model it is and once more to copy it (checked on the way).
+fn hash_cache() -> &'static Mutex<HashMap<HashKey, String>> {
+    static CACHE: OnceLock<Mutex<HashMap<HashKey, String>>> = OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
+
+/// `p`'s SHA-256 (`None`: unreadable), from the cache or read now (`reading`
+/// is called first); `stop` is asked between chunks.
+fn fingerprint(
+    p: &Path,
+    reading: &mut dyn FnMut(),
+    stop: &dyn Fn() -> bool,
+) -> Result<Option<String>, Stopped> {
+    let Ok(meta) = std::fs::metadata(p) else {
+        return Ok(None);
+    };
+    let key = (p.to_path_buf(), meta.len(), meta.modified().ok());
+    if let Some(h) = hash_cache().lock().unwrap().get(&key) {
+        return Ok(Some(h.clone()));
+    }
+    reading();
+    let Ok(mut f) = std::fs::File::open(p) else {
+        return Ok(None);
+    };
+    let mut h = Sha256::new();
+    let mut buf = vec![0u8; 1 << 20];
+    loop {
+        if stop() {
+            return Err(Stopped);
+        }
+        match f.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => h.update(&buf[..n]),
+            Err(_) => return Ok(None),
+        }
+    }
+    let hex: String = h.finalize().iter().map(|b| format!("{b:02x}")).collect();
+    hash_cache().lock().unwrap().insert(key, hex.clone());
+    Ok(Some(hex))
+}
+
 /// Finds the source's file for each catalogue file. A file claimed by one
 /// model (`taken`) is not offered to another.
 struct Matcher<'a> {
@@ -202,6 +285,11 @@ struct Matcher<'a> {
     /// of such a size is hashed before it counts (folder scans only).
     shared: Vec<u64>,
     hashes: HashMap<usize, Option<String>>,
+    /// Told each file before it is read to hash it (the scan's "Checking …").
+    checking: Option<&'a mut dyn FnMut(&str)>,
+    stop: Option<&'a dyn Fn() -> bool>,
+    /// `stop` said stop: nothing more is hashed and the scan is void.
+    stopped: bool,
 }
 
 impl<'a> Matcher<'a> {
@@ -211,7 +299,16 @@ impl<'a> Matcher<'a> {
             taken: vec![false; cands.len()],
             shared,
             hashes: HashMap::new(),
+            checking: None,
+            stop: None,
+            stopped: false,
         }
+    }
+
+    fn watched(mut self, checking: &'a mut dyn FnMut(&str), stop: &'a dyn Fn() -> bool) -> Self {
+        self.checking = Some(checking);
+        self.stop = Some(stop);
+        self
     }
 
     /// `cands[i]` may be `f`: always, unless its size is shared, then by hash.
@@ -219,15 +316,33 @@ impl<'a> Matcher<'a> {
         if !self.shared.contains(&f.size) {
             return true;
         }
-        let Loc::Path(p) = &self.cands[i].at else {
+        let cands = self.cands;
+        let Loc::Path(p) = &cands[i].at else {
             return true;
         };
-        let p = p.clone();
-        self.hashes
-            .entry(i)
-            .or_insert_with(|| sha256_file(&p).ok())
-            .as_deref()
-            == Some(f.sha256)
+        if let Some(h) = self.hashes.get(&i) {
+            return h.as_deref() == Some(f.sha256);
+        }
+        if self.stopped {
+            return false;
+        }
+        let rel = &cands[i].rel;
+        let checking = &mut self.checking;
+        let mut reading = || {
+            if let Some(c) = checking.as_mut() {
+                c(rel)
+            }
+        };
+        let h = match fingerprint(p, &mut reading, self.stop.unwrap_or(&|| false)) {
+            Ok(h) => h,
+            Err(Stopped) => {
+                self.stopped = true;
+                return false;
+            }
+        };
+        let fits = h.as_deref() == Some(f.sha256);
+        self.hashes.insert(i, h);
+        fits
     }
 
     /// The folder holding most of `e`'s files by name and size; one named
@@ -572,6 +687,51 @@ pub const FOLDER_JOB_ID: &str = "folder-import";
 /// Row id of the language-ID model in [`FolderScan`] (not a catalogue id).
 pub const LID_ID: &str = "lid";
 const LID_TITLE: &str = "Whisper tiny (language detection)";
+/// A scan that a newer one replaced ([`scan_folder`]'s `stop`).
+pub const SCAN_STOPPED: &str = "stopped: another folder was picked";
+
+/// One of setup's three rows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RowKey {
+    English,
+    Hebrew,
+    Lid,
+}
+
+impl RowKey {
+    pub const ALL: [RowKey; 3] = [RowKey::English, RowKey::Hebrew, RowKey::Lid];
+}
+
+/// Something for each of setup's rows; in JSON `english`, `hebrew`, `lid`.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default, bound(deserialize = "T: Deserialize<'de> + Default"))]
+pub struct Rows<T> {
+    pub english: T,
+    pub hebrew: T,
+    pub lid: T,
+}
+
+impl<T> Rows<T> {
+    pub fn get(&self, k: RowKey) -> &T {
+        match k {
+            RowKey::English => &self.english,
+            RowKey::Hebrew => &self.hebrew,
+            RowKey::Lid => &self.lid,
+        }
+    }
+
+    pub fn get_mut(&mut self, k: RowKey) -> &mut T {
+        match k {
+            RowKey::English => &mut self.english,
+            RowKey::Hebrew => &mut self.hebrew,
+            RowKey::Lid => &mut self.lid,
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (RowKey, &T)> {
+        RowKey::ALL.into_iter().map(move |k| (k, self.get(k)))
+    }
+}
 
 /// One of setup's three rows.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -624,22 +784,18 @@ pub struct FileNote {
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct FolderScan {
     pub folder: String,
-    pub english: SlotView,
-    pub hebrew: SlotView,
-    pub lid: SlotView,
+    #[serde(flatten)]
+    pub rows: Rows<SlotView>,
     pub others: Vec<OtherModel>,
     pub problems: Vec<ModelProblem>,
     pub unrecognised: Vec<FileNote>,
+    /// The folder is too big or too deep to search whole ([`LIMITS`]): what
+    /// is past the limit was not looked at.
+    pub large: bool,
 }
 
 /// Which found rows to use (`model_folder_import`).
-#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
-#[serde(default)]
-pub struct FolderPick {
-    pub english: bool,
-    pub hebrew: bool,
-    pub lid: bool,
-}
+pub type FolderPick = Rows<bool>;
 
 /// What became of one row.
 #[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
@@ -659,12 +815,10 @@ pub enum SlotResult {
 /// `model_folder_import`'s answer.
 #[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
 pub struct FolderImportView {
-    pub english: SlotResult,
-    pub hebrew: SlotResult,
-    pub lid: SlotResult,
-    /// The language was set to "Detect automatically" (no fixed language,
-    /// "Keyboard language" off): English, Hebrew and language detection
-    /// are all there now.
+    #[serde(flatten)]
+    pub rows: Rows<SlotResult>,
+    /// The language was set to "Detect automatically"
+    /// ([`auto_detect_when_ready`]).
     pub auto_detect: bool,
     pub cancelled: bool,
 }
@@ -673,45 +827,62 @@ pub struct FolderImportView {
 #[derive(Debug)]
 pub struct FolderImport {
     pub view: FolderImportView,
-    english: Option<&'static CatalogEntry>,
-    hebrew: Option<&'static CatalogEntry>,
-    lid: bool,
+    /// The catalogue model behind each row (none for the language-ID row).
+    entries: Rows<Option<&'static CatalogEntry>>,
+    /// The rows that were installed.
+    done: Rows<bool>,
 }
 
 impl FolderImport {
     /// Point the prefs at what was imported, the same as after a download
-    /// of each; the language-ID model is the models folder's copy. With an
-    /// English model, a Hebrew model and language detection all usable now,
-    /// the language becomes "Detect automatically".
+    /// of each; the language-ID model is the models folder's copy. Then
+    /// setup's language default ([`auto_detect_when_ready`]).
     pub fn apply(&mut self, prefs: &mut Prefs, models_dir: &Path, appdata: Option<&str>) {
-        for e in [self.english, self.hebrew].into_iter().flatten() {
-            e.apply_to(prefs, models_dir);
+        for (k, e) in self.entries.iter() {
+            if let (true, Some(e)) = (*self.done.get(k), e) {
+                e.apply_to(prefs, models_dir);
+            }
         }
-        if self.lid {
+        if self.done.lid {
             prefs.lid_model_path = None;
         }
-        if (self.hebrew.is_some() || self.lid) && languages_ready(prefs, appdata) {
-            prefs.languages.clear();
-            prefs.keyboard_language = false;
+        if self.any() && auto_detect_when_ready(prefs, appdata) {
             self.view.auto_detect = true;
         }
     }
 
     /// Something was imported.
     pub fn any(&self) -> bool {
-        self.english.is_some() || self.hebrew.is_some() || self.lid
+        self.done.iter().any(|(_, d)| *d)
     }
 
     /// The rows that failed, for the final `model:download` event.
     pub fn errors(&self) -> Vec<String> {
-        [&self.view.english, &self.view.hebrew, &self.view.lid]
-            .into_iter()
-            .filter_map(|r| match r {
+        self.view
+            .rows
+            .iter()
+            .filter_map(|(_, r)| match r {
                 SlotResult::Failed { message } => Some(message.clone()),
                 _ => None,
             })
             .collect()
     }
+}
+
+/// Setup's language default, after its checklist installed something (a
+/// folder import, or a row's Download): with the default English model, a
+/// Hebrew model and the language-ID model all on this PC, the language
+/// becomes "Detect automatically", so the language-ID warning has nothing
+/// left to say. "Keyboard language" goes off too: it would otherwise pick
+/// each dictation's language from the keyboard layout and auto-detect would
+/// never run. True when the prefs were changed.
+pub fn auto_detect_when_ready(prefs: &mut Prefs, appdata: Option<&str>) -> bool {
+    if !languages_ready(prefs, appdata) {
+        return false;
+    }
+    prefs.languages.clear();
+    prefs.keyboard_language = false;
+    true
 }
 
 /// The default model, a Hebrew model and the language-ID model are on disk.
@@ -771,46 +942,56 @@ impl Slot {
     }
 }
 
-/// Which row a catalogue model fills.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Row {
-    English,
-    Hebrew,
-    /// AI cleanup: never one of setup's rows.
-    Other,
-}
-
-fn row_of(e: &CatalogEntry) -> Row {
+/// The row a catalogue model fills; none for AI cleanup models.
+fn row_of(e: &CatalogEntry) -> Option<RowKey> {
     if e.is_llm() {
-        Row::Other
+        None
     } else if e.language.is_some() {
-        Row::Hebrew
+        Some(RowKey::Hebrew)
     } else {
-        Row::English
+        Some(RowKey::English)
     }
 }
 
 #[derive(Debug)]
 struct Scan {
-    english: Slot,
-    hebrew: Slot,
-    lid: Slot,
+    rows: Rows<Slot>,
     others: Vec<OtherModel>,
     problems: Vec<ModelProblem>,
     unrecognised: Vec<FileNote>,
 }
 
 impl Scan {
-    fn view(&self, folder: &Path) -> FolderScan {
+    fn view(&self, folder: &Path, large: bool) -> FolderScan {
         FolderScan {
             folder: folder.display().to_string(),
-            english: self.english.view(),
-            hebrew: self.hebrew.view(),
-            lid: self.lid.view(),
+            rows: Rows {
+                english: self.rows.english.view(),
+                hebrew: self.rows.hebrew.view(),
+                lid: self.rows.lid.view(),
+            },
             others: self.others.clone(),
             problems: self.problems.clone(),
             unrecognised: self.unrecognised.clone(),
+            large,
         }
+    }
+}
+
+/// The models a folder is matched against (the catalogue, or a test's).
+#[derive(Clone, Copy)]
+struct Known<'a> {
+    catalog: &'static [CatalogEntry],
+    lid: &'static ModelFile,
+    /// This build runs the engine.
+    built: &'a dyn Fn(ModelEngine) -> bool,
+}
+
+fn known() -> Known<'static> {
+    Known {
+        catalog: crate::model_download::CATALOG,
+        lid: &crate::model_download::LID_FILES[0],
+        built: &crate::model_download::engine_built,
     }
 }
 
@@ -849,17 +1030,19 @@ fn model_like(name: &str) -> bool {
 }
 
 /// Sort a folder's files into setup's rows (see the module docs).
+/// `checking` is told each file read for its fingerprint; `stop` ends the
+/// scan early.
 fn scan_with(
     cands: &[Candidate],
-    catalog: &'static [CatalogEntry],
-    lid: &'static ModelFile,
+    k: Known,
     models_dir: &Path,
-    built: &dyn Fn(ModelEngine) -> bool,
-) -> Scan {
-    let mut m = Matcher::new(cands, shared_sizes(catalog, lid));
+    checking: &mut dyn FnMut(&str),
+    stop: &dyn Fn() -> bool,
+) -> Result<Scan, Stopped> {
+    let mut m = Matcher::new(cands, shared_sizes(k.catalog, k.lid)).watched(checking, stop);
     // 1. Complete models, catalogue order (the recommended ones come first).
     let mut complete: Vec<(&'static CatalogEntry, Plan)> = vec![];
-    for e in catalog {
+    for e in k.catalog {
         let before = m.taken.clone();
         let p = plan(e, models_dir, &mut m, SCAN);
         if p.complete() {
@@ -869,6 +1052,7 @@ fn scan_with(
         }
     }
     // 2. The language-ID model, a row of its own.
+    let lid = k.lid;
     let lid_target = models_dir.join(lid.name);
     let lid_slot = match m.find(lid, None) {
         Hit::Found(i) => {
@@ -907,22 +1091,22 @@ fn scan_with(
         }
         Hit::None => Slot::Missing,
     };
+    let mut rows = Rows {
+        english: Slot::Missing,
+        hebrew: Slot::Missing,
+        lid: lid_slot,
+    };
     // 3. The first complete model of each row that this build runs; the
     // rest are listed.
-    let mut english = Slot::Missing;
-    let mut hebrew = Slot::Missing;
     let mut others = vec![];
     for (e, p) in complete {
-        let slot = match row_of(e) {
-            Row::English => &mut english,
-            Row::Hebrew => &mut hebrew,
-            Row::Other => {
-                others.push(other(e));
-                continue;
-            }
+        let Some(row) = row_of(e) else {
+            others.push(other(e));
+            continue;
         };
+        let slot = rows.get_mut(row);
         let open = !matches!(slot, Slot::Found { .. });
-        if open && built(e.engine) {
+        if open && (k.built)(e.engine) {
             *slot = Slot::Found {
                 entry: Some(e),
                 title: e.title,
@@ -943,13 +1127,16 @@ fn scan_with(
     // 4. Broken or incomplete models: the one with the most matching files
     // first, so a broken Hebrew folder isn't reported as English.
     let mut broken: Vec<(&'static CatalogEntry, Plan)> = vec![];
-    for e in catalog {
+    for e in k.catalog {
         let before = m.taken.clone();
         let p = plan(e, models_dir, &mut m, SCAN);
         m.taken = before;
         if p.by_name > 0 {
             broken.push((e, p));
         }
+    }
+    if m.stopped {
+        return Err(Stopped);
     }
     broken.sort_by_key(|(_, p)| std::cmp::Reverse((p.found, p.by_name)));
     let mut problems = vec![];
@@ -960,12 +1147,7 @@ fn scan_with(
         for &i in &p.used {
             m.taken[i] = true;
         }
-        let slot = match row_of(e) {
-            Row::English => Some(&mut english),
-            Row::Hebrew => Some(&mut hebrew),
-            Row::Other => None,
-        };
-        match slot {
+        match row_of(e).map(|r| rows.get_mut(r)) {
             Some(s) if matches!(s, Slot::Missing) => {
                 *s = Slot::Problem {
                     title: e.title,
@@ -993,14 +1175,12 @@ fn scan_with(
             },
         })
         .collect();
-    Scan {
-        english,
-        hebrew,
-        lid: lid_slot,
+    Ok(Scan {
+        rows,
         others,
         problems,
         unrecognised,
-    }
+    })
 }
 
 fn other(e: &CatalogEntry) -> OtherModel {
@@ -1009,39 +1189,46 @@ fn other(e: &CatalogEntry) -> OtherModel {
         title: e.title.to_string(),
         size: e.files.iter().map(|f| f.size).sum(),
         kind: match row_of(e) {
-            Row::English => "speech",
-            Row::Hebrew => "hebrew",
-            Row::Other => "cleanup",
+            Some(RowKey::Hebrew) => "hebrew",
+            Some(_) => "speech",
+            None => "cleanup",
         },
     }
 }
 
-fn open_folder(src: &Path) -> Result<Source, String> {
-    if !src.is_dir() {
-        return Err(format!("{} is not a folder", src.display()));
-    }
-    Source::open(src)
+/// What `src` (a folder) holds for setup's checklist. Reads the folder's
+/// listing, plus the files whose size is ambiguous: `checking` is told each
+/// of those before it is read, and `stop` (a newer scan started) ends the
+/// scan with [`SCAN_STOPPED`]. Fingerprints are remembered for the import.
+pub fn scan_folder(
+    src: &Path,
+    models_dir: &Path,
+    checking: &mut dyn FnMut(&str),
+    stop: &dyn Fn() -> bool,
+) -> Result<FolderScan, String> {
+    scan_dir(src, models_dir, LIMITS, known(), checking, stop)
 }
 
-/// What `src` (a folder) holds for setup's checklist; reads only the
-/// folder's listing, plus the files whose size is ambiguous.
-pub fn scan_folder(src: &Path, models_dir: &Path) -> Result<FolderScan, String> {
-    let source = open_folder(src)?;
-    Ok(scan_with(
-        source.candidates(),
-        crate::model_download::CATALOG,
-        &crate::model_download::LID_FILES[0],
-        models_dir,
-        &crate::model_download::engine_built,
-    )
-    .view(src))
+fn scan_dir(
+    src: &Path,
+    models_dir: &Path,
+    lim: Limits,
+    k: Known,
+    checking: &mut dyn FnMut(&str),
+    stop: &dyn Fn() -> bool,
+) -> Result<FolderScan, String> {
+    let (cands, large) = list_folder(src, lim)?;
+    let scan = scan_with(&cands, k, models_dir, checking, stop)
+        .map_err(|Stopped| SCAN_STOPPED.to_string())?;
+    Ok(scan.view(src, large))
 }
 
 /// Install the `pick`ed rows found in `src` (scanned again: the folder may
-/// have changed since the checklist). Each model is all or nothing; one
-/// that fails leaves the others installed. Progress goes out as
-/// [`FOLDER_JOB_ID`]; the caller sends the final state after
-/// [`FolderImport::apply`].
+/// have changed since the checklist; fingerprints the scan worked out are
+/// reused, so each file is read once more, to copy and check it). Each
+/// model is all or nothing; one that fails leaves the others installed.
+/// Progress goes out as [`FOLDER_JOB_ID`]; the caller sends the final state
+/// after [`FolderImport::apply`].
 pub fn import_folder(
     src: &Path,
     models_dir: &Path,
@@ -1049,110 +1236,88 @@ pub fn import_folder(
     cancel: &AtomicBool,
     emit: &mut dyn FnMut(Progress),
 ) -> Result<FolderImport, Stop> {
-    import_with(
-        src,
-        models_dir,
-        pick,
-        crate::model_download::CATALOG,
-        &crate::model_download::LID_FILES[0],
-        &crate::model_download::engine_built,
-        cancel,
-        emit,
-    )
+    import_with(src, models_dir, pick, known(), cancel, emit)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn import_with(
     src: &Path,
     models_dir: &Path,
     pick: FolderPick,
-    catalog: &'static [CatalogEntry],
-    lid: &'static ModelFile,
-    built: &dyn Fn(ModelEngine) -> bool,
+    k: Known,
     cancel: &AtomicBool,
     emit: &mut dyn FnMut(Progress),
 ) -> Result<FolderImport, Stop> {
-    let mut source = open_folder(src).map_err(Stop::Failed)?;
-    let cands = source.candidates().to_vec();
-    let scan = scan_with(&cands, catalog, lid, models_dir, built);
-    let rows = [
-        (pick.english, &scan.english),
-        (pick.hebrew, &scan.hebrew),
-        (pick.lid, &scan.lid),
-    ];
-    let total: u64 = rows
-        .iter()
-        .filter(|(on, _)| *on)
-        .map(|(_, s)| match s {
+    let (cands, _) = list_folder(src, LIMITS).map_err(Stop::Failed)?;
+    let mut source = Source::Files(cands.clone());
+    let stop = || cancel.load(Ordering::SeqCst);
+    let scan =
+        scan_with(&cands, k, models_dir, &mut |_| {}, &stop).map_err(|Stopped| Stop::Cancelled)?;
+    let steps_of = |s: &Slot| -> u64 {
+        match s {
             Slot::Found { steps, .. } => steps.iter().map(|x| x.f.size).sum(),
             _ => 0,
-        })
+        }
+    };
+    let total: u64 = scan
+        .rows
+        .iter()
+        .filter(|(row, _)| *pick.get(*row))
+        .map(|(_, s)| steps_of(s))
         .sum();
     let mut out = FolderImport {
         view: FolderImportView::default(),
-        english: None,
-        hebrew: None,
-        lid: false,
+        entries: Rows::default(),
+        done: Rows::default(),
     };
     let mut done = 0u64;
-    for (n, (on, slot)) in rows.into_iter().enumerate() {
-        if !on {
+    for (row, slot) in scan.rows.iter() {
+        if !*pick.get(row) {
             continue;
         }
-        let result = if out.view.cancelled {
-            SlotResult::Skipped
-        } else {
-            match slot {
-                Slot::Found {
-                    entry,
-                    title,
-                    steps,
-                    ..
-                } => {
-                    let r = install(&mut source, &cands, steps, cancel, &mut |k, state| {
-                        emit(Progress {
-                            id: FOLDER_JOB_ID.to_string(),
-                            received: done + k,
-                            total,
-                            state,
-                            error: None,
-                            path: None,
-                        })
-                    });
-                    done += steps.iter().map(|x| x.f.size).sum::<u64>();
-                    match r {
-                        Ok(()) => {
-                            match n {
-                                0 => out.english = *entry,
-                                1 => out.hebrew = *entry,
-                                _ => out.lid = true,
-                            }
-                            SlotResult::Imported {
-                                id: entry.map_or(LID_ID, |e| e.id).to_string(),
-                                title: title.to_string(),
-                            }
+        let result = match slot {
+            _ if out.view.cancelled => SlotResult::Skipped,
+            Slot::Found {
+                entry,
+                title,
+                steps,
+                ..
+            } => {
+                let r = install(&mut source, &cands, steps, cancel, &mut |n, state| {
+                    emit(Progress {
+                        id: FOLDER_JOB_ID.to_string(),
+                        received: done + n,
+                        total,
+                        state,
+                        error: None,
+                        path: None,
+                    })
+                });
+                done += steps_of(slot);
+                match r {
+                    Ok(()) => {
+                        *out.entries.get_mut(row) = *entry;
+                        *out.done.get_mut(row) = true;
+                        SlotResult::Imported {
+                            id: entry.map_or(LID_ID, |e| e.id).to_string(),
+                            title: title.to_string(),
                         }
-                        Err(Stop::Cancelled) => {
-                            out.view.cancelled = true;
-                            SlotResult::Failed {
-                                message: format!("{title}: cancelled. Nothing of it was kept."),
-                            }
-                        }
-                        Err(Stop::Failed(m)) => SlotResult::Failed {
-                            message: format!("{title}: {m}"),
-                        },
                     }
+                    Err(Stop::Cancelled) => {
+                        out.view.cancelled = true;
+                        SlotResult::Failed {
+                            message: format!("{title}: cancelled. Nothing of it was kept."),
+                        }
+                    }
+                    Err(Stop::Failed(m)) => SlotResult::Failed {
+                        message: format!("{title}: {m}"),
+                    },
                 }
-                Slot::Missing | Slot::Problem { .. } => SlotResult::Failed {
-                    message: "no longer in that folder".into(),
-                },
             }
+            Slot::Missing | Slot::Problem { .. } => SlotResult::Failed {
+                message: "no longer in that folder".into(),
+            },
         };
-        match n {
-            0 => out.view.english = result,
-            1 => out.view.hebrew = result,
-            _ => out.view.lid = result,
-        }
+        *out.view.rows.get_mut(row) = result;
     }
     Ok(out)
 }
@@ -1676,16 +1841,28 @@ mod tests {
             }
         }
 
-        fn scan(&self) -> FolderScan {
-            let source = open_folder(&self.src).unwrap();
-            scan_with(
-                source.candidates(),
-                self.catalog,
-                self.lid,
+        fn known(&self) -> Known<'static> {
+            Known {
+                catalog: self.catalog,
+                lid: self.lid,
+                built: &|_| true,
+            }
+        }
+
+        fn scan_limited(&self, lim: Limits) -> FolderScan {
+            scan_dir(
+                &self.src,
                 &self.models,
-                &|_| true,
+                lim,
+                self.known(),
+                &mut |_| {},
+                &|| false,
             )
-            .view(&self.src)
+            .unwrap()
+        }
+
+        fn scan(&self) -> FolderScan {
+            self.scan_limited(LIMITS)
         }
 
         fn import(&self, pick: FolderPick) -> FolderImport {
@@ -1693,9 +1870,7 @@ mod tests {
                 &self.src,
                 &self.models,
                 pick,
-                self.catalog,
-                self.lid,
-                &|_| true,
+                self.known(),
                 &AtomicBool::new(false),
                 &mut |_| {},
             )
@@ -1753,18 +1928,20 @@ mod tests {
         put(&fx.src, "library/he-model/model.toml", b"kind = 'hebrew'");
         put(&fx.src, "library/cleanup/c.gguf", LLM);
         let s = fx.scan();
-        assert_eq!(found(&s.english), ("en-model", "library/en-model"));
-        assert_eq!(found(&s.hebrew), ("he-model", "library/he-model"));
-        assert_eq!(found(&s.lid), (LID_ID, "library/whisper-tiny-lid"));
+        assert_eq!(found(&s.rows.english), ("en-model", "library/en-model"));
+        assert_eq!(found(&s.rows.hebrew), ("he-model", "library/he-model"));
+        assert_eq!(found(&s.rows.lid), (LID_ID, "library/whisper-tiny-lid"));
         // The cleanup model is listed, not used; model.toml is no model file.
         assert_eq!(s.others.len(), 1);
         assert_eq!(s.others[0].kind, "cleanup");
         assert!(s.problems.is_empty() && s.unrecognised.is_empty(), "{s:?}");
 
         let (r, prefs) = fx.import_and_apply(ALL);
-        assert!(matches!(&r.view.english, SlotResult::Imported { id, .. } if id == "en-model"));
-        assert!(matches!(&r.view.hebrew, SlotResult::Imported { id, .. } if id == "he-model"));
-        assert!(matches!(&r.view.lid, SlotResult::Imported { id, .. } if id == LID_ID));
+        assert!(
+            matches!(&r.view.rows.english, SlotResult::Imported { id, .. } if id == "en-model")
+        );
+        assert!(matches!(&r.view.rows.hebrew, SlotResult::Imported { id, .. } if id == "he-model"));
+        assert!(matches!(&r.view.rows.lid, SlotResult::Imported { id, .. } if id == LID_ID));
         assert!(r.errors().is_empty());
         let he = crate::core_adapter::ZIPFORMER_HE_DIR;
         let mut want = vec![
@@ -1801,9 +1978,12 @@ mod tests {
         // A renamed language-ID file: found by its pinned size, the hash decides.
         put(&fx.src, "detect.bin", LID);
         let s = fx.scan();
-        assert_eq!(found(&s.english), ("en-model", "My English"));
-        assert_eq!(found(&s.hebrew), ("he-model", "copied from usb/hebrew"));
-        assert_eq!(found(&s.lid), (LID_ID, ""));
+        assert_eq!(found(&s.rows.english), ("en-model", "My English"));
+        assert_eq!(
+            found(&s.rows.hebrew),
+            ("he-model", "copied from usb/hebrew")
+        );
+        assert_eq!(found(&s.rows.lid), (LID_ID, ""));
         let (r, prefs) = fx.import_and_apply(ALL);
         assert!(r.errors().is_empty(), "{:?}", r.errors());
         assert!(fx.catalog[0].installed(&fx.models) && fx.catalog[1].complete(&fx.models));
@@ -1825,9 +2005,9 @@ mod tests {
         put(&fx.src, "en-tokens.txt", EN_TOK);
         put(&fx.src, "ggml-tiny-q5_1.bin", LID);
         let s = fx.scan();
-        assert_eq!(found(&s.english).0, "en-model");
-        assert_eq!(found(&s.hebrew).0, "he-model");
-        assert_eq!(found(&s.lid).0, LID_ID);
+        assert_eq!(found(&s.rows.english).0, "en-model");
+        assert_eq!(found(&s.rows.hebrew).0, "he-model");
+        assert_eq!(found(&s.rows.lid).0, LID_ID);
         assert!(s.unrecognised.is_empty(), "{:?}", s.unrecognised);
         let (r, _) = fx.import_and_apply(ALL);
         assert!(r.errors().is_empty(), "{:?}", r.errors());
@@ -1842,7 +2022,11 @@ mod tests {
         let fx = Fixture::new("empty");
         let s = fx.scan();
         assert_eq!(
-            (s.english.clone(), s.hebrew.clone(), s.lid.clone()),
+            (
+                s.rows.english.clone(),
+                s.rows.hebrew.clone(),
+                s.rows.lid.clone()
+            ),
             (SlotView::Missing, SlotView::Missing, SlotView::Missing)
         );
         assert!(s.others.is_empty() && s.problems.is_empty() && s.unrecognised.is_empty());
@@ -1868,16 +2052,16 @@ mod tests {
             put(&fx.src, &format!("he/{n}"), b);
         }
         let s = fx.scan();
-        assert_eq!(found(&s.english).0, "en-model");
-        assert_eq!(found(&s.lid).0, LID_ID);
-        assert_eq!(problem(&s.hebrew), "tokens.txt not found");
+        assert_eq!(found(&s.rows.english).0, "en-model");
+        assert_eq!(found(&s.rows.lid).0, LID_ID);
+        assert_eq!(problem(&s.rows.hebrew), "tokens.txt not found");
         // English and language detection only: no Hebrew, so the language stays.
         let (r, prefs) = fx.import_and_apply(FolderPick {
             english: true,
             hebrew: false,
             lid: true,
         });
-        assert_eq!(r.view.hebrew, SlotResult::Skipped);
+        assert_eq!(r.view.rows.hebrew, SlotResult::Skipped);
         assert!(r.errors().is_empty());
         assert!(!r.view.auto_detect);
         assert_eq!(prefs.languages, en_only());
@@ -1896,7 +2080,7 @@ mod tests {
         hebrew(&fx.src, "he");
         put(&fx.src, "ggml-tiny-q5_1.bin", LID);
         let s = fx.scan();
-        assert_eq!(s.english, SlotView::Missing);
+        assert_eq!(s.rows.english, SlotView::Missing);
         let (r, prefs) = fx.import_and_apply(FolderPick {
             english: false,
             hebrew: true,
@@ -1924,12 +2108,16 @@ mod tests {
         put(&fx.src, "readme.md", b"not a model file, not listed");
         let s = fx.scan();
         // A wrong hash shows when the files are copied (each is read once).
-        assert_eq!(found(&s.english).0, "en-model");
+        assert_eq!(found(&s.rows.english).0, "en-model");
         assert!(
-            problem(&s.hebrew).contains("encoder.int8.onnx is 10 bytes, Hebrew model needs 18"),
+            problem(&s.rows.hebrew)
+                .contains("encoder.int8.onnx is 10 bytes, Hebrew model needs 18"),
             "{s:?}"
         );
-        assert!(problem(&s.lid).contains("is 25 bytes, needs 23"), "{s:?}");
+        assert!(
+            problem(&s.rows.lid).contains("is 25 bytes, needs 23"),
+            "{s:?}"
+        );
         let notes: Vec<(&str, &str)> = s
             .unrecognised
             .iter()
@@ -1943,7 +2131,7 @@ mod tests {
             ]
         );
         let (r, prefs) = fx.import_and_apply(ALL);
-        match &r.view.english {
+        match &r.view.rows.english {
             SlotResult::Failed { message } => assert!(
                 message.contains("tokens.txt did not match its fingerprint"),
                 "{message}"
@@ -1969,9 +2157,9 @@ mod tests {
         hebrew(&fx.src, "he");
         put(&fx.src, "ggml-tiny-q5_1.bin", LID);
         let (r, prefs) = fx.import_and_apply(ALL);
-        assert!(matches!(r.view.english, SlotResult::Failed { .. }));
-        assert!(matches!(r.view.hebrew, SlotResult::Imported { .. }));
-        assert!(matches!(r.view.lid, SlotResult::Imported { .. }));
+        assert!(matches!(r.view.rows.english, SlotResult::Failed { .. }));
+        assert!(matches!(r.view.rows.hebrew, SlotResult::Imported { .. }));
+        assert!(matches!(r.view.rows.lid, SlotResult::Imported { .. }));
         assert!(fx.catalog[1].complete(&fx.models));
         assert!(files_in(&fx.models.join("en-model")).is_empty());
         assert_eq!(prefs.hebrew_model, crate::prefs::HebrewModel::Zipformer);
@@ -1984,7 +2172,7 @@ mod tests {
         let fx = Fixture::new("file");
         put(&fx.src, "ggml-tiny-q5_1.bin", LID);
         let f = fx.src.join("ggml-tiny-q5_1.bin");
-        assert!(scan_folder(&f, &fx.models)
+        assert!(scan_folder(&f, &fx.models, &mut |_| {}, &|| false)
             .unwrap_err()
             .contains("is not a folder"));
     }
@@ -2013,22 +2201,180 @@ mod tests {
             at: Loc::Zip(0),
         });
         let d = tmp("real-catalogue");
-        let s = scan_with(&cands, crate::model_download::CATALOG, lid, &d, &|_| true).view(&d);
+        let k = Known {
+            catalog: crate::model_download::CATALOG,
+            lid,
+            built: &|_| true,
+        };
+        let s = scan_with(&cands, k, &d, &mut |_| {}, &|| false)
+            .unwrap()
+            .view(&d, false);
         assert_eq!(
-            found(&s.english),
+            found(&s.rows.english),
             (
                 "parakeet-tdt-0.6b-v2-int8",
                 "library/parakeet-tdt-0.6b-v2-int8"
             )
         );
         assert_eq!(
-            found(&s.hebrew),
+            found(&s.rows.hebrew),
             ("zipformer-he-int8", "library/zipformer-he-int8")
         );
-        assert_eq!(found(&s.lid), (LID_ID, "library/whisper-tiny-lid"));
+        assert_eq!(found(&s.rows.lid), (LID_ID, "library/whisper-tiny-lid"));
         // Every other model is listed; nothing is a problem or unknown.
         assert_eq!(s.others.len(), crate::model_download::CATALOG.len() - 2);
         assert!(s.problems.is_empty() && s.unrecognised.is_empty(), "{s:?}");
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_folder_past_the_limits_says_it_is_large() {
+        // Deeper than the search goes: not looked at, and said so.
+        let fx = Fixture::new("deep");
+        put(&fx.src, "a/b/c/d/ggml-tiny-q5_1.bin", LID);
+        let s = fx.scan();
+        assert!(s.large);
+        assert_eq!(s.rows.lid, SlotView::Missing);
+        // More files than the limit.
+        let fx = Fixture::new("many");
+        for n in 0..5 {
+            put(&fx.src, &format!("f{n}.txt"), b"x");
+        }
+        let lim = |files| Limits { depth: 4, files };
+        assert!(fx.scan_limited(lim(3)).large);
+        assert!(!fx.scan_limited(lim(5)).large);
+        // The usual layouts are well inside them.
+        let fx = Fixture::new("not-large");
+        english(&fx.src, "library/en-model");
+        assert!(!fx.scan().large);
+    }
+
+    #[test]
+    fn a_scans_fingerprints_are_reused_by_the_import() {
+        let fx = Fixture::new("hash-once");
+        // The decoder's size is shared with the Hebrew one: it is hashed.
+        english(&fx.src, "en");
+        let scan = |seen: &mut Vec<String>| {
+            scan_dir(
+                &fx.src,
+                &fx.models,
+                LIMITS,
+                fx.known(),
+                &mut |f| seen.push(f.to_string()),
+                &|| false,
+            )
+            .unwrap()
+        };
+        let mut seen = vec![];
+        let s = scan(&mut seen);
+        assert_eq!(found(&s.rows.english).0, "en-model");
+        assert_eq!(seen, vec!["en/decoder.int8.onnx".to_string()]);
+        // The import's own scan reads nothing to hash again.
+        let mut again = vec![];
+        assert_eq!(scan(&mut again), s);
+        assert!(again.is_empty(), "{again:?}");
+        // A changed file (same size, newer time) is hashed again. The time
+        // is set: a rewrite within one clock tick keeps the old one.
+        let dec = fx.src.join("en/decoder.int8.onnx");
+        put(&fx.src, "en/decoder.int8.onnx", b"decoder-B");
+        let later = std::fs::metadata(&dec).unwrap().modified().unwrap()
+            + std::time::Duration::from_secs(5);
+        std::fs::File::options()
+            .write(true)
+            .open(&dec)
+            .unwrap()
+            .set_modified(later)
+            .unwrap();
+        let mut changed = vec![];
+        scan(&mut changed);
+        assert_eq!(changed, vec!["en/decoder.int8.onnx".to_string()]);
+    }
+
+    #[test]
+    fn a_stopped_scan_answers_nothing() {
+        let fx = Fixture::new("stopped");
+        english(&fx.src, "en");
+        let e = scan_dir(
+            &fx.src,
+            &fx.models,
+            LIMITS,
+            fx.known(),
+            &mut |_| {},
+            &|| true,
+        )
+        .unwrap_err();
+        assert_eq!(e, SCAN_STOPPED);
+    }
+
+    #[test]
+    fn a_download_that_completes_the_set_turns_on_auto_detect() {
+        // As after a checklist row's Download of the Hebrew model: the
+        // English model and the language-ID model came from the folder.
+        let fx = Fixture::new("download");
+        english(&fx.src, "en");
+        put(&fx.src, "ggml-tiny-q5_1.bin", LID);
+        let (r, mut prefs) = fx.import_and_apply(FolderPick {
+            english: true,
+            hebrew: false,
+            lid: true,
+        });
+        assert!(!r.view.auto_detect);
+        assert!(!auto_detect_when_ready(&mut prefs, fx.appdata.to_str()));
+        assert_eq!(prefs.languages, en_only());
+        // The download saves the Hebrew files and points the prefs at them.
+        let he = &fx.catalog[1];
+        for (f, b) in he.files.iter().zip([HE_ENC, HE_DEC, HE_JOIN, HE_TOK]) {
+            put(&fx.models, &format!("{}/{}", he.dest, f.name), b);
+        }
+        he.apply_to(&mut prefs, &fx.models);
+        assert!(auto_detect_when_ready(&mut prefs, fx.appdata.to_str()));
+        assert!(prefs.languages.is_empty() && !prefs.keyboard_language);
+    }
+
+    #[test]
+    fn an_english_import_that_completes_the_set_turns_on_auto_detect() {
+        let fx = Fixture::new("english-last");
+        hebrew(&fx.src, "he");
+        put(&fx.src, "ggml-tiny-q5_1.bin", LID);
+        let (r, mut prefs) = fx.import_and_apply(ALL);
+        // No English model yet (the default, Whisper base, is not on disk).
+        assert!(!r.view.auto_detect);
+        english(&fx.src, "en");
+        let mut r = fx.import(FolderPick {
+            english: true,
+            hebrew: false,
+            lid: false,
+        });
+        r.apply(&mut prefs, &fx.models, fx.appdata.to_str());
+        assert!(r.view.auto_detect);
+        assert!(prefs.languages.is_empty() && !prefs.keyboard_language);
+    }
+
+    #[test]
+    fn the_rows_serialize_flat() {
+        let v = serde_json::to_value(FolderImportView {
+            rows: Rows {
+                english: SlotResult::Imported {
+                    id: "e".into(),
+                    title: "E".into(),
+                },
+                ..Rows::default()
+            },
+            auto_detect: true,
+            cancelled: false,
+        })
+        .unwrap();
+        assert_eq!(v["english"]["state"], "imported");
+        assert_eq!(v["lid"]["state"], "skipped");
+        assert_eq!(v["auto_detect"], true);
+        let p: FolderPick = serde_json::from_str(r#"{"hebrew":true}"#).unwrap();
+        assert_eq!(
+            p,
+            FolderPick {
+                english: false,
+                hebrew: true,
+                lid: false
+            }
+        );
     }
 }
