@@ -22,7 +22,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Changed
 
-- **AI cleanup defaults to Medium strength** (was Light) on Windows and Android. A fresh install starts at Medium; on Android, turning AI cleanup on without picking a strength cleans at Medium and the picker shows it. A strength you already saved, Light included, is kept (an Android install that never picked one keeps the Light it ran at), and whether AI cleanup is on by default does not change. The shared core's fallback for a config without a level stays Light.
+- **AI cleanup defaults to Medium strength** (was Light) on Windows and Android. Only a fresh install starts at Medium; on a fresh Android install, turning AI cleanup on without picking a strength cleans at Medium and the picker shows it. An existing install keeps the strength it runs at today: a saved Light, High or No AI stays, and an Android install that never picked a strength (including restores of older backups) keeps the Light it ran at. Whether AI cleanup is on by default does not change. The shared core's fallback for a config without a level stays Light.
 
 ### Removed
 

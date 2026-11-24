@@ -151,24 +151,13 @@ data class Settings(
 
         /**
          * The AI cleanup strength when none was picked (stored NONE: the picker offers only
-         * Light / Medium / High). Medium; it was Light. A picked strength is kept.
+         * Light / Medium / High). Medium; it was Light. A picked strength is kept, and an
+         * install from before keeps the Light it ran at ([StrengthDefault]).
          */
         val DEFAULT_STRENGTH = CleanupLevel.MEDIUM
 
         /** The strength a [stored] level runs at when AI cleanup is on. */
         fun strengthOf(stored: CleanupLevel) = stored.takeIf { it != CleanupLevel.NONE } ?: DEFAULT_STRENGTH
-
-        /**
-         * One-time keep of the old strength default. A NONE saved before the default moved
-         * ([migrated] false) ran, and was shown, as Light: it becomes an explicit LIGHT so an
-         * upgrade does not change it. Never saved (null) is a fresh install: NONE, which runs
-         * as [DEFAULT_STRENGTH]. Anything else, and anything saved after this ran, is kept.
-         */
-        fun migrateStrength(stored: CleanupLevel?, migrated: Boolean): CleanupLevel = when {
-            stored == null -> CleanupLevel.NONE
-            !migrated && stored == CleanupLevel.NONE -> CleanupLevel.LIGHT
-            else -> stored
-        }
 
         /** Phones decode slower than the desktop default budget of 1.5 s. */
         const val ANDROID_LLM_TIMEOUT_MS = 3_000L

@@ -130,16 +130,6 @@ class FieldContextBuilderTest {
         assertEquals("2000 chosen after the migration is kept", 2000, Settings.migrateEndpointMs(stored = 2000, migrated = true))
     }
 
-    @Test fun strengthDefaultMovesOnlyForFreshInstalls() {
-        val none = CleanupLevel.NONE
-        assertEquals("never saved: runs the new default", none, Settings.migrateStrength(stored = null, migrated = false))
-        assertEquals(CleanupLevel.MEDIUM, Settings.strengthOf(Settings.migrateStrength(stored = null, migrated = false)))
-        assertEquals("an upgrader's never-picked NONE ran as Light: kept", CleanupLevel.LIGHT, Settings.migrateStrength(stored = none, migrated = false))
-        for (l in listOf(CleanupLevel.LIGHT, CleanupLevel.MEDIUM, CleanupLevel.HIGH)) {
-            assertEquals("picked $l is kept", l, Settings.migrateStrength(stored = l, migrated = false))
-        }
-        assertEquals("NONE saved after the move runs the new default", none, Settings.migrateStrength(stored = none, migrated = true))
-    }
 }
 
 /** 2026-10-23: English dictations came out as Bulgarian with `auto` on 2 s clips (findings). */

@@ -181,8 +181,11 @@ pub struct Prefs {
     /// Read the focused field via UIA (local only; never leaves the machine).
     pub use_ax_context: bool,
     /// AI cleanup strength; `None` = "No AI" / "Verbatim". A fresh install
-    /// starts at Medium (it was Light). Every field is saved, so a level an
-    /// older version wrote, Light included, stays as it is.
+    /// starts at Medium (it was Light). The field has been in `Prefs` since
+    /// the first `prefs.json`, and `save` writes every field, so every file a
+    /// released version wrote holds it: a saved level, Light included, stays.
+    /// Only a hand-made file without the key gets Medium. The setup UI's
+    /// `DEFAULT_LEVEL` (`ui/src/lib/setup-cleanup.ts`) must match.
     pub cleanup_level: CleanupLevel,
     pub raw_mode: bool,
     pub styles: Styles,
@@ -1242,6 +1245,23 @@ mod tests {
             );
             assert_eq!(p.cleanup_level, level, "a saved {wire} is kept");
         }
+        // Every released prefs.json holds the key; a file without it is not
+        // an upgrade and takes the new default, on purpose.
+        let (p, _) = load_str(
+            "level-nokey",
+            &format!(r#"{{"prefs_rev":{PREFS_REV},"onboarded":true}}"#),
+        );
+        assert_eq!(p.cleanup_level, CleanupLevel::Medium);
+    }
+
+    #[test]
+    fn setup_ui_default_level_matches_the_prefs_default() {
+        let ts = include_str!("../ui/src/lib/setup-cleanup.ts");
+        let wire = serde_json::to_string(&Prefs::default().cleanup_level).unwrap();
+        assert!(
+            ts.contains(&format!("export const DEFAULT_LEVEL = {wire};")),
+            "ui/src/lib/setup-cleanup.ts DEFAULT_LEVEL must be {wire}"
+        );
     }
 
     #[test]
