@@ -19,7 +19,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 ### Changed
 
 - **Android: the resting dictation bubble is a violet Murmur tile.** While it waits, the bubble is a rounded violet square with the dark Murmur mark, instead of the mark on a round dark pill; it takes the same space (smaller when shrunk) and the dot, recording, errors and hold-to-talk look as before.
-- **Translate: the bar says why a translation failed.** Instead of "Not translated" for every failure, Android's bar and the Windows pill say "Couldn't translate to Hebrew. Typed as said.", "Translation timed out. Typed as said.", or "No AI set up for translation."; anything else is "Not translated. Typed as said." (D90).
+- **Translate: the bar says why a translation failed.** Instead of "Not translated" for every failure, Android's bar and the Windows pill say "Couldn't translate to Hebrew. Typed as said.", "Translation timed out. Typed as said." or "No AI set up for translation." (Windows, while this PC's model is still loading: "AI still loading. Typed as said."); anything else is "Not translated. Typed as said." (D90).
 - **murmur-server: the log line for a cleanup request names its task** (`task=translate`, `task=cleanup` …), still without any text.
 
 ### Fixed

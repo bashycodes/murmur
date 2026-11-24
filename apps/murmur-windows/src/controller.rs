@@ -1697,7 +1697,9 @@ impl Controller {
                     }
                 }
                 // The pill says why (D90): wrong script, timeout, no AI.
-                let r = r.map(|t| t.text).map_err(|e| e.notice());
+                let r = r
+                    .map(|t| t.text)
+                    .map_err(|e| crate::router_adapter::translate_notice(&e));
                 let _ = tx.send(Input::TranslateFinished {
                     session,
                     original: text,
@@ -3140,6 +3142,10 @@ mod tests {
             (
                 TranslateError::Backend("connect_failed".into()),
                 "Not translated. Typed as said.",
+            ),
+            (
+                TranslateError::Backend(crate::router_adapter::LLM_LOADING_MSG.into()),
+                "AI still loading. Typed as said.",
             ),
         ] {
             let mut r = translate_rig(Prefs::default());

@@ -972,6 +972,23 @@ impl RouterAdapter {
 /// Command Mode pill while the on-device LLM is still loading.
 pub const LLM_LOADING_MSG: &str = "AI model is still loading, try again in a moment";
 
+/// D90: the translate pill's notice after a dictation was typed as said
+/// because this PC's LLM was still loading (`translate` refuses with
+/// [`LLM_LOADING_MSG`]).
+pub const TRANSLATE_LOADING_NOTICE: &str = "AI still loading. Typed as said.";
+
+/// D90: what the translate pill says for `e`: the core's
+/// `TranslateError::notice`, or [`TRANSLATE_LOADING_NOTICE`] for this
+/// shell's own "still loading" refusal.
+pub fn translate_notice(e: &murmur_core::translate::TranslateError) -> String {
+    match e {
+        murmur_core::translate::TranslateError::Backend(m) if m == LLM_LOADING_MSG => {
+            TRANSLATE_LOADING_NOTICE.into()
+        }
+        e => e.notice(),
+    }
+}
+
 // ------------------------------------------------------------------ meetings
 
 /// The on-device side of a meeting engine (D45).
