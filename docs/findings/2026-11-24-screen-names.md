@@ -98,12 +98,12 @@ is; the global 2.0 run above let it in with +2.0 (and then added the graph's
 (`online-transducer-modified-beam-search-decoder.cc`) has no such step, so
 there the per-phrase score is the whole bonus.
 
-**Simplest way to 50 % on Parakeet** (not done; needs a decision): load
-Parakeet's beam recognizer with `hotwords_score` 2.0 and send every
-non-screen phrase with an explicit ` :1.0`. Screen names then behave as in
-the global-2.0 run (55 %, bench 1.05 %); dictionary words keep their graph
-bonus of 1.0, but their pre-pick bonus rises from 1.0 to 2.0 in every
-session, which no test here measures.
+**Simplest way to 50 % on Parakeet: tried and rejected** (2026-11-25, see
+below). It was to load Parakeet's beam recognizer with a higher
+`hotwords_score` and to send every non-screen phrase with an explicit
+` :1.0`. Screen names do reach 50 %, but the higher pre-pick bonus also
+applies to dictionary words in every session, and a 30-word dictionary then
+raises the bench WER by 0.4-0.8 pt.
 
 ### Sweep (per-phrase score for candidates, dictionary at 1.0)
 
@@ -157,3 +157,58 @@ quiet clips with `vad::asr_level` as a session does (the lang-detect probe's
 Hebrew clips sit below the engines' silence gate; the English clips are
 unchanged). Summary rows with `screen_hotwords_score` are in
 `summary-2026-11-24.jsonl`.
+
+## A higher Parakeet base score (rejected, 2026-11-25)
+
+**Question.** If Parakeet's recognizer-wide `hotwords_score` (the pre-pick
+bonus above) is raised, and every non-screen phrase is pinned to ` :1.0`,
+do screen names reach 50 % without hurting dictionary words?
+
+**Answer: no.** There is no base score that passes every gate. Names reach
+50 % only at a base of 1.5 or more, and at 1.5 or more a dictionary of 30
+unrelated words raises the bench WER by 0.42 pt or more. The gates were:
+screen names at least 50 %; dictionary-name accuracy not worse than at
+base 1.0; bench WER, with and without that dictionary, up by at most
+0.1 pt. The core keeps the previous behaviour: base 1.0, screen names at
+2.5, other phrases with no score of their own.
+
+New probe inputs (`screen_names_e2e`, scored by `score.py`), each built as
+`engine.rs` `asr_request` builds it:
+- `dictionary`: the screen's name candidates given as dictionary words, with
+  no screen;
+- `dict30`: a dictionary of 30 invented words that appear in no clip or
+  screen (`UNRELATED`), with no screen;
+- `candidates_dict30`: the screen's candidates together with that
+  dictionary.
+
+`MURMUR_PARAKEET_HOTWORDS_SCORE` sets the base. The screen score is 2.5 in
+every run.
+
+| base | candidates: names / bench | dictionary: names / bench | dict30: bench | candidates_dict30: names / bench |
+|---|---|---|---|---|
+| 1.0 (kept) | 40 % / 1.05 % | 35 % / 1.05 % | 1.05 % | 45 % / 1.05 % |
+| 1.25 | 40 % / 1.05 % | 40 % / 1.05 % | 1.05 % | 45 % / 1.05 % |
+| 1.5 | 55 % / 1.05 % | 50 % / 1.05 % | **1.47 %** | 55 % / **1.47 %** |
+| 2.0 | 50 % / 1.05 % | 50 % / 1.05 % | **1.88 %** | 50 % / **1.99 %** |
+
+At every base, `none` scored 10 % names and 1.05 % bench WER.
+`candidates_full` scored 40 %, 40 %, 50 % and 45 % names at the four bases,
+with a bench WER of 1.05 % each time.
+
+**What the dictionary costs.** The bench errors are not the invented words
+turning up in the text. They are real words split into pieces:
+- "hasty" became "HAS TY", and "violence" became "VIOULENCE";
+- "PHD" became "PH D", and "Leroy" became "Le Roy" or "Ler Roy";
+- the quotation marks around a quote moved.
+
+The NeMo pre-pick bonus rewards any token that starts *some* hotword. With
+30 words, many common first pieces get the bonus, so a higher base pushes
+the beam toward piece-by-piece spellings. At base 1.0, the same dictionary
+leaves the bench unchanged.
+
+**What would still get there.** A boost that applies only to screen names
+at the pre-pick step. sherpa 1.13.8 has no setting for this: the pre-pick
+bonus is recognizer-wide. It would need either a patched decoder that adds
+the phrase's own score at that step, or a second recognizer with a higher
+base that runs only when a screen has names. The second costs a second
+model in memory.

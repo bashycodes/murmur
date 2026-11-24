@@ -23,14 +23,21 @@
 //! zipformer instead of Parakeet (`MURMUR_SCREEN_ASR` = its folder,
 //! language `MURMUR_SCREEN_LANG`, default `he`).
 //!
+//! The dictionary side (2026-11-25): `dictionary` gives the screen's name
+//! candidates as dictionary words instead (no screen), `dict30` a
+//! 30-word dictionary of invented words unrelated to any clip (false
+//! insertions on the bench), and `candidates_dict30` both the screen's
+//! candidates and that dictionary. `MURMUR_PARAKEET_HOTWORDS_SCORE` sets
+//! Parakeet's base hotword score for a comparison.
+//!
 //! `cargo test -p murmur-core --features wav,parakeet --release --test screen_names_e2e -- --nocapture`
 
 use std::io::Write;
 use std::path::Path;
 
-use murmur_core::asr::{build_initial_prompt, AsrEngine, AsrRequest};
+use murmur_core::asr::{build_initial_prompt, dedupe_terms, AsrEngine, AsrRequest};
 use murmur_core::audio;
-use murmur_core::dictionary::Dictionary;
+use murmur_core::dictionary::{DictEntry, Dictionary};
 use murmur_core::parakeet::ParakeetAsr;
 use murmur_core::screen_names::name_candidates;
 use murmur_core::sherpa_online::SherpaOnlineAsr;
@@ -48,6 +55,62 @@ fn strings(v: &Value) -> Vec<String> {
         .iter()
         .map(|s| s.as_str().unwrap().to_string())
         .collect()
+}
+
+/// Invented words, none in any clip or screen: a dictionary that should
+/// change nothing.
+const UNRELATED: [&str; 30] = [
+    "Quorvel",
+    "Tamsik",
+    "Brannoway",
+    "Elvessa",
+    "Drovik",
+    "Fennimore Q",
+    "Hallistrade",
+    "Ixtapel",
+    "Jorvane",
+    "Kelloptic",
+    "Lunderhall",
+    "Mavrix",
+    "Nostrel",
+    "Ophandry",
+    "Pellucine",
+    "Quillith",
+    "Rastenbur",
+    "Sovrane",
+    "Thessaly Pike",
+    "Ulvaren",
+    "Vintrell",
+    "Wexmoor",
+    "Yarrowcap",
+    "Zenthic",
+    "Abrovel",
+    "Caskadine",
+    "Dulcimar",
+    "Embervale",
+    "Glistane",
+    "Horvath Lumen",
+];
+
+/// The request `engine.rs` `asr_request` builds for this dictionary and
+/// these screen names.
+fn request(dict: &Dictionary, names: &[String]) -> AsrRequest {
+    let mut seen = Vec::new();
+    AsrRequest {
+        initial_prompt: build_initial_prompt(dict, names),
+        dictionary_terms: dedupe_terms(dict.vocabulary(), &mut seen),
+        screen_terms: dedupe_terms(names.iter().map(String::as_str), &mut seen),
+        ..Default::default()
+    }
+}
+
+fn dictionary(words: impl IntoIterator<Item = impl AsRef<str>>) -> Dictionary {
+    Dictionary {
+        entries: words
+            .into_iter()
+            .map(|w| DictEntry::word(w.as_ref()))
+            .collect(),
+    }
 }
 
 /// The phone's cap on a capture (`ScreenWords.MAX_CHARS`).
@@ -105,6 +168,7 @@ fn screen_words_as_hotwords() {
         _ => Box::new(ParakeetAsr::load(&asr, threads).expect("load parakeet")),
     };
     let screens = screens();
+    let unrelated = dictionary(UNRELATED);
     let mut out = std::fs::File::create(out).unwrap();
     for line in std::fs::read_to_string(m).unwrap().lines() {
         let row: Value = serde_json::from_str(line).unwrap();
@@ -120,22 +184,22 @@ fn screen_words_as_hotwords() {
         // clips sit below the engines' silence gate (no-op for the rest).
         let pcm = murmur_core::vad::asr_level(&pcm).into_owned();
         let mut rec = json!({"id": row["id"], "set": row["set"]});
+        let none = Dictionary::default();
+        let cands = name_candidates(&bubbles);
         let modes = [
-            ("none", Vec::new()),
-            ("bubbles", bubbles.clone()),
-            ("candidates", name_candidates(&bubbles)),
-            ("bubbles_full", full.clone()),
-            ("candidates_full", name_candidates(&full)),
+            ("none", request(&none, &[])),
+            ("bubbles", request(&none, &bubbles)),
+            ("candidates", request(&none, &cands)),
+            ("bubbles_full", request(&none, &full)),
+            ("candidates_full", request(&none, &name_candidates(&full))),
+            ("dictionary", request(&dictionary(&cands), &[])),
+            ("dict30", request(&unrelated, &[])),
+            ("candidates_dict30", request(&unrelated, &cands)),
         ];
-        for (mode, words) in modes {
+        for (mode, req) in modes {
             if mode.ends_with("_full") && full.is_empty() {
                 continue;
             }
-            let req = AsrRequest {
-                initial_prompt: build_initial_prompt(&Dictionary::default(), &words),
-                screen_terms: words.clone(),
-                ..Default::default()
-            };
             let text = engine.transcribe(&pcm, &req).unwrap().text;
             rec[mode] = json!(text);
             rec[format!("{mode}_hotwords")] = json!(murmur_core::asr::hotword_phrases(&req).len());

@@ -3,7 +3,9 @@
 
   score.py RESULTS.jsonl --manifest manifest.jsonl
 
-Per input (none / bubbles / candidates, and the last two on a full 2000-char capture):
+Per input (none / bubbles / candidates, the last two on a full 2000-char capture;
+dictionary = the candidates as dictionary words, dict30 = 30 unrelated invented
+dictionary words, candidates_dict30 = both):
   name accuracy  share of `names` clips whose planted name appears in the text, as
                  consecutive words after the bench normaliser (case, hyphens,
                  punctuation ignored; "Severine's" counts for "Severine");
@@ -17,7 +19,8 @@ import argparse, json, pathlib, re, sys, unicodedata
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "bench"))
 from wer import edit_distance, normalise, wer_counts  # noqa: E402
 
-MODES = ["none", "bubbles", "candidates", "bubbles_full", "candidates_full"]
+MODES = ["none", "bubbles", "candidates", "bubbles_full", "candidates_full",
+         "dictionary", "dict30", "candidates_dict30"]
 
 
 LANG = "en"
