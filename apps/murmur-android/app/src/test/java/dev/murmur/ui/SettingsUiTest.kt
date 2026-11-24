@@ -100,11 +100,11 @@ class SettingsUiTest {
     @Test fun aboutSourceRowOpensTheProjectPage() {
         val a = launch()
         val row = rowTitled(a, ShellPages.SOURCE_TITLE)
-        assertEquals("Source on GitHub, opens in your browser", row.contentDescription)
+        assertEquals(ShellPages.SOURCE_DESCRIPTION, row.contentDescription)
         row.performClick()
         val sent = shadowOf(a).nextStartedActivity
         assertEquals(android.content.Intent.ACTION_VIEW, sent.action)
-        assertEquals(ShellPages.HELP_URL, sent.dataString)
+        assertEquals(ShellPages.PROJECT_URL, sent.dataString)
     }
 
     @Test fun hubRowsShowTheirCurrentValue() {

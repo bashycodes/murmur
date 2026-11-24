@@ -19,19 +19,15 @@ object ShellPages {
     /** The app's name: Home top bar, drawer title. */
     const val APP_NAME = "Murmur"
 
-    /** Help in the drawer and Settings → About's source row open the project page. */
-    const val HELP_URL = "https://github.com/bashycodes/murmur"
+    /** The project page: Help in the drawer and Settings → About's source row open it. */
+    const val PROJECT_URL = "https://github.com/bashycodes/murmur"
 
-    /** Settings → About's second row (the Windows Settings footer's GitHub button); it opens [HELP_URL]. */
+    /**
+     * Settings → About: under the build line ([AppBuild.label], "Version 1.3.0 (hybrid) · abc1234", D26),
+     * a row that opens [PROJECT_URL]. TalkBack gets [SOURCE_DESCRIPTION]: the arrow alone does not say it leaves the app.
+     */
     const val SOURCE_TITLE = "Source on GitHub"
-
-    /** Settings → About: the build line ("Version 1.3.0 (hybrid) · abc1234", D26) and the source row. */
-    data class About(val version: String, val sourceTitle: String, val sourceUrl: String) {
-        /** TalkBack for the source row: the arrow alone does not say it leaves the app. */
-        val sourceDescription: String get() = "$sourceTitle, opens in your browser"
-    }
-
-    fun about(build: AppBuild, flavor: String) = About(build.label(flavor), SOURCE_TITLE, HELP_URL)
+    const val SOURCE_DESCRIPTION = "$SOURCE_TITLE, opens in your browser"
 
     /** Home shows this many recent dictations; History (drawer) has them all. */
     const val HOME_LIMIT = 100

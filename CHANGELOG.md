@@ -19,7 +19,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 ### Added
 
 - **Windows: "Allow an unencrypted connection" for your server.** On a network you trust, such as an air-gapped company network that uses public address ranges inside, Settings → Your server can now connect without TLS to any address. It is off by default and shown for a public IP address; the page warns that audio, text and the access token then cross the network unencrypted. The server must accept such clients too (`--insecure-bind-any`, Docker `MURMUR_INSECURE_BIND_ANY=1`). Android follows later (D100).
-- **Android: "Source on GitHub" in Settings → About.** Under the version line ("Version X (hybrid) · commit"), a new row with an external-link arrow opens the project page in the browser, like the GitHub button in the Windows Settings footer.
+- **Android: "Source on GitHub" in Settings → About.** Under the version line ("Version X (hybrid) · commit"), a new row with an external-link arrow opens the project page in the browser.
 
 ### Removed
 

@@ -87,7 +87,7 @@ class ShellUiTest {
         rowTitled(a, "Help").performClick()
         val help = shadowOf(a).nextStartedActivity
         assertEquals(Intent.ACTION_VIEW, help.action)
-        assertEquals(ShellPages.HELP_URL, help.dataString)
+        assertEquals(ShellPages.PROJECT_URL, help.dataString)
         for ((title, cls) in listOf("Settings" to SettingsActivity::class.java, "Notes" to NotesActivity::class.java, "Insights" to InsightsActivity::class.java, "History" to HistoryActivity::class.java)) {
             openDrawer(a)
             rowTitled(a, title).performClick()

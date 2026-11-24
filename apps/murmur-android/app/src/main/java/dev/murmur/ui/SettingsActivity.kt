@@ -374,10 +374,9 @@ class SettingsActivity : Activity() {
 
             sectionLabel("About")
             card {
-                val about = ShellPages.about(dev.murmur.data.AppVersion.current, app.caps.flavor)
                 // §5 Access: in builds without `remote`, 7 taps here reveal Developer settings.
                 val unlock = DevUnlock({ android.os.SystemClock.elapsedRealtime() })
-                navRow(null, about.version, chevron = false) {
+                navRow(null, dev.murmur.data.AppVersion.current.label(app.caps.flavor), chevron = false) {
                     if (app.dev.visible) return@navRow
                     if (unlock.tap()) {
                         app.dev.devUnlocked = true
@@ -387,9 +386,9 @@ class SettingsActivity : Activity() {
                         Toast.makeText(this@SettingsActivity, "${unlock.remaining} more taps", Toast.LENGTH_SHORT).show()
                     }
                 }
-                navRow(null, about.sourceTitle, endIcon = R.drawable.ic_lw_external) {
-                    runCatching { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(about.sourceUrl))) }
-                }.view.contentDescription = about.sourceDescription
+                navRow(null, ShellPages.SOURCE_TITLE, endIcon = R.drawable.ic_lw_external) {
+                    openInBrowser(ShellPages.PROJECT_URL)
+                }.view.contentDescription = ShellPages.SOURCE_DESCRIPTION
             }
         }
     }
@@ -500,7 +499,6 @@ class SettingsActivity : Activity() {
             }
         }
     }
-
 
     // =====================================================================================
     // Language
