@@ -108,20 +108,28 @@ jobs:
       # tests run on) into ~/.m2 when its first test starts, outside Gradle and
       # without a retry. A 429 there fails every Robolectric test of the task
       # (run 45351240337: 211 failures, EngineHolderTest listed first, "Failed
-      # to fetch maven artifact ... android-all-instrumented"). Keyed on the
-      # Robolectric version (it pins those jars) and on the SDKs the tests run
-      # on (each test's @Config sdk, else targetSdk); saved after a green run.
+      # to fetch maven artifact ... android-all-instrumented"). So the jars come
+      # from a cache keyed on the Robolectric version (it pins them) and the
+      # SDKs the tests run on, and on a miss tools/robolectric-jars.sh fetches
+      # them with retries and checks their SHA-512 before the tests start. The
+      # cache is saved right after that check, so a red test run (or a cold
+      # cache, run 45376226463) still leaves it warm for the next one.
       - name: Robolectric jars key
-        working-directory: apps/murmur-android/app
-        run: |
-          v=$(sed -n 's/.*"org\.robolectric:robolectric:\([^"]*\)".*/\1/p' build.gradle.kts)
-          target=$(sed -n 's/^ *targetSdk *= *\([0-9]*\).*/\1/p' build.gradle.kts)
-          sdks=$({ echo "$target"; grep -rhoE 'sdk *= *\[[^]]*\]' src/test | grep -oE '[0-9]+' || true; } | sort -un | paste -sd- -)
-          test -n "$v" && test -n "$target"
-          echo "ROBOLECTRIC_JARS_KEY=robolectric-$v-sdk$sdks" >> "$GITHUB_ENV"
+        run: echo "ROBOLECTRIC_JARS_KEY=$(apps/murmur-android/tools/robolectric-jars.sh key)" >> "$GITHUB_ENV"
 
-      - name: Robolectric runtime jars (cache)
-        uses: actions/cache@v4
+      - name: Robolectric runtime jars (restore)
+        id: robolectric-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: ${{ env.ROBOLECTRIC_JARS_KEY }}
+
+      - name: Robolectric runtime jars (fetch + check)
+        run: apps/murmur-android/tools/robolectric-jars.sh fetch
+
+      - name: Robolectric runtime jars (save)
+        if: steps.robolectric-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
         with:
           path: ~/.m2/repository/org/robolectric
           key: ${{ env.ROBOLECTRIC_JARS_KEY }}
