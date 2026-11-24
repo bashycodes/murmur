@@ -3251,7 +3251,12 @@ mod tests {
 
     #[test]
     fn hands_free_sessions_get_the_endpoint_ptt_does_not() {
-        let mut r = rig(Fake::default(), Prefs::default());
+        // D104: off by default; an install that kept 1.5 s.
+        let prefs = Prefs {
+            hands_free_silence_ms: murmur_core::endpoint::RECOMMENDED_SILENCE_MS,
+            ..Prefs::default()
+        };
+        let mut r = rig(Fake::default(), prefs);
         r.at(0, Input::Hotkey(HotkeyAction::PttDown));
         assert_eq!(r.wait_config(1).endpoint_silence_ms, None);
         r.at(10, Input::Hotkey(HotkeyAction::Cancel));
@@ -4183,7 +4188,11 @@ mod tests {
 
     #[test]
     fn a_hands_free_endpoint_stop_uses_the_stop_language() {
-        let mut r = rig(keyboard(Some("en")), Prefs::default());
+        let prefs = Prefs {
+            hands_free_silence_ms: murmur_core::endpoint::RECOMMENDED_SILENCE_MS,
+            ..Prefs::default()
+        };
+        let mut r = rig(keyboard(Some("en")), prefs);
         r.at(0, Input::Hotkey(HotkeyAction::HandsFreeToggle));
         r.wait_config(1);
         r.fake.feed_audio(&[1000; 16_000]);

@@ -23,6 +23,7 @@ interface KeyValue {
         fun putString(k: String, v: String?)
         fun putBoolean(k: String, v: Boolean)
         fun putLong(k: String, v: Long)
+        fun putInt(k: String, v: Int)
         fun remove(k: String)
         fun clear()
     }
@@ -39,6 +40,7 @@ class PrefsKeyValue(private val sp: SharedPreferences) : KeyValue {
             override fun putString(k: String, v: String?) { e.putString(k, v) }
             override fun putBoolean(k: String, v: Boolean) { e.putBoolean(k, v) }
             override fun putLong(k: String, v: Long) { e.putLong(k, v) }
+            override fun putInt(k: String, v: Int) { e.putInt(k, v) }
             override fun remove(k: String) { e.remove(k) }
             override fun clear() { e.clear() }
         }.block()

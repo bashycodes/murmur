@@ -126,6 +126,7 @@ class SettingsStore(context: Context) {
             .putBoolean(StrengthDefault.MIGRATED, true)
             .putBoolean(ThemeDefault.MIGRATED, true)
             .putString(ThemeDefault.KEY, s.theme.key)
+            .putBoolean(EndpointDefault.MIGRATED, true)
             .putBoolean("decode_while_speaking", s.decodeWhileSpeaking)
             .putString("style_personal", s.styles.personal.wire)
             .putString("style_work", s.styles.work.wire)
@@ -628,6 +629,26 @@ internal object ThemeDefault {
 }
 
 /**
+ * D104: a tap (hands-free) dictation no longer ends by itself after silence by default
+ * ([Settings.DEFAULT_ENDPOINT_SILENCE_MS] = 0; it was 1.5 s). Same rule as [StrengthDefault]: an
+ * install from before stopped after 1.5 s whenever nothing was stored, so [keepOld] writes that
+ * down once; only an [empty] store is a fresh install. A stored value (0 included) is never
+ * touched, and nothing changes after [MIGRATED] is set (by this or by any save).
+ */
+internal object EndpointDefault {
+    const val MIGRATED = "endpoint_default_off"
+    const val KEY = "endpoint_silence_ms"
+
+    fun keepOld(kv: KeyValue, empty: Boolean) {
+        if (kv.getBoolean(MIGRATED, false)) return
+        kv.edit {
+            putBoolean(MIGRATED, true)
+            if (!empty && !kv.contains(KEY)) putInt(KEY, Settings.RECOMMENDED_ENDPOINT_SILENCE_MS)
+        }
+    }
+}
+
+/**
  * Every one-time "an install from before keeps the old default" step, against one emptiness
  * check taken before any of them writes (each sets its own flag, so the store is no longer empty
  * after the first).
@@ -635,4 +656,5 @@ internal object ThemeDefault {
 internal fun keepOldDefaults(kv: KeyValue, empty: Boolean) {
     StrengthDefault.keepOld(kv, empty)
     ThemeDefault.keepOld(kv, empty)
+    EndpointDefault.keepOld(kv, empty)
 }
