@@ -110,15 +110,12 @@ pub struct Timings {
     /// Omitted when 0.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub hotwords: u64,
-    /// Dictionary entries on the DICTIONARY line of the prompt the cleaner
-    /// that ran was given ([`cleanup::CleanUsage::dict_terms_in_prompt`]; 0
-    /// when none ran). A count, never the terms. Omitted when 0.
-    #[serde(default, skip_serializing_if = "is_zero")]
-    pub dict_terms_in_prompt: u64,
-    /// On-screen names on the SCREEN NAMES line of that prompt (D108,
-    /// [`cleanup::CleanUsage::screen_names_in_prompt`]). Omitted when 0.
-    #[serde(default, skip_serializing_if = "is_zero")]
-    pub screen_names_in_prompt: u64,
+    /// Entries on the DICTIONARY and SCREEN NAMES lines of the prompt the
+    /// cleaner that ran was given ([`cleanup::CleanUsage::prompt_counts`];
+    /// zero when none ran), flat as `dict_terms_in_prompt` and
+    /// `screen_names_in_prompt`, each omitted when 0. Counts, never words.
+    #[serde(flatten)]
+    pub prompt_counts: cleanup::PromptCounts,
 }
 
 fn is_zero(v: &u64) -> bool {
@@ -2329,11 +2326,8 @@ fn finish_text(
             language.as_deref(),
         );
         r.timings.llm_ms = t.elapsed().as_millis() as u64;
-        if let Some(n) = usage.dict_terms_in_prompt {
-            r.timings.dict_terms_in_prompt = n as u64;
-        }
-        if let Some(n) = usage.screen_names_in_prompt {
-            r.timings.screen_names_in_prompt = n as u64;
+        if let Some(n) = usage.prompt_counts {
+            r.timings.prompt_counts = n;
         }
         r.llm = usage.engine.is_some().then_some(usage);
         match outcome {
@@ -2422,11 +2416,8 @@ fn finish_text(
             language.as_deref(),
         );
         // `None` when every backend refused up front (nothing ran).
-        if let Some(n) = usage.dict_terms_in_prompt {
-            r.timings.dict_terms_in_prompt = n as u64;
-        }
-        if let Some(n) = usage.screen_names_in_prompt {
-            r.timings.screen_names_in_prompt = n as u64;
+        if let Some(n) = usage.prompt_counts {
+            r.timings.prompt_counts = n;
         }
         r.llm = usage.engine.is_some().then_some(usage);
         match outcome {

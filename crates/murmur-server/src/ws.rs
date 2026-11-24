@@ -7,7 +7,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use futures_util::{SinkExt, StreamExt};
-use murmur_core::cleanup::CleanRequest;
+use murmur_core::cleanup::{CleanRequest, PromptCounts};
 use murmur_core::config::{FieldContext, SessionConfig, SAMPLE_RATE};
 use murmur_core::{CommitResult, MurmurCore};
 use murmur_protocol::{
@@ -571,7 +571,7 @@ impl Conn {
                         queue_ms,
                         ..Default::default()
                     };
-                    return (out, (0, 0));
+                    return (out, PromptCounts::default());
                 };
                 let (r, usage, took) =
                     murmur_core::cleanup::clean_text(cl, &req, crate::limits::MAX_LLM_TIMEOUT_MS);
@@ -589,11 +589,7 @@ impl Conn {
                     model: usage.model,
                 };
                 // 0 unless an LLM call ran (as on the `result` line).
-                let counts = (
-                    usage.dict_terms_in_prompt.unwrap_or(0),
-                    usage.screen_names_in_prompt.unwrap_or(0),
-                );
-                (out, counts)
+                (out, usage.prompt_counts.unwrap_or_default())
             })
             .await
             .unwrap_or_else(|_| {
@@ -602,7 +598,7 @@ impl Conn {
                     error: Some(code::SERVER_ERROR.into()),
                     ..Default::default()
                 };
-                (out, (0, 0))
+                (out, PromptCounts::default())
             });
             log_cleaned(peer, &out, task, chars, screen_words, counts);
             let _ = ev.send(Event::Cleaned(out));
@@ -916,7 +912,7 @@ fn log_cleaned(
     task: &str,
     chars: usize,
     ctx_screen_words: usize,
-    (dict_terms_in_prompt, screen_names_in_prompt): (usize, usize),
+    counts: PromptCounts,
 ) {
     tracing::info!(
         id = out.id,
@@ -928,8 +924,8 @@ fn log_cleaned(
         error = out.error.as_deref().unwrap_or(""),
         ctx_screen_words,
         hotwords = 0,
-        dict_terms_in_prompt,
-        screen_names_in_prompt,
+        dict_terms_in_prompt = counts.dict_terms,
+        screen_names_in_prompt = counts.screen_names,
         "cleaned"
     );
 }
@@ -973,8 +969,8 @@ fn log_result(sid: u64, peer: SocketAddr, key: Option<&str>, r: &CommitResult, s
         fallback_reason = r.fallback_reason.as_deref().unwrap_or(""),
         ctx_screen_words = s.ctx_screen_words,
         hotwords = t.hotwords,
-        dict_terms_in_prompt = t.dict_terms_in_prompt,
-        screen_names_in_prompt = t.screen_names_in_prompt,
+        dict_terms_in_prompt = t.prompt_counts.dict_terms,
+        screen_names_in_prompt = t.prompt_counts.screen_names,
         "result"
     );
 }
