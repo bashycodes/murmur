@@ -18,7 +18,11 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
-- **Server: context counts in the log.** murmur-server's `result` and `cleaned` log lines now end with `ctx_screen_words=<n> hotwords=<n> dict_terms_in_prompt=<n>`: how many screen words the client sent, how many hotword phrases went to the speech decoder (0 for an engine that takes none, and always 0 for a text-only cleanup), and how many dictionary and screen-word entries the AI cleanup prompt carried (0 when no AI cleanup ran). Only numbers are logged, never the words.
+- **Server: context counts in the log.** The `result` and `cleaned` lines end with `ctx_screen_words= hotwords= dict_terms_in_prompt=` (numbers only, never the words).
+
+### Changed
+
+- **Android: the resting dictation bubble is a violet Murmur tile.** While it waits, the bubble is a rounded violet square with the dark Murmur mark, instead of the mark on a round dark pill; it takes the same space (smaller when shrunk) and the dot, recording, errors and hold-to-talk look as before.
 
 ## [1.7.0] - 2026-11-24
 

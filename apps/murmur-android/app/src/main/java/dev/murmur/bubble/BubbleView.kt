@@ -16,7 +16,8 @@ import dev.murmur.session.DictationState
 import dev.murmur.session.DictationState.ErrorKind
 
 /**
- * Canvas-drawn bubble: circle with the Murmur mark (Ready), minimised dot or small circle, recording row X·waveform·✓ (tap mode),
+ * Canvas-drawn bubble: the violet Murmur tile while resting (full or shrunk; a pill to its right for the resting
+ * extras), the minimised plain dot, recording row X·waveform·✓ (tap mode),
  * mic+waveform (hold mode), paste/copy/dismiss (FailedToPaste), copy/dismiss (a command's answer, shown in the
  * preview card), pulsing … (model still loading), alert (other errors).
  * Gestures go through [BubbleGesture]; the host decides what each action means.
@@ -42,8 +43,8 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
     /** The buttons as last drawn, for hit-testing a touch. */
     private var slots = emptyList<BubbleGeometry.Slot>()
     private val mic: Drawable = context.getDrawable(R.drawable.ic_murmur)!!.mutate().apply { setTint(BubbleColors.onSurface) }
-    /** The resting glyph ([BubbleGeometry.showsMark]): the brand gradient, never tinted. */
-    private val mark: Drawable = context.getDrawable(R.drawable.ic_bubble_mark)!!
+    /** The resting bubble ([BubbleGeometry.isTileLook]): violet brand tile, dark edge and mark, never tinted. */
+    private val tile: Drawable = context.getDrawable(R.drawable.ic_bubble_tile)!!
 
     // Design: dark vast-950 pill, light sand-50 glyphs and bars, red only for errors (BubbleColors).
     private val pill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -102,7 +103,8 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
             canvas.drawCircle(width / 2f, h / 2, rr - ring.strokeWidth / 2, ring)
             return
         }
-        canvas.drawRoundRect(RectF(0f, 0f, width.toFloat(), h), r, r, pill)
+        // The tile look has no round pill under the main button; resting extras keep theirs, to its right.
+        if (!BubbleGeometry.isTileLook(ui) || BubbleGeometry.tileHasPill(ui)) canvas.drawRoundRect(RectF(0f, 0f, width.toFloat(), h), r, r, pill)
         when (s) {
             DictationState.Idle, DictationState.Ready -> if (!BubbleGeometry.showsMark(ui)) {
                 // Repair: the pulsing alert.
@@ -111,12 +113,15 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
                 circleButton(canvas, danger, BubbleButton.MAIN) { cx, cy -> drawGlyph(canvas, "!", cx, cy) }
                 danger.alpha = 255
                 postInvalidateOnAnimation()
-            } else if (BubbleGeometry.isMinimisedLook(ui)) {
-                circleButton(canvas, null, BubbleButton.MAIN) { cx, cy -> drawIcon(canvas, mark, cx, cy, 9f) }
             } else {
-                // The mark sits on the pill itself: its dark violet end needs the vast-950 behind it for 3:1
-                // contrast (on the vast-875 disc it falls to about 2.2:1).
-                circleButton(canvas, null, BubbleButton.MAIN) { cx, cy -> drawIcon(canvas, mark, cx, cy) }
+                // The bubble is the tile: the whole h×h main slot (56dp, or 36dp shrunk), over the pill's
+                // shadow drawn to the tile's shape. Its dark edge keeps it 3:1 on white and violet apps.
+                // One rounded size for the shadow and the tile, so they never differ by a pixel at fractional scales.
+                val edge = kotlin.math.round(h).toInt()
+                val corner = edge * BubbleGeometry.TILE_CORNER_FRACTION
+                canvas.drawRoundRect(RectF(0f, 0f, edge.toFloat(), edge.toFloat()), corner, corner, pill)
+                tile.setBounds(0, 0, edge, edge)
+                tile.draw(canvas)
                 if (ui.showCommand) circleButton(canvas, null, BubbleButton.COMMAND) { cx, cy -> drawGlyph(canvas, "✎", cx, cy) }
                 if (ui.showTranslate) circleButton(canvas, null, BubbleButton.TRANSLATE) { cx, cy -> drawGlyph(canvas, "⇄", cx, cy) }
                 if (ui.showCopy) circleButton(canvas, null, BubbleButton.COPY) { cx, cy -> drawGlyph(canvas, "⧉", cx, cy) }
