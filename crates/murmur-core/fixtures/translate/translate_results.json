@@ -41,7 +41,7 @@
     },
     {
       "input": {"err": "not_translated", "target": "he"},
-      "json": {"ok": false, "kind": "not_translated", "error": "Couldn't translate to Hebrew", "target": "he"},
+      "json": {"ok": false, "kind": "not_translated", "error": "Couldn't translate to Hebrew", "target": "he", "target_name": "Hebrew"},
       "notice": "Couldn't translate to Hebrew. Typed as said."
     },
     {

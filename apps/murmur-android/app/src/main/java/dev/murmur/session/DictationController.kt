@@ -107,9 +107,10 @@ sealed interface DictationHint {
     /**
      * D90: the translation failed, so the dictation was typed as said. [kind] =
      * `TranslateError::kind()` (the bar says why, [dev.murmur.bubble.PreviewContent.notTranslated]);
-     * [target] = the language asked for ("" = unknown).
+     * [target] = the language asked for ("" = unknown); [targetName] = the core's name for it ("" =
+     * name it here).
      */
-    data class NotTranslated(val kind: String, val target: String = "") : DictationHint
+    data class NotTranslated(val kind: String, val target: String = "", val targetName: String = "") : DictationHint
     /** D90: no server or cloud could, so the phone's own model translated (lower quality). */
     data object TranslatedOnDevice : DictationHint
 }
@@ -1254,7 +1255,8 @@ class DictationController(
                 result.copy(applied = dev.murmur.core.AppliedTransform(name, answer.text)) to typed
             }
             is TranslateOutcome.Failed -> {
-                showHint(DictationHint.NotTranslated(answer.kind, answer.target.ifEmpty { target.orEmpty() }))
+                val asked = answer.target.ifEmpty { target.orEmpty() }
+                showHint(DictationHint.NotTranslated(answer.kind, asked, answer.targetName))
                 result to plan
             }
         }

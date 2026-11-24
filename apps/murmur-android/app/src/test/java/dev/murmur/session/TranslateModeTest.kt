@@ -131,11 +131,19 @@ class TranslateModeTest {
         dev.murmur.bubble.PreviewContent.line(DictationState.Ready, null, c.hint.value, enabled = false)?.text
 
     @Test fun aWrongScriptAnswerSaysWhichLanguageFailed() = runTest {
-        core.translateReply = { _, _ -> TranslateOutcome.Failed(TranslateOutcome.NOT_TRANSLATED, "Couldn't translate to Hebrew", "he") }
+        core.translateReply = { _, _ -> TranslateOutcome.Failed(TranslateOutcome.NOT_TRANSLATED, "Couldn't translate to Hebrew", "he", "Hebrew") }
         val c = controller()
         speakTranslated(c)
         assertTrue("typed as said", host.inserted.single().contains("demo"))
         assertEquals("Couldn't translate to Hebrew. Typed as said.", bar(c))
+    }
+
+    @Test fun theCoresLanguageNameWins() = runTest {
+        // A made-up name shows the bar takes the core's name, not the phone's locale's.
+        core.translateReply = { _, _ -> TranslateOutcome.Failed(TranslateOutcome.NOT_TRANSLATED, "x", "he", "Core Hebrew") }
+        val c = controller()
+        speakTranslated(c)
+        assertEquals("Couldn't translate to Core Hebrew. Typed as said.", bar(c))
     }
 
     @Test fun anOlderLibraryWithoutTheTargetNamesTheChosenOne() = runTest {

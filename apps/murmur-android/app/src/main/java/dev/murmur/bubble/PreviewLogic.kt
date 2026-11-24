@@ -62,14 +62,17 @@ object PreviewContent {
     const val TRANSLATED_ON_DEVICE = "Translated on this phone: lower quality"
 
     /**
-     * D90: why a translation failed, by `TranslateError::kind()` ([target] = the language asked for).
-     * The core's `TranslateError::notice` says the same; both are pinned by
+     * D90: why a translation failed, by `TranslateError::kind()` ([target] = the language asked for;
+     * [targetName] = the core's name for it, preferred so both shells name it alike, else named
+     * here). The core's `TranslateError::notice` says the same; both are pinned by
      * crates/murmur-core/fixtures/translate/translate_results.json.
      */
-    fun notTranslated(kind: String, target: String): String = when (kind) {
-        TranslateOutcome.NOT_TRANSLATED ->
-            if (target.isBlank()) NOT_TRANSLATED
-            else "Couldn't translate to ${LanguageDefault.name(target.substringBefore('-').substringBefore('_'))}. Typed as said."
+    fun notTranslated(kind: String, target: String, targetName: String = ""): String = when (kind) {
+        TranslateOutcome.NOT_TRANSLATED -> when {
+            targetName.isNotBlank() -> "Couldn't translate to $targetName. Typed as said."
+            target.isBlank() -> NOT_TRANSLATED
+            else -> "Couldn't translate to ${LanguageDefault.name(target.substringBefore('-').substringBefore('_'))}. Typed as said."
+        }
         TranslateOutcome.TIMEOUT -> TRANSLATION_TIMED_OUT
         TranslateOutcome.NO_LLM -> NO_AI_FOR_TRANSLATION
         else -> NOT_TRANSLATED
@@ -100,7 +103,7 @@ object PreviewContent {
         when (hint) {
             DictationHint.NoSpeechDetected -> return Line(NO_SPEECH, dim = false)
             DictationHint.OnlyFiller -> return Line(ONLY_FILLER, dim = false)
-            is DictationHint.NotTranslated -> return Line(notTranslated(hint.kind, hint.target), dim = false)
+            is DictationHint.NotTranslated -> return Line(notTranslated(hint.kind, hint.target, hint.targetName), dim = false)
             DictationHint.TranslatedOnDevice -> return Line(TRANSLATED_ON_DEVICE, dim = false)
             DictationHint.NoSpeechYet -> if (state is DictationState.Recording) return Line(CANT_HEAR, dim = false)
             null -> Unit

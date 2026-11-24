@@ -158,7 +158,8 @@ pub struct Translation {
 /// The wire shape of a translation's outcome (JNI `nativeTranslate`), like
 /// Command Mode's ([`crate::command::result_json`]):
 /// `{"ok":true,"text":…,"target":…,"on_device":…}` or
-/// `{"ok":false,"kind":…,"error":…}`, plus `"target"` for `not_translated`
+/// `{"ok":false,"kind":…,"error":…}`, plus `"target"` and `"target_name"`
+/// (the language and its English name, as the core names it) for `not_translated`
 /// (an automatic target is resolved here, so the shell may not know it).
 /// Pinned by
 /// `fixtures/translate/translate_results.json`, which the Android shell's
@@ -172,6 +173,7 @@ pub fn result_json(r: &Result<Translation, TranslateError>) -> serde_json::Value
             let mut v = serde_json::json!({"ok": false, "kind": e.kind(), "error": e.to_string()});
             if let TranslateError::NotTranslated { target } = e {
                 v["target"] = target.as_str().into();
+                v["target_name"] = language_name(target).into();
             }
             v
         }
@@ -371,6 +373,12 @@ const REFUSED: &str = "not_translated";
 /// error ([`CleanError::Backend`]), and a [`ChainCleaner`] hands over to the
 /// next hop as after any failed call. Everything else is the hop's own
 /// (consent gate, scope, budget, timeout).
+///
+/// Every [`Cleaner`] method is written out here, none left to its
+/// default, so a backend's override always applies: a method added to the
+/// trait must be added here too. `chain_hops` / `chain_min_fallback_ms`
+/// are the exception: a checked hop is one hop, and its inner hops must not
+/// be reached unchecked.
 struct Checked {
     hop: Arc<dyn Cleaner>,
     check: Arc<ScriptCheck>,
@@ -398,6 +406,11 @@ impl Cleaner for Checked {
         cancel: &AbortFlag,
     ) -> (Result<String, CleanError>, CleanUsage) {
         let (r, usage) = self.hop.clean_metered(prompt, deadline, cancel);
+        // An answer after the caller gave up on this hop (its share of the
+        // time ran out) is never used, so it is no reason either.
+        if cancel.is_set() || Instant::now() >= deadline {
+            return (r, usage);
+        }
         let c = &self.check;
         match r {
             Ok(answer)
@@ -415,6 +428,12 @@ impl Cleaner for Checked {
         }
     }
 
+    fn prefill(&self, prompt: &CleanPrompt) {
+        self.hop.prefill(prompt)
+    }
+    fn cancel_prefill(&self) {
+        self.hop.cancel_prefill()
+    }
     fn info_json(&self) -> Option<String> {
         self.hop.info_json()
     }
@@ -444,6 +463,22 @@ impl Cleaner for Checked {
     }
     fn ready(&self) -> bool {
         self.hop.ready()
+    }
+    fn ai_parts(&self) -> Option<cleanup::AiParts> {
+        let (first, rest) = self.hop.ai_parts()?;
+        let check = |c: Arc<dyn Cleaner>| -> Arc<dyn Cleaner> {
+            Arc::new(Checked {
+                hop: c,
+                check: self.check.clone(),
+            })
+        };
+        Some((check(first), rest.map(check)))
+    }
+    fn chain_hops(&self) -> Option<&[Arc<dyn Cleaner>]> {
+        None
+    }
+    fn chain_min_fallback_ms(&self) -> Option<u64> {
+        None
     }
 }
 
@@ -785,6 +820,51 @@ mod tests {
         .unwrap();
         assert_eq!((t.text.as_str(), t.on_device), (HE_OUT, true));
         assert_eq!(local.calls(), 1);
+    }
+
+    /// Answers `answer` after `ms`, whatever its deadline; its own budget
+    /// is `budget_ms`.
+    struct Slow {
+        ms: u64,
+        budget_ms: u64,
+        answer: &'static str,
+    }
+
+    impl Cleaner for Slow {
+        fn clean(&self, _: &CleanPrompt, _: Instant) -> Result<String, CleanError> {
+            std::thread::sleep(Duration::from_millis(self.ms));
+            Ok(self.answer.into())
+        }
+        fn engine(&self) -> &'static str {
+            "server"
+        }
+        fn timeout_ms(&self) -> Option<u64> {
+            Some(self.budget_ms)
+        }
+    }
+
+    /// A hop that ran out of its time and answered off-script later, while
+    /// the next hop was still running, is no reason: the next hop timing
+    /// out makes it a timeout.
+    #[test]
+    fn a_late_refused_answer_is_not_the_reason() {
+        let late = Arc::new(Slow {
+            ms: 300,
+            budget_ms: 100,
+            answer: HE_MIXED,
+        });
+        let stuck = Arc::new(Slow {
+            ms: 3_000,
+            budget_ms: 3_000,
+            answer: HE_OUT,
+        });
+        let chain = cleanup::ChainCleaner::build(vec![late as Arc<dyn Cleaner>, stuck]);
+        let r = run(
+            chain,
+            &req(EN_SRC, Some("en"), "he"),
+            Duration::from_millis(1_500),
+        );
+        assert!(matches!(r, Err(TranslateError::Timeout { .. })), "{r:?}");
     }
 
     /// The server alone: refused and typed as said, as before.
