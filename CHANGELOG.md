@@ -20,6 +20,10 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 - **Android: the resting dictation bubble is a violet Murmur tile.** While it waits, the bubble is a rounded violet square with the dark Murmur mark, instead of the mark on a round dark pill; it takes the same space (smaller when shrunk) and the dot, recording, errors and hold-to-talk look as before.
 
+### Fixed
+
+- **Windows: the Murmur bar sometimes did not appear while dictating.** It was placed once at startup, bottom centre of the primary screen, and only shown or hidden after that. Now every show places it on the monitor under the mouse (else the one with the app in front, else the primary), above that monitor's current taskbar and at its own display scaling, and raises it on top again, also when the bar is always shown and a new dictation starts. So a second monitor, docking, sleep, a scaling change or a taskbar that appeared after Murmur started no longer leave it off screen or behind other windows. Turning a meeting recording on or off can no longer hide a bar a dictation had just shown. If the bar has not drawn itself 150 ms after showing, the app repaints it; after 500 ms it sends the state again. The debug log (Developer → Debug log) records each show (visible, position, work area, whether the pill is inside it, topmost) and warns when the bar ends up hidden, off screen, below other windows or undrawn; it never records dictation text.
+
 ## [1.7.0] - 2026-11-24
 
 ### Added

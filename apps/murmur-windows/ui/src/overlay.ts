@@ -11,6 +11,7 @@
 // window is click-through, so the page reports the link's box
 // (`overlay_action` link_rect, null once it is gone) and src/overlay.rs
 // makes just that box clickable. Theme: `overlay_theme` + `overlay:theme`.
+// `overlay:shown` (show number) is acked with `overlay_action` painted.
 // Loaded as an ES module (overlay.html), like settings.js.
 
 import { fixFor } from "./lib/fix-for.js";
@@ -202,6 +203,18 @@ previewFix.addEventListener("mousedown", (e) => {
 
 void listen<string>("dictation:preview", (e) => showPreview(e.payload));
 void listen<OverlayState>("dictation:status", (e) => apply(e.payload));
+// The shell showed the window (show number `seq`): ack once a frame has
+// been painted, so it can tell a bar that is up but blank (a hidden
+// WebView2 slow to repaint) from one that is drawn. Two frames: the first
+// callback runs before that frame's paint.
+void listen<number>("overlay:shown", (e) => {
+  const seq = e.payload;
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      void overlayInvoke("overlay_action", { action: "painted", seq }).catch(() => {});
+    }),
+  );
+});
 void listen<number>("audio:level", (e) => {
   if (!isActive()) return;
   target = Math.max(0, Math.min(1, e.payload));
