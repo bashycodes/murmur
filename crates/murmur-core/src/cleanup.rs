@@ -77,6 +77,16 @@ impl CleanTask {
     pub fn keeps_language(&self) -> bool {
         *self != CleanTask::Translate
     }
+
+    /// The wire name (`"cleanup"`, `"translate"` …), for logs.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            CleanTask::Cleanup => "cleanup",
+            CleanTask::MeetingNotes => "meeting_notes",
+            CleanTask::MeetingSummary => "meeting_summary",
+            CleanTask::Translate => "translate",
+        }
+    }
 }
 
 /// D36: a text-only cleanup request: everything [`build_prompt_versioned`]

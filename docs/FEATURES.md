@@ -174,7 +174,12 @@ comes out as Hebrew and Hebrew as English.
 *Settings → General → Translate into*. Android: tap ⇄ next to the bubble.
 It shows while two or more keyboard languages are on; see *Settings →
 Bubble size → Translate*. It works best with your server or the cloud; the
-on-device model translates poorly.
+on-device model translates poorly. English into Hebrew needs the cloud or a
+stronger model on your server: the server's default 1.5B model can't do it
+reliably. When one AI's answer isn't fully in the target language, Murmur
+tries the next one you have set up; if none can, the dictation is typed as
+said and the bar says why ("Couldn't translate to Hebrew", "timed out", "No
+AI set up").
 
 **The language follows your keyboard** (Both). Murmur uses the language of
 the keyboard that is active when you stop speaking. Switch the keyboard to

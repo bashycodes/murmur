@@ -235,6 +235,7 @@ async fn clean_with(cleaner: impl Cleaner + 'static) -> (bool, String) {
 async fn cleaned_line_counts_screen_words_and_prompt_terms() {
     let (ok, l) = clean_with(Upper).await;
     assert!(ok, "{l}");
+    assert!(l.contains("task=\"cleanup\""), "{l}");
     // No ASR on a text-only cleanup: no hotwords.
     assert!(
         l.contains("ctx_screen_words=3 hotwords=0 dict_terms_in_prompt=4"),

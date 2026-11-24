@@ -561,6 +561,7 @@ impl Conn {
             };
             let queue_ms = t0.elapsed().as_millis() as u64;
             let chars = req.text.chars().count();
+            let task = req.task.as_str();
             let screen_words = req.ctx.screen_words.len();
             let (out, dict_terms_in_prompt) = tokio::task::spawn_blocking(move || {
                 let Some(cl) = lease.core.cleaner() else {
@@ -599,7 +600,7 @@ impl Conn {
                 };
                 (out, 0)
             });
-            log_cleaned(peer, &out, chars, screen_words, dict_terms_in_prompt);
+            log_cleaned(peer, &out, task, chars, screen_words, dict_terms_in_prompt);
             let _ = ev.send(Event::Cleaned(out));
         });
     }
@@ -908,6 +909,7 @@ impl Conn {
 fn log_cleaned(
     peer: SocketAddr,
     out: &Cleaned,
+    task: &str,
     chars: usize,
     ctx_screen_words: usize,
     dict_terms_in_prompt: usize,
@@ -915,6 +917,7 @@ fn log_cleaned(
     tracing::info!(
         id = out.id,
         peer = %peer,
+        task,
         chars,
         llm_ms = out.llm_ms,
         queue_ms = out.queue_ms,

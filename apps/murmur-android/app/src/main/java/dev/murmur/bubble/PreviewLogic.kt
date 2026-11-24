@@ -1,6 +1,8 @@
 package dev.murmur.bubble
 
 import dev.murmur.core.SessionRoute
+import dev.murmur.core.TranslateOutcome
+import dev.murmur.data.LanguageDefault
 import dev.murmur.session.DictationHint
 import dev.murmur.session.DictationState
 
@@ -50,10 +52,31 @@ object PreviewContent {
     /** Command Mode: the bubble is listening for an instruction, not for text to type. */
     const val COMMAND_LISTENING = "Command: say what to do with the selection"
     const val COMMAND_WORKING = "Command: rewriting…"
-    /** D90: the translation failed; the dictation went in as said. */
+    /** D90: the translation failed (no more specific reason); the dictation went in as said. */
     const val NOT_TRANSLATED = "Not translated. Typed as said."
+    /** D90: the AI didn't answer in time; the dictation went in as said. */
+    const val TRANSLATION_TIMED_OUT = "Translation timed out. Typed as said."
+    /** D90: no server, cloud or phone model to translate with. */
+    const val NO_AI_FOR_TRANSLATION = "No AI set up for translation."
     /** D90: no server or cloud could, so the phone's own model translated. */
     const val TRANSLATED_ON_DEVICE = "Translated on this phone: lower quality"
+
+    /**
+     * D90: why a translation failed, by `TranslateError::kind()` ([target] = the language asked for;
+     * [targetName] = the core's name for it, preferred so both shells name it alike, else named
+     * here). The core's `TranslateError::notice` says the same; both are pinned by
+     * crates/murmur-core/fixtures/translate/translate_results.json.
+     */
+    fun notTranslated(kind: String, target: String, targetName: String = ""): String = when (kind) {
+        TranslateOutcome.NOT_TRANSLATED -> when {
+            targetName.isNotBlank() -> "Couldn't translate to $targetName. Typed as said."
+            target.isBlank() -> NOT_TRANSLATED
+            else -> "Couldn't translate to ${LanguageDefault.name(target.substringBefore('-').substringBefore('_'))}. Typed as said."
+        }
+        TranslateOutcome.TIMEOUT -> TRANSLATION_TIMED_OUT
+        TranslateOutcome.NO_LLM -> NO_AI_FOR_TRANSLATION
+        else -> NOT_TRANSLATED
+    }
 
     /** [card]: a command's answer, shown whole in a larger card instead of one clipped line. */
     data class Line(val text: String, val dim: Boolean, val card: Boolean = false)
@@ -80,7 +103,7 @@ object PreviewContent {
         when (hint) {
             DictationHint.NoSpeechDetected -> return Line(NO_SPEECH, dim = false)
             DictationHint.OnlyFiller -> return Line(ONLY_FILLER, dim = false)
-            DictationHint.NotTranslated -> return Line(NOT_TRANSLATED, dim = false)
+            is DictationHint.NotTranslated -> return Line(notTranslated(hint.kind, hint.target, hint.targetName), dim = false)
             DictationHint.TranslatedOnDevice -> return Line(TRANSLATED_ON_DEVICE, dim = false)
             DictationHint.NoSpeechYet -> if (state is DictationState.Recording) return Line(CANT_HEAR, dim = false)
             null -> Unit

@@ -17,17 +17,22 @@
 //!   not overwhelmingly in the target's script (more than
 //!   [`MAX_FOREIGN_SHARE`] foreign letters, names carried over excepted) is
 //!   refused ([`TranslateError::NotTranslated`]): small models leave words
-//!   untranslated or drift into other scripts mid-sentence.
+//!   untranslated or drift into other scripts mid-sentence. The check runs
+//!   on each hop's answer, so a refused one hands over to the next hop
+//!   like a failed call ([`run`]): the server's small default model often
+//!   mixes scripts into Hebrew, and a configured cloud then still answers.
 //! * Default target: the other installed keyboard language (D58), see
 //!   [`default_target`].
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
+use crate::asr::AbortFlag;
 use crate::cleanup::{self, terms, CleanOutcome, CleanPrompt, CleanRequest, CleanTask, Cleaner};
-use crate::cleanup::{FallbackReason, PromptScope};
+use crate::cleanup::{ChainCleaner, CleanError, CleanUsage, FallbackReason, PromptScope};
 use crate::config::{language_name, primary_language};
 use crate::dictionary::Dictionary;
 use crate::script_lock::{self, Script};
@@ -64,9 +69,10 @@ pub enum TranslateError {
     #[error("AI returned no translation")]
     Empty,
     /// The answer is not (all) in the target's script: left untranslated,
-    /// or drifting into other scripts ([`off_target`]).
-    #[error("Couldn't translate the text")]
-    NotTranslated,
+    /// or drifting into other scripts ([`off_target`]), from every hop that
+    /// answered. `target` = the language it was asked for.
+    #[error("Couldn't translate to {}", language_name(.target))]
+    NotTranslated { target: String },
     #[error("Translation failed: {0}")]
     Backend(String),
 }
@@ -81,11 +87,34 @@ impl TranslateError {
             TranslateError::NoLlm => "no_llm",
             TranslateError::Timeout { .. } => "timeout",
             TranslateError::Empty => "empty",
-            TranslateError::NotTranslated => "not_translated",
+            TranslateError::NotTranslated { .. } => "not_translated",
             TranslateError::Backend(_) => "backend",
         }
     }
+
+    /// What the shell says after it typed the dictation as said: why there
+    /// is no translation, in a few words. The Android bar mirrors these
+    /// (`PreviewContent.notTranslated`); both are pinned by
+    /// `fixtures/translate/translate_results.json`.
+    pub fn notice(&self) -> String {
+        match self {
+            TranslateError::NotTranslated { target } => format!(
+                "Couldn't translate to {}. Typed as said.",
+                language_name(target)
+            ),
+            TranslateError::Timeout { .. } => TIMED_OUT_NOTICE.into(),
+            TranslateError::NoLlm => NO_LLM_NOTICE.into(),
+            _ => NOT_TRANSLATED_NOTICE.into(),
+        }
+    }
 }
+
+/// [`TranslateError::notice`] for a translation that timed out.
+pub const TIMED_OUT_NOTICE: &str = "Translation timed out. Typed as said.";
+/// [`TranslateError::notice`] when no AI engine is set up at all.
+pub const NO_LLM_NOTICE: &str = "No AI set up for translation.";
+/// [`TranslateError::notice`] for every other failure.
+pub const NOT_TRANSLATED_NOTICE: &str = "Not translated. Typed as said.";
 
 /// What a shell asks to translate (JNI `nativeTranslate`'s request, the
 /// Windows controller's call): the dictation's `text` (spoken in `source`,
@@ -129,7 +158,10 @@ pub struct Translation {
 /// The wire shape of a translation's outcome (JNI `nativeTranslate`), like
 /// Command Mode's ([`crate::command::result_json`]):
 /// `{"ok":true,"text":…,"target":…,"on_device":…}` or
-/// `{"ok":false,"kind":…,"error":…}`. Pinned by
+/// `{"ok":false,"kind":…,"error":…}`, plus `"target"` and `"target_name"`
+/// (the language and its English name, as the core names it) for `not_translated`
+/// (an automatic target is resolved here, so the shell may not know it).
+/// Pinned by
 /// `fixtures/translate/translate_results.json`, which the Android shell's
 /// decoder is checked against too.
 pub fn result_json(r: &Result<Translation, TranslateError>) -> serde_json::Value {
@@ -137,7 +169,14 @@ pub fn result_json(r: &Result<Translation, TranslateError>) -> serde_json::Value
         Ok(t) => serde_json::json!({
             "ok": true, "text": t.text, "target": t.target, "on_device": t.on_device,
         }),
-        Err(e) => serde_json::json!({"ok": false, "kind": e.kind(), "error": e.to_string()}),
+        Err(e) => {
+            let mut v = serde_json::json!({"ok": false, "kind": e.kind(), "error": e.to_string()});
+            if let TranslateError::NotTranslated { target } = e {
+                v["target"] = target.as_str().into();
+                v["target_name"] = language_name(target).into();
+            }
+            v
+        }
     }
 }
 
@@ -319,9 +358,157 @@ fn off_target(text: &str, target: &str, answer: &str, dictionary: &Dictionary) -
     letters > 0 && foreign as f32 / letters as f32 > MAX_FOREIGN_SHARE
 }
 
+/// What every hop's answer is checked against ([`off_target`]), and
+/// whether one was refused.
+struct ScriptCheck {
+    text: String,
+    target: String,
+    dictionary: Dictionary,
+    refused: AtomicBool,
+}
+
+/// Code a hop's refused answer fails with, so the chain tries the next hop.
+const REFUSED: &str = "not_translated";
+
+/// One hop of the translation route with its answer checked
+/// ([`ScriptCheck`]): an answer off the target's script becomes this hop's
+/// error ([`CleanError::Backend`]), and a [`ChainCleaner`] hands over to the
+/// next hop as after any failed call. Everything else is the hop's own
+/// (consent gate, scope, budget, timeout).
+///
+/// Every [`Cleaner`] method is written out here, none left to its
+/// default, so a backend's override always applies: a method added to the
+/// trait must be added here too. `chain_hops` / `chain_min_fallback_ms`
+/// are the exception: a checked hop is one hop, and its inner hops must not
+/// be reached unchecked.
+struct Checked {
+    hop: Arc<dyn Cleaner>,
+    check: Arc<ScriptCheck>,
+}
+
+impl Cleaner for Checked {
+    fn clean(&self, prompt: &CleanPrompt, deadline: Instant) -> Result<String, CleanError> {
+        self.clean_metered(prompt, deadline, &AbortFlag::default())
+            .0
+    }
+
+    fn clean_cancellable(
+        &self,
+        prompt: &CleanPrompt,
+        deadline: Instant,
+        cancel: &AbortFlag,
+    ) -> Result<String, CleanError> {
+        self.clean_metered(prompt, deadline, cancel).0
+    }
+
+    fn clean_metered(
+        &self,
+        prompt: &CleanPrompt,
+        deadline: Instant,
+        cancel: &AbortFlag,
+    ) -> (Result<String, CleanError>, CleanUsage) {
+        let (r, usage) = self.hop.clean_metered(prompt, deadline, cancel);
+        // An answer after the caller gave up on this hop (its share of the
+        // time ran out) is never used, so it is no reason either.
+        if cancel.is_set() || Instant::now() >= deadline {
+            return (r, usage);
+        }
+        let c = &self.check;
+        match r {
+            Ok(answer)
+                if off_target(
+                    &c.text,
+                    &c.target,
+                    &cleanup::unwrap_output_for(&answer, &c.text),
+                    &c.dictionary,
+                ) =>
+            {
+                c.refused.store(true, Ordering::Relaxed);
+                (Err(CleanError::Backend(REFUSED.into())), usage)
+            }
+            r => (r, usage),
+        }
+    }
+
+    fn prefill(&self, prompt: &CleanPrompt) {
+        self.hop.prefill(prompt)
+    }
+    fn cancel_prefill(&self) {
+        self.hop.cancel_prefill()
+    }
+    fn info_json(&self) -> Option<String> {
+        self.hop.info_json()
+    }
+    fn prompt_scope(&self) -> PromptScope {
+        self.hop.prompt_scope()
+    }
+    fn engine(&self) -> &'static str {
+        self.hop.engine()
+    }
+    fn model(&self) -> Option<String> {
+        self.hop.model()
+    }
+    fn destination(&self) -> Option<String> {
+        self.hop.destination()
+    }
+    fn timeout_ms(&self) -> Option<u64> {
+        self.hop.timeout_ms()
+    }
+    fn budget_ms(&self, session_ms: u64) -> u64 {
+        self.hop.budget_ms(session_ms)
+    }
+    fn estimate_cost_usd(&self, prompt: &CleanPrompt) -> Option<f64> {
+        self.hop.estimate_cost_usd(prompt)
+    }
+    fn available(&self) -> bool {
+        self.hop.available()
+    }
+    fn ready(&self) -> bool {
+        self.hop.ready()
+    }
+    fn ai_parts(&self) -> Option<cleanup::AiParts> {
+        let (first, rest) = self.hop.ai_parts()?;
+        let check = |c: Arc<dyn Cleaner>| -> Arc<dyn Cleaner> {
+            Arc::new(Checked {
+                hop: c,
+                check: self.check.clone(),
+            })
+        };
+        Some((check(first), rest.map(check)))
+    }
+    fn chain_hops(&self) -> Option<&[Arc<dyn Cleaner>]> {
+        None
+    }
+    fn chain_min_fallback_ms(&self) -> Option<u64> {
+        None
+    }
+}
+
+/// `cl` with each hop's answer checked ([`Checked`]), the chain's order and
+/// `min_fallback_ms` kept. A cleaner that is not a chain is checked whole.
+fn checked(cl: &Arc<dyn Cleaner>, check: &Arc<ScriptCheck>) -> Arc<dyn Cleaner> {
+    let wrap = |hop: &Arc<dyn Cleaner>| -> Arc<dyn Cleaner> {
+        Arc::new(Checked {
+            hop: hop.clone(),
+            check: check.clone(),
+        })
+    };
+    match (cl.chain_hops(), cl.chain_min_fallback_ms()) {
+        (Some(hops), Some(min_fallback_ms)) => {
+            let mut chain = ChainCleaner::new(hops.iter().map(wrap).collect());
+            chain.min_fallback_ms = min_fallback_ms;
+            Arc::new(chain)
+        }
+        _ => wrap(cl),
+    }
+}
+
 /// Clean and translate `req` with `cleaner`, the user's cleanup route
 /// (`None` = no AI), under a hard `timeout`. Server and cloud hops go first
-/// ([`cleanup::off_device_first`]).
+/// ([`cleanup::off_device_first`]). Each hop's answer must pass the script
+/// check; a refused one falls through to the next hop the route already
+/// has (nothing new is reached), and when none passes it is
+/// [`TranslateError::NotTranslated`].
 pub fn run(
     cleaner: Option<Arc<dyn Cleaner>>,
     req: &Request,
@@ -340,7 +527,13 @@ pub fn run(
     let cl = cleaner
         .filter(|c| c.available())
         .ok_or(TranslateError::NoLlm)?;
-    let cl = cleanup::off_device_first(&cl);
+    let check = Arc::new(ScriptCheck {
+        text: text.to_string(),
+        target: target.clone(),
+        dictionary: req.dictionary.clone(),
+        refused: AtomicBool::new(false),
+    });
+    let cl = checked(&cleanup::off_device_first(&cl), &check);
     let prompt = build_prompt(text, req.source.as_deref(), &target, &req.dictionary)
         .with_timeout(HOP_TIMEOUT_MS);
     let (outcome, usage, _detail) =
@@ -348,15 +541,20 @@ pub fn run(
     let timed_out = || TranslateError::Timeout {
         secs: timeout.as_secs().max(1),
     };
+    // A hop answered off-script and no later one did better: that is the
+    // reason, not the last hop's refusal or timeout.
+    let refused = check.refused.load(Ordering::Relaxed);
     match outcome {
+        // The hop's check saw the raw answer; this one the pasted text.
         CleanOutcome::Formatted(t) if off_target(text, &target, &t, &req.dictionary) => {
-            Err(TranslateError::NotTranslated)
+            Err(TranslateError::NotTranslated { target })
         }
         CleanOutcome::Formatted(text) => Ok(Translation {
             text,
             target,
             on_device: usage.engine.as_deref() == Some("local"),
         }),
+        CleanOutcome::Fallback(_) if refused => Err(TranslateError::NotTranslated { target }),
         CleanOutcome::Fallback(FallbackReason::Timeout) => Err(timed_out()),
         CleanOutcome::Fallback(FallbackReason::Error(e)) if e == "timeout" => Err(timed_out()),
         CleanOutcome::Fallback(FallbackReason::Error(e)) => Err(TranslateError::Backend(e)),
@@ -523,7 +721,12 @@ mod tests {
     #[test]
     fn an_answer_left_in_the_dictations_script_is_not_pasted() {
         let cl = Fixed::new("cloud", Ok("תזכיר לי לקנות חלב מחר בבוקר."));
-        assert_eq!(go(cl, HE, "en"), Err(TranslateError::NotTranslated));
+        assert_eq!(
+            go(cl, HE, "en"),
+            Err(TranslateError::NotTranslated {
+                target: "en".into()
+            })
+        );
         // Target in the same script (English → Spanish): not judged.
         let cl = Fixed::new("cloud", Ok("Recuérdame comprar leche."));
         assert!(go(cl, "remind me to buy milk", "es").is_ok());
@@ -544,7 +747,9 @@ mod tests {
             let cl = Fixed::new("local", Ok(bad));
             assert_eq!(
                 go(cl, src, "he"),
-                Err(TranslateError::NotTranslated),
+                Err(TranslateError::NotTranslated {
+                    target: "he".into()
+                }),
                 "{bad}"
             );
         }
@@ -572,7 +777,157 @@ mod tests {
         assert_eq!(t.map(|t| t.text).as_deref(), Ok("הרץ את kubectl עכשיו."));
         // Into English, Hebrew left in the answer is foreign too.
         let cl = Fixed::new("local", Ok("Remind me to buy חלב tomorrow morning."));
-        assert_eq!(go(cl, HE, "en"), Err(TranslateError::NotTranslated));
+        assert_eq!(
+            go(cl, HE, "en"),
+            Err(TranslateError::NotTranslated {
+                target: "en".into()
+            })
+        );
+    }
+
+    const EN_SRC: &str = "the new build is ready you can merge it now";
+    /// A small model's English → Hebrew answer: English words left in.
+    const HE_MIXED: &str = "הבנייה החדשה ready, אפשר merge אותה עכשיו.";
+    const HE_OUT: &str = "הבנייה החדשה מוכנה, אפשר למזג אותה עכשיו.";
+
+    fn not_translated(target: &str) -> Result<String, TranslateError> {
+        Err(TranslateError::NotTranslated {
+            target: target.into(),
+        })
+    }
+
+    /// The server's small model mixes scripts into Hebrew; the cloud the
+    /// user already set up then answers instead of the dictation being
+    /// typed as said.
+    #[test]
+    fn a_mixed_script_answer_falls_through_to_the_next_hop() {
+        let server = Fixed::new("server", Ok(HE_MIXED));
+        let cloud = Fixed::new("cloud", Ok(HE_OUT));
+        let chain =
+            cleanup::ChainCleaner::build(vec![server.clone() as Arc<dyn Cleaner>, cloud.clone()])
+                .unwrap();
+        assert_eq!(go(chain, EN_SRC, "he").as_deref(), Ok(HE_OUT));
+        assert_eq!((server.calls(), cloud.calls()), (1, 1));
+        // Down to the on-device model too, the last hop.
+        let local = Fixed::new("local", Ok(HE_OUT));
+        let chain = cleanup::ChainCleaner::build(vec![
+            local.clone() as Arc<dyn Cleaner>,
+            Fixed::new("server", Ok(HE_MIXED)),
+        ]);
+        let t = run(
+            chain,
+            &req(EN_SRC, Some("en"), "he"),
+            Duration::from_secs(5),
+        )
+        .unwrap();
+        assert_eq!((t.text.as_str(), t.on_device), (HE_OUT, true));
+        assert_eq!(local.calls(), 1);
+    }
+
+    /// Answers `answer` after `ms`, whatever its deadline; its own budget
+    /// is `budget_ms`.
+    struct Slow {
+        ms: u64,
+        budget_ms: u64,
+        answer: &'static str,
+    }
+
+    impl Cleaner for Slow {
+        fn clean(&self, _: &CleanPrompt, _: Instant) -> Result<String, CleanError> {
+            std::thread::sleep(Duration::from_millis(self.ms));
+            Ok(self.answer.into())
+        }
+        fn engine(&self) -> &'static str {
+            "server"
+        }
+        fn timeout_ms(&self) -> Option<u64> {
+            Some(self.budget_ms)
+        }
+    }
+
+    /// A hop that ran out of its time and answered off-script later, while
+    /// the next hop was still running, is no reason: the next hop timing
+    /// out makes it a timeout.
+    #[test]
+    fn a_late_refused_answer_is_not_the_reason() {
+        let late = Arc::new(Slow {
+            ms: 300,
+            budget_ms: 100,
+            answer: HE_MIXED,
+        });
+        let stuck = Arc::new(Slow {
+            ms: 3_000,
+            budget_ms: 3_000,
+            answer: HE_OUT,
+        });
+        let chain = cleanup::ChainCleaner::build(vec![late as Arc<dyn Cleaner>, stuck]);
+        let r = run(
+            chain,
+            &req(EN_SRC, Some("en"), "he"),
+            Duration::from_millis(1_500),
+        );
+        assert!(matches!(r, Err(TranslateError::Timeout { .. })), "{r:?}");
+    }
+
+    /// The server alone: refused and typed as said, as before.
+    #[test]
+    fn with_only_the_server_a_mixed_answer_is_not_translated() {
+        let server = Fixed::new("server", Ok(HE_MIXED));
+        assert_eq!(go(server.clone(), EN_SRC, "he"), not_translated("he"));
+        assert_eq!(server.calls(), 1);
+        // A cloud hop that is not allowed for this task refuses up front
+        // (its own gate): never reached, and the reason stays the script.
+        let cloud = Fixed::new("cloud", Err("cloud_consent_required"));
+        let chain = cleanup::ChainCleaner::build(vec![
+            Fixed::new("server", Ok(HE_MIXED)) as Arc<dyn Cleaner>,
+            cloud.clone(),
+        ])
+        .unwrap();
+        assert_eq!(go(chain, EN_SRC, "he"), not_translated("he"));
+        // Every hop mixed: refused.
+        let chain = cleanup::ChainCleaner::build(vec![
+            Fixed::new("server", Ok(HE_MIXED)) as Arc<dyn Cleaner>,
+            Fixed::new("local", Ok(HE_MIXED)),
+        ])
+        .unwrap();
+        assert_eq!(go(chain, EN_SRC, "he"), not_translated("he"));
+    }
+
+    #[test]
+    fn the_notice_says_why_there_is_no_translation() {
+        let cases = [
+            (
+                TranslateError::NotTranslated {
+                    target: "he".into(),
+                },
+                "Couldn't translate to Hebrew. Typed as said.",
+            ),
+            (
+                TranslateError::Timeout { secs: 25 },
+                "Translation timed out. Typed as said.",
+            ),
+            (TranslateError::NoLlm, "No AI set up for translation."),
+            (TranslateError::Empty, "Not translated. Typed as said."),
+            (
+                TranslateError::Backend("connect_failed".into()),
+                "Not translated. Typed as said.",
+            ),
+        ];
+        for (e, want) in cases {
+            assert_eq!(e.notice(), want, "{e:?}");
+        }
+    }
+
+    #[test]
+    fn a_tasks_log_name_is_its_wire_name() {
+        for t in [
+            CleanTask::Cleanup,
+            CleanTask::MeetingNotes,
+            CleanTask::MeetingSummary,
+            CleanTask::Translate,
+        ] {
+            assert_eq!(serde_json::to_value(t).unwrap(), t.as_str());
+        }
     }
 
     #[test]
