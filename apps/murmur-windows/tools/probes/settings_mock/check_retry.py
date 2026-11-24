@@ -49,7 +49,7 @@ with sync_playwright() as p:
     label = pg.get_attribute(ROW.format(5) + " .lw-retry", "aria-label")
     check("Retry is labelled", label == "Retry with current settings", label)
     order = pg.eval_on_selector_all(ROW.format(5) + " .lw-hist-actions button", "bs => bs.map(b => b.title)")
-    check("Retry sits beside Copy / Paste again", order[:3] == ["Copy", "Paste again", "Retry with current settings"], order)
+    check("Retry sits beside Copy", order[:2] == ["Copy", "Retry with current settings"], order)
 
     tabs = lambda id: pg.eval_on_selector_all(ROW.format(id) + " .lw-ver-tab", "ts => ts.map(t => t.textContent)")
     selected = lambda id: pg.eval_on_selector_all(
