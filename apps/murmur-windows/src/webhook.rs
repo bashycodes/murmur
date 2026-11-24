@@ -1,8 +1,14 @@
 //! Send to webhook (D105): a dictation made with the webhook shortcut is
 //! POSTed as JSON to the URL set in Settings instead of being pasted.
 //!
-//! The address rule is the one "Your server" uses (§2.6, D100): `https://`
-//! anywhere; plain `http://` only to a private, loopback or VPN host.
+//! Consent (D105, like D52): the user typed the URL and set the shortcut,
+//! and Settings says what is sent there; that is the consent for this
+//! route, which bypasses the router's cloud gate.
+//!
+//! The address rule is the cleartext rule "Your server" uses (§2.6):
+//! `https://` anywhere; plain `http://` only to a private, loopback or VPN
+//! host. Unlike the server there is no "allow an unencrypted connection"
+//! opt-in (D100).
 //! When saved, [`check_url`] applies `plaintext_ok_before_resolve` (a
 //! public IP literal fails, a name passes); when sending, a name is
 //! resolved and every address must pass `plaintext_ok_resolved`, and the
@@ -23,6 +29,8 @@ pub const CAN_WEBHOOK: bool = cfg!(feature = "webhook");
 
 /// Overlay text after a successful send.
 pub const SENT: &str = "Sent to webhook";
+/// Overlay text when Esc came too late: the request had already gone out.
+pub const ALREADY_SENT: &str = "Already sent to webhook";
 
 /// The JSON body: `{text, raw, app, time}`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -46,12 +54,37 @@ pub enum Failure {
     Other(String),
 }
 
-impl Failure {
-    /// The overlay text: `Webhook failed (HTTP 500)`.
-    pub fn message(&self) -> String {
+/// What became of one webhook send (`Input::WebhookFinished`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Outcome {
+    /// A 2xx answer.
+    Sent,
+    /// A non-2xx answer.
+    Status(u16),
+    /// No answer (refused address, connection, timeout, bad URL).
+    Error(String),
+    /// Esc came before the request went out: nothing was sent.
+    Cancelled,
+}
+
+impl Outcome {
+    /// The pill text of a failure (`Webhook failed (HTTP 500)`); `None`
+    /// for a send or a cancel.
+    pub fn failure(&self) -> Option<String> {
         match self {
-            Failure::Status(code) => format!("Webhook failed (HTTP {code})"),
-            Failure::Other(why) => format!("Webhook failed: {why}"),
+            Outcome::Status(code) => Some(format!("Webhook failed (HTTP {code})")),
+            Outcome::Error(why) => Some(format!("Webhook failed: {why}")),
+            Outcome::Sent | Outcome::Cancelled => None,
+        }
+    }
+}
+
+impl From<Result<u16, Failure>> for Outcome {
+    fn from(r: Result<u16, Failure>) -> Self {
+        match r {
+            Ok(_) => Outcome::Sent,
+            Err(Failure::Status(code)) => Outcome::Status(code),
+            Err(Failure::Other(why)) => Outcome::Error(why),
         }
     }
 }
@@ -152,7 +185,7 @@ pub fn body(text: &str, raw: &str, app: &str, now_ms: u64) -> String {
         app: app.into(),
         time: crate::debug_log::iso8601_ms(now_ms),
     };
-    serde_json::to_string(&p).unwrap_or_default()
+    serde_json::to_string(&p).expect("strings always serialize")
 }
 
 /// POST `body` (JSON) to `url`: `Ok(status)` on a 2xx answer.
@@ -172,6 +205,7 @@ pub fn post_with(
     let p = check_url(url).map_err(Failure::Other)?;
     let mut builder = reqwest::blocking::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
+        .referer(false)
         .connect_timeout(TIMEOUT)
         .timeout(TIMEOUT)
         .user_agent(concat!("murmur/", env!("CARGO_PKG_VERSION")));
@@ -183,8 +217,10 @@ pub fn post_with(
             .map_err(|_| Failure::Other(format!("{} did not resolve", p.host)))?
             .collect();
         let ips: Vec<_> = addrs.iter().map(|a| a.ip()).collect();
-        murmur_router::net::plaintext_ok_resolved(&ips, source_of)
-            .map_err(|e| Failure::Other(format!("needs https:// ({e})")))?;
+        murmur_router::net::plaintext_ok_resolved(&ips, source_of).map_err(|e| {
+            let why = e.trim_end_matches(" (enable TLS)");
+            Failure::Other(format!("needs https:// ({why})"))
+        })?;
         builder = builder.resolve_to_addrs(&p.host, &addrs);
     }
     let client = builder
@@ -197,7 +233,7 @@ pub fn post_with(
         .send()
         .map_err(|e| {
             Failure::Other(if e.is_timeout() {
-                "no answer within 10 s".into()
+                timeout_message()
             } else if e.is_connect() {
                 "could not connect".into()
             } else {
@@ -210,6 +246,11 @@ pub fn post_with(
     } else {
         Err(Failure::Status(code))
     }
+}
+
+/// The failure text of a send that got no answer in time.
+pub fn timeout_message() -> String {
+    format!("no answer within {} s", TIMEOUT.as_secs())
 }
 
 /// Without the `webhook` feature there is no network code to send with.
@@ -296,12 +337,22 @@ mod tests {
     }
 
     #[test]
-    fn failure_messages_name_the_http_status() {
-        assert_eq!(Failure::Status(503).message(), "Webhook failed (HTTP 503)");
+    fn outcomes_name_the_http_status() {
         assert_eq!(
-            Failure::Other("could not connect".into()).message(),
-            "Webhook failed: could not connect"
+            Outcome::from(Err(Failure::Status(503)))
+                .failure()
+                .as_deref(),
+            Some("Webhook failed (HTTP 503)")
         );
+        assert_eq!(
+            Outcome::from(Err(Failure::Other("could not connect".into())))
+                .failure()
+                .as_deref(),
+            Some("Webhook failed: could not connect")
+        );
+        assert_eq!(Outcome::from(Ok(204)), Outcome::Sent);
+        assert_eq!(Outcome::Sent.failure(), None);
+        assert_eq!(Outcome::Cancelled.failure(), None);
     }
 
     /// A one-request HTTP server on loopback: answers `status`, after
@@ -387,7 +438,8 @@ mod tests {
         let t = std::time::Instant::now();
         let r = post(&url, "{}");
         let took = t.elapsed();
-        assert_eq!(r, Err(Failure::Other("no answer within 10 s".into())));
+        assert_eq!(r, Err(Failure::Other(timeout_message())));
+        assert_eq!(timeout_message(), "no answer within 10 s");
         assert!(
             took >= TIMEOUT && took < TIMEOUT + Duration::from_secs(2),
             "{took:?}"
@@ -419,6 +471,7 @@ mod tests {
         let Err(Failure::Other(why)) = r else {
             panic!("{r:?}")
         };
-        assert!(why.contains("needs https://"), "{why}");
+        assert!(why.starts_with("needs https:// (100.64.0.10 is"), "{why}");
+        assert!(!why.contains("TLS") && !why.ends_with("))"), "{why}");
     }
 }

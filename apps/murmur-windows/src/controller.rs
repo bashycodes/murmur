@@ -464,21 +464,28 @@ impl Controller {
                 }
                 self.record(*session, result)
             }
-            Input::WebhookFinished { session, result } => {
+            Input::WebhookFinished {
+                session,
+                outcome: sent,
+            } => {
+                use crate::webhook::Outcome;
+                // What really happened, also after an Esc that came while
+                // the POST was in flight (it cannot be called back).
                 if self.debug_on() {
-                    let insert = match result {
-                        Ok(()) => outcome::WEBHOOK_SENT,
-                        Err(m) if m == PASTE_CANCELLED => outcome::CANCELLED,
-                        Err(_) => outcome::WEBHOOK_FAILED,
+                    let insert = match sent {
+                        Outcome::Sent => outcome::WEBHOOK_SENT,
+                        Outcome::Cancelled => outcome::CANCELLED,
+                        Outcome::Status(_) | Outcome::Error(_) => outcome::WEBHOOK_FAILED,
                     };
-                    self.debug_emit(*session, insert, result.clone().err());
+                    self.debug_emit(*session, insert, sent.failure());
                 }
-                // Sent or not, the text stays in History; nothing was pasted.
-                let not_pasted = match result {
-                    Err(m) if m == PASTE_CANCELLED => Err(PASTE_CANCELLED.to_string()),
-                    _ => Err(WEBHOOK_NOT_PASTED.to_string()),
+                // Dropped before it went out: like a paste never started.
+                // Otherwise the text stays in History; nothing was pasted.
+                let not_pasted = match sent {
+                    Outcome::Cancelled => PASTE_CANCELLED,
+                    _ => WEBHOOK_NOT_PASTED,
                 };
-                self.record(*session, &not_pasted)
+                self.record(*session, &Err(not_pasted.to_string()))
             }
             Input::Committed { session, outcome }
                 if self.debug_on() && self.current_session() == Some(*session) =>
@@ -1707,8 +1714,9 @@ impl Controller {
 
     /// D105: POST a dictation to the webhook URL (off-thread) instead of
     /// pasting it; the outcome comes back as `WebhookFinished`. One
-    /// attempt (`webhook::TIMEOUT`), no retry. Esc before the send drops
-    /// it, like a paste not yet started.
+    /// attempt (`webhook::TIMEOUT`), no retry. Esc before the request goes
+    /// out drops it (`Outcome::Cancelled`), like a paste not yet started;
+    /// once it is out it runs to its real outcome, which is reported.
     fn run_webhook(&self, session: SessionId, text: String, prefs: &Prefs) {
         let (cancelled, snapshot) = {
             let mut g = self.shared.sessions.lock().unwrap();
@@ -1754,29 +1762,27 @@ impl Controller {
             .name("murmur-webhook".into())
             .spawn(move || {
                 let body = body();
-                let result = if cancelled.load(Ordering::SeqCst) {
-                    Err(PASTE_CANCELLED.to_string())
+                use crate::webhook::Outcome;
+                let outcome = if cancelled.load(Ordering::SeqCst) {
+                    Outcome::Cancelled
                 } else if url.is_empty() {
-                    Err(crate::webhook::Failure::Other("no webhook URL is set".into()).message())
+                    Outcome::Error("no webhook URL is set".into())
                 } else {
-                    send(&url, &body).map(|_| ()).map_err(|f| {
-                        // Never the full URL: its query may hold a token.
-                        let m = f.message();
-                        if let Some(d) = &debug {
-                            d.event(
-                                "webhook",
-                                &format!("{m} ({})", crate::webhook::redact(&url)),
-                            );
-                        }
-                        m
-                    })
+                    Outcome::from(send(&url, &body))
                 };
-                let _ = tx.send(Input::WebhookFinished { session, result });
+                if let (Some(d), Some(m)) = (&debug, outcome.failure()) {
+                    // Never the full URL: its query may hold a token.
+                    d.event(
+                        "webhook",
+                        &format!("{m} ({})", crate::webhook::redact(&url)),
+                    );
+                }
+                let _ = tx.send(Input::WebhookFinished { session, outcome });
             });
         if let Err(e) = spawned {
             let _ = self.tx.send(Input::WebhookFinished {
                 session,
-                result: Err(crate::webhook::Failure::Other(e.to_string()).message()),
+                outcome: crate::webhook::Outcome::Error(e.to_string()),
             });
         }
     }
@@ -2968,6 +2974,58 @@ mod tests {
         assert_eq!(e.raw, "[stub: 1.0 s of audio]");
         assert_eq!(e.pasted, None);
         assert_eq!(r.c.last_text().as_deref(), Some("[stub: 1.0 s of audio]"));
+    }
+
+    #[test]
+    fn esc_while_the_post_is_out_reports_what_really_happened() {
+        let (mut r, _) = webhook_rig(Ok(200));
+        // The sender blocks until the test lets it answer.
+        let (go, wait) = std::sync::mpsc::channel::<()>();
+        let wait = Mutex::new(wait);
+        let posts: Sent = Arc::default();
+        let log = posts.clone();
+        r.c =
+            r.c.with_webhook_sender(Arc::new(move |url: &str, body: &str| {
+                log.lock().unwrap().push((url.into(), body.into()));
+                wait.lock().unwrap().recv().unwrap();
+                Ok(200)
+            }));
+        r.at(0, Input::Hotkey(HotkeyAction::WebhookDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        r.at(1000, Input::Hotkey(HotkeyAction::WebhookUp));
+        r.pump(); // Committed -> Webhook: the POST is out
+        let start = std::time::Instant::now();
+        while posts.lock().unwrap().is_empty() {
+            assert!(start.elapsed() < Duration::from_secs(2), "never sent");
+            std::thread::yield_now();
+        }
+        r.at(1100, Input::Hotkey(HotkeyAction::Cancel));
+        assert_eq!(r.c.machine().phase(), &Phase::Idle);
+        go.send(()).unwrap();
+        r.pump(); // WebhookFinished(Sent), after the Esc
+        let log = r.fake.log();
+        assert!(
+            log.iter().any(|l| l.contains(crate::webhook::ALREADY_SENT)),
+            "{log:?}"
+        );
+        assert!(!log.iter().any(|l| l.starts_with("paste")), "{log:?}");
+        // It was sent, so History keeps it like any sent dictation.
+        let e = history_latest(&r).expect("sent, so kept in History");
+        assert_eq!(e.raw, "[stub: 1.0 s of audio]");
+        assert_eq!(e.pasted, None);
+    }
+
+    #[test]
+    fn a_webhook_dropped_before_it_went_out_leaves_no_history() {
+        let (mut r, sent) = webhook_rig(Ok(200));
+        r.at(0, Input::Hotkey(HotkeyAction::WebhookDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        r.at(1000, Input::Hotkey(HotkeyAction::WebhookUp));
+        // Esc lands before the Commit is handled: nothing goes out.
+        r.at(1001, Input::Hotkey(HotkeyAction::Cancel));
+        r.pump(); // the stale Committed
+        assert!(sent.lock().unwrap().is_empty());
+        assert!(history_latest(&r).is_none());
     }
 
     // ---- D90: translation ----
