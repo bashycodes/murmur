@@ -215,6 +215,16 @@ fn main() {
             .info_json()
             .and_then(|j| serde_json::from_str::<serde_json::Value>(&j).ok())
             .map(|v| v["last"].clone());
+        // The core counts the prompt it built; the `old` arm rewrites it, so
+        // its counts are the rewritten DICTIONARY line's entries (the
+        // session's dictionary is empty: the screen words, at most 200).
+        let counts = if arm == "old" {
+            let n = ctx.screen_words.iter().take(200);
+            (n.filter(|w| !w.trim().is_empty()).count(), 0)
+        } else {
+            let c = r.timings.prompt_counts;
+            (c.dict_terms, c.screen_names)
+        };
         let names = user
             .lines()
             .find_map(|l| l.strip_prefix("SCREEN NAMES: "))
@@ -227,8 +237,8 @@ fn main() {
                 "text": r.final_text, "status": r.status,
                 "fallback_reason": r.fallback_reason,
                 "llm_ms": r.timings.llm_ms,
-                "dict_terms_in_prompt": r.timings.dict_terms_in_prompt,
-                "screen_names_in_prompt": r.timings.screen_names_in_prompt,
+                "dict_terms_in_prompt": counts.0,
+                "screen_names_in_prompt": counts.1,
                 "user_chars": user.chars().count(),
                 "screen_names": names, "last": last
             })

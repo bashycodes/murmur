@@ -54,6 +54,14 @@ name target; the 7B misses all three at the server's budget.
   screen words on the DICTIONARY line), `none` (no screen words).
 * Models: qwen2.5-1.5b-instruct q4_k_m (the server's), qwen2.5-7b-instruct
   q4_k_m, one at a time on a shared machine that was also serving.
+* Not as the server: the runner loads the model without the server's draft
+  setting (`[model] llm_draft`, default 4, D69), which speeds up decoding
+  answers that copy the prompt. Prefill, where the old prompt lost its time,
+  is not affected, but the server's `llm_ms` should be a little lower than
+  here on every arm.
+* Counts: the `old` arm's rows give `dict_terms_in_prompt` as the entries of
+  its rewritten DICTIONARY line (15 to 55 here), not the core's count of the
+  prompt it built before the rewrite.
 
 ## Results
 
@@ -67,6 +75,13 @@ name target; the 7B misses all three at the server's budget.
 | 7B old | 0/40 | 0/40 | 0 % | 40/40 (100 %) | 0 | 3810 | 3915 | 4050 | 1497 | 2343 |
 | 7B none | 0/40 | 0/40 | 0 % | 25/40 (62 %) | 0 | 3723 | 3915 | 4050 | 188 | 1815 |
 | 7B new, 30 s budget | 17/40 | 24/40 | 42 % | 0/40 (0 %) | 0 | 6309 | 8603 | 10237 | 314 | 1849 |
+
+Why the old prompt times out: each dictation's DICTIONARY line differs, so
+its user message (about 130 to 570 tokens here, against 1 to 73 with the new
+prompt) is prefilled uncached at about 65 to 115 tokens/s on 4 threads,
+which alone takes longer than the ~3.7 s budget. The old arm's 2/40 names
+are not a model-quality figure: 36 of its 40 dictations fell back to the
+rules' text, and the 2 right cases are among the 4 that did not.
 
 "any case" ignores case: the 7B often lowercased the whole answer in these
 casual-style chats. Each `full` case runs right after its `short` twin with
@@ -92,7 +107,14 @@ row is the fair latency figure for the new prompt.
 
 Keep the server on qwen2.5-1.5b. On this CPU the 7B cannot answer within the
 dictation budget, even with the short prompt, and given unlimited time it
-spells about as many names right as the 1.5B. To get closer to 80 %: match
-the words of a multi-word candidate one by one ("Uncle Bartholo" →
-"Bartholo"), and try a few-shot with a SCREEN NAMES line on the 1.5B. Both
-need their own bench.
+spells about as many names right as the 1.5B.
+
+## Follow-up ideas (each needs its own bench)
+
+* Match each word of a multi-word candidate on its own ("Uncle Bartholo" →
+  "Bartholo"), so a name met only inside a sentence reaches the line.
+* A few-shot turn with a SCREEN NAMES line on the 1.5B, to show the model
+  respelling a near name (Frost → Fross, Quintavius → Quentavius).
+* D64's first-sound rule: "Elsabet" never names Ilsabet because the opening
+  sound differs; a vowel-for-vowel opening could be allowed for names from
+  the screen, at the cost of more noise.
