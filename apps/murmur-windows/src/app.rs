@@ -3554,14 +3554,13 @@ fn position_overlay(w: &WebviewWindow) {
     }
 }
 
-/// Should the bar be up: a dictation state on it, a meeting recording (it
-/// carries the chip) or the "always show" pref.
+/// Should the bar be up ([`crate::overlay::bar_wanted`]).
 fn overlay_wanted(app: &AppHandle) -> bool {
     let st = app.state::<AppState>();
     let always = st.prefs.read().unwrap().show_murmur_bar_always;
     let recording = st.meetings.get().is_some_and(|m| m.is_recording());
-    let busy = *st.overlay_state.lock().unwrap() != OverlayState::Resting;
-    always || recording || busy
+    let state = st.overlay_state.lock().unwrap().clone();
+    crate::overlay::bar_wanted(&state, always, recording)
 }
 
 /// Bring the bar in line with the current state. It runs on the UI thread
