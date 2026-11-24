@@ -1047,8 +1047,11 @@ impl MurmurCore {
         true
     }
 
-    /// Field context; may arrive any time before `commit`.
-    pub fn set_context(&self, ctx: FieldContext) {
+    /// Field context; may arrive any time before `commit`. Its screen
+    /// words are reduced to name-like candidates here
+    /// ([`crate::screen_names`]), once for ASR, casing and cleanup.
+    pub fn set_context(&self, mut ctx: FieldContext) {
+        ctx.screen_words = crate::screen_names::name_candidates(&ctx.screen_words);
         *self.shared.context.lock().unwrap() = ctx;
         self.shared.context_ver.fetch_add(1, Ordering::Relaxed);
     }

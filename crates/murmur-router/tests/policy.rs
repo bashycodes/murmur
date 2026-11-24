@@ -414,6 +414,31 @@ fn queued_start_without_fallback_waits_for_the_server() {
 }
 
 #[test]
+fn the_server_gets_screen_name_candidates_not_bubbles() {
+    let k = rig_with(
+        cfg(true, false),
+        Fake::new(EngineKind::Local),
+        Fake::new(EngineKind::Remote),
+    );
+    k.router.start_session(SessionConfig::default()).unwrap();
+    // Synthetic screen: a sender label and one bubble.
+    let bubbles = vec![
+        "Orla Venning".to_string(),
+        "Can you ask Piet Harlow to bring the projector on Friday?".to_string(),
+    ];
+    k.router.set_context(FieldContext {
+        screen_words: bubbles.clone(),
+        ..Default::default()
+    });
+    let ctxs = k.remote.contexts.lock().unwrap();
+    assert_eq!(
+        ctxs[0].screen_words,
+        murmur_core::screen_names::name_candidates(&bubbles)
+    );
+    assert_eq!(ctxs[0].screen_words[..2], ["Orla Venning", "Piet Harlow"]);
+}
+
+#[test]
 fn mid_session_death_replays_the_whole_buffer_into_local() {
     let k = rig_with(
         cfg(true, true),

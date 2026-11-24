@@ -1447,7 +1447,11 @@ impl Router {
         true
     }
 
-    pub fn set_context(&self, ctx: FieldContext) {
+    /// Screen words become name candidates here
+    /// (`murmur_core::screen_names`), so a server gets the short list and a
+    /// cloud refinish sees what the core saw; the core repeats it (no-op).
+    pub fn set_context(&self, mut ctx: FieldContext) {
+        ctx.screen_words = murmur_core::screen_names::name_candidates(&ctx.screen_words);
         let mut g = self.session();
         let Some(a) = g.as_mut() else { return };
         if a.switching.is_some() {

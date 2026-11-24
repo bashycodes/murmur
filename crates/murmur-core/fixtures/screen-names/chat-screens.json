@@ -1,0 +1,238 @@
+{
+  "about": "Synthetic chat screens for screen_names.rs: what a phone's accessibility walk reads (one string per text node, screen order). Every name, company and message is invented. `names` are the planted names that must survive as candidates; `said` (English screens) are the probe's spoken sentences, one per planted name.",
+  "screens": [
+    {
+      "id": "dm-plans",
+      "app": "messenger, one-to-one chat",
+      "screen": [
+        "Taviel Marrow",
+        "online",
+        "Yesterday",
+        "Are we still on for the climbing gym on Saturday? I booked the eleven o'clock slot for both of us",
+        "10:42",
+        "Yes! I might be ten minutes late though, I have to drop the car at the garage first",
+        "10:44",
+        "No worries. Also my cousin Brisa Velloran wants to come along, is that okay with you?",
+        "10:45",
+        "Of course, the more the merrier. Tell her to bring her own chalk because the rental stuff is awful",
+        "10:51",
+        "Today",
+        "Heads up, the gym moved our booking to noon because of a kids party, sorry about that",
+        "09:12",
+        "Type a message"
+      ],
+      "names": ["Taviel Marrow", "Brisa Velloran"],
+      "said": [
+        "Tell Taviel Marrow that noon works fine for me.",
+        "I will pick up Brisa Velloran on the way to the gym."
+      ]
+    },
+    {
+      "id": "group-trip",
+      "app": "messenger, group chat",
+      "screen": [
+        "Lake trip planning",
+        "Corwen, Ilsabet, Odessa, You",
+        "Corwen Ashgrove",
+        "okay so the cabin is confirmed for the long weekend, I paid the deposit and the rest is due two weeks before",
+        "Ilsabet Varga",
+        "amazing, how much is everyone's share? I can transfer tonight if someone sends the number",
+        "Corwen Ashgrove",
+        "it comes to about ninety each if all six of us go, a bit more if Pellam drops out again",
+        "Odessa Quillfeather",
+        "I can drive, my car fits four plus the cooler. Who else has a car with a roof rack for the kayaks?",
+        "Ilsabet Varga",
+        "my brother does but he needs it back by Sunday evening",
+        "Corwen Ashgrove",
+        "ok let's sort cars on the call tomorrow night, I'll make a spreadsheet for food and gear",
+        "Message"
+      ],
+      "names": ["Corwen Ashgrove", "Ilsabet Varga", "Odessa Quillfeather"],
+      "said": [
+        "Corwen Ashgrove already paid the deposit for the cabin.",
+        "Can Ilsabet Varga bring the roof rack on Friday?",
+        "Odessa Quillfeather is driving four of us up to the lake."
+      ]
+    },
+    {
+      "id": "work-channel",
+      "app": "team chat, channel with mentions",
+      "screen": [
+        "# release-planning",
+        "Marisol Okafor-Lind",
+        "Morning all. The staging build failed again overnight, looks like the migration step timed out on the large tenant",
+        "Dunstan Pryce",
+        "@marisol I saw that, it's the same index rebuild as last week. I can split it into two batches after standup",
+        "Marisol Okafor-Lind",
+        "Thanks. @kellan_fross can you hold the release notes until we know whether the fix makes it into this cut?",
+        "Kellan Fross",
+        "Sure, I'll park them in the draft doc and ping you when legal signs off on the pricing wording",
+        "3 replies",
+        "Dunstan Pryce",
+        "Batches are running now, first one finished in eleven minutes which is well under the limit",
+        "Message #release-planning"
+      ],
+      "names": ["Marisol Okafor-Lind", "Dunstan Pryce", "Kellan Fross"],
+      "said": [
+        "Ask Dunstan Pryce to split the migration into two batches.",
+        "Kellan Fross will hold the release notes until Thursday.",
+        "Marisol Okafor-Lind wants the staging build fixed today."
+      ]
+    },
+    {
+      "id": "inbox",
+      "app": "email, inbox list",
+      "screen": [
+        "Inbox",
+        "Search in mail",
+        "Primary",
+        "Wendeline Okoro",
+        "Invoice 2291 for the October workshop",
+        "Hi, please find attached the invoice for the two day workshop we ran for your team last month. Payment terms are thirty days as usual",
+        "Oct 28",
+        "Harrow & Vane Logistics",
+        "Your delivery window has changed",
+        "We had to reschedule your pallet delivery to Wednesday morning between eight and noon. Reply to this email if that does not suit you",
+        "Oct 27",
+        "Fenwick Adebayo-Sorel",
+        "Re: draft contract",
+        "I went through the second draft and only have two small comments on the termination clause, otherwise we are good to sign",
+        "Oct 27",
+        "Compose"
+      ],
+      "names": ["Wendeline Okoro", "Harrow & Vane Logistics", "Fenwick Adebayo-Sorel"],
+      "said": [
+        "Please forward the invoice from Wendeline Okoro to accounts.",
+        "I need to reply to Fenwick Adebayo-Sorel about the contract."
+      ]
+    },
+    {
+      "id": "family",
+      "app": "messenger, family group",
+      "screen": [
+        "Family",
+        "Grandma Ottilie",
+        "Did everyone get home safe? The roads looked icy on the news this evening",
+        "Jorvik",
+        "yes all good, took the long way round the hill because of the accident near the bridge",
+        "Grandma Ottilie",
+        "Good. Next Sunday lunch is at Aunt Severine's house, she is making the lamb so please let her know who is coming",
+        "Tamsin",
+        "I'm in, bringing dessert. Can someone ask Uncle Bartholo if he still has my blue casserole dish",
+        "Jorvik",
+        "he does, it's in his garage with the camping gear, I'll grab it on Thursday",
+        "Message"
+      ],
+      "names": ["Ottilie", "Jorvik", "Severine", "Tamsin", "Bartholo"],
+      "said": [
+        "Lunch on Sunday is at Severine's house this week.",
+        "Can you ask Bartholo about the blue casserole dish?",
+        "Jorvik is grabbing the dish from the garage."
+      ]
+    },
+    {
+      "id": "sms-list",
+      "app": "text messages, conversation list",
+      "screen": [
+        "Messages",
+        "Search",
+        "Peregrine Szabo",
+        "The plumber can come between two and four, does that work for you?",
+        "2:14 PM",
+        "Mira Castellanos-Webb",
+        "Running late, order me whatever you're having and I'll pay you back",
+        "1:03 PM",
+        "Parcel delivery",
+        "Your parcel will arrive today between 15:00 and 18:00. Track it in the app.",
+        "11:40 AM",
+        "Ansgar Teodorescu",
+        "Thanks again for the ladder, I'll return it at the weekend",
+        "Yesterday",
+        "Start chat"
+      ],
+      "names": ["Peregrine Szabo", "Mira Castellanos-Webb", "Ansgar Teodorescu"],
+      "said": [
+        "Tell Peregrine Szabo that two o'clock is perfect.",
+        "Ansgar Teodorescu can keep the ladder until next week."
+      ]
+    },
+    {
+      "id": "community-server",
+      "app": "community chat server",
+      "screen": [
+        "Board Game Night",
+        "# general",
+        "thorne_ellery",
+        "who's bringing what on Friday? I've got Wingspan and the new expansion for the space trading game",
+        "Rosalind Achterberg",
+        "I can bring snacks, @thorne_ellery do we have enough chairs or should I borrow some from the community hall",
+        "Quentavius",
+        "we have eight chairs plus the sofa, should be fine unless Delphine invites her whole office again",
+        "Delphine Marchetti-Rowe",
+        "rude but fair. Only two extra people this time, I promise",
+        "Today at 18:20",
+        "Message #general"
+      ],
+      "names": ["thorne ellery", "Rosalind Achterberg", "Quentavius", "Delphine Marchetti-Rowe"],
+      "said": [
+        "Rosalind Achterberg is bringing the snacks on Friday.",
+        "Delphine Marchetti-Rowe promised only two extra people.",
+        "Quentavius says we have enough chairs."
+      ]
+    },
+    {
+      "id": "professional",
+      "app": "professional network, messages",
+      "screen": [
+        "Messaging",
+        "Search messages",
+        "Ingrid Solvang-Pereira",
+        "Talent Partner at Brightmoor Analytics",
+        "Hi, I came across your profile and thought you might be a great fit for a senior data engineering role on our platform team. Would you be open to a short call next week?",
+        "Oct 30",
+        "Cassius Oyelaran",
+        "Thanks for connecting! Great talk at the meetup on streaming pipelines, I would love to compare notes on the schema registry setup sometime",
+        "Oct 22",
+        "Write a message"
+      ],
+      "names": ["Ingrid Solvang-Pereira", "Brightmoor Analytics", "Cassius Oyelaran"],
+      "said": [
+        "I would like to schedule a call with Ingrid Solvang-Pereira next week.",
+        "Cassius Oyelaran asked about the schema registry setup."
+      ]
+    },
+    {
+      "id": "he-group",
+      "app": "messenger, Hebrew group chat",
+      "screen": [
+        "ועד הבית",
+        "יערית בן-שושן",
+        "שלום לכולם, מחר בבוקר מגיע הטכנאי של המעלית, אז אולי תצטרכו לרדת במדרגות בין תשע לאחת עשרה",
+        "אלנתן קורדובה",
+        "תודה על העדכון. מישהו יודע אם החניה של הבניין תהיה פתוחה?",
+        "יערית בן-שושן",
+        "כן, החניה פתוחה כרגיל",
+        "נגה אלמוזלינו",
+        "אני משאירה את המפתח של המחסן אצל אלנתן עד יום חמישי",
+        "הודעה"
+      ],
+      "names": ["יערית בן-שושן", "אלנתן קורדובה", "נגה אלמוזלינו"],
+      "said": []
+    },
+    {
+      "id": "he-dm",
+      "app": "messenger, Hebrew one-to-one chat",
+      "screen": [
+        "תמרית אוזרי",
+        "מחובר/ת",
+        "היום",
+        "היי, הספקת לשלוח את המצגת ללקוח? הוא שאל עליה שוב הבוקר",
+        "עוד לא, אני מסיימת את השקף של התקציב ושולחת עד הצהריים",
+        "סבבה, תעדכני אותי כשזה יוצא כדי שאתאם איתו שיחה",
+        "הקלד הודעה"
+      ],
+      "names": ["תמרית אוזרי"],
+      "said": []
+    }
+  ]
+}

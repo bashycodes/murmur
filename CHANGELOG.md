@@ -16,6 +16,10 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Changed
+
+- **On-screen words now send the names on screen, not whole chat bubbles.** With "Send on-screen words" on, the core turns what the phone reads on screen into at most 50 short name-like candidates (capitalised names, @mentions, sender and header labels, uncommon words; for Hebrew, short labels such as sender names) before speech recognition, casing and AI cleanup use them. Whole bubbles had used up the hint budget on sentences and gave the names in them almost no boost. Applies to the phone, the Windows app and murmur-server alike.
+
 ## [1.7.0] - 2026-11-24
 
 ### Added
