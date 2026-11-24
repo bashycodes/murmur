@@ -149,6 +149,27 @@ data class Settings(
             return pct.coerceIn(BUBBLE_SIZE_PERCENT) / 100f
         }
 
+        /**
+         * The AI cleanup strength when none was picked (stored NONE: the picker offers only
+         * Light / Medium / High). Medium; it was Light. A picked strength is kept.
+         */
+        val DEFAULT_STRENGTH = CleanupLevel.MEDIUM
+
+        /** The strength a [stored] level runs at when AI cleanup is on. */
+        fun strengthOf(stored: CleanupLevel) = stored.takeIf { it != CleanupLevel.NONE } ?: DEFAULT_STRENGTH
+
+        /**
+         * One-time keep of the old strength default. A NONE saved before the default moved
+         * ([migrated] false) ran, and was shown, as Light: it becomes an explicit LIGHT so an
+         * upgrade does not change it. Never saved (null) is a fresh install: NONE, which runs
+         * as [DEFAULT_STRENGTH]. Anything else, and anything saved after this ran, is kept.
+         */
+        fun migrateStrength(stored: CleanupLevel?, migrated: Boolean): CleanupLevel = when {
+            stored == null -> CleanupLevel.NONE
+            !migrated && stored == CleanupLevel.NONE -> CleanupLevel.LIGHT
+            else -> stored
+        }
+
         /** Phones decode slower than the desktop default budget of 1.5 s. */
         const val ANDROID_LLM_TIMEOUT_MS = 3_000L
         const val PARTIAL_INTERVAL_MS = 1_500
@@ -187,20 +208,24 @@ data class Settings(
     fun handsFreeEndpointMs(): Int? = endpointSilenceMs.takeIf { it > 0 }?.coerceIn(ENDPOINT_RANGE_MS)
 
     /**
-     * The effective cleanup level: LLM off → NONE; on with NONE selected → LIGHT. Since D27 NONE
+     * The effective cleanup level: LLM off → NONE; on with NONE selected → [strength]. Since D27 NONE
      * (and `raw_mode`) only switch the LLM off: the deterministic formatting still runs whenever
      * [spokenCleanup] ("Auto-format") is on.
      */
     val effectiveCleanup: CleanupLevel
-        get() = if (!llmEnabled) CleanupLevel.NONE else cleanup.takeIf { it != CleanupLevel.NONE } ?: CleanupLevel.LIGHT
+        get() = if (!llmEnabled) CleanupLevel.NONE else strength
+
+    /** The strength AI cleanup runs at when it is on: the picked one, else [DEFAULT_STRENGTH]. */
+    val strength: CleanupLevel
+        get() = strengthOf(cleanup)
 
     /**
      * D28: with cloud cleanup on (OpenRouter, consent given) the LLM step runs even when the
-     * on-device AI is off, at the chosen strength (LIGHT when none was picked). D36: likewise
+     * on-device AI is off, at the chosen strength ([strength]). D36: likewise
      * with your server's cleanup on ([DevSettings.offPhoneCleanup]).
      */
     fun cleanupFor(cloudCleanup: Boolean): CleanupLevel =
-        if (cloudCleanup && effectiveCleanup == CleanupLevel.NONE) cleanup.takeIf { it != CleanupLevel.NONE } ?: CleanupLevel.LIGHT
+        if (cloudCleanup && effectiveCleanup == CleanupLevel.NONE) strength
         else effectiveCleanup
 
     /** [language]: the effective one ([LanguageDefault.effective]); unset / "auto" = detect. [cloudCleanup]: see [cleanupFor]. */

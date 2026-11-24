@@ -191,14 +191,24 @@ class SettingsPagesTest {
     @Test fun cleanupSubtitle() {
         assertEquals("Off · auto-format still runs", SettingsSummary.cleanup(s, "qwen2.5-1.5b-instruct-q4_k_m.gguf"))
         assertEquals("Off · no formatting (auto-format off)", SettingsSummary.cleanup(s.copy(spokenCleanup = false), null))
-        // Stored NONE with the switch on runs LIGHT (Settings.effectiveCleanup): show what runs.
-        assertEquals("On · qwen2.5-1.5b · Light", SettingsSummary.cleanup(s.copy(llmEnabled = true), "qwen2.5-1.5b-instruct-q4_k_m.gguf"))
+        // Stored NONE with the switch on runs MEDIUM (Settings.effectiveCleanup): show what runs.
+        assertEquals("On · qwen2.5-1.5b · Medium", SettingsSummary.cleanup(s.copy(llmEnabled = true), "qwen2.5-1.5b-instruct-q4_k_m.gguf"))
         assertEquals("On · no model imported · High", SettingsSummary.cleanup(s.copy(llmEnabled = true, cleanup = CleanupLevel.HIGH), null))
     }
 
-    @Test fun strengthPickerShowsLightForAStoredNone() {
-        assertEquals(CleanupLevel.LIGHT, SettingsPages.shownStrength(CleanupLevel.NONE))
-        assertEquals(CleanupLevel.MEDIUM, SettingsPages.shownStrength(CleanupLevel.MEDIUM))
+    @Test fun strengthPickerShowsMediumForAStoredNone() {
+        assertEquals(CleanupLevel.MEDIUM, SettingsPages.shownStrength(CleanupLevel.NONE))
+        // A picked strength is kept on upgrade, Light included.
+        assertEquals(CleanupLevel.LIGHT, SettingsPages.shownStrength(CleanupLevel.LIGHT))
+        assertEquals(CleanupLevel.HIGH, SettingsPages.shownStrength(CleanupLevel.HIGH))
+    }
+
+    @Test fun freshInstallKeepsAiCleanupOffWithMediumShown() {
+        val fresh = Settings()
+        assertFalse("AI cleanup stays off by default", fresh.llmEnabled)
+        assertEquals(CleanupLevel.NONE, fresh.toSessionConfig(emptyList()).cleanupLevel)
+        assertEquals(CleanupLevel.MEDIUM, SettingsPages.shownStrength(fresh.cleanup))
+        assertEquals(CleanupLevel.MEDIUM, fresh.copy(llmEnabled = true).toSessionConfig(emptyList()).cleanupLevel)
     }
 
     @Test fun timingBubbleAppsHistorySubtitles() {
@@ -280,21 +290,21 @@ class SettingsPagesTest {
         val noServer = dev.withCleanup(DevSettings.CleanupRoute.SERVER, false)
         assertEquals("Rules only", SettingsSummary.cleanupRow(s, noServer, caps))
         assertEquals("Off", SettingsSummary.cleanupRow(s.copy(spokenCleanup = false), noServer, caps))
-        assertEquals("Light · This phone, then rules", SettingsSummary.cleanupRow(s.copy(llmEnabled = true), noServer, caps))
+        assertEquals("Medium · This phone, then rules", SettingsSummary.cleanupRow(s.copy(llmEnabled = true), noServer, caps))
         val cloud = CloudPage.enableCleanup(noServer, 1).copy(cleanupOrder = listOf(r[2], r[0], r[1]))
         assertEquals("Medium · Cloud, then rules", SettingsSummary.cleanupRow(s.copy(cleanup = CleanupLevel.MEDIUM), cloud, caps))
         assertEquals("High · Cloud, then this phone, then rules", SettingsSummary.cleanupRow(s.copy(llmEnabled = true, cleanup = CleanupLevel.HIGH), cloud, caps))
-        assertEquals("Light · This phone, then cloud", SettingsSummary.cleanupRow(s.copy(llmEnabled = true, spokenCleanup = false), cloud.copy(cleanupOrder = DevSettings.DEFAULT_CLEANUP_ORDER), caps))
+        assertEquals("Medium · This phone, then cloud", SettingsSummary.cleanupRow(s.copy(llmEnabled = true, spokenCleanup = false), cloud.copy(cleanupOrder = DevSettings.DEFAULT_CLEANUP_ORDER), caps))
         // No consent recorded: the cloud is not used, so not named.
         assertEquals("Rules only", SettingsSummary.cleanupRow(s, noServer.copy(allowCloudCleanup = true), caps))
         // D36: your server (on by default) cleans even with the phone's AI off; named only once set up.
-        assertEquals("Light · Your server, then rules", SettingsSummary.cleanupRow(s, dev, caps))
-        assertEquals("Light · This phone, then your server, then rules", SettingsSummary.cleanupRow(s.copy(llmEnabled = true), dev, caps))
+        assertEquals("Medium · Your server, then rules", SettingsSummary.cleanupRow(s, dev, caps))
+        assertEquals("Medium · This phone, then your server, then rules", SettingsSummary.cleanupRow(s.copy(llmEnabled = true), dev, caps))
         assertEquals("Rules only", SettingsSummary.cleanupRow(s, DevSettings.defaults(caps), caps))
         assertEquals("Rules only", SettingsSummary.cleanupRow(s, dev.effective(BuildCaps.LOCAL), BuildCaps.LOCAL))
         // A server known to have no AI model is skipped by the router, so not named.
         assertEquals("Rules only", SettingsSummary.cleanupRow(s, dev, caps, serverLlm = false))
-        assertEquals("Light · Your server, then rules", SettingsSummary.cleanupRow(s, dev, caps, serverLlm = true))
+        assertEquals("Medium · Your server, then rules", SettingsSummary.cleanupRow(s, dev, caps, serverLlm = true))
     }
 
     @Test fun aiCleanupRowNamesLiteLlmOnlyWhenUsable() {
@@ -302,7 +312,7 @@ class SettingsPagesTest {
         val noServer = dev.withCleanup(DevSettings.CleanupRoute.SERVER, false)
         val custom = CustomCleanupSettings(baseUrl = "http://10.0.0.5:4000/v1", model = "gpt-4o-mini")
         val on = CloudPage.enableCleanup(noServer.copy(cloud = noServer.cloud.copy(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = custom)), 1)
-        assertEquals("Light · Cloud, then rules", SettingsSummary.cleanupRow(s, on, BuildCaps.ALL))
+        assertEquals("Medium · Cloud, then rules", SettingsSummary.cleanupRow(s, on, BuildCaps.ALL))
         // D52: not set up (no model) sends nothing: neither named nor counted as an engine off the phone.
         val broken = CloudPage.withCustom(on) { copy(model = "") }
         assertTrue(broken.cloud.customNotSetUp)
@@ -347,11 +357,11 @@ class SettingsPagesTest {
         assertEquals("Gemma 3 12B", newer.serverModelNames("Gemma 3 12B").cleanupLabel())
         assertNull(older.serverModelNames().cleanupLabel())
         assertNull(newer.copy(ok = false).serverModelNames().cleanupLabel())
-        assertEquals("Light · Your server · Qwen 2.5 1.5B (cleanup), then rules", SettingsSummary.cleanupRow(s, dev, caps, true, models))
-        assertEquals("Light · Your server, then rules", SettingsSummary.cleanupRow(s, dev, caps, true, older.serverModelNames()))
+        assertEquals("Medium · Your server · Qwen 2.5 1.5B (cleanup), then rules", SettingsSummary.cleanupRow(s, dev, caps, true, models))
+        assertEquals("Medium · Your server, then rules", SettingsSummary.cleanupRow(s, dev, caps, true, older.serverModelNames()))
         // The drawer's Engines card shows the same text.
         assertEquals("Your server · $speech, then this phone", ShellPages.speechLine(dev, caps, true, models).text)
-        assertEquals("Light · Your server · Qwen 2.5 1.5B (cleanup), then rules", ShellPages.cleanupLine(s, dev, caps, true, models).text)
+        assertEquals("Medium · Your server · Qwen 2.5 1.5B (cleanup), then rules", ShellPages.cleanupLine(s, dev, caps, true, models).text)
     }
 
     @Test fun cloudRowNamesTheProviderKeyAndThisMonthsCost() {

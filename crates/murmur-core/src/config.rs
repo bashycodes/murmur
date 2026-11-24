@@ -27,6 +27,9 @@ pub enum CleanupLevel {
     /// No LLM pass. Deterministic cleanup still follows
     /// `SessionConfig::spoken_cleanup` (D27).
     None,
+    /// The wire fallback for a `SessionConfig` without a level (an older
+    /// peer). The shells pick their own product default (Medium) and always
+    /// send the level, so this stays Light to keep old peers' behaviour.
     #[default]
     Light,
     Medium,

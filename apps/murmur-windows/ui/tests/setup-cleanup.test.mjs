@@ -4,7 +4,7 @@
 // Settings → AI cleanup's switch. Runs on the built dist: `npm test`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cloudMissingLine, enginesFor, initialCleanup, recommendedCleanup, serverOption } from "../dist/lib/setup-cleanup.js";
+import { DEFAULT_LEVEL, cloudMissingLine, enginesFor, initialCleanup, levelWhenOn, recommendedCleanup, serverOption } from "../dist/lib/setup-cleanup.js";
 import { withEngine } from "../dist/lib/cleanup-order.js";
 
 const D36 = [
@@ -103,4 +103,10 @@ test("Cloud cleanup says what is missing before it can start", () => {
   assert.match(cloudMissingLine(ll), /own AI server's address in Settings → AI provider/);
   assert.equal(cloudMissingLine({ ...ll, model: "some-model" }), null);
   assert.match(cloudMissingLine({ ...ll, baseUrl: " ", model: "some-model" }), /address/);
+});
+
+test("turning AI cleanup on from none saves Medium; a saved strength stays", () => {
+  assert.equal(DEFAULT_LEVEL, "medium");
+  assert.equal(levelWhenOn("none"), "medium");
+  for (const l of ["light", "medium", "high"]) assert.equal(levelWhenOn(l), l);
 });

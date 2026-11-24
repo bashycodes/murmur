@@ -23,6 +23,12 @@ export function recommendedCleanup(s, hasPc) {
         return "pc";
     return null;
 }
+/** The AI cleanup strength when none is set (a fresh install, or AI turned on from "none"). */
+export const DEFAULT_LEVEL = "medium";
+/** The level setup saves when it turns AI cleanup on: the saved strength, else {@link DEFAULT_LEVEL}. */
+export function levelWhenOn(saved) {
+    return saved === "none" ? DEFAULT_LEVEL : saved;
+}
 /**
  * The option selected when the step opens: Cloud when it is on, Rules when
  * the level has no AI, else whichever of this PC and your server comes first

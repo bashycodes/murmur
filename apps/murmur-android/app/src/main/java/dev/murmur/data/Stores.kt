@@ -21,11 +21,13 @@ class SettingsStore(context: Context) {
         const val LANGUAGE_MIGRATED = "language_default_device"
         /** D37: the default moved phone language → keyboard language; set once that ran (or on any save). */
         const val KEYBOARD_MIGRATED = "language_default_keyboard"
+        /** The strength default moved Light → Medium; set once a saved NONE was kept as Light (or on any save). */
+        const val STRENGTH_MIGRATED = "strength_default_medium"
     }
 
     fun load() = Settings(
         language = loadLanguage(),
-        cleanup = CleanupLevel.entries.firstOrNull { it.wire == sp.getString("cleanup", null) } ?: CleanupLevel.NONE,
+        cleanup = loadCleanup(),
         retention = Retention.fromKey(sp.getString("retention", null)),
         retryAudioKeep = RetryLogic.keepOf(sp.getInt("retry_audio_keep", RetryLogic.DEFAULT_KEEP)),
         capMinutes = sp.getInt("cap_minutes", 5),
@@ -75,6 +77,19 @@ class SettingsStore(context: Context) {
         return v
     }
 
+    /** One-time keep of a saved never-picked strength as Light ([Settings.migrateStrength]). */
+    private fun loadCleanup(): CleanupLevel {
+        val stored = sp.getString("cleanup", null)?.let { w -> CleanupLevel.entries.firstOrNull { it.wire == w } ?: CleanupLevel.NONE }
+        val migrated = sp.getBoolean(STRENGTH_MIGRATED, false)
+        val v = Settings.migrateStrength(stored, migrated)
+        if (!migrated) {
+            val e = sp.edit().putBoolean(STRENGTH_MIGRATED, true)
+            if (stored != null && v != stored) e.putString("cleanup", v.wire)
+            e.apply()
+        }
+        return v
+    }
+
     /** D22: one-time move of an untouched 2000 ms endpoint to the new 1500 default ([Settings.migrateEndpointMs]). */
     private fun loadEndpointMs(): Int {
         val stored = if (sp.contains("endpoint_silence_ms")) sp.getInt("endpoint_silence_ms", Settings.DEFAULT_ENDPOINT_SILENCE_MS) else null
@@ -112,6 +127,7 @@ class SettingsStore(context: Context) {
             .putBoolean(ENDPOINT_MIGRATED, true)
             .putBoolean(LANGUAGE_MIGRATED, true)
             .putBoolean(KEYBOARD_MIGRATED, true)
+            .putBoolean(STRENGTH_MIGRATED, true)
             .putBoolean("decode_while_speaking", s.decodeWhileSpeaking)
             .putString("style_personal", s.styles.personal.wire)
             .putString("style_work", s.styles.work.wire)

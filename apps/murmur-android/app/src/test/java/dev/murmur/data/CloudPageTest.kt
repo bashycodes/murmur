@@ -15,7 +15,7 @@ class CloudPageTest {
 
     private val base = DevSettings.defaults(BuildCaps.ALL)
     private val now = 1_792_540_800_000L
-    /** The AI cleanup summary without the rules ("Light · …"), null when no AI engine runs. */
+    /** The AI cleanup summary without the rules ("Medium · …"), null when no AI engine runs. */
     private fun line(d: DevSettings, phoneAi: Boolean) =
         SettingsSummary.cleanupRow(Settings(llmEnabled = phoneAi, spokenCleanup = false), d, BuildCaps.ALL).takeUnless { it == "Off" }
 
@@ -45,12 +45,12 @@ class CloudPageTest {
     @Test fun cleanupOrder() {
         val cl = CloudPage.enableCleanup(base, now)
         val cloudFirst = cl.copy(cleanupOrder = listOf(CleanupRoute.CLOUD, CleanupRoute.LOCAL, CleanupRoute.SERVER))
-        assertEquals("Light · This phone, then cloud", line(cl, phoneAi = true))
-        assertEquals("Light · Cloud, then this phone", line(cloudFirst, phoneAi = true))
+        assertEquals("Medium · This phone, then cloud", line(cl, phoneAi = true))
+        assertEquals("Medium · Cloud, then this phone", line(cloudFirst, phoneAi = true))
         // A configured server is named; a switched-off engine is not.
         val withServer = cl.copy(host = "100.64.0.10")
-        assertEquals("Light · This phone, then your server, then cloud", line(withServer, phoneAi = true))
-        assertEquals("Light · Your server, then cloud", line(withServer.withCleanup(CleanupRoute.LOCAL, false), phoneAi = true))
+        assertEquals("Medium · This phone, then your server, then cloud", line(withServer, phoneAi = true))
+        assertEquals("Medium · Your server, then cloud", line(withServer.withCleanup(CleanupRoute.LOCAL, false), phoneAi = true))
         // A chosen order survives off → on.
         assertEquals(cloudFirst.cleanupOrder, CloudPage.enableCleanup(CloudPage.disableCleanup(cloudFirst), now).cleanupOrder)
         assertNull(line(base, phoneAi = false))
@@ -94,7 +94,7 @@ class CloudPageTest {
         val st = Settings()
         assertEquals(dev.murmur.core.CleanupLevel.NONE, st.copy(llmEnabled = false).toSessionConfig(emptyList()).cleanupLevel)
         val cfg = st.copy(llmEnabled = false).toSessionConfig(emptyList(), cloudCleanup = true)
-        assertEquals(dev.murmur.core.CleanupLevel.LIGHT, cfg.cleanupLevel); assertFalse(cfg.rawMode)
+        assertEquals(dev.murmur.core.CleanupLevel.MEDIUM, cfg.cleanupLevel); assertFalse(cfg.rawMode)
         assertEquals(dev.murmur.core.CleanupLevel.HIGH,
             st.copy(llmEnabled = false, cleanup = dev.murmur.core.CleanupLevel.HIGH).toSessionConfig(emptyList(), cloudCleanup = true).cleanupLevel)
     }
@@ -219,7 +219,7 @@ class CloudPageTest {
     @Test fun customSummariesNameTheServerAndNeedNoKey() {
         val s = CloudPage.enableCleanup(base.copy(cloud = base.cloud.copy(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = server)), now)
         assertEquals("Speech off · Cleanup on (gpt-4o-mini on 10.0.0.5)", CloudPage.settingsSummary(s, hasKey = false))
-        assertEquals("Light · Cloud", line(s, phoneAi = false))
+        assertEquals("Medium · Cloud", line(s, phoneAi = false))
         val or = CloudPage.enableCleanup(base, now)
         assertTrue(CloudPage.settingsSummary(or, hasKey = false).endsWith("· no key"))
     }
