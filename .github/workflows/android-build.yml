@@ -94,10 +94,67 @@ jobs:
           echo "MURMUR_DEBUG_STORE_FILE=$ks" >> "$GITHUB_ENV"
           echo "MURMUR_FIXED_DEBUG_KEY=1" >> "$GITHUB_ENV"
 
+      # Maven Central answers bursts from shared runner IPs with HTTP 429, so
+      # nothing the tests need is fetched on every run: Gradle's dependency
+      # cache (run 45355272660: a test dependency got a 429), and below the
+      # Android runtime jars Robolectric downloads itself at test time.
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "21"
+          cache: gradle
+
+      # Robolectric fetches android-all-instrumented (one jar per SDK the
+      # tests run on) into ~/.m2 when its first test starts, outside Gradle and
+      # without a retry. A 429 there fails every Robolectric test of the task
+      # (run 45351240337: 211 failures, EngineHolderTest listed first, "Failed
+      # to fetch maven artifact ... android-all-instrumented"). So the jars come
+      # from a cache keyed on the Robolectric version (it pins them) and the
+      # SDKs the tests run on, and on a miss tools/robolectric-jars.sh fetches
+      # them before the tests, from Maven Central or Google's mirror of it
+      # (Central kept answering 429 in run 45378026028), each checked against
+      # a pinned SHA-512. The cache is saved right after that, so a red test
+      # run still leaves it warm; when only some jars came through, they are
+      # saved under a partial key that the next run restores and completes.
+      - name: Robolectric jars key
+        run: echo "ROBOLECTRIC_JARS_KEY=$(apps/murmur-android/tools/robolectric-jars.sh key)" >> "$GITHUB_ENV"
+
+      - name: Robolectric runtime jars (restore)
+        id: robolectric-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: ${{ env.ROBOLECTRIC_JARS_KEY }}
+          restore-keys: ${{ env.ROBOLECTRIC_JARS_KEY }}-partial-
+
+      - name: Robolectric runtime jars (fetch)
+        id: robolectric-fetch
+        continue-on-error: true
+        run: apps/murmur-android/tools/robolectric-jars.sh fetch
+
+      - name: Robolectric runtime jars (status)
+        id: robolectric-jars
+        run: apps/murmur-android/tools/robolectric-jars.sh status | tee -a "$GITHUB_OUTPUT"
+
+      - name: Robolectric runtime jars (save)
+        if: steps.robolectric-cache.outputs.cache-hit != 'true' && steps.robolectric-jars.outputs.complete == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: ${{ env.ROBOLECTRIC_JARS_KEY }}
+
+      - name: Robolectric runtime jars (save the part that came through)
+        if: steps.robolectric-jars.outputs.complete != 'true' && steps.robolectric-jars.outputs.some == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: ${{ env.ROBOLECTRIC_JARS_KEY }}-partial-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Robolectric runtime jars (complete?)
+        if: steps.robolectric-jars.outputs.complete != 'true'
+        run: |
+          echo "::error::Robolectric's runtime jars could not all be fetched (see the fetch step); the ones that came through are cached for the next run"
+          exit 1
 
       - name: Rust toolchain + cargo-ndk
         run: |
