@@ -16,7 +16,12 @@ score 1.0. AI cleanup is unchanged: it still gets the raw screen words (D107).
 **Follow-up (below, "A separate hotword score for screen names").** The
 candidates now get their own hotword score, 2.5 (dictionary words stay at
 1.0): 40 % of names on Parakeet, bench WER unchanged in English and Hebrew.
-The 50 % target needs the recognizer-wide score raised (see there).
+Raising Parakeet's recognizer-wide score as well reached 50-55 %, but was
+rejected: with a 30-word dictionary it raised the bench WER by 0.4-0.8 pt
+("A higher Parakeet base score", below). That leaves two paths to 50 %: a
+patched sherpa decoder that adds the phrase's own score before it picks
+the beam's tokens, or a second recognizer with a higher base score, used
+only when a screen has names.
 
 ## Setup
 
@@ -183,6 +188,13 @@ New probe inputs (`screen_names_e2e`, scored by `score.py`), each built as
 
 `MURMUR_PARAKEET_HOTWORDS_SCORE` sets the base. The screen score is 2.5 in
 every run.
+
+**These runs used code that was not shipped.** During the sweep, every
+non-screen phrase was pinned to ` :1.0`. The shipped code sends those
+phrases with no score of their own. As a result,
+`MURMUR_PARAKEET_HOTWORDS_SCORE` above 1.0 on the shipped code raises
+dictionary words' context-graph bonus as well, so it does not reproduce
+this table. Only the base-1.0 row matches the shipped behaviour.
 
 | base | candidates: names / bench | dictionary: names / bench | dict30: bench | candidates_dict30: names / bench |
 |---|---|---|---|---|
