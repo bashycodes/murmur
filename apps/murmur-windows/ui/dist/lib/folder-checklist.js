@@ -93,6 +93,8 @@ export function scanLine(scan) {
 /** Everything in the folder that none of the rows uses: listed, never hidden. */
 export function notes(scan) {
     const out = [];
+    if (scan.large)
+        out.push("This folder is large, so only part of it was searched. Pick the folder that holds the models.");
     for (const o of scan.others) {
         const where = o.kind === "cleanup" ? "Settings → AI cleanup" : "Settings → Speech to text";
         out.push(`Also here, not used: ${o.title} (${mbText(o.size)}). Import it in ${where}.`);
@@ -102,6 +104,10 @@ export function notes(scan) {
     for (const f of scan.unrecognised)
         out.push(`${f.path} (${mbText(f.size)}): ${f.why}.`);
     return out;
+}
+/** The line while a scan reads a file to tell which model it is. */
+export function checkingLine(file) {
+    return file ? `Checking ${file}…` : "Looking through the folder…";
 }
 /** The line after "Use these": what's set up now. */
 export function importLine(v) {

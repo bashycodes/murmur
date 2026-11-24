@@ -37,9 +37,15 @@ export interface SetupConfig {
   ptt: string;
   /** Microphone (null or "": the system default). */
   mic: string | null;
+  /** The Hebrew model (`hebrew_model`) and a server folder for it (`hebrew_model_dir`); setup's folder import sets it. */
+  hebrew?: { model: string; dir: string | null };
+  /** The language-detection model file (`lid_model_path`; null: the copy in the models folder). */
+  lid?: string | null;
+  /** The dictation language: "Keyboard language", else fixed codes (none: detected automatically). */
+  language?: { codes: string[]; keyboard: boolean };
 }
 
-export type SetupKey = "engine" | "host" | "token" | "model" | "source" | "cleanup" | "llmPath" | "ptt" | "mic";
+export type SetupKey = "engine" | "host" | "token" | "model" | "hebrew" | "lid" | "language" | "source" | "cleanup" | "llmPath" | "ptt" | "mic";
 
 export interface SetupChange {
   key: SetupKey;
@@ -51,6 +57,10 @@ export interface SetupChange {
 /** How a choice reads in the line; `modelName` names a speech model for display only. */
 export interface Labels {
   modelName: (m: SpeechModel) => string;
+  /** A Hebrew model choice by name (default: as saved). */
+  hebrewName?: (model: string) => string;
+  /** Language codes by name (default: the codes). */
+  languageNames?: (codes: string[]) => string[];
   /** The saved provider: "Cloud" is OpenRouter only, the other is "Your own AI server" (D96). */
   provider?: CloudProvider;
 }
@@ -60,6 +70,9 @@ const WHAT: Record<SetupKey, string> = {
   host: "Server address",
   token: "Server token",
   model: "Speech model",
+  hebrew: "Hebrew model",
+  lid: "Language detection model",
+  language: "Language",
   source: "Download from",
   cleanup: "Cleanup",
   llmPath: "Cleanup model",
@@ -79,12 +92,29 @@ const sameModel = (a: SpeechModel | null, b: SpeechModel | null): boolean =>
     // Only the engine's own file matters: Parakeet keeps a Whisper path set, and the other way round.
     (a.asr_engine === "parakeet" ? (a.parakeet_model_dir ?? "") === (b.parakeet_model_dir ?? "") : (a.model_path ?? "") === (b.model_path ?? "")));
 
+const sameHebrew = (a: SetupConfig, b: SetupConfig): boolean =>
+  (a.hebrew?.model ?? "") === (b.hebrew?.model ?? "") && (a.hebrew?.dir ?? null) === (b.hebrew?.dir ?? null);
+const languageKey = (c: SetupConfig): string => (c.language?.keyboard ? "keyboard" : (c.language?.codes ?? []).join(","));
+
 /** Each choice: whether two configs differ, and how one reads. */
 const CHOICES: Record<SetupKey, { same: (a: SetupConfig, b: SetupConfig) => boolean; label: (c: SetupConfig, l: Labels) => string }> = {
   engine: { same: (a, b) => a.engine === b.engine, label: (c, l) => (c.engine === "cloud" ? cloudShortName(l.provider) : c.engine ? ENGINE_LABEL[c.engine] : "Not set up") },
   host: { same: (a, b) => a.host.trim() === b.host.trim(), label: (c) => c.host.trim() || "None" },
   token: { same: (a, b) => a.tokenSaves === b.tokenSaves, label: (c) => (c.tokenSaves ? "Replaced" : "As it was") },
   model: { same: (a, b) => sameModel(a.model, b.model), label: (c, l) => (c.model ? l.modelName(c.model) : "None") },
+  hebrew: {
+    same: sameHebrew,
+    label: (c, l) => (c.hebrew?.dir ? fileName(c.hebrew.dir) : c.hebrew?.model ? (l.hebrewName?.(c.hebrew.model) ?? c.hebrew.model) : "None"),
+  },
+  lid: { same: (a, b) => (a.lid ?? null) === (b.lid ?? null), label: (c) => (c.lid ? fileName(c.lid) : "In the models folder") },
+  language: {
+    same: (a, b) => languageKey(a) === languageKey(b),
+    label: (c, l) => {
+      if (c.language?.keyboard) return "Keyboard language";
+      const codes = c.language?.codes ?? [];
+      return codes.length ? (l.languageNames?.(codes) ?? codes).join(", ") : "Detect automatically";
+    },
+  },
   source: { same: (a, b) => a.source === b.source, label: (c) => SOURCE[c.source] ?? c.source },
   cleanup: { same: (a, b) => a.cleanup === b.cleanup, label: (c, l) => (c.cleanup === "cloud" ? cloudShortName(l.provider) : CLEANUP[c.cleanup]) },
   llmPath: { same: (a, b) => (a.llmPath ?? "") === (b.llmPath ?? ""), label: (c) => (c.llmPath ? fileName(c.llmPath) : "None") },
@@ -92,7 +122,7 @@ const CHOICES: Record<SetupKey, { same: (a: SetupConfig, b: SetupConfig) => bool
   mic: { same: (a, b) => (a.mic || "") === (b.mic || ""), label: (c) => c.mic || "System default" },
 };
 
-const ORDER: SetupKey[] = ["engine", "host", "token", "model", "source", "cleanup", "llmPath", "ptt", "mic"];
+const ORDER: SetupKey[] = ["engine", "host", "token", "model", "hebrew", "lid", "language", "source", "cleanup", "llmPath", "ptt", "mic"];
 
 /** A choice in setup's own words. */
 export function choiceLabel(key: SetupKey, c: SetupConfig, l: Labels): string {
@@ -122,6 +152,9 @@ export const STEP_OF: Record<SetupKey, "engine" | "model" | "cleanup" | "try"> =
   host: "engine",
   token: "engine",
   model: "model",
+  hebrew: "model",
+  lid: "model",
+  language: "model",
   source: "cleanup",
   cleanup: "cleanup",
   llmPath: "cleanup",

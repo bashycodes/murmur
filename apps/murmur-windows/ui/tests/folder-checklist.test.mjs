@@ -1,7 +1,7 @@
 // The "Use model files on this PC" / "Import from folder…" checklist rows.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { canUse, downloadTarget, importLine, notes, pickOf, rowView, scanLine } from "../dist/lib/folder-checklist.js";
+import { canUse, checkingLine, downloadTarget, importLine, notes, pickOf, rowView, scanLine } from "../dist/lib/folder-checklist.js";
 
 const found = (title, installed = false) => ({ state: "found", id: "x", title, size: 600e6, folder: "library/x", installed });
 const missing = { state: "missing" };
@@ -136,4 +136,15 @@ test("the line after Use these", () => {
   assert.ok(!partial.ok);
   assert.match(importLine({ english: { state: "failed", message: "m" }, hebrew: { state: "skipped" }, lid: { state: "skipped" }, auto_detect: false, cancelled: false }).text, /Nothing was imported/);
   assert.match(importLine({ english: imp, hebrew: imp, lid: imp, auto_detect: false, cancelled: true }).text, /cancelled/);
+});
+
+test("a large folder says to pick the one that holds the models", () => {
+  const n = notes({ ...scan(missing, missing, missing), large: true });
+  assert.match(n[0], /This folder is large.*Pick the folder that holds the models/);
+  assert.equal(notes({ ...scan(missing, missing, missing), large: false }).length, 0);
+});
+
+test("while scanning: the file being checked", () => {
+  assert.equal(checkingLine("library/x/decoder.int8.onnx"), "Checking library/x/decoder.int8.onnx…");
+  assert.equal(checkingLine(null), "Looking through the folder…");
 });

@@ -29,6 +29,8 @@ export interface FolderScan {
   others: { id: string; title: string; size: number; kind: "speech" | "hebrew" | "cleanup" }[];
   problems: { title: string; message: string }[];
   unrecognised: { path: string; size: number; why: string }[];
+  /** Too big or too deep to search whole: what's past the limit wasn't looked at. */
+  large: boolean;
 }
 
 /** `model_import::SlotResult`. */
@@ -177,6 +179,7 @@ export function scanLine(scan: FolderScan): string {
 /** Everything in the folder that none of the rows uses: listed, never hidden. */
 export function notes(scan: FolderScan): string[] {
   const out: string[] = [];
+  if (scan.large) out.push("This folder is large, so only part of it was searched. Pick the folder that holds the models.");
   for (const o of scan.others) {
     const where = o.kind === "cleanup" ? "Settings → AI cleanup" : "Settings → Speech to text";
     out.push(`Also here, not used: ${o.title} (${mbText(o.size)}). Import it in ${where}.`);
@@ -184,6 +187,11 @@ export function notes(scan: FolderScan): string[] {
   for (const p of scan.problems) out.push(`${p.title}: ${p.message}.`);
   for (const f of scan.unrecognised) out.push(`${f.path} (${mbText(f.size)}): ${f.why}.`);
   return out;
+}
+
+/** The line while a scan reads a file to tell which model it is. */
+export function checkingLine(file: string | null): string {
+  return file ? `Checking ${file}…` : "Looking through the folder…";
 }
 
 /** The line after "Use these": what's set up now. */

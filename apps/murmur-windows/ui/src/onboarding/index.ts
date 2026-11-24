@@ -19,12 +19,13 @@
 // OpenRouter key/consent happens only on the user's own click.
 
 import { FolderChecklist } from "../features/model-folder.js";
-import { downloadSource, hasServer, mb, models, pickPath, progressLine, recommendedLlm, setDownloadSource, type CatalogEntry } from "../features/models.js";
+import { downloadSource, hasServer, hebrewEntry, mb, models, pickPath, progressLine, recommendedLlm, setDownloadSource, type CatalogEntry } from "../features/models.js";
 import { devStore } from "../lib/dev-store.js";
 import { isPlaintextRefusal, optInFor, PLAINTEXT_REFUSED_TEXT } from "../lib/plaintext.js";
 import { $, el, html } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { captureChord, stopCapture } from "../lib/keycapture.js";
+import { languageNames } from "../lib/model-pages.js";
 import { sourceHint, sourceView, type ModelSource, type SourceView } from "../lib/model-source.js";
 import { prefsStore, type Prefs } from "../lib/prefs-store.js";
 import { chip, fileState, initialModel, PARAKEET_TITLE, setupSteps, whisperRow, type FileState, type SetupStep, type SpeechRow, type WhisperRow } from "../lib/setup-model.js";
@@ -452,7 +453,7 @@ function renderModel(): void {
           ? ""
           : e && models.notOnServer(e)
             ? "Your server doesn't have this model. After setup, download it from the internet in Settings → Speech to text."
-            : "This version of Murmur can't download it. Add the file after setup in Settings → Speech to text.";
+            : "This version of Murmur can't download it. Copy the model to this PC and press Use model files on this PC… below.";
       picked = { installed, busy, canDownload: canStart, why };
     }
   }
@@ -999,6 +1000,8 @@ function savedSpeech(): Engine | null {
 /** Names for the line only; choices are compared as saved. */
 const LABELS: Labels = {
   modelName: (m: SpeechModel) => (m.asr_engine === "parakeet" ? PARAKEET_TITLE : whisperRow(m.model_path, models.catalog()).title),
+  hebrewName: (model: string) => hebrewEntry(model)?.title ?? model,
+  languageNames,
   get provider() {
     return providerOf(views.or);
   },
@@ -1017,6 +1020,10 @@ function savedConfig(): SetupConfig {
     llmPath: p?.llm_model_path ?? null,
     ptt: p?.shortcuts.ptt || "Right Alt",
     mic: p?.microphone ?? null,
+    // Setup's folder import (features/model-folder.ts) sets these too.
+    hebrew: p ? { model: p.hebrew_model ?? "", dir: p.hebrew_model_dir ?? null } : undefined,
+    lid: p?.lid_model_path ?? null,
+    language: p ? { codes: [...p.languages], keyboard: p.keyboard_language === true } : undefined,
   };
 }
 
@@ -1044,6 +1051,11 @@ async function snapshot(): Promise<Before> {
           llm_model_path: p.llm_model_path,
           shortcuts: { ...p.shortcuts },
           microphone: p.microphone,
+          hebrew_model: p.hebrew_model,
+          hebrew_model_dir: p.hebrew_model_dir ?? null,
+          lid_model_path: p.lid_model_path ?? null,
+          languages: [...p.languages],
+          keyboard_language: p.keyboard_language === true,
         }
       : {},
   };
@@ -1111,6 +1123,9 @@ async function keepBefore(): Promise<void> {
     }
     const back: Partial<Prefs> = {};
     if (keys.has("model")) Object.assign(back, savedPrefs("asr_engine", "model_path", "parakeet_model_dir"));
+    if (keys.has("hebrew")) Object.assign(back, savedPrefs("hebrew_model", "hebrew_model_dir"));
+    if (keys.has("lid")) Object.assign(back, savedPrefs("lid_model_path"));
+    if (keys.has("language")) Object.assign(back, savedPrefs("languages", "keyboard_language"));
     if (keys.has("source")) Object.assign(back, savedPrefs("model_source"));
     if (keys.has("cleanup") || keys.has("llmPath")) {
       if (keys.has("cleanup") && b.cleanup && views.or) {

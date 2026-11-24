@@ -7,9 +7,10 @@
 // is the usual confirm-then-download (features/models.ts).
 
 import { $, html } from "../lib/dom.js";
-import { invoke } from "../lib/ipc.js";
+import { invoke, onEvent } from "../lib/ipc.js";
 import {
   canUse,
+  checkingLine,
   downloadTarget,
   importLine,
   mbText,
@@ -75,6 +76,10 @@ export class FolderChecklist {
   private skipped: Record<RowKey, boolean> = { english: false, hebrew: false, lid: false };
   private importing = false;
   private line: { text: string; ok?: boolean } = { text: "" };
+  /** Bumped by every load(): an older scan's answer is dropped. */
+  private gen = 0;
+  /** The folder being scanned (null: none). */
+  private scanning: string | null = null;
   private readonly listeners: (() => void)[] = [];
 
   constructor(private readonly root: HTMLElement) {
@@ -89,7 +94,7 @@ export class FolderChecklist {
         this.render();
       } else if (row && t.closest("[data-mf-dl]")) {
         const d = downloadTarget(row, models.catalog());
-        if (d) void models.confirmAndStart(d.id);
+        if (d) void models.confirmAndStart(d.id, { autoDetect: true });
       }
     });
     root.addEventListener("change", (e) => {
@@ -101,6 +106,12 @@ export class FolderChecklist {
       }
     });
     models.onChange(() => this.render());
+    // A scan reading a file of a size two models share, to tell them apart.
+    void onEvent<{ path: string; file: string }>("model:folder-scan", (e) => {
+      if (this.scanning === null || e.payload.path !== this.scanning) return;
+      this.line = { text: checkingLine(e.payload.file) };
+      this.render();
+    });
   }
 
   /** Called whenever what the checklist shows changes. */
@@ -123,9 +134,11 @@ export class FolderChecklist {
     return !!this.result && ROWS.some((k) => this.result?.[k].state === "imported");
   }
 
-  /** Back to nothing picked (hidden). */
+  /** Back to nothing picked (hidden); a scan still running is ignored. */
   reset(): void {
     if (this.importing) return;
+    this.gen++;
+    this.scanning = null;
     this.scan = null;
     this.result = null;
     this.use = { english: true, hebrew: true, lid: true };
@@ -152,16 +165,25 @@ export class FolderChecklist {
   /** Scan `path` and show its rows. */
   async load(path: string): Promise<void> {
     this.reset();
+    const gen = this.gen;
+    this.scanning = path;
     this.root.hidden = false;
     $folder(this.root).textContent = path;
-    this.line = { text: "Looking through the folder…" };
+    this.line = { text: checkingLine(null) };
     this.render();
+    let scan: FolderScan | null = null;
+    let line: { text: string; ok?: boolean };
     try {
-      this.scan = await invoke<FolderScan>("model_folder_scan", { path });
-      this.line = { text: scanLine(this.scan) };
+      scan = await invoke<FolderScan>("model_folder_scan", { path });
+      line = { text: scanLine(scan) };
     } catch (e) {
-      this.line = { text: `Couldn't read that folder: ${String(e)}`, ok: false };
+      line = { text: `Couldn't read that folder: ${String(e)}`, ok: false };
     }
+    // Another folder was picked (or the checklist closed) meanwhile.
+    if (gen !== this.gen) return;
+    this.scanning = null;
+    this.scan = scan;
+    this.line = line;
     this.render();
   }
 
