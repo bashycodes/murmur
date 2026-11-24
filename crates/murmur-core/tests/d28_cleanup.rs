@@ -99,7 +99,20 @@ fn each_scope_item_admits_only_its_own_context() {
         screen_words: true,
         ..Default::default()
     });
-    assert!(s.contains("SCREENSECRET"));
+    // D108: only a screen name the transcript comes near is named.
+    assert!(!s.contains("SCREENSECRET"));
+    let s = all_text(&build_prompt_scoped(
+        "the screen secrit",
+        CleanupLevel::Light,
+        Style::Default,
+        &ctx,
+        &dict(),
+        PromptScope {
+            screen_words: true,
+            ..Default::default()
+        },
+    ));
+    assert!(s.contains("SCREEN NAMES: SCREENSECRET"), "{s}");
     assert!(!s.contains("BEFORESECRET") && !s.contains("com.secret.appid"));
     let s = with(PromptScope {
         app_id: true,

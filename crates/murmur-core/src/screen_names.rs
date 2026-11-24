@@ -7,9 +7,10 @@
 //! initial prompt) a bubble boosts only a decode that starts the whole
 //! sentence, and the oldest bubbles fill the 900-char prompt budget, so
 //! the names further down were cut. [`name_candidates`] keeps the names,
-//! newest first. The core derives them where it builds an ASR request and
-//! for mid-sentence casing; the context keeps the raw screen words, which
-//! AI cleanup (its DICTIONARY line, the Hebrew script check) still uses.
+//! newest first. The core derives them where it builds an ASR request, for
+//! mid-sentence casing and for the cleanup prompt's SCREEN NAMES line
+//! (D108, only those the transcript comes near); the context keeps the raw
+//! screen words, which the Hebrew script check still uses.
 //!
 //! Rules, generic only (no list of real names):
 //! * entries are read bottom to top (newest messages first);

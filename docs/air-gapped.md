@@ -326,9 +326,13 @@ server*, then Download. A cut-off download resumes; Cancel keeps nothing.
 
 If a device can't reach the server, copy the model files to it yourself:
 
-* **Windows:** Settings → Speech to text (or AI cleanup) → **Import from
-  file…** next to a built-in model: pick its folder, a `.zip`, or the file.
-  Each file is checked against the built-in fingerprint.
+* **Windows:** in setup, **Use model files on this PC…**, or later
+  Settings → Speech to text → Advanced → **Import from folder…**: pick the
+  unzipped `library/` folder and the English, Hebrew and language
+  auto-detect models in it are found by their files and set up together.
+  For one model, Settings → Speech to text (or AI cleanup) → **Import from
+  file…** next to it: pick its folder, a `.zip`, or the file. Each file is
+  checked against the built-in fingerprint.
 * **Android:** Speech model → *Import model file…*; Parakeet and Hebrew →
   *Import model folder…* or *Import .zip…* (`apps/murmur-android/INSTALL.md`
   §5).
