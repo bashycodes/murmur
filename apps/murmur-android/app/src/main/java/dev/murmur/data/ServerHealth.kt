@@ -45,8 +45,15 @@ class ServerHealth {
         fun isFresh(atMs: Long?, nowMs: Long, maxAgeMs: Long = MAX_AGE_MS) = atMs != null && nowMs - atMs in 0..maxAgeMs
 
         /** [maxAgeMs], or a lockout's wait when that is longer (D112). */
-        fun maxAge(h: HealthReport, maxAgeMs: Long = MAX_AGE_MS): Long =
-            if (h.error == dev.murmur.core.Lockout.CODE) maxOf(maxAgeMs, (h.retryAfterS ?: 0) * 1000) else maxAgeMs
+        fun maxAge(h: HealthReport, maxAgeMs: Long = MAX_AGE_MS): Long {
+            if (h.error != dev.murmur.core.Lockout.CODE) return maxAgeMs
+            // Capped like the router's, so a huge Retry-After cannot overflow or park the check.
+            val waitS = (h.retryAfterS ?: 0).coerceIn(0, dev.murmur.core.Lockout.MAX_WAIT_S)
+            return maxOf(maxAgeMs, waitS * 1000)
+        }
+
+        /** Settings probes again only when [p] is missing or stale; a lockout stays fresh for its wait (D112). */
+        fun needsProbe(p: Probe?, nowMs: Long): Boolean = p == null || !isFresh(p.atMs, nowMs, maxAge(p.report))
 
         /**
          * The newer of the shared probe ([shared]) and the router's own last health ([router], timed by

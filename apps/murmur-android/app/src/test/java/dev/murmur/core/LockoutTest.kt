@@ -12,8 +12,10 @@ import dev.murmur.data.ServerHealth
 import dev.murmur.data.SettingsSummary
 import dev.murmur.session.DictationController
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -21,17 +23,31 @@ import org.junit.Test
  * sentence with the wait on every surface, never as "Server unreachable" / "Not reachable".
  */
 class LockoutTest {
-    private val in42 = "Too many wrong keys from this address. Try again in 42 s."
+    private val in42 = "Too many wrong keys from this address. Try again in 42 s. Your key isn't checked until then."
+    private val later = "Too many wrong keys from this address. Try again later. Your key isn't checked until then."
     private val saved = DevSettings.defaults(BuildCaps.ALL).copy(host = "100.64.0.10", token = "tok_test")
 
     @Test fun theSentenceMatchesTheRouters() {
         assertEquals(in42, Lockout.text(42))
-        assertEquals("Too many wrong keys from this address. Try again later.", Lockout.text(null))
+        assertEquals(later, Lockout.text(null))
+        assertEquals("Too many wrong keys from this address. The wait is over: try again.", Lockout.text(0))
+    }
+
+    @Test fun theWaitCountsDownFromTheProbe() {
+        val h = HealthReport(ok = false, error = Lockout.CODE, retryAfterS = 60, checkedAtMs = 1_000_000)
+        assertEquals(60L, Lockout.left(h, 1_000_000))
+        assertEquals(15L, Lockout.left(h, 1_045_500))
+        assertEquals(0L, Lockout.left(h, 1_090_000))
+        assertEquals(Lockout.text(15), Lockout.text(h, 1_045_500))
+        // A clock behind the probe, or a huge wait: never more than the cap.
+        assertEquals(60L, Lockout.left(h, 500))
+        assertEquals(Lockout.MAX_WAIT_S, Lockout.left(h.copy(retryAfterS = Long.MAX_VALUE, checkedAtMs = null), 0))
+        assertNull(Lockout.left(h.copy(retryAfterS = null), 0))
     }
 
     @Test fun aThrottledProbeDecodesWithItsWait() {
         val h = RouterJson.decodeHealth(
-            """{"ok":false,"engine":"remote","error":"throttled","message":"$in42","retry_after_s":42,"checked_at_ms":5}""",
+            """{"ok":false,"engine":"remote","error":"throttled","message":"m","retry_after_s":42}""",
         )
         assertEquals(Lockout.CODE, h.error)
         assertEquals(42L, h.retryAfterS)
@@ -49,6 +65,19 @@ class LockoutTest {
         assertNull(cache.fresh(saved, 1_000 + 600_001))
         cache.record(saved, HealthReport(ok = false, error = Lockout.CODE), 1_000)
         assertNull(cache.fresh(saved, 1_000 + ServerHealth.MAX_AGE_MS + 1))
+        // A huge Retry-After neither overflows nor parks the check past the cap.
+        val huge = HealthReport(ok = false, error = Lockout.CODE, retryAfterS = Long.MAX_VALUE)
+        assertEquals(Lockout.MAX_WAIT_S * 1000, ServerHealth.maxAge(huge))
+    }
+
+    @Test fun settingsStaysQuietDuringALockout() {
+        // SettingsActivity.checkServer probes only when this says so.
+        val locked = ServerHealth.Probe(HealthReport(ok = false, error = Lockout.CODE, retryAfterS = 300), 1_000)
+        assertFalse(ServerHealth.needsProbe(locked, 1_000 + 120_000))
+        assertTrue(ServerHealth.needsProbe(locked, 1_000 + 300_001))
+        val down = ServerHealth.Probe(HealthReport(ok = false, error = "connect_failed"), 1_000)
+        assertTrue(ServerHealth.needsProbe(down, 1_000 + ServerHealth.MAX_AGE_MS + 1))
+        assertTrue(ServerHealth.needsProbe(null, 1_000))
     }
 
     @Test fun theRoutePillNamesTheLockout() {
@@ -58,13 +87,13 @@ class LockoutTest {
 
     @Test fun aStartErrorIsTheSentenceNotServerUnreachable() {
         assertEquals(in42, RouterErrors.userMessage(RouterErrors.THROTTLED, in42))
-        assertEquals(Lockout.text(null), RouterErrors.userMessage(RouterErrors.THROTTLED, ""))
+        assertEquals(later, RouterErrors.userMessage(RouterErrors.THROTTLED, ""))
         assertEquals(RouterErrors.THROTTLED, CoreException.of(in42, "throttled", "x").kind)
-        // A library without nativeLastErrorKind: recovered from the sentence.
-        assertEquals(RouterErrors.THROTTLED, CoreException.kindOf(in42))
-        // A commit after the failed start carries the same sentence.
-        val failed = CommitResult(CommitStatus.ERROR, error = in42)
+        // The kind comes from the route's fallback code, not the sentence.
+        val failed = CommitResult(CommitStatus.ERROR, error = in42, route = RouteInfo(engine = "remote", fallback = Lockout.CODE))
+        assertEquals(RouterErrors.THROTTLED, DictationController.commitKind(failed))
         assertEquals(in42, DictationController.routerFailure(failed))
+        assertNull(DictationController.routerFailure(failed.copy(route = null)))
         assertEquals(in42, DictationController.withClientNote(in42, RouterErrors.THROTTLED, "no phone model"))
     }
 
@@ -72,7 +101,7 @@ class LockoutTest {
         val r = AdminJson.decode("""{"ok":false,"code":"throttled","message":"too many","retry_after_s":42}""") { it }
         assertEquals(AdminResult.Err(AdminCode.THROTTLED, "too many", 42), r)
         assertEquals(in42, UsersKeys.errorText(r as AdminResult.Err))
-        assertEquals(Lockout.text(null), UsersKeys.errorText(AdminCode.THROTTLED, ""))
+        assertEquals(later, UsersKeys.errorText(AdminCode.THROTTLED, ""))
         val plain = AdminJson.decode("""{"ok":false,"code":"forbidden","message":"no"}""") { it } as AdminResult.Err
         assertNull(plain.retryAfterS)
     }

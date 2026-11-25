@@ -162,7 +162,9 @@ impl Circuit {
         match kind {
             Failure::Throttled => match retry_after_s {
                 Some(n) => {
-                    let until = now + Duration::from_secs(n);
+                    // Capped, and never an `Instant` overflow panic.
+                    let wait = Duration::from_secs(n.min(crate::MAX_RETRY_AFTER_S));
+                    let until = now.checked_add(wait).unwrap_or(now + BACKOFF_MAX);
                     self.open_until = Some(self.open_until.map_or(until, |t| t.max(until)));
                     self.reason = Some(kind);
                 }
@@ -2939,4 +2941,34 @@ pub(crate) fn failure_from_str(s: &str) -> Option<Failure> {
 fn _assert_send_sync() {
     fn f<T: Send + Sync>() {}
     f::<Router>();
+}
+
+#[cfg(test)]
+mod circuit_tests {
+    use super::*;
+
+    /// D112: the window opens for the server's wait and closes by itself
+    /// (clock injected through `now`).
+    #[test]
+    fn a_lockout_window_closes_after_the_wait() {
+        let t0 = Instant::now();
+        let mut c = Circuit::new(false);
+        c.record(Failure::Throttled, Some(120), t0);
+        assert!(c.is_open(t0 + Duration::from_secs(119)));
+        assert_eq!(c.throttled_left(t0 + Duration::from_millis(500)), Some(120));
+        assert_eq!(c.throttled_left(t0 + Duration::from_secs(119)), Some(1));
+        assert!(!c.is_open(t0 + Duration::from_secs(120)));
+        assert_eq!(c.throttled_left(t0 + Duration::from_secs(121)), None);
+    }
+
+    /// A huge `Retry-After` neither panics nor parks the route past an hour.
+    #[test]
+    fn a_huge_wait_is_capped_without_panicking() {
+        let t0 = Instant::now();
+        let mut c = Circuit::new(false);
+        c.record(Failure::Throttled, Some(u64::MAX), t0);
+        let cap = crate::MAX_RETRY_AFTER_S;
+        assert!(c.is_open(t0 + Duration::from_secs(cap - 1)));
+        assert!(!c.is_open(t0 + Duration::from_secs(cap)));
+    }
 }

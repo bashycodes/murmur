@@ -838,9 +838,13 @@ impl CoreApi for RouterAdapter {
             } else if r.route.as_ref().and_then(|x| x.fallback.as_deref())
                 == Some(Failure::Throttled.as_str())
             {
-                // D112: the start's sentence, not "Server unreachable".
-                if !detail.starts_with("Too many wrong keys") {
-                    r.error = Some(murmur_router::throttled_text(None));
+                // D112: the start's sentence (the router's error), not
+                // "Server unreachable"; rebuilt with the wait left if empty.
+                if detail.is_empty() {
+                    let left = self.router.route_status().circuit.retry_in_ms;
+                    r.error = Some(murmur_router::throttled_text(
+                        left.map(|ms| ms.div_ceil(1000)),
+                    ));
                 }
             } else if let Some(fb) = r.route.as_ref().and_then(|x| x.fallback.clone()) {
                 let detail = r.error.clone().unwrap_or_default();
@@ -1825,7 +1829,7 @@ mod tests {
     fn server_only_lockout_says_so_and_waits() {
         let r = rig(&dev(true, false));
         *r.server.locked_s.lock().unwrap() = Some(90);
-        let want = "Too many wrong keys from this address. Try again in 90 s.";
+        let want = murmur_router::throttled_text(Some(90));
         assert_eq!(dictate(&r.router).unwrap_err(), want);
         assert_eq!(r.server.locked_tries.load(Ordering::SeqCst), 1);
         let err = dictate(&r.router).unwrap_err();
@@ -1841,10 +1845,11 @@ mod tests {
             other => panic!("{other:?}"),
         };
         assert!(m.starts_with("Too many wrong keys"), "{m}");
-        // A commit after the failed start keeps the sentence too.
+        // A commit after the failed start keeps the sentence and its wait.
         let res = r.router.commit();
         if let Some(e) = res.error.as_deref().filter(|e| *e != "no active session") {
             assert!(e.starts_with("Too many wrong keys"), "{e}");
+            assert!(!e.contains("Try again later"), "{e}");
         }
     }
 

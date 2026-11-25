@@ -531,7 +531,7 @@ fn a_lockout_is_throttled_and_not_retried_inside_the_wait() {
     assert_eq!(
         e,
         RouterError::Throttled {
-            message: "Too many wrong keys from this address. Try again in 120 s.".into(),
+            message: throttled_text(Some(120)),
             retry_after_s: Some(120),
         }
     );
@@ -562,6 +562,25 @@ fn a_lockout_is_throttled_and_not_retried_inside_the_wait() {
     k.router.reset_circuit();
     let _ = k.router.start_session(SessionConfig::default());
     assert_eq!(k.remote.starts(), 2);
+}
+
+/// D112: once the server's wait is over, the next start tries the server
+/// again by itself (no reset needed). Real clock, 1 s wait.
+#[test]
+fn a_lockout_ends_by_itself_after_the_wait() {
+    let k = rig_with(
+        cfg(true, false),
+        Fake::new(EngineKind::Local),
+        Fake::new(EngineKind::Remote).with_start(StartMode::Throttled(1)),
+    );
+    assert!(k.router.start_session(SessionConfig::default()).is_err());
+    let _ = dictate(&k.router);
+    assert!(k.router.start_session(SessionConfig::default()).is_err());
+    assert_eq!(k.remote.starts(), 1, "inside the wait: skipped");
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    assert!(!k.router.route_status().circuit.open, "the window closed");
+    let _ = k.router.start_session(SessionConfig::default());
+    assert_eq!(k.remote.starts(), 2, "after the wait: tried again");
 }
 
 /// D112 with a fallback: the dictation goes local, the pill says why.

@@ -273,10 +273,7 @@ fn decode<T: DeserializeOwned>(a: &Answer, want: u16) -> Result<T, AdminError> {
         let message = serde_json::from_slice::<AdminError>(body)
             .ok()
             .filter(|e| !e.message.is_empty())
-            .map_or_else(
-                || "too many wrong keys from this address; try again later".into(),
-                |e| e.message,
-            );
+            .map_or_else(|| murmur_router::throttled_text(None), |e| e.message);
         return Err(AdminError {
             retry_after_s: a.retry_after_s,
             ..AdminError::new(code::THROTTLED, message)

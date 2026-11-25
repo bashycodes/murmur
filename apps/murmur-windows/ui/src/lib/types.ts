@@ -68,6 +68,8 @@ export interface Health {
   models?: ServerModels;
   /** D112: with `error: "throttled"`, seconds until the server lets this address try again. */
   retry_after_s?: number;
+  /** Unix ms of the probe: a lockout's wait is counted from here. */
+  checked_at_ms?: number;
   provider?: string;
   model?: string;
   transcript?: string;

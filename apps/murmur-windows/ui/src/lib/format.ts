@@ -30,26 +30,44 @@ export function failText(code: string | null | undefined, message?: string | nul
 
 /**
  * D112: the server locked this address out after too many wrong keys. The
- * same sentence as the backend's (`murmur_router::throttled_text`).
+ * same sentence as the backend's (`murmur_router::throttled_text`); the last
+ * part tells a user who already fixed the key why it still fails.
  */
 export function throttledText(retryAfterS?: number | null): string {
-  return retryAfterS == null
-    ? "Too many wrong keys from this address. Try again later."
-    : `Too many wrong keys from this address. Try again in ${retryAfterS} s.`;
+  const lead = "Too many wrong keys from this address.";
+  if (retryAfterS == null) return `${lead} Try again later. Your key isn't checked until then.`;
+  if (retryAfterS <= 0) return `${lead} The wait is over: try again.`;
+  return `${lead} Try again in ${retryAfterS} s. Your key isn't checked until then.`;
 }
+
+/** A probe's lockout wait as seen [nowMs]: `retry_after_s` minus the time since `checked_at_ms`. */
+export function throttledLeft(
+  h: { retry_after_s?: number | null; checked_at_ms?: number | null },
+  nowMs: number = Date.now(),
+): number | null {
+  if (h.retry_after_s == null) return null;
+  if (h.checked_at_ms == null) return h.retry_after_s;
+  return Math.max(0, h.retry_after_s - Math.floor(Math.max(0, nowMs - h.checked_at_ms) / 1000));
+}
+
+type FailedHealth = { error: string | null; message: string | null; retry_after_s?: number | null; checked_at_ms?: number | null };
 
 /**
  * A failed server Test: `code: message — hint`, or the lockout sentence alone
- * for `throttled` (the server is reachable; "is it running?" would mislead).
+ * for `throttled` (the server is reachable; "is it running?" would mislead),
+ * with the wait left now rather than at probe time.
  */
-export function serverFailText(
-  h: { error: string | null; message: string | null; retry_after_s?: number | null },
-  hint: (code: string) => string,
-): string {
+export function serverFailText(h: FailedHealth, hint: (code: string) => string, nowMs: number = Date.now()): string {
   const code = h.error ?? "error";
-  if (code === "throttled") return throttledText(h.retry_after_s);
+  if (code === "throttled") return throttledText(throttledLeft(h, nowMs));
   const why = hint(code);
   return `${code}${h.message ? `: ${h.message}` : ""}${why ? ` — ${why}` : ""}`;
+}
+
+/** D112: a server route's badge: a lockout is "Locked out", not "Unreachable". */
+export function serverBadge(h: { ok: boolean; error?: string | null }): [string, "success" | "warning" | "destructive"] {
+  if (h.ok) return ["Connected", "success"];
+  return h.error === "throttled" ? ["Locked out", "warning"] : ["Unreachable", "destructive"];
 }
 
 /** Money from the backend: preformatted "$0.0234" strings pass through. */

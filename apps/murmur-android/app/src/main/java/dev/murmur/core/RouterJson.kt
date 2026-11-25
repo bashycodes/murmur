@@ -330,7 +330,7 @@ object DevText {
             return listOfNotNull("OK", rtt, h.serverVersion, h.asrBackend).joinToString(" · ")
         }
         // D112: the server answered; "is it running?" would mislead.
-        if (h.error == Lockout.CODE) return Lockout.text(h.retryAfterS)
+        if (h.error == Lockout.CODE) return Lockout.text(h)
         val hint = when (h.error) {
             "auth_failed" -> "token rejected"
             "connect_failed" -> "is murmur-server running / LAN or VPN up?"

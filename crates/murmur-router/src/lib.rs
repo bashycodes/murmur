@@ -478,12 +478,20 @@ impl BackendError {
     }
 }
 
+/// The longest server lockout a client believes (D112): a larger or
+/// garbled `Retry-After` must not park the server route for days.
+pub const MAX_RETRY_AFTER_S: u64 = 3600;
+
 /// The user-facing sentence for a server lockout (D112), shared by every
-/// shell: "Too many wrong keys from this address. Try again in N s."
+/// shell: "Too many wrong keys from this address. Try again in N s. Your
+/// key isn't checked until then." The last part tells a user who already
+/// fixed the key why it still fails.
 pub fn throttled_text(retry_after_s: Option<u64>) -> String {
+    let lead = "Too many wrong keys from this address.";
     match retry_after_s {
-        Some(n) => format!("Too many wrong keys from this address. Try again in {n} s."),
-        None => "Too many wrong keys from this address. Try again later.".into(),
+        Some(0) => format!("{lead} The wait is over: try again."),
+        Some(n) => format!("{lead} Try again in {n} s. Your key isn't checked until then."),
+        None => format!("{lead} Try again later. Your key isn't checked until then."),
     }
 }
 

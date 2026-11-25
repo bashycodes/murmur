@@ -153,11 +153,13 @@ mod tests {
         };
         assert_eq!(
             error_text(&locked),
-            "Too many wrong keys from this address. Try again in 25 s."
+            "Too many wrong keys from this address. Try again in 25 s. Your key isn't checked \
+             until then."
         );
         assert_eq!(
             error_text(&e(code::THROTTLED, "")),
-            "Too many wrong keys from this address. Try again later."
+            "Too many wrong keys from this address. Try again later. Your key isn't checked \
+             until then."
         );
     }
 

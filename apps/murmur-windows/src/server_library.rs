@@ -593,7 +593,8 @@ mod tests {
         };
         assert_eq!(
             m,
-            "Too many wrong keys from this address. Try again in 12 s."
+            "Too many wrong keys from this address. Try again in 12 s. Your key isn't checked \
+             until then."
         );
     }
 

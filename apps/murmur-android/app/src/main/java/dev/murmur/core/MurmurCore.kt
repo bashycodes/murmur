@@ -139,7 +139,6 @@ class CoreException(message: String, val kind: String? = null) : Exception(messa
             message.startsWith("llm plugin not found") -> "llm_lib_not_found"
             message.startsWith("bad model config") || message.startsWith("bad config") -> "bad_config"
             message.startsWith("model load failed") -> "load"
-            Lockout.isText(message) -> RouterErrors.THROTTLED
             else -> RouterErrors.KINDS.firstOrNull { message.startsWith(it) }
         }
 
@@ -157,13 +156,29 @@ class CoreException(message: String, val kind: String? = null) : Exception(messa
 object Lockout {
     const val CODE = "throttled"
     private const val LEAD = "Too many wrong keys from this address."
+    private const val UNCHECKED = "Your key isn't checked until then."
+    /** `murmur_router::MAX_RETRY_AFTER_S`: a longer or garbled wait is not believed. */
+    const val MAX_WAIT_S = 3600L
 
-    /** The shared sentence (`murmur_router::throttled_text`); [retryAfterS] = the server's wait, if sent. */
-    fun text(retryAfterS: Long?): String =
-        if (retryAfterS == null) "$LEAD Try again later." else "$LEAD Try again in $retryAfterS s."
+    /**
+     * The shared sentence (`murmur_router::throttled_text`); [retryAfterS] = the wait left, if
+     * known. The last part tells a user who already fixed the key why it still fails.
+     */
+    fun text(retryAfterS: Long?): String = when {
+        retryAfterS == null -> "$LEAD Try again later. $UNCHECKED"
+        retryAfterS <= 0 -> "$LEAD The wait is over: try again."
+        else -> "$LEAD Try again in $retryAfterS s. $UNCHECKED"
+    }
 
-    /** [message] is that sentence (the router's start error carries no other prefix). */
-    fun isText(message: String?) = message?.startsWith(LEAD) == true
+    /** A probe's wait as seen at [nowMs]: `retry_after_s` minus the time since `checked_at_ms`. */
+    fun left(h: HealthReport, nowMs: Long): Long? {
+        val wait = h.retryAfterS?.coerceIn(0, MAX_WAIT_S) ?: return null
+        val at = h.checkedAtMs ?: return wait
+        return (wait - (nowMs - at).coerceAtLeast(0) / 1000).coerceAtLeast(0)
+    }
+
+    /** [text] for a probe, counted down to [nowMs]. */
+    fun text(h: HealthReport, nowMs: Long = System.currentTimeMillis()): String = text(left(h, nowMs))
 }
 
 /** murmur_router `RouterError` kinds (docs/hybrid-architecture.md §1.2), surfaced as last error. */
@@ -199,7 +214,7 @@ object RouterErrors {
     fun userMessage(kind: String?, message: String): String = when (kind) {
         NO_ENGINE_ENABLED -> "Dictation disabled — enable server or client in Developer settings"
         SERVER_UNAVAILABLE -> serverUnavailable(message)
-        THROTTLED -> if (Lockout.isText(message)) message else Lockout.text(null)
+        THROTTLED -> message.ifBlank { Lockout.text(null) }
         SERVER_NOT_CONFIGURED -> "No server configured — set the host in Developer settings"
         LOCAL_NOT_READY -> "On-device speech model is not ready"
         "model_not_found" -> "Speech model file is missing (${message.substringAfter(':').trim()}). Re-import it."
@@ -427,7 +442,7 @@ data class RouteInfo(
     val engine: String,
     /**
      * connect_failed, auth_failed, proto_mismatch, busy, timeout, disconnected, circuit_open, server_not_configured,
-     * local_not_ready; D18: cloud_not_configured, budget_exceeded, quota_exceeded, provider_error
+     * local_not_ready; D18: cloud_not_configured, budget_exceeded, quota_exceeded, provider_error; D112: throttled
      */
     val fallback: String? = null,
     /** "host:port" */

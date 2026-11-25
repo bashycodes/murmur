@@ -7,7 +7,7 @@
 // through the dev store: switches save at once, the server form on Save.
 import { $, el, setStatus } from "../lib/dom.js";
 import { devStore } from "../lib/dev-store.js";
-import { cloudHint, serverFailText } from "../lib/format.js";
+import { cloudHint, serverBadge, serverFailText } from "../lib/format.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { engineWord, HISTORY_PEEK, historyLastText, latestOnly, pickDictation } from "../lib/last-dictation.js";
 import { prefsStore } from "../lib/prefs-store.js";
@@ -152,7 +152,7 @@ function describe(r) {
         else if (!h)
             setBadge(r, "On", "light");
         else
-            setBadge(r, h.ok ? "Connected" : "Unreachable", h.ok ? "success" : "destructive");
+            setBadge(r, ...serverBadge(h));
     }
     else if (r === "client") {
         const parakeet = prefsStore.get()?.asr_engine === "parakeet";
@@ -234,7 +234,7 @@ function describeMeeting(r) {
         else if (!h)
             setMeetingBadge(r, "On", "light");
         else
-            setMeetingBadge(r, h.ok ? "Connected" : "Unreachable", h.ok ? "success" : "destructive");
+            setMeetingBadge(r, ...serverBadge(h));
     }
     else if (r === "client") {
         d.textContent = "Uses its own copy of the model while a meeting is transcribed. Private and works offline.";
