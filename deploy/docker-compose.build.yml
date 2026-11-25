@@ -1,0 +1,20 @@
+# Build murmur-server from this source instead of pulling the published
+# image (deploy/docker-compose.yml). Local tags, so a build never takes the
+# published image's name. From the repo root:
+#
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml up -d --build
+#   ... --profile gpu up -d --build murmur-server-gpu     # the CUDA image
+services:
+  murmur-server:
+    image: murmur-server:local
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile
+      target: runtime
+
+  murmur-server-gpu:
+    image: murmur-server:local-cuda
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile
+      target: cuda

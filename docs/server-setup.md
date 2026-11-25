@@ -25,17 +25,18 @@ loopback, LAN and VPN addresses. It never stores audio or text.
 ## Quick start (Docker)
 
 Each release publishes the image as `ghcr.io/bashycodes/murmur-server:<version>`
-(also `:latest`; the NVIDIA CUDA image is `:<version>-cuda` and
+(the newest release is also `:latest`; the NVIDIA CUDA image is `:<version>-cuda` and
 `:latest-cuda`, [`container.md`](container.md) §7):
 
 ```sh
 docker volume create murmur_data
 docker run -d --name murmur-server --restart unless-stopped -p 0.0.0.0:7313:7313 \
-  -v /path/to/models:/models:ro -v murmur_data:/data ghcr.io/bashycodes/murmur-server:1.7.1
+  -v /path/to/models:/models:ro -v murmur_data:/data ghcr.io/bashycodes/murmur-server:<version>
 docker exec murmur-server cat /data/admin.token
 ```
 
-Replace `1.7.1` with the release you want (GitHub → Releases). The last
+Replace `<version>` with the release you want, such as the newest under
+GitHub → Releases without its `v` (or use `latest`). The last
 command shows the admin key: treat it like a password. The log
 (`docker logs -f murmur-server`) names the models it picked, then, about a
 minute later, says `ready`.
@@ -56,9 +57,11 @@ run the `docker build` above in it.
 
 Docker Compose does the same with the published image:
 `MURMUR_MODELS_PATH=/path/to/models docker compose -f deploy/docker-compose.yml up -d`
-(from the source folder; pin a release with
-`MURMUR_IMAGE=ghcr.io/bashycodes/murmur-server:<version>`, or add `--build` to
-build it, [`deploy/docker-compose.yml`](../deploy/docker-compose.yml)).
+(from the source folder; it uses `:latest`, pin a release with
+`MURMUR_IMAGE=ghcr.io/bashycodes/murmur-server:<version>`). To build it
+instead, add the build file:
+`docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml up -d --build`
+(local tag `murmur-server:local`, [`deploy/docker-compose.yml`](../deploy/docker-compose.yml)).
 
 ## Connect your app
 
@@ -87,8 +90,10 @@ docker logs murmur-server                                    # what it is doing
 
 Update: `docker pull` the newer release's image (or get the newer source
 and run the `docker build` again), then `docker rm -f murmur-server` and
-the same `docker run` with the new version. Keys stay in `murmur_data`;
-models stay in your folder.
+the same `docker run` with the new version. With Compose:
+`docker compose -f deploy/docker-compose.yml pull`, then the same `up -d`
+(with a pinned `MURMUR_IMAGE`, change the version first). Keys stay in
+`murmur_data`; models stay in your folder.
 
 ## Safety
 

@@ -11,7 +11,8 @@ image. The server inside is the same as the host install
 | `deploy/docker/Dockerfile` | CPU image (default target `runtime`) and NVIDIA CUDA image (`--target cuda`: cleanup and whisper on the GPU) |
 | `deploy/docker/entrypoint.sh` | the config from the models folder, the admin key, bind rewrite, CLI commands; also `/usr/local/bin/murmur-server` |
 | `deploy/docker/healthcheck.sh` | TCP liveness check (`murmur-healthcheck`) |
-| `deploy/docker-compose.yml` | Compose: the quick start as a file, `gpu` profile |
+| `deploy/docker-compose.yml` | Compose: the quick start as a file (published image), `gpu` profile |
+| `deploy/docker-compose.build.yml` | Compose override: build from the source under local tags |
 | `deploy/helm/murmur-server/` | Helm chart |
 | `.github/workflows/server-image.yml` | CI: builds the CPU image and checks that it starts; on a release tag, publishes it to ghcr.io |
 | `.github/workflows/server-image-cuda.yml` | CI: the same for the CUDA image (`-cuda` tags) |
@@ -32,12 +33,17 @@ checks pass:
 | `ghcr.io/bashycodes/murmur-server:X.Y.Z`, `:latest` | CPU image (target `runtime`) |
 | `ghcr.io/bashycodes/murmur-server:X.Y.Z-cuda`, `:latest-cuda` | CUDA image (§7), GPU architectures 75, 86, 89 and 120 (Turing, Ampere, Ada, Blackwell); A100 (80) and H100 (90) should run the embedded PTX (CMake embeds it for each architecture), which the driver compiles on first use (not tested: CI has no GPU). For another set, build it yourself (§8) |
 
-Pin a version in production; `latest` moves with each release. The images
-carry OCI labels (`org.opencontainers.image.source`, `.version`,
-`.revision`: the commit). Pull requests and `main` only build and check
-the images; nothing is pushed. An older release can be published by hand:
-Actions → server-image (and server-image-cuda) → Run workflow, with the
-tag (e.g. `v1.7.1`).
+`latest` / `latest-cuda` go only to the highest `vX.Y.Z` tag, so they move
+with each new release; pin a version in production. The images carry OCI
+labels (`org.opencontainers.image.source`, `.version`, `.revision`: the
+commit). Pull requests and `main` only build and check the images: their
+job has `contents: read` only, no registry login, nothing pushed. On a
+tag, the build job hands the tested image to a separate `publish` job,
+the only one with `packages: write`. An older release can be published by
+hand: Actions → server-image (and server-image-cuda) → Run workflow, with
+the tag (e.g. `v1.7.1`); it checks out that tag and does not move `latest`
+unless it is the highest tag. The CUDA release build always uses those
+four architectures; a `cudaarchs` override is refused with a tag.
 
 Owner action, once: GitHub creates the `murmur-server` package as private
 on its first push. Set it to Public in the package's settings (Package
@@ -125,9 +131,13 @@ docker exec murmur-server cat /data/admin.token
 
 It runs the published image (`MURMUR_IMAGE`, default
 `ghcr.io/bashycodes/murmur-server:latest`; pin a release with
-`ghcr.io/bashycodes/murmur-server:<version>`). `--build` builds it from the
-source instead; set `MURMUR_IMAGE=murmur-server:local` with it so the local
-build does not take the published image's name.
+`ghcr.io/bashycodes/murmur-server:<version>`); update with
+`docker compose -f deploy/docker-compose.yml pull`, then `up -d`. The
+compose file has no `build:`, so a failed pull is an error, never a local
+build under the published name. To build from the source, add
+`deploy/docker-compose.build.yml`, which tags the build
+`murmur-server:local` (`:local-cuda` for the GPU service):
+`docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml up -d --build`.
 
 Settings from the environment or a `.env` file next to the compose file:
 `MURMUR_MODELS_PATH` (required), `MURMUR_STT` / `MURMUR_LLM` / `MURMUR_HEBREW` /
@@ -179,8 +189,9 @@ against ≈ 1 s measured for ivrit turbo through Vulkan on a laptop iGPU
 
 See "NVIDIA CUDA image" below, then
 `docker compose -f deploy/docker-compose.yml --profile gpu up -d murmur-server-gpu`
-(the published `:latest-cuda` image; `MURMUR_IMAGE_GPU` pins a release,
-`--build` builds it here; it needs the NVIDIA container toolkit). Both services use the
+(the published `:latest-cuda` image; `MURMUR_IMAGE_GPU` pins a release;
+`-f deploy/docker-compose.build.yml` with `--build` builds it here; it
+needs the NVIDIA container toolkit). Both services use the
 `murmur_data` volume: run one at a time.
 
 ## 8. Build the image yourself
