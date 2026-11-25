@@ -7,8 +7,10 @@
 //! [`FAILURE_WINDOW`] lock it for `lockout_secs`; each further lockout
 //! doubles that, up to [`MAX_LOCKOUT`], until the IP stays out of trouble
 //! for [`STREAK_RESET`]. A success forgets the IP. Loopback is exempt.
-//! At most `max_tracked` IPs are remembered: expired ones go first, then
-//! the least recently seen (unlocked before locked).
+//! An IPv6 peer counts as its /64 (one host usually holds a whole /64);
+//! an IPv4-mapped IPv6 address counts as its IPv4. At most `max_tracked`
+//! buckets are remembered: expired ones go first, then the least recently
+//! seen (unlocked before locked).
 
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -122,8 +124,16 @@ impl AuthThrottle {
         }
     }
 
-    fn exempt(&self, ip: IpAddr) -> bool {
-        self.cfg.max_failures == 0 || (self.cfg.exempt_loopback && ip.is_loopback())
+    /// The bucket `ip` counts in, or `None` when it is exempt.
+    fn bucket(&self, ip: IpAddr) -> Option<IpAddr> {
+        let ip = ip.to_canonical();
+        if self.cfg.max_failures == 0 || (self.cfg.exempt_loopback && ip.is_loopback()) {
+            return None;
+        }
+        Some(match ip {
+            IpAddr::V6(v6) => IpAddr::V6((u128::from(v6) & !0u128 << 64).into()),
+            v4 => v4,
+        })
     }
 
     fn peers(&self) -> std::sync::MutexGuard<'_, HashMap<IpAddr, Peer>> {
@@ -133,10 +143,9 @@ impl AuthThrottle {
     /// `Err(retry_after)` while `ip` is locked out. Call before comparing
     /// the key.
     pub fn check(&self, ip: IpAddr) -> Result<(), Duration> {
-        let ip = ip.to_canonical();
-        if self.exempt(ip) {
+        let Some(ip) = self.bucket(ip) else {
             return Ok(());
-        }
+        };
         let now = self.clock.now();
         match self.peers().get(&ip).and_then(|p| p.locked_until) {
             Some(until) if until > now => Err(until - now),
@@ -147,10 +156,8 @@ impl AuthThrottle {
     /// A wrong or missing key from `ip`. Returns the lockout this failure
     /// started, if any.
     pub fn failed(&self, ip: IpAddr) -> Option<Duration> {
-        let ip = ip.to_canonical();
-        if self.exempt(ip) {
-            return None;
-        }
+        let peer = ip;
+        let ip = self.bucket(ip)?;
         let now = self.clock.now();
         let mut peers = self.peers();
         if !peers.contains_key(&ip) && peers.len() >= self.max_tracked {
@@ -184,7 +191,7 @@ impl AuthThrottle {
         p.failures = 0;
         p.window_start = now;
         tracing::warn!(
-            peer = %ip,
+            %peer,
             failures,
             lockout_s = window.as_secs(),
             "auth: too many failed attempts, peer locked out"
@@ -194,10 +201,9 @@ impl AuthThrottle {
 
     /// A valid key from `ip`: forget its failures and lockout streak.
     pub fn succeeded(&self, ip: IpAddr) {
-        let ip = ip.to_canonical();
-        if self.exempt(ip) {
+        let Some(ip) = self.bucket(ip) else {
             return;
-        }
+        };
         self.peers().remove(&ip);
     }
 
@@ -365,6 +371,23 @@ mod tests {
         t.failed("::ffff:203.0.113.7".parse().unwrap());
         assert!(t.failed(PEER).is_some());
         assert!(t.check("::ffff:203.0.113.7".parse().unwrap()).is_err());
+    }
+
+    #[test]
+    fn ipv6_peers_count_per_64() {
+        let (t, _) = throttle(cfg(2, 30), MAX_TRACKED);
+        let a: IpAddr = "2001:db8:1:2::10".parse().unwrap();
+        let b: IpAddr = "2001:db8:1:2:ffff:1:2:3".parse().unwrap();
+        let other: IpAddr = "2001:db8:1:3::10".parse().unwrap();
+        assert_eq!(t.failed(a), None);
+        assert!(t.failed(b).is_some(), "same /64, same bucket");
+        assert!(t.check(a).is_err());
+        assert!(t.check(b).is_err());
+        assert!(t.check(other).is_ok(), "another /64 is unaffected");
+        assert_eq!(t.failed(other), None);
+        assert_eq!(t.tracked(), 2);
+        t.succeeded(b);
+        assert!(t.check(a).is_ok(), "a success clears the whole /64");
     }
 
     #[test]

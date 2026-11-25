@@ -191,8 +191,8 @@ firewall the port**: without `[tls]`, audio, text and keys cross the network
 unencrypted. The server logs a warning at startup for a wildcard or public
 bind without `[tls]`. `--insecure-bind-any` is still accepted and does nothing.
 
-Wrong keys are rate-limited per address (D112): after 10 failed attempts
-within 60 s, that address gets `429 Too Many Requests` (with `Retry-After`)
+Wrong keys are rate-limited per address (D112; an IPv6 address counts as
+its /64): after 10 failed attempts within 60 s, that address gets `429 Too Many Requests` (with `Retry-After`)
 on every authenticated route for 30 s, even with the right key. Each repeat
 lockout doubles the wait, up to 15 min; 15 min without one resets it, and a
 successful login clears the count. Loopback is never locked out, and
@@ -204,6 +204,20 @@ the address. Tune it in `config.toml` (`max_failures = 0` turns it off):
 max_failures = 10   # failed attempts per address within 60 s
 lockout_secs = 30   # first lockout; doubles on each repeat, at most 15 min
 ```
+
+The throttle keys on the peer address the server sees. In these setups every
+client looks like one address:
+
+* hairpin or host-local connections through docker-proxy (Docker's published
+  ports): they show the bridge gateway, which is not loopback, so not exempt;
+* rootless Docker and Docker Desktop;
+* any reverse proxy in front of the server.
+
+There, one client sending wrong keys locks **everyone** out for up to 15 min.
+A reverse proxy on the same host reaches the server on loopback, so the
+throttle is silently off. Either set `[auth_throttle] max_failures = 0`, or
+run with host networking (the default Linux host-network setup sees real
+client addresses and is fine).
 
 ## 4. Keys (who may connect)
 

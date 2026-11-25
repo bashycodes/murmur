@@ -18,7 +18,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::http::header::{
-    HeaderValue, AUTHORIZATION, SEC_WEBSOCKET_PROTOCOL,
+    HeaderValue, AUTHORIZATION, RETRY_AFTER, SEC_WEBSOCKET_PROTOCOL,
 };
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_tungstenite::tungstenite::{Error as WsError, Message};
@@ -133,6 +133,20 @@ where
                 Failure::AuthFailed,
                 format!("server rejected the token (HTTP {})", r.status().as_u16()),
             )
+        }
+        // The server locked this address out after failed sign-ins (D112).
+        WsError::Http(r) if r.status().as_u16() == 429 => {
+            let after = r
+                .headers()
+                .get(RETRY_AFTER)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.trim().parse::<u64>().ok());
+            connect_failed(match after {
+                Some(n) => {
+                    format!("too many failed sign-ins from this address, try again in {n} s")
+                }
+                None => "too many failed sign-ins from this address, try again later".into(),
+            })
         }
         e => connect_failed(e),
     })?;
