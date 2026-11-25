@@ -2455,6 +2455,52 @@ mod tests {
         let _ = std::fs::remove_dir_all(&appdata);
     }
 
+    /// D113: a fresh install is Automatic, whatever the keyboard layout;
+    /// with the Hebrew model and the language-ID model the PC's config has
+    /// both, and the core then decodes Hebrew speech on the Hebrew model.
+    #[test]
+    fn automatic_default_sends_hebrew_speech_to_the_hebrew_model() {
+        use crate::keyboard_language::{resolve, Source};
+        use murmur_core::asr::MockAsr;
+        use murmur_core::lid::MockLid;
+        let p = crate::prefs::Prefs::default();
+        let (languages, source) = resolve(&p.languages, p.keyboard_language, Some("en"));
+        assert_eq!((languages.as_slice(), source), (&[][..], Source::Auto));
+
+        let appdata = std::env::temp_dir().join(format!("murmur-auto-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&appdata);
+        let ad = appdata.display().to_string();
+        let dir = models_dir(Some(&ad));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(LID_FILE), b"x").unwrap();
+        let cfg = model_config(&p, Some(&ad));
+        let _ = std::fs::remove_dir_all(&appdata);
+        assert!(cfg.lid_model().is_some(), "language ID on");
+        assert_eq!(cfg.language_route(Some("he")), Some("he"));
+
+        let he = Arc::new(MockAsr::new("שלום עולם"));
+        let core = murmur_core::MurmurCore::from_language_engines_with_lid(
+            Arc::new(MockAsr::new("hello there")),
+            vec![("he".into(), he.clone())],
+            Some(Arc::new(MockLid::new("he"))),
+            None,
+        );
+        core.start_session(fc::SessionConfig {
+            languages,
+            ..Default::default()
+        })
+        .unwrap();
+        let speech: Vec<i16> = (0..800 * 16)
+            .map(|i| ((i as f32 * 0.05).sin() * 8000.0) as i16)
+            .collect();
+        for c in speech.chunks(640) {
+            core.push_audio(c);
+        }
+        let r = core.commit();
+        assert!(r.asr_text.contains("שלום עולם"), "{r:?}");
+        assert!(he.calls() >= 1);
+    }
+
     #[test]
     fn hebrew_dictations_decode_on_the_hebrew_model_next_to_the_default() {
         let a = MurmurCoreAdapter::new();

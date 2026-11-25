@@ -49,7 +49,7 @@ const CHOICES = {
             if (c.language?.keyboard)
                 return "Keyboard language";
             const codes = c.language?.codes ?? [];
-            return codes.length ? (l.languageNames?.(codes) ?? codes).join(", ") : "Detect automatically";
+            return codes.length ? (l.languageNames?.(codes) ?? codes).join(", ") : "Automatic";
         },
     },
     source: { same: (a, b) => a.source === b.source, label: (c) => SOURCE[c.source] ?? c.source },

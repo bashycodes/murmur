@@ -24,6 +24,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Changed
 
+- **New installs use Automatic language.** On Windows and Android a fresh install detects each dictation's language from your speech ("Automatic", first in the language list) instead of following the keyboard. Hebrew still goes to the Hebrew model: through language detection on Windows and on the server, and on the phone (which has no spoken language detection) when the keyboard is Hebrew and a Hebrew model is imported. A language you already have, including Keyboard language and Phone language, stays; only settings from before Keyboard language existed that were never changed move to Automatic.
 - **Connecting to your server without encryption just works.** The apps no longer refuse a plain `ws://` connection to your own server at a public address, and there is no "Allow an unencrypted connection" switch to find anymore: turn TLS on or off as your server needs, on Windows and Android, in setup and in Settings. The server likewise accepts a wildcard (`0.0.0.0`) or public bind without TLS and without any extra flag; `--insecure-bind-any` and the container's `MURMUR_INSECURE_BIND_ANY` are no longer needed (old command lines keep working). Without TLS, audio, text and your key cross the network unencrypted, and the server settings say so. Settings saved by an older version load as before (D111).
 
 ## [1.7.1] - 2026-11-25

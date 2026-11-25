@@ -248,7 +248,7 @@ class MurmurApp : Application() {
         LanguageDefault.resolve(
             s.language, java.util.Locale.getDefault().language, engine.loadedAsr(),
             if (engine.hebrewModel() != null) setOf(HebrewModels.LANGUAGE) else emptySet(),
-            keyboard = if (s.language == Settings.LANGUAGE_KEYBOARD) keyboardLanguage() else null,
+            keyboard = if (s.language == Settings.LANGUAGE_KEYBOARD || s.language == Settings.LANGUAGE_AUTO) keyboardLanguage() else null,
         )
 
     /**

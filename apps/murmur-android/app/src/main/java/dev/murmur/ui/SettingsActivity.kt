@@ -536,6 +536,7 @@ class SettingsActivity : Activity() {
                     DevUi.Choice(
                         code, name,
                         when (code) {
+                            Settings.LANGUAGE_AUTO -> "Detected from your speech; a Hebrew keyboard uses the Hebrew model when one is imported"
                             Settings.LANGUAGE_KEYBOARD -> "Follows the keyboard you type with (e.g. Hebrew on Gboard → Hebrew), read when you start dictating"
                             Settings.LANGUAGE_UNSET -> "If the speech model supports it, else auto-detect"
                             else -> ""

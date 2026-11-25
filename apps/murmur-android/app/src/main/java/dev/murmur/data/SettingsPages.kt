@@ -44,9 +44,9 @@ object SettingsPages {
         Page.TIMING to "Timing & limits", Page.BUBBLE to "Bubble", Page.APPS to "Excluded apps", Page.HISTORY to "History",
     )
 
-    /** Whisper language codes offered in the picker, after Keyboard language and Phone language ([languageChoices]). */
+    /** Whisper language codes offered in the picker, after Automatic, Keyboard language and Phone language ([languageChoices]). */
     val LANGUAGES = listOf(
-        "auto" to "Auto-detect", "en" to "English", "es" to "Spanish", "fr" to "French", "de" to "German",
+        "en" to "English", "es" to "Spanish", "fr" to "French", "de" to "German",
         "it" to "Italian", "pt" to "Portuguese", "nl" to "Dutch", "he" to "Hebrew", "ar" to "Arabic",
         "ru" to "Russian", "uk" to "Ukrainian", "pl" to "Polish", "tr" to "Turkish", "hi" to "Hindi",
         "zh" to "Chinese", "ja" to "Japanese", "ko" to "Korean",
@@ -55,6 +55,7 @@ object SettingsPages {
     /** Picker entries; a stored code not in the short list (set elsewhere) is shown as an extra entry and kept. */
     fun languageChoices(stored: String, phoneLanguage: String, keyboardLanguage: String? = null): List<Pair<String, String>> {
         val all = listOf(
+            Settings.LANGUAGE_AUTO to "Automatic",
             Settings.LANGUAGE_KEYBOARD to keyboardChoice(keyboardLanguage),
             Settings.LANGUAGE_UNSET to "Phone language ($phoneLanguage)",
         ) + LANGUAGES
@@ -182,6 +183,7 @@ object SettingsSummary {
     fun language(s: Settings, effective: String): String {
         val shown = if (effective == "auto") "auto-detect" else LanguageDefault.name(effective)
         val l = when (s.language) {
+            Settings.LANGUAGE_AUTO -> if (effective == Settings.LANGUAGE_AUTO) "Automatic" else "Automatic ($shown)"
             Settings.LANGUAGE_KEYBOARD -> "Keyboard language ($shown)"
             Settings.LANGUAGE_UNSET -> "Phone language ($shown)"
             else -> LanguageDefault.name(s.language)

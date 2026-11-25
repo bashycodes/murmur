@@ -140,9 +140,11 @@ class SettingsPagesTest {
 
     @Test fun languageChoicesKeepAnUnlistedStoredCode() {
         val base = SettingsPages.languageChoices("en", "English")
-        assertEquals(Settings.LANGUAGE_KEYBOARD, base[0].first)
-        assertEquals(Settings.LANGUAGE_UNSET, base[1].first)
-        assertTrue("English" in base[1].second)
+        assertEquals(Settings.LANGUAGE_AUTO to "Automatic", base[0])
+        assertEquals(Settings.LANGUAGE_KEYBOARD, base[1].first)
+        assertEquals(Settings.LANGUAGE_UNSET, base[2].first)
+        assertTrue("English" in base[2].second)
+        assertEquals("Automatic is listed once", 1, base.count { it.first == Settings.LANGUAGE_AUTO })
         assertEquals(base.size, SettingsPages.languageChoices("fr", "English").size)
         val extra = SettingsPages.languageChoices("sw", "English")
         assertEquals(base.size + 1, extra.size)
@@ -150,7 +152,7 @@ class SettingsPagesTest {
     }
 
     @Test fun keyboardChoiceSaysWhatTheKeyboardIsNow() {
-        assertEquals("Keyboard language · now: Hebrew", SettingsPages.languageChoices("en", "English", "he").first().second)
+        assertEquals("Keyboard language · now: Hebrew", SettingsPages.languageChoices("en", "English", "he")[1].second)
         assertEquals("Keyboard language · now: unknown (phone language is used)", SettingsPages.keyboardChoice(null))
         assertEquals("the stored choice is listed once", SettingsPages.languageChoices("en", "English").size, SettingsPages.languageChoices(Settings.LANGUAGE_KEYBOARD, "English").size)
     }
@@ -174,10 +176,13 @@ class SettingsPagesTest {
         val phone = s.copy(language = Settings.LANGUAGE_UNSET)
         assertEquals("Phone language (English) · auto-format on", SettingsSummary.language(phone, "en"))
         assertEquals("Phone language (auto-detect) · auto-format on", SettingsSummary.language(phone, "auto"))
-        assertEquals("Keyboard language (Hebrew) · auto-format on", SettingsSummary.language(s, "he"))
-        assertEquals("Keyboard language (auto-detect) · auto-format on", SettingsSummary.language(s, "auto"))
+        val kb = s.copy(language = Settings.LANGUAGE_KEYBOARD)
+        assertEquals("Keyboard language (Hebrew) · auto-format on", SettingsSummary.language(kb, "he"))
+        assertEquals("Keyboard language (auto-detect) · auto-format on", SettingsSummary.language(kb, "auto"))
+        assertEquals("the default", "Automatic · auto-format on", SettingsSummary.language(s, "auto"))
+        assertEquals("Automatic (Hebrew) · auto-format on", SettingsSummary.language(s, "he"))
         assertEquals("German · auto-format off", SettingsSummary.language(s.copy(language = "de", spokenCleanup = false), "de"))
-        assertEquals("Auto-detect · auto-format on", SettingsSummary.language(s.copy(language = "auto"), "auto"))
+        assertEquals("Automatic · auto-format on", SettingsSummary.language(s.copy(language = "auto"), "auto"))
     }
 
     @Test fun engineSubtitle() {

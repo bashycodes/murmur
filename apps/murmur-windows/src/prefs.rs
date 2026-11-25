@@ -19,9 +19,12 @@ pub const FILE_NAME: &str = "prefs.json";
 /// * 3 (D27): chat styles default to casual, the LLM budget 1500 → 3000 ms,
 ///   and cleanup "None" became "No AI" (formatting rules still run): a
 ///   stored None moves to Verbatim, `raw_mode` to No AI ([`Prefs::migrate`]).
-/// * 4 (D37): the language follows the keyboard layout by default:
-///   `keyboard_language` turns on for "Detect automatically" (empty
-///   `languages`); a language the user chose stays.
+/// * 4 (D37): the language followed the keyboard layout by default:
+///   `keyboard_language` turned on for "Detect automatically" (empty
+///   `languages`); a language the user chose stays. Since D113 Automatic
+///   is the default again, so a pre-D37 file keeps what it had (no
+///   keyboard language); a saved `keyboard_language` can't be told apart
+///   from a picked one, so later files keep theirs.
 /// * 5 (D57): push to talk defaults to Right Alt instead of Ctrl+Win: a
 ///   saved Ctrl+Win (the untouched old default) moves to Right Alt unless
 ///   another shortcut already uses it; any other shortcut stays.
@@ -307,7 +310,8 @@ impl Default for Prefs {
             shortcuts: Bindings::default(),
             microphone: None,
             languages: Vec::new(),
-            keyboard_language: true,
+            // D113: Automatic (empty `languages`, language ID routes Hebrew).
+            keyboard_language: false,
             translate_to: String::new(),
             webhook_url: String::new(),
             enable_sounds: true,
@@ -435,9 +439,10 @@ impl Prefs {
             self.raw_mode = false;
         }
         if self.prefs_rev < 4 {
-            // D37: "Detect automatically" (the old default) follows the
-            // keyboard now; an explicit language is the user's and stays.
-            self.keyboard_language = self.languages.is_empty();
+            // D37 moved "Detect automatically" (the old default) to the
+            // keyboard; D113 made Automatic the default again, so a pre-D37
+            // file stays as it was: no keyboard language.
+            self.keyboard_language = false;
         }
         if self.prefs_rev < 5 && self.shortcuts.ptt == Chord::new([Key::Ctrl, Key::Win]) {
             // D57: every field is saved, so a pre-D57 Ctrl+Win is the old
@@ -1158,16 +1163,18 @@ mod tests {
     }
 
     #[test]
-    fn d37_detect_automatically_moves_to_keyboard_language_once() {
+    fn d113_automatic_is_the_default_and_saved_choices_stay() {
+        let fresh = Prefs::default();
         assert!(
-            Prefs::default().keyboard_language,
-            "new installs follow the keyboard"
+            !fresh.keyboard_language && fresh.languages.is_empty(),
+            "new installs are Automatic"
         );
+        // Pre-D37 files: the untouched "Detect automatically" stays Automatic.
         let (p, _) = load_str("kbl-auto", r#"{"prefs_rev":3,"languages":[]}"#);
-        assert!(p.keyboard_language);
+        assert!(!p.keyboard_language && p.languages.is_empty());
         assert_eq!(p.prefs_rev, PREFS_REV);
         let (p, _) = load_str("kbl-none", r#"{"prefs_rev":3}"#);
-        assert!(p.keyboard_language);
+        assert!(!p.keyboard_language);
         let (p, _) = load_str("kbl-en", r#"{"prefs_rev":3,"languages":["en"]}"#);
         assert!(!p.keyboard_language, "an explicit language stays");
         assert_eq!(p.languages, ["en"]);

@@ -117,7 +117,7 @@ export function importLine(v) {
     const done = ROWS.filter((k) => v[k].state === "imported").length;
     if (failed && !done)
         return { text: "Nothing was imported. Each row says why.", ok: false };
-    const lang = v.auto_detect ? " Language is now Detect automatically: speak English or Hebrew." : "";
+    const lang = v.auto_detect ? " Language is now Automatic: speak English or Hebrew." : "";
     if (failed)
         return { text: `Imported ${done} of ${done + failed}.${lang} The others say why.`, ok: false };
     return { text: `Done. The models are copied and checked.${lang}`, ok: true };

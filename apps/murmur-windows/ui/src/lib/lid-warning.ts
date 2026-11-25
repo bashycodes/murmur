@@ -6,7 +6,7 @@
 export interface LidInput {
   /** "Keyboard language" (D37) is picked: auto-detect only for unknown layouts, no warning. */
   keyboard: boolean;
-  /** `prefs.languages` (empty = Detect automatically). */
+  /** `prefs.languages` (empty = Automatic). */
   languages: string[];
   /** A Hebrew model is chosen and on disk (catalogue or the server's library). */
   hebrewModel: boolean;

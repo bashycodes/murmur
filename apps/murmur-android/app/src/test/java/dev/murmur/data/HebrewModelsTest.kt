@@ -205,6 +205,24 @@ class HebrewRoutingTest {
         assertFalse(old.has("languages") || old.has("load_language"))
     }
 
+    @Test fun automaticDefaultSendsHebrewToTheHebrewModel() {
+        // D113: a fresh install is Automatic; with a Hebrew keyboard and a Hebrew model the phone
+        // loads and decodes on that model, and the session forces "he" (the server routes it too).
+        val s = Settings()
+        val multi = LoadedAsr(AsrEngine.WHISPER, "ggml-base-q5_1.bin")
+        val lang = LanguageDefault.effective(s.language, "en", multi, setOf(HebrewModels.LANGUAGE), keyboard = "iw")
+        assertEquals("he", lang)
+        assertEquals(LoadSet.Language("he"), LoadSet.of(lang, hebrewInstalled = true, keepBoth = false) { true })
+        val p = EnginePlan.plan(s, "/m/base.bin", null, exists, 4, language = lang, hebrew = he) as EnginePlan.Plan.Native
+        assertEquals("he", p.config.loadLanguage)
+        assertEquals(he, p.config.routed)
+        assertEquals(listOf("he"), s.toSessionConfig(emptyList(), language = lang).languages)
+        // Any other keyboard: detected from the speech (no forced language), on the default model.
+        val en = LanguageDefault.effective(s.language, "en", multi, setOf(HebrewModels.LANGUAGE), keyboard = "en")
+        assertEquals(LoadSet.Default, LoadSet.of(en, hebrewInstalled = true, keepBoth = false) { true })
+        assertTrue(s.toSessionConfig(emptyList(), language = en).languages.isEmpty())
+    }
+
     @Test fun phoneLanguageHebrewSelectsTheHebrewModel() {
         assertEquals("he", LanguageDefault.effective(Settings.LANGUAGE_UNSET, "iw", null, setOf("he")))
         assertEquals("auto", LanguageDefault.effective(Settings.LANGUAGE_UNSET, "iw", null))

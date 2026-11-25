@@ -167,7 +167,7 @@ export const models = {
     },
     /** The confirm dialog (3a); downloads only when the user presses Download there.
      *  `autoDetect` (the folder checklist): once English, Hebrew and language
-     *  detection are all there, the language becomes "Detect automatically". */
+     *  detection are all there, the language becomes "Automatic". */
     async confirmAndStart(id, opts = {}) {
         const e = models.entry(id);
         if (!e || !models.canStart(e) || models.busy())

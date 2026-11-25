@@ -181,11 +181,18 @@ tries the next one you have set up; if none can, the dictation is typed as
 said and the bar says why ("Couldn't translate to Hebrew", "timed out", "No
 AI set up").
 
+**Automatic language** (Both). By default Murmur detects the language of
+each dictation from your speech, and Hebrew goes to the Hebrew model. On
+Android, which has no spoken language detection, a Hebrew keyboard picks the
+Hebrew model when one is imported.
+*How:* this is the default (*Automatic* under *Settings → General →
+Languages* on Windows, and *Settings → Language* on Android).
+
 **The language follows your keyboard** (Both). Murmur uses the language of
 the keyboard that is active when you stop speaking. Switch the keyboard to
 Hebrew halfway through and the whole dictation is transcribed as Hebrew.
-*How:* this is the default (*Keyboard language* under *Settings → General
-→ Languages* on Windows, and *Settings → Language* on Android).
+*How:* pick *Keyboard language* under *Settings → General → Languages* on
+Windows, or *Settings → Language* on Android.
 
 **A separate Hebrew model** (Both). Hebrew dictations go to their own
 speech model, and everything else to your main one.

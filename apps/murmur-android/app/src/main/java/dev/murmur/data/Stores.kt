@@ -70,14 +70,14 @@ class SettingsStore(context: Context) {
     }
 
     /**
-     * One-time moves: an untouched stored "auto" to phone language ([Settings.migrateLanguage]),
-     * then phone language to keyboard language (D37, [Settings.migrateKeyboardLanguage]).
+     * One-time moves of untouched old defaults ([Settings.migrateDefaultLanguage]): nothing
+     * stored, or a Phone language the D37 move never reached, becomes Automatic (D113).
      */
     private fun loadLanguage(): String {
         val stored = sp.getString("language", null)
         val migrated = sp.getBoolean(LANGUAGE_MIGRATED, false)
         val keyboard = sp.getBoolean(KEYBOARD_MIGRATED, false)
-        val v = Settings.migrateKeyboardLanguage(stored, migrated, keyboard)
+        val v = Settings.migrateDefaultLanguage(stored, migrated, keyboard)
         if (!migrated || !keyboard) {
             sp.edit().putBoolean(LANGUAGE_MIGRATED, true).putBoolean(KEYBOARD_MIGRATED, true).putString("language", v).apply()
         }

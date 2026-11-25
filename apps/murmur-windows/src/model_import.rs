@@ -1880,8 +1880,10 @@ mod tests {
         /// Import, then apply to prefs that had English as the language.
         fn import_and_apply(&self, pick: FolderPick) -> (FolderImport, Prefs) {
             let mut r = self.import(pick);
+            // A user's own choice (D113 made Automatic the default).
             let mut prefs = Prefs {
                 languages: vec!["en".into()],
+                keyboard_language: true,
                 ..Prefs::default()
             };
             r.apply(&mut prefs, &self.models, self.appdata.to_str());

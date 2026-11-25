@@ -113,6 +113,54 @@ async fn no_language_models_omits_the_field() {
     assert!(!body.contains("\"languages\""), "{body}");
 }
 
+/// D113: Automatic (no forced language, the shells' default) on the server:
+/// the language-ID model hears Hebrew and the session decodes on the Hebrew
+/// model. Real LID model, mock decoders (the text says which one decoded).
+/// Skips (passes with a note) unless `MURMUR_LID_MODEL` (multilingual ggml,
+/// e.g. `ggml-tiny-q5_1.bin`) and `MURMUR_HE_WAV` (a 16 kHz Hebrew clip) are set.
+#[cfg(feature = "whisper")]
+#[tokio::test(flavor = "multi_thread")]
+async fn automatic_routes_hebrew_speech_to_the_hebrew_model() {
+    let (Some(lid), Some(wav)) = (
+        std::env::var_os("MURMUR_LID_MODEL"),
+        std::env::var_os("MURMUR_HE_WAV"),
+    ) else {
+        eprintln!("SKIP: set MURMUR_LID_MODEL and MURMUR_HE_WAV");
+        return;
+    };
+    let mut cfg = with_language(
+        mock_cfg("english words"),
+        "he",
+        LanguageModel {
+            asr_backend: AsrBackend::Mock {
+                text: "שלום עולם".into(),
+            },
+            asr_path: String::new(),
+            ..Default::default()
+        },
+    );
+    cfg.model.lid_path = Some(lid.to_string_lossy().into_owned());
+    let pcm = murmur_core::audio::read_wav_16k_mono(std::path::Path::new(&wav)).unwrap();
+    // Peak 0.5, as `zipformer::clip`: some FLEURS clips sit below the VAD gate.
+    let peak = pcm
+        .iter()
+        .map(|s| (*s as i32).abs())
+        .max()
+        .unwrap_or(1)
+        .max(1) as f32;
+    let pcm: Vec<i16> = pcm
+        .iter()
+        .map(|s| (*s as f32 * 16_384.0 / peak) as i16)
+        .collect();
+    let s = start(cfg).await;
+    let mut ws = connect(s.addr(), Some(TOKEN)).await.unwrap();
+    hello(&mut ws).await;
+    let wait = Duration::from_secs(60);
+    let r = dictate(&mut ws, 1, SessionConfig::default(), &pcm, wait).await;
+    assert!(r.asr_text.contains("שלום עולם"), "{r:?}");
+    assert!(r.timings.lid_ms > 0, "{:?}", r.timings);
+}
+
 #[cfg(feature = "parakeet")]
 mod zipformer {
     use std::path::{Path, PathBuf};
