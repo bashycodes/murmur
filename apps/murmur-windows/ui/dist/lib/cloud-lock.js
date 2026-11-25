@@ -11,7 +11,8 @@ export const CLEANUP_LOCK = optOutMarkup("or_cleanup_lock", "Cloud cleanup", KEP
 /** The switch each card's banner turns on (and then focuses). */
 export const STT_SWITCH = "or_stt_allow";
 export const CLEANUP_SWITCH = "or_cleanup_allow";
-/** Wire both banners; `turnOn` runs a switch's usual flow (consent first). */
+/** Wire both banners; `turnOn` runs a switch's usual flow (consent first)
+ *  and resolves to whether the switch ended up on. */
 export function wireCloudLocks(find, turnOn) {
     return {
         stt: wireOptOut("or_stt_lock", find, { turnOn: turnOn.stt, switchId: STT_SWITCH }),

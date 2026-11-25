@@ -20,10 +20,11 @@ export interface CloudLocks {
   cleanup: (on: boolean) => void;
 }
 
-/** Wire both banners; `turnOn` runs a switch's usual flow (consent first). */
+/** Wire both banners; `turnOn` runs a switch's usual flow (consent first)
+ *  and resolves to whether the switch ended up on. */
 export function wireCloudLocks(
   find: (id: string) => unknown,
-  turnOn: { stt: () => void; cleanup: () => void },
+  turnOn: { stt: () => Promise<boolean>; cleanup: () => Promise<boolean> },
 ): CloudLocks {
   return {
     stt: wireOptOut("or_stt_lock", find, { turnOn: turnOn.stt, switchId: STT_SWITCH }),

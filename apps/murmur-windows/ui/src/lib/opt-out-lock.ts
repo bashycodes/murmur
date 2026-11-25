@@ -41,10 +41,12 @@ interface Clickable {
 }
 
 export interface OptOutWiring {
-  /** The feature's usual way of turning on (its consent flow). */
-  turnOn: () => void;
-  /** The feature's own on / off switch: focus moves there after "Turn on"
-   *  (the banner and its button go away). */
+  /** The feature's usual way of turning on. A flow that can be cancelled
+   *  (a consent dialog) returns a promise of whether the feature is on. */
+  turnOn: () => void | Promise<boolean>;
+  /** The feature's own on / off switch: focus moves there once the
+   *  feature is on (the banner and its button go away); after a cancelled
+   *  flow it goes back to the banner's button. */
   switchId: string;
 }
 
@@ -56,9 +58,11 @@ export function wireOptOut(id: string, find: (id: string) => unknown, w: OptOutW
     banner: find(`${id}_off`) as OptOutView["banner"],
     region: find(`${id}_region`) as OptOutView["region"],
   };
+  const focus = (on: boolean): void => (find(on ? w.switchId : `${id}_turn_on`) as { focus(): void }).focus();
   (find(`${id}_turn_on`) as Clickable).addEventListener("click", () => {
-    w.turnOn();
-    (find(w.switchId) as { focus(): void }).focus();
+    const r = w.turnOn();
+    if (r instanceof Promise) void r.then(focus, () => focus(false));
+    else focus(true);
   });
   return (on) => applyOptOut(view, on);
 }

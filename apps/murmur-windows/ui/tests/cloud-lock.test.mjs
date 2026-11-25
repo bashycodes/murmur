@@ -74,14 +74,42 @@ test("off: locked with the banner; on: unlocked, banner gone", () => {
   assert.equal(p.els.or_cleanup_lock_region.disabled, false);
 });
 
-test("Turn on runs that card's switch flow and focuses the switch", () => {
+/** A consent flow the test answers: `answer(true)` = agreed and saved. */
+function pending() {
+  let answer;
+  const promise = new Promise((r) => (answer = r));
+  return { promise, answer };
+}
+
+test("Turn on focuses the switch only once the consent flow ends with it on", async () => {
   const p = fakePage();
-  const ran = [];
-  wireCloudLocks(p.find, { stt: () => ran.push("stt"), cleanup: () => ran.push("cleanup") });
+  for (const s of ["or_stt_lock", "or_cleanup_lock"]) p.els[`${s}_turn_on`].focus = () => p.focused.push(`${s}_turn_on`);
+  const flows = { stt: [], cleanup: [] };
+  wireCloudLocks(p.find, {
+    stt: () => {
+      const f = pending();
+      flows.stt.push(f);
+      return f.promise;
+    },
+    cleanup: () => {
+      const f = pending();
+      flows.cleanup.push(f);
+      return f.promise;
+    },
+  });
   p.clicks.or_cleanup_lock();
-  assert.deepEqual(ran, ["cleanup"]);
+  assert.equal(flows.cleanup.length, 1, "that card's flow runs");
+  assert.equal(flows.stt.length, 0);
+  assert.deepEqual(p.focused, [], "nothing moves while the dialog is open");
+  flows.cleanup[0].answer(true);
+  await flows.cleanup[0].promise;
+  await Promise.resolve();
   assert.deepEqual(p.focused, [CLEANUP_SWITCH]);
+
   p.clicks.or_stt_lock();
-  assert.deepEqual(ran, ["cleanup", "stt"]);
-  assert.deepEqual(p.focused, [CLEANUP_SWITCH, STT_SWITCH]);
+  flows.stt[0].answer(false);
+  await flows.stt[0].promise;
+  await Promise.resolve();
+  assert.deepEqual(p.focused, [CLEANUP_SWITCH, "or_stt_lock_turn_on"], "cancelled: back to the banner's button");
+  assert.notEqual(p.focused.at(-1), STT_SWITCH);
 });
