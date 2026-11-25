@@ -1,8 +1,8 @@
 # murmur-server in a container: Advanced (Docker, Compose, Helm)
 
-The quick start is in [`docs/server-setup.md`](server-setup.md): build the
-image from the source, mount a models folder and one volume, one
-`docker run`. This page has the settings and everything else about the
+The quick start is in [`docs/server-setup.md`](server-setup.md): pull the
+published image (or build it from the source), mount a models folder and
+one volume, one `docker run`. This page has the settings and everything else about the
 image. The server inside is the same as the host install
 ([`docs/server-advanced.md`](server-advanced.md)).
 
@@ -13,7 +13,8 @@ image. The server inside is the same as the host install
 | `deploy/docker/healthcheck.sh` | TCP liveness check (`murmur-healthcheck`) |
 | `deploy/docker-compose.yml` | Compose: the quick start as a file, `gpu` profile |
 | `deploy/helm/murmur-server/` | Helm chart |
-| `.github/workflows/server-image.yml` | CI: builds the CPU image and checks that it starts (nothing is published) |
+| `.github/workflows/server-image.yml` | CI: builds the CPU image and checks that it starts; on a release tag, publishes it to ghcr.io |
+| `.github/workflows/server-image-cuda.yml` | CI: the same for the CUDA image (`-cuda` tags) |
 | `tools/container/entrypoint_test.sh` | entrypoint unit test (no Docker; CI repo-checks) |
 | `tools/container/smoke.sh` | the quick start end to end: key, dictation, `keys add`, restart |
 | `tools/container/stage-prebuilt.sh` | stages host-built binaries for an offline image build |
@@ -21,8 +22,27 @@ image. The server inside is the same as the host install
 What the image contains: `murmur-server` built with the production features
 (`whisper,whisper-plugin,parakeet,tls,llm`), the llama.cpp plugin `libmurmur_llm.so`, the
 sherpa-onnx and onnxruntime shared libraries and `libgomp`. **No models**,
-and nothing in it downloads any: you mount them. There is no published
-image; build it from the source (§8).
+and nothing in it downloads any: you mount them.
+
+**Published images.** Each release tag `vX.Y.Z` publishes, after CI's
+checks pass:
+
+| image | what |
+|---|---|
+| `ghcr.io/bashycodes/murmur-server:X.Y.Z`, `:latest` | CPU image (target `runtime`) |
+| `ghcr.io/bashycodes/murmur-server:X.Y.Z-cuda`, `:latest-cuda` | CUDA image (§7), GPU architectures 75, 86, 89 and 120 (Turing, Ampere, Ada, Blackwell); A100 (80) and H100 (90) should run the embedded PTX (CMake embeds it for each architecture), which the driver compiles on first use (not tested: CI has no GPU). For another set, build it yourself (§8) |
+
+Pin a version in production; `latest` moves with each release. The images
+carry OCI labels (`org.opencontainers.image.source`, `.version`,
+`.revision`: the commit). Pull requests and `main` only build and check
+the images; nothing is pushed. An older release can be published by hand:
+Actions → server-image (and server-image-cuda) → Run workflow, with the
+tag (e.g. `v1.7.1`).
+
+Owner action, once: GitHub creates the `murmur-server` package as private
+on its first push. Set it to Public in the package's settings (Package
+settings → Danger Zone → Change visibility), so `docker pull` works
+without a login.
 
 ## 1. Mounts: `/models` and `/data`
 
@@ -99,9 +119,15 @@ policy, a read-only root filesystem, no capabilities and an 8 GB memory
 cap. From the source folder:
 
 ```sh
-MURMUR_MODELS_PATH=/path/to/models docker compose -f deploy/docker-compose.yml up -d --build
+MURMUR_MODELS_PATH=/path/to/models docker compose -f deploy/docker-compose.yml up -d
 docker exec murmur-server cat /data/admin.token
 ```
+
+It runs the published image (`MURMUR_IMAGE`, default
+`ghcr.io/bashycodes/murmur-server:latest`; pin a release with
+`ghcr.io/bashycodes/murmur-server:<version>`). `--build` builds it from the
+source instead; set `MURMUR_IMAGE=murmur-server:local` with it so the local
+build does not take the published image's name.
 
 Settings from the environment or a `.env` file next to the compose file:
 `MURMUR_MODELS_PATH` (required), `MURMUR_STT` / `MURMUR_LLM` / `MURMUR_HEBREW` /
@@ -152,8 +178,9 @@ against ≈ 1 s measured for ivrit turbo through Vulkan on a laptop iGPU
 (D42).
 
 See "NVIDIA CUDA image" below, then
-`docker compose -f deploy/docker-compose.yml --profile gpu up -d --build murmur-server-gpu`
-(it needs the NVIDIA container toolkit). Both services use the
+`docker compose -f deploy/docker-compose.yml --profile gpu up -d murmur-server-gpu`
+(the published `:latest-cuda` image; `MURMUR_IMAGE_GPU` pins a release,
+`--build` builds it here; it needs the NVIDIA container toolkit). Both services use the
 `murmur_data` volume: run one at a time.
 
 ## 8. Build the image yourself
@@ -348,8 +375,8 @@ Ingress.
 
 | value | default | |
 |---|---|---|
-| `image.repository` / `image.tag` | `murmur-server` / `local` | locally loaded image, `pullPolicy: Never` |
-| `gpu.enabled` | `false` | CUDA image (`gpu.image`, tag `local-cuda`) + `nvidia.com/gpu: 1`; `gpu.runtimeClassName` if needed |
+| `image.repository` / `image.tag` | `murmur-server` / `local` | locally loaded image, `pullPolicy: Never`. The published image: `ghcr.io/bashycodes/murmur-server` / `<version>` with `image.pullPolicy=IfNotPresent` |
+| `gpu.enabled` | `false` | CUDA image (`gpu.image`, tag `local-cuda`; published: `<version>-cuda`) + `nvidia.com/gpu: 1`; `gpu.runtimeClassName` if needed |
 | `bindPodIP` | `true` | bind 127.0.0.1 + the pod IP (Binding above) |
 | `insecureBindAny` | `false` | `--insecure-bind-any`; refused together with `serverTls` |
 | `serverTls.enabled` / `secretName` | off | `wss://` by murmur-server from a `kubernetes.io/tls` Secret; the chart adds `[tls]` |

@@ -7,9 +7,10 @@ loopback, LAN and VPN addresses. It never stores audio or text.
 ## What you need
 
 * Docker on a Linux machine (x86_64, 4 GB RAM free).
-* The Murmur source: `git clone` of the repo, or the source archive of
-  a release (GitHub → Releases → *Source code*), unpacked. With a Murmur
-  bundle you can skip the build (below).
+* Only to build the image yourself: the Murmur source (`git clone` of the
+  repo, or the source archive of a release, GitHub → Releases → *Source
+  code*, unpacked). The ready-made image and a Murmur bundle need no build
+  (below).
 * A **models folder**: one folder per model, each with a small
   `model.toml` label. Either
   * the `library/` folder of a Murmur bundle's speech-models zip (and
@@ -23,29 +24,41 @@ loopback, LAN and VPN addresses. It never stores audio or text.
 
 ## Quick start (Docker)
 
-From the source folder:
+Each release publishes the image as `ghcr.io/bashycodes/murmur-server:<version>`
+(also `:latest`; the NVIDIA CUDA image is `:<version>-cuda` and
+`:latest-cuda`, [`container.md`](container.md) §7):
 
 ```sh
-docker build -t murmur-server -f deploy/docker/Dockerfile .
 docker volume create murmur_data
 docker run -d --name murmur-server --restart unless-stopped -p 0.0.0.0:7313:7313 \
-  -v /path/to/models:/models:ro -v murmur_data:/data murmur-server
+  -v /path/to/models:/models:ro -v murmur_data:/data ghcr.io/bashycodes/murmur-server:1.7.1
 docker exec murmur-server cat /data/admin.token
 ```
 
-The build compiles the server (10-15 minutes the first time). The last
+Replace `1.7.1` with the release you want (GitHub → Releases). The last
 command shows the admin key: treat it like a password. The log
 (`docker logs -f murmur-server`) names the models it picked, then, about a
 minute later, says `ready`.
 
+**Build it yourself** instead, from the source folder (10-15 minutes the
+first time), then the same `docker volume create` and `docker run` with
+`murmur-server` as the image:
+
+```sh
+docker build -t murmur-server -f deploy/docker/Dockerfile .
+```
+
 **With a Murmur bundle:** its `docker/` folder has the image, so
-there is nothing to build: `docker load -i docker/murmur-server-image-<version>.tar`,
+there is nothing to download or build: `docker load -i docker/murmur-server-image-<version>.tar`,
 then the same `docker volume create` and `docker run` (the image is called
 `murmur-server`). Or unpack `docker/murmur-server-source-<version>.tar.gz` and
 run the `docker build` above in it.
 
-Docker Compose does the same:
-`MURMUR_MODELS_PATH=/path/to/models docker compose -f deploy/docker-compose.yml up -d --build`.
+Docker Compose does the same with the published image:
+`MURMUR_MODELS_PATH=/path/to/models docker compose -f deploy/docker-compose.yml up -d`
+(from the source folder; pin a release with
+`MURMUR_IMAGE=ghcr.io/bashycodes/murmur-server:<version>`, or add `--build` to
+build it, [`deploy/docker-compose.yml`](../deploy/docker-compose.yml)).
 
 ## Connect your app
 
@@ -72,9 +85,10 @@ docker exec murmur-server murmur-server library list           # models the apps
 docker logs murmur-server                                    # what it is doing
 ```
 
-Update: get the newer source, run the `docker build` again, then
-`docker rm -f murmur-server` and the same `docker run`. Keys stay in
-`murmur_data`; models stay in your folder.
+Update: `docker pull` the newer release's image (or get the newer source
+and run the `docker build` again), then `docker rm -f murmur-server` and
+the same `docker run` with the new version. Keys stay in `murmur_data`;
+models stay in your folder.
 
 ## Safety
 

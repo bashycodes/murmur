@@ -16,6 +16,10 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Added
+
+- **Server: a ready-made Docker image with each release.** No build needed: `docker run ghcr.io/bashycodes/murmur-server:<version>` (or `:latest`), and `:<version>-cuda` / `:latest-cuda` for NVIDIA GPUs. The Compose file uses it by default; building from the source still works (`--build`). See `docs/server-setup.md`.
+
 ## [1.7.1] - 2026-11-25
 
 ### Added

@@ -3,6 +3,10 @@
 # Built locally and loaded into the node's container runtime (no registry):
 #   docker build -f deploy/docker/Dockerfile -t murmur-server:local .
 #   docker save murmur-server:local | <runtime import>   (docs/container.md)
+# Or the published image, pulled by the node (docs/container.md "Helm"):
+#   --set image.repository=ghcr.io/bashycodes/murmur-server \
+#   --set image.tag=<version> --set image.pullPolicy=IfNotPresent
+#   (CUDA: gpu.image.repository the same, gpu.image.tag=<version>-cuda)
 image:
   repository: murmur-server
   tag: local

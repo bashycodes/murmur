@@ -133,6 +133,12 @@ from the CHANGELOG section if the other workflow has not yet. The APKs are
 debug-signed and the installers unsigned, as in every CI build (no secrets
 in CI).
 
+The same tag makes `server-image.yml` and `server-image-cuda.yml` run the
+same version gate, build and check the server images, and push them to
+`ghcr.io/bashycodes/murmur-server` as `X.Y.Z` / `latest` and `X.Y.Z-cuda` /
+`latest-cuda`, with `GITHUB_TOKEN` (`packages: write`); see
+`docs/container.md` "Published images".
+
 ## 7. Checks
 
 * `tools/check-version.sh [--tag vX.Y.Z]`: runs the rules' unit tests
