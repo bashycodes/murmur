@@ -248,25 +248,109 @@ pub fn bpe_vocab_from_tokens(tokens_txt: &str) -> String {
     out
 }
 
+/// One hotword phrase with an optional per-phrase bonus. `score: None`
+/// uses the recognizer's `hotwords_score` ([`DEFAULT_HOTWORDS_SCORE`]);
+/// `Some(s)` is written as sherpa's ` :s` suffix, which overrides it for
+/// this phrase only (sherpa-onnx `EncodeHotwords`, offline NeMo and online
+/// transducers alike).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Hotword {
+    pub phrase: String,
+    pub score: Option<f32>,
+}
+
+impl Hotword {
+    /// A phrase with the recognizer's default score.
+    pub fn new(phrase: impl Into<String>) -> Self {
+        Self {
+            phrase: phrase.into(),
+            score: None,
+        }
+    }
+
+    /// A phrase with its own score.
+    pub fn scored(phrase: impl Into<String>, score: f32) -> Self {
+        Self {
+            phrase: phrase.into(),
+            score: Some(score),
+        }
+    }
+}
+
+/// What [`hotwords_arg`] accepts: plain phrases (`&str`, `String`, default
+/// score) or [`Hotword`]s.
+pub trait AsHotword {
+    fn phrase(&self) -> &str;
+    fn score(&self) -> Option<f32> {
+        None
+    }
+}
+
+impl AsHotword for str {
+    fn phrase(&self) -> &str {
+        self
+    }
+}
+
+impl AsHotword for String {
+    fn phrase(&self) -> &str {
+        self
+    }
+}
+
+impl AsHotword for Hotword {
+    fn phrase(&self) -> &str {
+        &self.phrase
+    }
+    fn score(&self) -> Option<f32> {
+        self.score
+    }
+}
+
+impl<T: AsHotword + ?Sized> AsHotword for &T {
+    fn phrase(&self) -> &str {
+        (**self).phrase()
+    }
+    fn score(&self) -> Option<f32> {
+        (**self).score()
+    }
+}
+
 /// Render phrases as sherpa's per-stream hotword string: `/`-separated
-/// phrases. Separators and control characters inside a phrase become spaces;
-/// blanks and case-insensitive duplicates are dropped; at most
-/// [`MAX_HOTWORDS`] phrases are kept, in order.
-pub fn hotwords_arg<S: AsRef<str>>(phrases: &[S]) -> String {
+/// phrases, each followed by ` :score` when it has its own score.
+/// Separators and control characters inside a phrase become spaces, and a
+/// word's leading `:` is dropped (sherpa would read the word as a score:
+/// mid-phrase it rejects the whole list, and a non-number aborts the
+/// process). So is a word's leading `#` or `@` (`#general`, `@odrin`).
+/// sherpa keeps them as tokens of their own, so the phrase would match only
+/// if the marker were spoken: on Parakeet, `@Taviel Marrow` boosted nothing
+/// while `Taviel Marrow` did (`tests/hotword_markers_e2e.rs`). The bare
+/// name stays. Blanks and case-insensitive duplicates are dropped (the first
+/// one, with its score, is kept); at most [`MAX_HOTWORDS`] phrases are
+/// kept, in order. A score that is not finite and positive is left out.
+pub fn hotwords_arg<H: AsHotword>(phrases: &[H]) -> String {
     let mut seen: Vec<String> = Vec::new();
     let mut out: Vec<String> = Vec::new();
     for p in phrases {
         let clean: String = p
-            .as_ref()
+            .phrase()
             .chars()
             .map(|c| if c == '/' || c.is_control() { ' ' } else { c })
             .collect();
-        let clean = clean.split_whitespace().collect::<Vec<_>>().join(" ");
+        let clean = clean
+            .split_whitespace()
+            .map(|w| w.trim_start_matches([':', '#', '@']))
+            .filter(|w| !w.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ");
         if clean.is_empty() || seen.contains(&clean.to_lowercase()) {
             continue;
         }
         seen.push(clean.to_lowercase());
-        out.push(clean);
+        match p.score().filter(|s| s.is_finite() && *s > 0.0) {
+            Some(s) => out.push(format!("{clean} :{s}")),
+            None => out.push(clean),
+        }
         if out.len() == MAX_HOTWORDS {
             break;
         }
@@ -276,7 +360,7 @@ pub fn hotwords_arg<S: AsRef<str>>(phrases: &[S]) -> String {
 
 /// How many phrases [`hotwords_arg`] keeps of `phrases`: the count a
 /// beam-search decode is given.
-pub fn hotwords_count<S: AsRef<str>>(phrases: &[S]) -> usize {
+pub fn hotwords_count<H: AsHotword>(phrases: &[H]) -> usize {
     let arg = hotwords_arg(phrases);
     if arg.is_empty() {
         0
@@ -397,7 +481,7 @@ impl ParakeetEngine {
 
     /// The search [`ParakeetEngine::transcribe`] uses for these hotwords:
     /// beam with hotwords, otherwise greedy when loaded.
-    pub fn default_search<S: AsRef<str>>(&self, hotwords: &[S]) -> Search {
+    pub fn default_search<H: AsHotword>(&self, hotwords: &[H]) -> Search {
         if self.beam.is_some() && (self.greedy.is_none() || !hotwords_arg(hotwords).is_empty()) {
             Search::Beam
         } else {
@@ -408,20 +492,20 @@ impl ParakeetEngine {
     /// Decode a whole utterance (16 kHz mono f32). `hotwords` biases the
     /// decode toward those phrases (ignored when unsupported). Beam search
     /// only with hotwords; greedy otherwise (when loaded).
-    pub fn transcribe<S: AsRef<str>>(
+    pub fn transcribe<H: AsHotword>(
         &self,
         pcm: &[f32],
-        hotwords: &[S],
+        hotwords: &[H],
     ) -> Result<String, SherpaError> {
         self.transcribe_with(pcm, hotwords, self.default_search(hotwords))
     }
 
     /// Decode with an explicit search; falls back to the loaded one when
     /// the requested recognizer is not loaded. Hotwords only reach beam.
-    pub fn transcribe_with<S: AsRef<str>>(
+    pub fn transcribe_with<H: AsHotword>(
         &self,
         pcm: &[f32],
-        hotwords: &[S],
+        hotwords: &[H],
         search: Search,
     ) -> Result<String, SherpaError> {
         if is_silent(pcm) {
@@ -562,19 +646,19 @@ fn vocab_path(
 
 /// The decode interface both engines share, so murmur-core's sherpa adapter
 /// (beam/greedy retry, piecewise fallback) can drive either one. Object
-/// safe; phrases are `String`s because that is what core passes.
+/// safe; phrases are [`Hotword`]s because that is what core passes.
 pub trait SherpaTranscriber: Send + Sync {
     /// Whether per-decode hotwords are honoured (beam search + vocab loaded).
     fn supports_hotwords(&self) -> bool;
     /// Whether a greedy recognizer is loaded.
     fn has_greedy(&self) -> bool;
     /// The search a plain decode with these hotwords uses.
-    fn default_search(&self, hotwords: &[String]) -> Search;
+    fn default_search(&self, hotwords: &[Hotword]) -> Search;
     /// Decode one utterance (16 kHz mono f32) with an explicit search.
     fn transcribe_with(
         &self,
         pcm: &[f32],
-        hotwords: &[String],
+        hotwords: &[Hotword],
         search: Search,
     ) -> Result<String, SherpaError>;
     /// The language this model writes, when it is fixed by configuration
@@ -589,13 +673,13 @@ impl SherpaTranscriber for ParakeetEngine {
     fn has_greedy(&self) -> bool {
         ParakeetEngine::has_greedy(self)
     }
-    fn default_search(&self, hotwords: &[String]) -> Search {
+    fn default_search(&self, hotwords: &[Hotword]) -> Search {
         ParakeetEngine::default_search(self, hotwords)
     }
     fn transcribe_with(
         &self,
         pcm: &[f32],
-        hotwords: &[String],
+        hotwords: &[Hotword],
         search: Search,
     ) -> Result<String, SherpaError> {
         ParakeetEngine::transcribe_with(self, pcm, hotwords, search)
@@ -624,6 +708,56 @@ mod tests {
         let many: Vec<String> = (0..500).map(|i| format!("w{i}")).collect();
         assert_eq!(hotwords_arg(&many).split('/').count(), MAX_HOTWORDS);
         assert_eq!(hotwords_arg::<&str>(&[]), "");
+    }
+
+    #[test]
+    fn hotwords_carry_their_own_score() {
+        let h = [
+            Hotword::new("Kubernetes"),
+            Hotword::scored("Odrin Vashel", 2.5),
+            // A duplicate keeps the first copy's score.
+            Hotword::scored("kubernetes", 2.5),
+            Hotword::scored("TCP/IP", 1.5),
+            // Not a usable score: the default.
+            Hotword::scored("Mireth", f32::NAN),
+            Hotword::scored("Sabine", 0.0),
+        ];
+        assert_eq!(
+            hotwords_arg(&h),
+            "Kubernetes/Odrin Vashel :2.5/TCP IP :1.5/Mireth/Sabine"
+        );
+        assert_eq!(hotwords_count(&h), 5);
+    }
+
+    #[test]
+    fn a_phrase_cannot_smuggle_in_a_score() {
+        // sherpa reads a word starting with ':' as the phrase's score.
+        assert_eq!(
+            hotwords_arg(&["Mireth :9", ":) hi", "::", "a:b"]),
+            "Mireth 9/) hi/a:b"
+        );
+        assert_eq!(hotwords_arg(&[Hotword::scored("x :y", 2.0)]), "x y :2");
+    }
+
+    #[test]
+    fn a_mention_or_tag_keeps_its_bare_name() {
+        // A leading '#' or '@' would become a token the speaker never says.
+        assert_eq!(
+            hotwords_arg(&[
+                "@Odrin Vashel",
+                "#general",
+                "Mireth @Sabine",
+                "@",
+                "#",
+                "a#b",
+                "x@y"
+            ]),
+            "Odrin Vashel/general/Mireth Sabine/a#b/x@y"
+        );
+        assert_eq!(
+            hotwords_arg(&[Hotword::scored("@odrin", 2.5), Hotword::new("Odrin")]),
+            "odrin :2.5"
+        );
     }
 
     #[test]

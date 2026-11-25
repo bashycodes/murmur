@@ -2789,6 +2789,44 @@ mod tests {
         r
     }
 
+    /// The AI cleanup page's "Also send it" turns on only the provider's
+    /// "Text around the cursor": Command Mode and transforms read the
+    /// selection without "Use text on screen" (`use_ax_context`).
+    #[test]
+    fn the_selection_is_read_without_use_text_on_screen() {
+        let prefs = Prefs {
+            use_ax_context: false,
+            ..transforms_on()
+        };
+        let mut r = transform_rig(Ok(Some("teh draft".into())), prefs.clone());
+        r.core.set_transform_reply(Ok("The draft.".into()));
+        r.at(0, Input::Hotkey(HotkeyAction::Transform(0)));
+        r.pump();
+        r.pump();
+        let log = r.fake.log();
+        assert!(log.contains(&"capture selection".to_string()), "{log:?}");
+        assert!(log.contains(&"paste The draft.".to_string()), "{log:?}");
+
+        let fake = Fake::default();
+        *fake.selection.lock().unwrap() = Some(Ok(Some("cant come tmrw".into())));
+        let mut r = rig(fake, prefs);
+        r.core
+            .set_command_reply(Ok("I can't come tomorrow.".into()));
+        r.at(0, Input::Hotkey(HotkeyAction::CommandDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        r.at(1000, Input::Hotkey(HotkeyAction::CommandUp));
+        r.pump();
+        r.pump();
+        r.pump();
+        assert_eq!(
+            r.core.commands(),
+            [(
+                "[stub: 1.0 s of audio]".to_string(),
+                Some("cant come tmrw".to_string())
+            )]
+        );
+    }
+
     #[test]
     fn transform_shortcut_rewrites_the_selection_records_it_and_views_it() {
         let mut r = transform_rig(Ok(Some("teh draft".into())), transforms_on());

@@ -74,6 +74,10 @@ required-features = ["parakeet", "wav"]
 name = "screen_names_e2e"
 required-features = ["parakeet", "wav"]
 
+[[test]]
+name = "hotword_markers_e2e"
+required-features = ["parakeet", "wav"]
+
 [[example]]
 name = "vad_gate"
 required-features = ["wav"]

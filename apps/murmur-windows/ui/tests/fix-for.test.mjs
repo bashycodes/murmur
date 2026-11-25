@@ -1,7 +1,7 @@
 // Regression (D78): Command Mode / transform refusals name the Cloud
 // provider ("… to OpenRouter", "… to LiteLLM (10.0.0.5)", "… to the cloud").
-// Their Fix link must open the AI cleanup page, where the "Text around the
-// cursor" switch is, for every provider. Runs on the built dist: `npm test`.
+// Their Fix link must open the AI cleanup page, whose provider card asks to
+// send selected text there, for every provider. Runs on the built dist: `npm test`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fixFor } from "../dist/lib/fix-for.js";

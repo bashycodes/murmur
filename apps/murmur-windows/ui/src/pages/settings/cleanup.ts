@@ -4,7 +4,8 @@
 // warning, the model on this PC (features/models.ts), cloud cleanup on the
 // Cloud provider (D78): OpenRouter's model, or the model on the user's
 // LiteLLM proxy (D52), whose address is on the Cloud page
-// (features/openrouter.ts), and an Advanced fold: one time limit for every
+// (features/openrouter.ts), the inline ask to send selected text there
+// (lib/selection-ask.ts), and an Advanced fold: one time limit for every
 // engine, reading the screen, what else the cloud gets, the formatting
 // rules before AI and the model file. The engine library is on Developer.
 // Markup only.
@@ -12,6 +13,7 @@
 import { ICON } from "../../lib/icons.js";
 import { advanced, group, heading, row, toggle } from "../../lib/markup.js";
 import type { Page } from "../../lib/router.js";
+import { CLEANUP_LOCK } from "../../lib/cloud-lock.js";
 import { browseButton, LLM_DOWNLOAD_ROW } from "../../features/models.js";
 import { engineRow } from "./speech.js";
 
@@ -70,7 +72,9 @@ ${group("", LLM_DOWNLOAD_ROW, `data-needs="local"`)}
 
 <section class="lw-section" id="or_cleanup_group" data-needs="cloud">
   <h3 class="fl-group-title lw-title-badge" id="or_cleanup_title"><span id="or_cleanup_title_name">Cloud · OpenRouter</span> <button type="button" class="lw-link lw-link-sm" data-go="settings-openrouter">Change provider →</button></h3>
+  ${CLEANUP_LOCK.banner}
   <div class="fl-group" id="or_cleanup_box">
+    ${CLEANUP_LOCK.open}
     ${row(
       "Model",
       `From your own AI server's list, or type its name. <span id="cu_models_out"></span>`,
@@ -101,6 +105,13 @@ ${group("", LLM_DOWNLOAD_ROW, `data-needs="local"`)}
       `<span id="or_cleanup_test_out"></span> <span id="or_cleanup_state"></span> <span id="or_cleanup_msg"></span>`,
       `<button type="button" class="fl-btn fl-btn-secondary" id="or_cleanup_test">Test</button>`,
     )}
+    ${row(
+      "Selected text",
+      `<span id="or_cleanup_sel_ask"></span>`,
+      `<button type="button" class="fl-btn fl-btn-secondary" id="or_cleanup_sel_on">Also send it</button>`,
+      `id="or_cleanup_sel_row" hidden`,
+    )}
+    ${CLEANUP_LOCK.close}
   </div>
 </section>
 
@@ -123,7 +134,7 @@ ${advanced(
     ) +
     row(
       "Also send to the cloud",
-      "Needs Use text on screen.",
+      "Needs Use text on screen. Cleanup works without them.",
       `<div class="lw-switch-stack">
         ${small("or_cleanup_send_app_name", "App name")}
         ${small("or_cleanup_send_surrounding_text", "Text around the cursor")}

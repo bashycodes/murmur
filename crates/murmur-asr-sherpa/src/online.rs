@@ -21,8 +21,8 @@ use std::sync::Mutex;
 use sherpa_onnx::{OnlineRecognizer, OnlineRecognizerConfig, OnlineTransducerModelConfig};
 
 use crate::{
-    create_pair, hotwords_arg, is_silent, onnx_model_type, timed, vocab_path, LoadPhase,
-    MakeRecognizer, ModelFiles, Search, SherpaError, SherpaTranscriber, DEFAULT_BEAM,
+    create_pair, hotwords_arg, is_silent, onnx_model_type, timed, vocab_path, AsHotword, Hotword,
+    LoadPhase, MakeRecognizer, ModelFiles, Search, SherpaError, SherpaTranscriber, DEFAULT_BEAM,
     DEFAULT_HOTWORDS_SCORE, SAMPLE_RATE,
 };
 
@@ -181,7 +181,7 @@ impl OnlineEngine {
     }
 
     /// Beam with hotwords (or when it is the only recognizer), else greedy.
-    pub fn default_search<S: AsRef<str>>(&self, hotwords: &[S]) -> Search {
+    pub fn default_search<H: AsHotword>(&self, hotwords: &[H]) -> Search {
         if self.beam.is_some() && (self.greedy.is_none() || !hotwords_arg(hotwords).is_empty()) {
             Search::Beam
         } else {
@@ -189,10 +189,10 @@ impl OnlineEngine {
         }
     }
 
-    pub fn transcribe<S: AsRef<str>>(
+    pub fn transcribe<H: AsHotword>(
         &self,
         pcm: &[f32],
-        hotwords: &[S],
+        hotwords: &[H],
     ) -> Result<String, SherpaError> {
         self.transcribe_with(pcm, hotwords, self.default_search(hotwords))
     }
@@ -200,10 +200,10 @@ impl OnlineEngine {
     /// Feed the whole utterance + tail silence, finish the stream, decode
     /// while ready. Falls back to the loaded recognizer when the requested
     /// one is not; hotwords reach only beam search.
-    pub fn transcribe_with<S: AsRef<str>>(
+    pub fn transcribe_with<H: AsHotword>(
         &self,
         pcm: &[f32],
-        hotwords: &[S],
+        hotwords: &[H],
         search: Search,
     ) -> Result<String, SherpaError> {
         if is_silent(pcm) {
@@ -247,13 +247,13 @@ impl SherpaTranscriber for OnlineEngine {
     fn has_greedy(&self) -> bool {
         OnlineEngine::has_greedy(self)
     }
-    fn default_search(&self, hotwords: &[String]) -> Search {
+    fn default_search(&self, hotwords: &[Hotword]) -> Search {
         OnlineEngine::default_search(self, hotwords)
     }
     fn transcribe_with(
         &self,
         pcm: &[f32],
-        hotwords: &[String],
+        hotwords: &[Hotword],
         search: Search,
     ) -> Result<String, SherpaError> {
         OnlineEngine::transcribe_with(self, pcm, hotwords, search)
