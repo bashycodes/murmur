@@ -118,7 +118,7 @@ fun interface MurmurCoreLoader {
 /**
  * [kind] is the stable `CoreError::kind()` (`model_not_found`, `llm_lib_not_found`, `load`,
  * `bad_config`, …) or a router error kind (`no_engine_enabled`, `local_not_ready`,
- * `server_not_configured`, `server_unavailable`); null when unknown.
+ * `server_not_configured`, `server_unavailable`, `throttled`); null when unknown.
  */
 class CoreException(message: String, val kind: String? = null) : Exception(message) {
     companion object {
@@ -149,6 +149,38 @@ class CoreException(message: String, val kind: String? = null) : Exception(messa
     }
 }
 
+/**
+ * D112: the server locked this address out after too many wrong keys (code `throttled` in route
+ * fallbacks, health reports, admin and library answers, and as a start error kind).
+ */
+object Lockout {
+    const val CODE = "throttled"
+    private const val LEAD = "Too many wrong keys from this address."
+    private const val UNCHECKED = "Your key isn't checked until then."
+    /** `murmur_router::MAX_RETRY_AFTER_S`: a longer or garbled wait is not believed. */
+    const val MAX_WAIT_S = 3600L
+
+    /**
+     * The shared sentence (`murmur_router::throttled_text`); [retryAfterS] = the wait left, if
+     * known. The last part tells a user who already fixed the key why it still fails.
+     */
+    fun text(retryAfterS: Long?): String = when {
+        retryAfterS == null -> "$LEAD Try again later. $UNCHECKED"
+        retryAfterS <= 0 -> "$LEAD The wait is over: try again."
+        else -> "$LEAD Try again in $retryAfterS s. $UNCHECKED"
+    }
+
+    /** A probe's wait as seen at [nowMs]: `retry_after_s` minus the time since `checked_at_ms`. */
+    fun left(h: HealthReport, nowMs: Long): Long? {
+        val wait = h.retryAfterS?.coerceIn(0, MAX_WAIT_S) ?: return null
+        val at = h.checkedAtMs ?: return wait
+        return (wait - (nowMs - at).coerceAtLeast(0) / 1000).coerceAtLeast(0)
+    }
+
+    /** [text] for a probe, counted down to [nowMs]. */
+    fun text(h: HealthReport, nowMs: Long = System.currentTimeMillis()): String = text(left(h, nowMs))
+}
+
 /** murmur_router `RouterError` kinds (docs/hybrid-architecture.md §1.2), surfaced as last error. */
 object RouterErrors {
     const val NO_ENGINE_ENABLED = "no_engine_enabled"
@@ -156,7 +188,9 @@ object RouterErrors {
     const val SERVER_NOT_CONFIGURED = "server_not_configured"
     const val SERVER_UNAVAILABLE = "server_unavailable"
     const val BAD_CONFIG = "bad_config"
-    val KINDS = listOf(NO_ENGINE_ENABLED, LOCAL_NOT_READY, SERVER_NOT_CONFIGURED, SERVER_UNAVAILABLE, BAD_CONFIG)
+    /** D112: locked out by the server; the message is the sentence to show ([Lockout.text]). */
+    const val THROTTLED = Lockout.CODE
+    val KINDS = listOf(NO_ENGINE_ENABLED, LOCAL_NOT_READY, SERVER_NOT_CONFIGURED, SERVER_UNAVAILABLE, BAD_CONFIG, THROTTLED)
 
     /** User-facing wording for the router's cloud rule: an http:// base URL at a public address (D18). */
     const val CLOUD_NEEDS_TLS = "Provider needs TLS — use an https:// base URL"
@@ -180,6 +214,7 @@ object RouterErrors {
     fun userMessage(kind: String?, message: String): String = when (kind) {
         NO_ENGINE_ENABLED -> "Dictation disabled — enable server or client in Developer settings"
         SERVER_UNAVAILABLE -> serverUnavailable(message)
+        THROTTLED -> message.ifBlank { Lockout.text(null) }
         SERVER_NOT_CONFIGURED -> "No server configured — set the host in Developer settings"
         LOCAL_NOT_READY -> "On-device speech model is not ready"
         "model_not_found" -> "Speech model file is missing (${message.substringAfter(':').trim()}). Re-import it."
@@ -407,7 +442,7 @@ data class RouteInfo(
     val engine: String,
     /**
      * connect_failed, auth_failed, proto_mismatch, busy, timeout, disconnected, circuit_open, server_not_configured,
-     * local_not_ready; D18: cloud_not_configured, budget_exceeded, quota_exceeded, provider_error
+     * local_not_ready; D18: cloud_not_configured, budget_exceeded, quota_exceeded, provider_error; D112: throttled
      */
     val fallback: String? = null,
     /** "host:port" */

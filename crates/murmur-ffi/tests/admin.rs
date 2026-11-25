@@ -19,6 +19,10 @@ struct InProcessServer {
 
 impl InProcessServer {
     fn start() -> Self {
+        Self::start_with(|_| {})
+    }
+
+    fn start_with(tweak: impl FnOnce(&mut murmur_server::config::Config)) -> Self {
         use murmur_core::config::{AsrBackend, ModelConfig};
         let rt = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
@@ -35,6 +39,8 @@ impl InProcessServer {
             },
             ..Default::default()
         };
+        let mut cfg = cfg;
+        tweak(&mut cfg);
         let handle = rt.block_on(async {
             let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             murmur_server::serve(cfg, vec![l])
@@ -102,6 +108,27 @@ fn json_api_round_trip() {
     let r = json(&admin_api::revoke_key(&cfg, id));
     assert!(r["value"]["key"]["revoked"].is_number(), "{r}");
     assert_eq!(json(&admin_api::whoami(&phone))["code"], "unauthorized");
+}
+
+/// D112: after a wrong key locks this address out, every admin call answers
+/// `throttled` with the server's wait, even with the right key.
+#[test]
+fn a_locked_out_address_is_throttled_with_the_wait() {
+    let s = InProcessServer::start_with(|c| {
+        c.auth_throttle.max_failures = 1;
+        c.auth_throttle.lockout_secs = 40;
+        c.auth_throttle.exempt_loopback = false;
+    });
+    let wrong = json(&admin_api::whoami(&s.cfg("wrong-token-0123456789abcdef")));
+    assert_eq!(wrong["code"], "unauthorized", "{wrong}");
+    let r = json(&admin_api::list_keys(&s.cfg(TOKEN)));
+    assert_eq!(
+        (r["ok"].clone(), r["code"].clone()),
+        (false.into(), "throttled".into()),
+        "{r}"
+    );
+    let n = r["retry_after_s"].as_u64().expect("a wait");
+    assert!(n > 30 && n <= 40, "{r}");
 }
 
 #[test]

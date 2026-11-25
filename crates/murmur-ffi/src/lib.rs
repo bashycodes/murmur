@@ -1544,7 +1544,8 @@ pub extern "C" fn murmur_last_error() -> *const c_char {
 /// Stable kind of the last error on this thread: "" (none / last load
 /// succeeded), "bad_config", "model_not_found", "llm_lib_not_found",
 /// "load", the router kinds ("no_engine_enabled", "local_not_ready",
-/// "server_not_configured", "server_unavailable"), or "error". Valid until the next call on it.
+/// "server_not_configured", "server_unavailable", "throttled"), or "error".
+/// Valid until the next call on it.
 #[no_mangle]
 pub extern "C" fn murmur_last_error_kind() -> *const c_char {
     LAST_ERROR_KIND.with(|e| e.borrow().as_ptr())

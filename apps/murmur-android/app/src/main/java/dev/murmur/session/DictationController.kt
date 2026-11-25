@@ -351,9 +351,13 @@ class DictationController(
             if (note.isNullOrBlank() || kind != RouterErrors.SERVER_UNAVAILABLE || msg.contains("phone model")) msg
             else "$msg — phone fallback unavailable: $note"
 
+        /** The router kind of a commit ERROR: a lockout by its route's fallback code (D112), else by the error's prefix. */
+        fun commitKind(r: CommitResult): String? =
+            if (r.route?.fallback == RouterErrors.THROTTLED) RouterErrors.THROTTLED else CoreException.kindOf(r.error)
+
         /** A commit ERROR caused by the router (both engines off, server-only and unreachable). */
         fun routerFailure(r: CommitResult): String? {
-            val kind = CoreException.kindOf(r.error) ?: return null
+            val kind = commitKind(r) ?: return null
             if (kind !in RouterErrors.KINDS) return null
             return RouterErrors.userMessage(kind, r.error ?: kind)
         }
@@ -683,7 +687,7 @@ class DictationController(
             }
             if (isCancelled(r)) return RetryOutcome.Failed("Cancelled")
             if (r.status == CommitStatus.ERROR) {
-                val routed = routerFailure(r)?.let { withClientNote(it, CoreException.kindOf(r.error), runCatching { host.clientFallbackNote() }.getOrNull()) }
+                val routed = routerFailure(r)?.let { withClientNote(it, commitKind(r), runCatching { host.clientFallbackNote() }.getOrNull()) }
                 return RetryOutcome.Failed(routed ?: dev.murmur.data.RetryLogic.failure(r)!!)
             }
             dev.murmur.data.RetryLogic.failure(r)?.let { return RetryOutcome.Failed(it) }
@@ -1082,7 +1086,7 @@ class DictationController(
             if (result.status == CommitStatus.ERROR) {
                 if (cmd == null) host.recordHistory(result, false, appId, InsertOutcome.ERROR, recording)
                 val routed = routerFailure(result)?.let {
-                    withClientNote(it, CoreException.kindOf(result.error), runCatching { host.clientFallbackNote() }.getOrNull())
+                    withClientNote(it, commitKind(result), runCatching { host.clientFallbackNote() }.getOrNull())
                 }
                 _state.value = DictationState.Error(
                     if (routed != null) DictationState.ErrorKind.EngineUnavailable(routed) else DictationState.ErrorKind.FailedToTranscribe,

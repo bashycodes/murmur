@@ -99,7 +99,7 @@ impl Router {
 ```
 
 * `learn_edit` always runs locally: `murmur_core::learn::learn_edit(pasted, edited, &last_session_dictionary)`. It is pure and needs no model, so it behaves the same in every build and needs no wire message.
-* `RouterError` kinds (stable snake_case, surfaced as last error): `no_engine_enabled`, `local_not_ready`, `server_not_configured`, `server_unavailable`, `bad_config`.
+* `RouterError` kinds (stable snake_case, surfaced as last error): `no_engine_enabled`, `local_not_ready`, `server_not_configured`, `server_unavailable`, `bad_config`, `throttled` (D112: the server locked this address out after wrong keys and no other route took the dictation; displays as the sentence alone, "Too many wrong keys from this address. Try again in N s. Your key isn't checked until then.", with `retry_after_s`).
 
 **Additive murmur-core change** (the only one): `CommitResult.route: Option<RouteInfo>`
 (`#[serde(default, skip_serializing_if = "Option::is_none")]`) with
@@ -132,7 +132,7 @@ Server with an empty `host` counts as `server_not_configured`: treated as remote
 
 **Remote-primary session flow (both allowed)**
 
-1. `start_session`: if the circuit is open (failure < backoff ago: 5 s, doubling to 60 s) → local immediately, `fallback=circuit_open`, re-probe in the background. Else reuse the warm WS (kept `idle_keepalive_s`=60 after the last session) or connect within `connect_timeout_ms`. Send `hello` (new connection) + `start`; do **not** wait for `started` before accepting audio (pipelined).
+1. `start_session`: if the circuit is open (failure < backoff ago: 5 s, doubling to 60 s) → local immediately, `fallback=circuit_open`, re-probe in the background. Else reuse the warm WS (kept `idle_keepalive_s`=60 after the last session) or connect within `connect_timeout_ms`. Send `hello` (new connection) + `start`; do **not** wait for `started` before accepting audio (pipelined). D112: a `throttled` failure (HTTP 429 lockout) keeps the circuit open for the server's `Retry-After` (capped at 1 h), and a start inside it is skipped as `throttled` even with no fallback.
 2. Every `push_audio`: append to the router's session PCM buffer (`Vec<i16>`, capped at `max_samples`; only allocated when a fallback exists) and `try_send` to the WS writer task (bounded 64 frames ≈ 6.4 s). Never blocks.
 3. `set_context`: store the latest context in the router; forward.
 4. `partial`: last `partial` message from the server (or local backend after a switch).

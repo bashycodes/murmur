@@ -412,6 +412,10 @@ pub enum Failure {
     /// D28: cloud cleanup skipped (no build support, toggle off, no
     /// cleanup consent, or no key).
     CloudCleanupNotConfigured,
+    /// D112: the server locked this address out after too many wrong
+    /// keys (HTTP 429). [`BackendError::retry_after_s`] says for how long;
+    /// nothing should reconnect before then.
+    Throttled,
 }
 
 impl Failure {
@@ -433,6 +437,7 @@ impl Failure {
             Failure::ProviderError => "provider_error",
             Failure::NoPrivateRoute => "no_private_route",
             Failure::CloudCleanupNotConfigured => "cloud_cleanup_not_configured",
+            Failure::Throttled => "throttled",
         }
     }
 }
@@ -448,6 +453,9 @@ impl std::fmt::Display for Failure {
 pub struct BackendError {
     pub kind: Failure,
     pub message: String,
+    /// [`Failure::Throttled`]: the server's `Retry-After`, in seconds,
+    /// when it sent one.
+    pub retry_after_s: Option<u64>,
 }
 
 impl BackendError {
@@ -455,7 +463,35 @@ impl BackendError {
         Self {
             kind,
             message: message.into(),
+            retry_after_s: None,
         }
+    }
+
+    /// A [`Failure::Throttled`] error: the server locked this address out
+    /// for `retry_after_s` seconds (unknown when `None`).
+    pub fn throttled(retry_after_s: Option<u64>) -> Self {
+        Self {
+            kind: Failure::Throttled,
+            message: throttled_text(retry_after_s),
+            retry_after_s,
+        }
+    }
+}
+
+/// The longest server lockout a client believes (D112): a larger or
+/// garbled `Retry-After` must not park the server route for days.
+pub const MAX_RETRY_AFTER_S: u64 = 3600;
+
+/// The user-facing sentence for a server lockout (D112), shared by every
+/// shell: "Too many wrong keys from this address. Try again in N s. Your
+/// key isn't checked until then." The last part tells a user who already
+/// fixed the key why it still fails.
+pub fn throttled_text(retry_after_s: Option<u64>) -> String {
+    let lead = "Too many wrong keys from this address.";
+    match retry_after_s {
+        Some(0) => format!("{lead} The wait is over: try again."),
+        Some(n) => format!("{lead} Try again in {n} s. Your key isn't checked until then."),
+        None => format!("{lead} Try again later. Your key isn't checked until then."),
     }
 }
 
@@ -618,6 +654,10 @@ pub struct HealthReport {
     pub models: murmur_protocol::ServerModels,
     /// Unix time of the probe (ms).
     pub checked_at_ms: u64,
+    /// `error` is `throttled`: seconds until the server lets this address
+    /// try again (its `Retry-After`). Omitted while `None`. Additive.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_after_s: Option<u64>,
     /// Cloud "Test provider" (D18): provider id, model, the transcript of
     /// the test clip, wall time and cost. Omitted while `None`.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -639,6 +679,7 @@ impl HealthReport {
             engine,
             error: Some(e.kind.as_str().into()),
             message: Some(e.message.clone()),
+            retry_after_s: e.retry_after_s,
             checked_at_ms: now_unix_ms(),
             ..Default::default()
         }
@@ -755,6 +796,15 @@ pub enum RouterError {
     /// show as is (D76); [`RouterError::kind`] stays `bad_config`.
     #[error("{0}")]
     BadConfig(String),
+    /// D112: the server locked this address out after too many wrong
+    /// keys, and no other route took the dictation. Displays as the
+    /// sentence alone ([`throttled_text`]); kind `throttled`.
+    #[error("{message}")]
+    Throttled {
+        message: String,
+        /// The server's wait in seconds, when known.
+        retry_after_s: Option<u64>,
+    },
 }
 
 impl RouterError {
@@ -765,6 +815,7 @@ impl RouterError {
             RouterError::ServerNotConfigured => "server_not_configured",
             RouterError::ServerUnavailable(_) => "server_unavailable",
             RouterError::BadConfig(_) => "bad_config",
+            RouterError::Throttled { .. } => "throttled",
         }
     }
 }

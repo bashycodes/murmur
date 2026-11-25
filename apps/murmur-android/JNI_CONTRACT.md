@@ -62,13 +62,13 @@ frees the router and the local engine it owns.
 
 | Kotlin (`@JvmStatic external`) | JNI descriptor | C symbol | Semantics |
 |---|---|---|---|
-| `nativeLastErrorKind(): String?` | `()Ljava/lang/String;` | `Java_dev_murmur_core_NativeMurmurCore_nativeLastErrorKind` | Stable kind of the last error on this thread (`model_not_found`, `llm_lib_not_found`, `load`, `bad_config`, `no_engine_enabled`, `local_not_ready`, `server_not_configured`, `server_unavailable`, `error`), or `null`. C: `murmur_last_error_kind` |
+| `nativeLastErrorKind(): String?` | `()Ljava/lang/String;` | `Java_dev_murmur_core_NativeMurmurCore_nativeLastErrorKind` | Stable kind of the last error on this thread (`model_not_found`, `llm_lib_not_found`, `load`, `bad_config`, `no_engine_enabled`, `local_not_ready`, `server_not_configured`, `server_unavailable`, `throttled` (D112: the server locked this address out; the message is the sentence to show), `error`), or `null`. C: `murmur_last_error_kind` |
 | `nativeCapabilities(): String` | `()Ljava/lang/String;` | `Java_dev_murmur_core_NativeMurmurCore_nativeCapabilities` | `Capabilities` JSON of this build (`local` = an ASR feature is built in, `remote` = feature `remote`). Must match `BuildConfig.CAP_LOCAL/CAP_REMOTE` (main screen error otherwise) |
 | `nativeOpenRouter(routerConfigJson: String, localHandle: Long): Long` | `(Ljava/lang/String;J)J` | `Java_dev_murmur_core_NativeMurmurCore_nativeOpenRouter` | Takes ownership of `localHandle` (0 = none) **whatever the outcome**; Kotlin calls `NativeMurmurCore.release()` first and never unloads it. Validates the config (`RouterConfig::validate`). `0` + kind `no_engine_enabled` (both routes off) / `bad_config` |
 | `nativeUpdateRouter(h: Long, routerConfigJson: String): Boolean` | `(JLjava/lang/String;)Z` | `Java_dev_murmur_core_NativeMurmurCore_nativeUpdateRouter` | `Router::update_config` (validated), applies from the next `start_session`; models are not reloaded. `false` + `bad_config` |
-| `nativeProbeServer(serverConfigJson: String): String` | `(Ljava/lang/String;)Ljava/lang/String;` | `Java_dev_murmur_core_NativeMurmurCore_nativeProbeServer` | Blocking `HealthReport` JSON for an unsaved `ServerConfig` (Test connection; connect + hello + 3 pings). Never throws; without `remote`: `ok:false, error:"server_not_configured"` |
+| `nativeProbeServer(serverConfigJson: String): String` | `(Ljava/lang/String;)Ljava/lang/String;` | `Java_dev_murmur_core_NativeMurmurCore_nativeProbeServer` | Blocking `HealthReport` JSON for an unsaved `ServerConfig` (Test connection; connect + hello + 3 pings). Never throws; without `remote`: `ok:false, error:"server_not_configured"`. `error:"throttled"` (D112: too many wrong keys from this address) adds `retry_after_s` when the server sent a wait |
 | `nativeProbeRouter(h: Long): String` | `(J)Ljava/lang/String;` | `Java_dev_murmur_core_NativeMurmurCore_nativeProbeRouter` | Blocking probe of the router's saved server; updates its circuit and `RouteStatus.health` (run after Save) |
-| `nativeRouteStatus(h: Long): String` | `(J)Ljava/lang/String;` | `Java_dev_murmur_core_NativeMurmurCore_nativeRouteStatus` | `RouteStatus` JSON `{last: RouteInfo?, circuit: {open, reason, retry_in_ms, until_config_change}, health: HealthReport?}`; `{}` for a core handle |
+| `nativeRouteStatus(h: Long): String` | `(J)Ljava/lang/String;` | `Java_dev_murmur_core_NativeMurmurCore_nativeRouteStatus` | `RouteStatus` JSON `{last: RouteInfo?, circuit: {open, reason, retry_in_ms, until_config_change}, health: HealthReport?}`; `{}` for a core handle. A `throttled` failure (D112) keeps the circuit open (`reason:"throttled"`) for at least the server's wait, with or without a fallback: no start or pre-warm reconnects inside it |
 | `nativeResetCircuit(h: Long)` | `(J)V` | `Java_dev_murmur_core_NativeMurmurCore_nativeResetCircuit` | Close the circuit breaker (Developer "Reset circuit"); no-op for a core handle |
 | `nativeSetLocalLoader(h: Long, modelConfigsJson: String): Boolean` | `(JLjava/lang/String;)Z` | `Java_dev_murmur_core_NativeMurmurCore_nativeSetLocalLoader` | D24 on-demand local engine: a JSON array of `ModelConfig`s (each may carry `load_language`, as `nativeLoadModels`) tried in order (`EnginePlan.attempts`); the router loads the first that works on its failover thread when a session needs the client route and none is warm (`keep_local_warm` off, server unreachable / circuit open). `[]` removes it. `false` + `bad_config` for bad JSON or a core handle. No network |
 | `nativePrewarm(h: Long): Boolean` | `(J)Z` | `Java_dev_murmur_core_NativeMurmurCore_nativePrewarm` | D24: open the server connection ahead of a dictation (**blocking** up to the connect timeout: off Main). Does nothing with the server route off / unconfigured / circuit open / a live session; a failure opens the circuit. `false` for a core handle |
@@ -278,7 +278,8 @@ and `remote`, so the `local` library has none of these symbols (Kotlin treats
 `ServerConfig` (as for `nativeProbeServer`). All four are **blocking** (one HTTP request,
 ≤ 15 s) and never return null. Answer: `{"ok":true,"value":…}` or
 `{"ok":false,"code":…,"message":…}` with `code` from `murmur_protocol::admin::code`
-(`forbidden` = not an admin key: Kotlin hides the page). Nothing is logged; the Rust copy of
+(`forbidden` = not an admin key: Kotlin hides the page; `throttled` = the server locked this
+address out after wrong keys (D112), with `"retry_after_s":N` when it sent a wait). Nothing is logged; the Rust copy of
 an answer is wiped after it is handed to Java.
 
 | Kotlin (`@JvmStatic external`) | JNI descriptor | C symbol | Semantics |
@@ -297,8 +298,9 @@ library exports them only with cargo feature `library` (`tools/build-native.sh -
 The `local` APK has neither the class nor the symbols nor any network code (D9). Both calls are
 **blocking** (worker thread). Results are never null; a failure is
 `{"ok":false,"error":<kind>,"message":…}` with `kind` ∈ `bad_config`, `not_configured`,
-`network`, `auth`, `not_found`, `unavailable`, `protocol`, `mismatch`, `io`, `cancelled`. The key
-never appears in a result.
+`network`, `auth`, `not_found`, `unavailable`, `protocol`, `mismatch`, `io`, `cancelled`,
+`throttled` (D112 lockout; adds `"retry_after_s":N` when the server sent a wait, and a download
+keeps its `part`). The key never appears in a result.
 
 | Kotlin (`@JvmStatic external`) | JNI descriptor | C symbol | Semantics |
 |---|---|---|---|

@@ -31,6 +31,10 @@ pub struct AdminStatus {
 
 /// Text for an admin error code, for the page.
 pub fn error_text(e: &AdminError) -> String {
+    // D112: locked out after wrong keys; the same sentence as dictation.
+    if e.code == code::THROTTLED {
+        return murmur_router::throttled_text(e.retry_after_s);
+    }
     let hint = match e.code.as_str() {
         code::FORBIDDEN => "this app's key is not an admin key",
         code::UNAUTHORIZED => "the server no longer accepts this app's key",
@@ -143,6 +147,20 @@ mod tests {
         );
         assert_eq!(error_text(&e("weird", "")), "weird");
         assert_eq!(error_text(&e(code::SERVER_ERROR, "disk full")), "disk full");
+        let locked = AdminError {
+            retry_after_s: Some(25),
+            ..e(code::THROTTLED, "too many failed attempts")
+        };
+        assert_eq!(
+            error_text(&locked),
+            "Too many wrong keys from this address. Try again in 25 s. Your key isn't checked \
+             until then."
+        );
+        assert_eq!(
+            error_text(&e(code::THROTTLED, "")),
+            "Too many wrong keys from this address. Try again later. Your key isn't checked \
+             until then."
+        );
     }
 
     #[test]

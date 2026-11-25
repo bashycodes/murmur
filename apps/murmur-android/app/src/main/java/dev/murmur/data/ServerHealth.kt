@@ -21,9 +21,12 @@ class ServerHealth {
     /** [d] = the effective settings of the server that was probed. */
     fun record(d: DevSettings, h: HealthReport, nowMs: Long) { last = Entry(key(d), Probe(h, nowMs)) }
 
-    /** The recorded probe of the server [d] names, when younger than [maxAgeMs]; else null. */
+    /**
+     * The recorded probe of the server [d] names, when younger than [maxAgeMs]; else null. D112: a
+     * lockout (`throttled`) stays fresh for the server's whole wait, so no page re-probes inside it.
+     */
     fun fresh(d: DevSettings, nowMs: Long, maxAgeMs: Long = MAX_AGE_MS): Probe? =
-        last?.takeIf { it.key == key(d) && isFresh(it.probe.atMs, nowMs, maxAgeMs) }?.probe
+        last?.takeIf { it.key == key(d) && isFresh(it.probe.atMs, nowMs, maxAge(it.probe.report, maxAgeMs)) }?.probe
 
     /**
      * The newest known state of the server [d] names, whatever its age: this process's recorded probe
@@ -40,6 +43,17 @@ class ServerHealth {
         fun sameServer(a: DevSettings, b: DevSettings) = key(a) == key(b)
 
         fun isFresh(atMs: Long?, nowMs: Long, maxAgeMs: Long = MAX_AGE_MS) = atMs != null && nowMs - atMs in 0..maxAgeMs
+
+        /** [maxAgeMs], or a lockout's wait when that is longer (D112). */
+        fun maxAge(h: HealthReport, maxAgeMs: Long = MAX_AGE_MS): Long {
+            if (h.error != dev.murmur.core.Lockout.CODE) return maxAgeMs
+            // Capped like the router's, so a huge Retry-After cannot overflow or park the check.
+            val waitS = (h.retryAfterS ?: 0).coerceIn(0, dev.murmur.core.Lockout.MAX_WAIT_S)
+            return maxOf(maxAgeMs, waitS * 1000)
+        }
+
+        /** Settings probes again only when [p] is missing or stale; a lockout stays fresh for its wait (D112). */
+        fun needsProbe(p: Probe?, nowMs: Long): Boolean = p == null || !isFresh(p.atMs, nowMs, maxAge(p.report))
 
         /**
          * The newer of the shared probe ([shared]) and the router's own last health ([router], timed by

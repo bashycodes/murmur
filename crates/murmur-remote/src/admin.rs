@@ -79,7 +79,7 @@ impl AdminClient {
             .enable_all()
             .build()
             .map_err(|e| AdminError::new(code::CONNECT_FAILED, e.to_string()))?;
-        let (status, resp) = rt.block_on(async {
+        let answer = rt.block_on(async {
             tokio::time::timeout(REQUEST_TIMEOUT, self.exchange(method, path, body))
                 .await
                 .map_err(|_| {
@@ -89,7 +89,7 @@ impl AdminClient {
                     )
                 })?
         })?;
-        decode(status, &resp, want)
+        decode(&answer, want)
     }
 
     async fn exchange(
@@ -97,7 +97,7 @@ impl AdminClient {
         method: &str,
         path: &str,
         body: Option<Vec<u8>>,
-    ) -> Result<(u16, Vec<u8>), AdminError> {
+    ) -> Result<Answer, AdminError> {
         let connect = Duration::from_millis(self.cfg.connect_timeout_ms.max(1));
         let io = tokio::time::timeout(connect, crate::conn::dial(&self.cfg))
             .await
@@ -144,11 +144,20 @@ fn request(
     out
 }
 
-/// Send `req`, read one response: `(status, body)`.
+/// One HTTP answer.
+#[derive(Debug, PartialEq, Eq)]
+struct Answer {
+    status: u16,
+    /// `Retry-After` in seconds (a 429 lockout, D112).
+    retry_after_s: Option<u64>,
+    body: Vec<u8>,
+}
+
+/// Send `req`, read one response.
 async fn round_trip<S: AsyncRead + AsyncWrite + Unpin>(
     mut s: S,
     req: &[u8],
-) -> Result<(u16, Vec<u8>), AdminError> {
+) -> Result<Answer, AdminError> {
     let io = |e: std::io::Error| AdminError::new(code::CONNECT_FAILED, e.to_string());
     s.write_all(req).await.map_err(io)?;
     s.flush().await.map_err(io)?;
@@ -183,7 +192,7 @@ fn bad(m: &str) -> AdminError {
 
 /// Parse an HTTP/1.1 response from `buf`: `None` = need more bytes
 /// (`eof` = there are no more, so a body without a length ends here).
-fn parse(buf: &[u8], eof: bool) -> Option<Result<(u16, Vec<u8>), AdminError>> {
+fn parse(buf: &[u8], eof: bool) -> Option<Result<Answer, AdminError>> {
     let end = buf.windows(4).position(|w| w == b"\r\n\r\n")?;
     let head = match std::str::from_utf8(&buf[..end]) {
         Ok(h) => h,
@@ -199,6 +208,7 @@ fn parse(buf: &[u8], eof: bool) -> Option<Result<(u16, Vec<u8>), AdminError>> {
     };
     let mut len = None;
     let mut chunked = false;
+    let mut retry_after_s = None;
     for l in lines {
         let Some((k, v)) = l.split_once(':') else {
             continue;
@@ -208,19 +218,28 @@ fn parse(buf: &[u8], eof: bool) -> Option<Result<(u16, Vec<u8>), AdminError>> {
             len = v.parse::<usize>().ok();
         } else if k.eq_ignore_ascii_case("transfer-encoding") {
             chunked = v.to_ascii_lowercase().contains("chunked");
+        } else if k.eq_ignore_ascii_case("retry-after") {
+            retry_after_s = crate::conn::retry_after_s(Some(v));
         }
     }
     let body = &buf[end + 4..];
+    let answer = |body: Vec<u8>| {
+        Ok(Answer {
+            status,
+            retry_after_s,
+            body,
+        })
+    };
     if chunked {
         return dechunk(body)
-            .map(|b| Ok((status, b)))
+            .map(answer)
             .or_else(|| eof.then(|| Err(bad("truncated chunked answer"))));
     }
     match len {
-        Some(n) if body.len() >= n => Some(Ok((status, body[..n].to_vec()))),
+        Some(n) if body.len() >= n => Some(answer(body[..n].to_vec())),
         Some(_) if eof => Some(Err(bad("truncated answer"))),
         Some(_) => None,
-        None if eof => Some(Ok((status, body.to_vec()))),
+        None if eof => Some(answer(body.to_vec())),
         None => None,
     }
 }
@@ -244,9 +263,21 @@ fn dechunk(mut b: &[u8]) -> Option<Vec<u8>> {
     }
 }
 
-fn decode<T: DeserializeOwned>(status: u16, body: &[u8], want: u16) -> Result<T, AdminError> {
+fn decode<T: DeserializeOwned>(a: &Answer, want: u16) -> Result<T, AdminError> {
+    let (status, body) = (a.status, &a.body[..]);
     if status == want {
         return serde_json::from_slice(body).map_err(|e| bad(&format!("bad answer: {e}")));
+    }
+    // D112: locked out after wrong keys; the wait is in the header.
+    if status == 429 {
+        let message = serde_json::from_slice::<AdminError>(body)
+            .ok()
+            .filter(|e| !e.message.is_empty())
+            .map_or_else(|| murmur_router::throttled_text(None), |e| e.message);
+        return Err(AdminError {
+            retry_after_s: a.retry_after_s,
+            ..AdminError::new(code::THROTTLED, message)
+        });
     }
     match serde_json::from_slice::<AdminError>(body) {
         Ok(e) if !e.code.is_empty() => Err(e),
@@ -268,28 +299,57 @@ mod tests {
 
     #[test]
     fn parses_length_chunked_and_eof_bodies() {
+        let ok = |status, body: &[u8]| Answer {
+            status,
+            retry_after_s: None,
+            body: body.to_vec(),
+        };
         let r = b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\n{}";
-        assert_eq!(parse(r, false).unwrap().unwrap(), (200, b"{}".to_vec()));
+        assert_eq!(parse(r, false).unwrap().unwrap(), ok(200, b"{}"));
         assert!(parse(&r[..r.len() - 1], false).is_none());
         assert!(parse(&r[..r.len() - 1], true).unwrap().is_err());
         let c = b"HTTP/1.1 201 Created\r\nTransfer-Encoding: chunked\r\n\r\n3\r\nabc\r\n2\r\nde\r\n0\r\n\r\n";
-        assert_eq!(parse(c, false).unwrap().unwrap(), (201, b"abcde".to_vec()));
+        assert_eq!(parse(c, false).unwrap().unwrap(), ok(201, b"abcde"));
         assert!(parse(&c[..c.len() - 7], false).is_none());
         let e = b"HTTP/1.1 404 Not Found\r\n\r\nnope";
         assert!(parse(e, false).is_none());
-        assert_eq!(parse(e, true).unwrap().unwrap(), (404, b"nope".to_vec()));
+        assert_eq!(parse(e, true).unwrap().unwrap(), ok(404, b"nope"));
+        let t = b"HTTP/1.1 429 Too Many Requests\r\nretry-after: 29\r\ncontent-length: 0\r\n\r\n";
+        assert_eq!(parse(t, false).unwrap().unwrap().retry_after_s, Some(29));
         assert!(parse(b"garbage\r\n\r\n", true).unwrap().is_err());
     }
 
     #[test]
     fn maps_errors() {
-        let e = decode::<WhoAmI>(403, br#"{"code":"forbidden","message":"no"}"#, 200).unwrap_err();
+        let a = |status, retry_after_s, body: &[u8]| Answer {
+            status,
+            retry_after_s,
+            body: body.to_vec(),
+        };
+        let e = decode::<WhoAmI>(
+            &a(403, None, br#"{"code":"forbidden","message":"no"}"#),
+            200,
+        )
+        .unwrap_err();
         assert_eq!((e.code.as_str(), e.message.as_str()), ("forbidden", "no"));
-        let e = decode::<WhoAmI>(404, b"", 200).unwrap_err();
+        let e = decode::<WhoAmI>(&a(404, None, b""), 200).unwrap_err();
         assert_eq!(e.code, code::UNSUPPORTED);
-        let e = decode::<WhoAmI>(401, b"unauthorized", 200).unwrap_err();
+        let e = decode::<WhoAmI>(&a(401, None, b"unauthorized"), 200).unwrap_err();
         assert_eq!(e.code, code::UNAUTHORIZED);
-        let w = decode::<WhoAmI>(200, br#"{"id":"k-1","name":"a","admin":true}"#, 200).unwrap();
+        // D112: a lockout carries the server's wait.
+        let body = br#"{"code":"throttled","message":"too many failed attempts"}"#;
+        let e = decode::<WhoAmI>(&a(429, Some(42), body), 200).unwrap_err();
+        assert_eq!(
+            (e.code.as_str(), e.retry_after_s),
+            (code::THROTTLED, Some(42))
+        );
+        let e = decode::<WhoAmI>(&a(429, None, b""), 200).unwrap_err();
+        assert_eq!((e.code.as_str(), e.retry_after_s), (code::THROTTLED, None));
+        let w = decode::<WhoAmI>(
+            &a(200, None, br#"{"id":"k-1","name":"a","admin":true}"#),
+            200,
+        )
+        .unwrap();
         assert!(w.admin);
     }
 

@@ -207,7 +207,7 @@ class SettingsActivity : Activity() {
         refreshServer()
         thread(name = "settings-health") {
             var p = app.serverHealth.latest(e, runCatching { r.routeStatus().health }.getOrNull())
-            if (!ServerHealth.isFresh(p?.atMs, System.currentTimeMillis())) {
+            if (ServerHealth.needsProbe(p, System.currentTimeMillis())) {
                 runCatching { r.probeSaved() }.getOrNull()?.let { h ->
                     val now = System.currentTimeMillis()
                     p = ServerHealth.Probe(h, now)

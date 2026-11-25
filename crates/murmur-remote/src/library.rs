@@ -73,12 +73,17 @@ pub enum ErrorKind {
     Io,
     /// `cancel` returned true. Nothing is kept.
     Cancelled,
+    /// The server locked this address out after too many wrong keys
+    /// (`429`, D112); [`LibraryError::retry_after_s`] says for how long.
+    Throttled,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LibraryError {
     pub kind: ErrorKind,
     pub message: String,
+    /// [`ErrorKind::Throttled`]: the server's `Retry-After`, in seconds.
+    pub retry_after_s: Option<u64>,
 }
 
 impl LibraryError {
@@ -86,6 +91,7 @@ impl LibraryError {
         Self {
             kind,
             message: m.into(),
+            retry_after_s: None,
         }
     }
 }
@@ -103,9 +109,13 @@ impl From<BackendError> for LibraryError {
         let kind = match e.kind {
             Failure::ServerNotConfigured => ErrorKind::NotConfigured,
             Failure::AuthFailed => ErrorKind::Auth,
+            Failure::Throttled => ErrorKind::Throttled,
             _ => ErrorKind::Network,
         };
-        Self::new(kind, e.message)
+        Self {
+            retry_after_s: e.retry_after_s,
+            ..Self::new(kind, e.message)
+        }
     }
 }
 
@@ -212,8 +222,8 @@ impl LibraryClient {
         let r = self.fetch(model_id, file, part, progress, cancel);
         match &r {
             Ok(()) => {}
-            // Kept for the next try (resume).
-            Err(e) if e.kind == ErrorKind::Network => return r,
+            // Kept for the next try (resume), also after a lockout (D112).
+            Err(e) if matches!(e.kind, ErrorKind::Network | ErrorKind::Throttled) => return r,
             Err(_) => {
                 let _ = std::fs::remove_file(part);
                 return r;
@@ -430,6 +440,10 @@ fn check_status(r: &Response<Incoming>) -> Result<(), LibraryError> {
             ErrorKind::NotFound,
             "not on the server (any more): refresh the list",
         )),
+        429 => {
+            let v = r.headers().get(RETRY_AFTER).and_then(|v| v.to_str().ok());
+            Err(BackendError::throttled(crate::conn::retry_after_s(v)).into())
+        }
         503 => {
             let after = r
                 .headers()

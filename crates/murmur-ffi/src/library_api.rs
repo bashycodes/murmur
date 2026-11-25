@@ -12,7 +12,9 @@
 //!
 //! Failures: `{"ok":false,"error":"<kind>","message":"…"}` with kind one of
 //! `bad_config`, `not_configured`, `network`, `auth`, `not_found`,
-//! `unavailable`, `protocol`, `mismatch`, `io`, `cancelled`. Both calls
+//! `unavailable`, `protocol`, `mismatch`, `io`, `cancelled`, `throttled`
+//! (D112: the server locked this address out after wrong keys; then
+//! `"retry_after_s":N` says when to try again, when the server said). Both calls
 //! block (call them off the main thread). The key never appears in a
 //! result.
 
@@ -39,6 +41,7 @@ pub fn kind_str(k: ErrorKind) -> &'static str {
         ErrorKind::Mismatch => "mismatch",
         ErrorKind::Io => "io",
         ErrorKind::Cancelled => "cancelled",
+        ErrorKind::Throttled => "throttled",
     }
 }
 
@@ -47,7 +50,11 @@ pub fn error_json(kind: &str, message: &str) -> String {
 }
 
 fn lib_error(e: &LibraryError) -> String {
-    error_json(kind_str(e.kind), &e.message)
+    let mut j = json!({"ok": false, "error": kind_str(e.kind), "message": e.message});
+    if let Some(n) = e.retry_after_s {
+        j["retry_after_s"] = n.into();
+    }
+    j.to_string()
 }
 
 fn client(server_json: &str) -> Result<LibraryClient, String> {
@@ -162,6 +169,23 @@ mod tests {
             &never,
         ));
         assert_eq!(r["error"], "not_configured");
+    }
+
+    #[test]
+    fn a_lockout_is_throttled_with_its_wait() {
+        let e = |retry_after_s| LibraryError {
+            kind: ErrorKind::Throttled,
+            message: "too many wrong keys".into(),
+            retry_after_s,
+        };
+        let r = parse(&lib_error(&e(Some(30))));
+        assert_eq!(
+            (&r["error"], &r["retry_after_s"]),
+            (&"throttled".into(), &30.into())
+        );
+        let r = parse(&lib_error(&e(None)));
+        assert_eq!(r["error"], "throttled");
+        assert!(r.get("retry_after_s").is_none(), "{r}");
     }
 
     #[test]

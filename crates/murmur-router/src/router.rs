@@ -151,7 +151,25 @@ impl Circuit {
     }
 
     pub(crate) fn record_failure(&mut self, kind: Failure, now: Instant) {
+        self.record(kind, None, now)
+    }
+
+    /// [`Self::record_failure`] with the server's `Retry-After` of a
+    /// [`Failure::Throttled`] (D112): the circuit stays open at least that
+    /// long, so no start, pre-warm or cleanup reconnects inside the
+    /// lockout. Without it a throttle backs off like a lost connection.
+    pub(crate) fn record(&mut self, kind: Failure, retry_after_s: Option<u64>, now: Instant) {
         match kind {
+            Failure::Throttled => match retry_after_s {
+                Some(n) => {
+                    // Capped, and never an `Instant` overflow panic.
+                    let wait = Duration::from_secs(n.min(crate::MAX_RETRY_AFTER_S));
+                    let until = now.checked_add(wait).unwrap_or(now + BACKOFF_MAX);
+                    self.open_until = Some(self.open_until.map_or(until, |t| t.max(until)));
+                    self.reason = Some(kind);
+                }
+                None => self.back_off(kind, now),
+            },
             Failure::AuthFailed | Failure::ProtoMismatch => {
                 self.sticky = true;
                 self.reason = Some(kind);
@@ -179,6 +197,16 @@ impl Circuit {
         self.open_until = Some(now + self.backoff);
         self.backoff = (self.backoff * 2).min(BACKOFF_MAX);
         self.reason = Some(kind);
+    }
+
+    /// Whole seconds (rounded up) left in a server lockout (D112), while
+    /// the circuit is open because of one.
+    pub(crate) fn throttled_left(&self, now: Instant) -> Option<u64> {
+        if self.reason != Some(Failure::Throttled) {
+            return None;
+        }
+        let left = self.open_until?.checked_duration_since(now)?;
+        (!left.is_zero()).then(|| left.as_millis().div_ceil(1000) as u64)
     }
 
     pub(crate) fn status(&self, now: Instant) -> CircuitStatus {
@@ -402,7 +430,8 @@ struct Switch {
 struct SwitchDone {
     started: Option<Hop>,
     rest: VecDeque<Hop>,
-    failures: Vec<(EngineKind, Failure)>,
+    /// Hops that failed to start: route, kind, the throttle's `Retry-After`.
+    failures: Vec<(EngineKind, Failure, Option<u64>)>,
     dead: Option<String>,
     /// An on-demand local load that ran (D24).
     load: Option<LoadNote>,
@@ -660,14 +689,15 @@ impl Router {
         match r {
             Ok(()) => true,
             Err(e) => {
-                st.circuit.record_failure(e.kind, Instant::now());
+                let now = Instant::now();
+                st.circuit.record(e.kind, e.retry_after_s, now);
                 // D36: the server cleanup hop skips it too, instead of
                 // spending the next dictation's LLM budget connecting.
                 self.server_clean
                     .st
                     .lk()
                     .circuit
-                    .record_failure(e.kind, Instant::now());
+                    .record(e.kind, e.retry_after_s, now);
                 false
             }
         }
@@ -1441,7 +1471,7 @@ impl Router {
         });
         if let Some(e) = failure {
             let e = normalize_mid_session(e);
-            self.note_failure(a.kind, e.kind);
+            self.note_failure(a.kind, e.kind, e.retry_after_s);
             self.begin_switch(a, e);
         }
         true
@@ -1607,7 +1637,7 @@ impl Router {
             if h.ok {
                 st.circuit = Circuit::new(false);
             } else if let Some(k) = h.error.as_deref().and_then(failure_from_str) {
-                st.circuit.record_failure(k, Instant::now());
+                st.circuit.record(k, h.retry_after_s, Instant::now());
             }
             st.health = Some(h.clone());
         }
@@ -1757,6 +1787,8 @@ impl Router {
                                 Failure::ServerNotConfigured,
                                 "no server host set",
                             ))
+                        } else if let Some(left) = st.circuit.throttled_left(now) {
+                            Some(BackendError::throttled(Some(left)))
                         } else if st.circuit.sticky
                             || (st.circuit.is_open(now) && self.viable_after(&st, &routes, i))
                         {
@@ -1872,12 +1904,12 @@ impl Router {
         b
     }
 
-    fn note_failure(&self, kind: EngineKind, f: Failure) {
+    fn note_failure(&self, kind: EngineKind, f: Failure, retry_after_s: Option<u64>) {
         let mut st = self.state.lk();
         let now = Instant::now();
         match kind {
-            EngineKind::Remote => st.circuit.record_failure(f, now),
-            EngineKind::Cloud => st.cloud_circuit.record_failure(f, now),
+            EngineKind::Remote => st.circuit.record(f, retry_after_s, now),
+            EngineKind::Cloud => st.cloud_circuit.record(f, retry_after_s, now),
             _ => {}
         }
     }
@@ -2168,6 +2200,11 @@ impl Router {
             RouterError::NoEngineEnabled
         } else if e.kind == Failure::ServerNotConfigured {
             RouterError::ServerNotConfigured
+        } else if e.kind == Failure::Throttled {
+            RouterError::Throttled {
+                message: e.message.clone(),
+                retry_after_s: e.retry_after_s,
+            }
         } else {
             RouterError::ServerUnavailable(e.to_string())
         };
@@ -2238,6 +2275,11 @@ impl Router {
                 "no server host set",
             ));
         }
+        // D112: the server locked this address out; even with no fallback
+        // a start inside the lockout would only be refused again.
+        if let Some(left) = st.circuit.throttled_left(Instant::now()) {
+            return Try::Skip(BackendError::throttled(Some(left)));
+        }
         let viable = self.viable_after(st, routes, i);
         if viable && st.circuit.is_open(Instant::now()) {
             return Try::Skip(BackendError::new(Failure::CircuitOpen, "circuit open"));
@@ -2265,7 +2307,7 @@ impl Router {
             }
             Ok(i) => Try::Started(remote, i.queued),
             Err(e) => {
-                st.circuit.record_failure(e.kind, Instant::now());
+                st.circuit.record(e.kind, e.retry_after_s, Instant::now());
                 Try::Skip(e)
             }
         }
@@ -2330,7 +2372,7 @@ impl Router {
             } else {
                 if let Some(e) = a.relevant_failure(engine.session_failure()) {
                     let e = normalize_mid_session(e);
-                    self.note_failure(a.kind, e.kind);
+                    self.note_failure(a.kind, e.kind, e.retry_after_s);
                     self.begin_switch(a, e);
                     continue;
                 }
@@ -2372,7 +2414,7 @@ impl Router {
                 Ok(r) => return self.finish_remote(a, r),
                 Err(e) => {
                     // `begin_switch` cancels the failed session.
-                    self.note_failure(a.kind, e.kind);
+                    self.note_failure(a.kind, e.kind, e.retry_after_s);
                     self.begin_switch(a, e);
                 }
             }
@@ -2590,8 +2632,8 @@ impl Router {
             a.diag.local_load_ms = Some(n.ms);
             a.diag.local_load_error = n.error.clone();
         }
-        for (k, f) in &done.failures {
-            self.note_failure(*k, *f);
+        for (k, f, after) in &done.failures {
+            self.note_failure(*k, *f, *after);
         }
         a.fallbacks = done.rest;
         let Some(hop) = done.started else {
@@ -2639,7 +2681,7 @@ impl Router {
         a.ident = hop.ident;
         if !ok && a.kind != EngineKind::Local {
             let e = BackendError::new(Failure::Disconnected, "audio not accepted after failover");
-            self.note_failure(a.kind, e.kind);
+            self.note_failure(a.kind, e.kind, e.retry_after_s);
             self.begin_switch(a, e);
         }
     }
@@ -2718,7 +2760,7 @@ fn run_switch(
                 );
             }
             Err(le) => {
-                failures.push((hop.kind, le.kind));
+                failures.push((hop.kind, le.kind, le.retry_after_s));
                 continue;
             }
         }
@@ -2731,7 +2773,7 @@ fn run_switch(
         }
         if !replayed {
             hop.backend.cancel();
-            failures.push((hop.kind, Failure::Disconnected));
+            failures.push((hop.kind, Failure::Disconnected, None));
             continue;
         }
         if let Some(ctx) = ctx {
@@ -2899,4 +2941,34 @@ pub(crate) fn failure_from_str(s: &str) -> Option<Failure> {
 fn _assert_send_sync() {
     fn f<T: Send + Sync>() {}
     f::<Router>();
+}
+
+#[cfg(test)]
+mod circuit_tests {
+    use super::*;
+
+    /// D112: the window opens for the server's wait and closes by itself
+    /// (clock injected through `now`).
+    #[test]
+    fn a_lockout_window_closes_after_the_wait() {
+        let t0 = Instant::now();
+        let mut c = Circuit::new(false);
+        c.record(Failure::Throttled, Some(120), t0);
+        assert!(c.is_open(t0 + Duration::from_secs(119)));
+        assert_eq!(c.throttled_left(t0 + Duration::from_millis(500)), Some(120));
+        assert_eq!(c.throttled_left(t0 + Duration::from_secs(119)), Some(1));
+        assert!(!c.is_open(t0 + Duration::from_secs(120)));
+        assert_eq!(c.throttled_left(t0 + Duration::from_secs(121)), None);
+    }
+
+    /// A huge `Retry-After` neither panics nor parks the route past an hour.
+    #[test]
+    fn a_huge_wait_is_capped_without_panicking() {
+        let t0 = Instant::now();
+        let mut c = Circuit::new(false);
+        c.record(Failure::Throttled, Some(u64::MAX), t0);
+        let cap = crate::MAX_RETRY_AFTER_S;
+        assert!(c.is_open(t0 + Duration::from_secs(cap - 1)));
+        assert!(!c.is_open(t0 + Duration::from_secs(cap)));
+    }
 }

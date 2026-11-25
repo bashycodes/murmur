@@ -248,10 +248,8 @@ fn probe_carries_the_server_models() {
     assert!(!json.contains("\"models\""), "{json}");
 }
 
-/// A server that has locked this address out answers the upgrade with 429
-/// (D112): the error says so, with the wait, instead of a bare HTTP error.
-#[test]
-fn locked_out_upgrade_says_when_to_retry() {
+/// A server that answers every request with `head` (then closes).
+fn canned_http(head: &'static [u8]) -> u16 {
     use std::io::{Read, Write};
     let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = l.local_addr().unwrap().port();
@@ -259,18 +257,42 @@ fn locked_out_upgrade_says_when_to_retry() {
         while let Ok((mut s, _)) = l.accept() {
             let mut buf = [0u8; 4096];
             let _ = s.read(&mut buf);
-            let _ = s.write_all(
-                b"HTTP/1.1 429 Too Many Requests\r\nRetry-After: 17\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
-            );
+            let _ = s.write_all(head);
         }
     });
-    let e = RemoteBackend::new(server_cfg("127.0.0.1", port), "test")
-        .start_session(&SessionConfig::default())
-        .unwrap_err();
-    assert_eq!(e.kind, Failure::ConnectFailed);
-    assert!(
-        e.message.contains("too many failed sign-ins") && e.message.contains("17 s"),
-        "{}",
-        e.message
+    port
+}
+
+/// A server that has locked this address out answers the upgrade with 429
+/// (D112): a `throttled` failure carrying the wait, not `connect_failed`.
+#[test]
+fn locked_out_upgrade_says_when_to_retry() {
+    let port = canned_http(
+        b"HTTP/1.1 429 Too Many Requests\r\nRetry-After: 17\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
     );
+    let b = RemoteBackend::new(server_cfg("127.0.0.1", port), "test");
+    let e = b.start_session(&SessionConfig::default()).unwrap_err();
+    assert_eq!(e.kind, Failure::Throttled);
+    assert_eq!(e.retry_after_s, Some(17));
+    assert!(e.message.contains("17 s"), "{}", e.message);
+    // The probe ("Test connection") reports it the same way, in its JSON.
+    let h = b.probe();
+    assert_eq!(h.error.as_deref(), Some("throttled"));
+    assert_eq!(h.retry_after_s, Some(17));
+    let json = serde_json::to_value(&h).unwrap();
+    assert_eq!(json["retry_after_s"], 17);
+}
+
+/// A 429 without `Retry-After` is still `throttled`, with no wait.
+#[test]
+fn locked_out_upgrade_without_retry_after() {
+    let port = canned_http(
+        b"HTTP/1.1 429 Too Many Requests\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+    );
+    let e = RemoteBackend::new(server_cfg("127.0.0.1", port), "test")
+        .warm()
+        .unwrap_err();
+    assert_eq!(e.kind, Failure::Throttled);
+    assert_eq!(e.retry_after_s, None);
+    assert!(e.message.contains("Try again later"), "{}", e.message);
 }

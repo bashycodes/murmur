@@ -51,7 +51,8 @@ class CreatedKey(val key: KeyView, val secret: String) {
 
 sealed interface AdminResult<out T> {
     data class Ok<T>(val value: T) : AdminResult<T>
-    data class Err(val code: String, val message: String = "") : AdminResult<Nothing>
+    /** [retryAfterS]: with [AdminCode.THROTTLED], the server's wait in seconds (D112). */
+    data class Err(val code: String, val message: String = "", val retryAfterS: Long? = null) : AdminResult<Nothing>
 }
 
 /** `murmur_protocol::admin::code` values, plus the app's own [NOT_IN_BUILD]. */
@@ -59,6 +60,8 @@ object AdminCode {
     const val UNAUTHORIZED = "unauthorized"
     const val FORBIDDEN = "forbidden"
     const val NOT_FOUND = "not_found"
+    /** D112: too many wrong keys from this address; `retry_after_s` says when to try again. */
+    const val THROTTLED = "throttled"
     const val AUTH_OFF = "auth_off"
     const val LAST_ADMIN = "last_admin"
     const val NAME_TAKEN = "name_taken"
@@ -84,7 +87,10 @@ object AdminJson {
     fun <T> decode(json: String, value: (JSONObject) -> T): AdminResult<T> = try {
         val o = JSONObject(json)
         if (o.optBoolean("ok")) AdminResult.Ok(value(o.getJSONObject("value")))
-        else AdminResult.Err(o.optString("code").ifEmpty { AdminCode.BAD_RESPONSE }, o.optString("message"))
+        else AdminResult.Err(
+            o.optString("code").ifEmpty { AdminCode.BAD_RESPONSE }, o.optString("message"),
+            if (o.has("retry_after_s")) o.optLong("retry_after_s") else null,
+        )
     } catch (e: org.json.JSONException) {
         AdminResult.Err(AdminCode.BAD_RESPONSE, "bad answer from the native library")
     }
@@ -155,7 +161,8 @@ object UsersKeys {
         if (available(caps, s)) NativeAdminApi(s.toServerConfigJson().toString()) else null
 
     /** Text for an error code (mirrors Windows `error_text`). */
-    fun errorText(code: String, message: String): String {
+    fun errorText(code: String, message: String, retryAfterS: Long? = null): String {
+        if (code == AdminCode.THROTTLED) return dev.murmur.core.Lockout.text(retryAfterS)
         val hint = when (code) {
             AdminCode.FORBIDDEN -> "This app's key is not an admin key."
             AdminCode.UNAUTHORIZED -> "The server no longer accepts this app's key."
@@ -170,7 +177,7 @@ object UsersKeys {
         return hint.ifEmpty { message.ifEmpty { code }.replaceFirstChar { it.uppercase() } }
     }
 
-    fun errorText(e: AdminResult.Err) = errorText(e.code, e.message)
+    fun errorText(e: AdminResult.Err) = errorText(e.code, e.message, e.retryAfterS)
 
     /** Local check before a request (the server has the final say on the name's characters). */
     fun nameError(name: String): String? = when {

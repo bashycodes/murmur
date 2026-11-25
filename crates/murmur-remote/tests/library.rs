@@ -60,6 +60,10 @@ impl Drop for Server {
 /// murmur-server with a library of one custom whisper model and one Hebrew
 /// sherpa folder (with a subfolder file).
 fn start() -> Server {
+    start_with(|_| {})
+}
+
+fn start_with(tweak: impl FnOnce(&mut Config)) -> Server {
     let d = tempfile::tempdir().unwrap();
     let lib = d.path().join("lib");
     put(
@@ -87,6 +91,8 @@ fn start() -> Server {
         },
         ..Default::default()
     };
+    let mut cfg = cfg;
+    tweak(&mut cfg);
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
@@ -359,5 +365,46 @@ fn a_server_that_is_down_keeps_the_part_for_a_retry() {
         std::fs::metadata(&part).unwrap().len(),
         10,
         "kept for resume"
+    );
+}
+
+/// D112: once wrong keys lock this address out, the library answers 429:
+/// `Throttled` with the server's wait, even for the right key, and a
+/// download keeps its `.part` for later.
+#[test]
+fn a_locked_out_address_is_throttled_with_the_wait() {
+    let s = start_with(|c| {
+        c.auth_throttle.max_failures = 1;
+        c.auth_throttle.lockout_secs = 40;
+        c.auth_throttle.exempt_loopback = false;
+    });
+    let c = LibraryClient::new(s.cfg(TOKEN), "test").unwrap();
+    let f = whisper_file(&c);
+    let bad = LibraryClient::new(s.cfg("wrong-token-0123456789"), "test").unwrap();
+    assert_eq!(bad.list().unwrap_err().kind, ErrorKind::Auth);
+    let e = c.list().unwrap_err();
+    assert_eq!(e.kind, ErrorKind::Throttled, "{e}");
+    assert!(
+        matches!(e.retry_after_s, Some(n) if n > 30 && n <= 40),
+        "{e:?}"
+    );
+    let d = tempfile::tempdir().unwrap();
+    let part = d.path().join("x.bin.part");
+    std::fs::write(&part, &weights()[..10]).unwrap();
+    let e = c
+        .download(
+            "my-whisper",
+            &f,
+            &d.path().join("x.bin"),
+            &part,
+            &mut |_| {},
+            &never,
+        )
+        .unwrap_err();
+    assert_eq!(e.kind, ErrorKind::Throttled, "{e}");
+    assert_eq!(
+        std::fs::metadata(&part).unwrap().len(),
+        10,
+        "kept for later"
     );
 }

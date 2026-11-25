@@ -62,6 +62,15 @@ fn connect_failed(m: impl std::fmt::Display) -> BackendError {
     BackendError::new(Failure::ConnectFailed, m.to_string())
 }
 
+/// A `Retry-After` in delta-seconds (D112 sends only that form); `None`
+/// when absent or not a number; capped at `MAX_RETRY_AFTER_S`.
+pub(crate) fn retry_after_s(v: Option<&str>) -> Option<u64> {
+    v?.trim()
+        .parse::<u64>()
+        .ok()
+        .map(|n| n.min(murmur_router::MAX_RETRY_AFTER_S))
+}
+
 /// A connected byte stream to the server: TCP, or TLS over TCP.
 pub(crate) trait Io: AsyncRead + AsyncWrite + Unpin + Send {}
 impl<T: AsyncRead + AsyncWrite + Unpin + Send> Io for T {}
@@ -136,17 +145,8 @@ where
         }
         // The server locked this address out after failed sign-ins (D112).
         WsError::Http(r) if r.status().as_u16() == 429 => {
-            let after = r
-                .headers()
-                .get(RETRY_AFTER)
-                .and_then(|v| v.to_str().ok())
-                .and_then(|v| v.trim().parse::<u64>().ok());
-            connect_failed(match after {
-                Some(n) => {
-                    format!("too many failed sign-ins from this address, try again in {n} s")
-                }
-                None => "too many failed sign-ins from this address, try again later".into(),
-            })
+            let v = r.headers().get(RETRY_AFTER).and_then(|v| v.to_str().ok());
+            BackendError::throttled(retry_after_s(v))
         }
         e => connect_failed(e),
     })?;
@@ -508,5 +508,28 @@ impl Conn {
             }
             st = self.cv.wait_timeout(st, deadline - now).unwrap().0;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::retry_after_s;
+
+    #[test]
+    fn retry_after_is_whole_seconds_capped_at_an_hour() {
+        assert_eq!(retry_after_s(Some(" 17 ")), Some(17));
+        assert_eq!(retry_after_s(Some("1000000")), Some(3600));
+        assert_eq!(retry_after_s(Some(&u64::MAX.to_string())), Some(3600));
+        // Garbage, too big for u64, negative or an HTTP date: no wait known.
+        for v in [
+            "soon",
+            "99999999999999999999999",
+            "-5",
+            "Wed, 21 Oct 2026 07:28:00 GMT",
+            "",
+        ] {
+            assert_eq!(retry_after_s(Some(v)), None, "{v}");
+        }
+        assert_eq!(retry_after_s(None), None);
     }
 }

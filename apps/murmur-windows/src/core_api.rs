@@ -305,6 +305,7 @@ pub struct LiveRouteLabel {
 pub fn fallback_reason(code: &str) -> &'static str {
     match code {
         "connect_failed" | "disconnected" | "timeout" => "server unreachable",
+        "throttled" => "too many wrong keys",
         "busy" => "server busy",
         "auth_failed" => "access rejected",
         "proto_mismatch" => "server version mismatch",
