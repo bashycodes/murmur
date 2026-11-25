@@ -16,6 +16,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-11-25
+
 ### Added
 
 - **Windows: set up English, Hebrew and auto-detect from one folder of model files.** Setup's model step has "Use model files on this PC": pick a folder (such as the unzipped models bundle) and a checklist shows the English speech model, the Hebrew speech model and the language auto-detect model it found, each with its size, or "not found" with Download or Skip. "Use these" copies them with the usual fingerprint checks and, with all three, sets the language to Detect automatically. This also turns off "Keyboard language", which would otherwise pick each dictation's language from the keyboard layout so auto-detect never ran; a Download from the checklist that completes the three does the same. Models are recognised by their files, so renamed folders and loose files work; damaged or unknown files are listed. The same checklist is in Settings → Speech to text → Advanced → "Import from folder…".
@@ -1523,7 +1525,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   adaptive connect timeout, connection pre-warm.
 - All P1/P2 findings of the 2026-10-22 review (`docs/reviews/2026-10-22-integration.md`).
 
-[Unreleased]: https://github.com/bashycodes/murmur/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/bashycodes/murmur/compare/v1.7.1...HEAD
+[1.7.1]: https://github.com/bashycodes/murmur/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/bashycodes/murmur/compare/v1.6.1...v1.7.0
 [1.6.1]: https://github.com/bashycodes/murmur/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/bashycodes/murmur/compare/v1.5.0...v1.6.0

@@ -2530,7 +2530,7 @@ dependencies = [
 
 [[package]]
 name = "murmur-asr-sherpa"
-version = "1.7.0"
+version = "1.7.1"
 dependencies = [
  "sherpa-onnx",
  "thiserror 2.0.21",
@@ -2538,11 +2538,11 @@ dependencies = [
 
 [[package]]
 name = "murmur-build-info"
-version = "1.7.0"
+version = "1.7.1"
 
 [[package]]
 name = "murmur-cloud"
-version = "1.7.0"
+version = "1.7.1"
 dependencies = [
  "base64 0.22.1",
  "flacenc",
@@ -2555,7 +2555,7 @@ dependencies = [
 
 [[package]]
 name = "murmur-core"
-version = "1.7.0"
+version = "1.7.1"
 dependencies = [
  "fancy-regex",
  "hound",
@@ -2572,7 +2572,7 @@ dependencies = [
 
 [[package]]
 name = "murmur-protocol"
-version = "1.7.0"
+version = "1.7.1"
 dependencies = [
  "murmur-core",
  "serde",
@@ -2581,7 +2581,7 @@ dependencies = [
 
 [[package]]
 name = "murmur-remote"
-version = "1.7.0"
+version = "1.7.1"
 dependencies = [
  "futures-util",
  "http-body-util",
@@ -2602,7 +2602,7 @@ dependencies = [
 
 [[package]]
 name = "murmur-router"
-version = "1.7.0"
+version = "1.7.1"
 dependencies = [
  "murmur-core",
  "murmur-protocol",
@@ -2614,7 +2614,7 @@ dependencies = [
 
 [[package]]
 name = "murmur-server"
-version = "1.7.0"
+version = "1.7.1"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -2636,7 +2636,7 @@ dependencies = [
 
 [[package]]
 name = "murmur-windows"
-version = "1.7.0"
+version = "1.7.1"
 dependencies = [
  "base64 0.22.1",
  "cpal",
