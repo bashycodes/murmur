@@ -157,14 +157,19 @@ data class Settings(
          * new install) is [LANGUAGE_AUTO] (D113). "Phone language" ([LANGUAGE_UNSET], the untouched
          * default until 2026-10-31, after [migrateLanguage]) that the D37 move never reached
          * becomes [LANGUAGE_AUTO] too (D37 moved it to Keyboard language; D113 made Automatic the
-         * default instead). Everything stored after those moves ran is kept: an explicit language,
-         * Automatic, Phone language and Keyboard language. Settings are saved as a whole, so a
-         * stored Keyboard language can't be told apart from one the user picked (D113).
+         * default instead). D113, once ([autoMigrated] false): a stored Keyboard language (the
+         * default since D37, so almost always untouched) becomes [LANGUAGE_AUTO]; Keyboard
+         * language picked after that move is kept. An explicit language, Automatic and Phone
+         * language are always kept.
          */
-        fun migrateDefaultLanguage(stored: String?, migrated: Boolean, keyboardMigrated: Boolean): String {
+        fun migrateDefaultLanguage(stored: String?, migrated: Boolean, keyboardMigrated: Boolean, autoMigrated: Boolean): String {
             if (stored == null) return LANGUAGE_AUTO
             val v = migrateLanguage(stored, migrated)
-            return if (!keyboardMigrated && v == LANGUAGE_UNSET) LANGUAGE_AUTO else v
+            return when {
+                !keyboardMigrated && v == LANGUAGE_UNSET -> LANGUAGE_AUTO
+                !autoMigrated && v == LANGUAGE_KEYBOARD -> LANGUAGE_AUTO
+                else -> v
+            }
         }
 
         /** "Bubble size" slider: 75 %..150 % in 5 % steps, 100 % = the spec sizes. */

@@ -23,6 +23,8 @@ class SettingsStore(context: Context) {
         const val LANGUAGE_MIGRATED = "language_default_device"
         /** D37: the default moved phone language → keyboard language; set once that ran (or on any save). */
         const val KEYBOARD_MIGRATED = "language_default_keyboard"
+        /** D113: the default moved keyboard language -> Automatic; set once that ran (or on any save). */
+        const val AUTO_MIGRATED = "language_default_auto"
     }
 
     fun load(): Settings {
@@ -71,15 +73,18 @@ class SettingsStore(context: Context) {
 
     /**
      * One-time moves of untouched old defaults ([Settings.migrateDefaultLanguage]): nothing
-     * stored, or a Phone language the D37 move never reached, becomes Automatic (D113).
+     * stored, a Phone language the D37 move never reached, or (once) Keyboard language, becomes
+     * Automatic (D113).
      */
     private fun loadLanguage(): String {
         val stored = sp.getString("language", null)
         val migrated = sp.getBoolean(LANGUAGE_MIGRATED, false)
         val keyboard = sp.getBoolean(KEYBOARD_MIGRATED, false)
-        val v = Settings.migrateDefaultLanguage(stored, migrated, keyboard)
-        if (!migrated || !keyboard) {
-            sp.edit().putBoolean(LANGUAGE_MIGRATED, true).putBoolean(KEYBOARD_MIGRATED, true).putString("language", v).apply()
+        val auto = sp.getBoolean(AUTO_MIGRATED, false)
+        val v = Settings.migrateDefaultLanguage(stored, migrated, keyboard, auto)
+        if (!migrated || !keyboard || !auto) {
+            sp.edit().putBoolean(LANGUAGE_MIGRATED, true).putBoolean(KEYBOARD_MIGRATED, true).putBoolean(AUTO_MIGRATED, true)
+                .putString("language", v).apply()
         }
         return v
     }
@@ -108,6 +113,7 @@ class SettingsStore(context: Context) {
             .putBoolean(EndpointDefault.D22_MIGRATED, true)
             .putBoolean(LANGUAGE_MIGRATED, true)
             .putBoolean(KEYBOARD_MIGRATED, true)
+            .putBoolean(AUTO_MIGRATED, true)
             .also { e -> for (d in OLD_DEFAULTS) e.putBoolean(d.flag, true) }
             .putString(ThemeDefault.key, s.theme.key)
             .putBoolean("decode_while_speaking", s.decodeWhileSpeaking)

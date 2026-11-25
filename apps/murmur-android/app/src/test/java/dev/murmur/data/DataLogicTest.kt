@@ -191,19 +191,35 @@ class LanguageDefaultTest {
     }
 
     @Test fun automaticIsTheDefaultForNewInstallsAndUntouchedOldDefaultsOnce() {
+        fun m(stored: String?, migrated: Boolean, keyboardMigrated: Boolean, autoMigrated: Boolean = false) =
+            Settings.migrateDefaultLanguage(stored, migrated, keyboardMigrated, autoMigrated)
         assertEquals(Settings.LANGUAGE_AUTO, Settings().language)
-        assertEquals("new install", Settings.LANGUAGE_AUTO, Settings.migrateDefaultLanguage(null, migrated = false, keyboardMigrated = false))
-        assertEquals("never saved", Settings.LANGUAGE_AUTO, Settings.migrateDefaultLanguage(null, migrated = true, keyboardMigrated = true))
-        assertEquals("phone language the D37 move never reached", Settings.LANGUAGE_AUTO, Settings.migrateDefaultLanguage(Settings.LANGUAGE_UNSET, migrated = true, keyboardMigrated = false))
-        assertEquals("untouched auto from before 2026-10-23", Settings.LANGUAGE_AUTO, Settings.migrateDefaultLanguage("auto", migrated = false, keyboardMigrated = false))
-        assertEquals("auto picked after 2026-10-23", "auto", Settings.migrateDefaultLanguage("auto", migrated = true, keyboardMigrated = false))
-        assertEquals("explicit language", "en", Settings.migrateDefaultLanguage("en", migrated = true, keyboardMigrated = false))
-        assertEquals("explicit Hebrew", "he", Settings.migrateDefaultLanguage("he", migrated = false, keyboardMigrated = false))
-        assertEquals("phone language picked after the move", Settings.LANGUAGE_UNSET, Settings.migrateDefaultLanguage(Settings.LANGUAGE_UNSET, migrated = true, keyboardMigrated = true))
+        assertEquals("new install", Settings.LANGUAGE_AUTO, m(null, migrated = false, keyboardMigrated = false))
+        assertEquals("never saved", Settings.LANGUAGE_AUTO, m(null, migrated = true, keyboardMigrated = true, autoMigrated = true))
+        assertEquals("phone language the D37 move never reached", Settings.LANGUAGE_AUTO, m(Settings.LANGUAGE_UNSET, migrated = true, keyboardMigrated = false))
+        assertEquals("untouched auto from before 2026-10-23", Settings.LANGUAGE_AUTO, m("auto", migrated = false, keyboardMigrated = false))
+        assertEquals("auto picked after 2026-10-23", "auto", m("auto", migrated = true, keyboardMigrated = false))
+    }
+
+    @Test fun savedKeyboardLanguageMovesToAutomaticOnce() {
+        val kb = Settings.LANGUAGE_KEYBOARD
+        assertEquals("D113 move", Settings.LANGUAGE_AUTO, Settings.migrateDefaultLanguage(kb, migrated = true, keyboardMigrated = true, autoMigrated = false))
         assertEquals(
-            "a saved Keyboard language can't be told from a picked one: kept",
-            Settings.LANGUAGE_KEYBOARD, Settings.migrateDefaultLanguage(Settings.LANGUAGE_KEYBOARD, migrated = true, keyboardMigrated = true),
+            "Keyboard language picked again after the move is kept",
+            kb, Settings.migrateDefaultLanguage(kb, migrated = true, keyboardMigrated = true, autoMigrated = true),
         )
+    }
+
+    @Test fun otherPicksSurviveTheAutomaticMove() {
+        for (auto in listOf(false, true)) {
+            assertEquals("explicit language", "en", Settings.migrateDefaultLanguage("en", migrated = true, keyboardMigrated = true, autoMigrated = auto))
+            assertEquals("explicit Hebrew", "he", Settings.migrateDefaultLanguage("he", migrated = true, keyboardMigrated = true, autoMigrated = auto))
+            assertEquals(
+                "phone language picked after D37",
+                Settings.LANGUAGE_UNSET, Settings.migrateDefaultLanguage(Settings.LANGUAGE_UNSET, migrated = true, keyboardMigrated = true, autoMigrated = auto),
+            )
+            assertEquals("Automatic", "auto", Settings.migrateDefaultLanguage("auto", migrated = true, keyboardMigrated = true, autoMigrated = auto))
+        }
     }
 
     @Test fun automaticUsesAnInstalledLanguageModelForItsKeyboardElseDetects() {
