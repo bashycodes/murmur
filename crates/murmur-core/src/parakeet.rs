@@ -5,14 +5,15 @@
 //! is the model *directory*. Bias: the dictionary terms, then the rest of
 //! the whisper `initial_prompt` vocabulary ([`crate::asr::hotword_phrases`]),
 //! are fed to sherpa as per-decode hotwords (modified beam search + context
-//! graph); see docs/core-architecture.md.
+//! graph), the screen's name candidates with their own, higher score
+//! ([`crate::asr::SCREEN_HOTWORDS_SCORE`]); see docs/core-architecture.md.
 //! Decodes without hotwords use greedy search, and an empty or implausibly
 //! short beam result is re-decoded greedy, then in pieces
 //! (`ModelConfig.parakeet_decoding`, docs/proposals/stt-model-survey.md).
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use murmur_asr_sherpa::{ParakeetConfig, ParakeetEngine, Search};
+use murmur_asr_sherpa::{Hotword, ParakeetConfig, ParakeetEngine, Search};
 
 use crate::asr::{AsrEngine, AsrError, AsrOutput, AsrRequest};
 use crate::config::{ParakeetDecoding, SAMPLE_RATE};
@@ -35,6 +36,9 @@ pub struct ParakeetAsr {
     /// The language the model decodes, reported in `AsrOutput::language`
     /// (D33). `"en"` unless [`ParakeetAsr::with_language`] says otherwise.
     language: String,
+    /// Hotword score of the screen's name candidates
+    /// ([`crate::asr::SCREEN_HOTWORDS_SCORE`] unless overridden).
+    screen_score: f32,
 }
 
 impl ParakeetAsr {
@@ -73,6 +77,7 @@ impl ParakeetAsr {
             greedy_retries: AtomicU64::new(0),
             fallbacks: AtomicU64::new(0),
             language: "en".into(),
+            screen_score: crate::asr::screen_hotwords_score(),
         })
     }
 
@@ -103,7 +108,7 @@ impl ParakeetAsr {
         self.fallbacks.load(Ordering::Relaxed)
     }
 
-    fn decode(&self, pcm: &[f32], hotwords: &[String], s: Search) -> Result<String, AsrError> {
+    fn decode(&self, pcm: &[f32], hotwords: &[Hotword], s: Search) -> Result<String, AsrError> {
         self.engine
             .transcribe_with(pcm, hotwords, s)
             .map_err(|e| AsrError::Transcribe(e.to_string()))
@@ -112,7 +117,7 @@ impl ParakeetAsr {
     /// Greedy without hotwords, beam with them; a beam result that is
     /// empty or implausibly short on VAD speech is re-decoded greedy and
     /// the longer text wins.
-    fn decode_robust(&self, pcm: &[f32], hotwords: &[String]) -> Result<String, AsrError> {
+    fn decode_robust(&self, pcm: &[f32], hotwords: &[Hotword]) -> Result<String, AsrError> {
         let search = self.engine.default_search(hotwords);
         let text = self.decode(pcm, hotwords, search)?;
         if search == Search::Beam && self.engine.has_greedy() && implausibly_short(&text, pcm) {
@@ -130,7 +135,7 @@ impl ParakeetAsr {
     fn decode_pieces(
         &self,
         pcm: &[f32],
-        hotwords: &[String],
+        hotwords: &[Hotword],
         req: &AsrRequest,
     ) -> Result<String, AsrError> {
         let pieces = fallback_pieces(pcm);
@@ -200,7 +205,7 @@ impl AsrEngine for ParakeetAsr {
         if req.abort.is_set() {
             return Err(AsrError::Transcribe("aborted".into()));
         }
-        let hotwords = crate::asr::hotword_phrases(req);
+        let hotwords = crate::asr::sherpa_hotwords_scored(req, self.screen_score);
         // One long decode loses whole utterances (v2 greedy: the 17 s third
         // sentence of a 30 s clip, 22 words at 42.8 s; sherpa-onnx PR
         // #4084), and beam search returns nothing for some (41.7 s 3/3,
@@ -276,5 +281,68 @@ mod tests {
         assert_eq!(sherpa_hotwords_used(true, &req), MAX_HOTWORDS);
         assert_eq!(sherpa_hotwords_used(false, &req), 0);
         assert_eq!(sherpa_hotwords_used(true, &AsrRequest::default()), 0);
+    }
+
+    /// A request like the one `engine.rs asr_request` builds: dictionary
+    /// terms, the screen's name candidates and the prompt of both (which
+    /// drops the screen's copy of a dictionary term). `screen_terms` also
+    /// repeats a dictionary term, which `asr_request` would have removed.
+    /// Synthetic names.
+    fn dict_and_screen_request() -> AsrRequest {
+        let d = Dictionary {
+            entries: vec![
+                DictEntry::word("Quorvel"),
+                DictEntry::replacement("tamsik", "Tamsik Lintrava"),
+            ],
+        };
+        let names: Vec<String> = ["Odrin Vashel", "quorvel", "Mireth"]
+            .map(String::from)
+            .into();
+        AsrRequest {
+            initial_prompt: build_initial_prompt(&d, &names),
+            dictionary_terms: vec!["Quorvel".into(), "Tamsik Lintrava".into()],
+            screen_terms: vec!["Odrin Vashel".into(), "QUORVEL".into(), "Mireth".into()],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn screen_names_get_the_screen_score_and_the_dictionary_keeps_the_default() {
+        use crate::asr::{sherpa_hotwords, SCREEN_HOTWORDS_SCORE};
+        use murmur_asr_sherpa::Hotword;
+        const { assert!(SCREEN_HOTWORDS_SCORE > murmur_asr_sherpa::DEFAULT_HOTWORDS_SCORE) };
+        let h = sherpa_hotwords(&dict_and_screen_request());
+        let s = SCREEN_HOTWORDS_SCORE;
+        assert_eq!(
+            h,
+            [
+                Hotword::new("Quorvel"),
+                Hotword::new("Tamsik Lintrava"),
+                Hotword::scored("Odrin Vashel", s),
+                Hotword::scored("Mireth", s),
+                // The prompt's copies of the dictionary: a dictionary term
+                // keeps the default even when it is on screen too.
+                Hotword::new("Quorvel"),
+                Hotword::new("Tamsik Lintrava"),
+            ]
+        );
+        assert_eq!(
+            hotwords_arg(&h),
+            format!("Quorvel/Tamsik Lintrava/Odrin Vashel :{s}/Mireth :{s}")
+        );
+    }
+
+    #[test]
+    fn without_screen_terms_every_phrase_keeps_the_default_score() {
+        use crate::asr::sherpa_hotwords;
+        // A caller that sets only the prompt, or a dictionary-only session.
+        let mut req = dict_and_screen_request();
+        req.screen_terms.clear();
+        let h = sherpa_hotwords(&req);
+        assert!(h.iter().all(|w| w.score.is_none()), "{h:?}");
+        assert_eq!(
+            h.iter().map(|w| w.phrase.as_str()).collect::<Vec<_>>(),
+            hotword_phrases(&req)
+        );
     }
 }

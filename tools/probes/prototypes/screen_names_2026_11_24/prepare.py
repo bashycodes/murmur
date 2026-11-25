@@ -11,10 +11,17 @@ Rows (16 kHz mono PCM16 WAVs + manifest.jsonl in OUT):
          (--bench-manifest, rows `en_<id>`); each gets an English screen in turn, so
          the WER shows what unrelated screen words cost.
 
+With --lang he (added for the screen hotword score sweep):
+  names  one clip per sentence of he_said.json (invented, each carrying a name of a
+         Hebrew screen of the fixture), spoken by espeak-ng's Hebrew voice;
+  bench  the 120 Hebrew FLEURS clips (`he` rows) of the lang-detect probe's manifest,
+         each with a Hebrew screen in turn.
+
 Usage:
-  python3 -I prepare.py --espeak ESPEAK_NG [--espeak-path DATA_DIR] \\
+  python3 -I prepare.py --espeak ESPEAK_NG [--espeak-path DATA_DIR] [--lang en|he] \\
       --bench-manifest ~/.cache/murmur/lang-detect-2026-11-24/manifest.jsonl [--out DIR]
-OUT defaults to $SCREEN_NAMES_DATA or ~/.cache/murmur/screen-names-2026-11-24.
+OUT defaults to $SCREEN_NAMES_DATA or ~/.cache/murmur/screen-names-2026-11-24
+(use another OUT for --lang he).
 """
 import argparse, json, os, pathlib, subprocess, tempfile
 
@@ -22,6 +29,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parents[3]
 SCREENS = ROOT / "crates/murmur-core/fixtures/screen-names/chat-screens.json"
 BENCH = ROOT / "tools/probes/bench/asr_manifest_extended.json"
+HE_SAID = HERE / "he_said.json"
 # Two espeak voices so the set is not one speaker.
 VOICES = ["en-us", "en-gb"]
 
@@ -43,11 +51,14 @@ def main():
     ap.add_argument("--espeak", required=True, help="espeak-ng binary")
     ap.add_argument("--espeak-path", help="dir holding espeak-ng-data (--path)")
     ap.add_argument("--bench-manifest", required=True)
+    ap.add_argument("--lang", choices=["en", "he"], default="en")
     ap.add_argument("--out", default=os.environ.get(
         "SCREEN_NAMES_DATA", str(pathlib.Path.home() / ".cache/murmur/screen-names-2026-11-24")))
     a = ap.parse_args()
     out = pathlib.Path(a.out); (out / "wav").mkdir(parents=True, exist_ok=True)
     screens = json.load(open(SCREENS, encoding="utf-8"))["screens"]
+    if a.lang == "he":
+        return hebrew(a, out, screens)
     english = [s for s in screens if s["said"]]
     rows = []
     k = 0
@@ -69,6 +80,31 @@ def main():
         for r in rows:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
     print(f"{k} name clips, {len(bench)} bench clips -> {out / 'manifest.jsonl'}")
+
+
+def hebrew(a, out, screens):
+    said = json.load(open(HE_SAID, encoding="utf-8"))["said"]
+    by_id = {s["id"]: s for s in screens}
+    rows = []
+    k = 0
+    for sid, sentences in said.items():
+        for text in sentences:
+            name = next(n for n in by_id[sid]["names"] if n in text)
+            p = out / "wav" / f"he_names_{k:02d}.wav"
+            tts(a.espeak, a.espeak_path, text, "he", p)
+            rows.append(dict(id=f"he_names_{k:02d}", set="names", path=str(p), ref=text,
+                             name=name, screen=sid))
+            k += 1
+    ids = list(said)
+    bench = [r for r in map(json.loads, open(a.bench_manifest, encoding="utf-8"))
+             if r["set"] == "he"]
+    for i, r in enumerate(bench):
+        rows.append(dict(id=r["id"], set="bench", path=r["path"], ref=r["ref"],
+                         screen=ids[i % len(ids)]))
+    with open(out / "manifest.jsonl", "w", encoding="utf-8") as f:
+        for r in rows:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    print(f"{k} Hebrew name clips, {len(bench)} bench clips -> {out / 'manifest.jsonl'}")
 
 
 if __name__ == "__main__":
