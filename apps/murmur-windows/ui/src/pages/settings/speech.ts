@@ -110,7 +110,7 @@ ${group(
       "",
       `data-stt-provider="custom" hidden`,
     )}
-    ${row("Language", "", `<input id="or_stt_language" class="fl-input lw-w160" spellcheck="false" placeholder="Auto-detect" aria-label="Language (empty = auto-detect)" />`, `data-stt-provider="openrouter"`)}
+    ${row("Language", "", `<input id="or_stt_language" class="fl-input lw-w160" spellcheck="false" placeholder="Automatic" aria-label="Language (empty = Automatic)" />`, `data-stt-provider="openrouter"`)}
     ${row(
       "Speech path",
       "A chat model with audio input may paraphrase.",

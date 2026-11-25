@@ -726,12 +726,16 @@ class MurmurService : Service() {
             // on-device AI off; the router re-checks consent, key, circuit, budget and the server's LLM per call.
             val cloudCleanup = app.dev.load().effective(app.caps).offPhoneCleanup
             // D37: read the keyboard now, at dictation start; the source goes on the debug line.
-            val lang = app.resolveLanguage(it)
+            // D113: Automatic sends no language off the phone; decided once per dictation.
+            val offPhone = app.dictationGoesOffPhone()
+            sessionOffPhone = offPhone
+            val lang = app.resolveLanguage(it, offPhone)
             languageSource = lang.source.wire
             it.toSessionConfig(app.dictionary.all(), language = lang.language, cloudCleanup = cloudCleanup)
         }
 
-        override fun followsKeyboard() = app.settings.load().followsKeyboard
+        override fun followsKeyboard() =
+            dev.murmur.data.LanguageDefault.rereadsAtStop(app.settings.load().language, app.installedLanguages(), sessionOffPhone)
 
         // D90: "" = automatic, the other keyboard language (the core picks it from keyboardLanguages).
         override fun translateTarget(): String? = app.settings.load().translateTo.ifBlank { null }
@@ -741,8 +745,8 @@ class MurmurService : Service() {
         // D58: the keyboard active when the recording stops decides; the source goes on the debug line.
         override fun stopLanguage(): DictationController.StopLanguage? {
             val s = app.settings.load()
-            if (!s.followsKeyboard) return null
-            val lang = app.resolveLanguage(s)
+            if (!dev.murmur.data.LanguageDefault.rereadsAtStop(s.language, app.installedLanguages(), sessionOffPhone)) return null
+            val lang = app.resolveLanguage(s, sessionOffPhone)
             return DictationController.StopLanguage(lang.sessionLanguages, lang.source.wire)
         }
 
@@ -804,6 +808,8 @@ class MurmurService : Service() {
 
     /** D37: where the last session's language came from (keyboard / phone / fixed), for the debug line. */
     @Volatile private var languageSource: String? = null
+    /** D113: [MurmurApp.dictationGoesOffPhone] at the current dictation's start. */
+    @Volatile private var sessionOffPhone: Boolean = false
 
     /** Repair, bubble look settings, Command Mode's ✎ and "our screen is in front" (one flow, so the bubble combine stays at five inputs). */
     private data class Look(val repair: Boolean, val scale: Float, val dot: Boolean, val command: Extras, val ownScreen: Boolean)

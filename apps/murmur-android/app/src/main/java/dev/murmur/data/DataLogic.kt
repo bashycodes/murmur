@@ -51,11 +51,12 @@ object DictionaryMerge {
 
 data class Settings(
     /**
-     * Dictation language: a whisper code, "auto", [LANGUAGE_KEYBOARD] = the active keyboard's
-     * language at dictation start (default since 2026-10-31), or [LANGUAGE_UNSET] = the phone's
-     * language when the loaded whisper model is multilingual and knows it, else auto ([LanguageDefault]).
+     * Dictation language: a whisper code, [LANGUAGE_AUTO] = "Automatic" (detect; the default
+     * since D113), [LANGUAGE_KEYBOARD] = the active keyboard's language at dictation start (the
+     * default 2026-10-31 to D113), or [LANGUAGE_UNSET] = the phone's language when the loaded
+     * whisper model is multilingual and knows it, else auto ([LanguageDefault]).
      */
-    val language: String = LANGUAGE_KEYBOARD,
+    val language: String = LANGUAGE_AUTO,
     val cleanup: CleanupLevel = CleanupLevel.NONE,
     val retention: Retention = Retention.KEEP,
     /** D35: how many of the newest History rows keep their recording for "Retry with current settings" (0 = none). */
@@ -121,6 +122,13 @@ data class Settings(
     val followsKeyboard: Boolean get() = language == LANGUAGE_KEYBOARD
 
     companion object {
+        /**
+         * D113 "Automatic", the default: the speech decides (whisper / the server's language ID);
+         * an installed language model is also used when the keyboard is in that language
+         * ([LanguageDefault.resolve]), since the phone has no spoken language ID (D34).
+         */
+        const val LANGUAGE_AUTO = "auto"
+
         /** "Phone language": follow the phone ([LanguageDefault.effective]). */
         const val LANGUAGE_UNSET = ""
 
@@ -144,16 +152,24 @@ data class Settings(
         }
 
         /**
-         * D37, once ([keyboardMigrated] false): "Phone language" ([LANGUAGE_UNSET], the default
-         * until 2026-10-31, after [migrateLanguage]) becomes [LANGUAGE_KEYBOARD]; nothing stored
-         * (a new install) is [LANGUAGE_KEYBOARD] too. An explicit language, or "auto"
-         * (Auto-detect) picked after the 2026-10-23 change, is kept, and so is Phone language
-         * picked after this migration ran.
+         * The stored language after every default change, once each ([migrated] /
+         * [keyboardMigrated] false = that change has not run on this store). Nothing stored (a
+         * new install) is [LANGUAGE_AUTO] (D113). "Phone language" ([LANGUAGE_UNSET], the untouched
+         * default until 2026-10-31, after [migrateLanguage]) that the D37 move never reached
+         * becomes [LANGUAGE_AUTO] too (D37 moved it to Keyboard language; D113 made Automatic the
+         * default instead). D113, once ([autoMigrated] false): a stored Keyboard language (the
+         * default since D37, so almost always untouched) becomes [LANGUAGE_AUTO]; Keyboard
+         * language picked after that move is kept. An explicit language, Automatic and Phone
+         * language are always kept.
          */
-        fun migrateKeyboardLanguage(stored: String?, migrated: Boolean, keyboardMigrated: Boolean): String {
-            if (stored == null) return LANGUAGE_KEYBOARD
+        fun migrateDefaultLanguage(stored: String?, migrated: Boolean, keyboardMigrated: Boolean, autoMigrated: Boolean): String {
+            if (stored == null) return LANGUAGE_AUTO
             val v = migrateLanguage(stored, migrated)
-            return if (!keyboardMigrated && v == LANGUAGE_UNSET) LANGUAGE_KEYBOARD else v
+            return when {
+                !keyboardMigrated && v == LANGUAGE_UNSET -> LANGUAGE_AUTO
+                !autoMigrated && v == LANGUAGE_KEYBOARD -> LANGUAGE_AUTO
+                else -> v
+            }
         }
 
         /** "Bubble size" slider: 75 %..150 % in 5 % steps, 100 % = the spec sizes. */
@@ -304,9 +320,14 @@ object LanguageDefault {
      * [deviceLanguage] = `Locale.getDefault().language`; [asr] = the loaded local ASR (null: none);
      * [installed] = languages with their own imported model (H5: `he` with a Hebrew model), which
      * the phone (or keyboard) language selects whatever is loaded right now; [keyboard] = the
-     * active keyboard's language ([KeyboardLanguage.of]; null = unknown).
+     * active keyboard's language ([KeyboardLanguage.of]; null = unknown); [offPhone] = the
+     * dictation goes to the server or the cloud ([DevSettings.expectedRoute]), which detect the
+     * language themselves, so Automatic sends none there (D113).
      */
-    fun resolve(setting: String, deviceLanguage: String?, asr: LoadedAsr?, installed: Set<String> = emptySet(), keyboard: String? = null): Resolved {
+    fun resolve(
+        setting: String, deviceLanguage: String?, asr: LoadedAsr?, installed: Set<String> = emptySet(), keyboard: String? = null,
+        offPhone: Boolean = false,
+    ): Resolved {
         fun follow(lang: String?): String {
             val l = normalize(lang)
             if (l != null && l in installed) return l
@@ -317,6 +338,11 @@ object LanguageDefault {
             Settings.LANGUAGE_KEYBOARD ->
                 if (kb != null) Resolved(follow(kb), Source.KEYBOARD) else Resolved(follow(deviceLanguage), Source.PHONE)
             Settings.LANGUAGE_UNSET -> Resolved(follow(deviceLanguage), Source.PHONE)
+            // D113: off the phone the server's (or cloud's) language ID decides. On the phone,
+            // which has none, a keyboard in a language with its own model (Hebrew) picks that
+            // model; anything else is detected from the speech.
+            Settings.LANGUAGE_AUTO ->
+                kb?.takeIf { !offPhone && it in installed }?.let { Resolved(it, Source.KEYBOARD) } ?: Resolved(setting, Source.FIXED)
             else -> Resolved(setting, Source.FIXED)
         }
     }
@@ -324,8 +350,19 @@ object LanguageDefault {
     fun effective(setting: String, deviceLanguage: String?, asr: LoadedAsr?, installed: Set<String> = emptySet(), keyboard: String? = null): String =
         resolve(setting, deviceLanguage, asr, installed, keyboard).language
 
+    /**
+     * D58 / D113: the keyboard is read again when the recording stops (a switch re-runs the
+     * recording in the stop language): always for Keyboard language; for Automatic only on the
+     * phone ([offPhone] false) with a language model [installed], the one case the keyboard decides.
+     */
+    fun rereadsAtStop(setting: String, installed: Set<String>, offPhone: Boolean): Boolean = when (setting) {
+        Settings.LANGUAGE_KEYBOARD -> true
+        Settings.LANGUAGE_AUTO -> !offPhone && installed.isNotEmpty()
+        else -> false
+    }
+
     fun name(code: String): String = when (code) {
-        "auto" -> "Auto-detect"
+        Settings.LANGUAGE_AUTO -> "Automatic"
         "jw" -> "Javanese"
         "yue" -> "Cantonese"
         else -> java.util.Locale(code).getDisplayLanguage(java.util.Locale.ENGLISH).ifEmpty { code }
@@ -339,6 +376,7 @@ object LanguageDefault {
         setting == Settings.LANGUAGE_KEYBOARD ->
             if (effective == "auto") "Auto-detect (keyboard language unknown; phone language not used)"
             else "${name(effective)} (phone language; keyboard language unknown)"
+        setting == Settings.LANGUAGE_AUTO && effective != Settings.LANGUAGE_AUTO -> "${name(effective)} (Automatic: ${name(effective)} keyboard and model)"
         setting != Settings.LANGUAGE_UNSET -> name(effective)
         effective == "auto" -> "Auto-detect (phone language not used: model is English-only or unknown)"
         else -> "${name(effective)} (phone language)"

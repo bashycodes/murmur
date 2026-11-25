@@ -61,6 +61,14 @@ object CallEngine {
         return NativeMeeting.open(core, session(s, app.dictionary.all(), language))
     }
 
-    /** The page's default language: Hebrew when dictation is in Hebrew, else English. */
-    fun defaultLanguage(app: MurmurApp): String = if (HebrewModels.isHebrew(app.effectiveLanguage())) HebrewModels.LANGUAGE else "en"
+    /**
+     * The page's default language: Hebrew when dictation is in Hebrew, else English. D113: under
+     * Automatic a Hebrew keyboard still means Hebrew, as under Keyboard language.
+     */
+    fun defaultLanguage(app: MurmurApp): String {
+        val s = app.settings.load()
+        val hebrew = HebrewModels.isHebrew(app.effectiveLanguage(s)) ||
+            (s.language == Settings.LANGUAGE_AUTO && HebrewModels.isHebrew(app.keyboardLanguage()))
+        return if (hebrew) HebrewModels.LANGUAGE else "en"
+    }
 }

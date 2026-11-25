@@ -124,7 +124,7 @@ class PermissionsActivity : Activity() {
                 },
             ).setTextColor(if (st is EngineHolder.State.Ready) p.ok else if (st is EngineHolder.State.Failed) p.danger else p.text)
             val settings = app.settings.load()
-            link("Language", app.resolveLanguage(settings).let { dev.murmur.data.LanguageDefault.label(settings.language, it.language, it.source) }, SettingsPages.Page.LANGUAGE)
+            link("Language", app.resolveLanguage(settings, app.dictationGoesOffPhone()).let { dev.murmur.data.LanguageDefault.label(settings.language, it.language, it.source) }, SettingsPages.Page.LANGUAGE)
             if (st is EngineHolder.State.Ready) {
                 val (text, bad) = when (val l = st.llm) {
                     EnginePlan.LlmStatus.Off -> (if (settings.spokenCleanup) "Off (formatting rules still run)" else "Off") to false

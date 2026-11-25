@@ -145,7 +145,7 @@ test("a folder import's Hebrew model, language-ID file and language are listed, 
     [
       ["hebrew", "H(auto)", "H(zipformer)"],
       ["lid", "lid.bin", "In the models folder"],
-      ["language", "Keyboard language", "Detect automatically"],
+      ["language", "Keyboard language", "Automatic"],
     ],
   );
   assert.ok(ch.every((c) => STEP_OF[c.key] === "model"));

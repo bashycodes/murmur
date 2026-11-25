@@ -71,7 +71,7 @@ ${group("", row("Live transcription", "Text appears as you pause, so it finishes
     ${STT_LOCK.open}
     ${row(`<span id="or_stt_model_name"></span> <span id="or_stt_model_badges" class="pills"></span>`, `<span id="or_stt_model_desc"></span> <code id="or_stt_model_id" class="lw-mono"></code>`, `<button type="button" class="fl-btn fl-btn-secondary lw-btn-160" id="or_stt_change">Change</button>`, `data-stt-provider="openrouter"`)}
     ${row(`<code id="cu_stt_model_name" class="lw-mono"></code>`, `Speech model on your own AI server at <span id="cu_stt_host" class="lw-mono"></span>. Pick another on the AI provider page.`, "", `data-stt-provider="custom" hidden`)}
-    ${row("Language", "", `<input id="or_stt_language" class="fl-input lw-w160" spellcheck="false" placeholder="Auto-detect" aria-label="Language (empty = auto-detect)" />`, `data-stt-provider="openrouter"`)}
+    ${row("Language", "", `<input id="or_stt_language" class="fl-input lw-w160" spellcheck="false" placeholder="Automatic" aria-label="Language (empty = Automatic)" />`, `data-stt-provider="openrouter"`)}
     ${row("Speech path", "A chat model with audio input may paraphrase.", `<select id="or_stt_path" class="fl-select is-wide">
         <option value="auto">Auto (from the catalogue)</option>
         <option value="transcriptions">Transcription endpoint</option>

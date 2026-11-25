@@ -253,7 +253,7 @@ function wireEdit(box: HTMLElement): void {
  *  last read; re-read each time the languages are shown. */
 let keyboardNow: string | null = null;
 
-/** "English, German" (or "Detected automatically", or D37 "Keyboard
+/** "English, German" (or D113 "Automatic", or D37 "Keyboard
  *  language · now: Hebrew"), and the Parakeet note when the local engine
  *  only understands English. */
 function showLanguages(prefs: Prefs, typed?: string, keyboard?: boolean): void {
@@ -266,7 +266,7 @@ function showLanguages(prefs: Prefs, typed?: string, keyboard?: boolean): void {
     const fallback = names.length ? names.join(", ") : "detected automatically";
     desc.textContent = `Keyboard language · now: ${now}. Each dictation uses the language of the keyboard layout in the app you dictate into; an unknown layout is ${fallback}.`;
   } else {
-    desc.textContent = names.length ? `${names.join(", ")}.` : "Detected automatically.";
+    desc.textContent = names.length ? `${names.join(", ")}.` : "Automatic: each dictation's language is detected from your speech.";
   }
   // Hebrew has its own model (D33): the English-only note doesn't apply.
   const he = hebrewChosen(codes) || (kb && hebrewChosen(keyboardNow ? [keyboardNow] : []));
@@ -327,7 +327,7 @@ function refreshKeyboard(): void {
     });
 }
 
-/** The picker: Keyboard / Detect / English / Hebrew, or "Other…" with the code field. */
+/** The picker: Automatic / Keyboard / English / Hebrew, or "Other…" with the code field. */
 function languagePick(codes: string[], keyboard: boolean): string {
   if (keyboard) return "keyboard";
   if (codes.length === 0) return "";

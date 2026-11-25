@@ -4437,6 +4437,14 @@ mod tests {
         }
     }
 
+    /// Keyboard language picked (D37; no longer the default since D113).
+    fn kb_prefs() -> Prefs {
+        Prefs {
+            keyboard_language: true,
+            ..Prefs::default()
+        }
+    }
+
     fn keyboard(lang: Option<&str>) -> Fake {
         Fake {
             keyboard: Mutex::new(lang.map(String::from)),
@@ -4447,7 +4455,7 @@ mod tests {
     #[test]
     fn keyboard_language_forces_the_session_language() {
         // D37: a Hebrew layout in the target window → `he` (the Hebrew route).
-        let mut r = rig(keyboard(Some("he")), Prefs::default());
+        let mut r = rig(keyboard(Some("he")), kb_prefs());
         dictate_then(&mut r, |_| {});
         assert_eq!(r.core.last_config().unwrap().languages, ["he"]);
         // The layout is read at each start.
@@ -4462,7 +4470,7 @@ mod tests {
         // transcribed again in that language and pasted.
         let mem = MemSink::default();
         let (mut r, log) = logged(
-            Prefs::default(),
+            kb_prefs(),
             keyboard(Some("en")),
             Box::new(mem.clone()),
             true,
@@ -4497,7 +4505,7 @@ mod tests {
         // D58: no change since the start: one session, no re-run.
         let mem = MemSink::default();
         let (mut r, log) = logged(
-            Prefs::default(),
+            kb_prefs(),
             keyboard(Some("he")),
             Box::new(mem.clone()),
             true,
@@ -4516,7 +4524,7 @@ mod tests {
     fn a_hands_free_endpoint_stop_uses_the_stop_language() {
         let prefs = Prefs {
             hands_free_silence_ms: murmur_core::endpoint::RECOMMENDED_SILENCE_MS,
-            ..Prefs::default()
+            ..kb_prefs()
         };
         let mut r = rig(keyboard(Some("en")), prefs);
         r.at(0, Input::Hotkey(HotkeyAction::HandsFreeToggle));
@@ -4595,7 +4603,7 @@ mod tests {
         let open = Arc::new(AtomicBool::new(false));
         let pushed_after = Arc::new(AtomicU64::new(0));
         let (e, o, p) = (entered.clone(), open.clone(), pushed_after.clone());
-        let mut r = rig_with(keyboard(Some("en")), Prefs::default(), move |inner| {
+        let mut r = rig_with(keyboard(Some("en")), kb_prefs(), move |inner| {
             Arc::new(GatedStart {
                 inner,
                 block_at: 2,
@@ -4673,7 +4681,7 @@ mod tests {
         let open = Arc::new(AtomicBool::new(false));
         let pushed_after = Arc::new(AtomicU64::new(0));
         let (e, o, p) = (entered.clone(), open.clone(), pushed_after.clone());
-        let mut r = rig_with(keyboard(Some("en")), Prefs::default(), move |inner| {
+        let mut r = rig_with(keyboard(Some("en")), kb_prefs(), move |inner| {
             Arc::new(GatedStart {
                 inner,
                 block_at: 1,
@@ -4718,8 +4726,16 @@ mod tests {
     }
 
     #[test]
+    fn a_fresh_install_is_automatic_whatever_the_layout() {
+        // D113: no forced language, so language ID (D34) decides, Hebrew included.
+        let mut r = rig(keyboard(Some("he")), Prefs::default());
+        dictate_then(&mut r, |_| {});
+        assert!(r.core.last_config().unwrap().languages.is_empty());
+    }
+
+    #[test]
     fn unknown_layout_or_option_off_keeps_todays_languages() {
-        let mut r = rig(keyboard(None), Prefs::default());
+        let mut r = rig(keyboard(None), kb_prefs());
         dictate_then(&mut r, |_| {});
         assert!(
             r.core.last_config().unwrap().languages.is_empty(),

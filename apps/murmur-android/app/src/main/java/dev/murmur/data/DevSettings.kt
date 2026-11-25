@@ -108,6 +108,19 @@ data class DevSettings(
     /** The cloud is a route the router may take (it still checks consent, key and budget). */
     val cloudRouted: Boolean get() = allowCloud && Route.CLOUD in routeOrder
 
+    /**
+     * D113: the route the next dictation most likely takes: the first one in [routeOrder] that is
+     * on and set up and whose breaker is closed ([serverOpen] / [cloudOpen]); null = none. Call
+     * it on [effective] settings. The router may still fall back during the dictation.
+     */
+    fun expectedRoute(serverOpen: Boolean = false, cloudOpen: Boolean = false): Route? = routeOrder.firstOrNull {
+        when (it) {
+            Route.SERVER -> allowServer && serverConfigured && !serverOpen
+            Route.CLIENT -> allowClient
+            Route.CLOUD -> cloudRouted && !cloudOpen
+        }
+    }
+
     /** The cloud route comes before every other enabled route. */
     val cloudFirst: Boolean
         get() = cloudRouted && routeOrder.firstOrNull { it == Route.CLOUD || (it == Route.SERVER && allowServer) || (it == Route.CLIENT && allowClient) } == Route.CLOUD

@@ -19,9 +19,11 @@ pub const FILE_NAME: &str = "prefs.json";
 /// * 3 (D27): chat styles default to casual, the LLM budget 1500 → 3000 ms,
 ///   and cleanup "None" became "No AI" (formatting rules still run): a
 ///   stored None moves to Verbatim, `raw_mode` to No AI ([`Prefs::migrate`]).
-/// * 4 (D37): the language follows the keyboard layout by default:
-///   `keyboard_language` turns on for "Detect automatically" (empty
-///   `languages`); a language the user chose stays.
+/// * 4 (D37): the language followed the keyboard layout by default:
+///   `keyboard_language` turned on for "Detect automatically" (empty
+///   `languages`); a language the user chose stays. Since D113 Automatic
+///   is the default again, so a pre-D37 file keeps what it had (no
+///   keyboard language).
 /// * 5 (D57): push to talk defaults to Right Alt instead of Ctrl+Win: a
 ///   saved Ctrl+Win (the untouched old default) moves to Right Alt unless
 ///   another shortcut already uses it; any other shortcut stays.
@@ -32,7 +34,11 @@ pub const FILE_NAME: &str = "prefs.json";
 /// * 7 (D110): learn-from-edits re-reads the field every 250 ms instead of
 ///   every second: a saved 1000 (the untouched old default) moves to 250;
 ///   any other value stays.
-pub const PREFS_REV: u32 = 7;
+/// * 8 (D113): Automatic is the default: a saved `keyboard_language` (the
+///   default since rev 4, so almost always untouched) turns off once, with
+///   `languages` cleared; Keyboard language picked again afterwards stays,
+///   and so does any fixed language.
+pub const PREFS_REV: u32 = 8;
 
 /// The learn-from-edits re-read interval before D110 (rev ≤ 6).
 const OLD_LEARN_POLL_MS: u64 = 1_000;
@@ -307,7 +313,8 @@ impl Default for Prefs {
             shortcuts: Bindings::default(),
             microphone: None,
             languages: Vec::new(),
-            keyboard_language: true,
+            // D113: Automatic (empty `languages`, language ID routes Hebrew).
+            keyboard_language: false,
             translate_to: String::new(),
             webhook_url: String::new(),
             enable_sounds: true,
@@ -435,9 +442,10 @@ impl Prefs {
             self.raw_mode = false;
         }
         if self.prefs_rev < 4 {
-            // D37: "Detect automatically" (the old default) follows the
-            // keyboard now; an explicit language is the user's and stays.
-            self.keyboard_language = self.languages.is_empty();
+            // D37 moved "Detect automatically" (the old default) to the
+            // keyboard; D113 made Automatic the default again, so a pre-D37
+            // file stays as it was: no keyboard language.
+            self.keyboard_language = false;
         }
         if self.prefs_rev < 5 && self.shortcuts.ptt == Chord::new([Key::Ctrl, Key::Win]) {
             // D57: every field is saved, so a pre-D57 Ctrl+Win is the old
@@ -478,6 +486,14 @@ impl Prefs {
         if self.prefs_rev < 7 && self.learn_poll_ms == OLD_LEARN_POLL_MS {
             // D110: every field is saved, so 1000 is the untouched default.
             self.learn_poll_ms = crate::learn::DEFAULT_POLL_MS;
+        }
+        if self.prefs_rev < 8 && self.keyboard_language {
+            // D113: Keyboard language was the default since rev 4 and every
+            // field is saved, so it moves to Automatic once. Its `languages`
+            // were only the unknown-layout fallback (the picker leaves them
+            // empty), so they go too.
+            self.keyboard_language = false;
+            self.languages.clear();
         }
         // Never lower it: a file a newer build wrote keeps its revision, so
         // after a downgrade and upgrade the newer migrations don't run again.
@@ -1158,16 +1174,18 @@ mod tests {
     }
 
     #[test]
-    fn d37_detect_automatically_moves_to_keyboard_language_once() {
+    fn d113_automatic_is_the_default_and_saved_choices_stay() {
+        let fresh = Prefs::default();
         assert!(
-            Prefs::default().keyboard_language,
-            "new installs follow the keyboard"
+            !fresh.keyboard_language && fresh.languages.is_empty(),
+            "new installs are Automatic"
         );
+        // Pre-D37 files: the untouched "Detect automatically" stays Automatic.
         let (p, _) = load_str("kbl-auto", r#"{"prefs_rev":3,"languages":[]}"#);
-        assert!(p.keyboard_language);
+        assert!(!p.keyboard_language && p.languages.is_empty());
         assert_eq!(p.prefs_rev, PREFS_REV);
         let (p, _) = load_str("kbl-none", r#"{"prefs_rev":3}"#);
-        assert!(p.keyboard_language);
+        assert!(!p.keyboard_language);
         let (p, _) = load_str("kbl-en", r#"{"prefs_rev":3,"languages":["en"]}"#);
         assert!(!p.keyboard_language, "an explicit language stays");
         assert_eq!(p.languages, ["en"]);
@@ -1189,7 +1207,58 @@ mod tests {
             "kbl-on",
             &format!(r#"{{"prefs_rev":{PREFS_REV},"keyboard_language":true}}"#),
         );
-        assert!(p.keyboard_language);
+        assert!(p.keyboard_language, "Keyboard language picked after D113");
+    }
+
+    #[test]
+    fn d113_saved_keyboard_language_moves_to_automatic_once() {
+        let (p, _) = load_str(
+            "d113-kb",
+            r#"{"prefs_rev":7,"keyboard_language":true,"languages":[]}"#,
+        );
+        assert!(
+            !p.keyboard_language && p.languages.is_empty(),
+            "moved to Automatic"
+        );
+        assert_eq!(p.prefs_rev, PREFS_REV);
+        let (p, _) = load_str(
+            "d113-kb-fallback",
+            r#"{"prefs_rev":7,"keyboard_language":true,"languages":["en"]}"#,
+        );
+        assert!(
+            !p.keyboard_language && p.languages.is_empty(),
+            "fallback cleared"
+        );
+        // Re-picked after the move: kept, also after another load.
+        let d = tmpdir("d113-repick");
+        let path = d.join(FILE_NAME);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(&path, r#"{"prefs_rev":7,"keyboard_language":true}"#).unwrap();
+        let (mut p, _) = Prefs::load(&path);
+        assert!(!p.keyboard_language);
+        p.keyboard_language = true;
+        p.save(&path).unwrap();
+        assert!(Prefs::load(&path).0.keyboard_language, "re-pick survives");
+        let _ = std::fs::remove_dir_all(&d);
+        // Other picks stay.
+        let (p, _) = load_str(
+            "d113-en",
+            r#"{"prefs_rev":7,"keyboard_language":false,"languages":["en"]}"#,
+        );
+        assert_eq!(
+            (p.keyboard_language, p.languages.as_slice()),
+            (false, &["en".to_string()][..])
+        );
+        let (p, _) = load_str(
+            "d113-he",
+            r#"{"prefs_rev":7,"keyboard_language":false,"languages":["he"]}"#,
+        );
+        assert_eq!(p.languages, ["he"]);
+        let (p, _) = load_str(
+            "d113-auto",
+            r#"{"prefs_rev":7,"keyboard_language":false,"languages":[]}"#,
+        );
+        assert!(!p.keyboard_language && p.languages.is_empty());
     }
 
     #[test]

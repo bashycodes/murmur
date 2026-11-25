@@ -130,7 +130,7 @@ test("download targets: recommended English, recommended Hebrew, language ID wit
 
 test("the line after Use these", () => {
   const imp = { state: "imported", id: "x", title: "X" };
-  assert.match(importLine({ english: imp, hebrew: imp, lid: imp, auto_detect: true, cancelled: false }).text, /Detect automatically/);
+  assert.match(importLine({ english: imp, hebrew: imp, lid: imp, auto_detect: true, cancelled: false }).text, /Language is now Automatic/);
   const partial = importLine({ english: imp, hebrew: { state: "failed", message: "m" }, lid: { state: "skipped" }, auto_detect: false, cancelled: false });
   assert.match(partial.text, /Imported 1 of 2/);
   assert.ok(!partial.ok);
