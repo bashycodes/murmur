@@ -244,12 +244,27 @@ class MurmurApp : Application() {
     fun effectiveLanguage(s: Settings = settings.load()): String = resolveLanguage(s).language
 
     /** [effectiveLanguage] and where it came from (D37: keyboard / phone / fixed). */
-    fun resolveLanguage(s: Settings = settings.load()): LanguageDefault.Resolved =
+    fun resolveLanguage(s: Settings = settings.load(), offPhone: Boolean = false): LanguageDefault.Resolved =
         LanguageDefault.resolve(
-            s.language, java.util.Locale.getDefault().language, engine.loadedAsr(),
-            if (engine.hebrewModel() != null) setOf(HebrewModels.LANGUAGE) else emptySet(),
+            s.language, java.util.Locale.getDefault().language, engine.loadedAsr(), installedLanguages(),
             keyboard = if (s.language == Settings.LANGUAGE_KEYBOARD || s.language == Settings.LANGUAGE_AUTO) keyboardLanguage() else null,
+            offPhone = offPhone,
         )
+
+    /** Languages with their own imported model (H5: `he`). */
+    fun installedLanguages(): Set<String> = if (engine.hebrewModel() != null) setOf(HebrewModels.LANGUAGE) else emptySet()
+
+    /**
+     * D113: the next dictation goes to the server or the cloud ([DevSettings.expectedRoute] with
+     * the router's breakers), which detect the language themselves. Never throws.
+     */
+    fun dictationGoesOffPhone(): Boolean = try {
+        val st = engine.router()?.routeStatus()
+        val r = dev.load().effective(caps).expectedRoute(serverOpen = st?.circuit?.open == true, cloudOpen = st?.cloudCircuit?.open == true)
+        r != null && r != DevSettings.Route.CLIENT
+    } catch (_: Exception) {
+        false
+    }
 
     /**
      * D37: the active keyboard's language (whisper code), or null when there is no keyboard

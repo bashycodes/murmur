@@ -70,7 +70,7 @@ export function autoDetects(keyboard: boolean, languages: string[]): boolean {
 export function lidWarning(i: LidInput): LidWarning {
   if (!autoDetects(i.keyboard, i.languages) || !i.hebrewModel || i.lidPresent !== false) return { show: false };
   const size = i.target && i.target.missing > 0 ? Math.max(1, Math.round(i.target.missing / 1e6)) : LID_MB;
-  const why = `Auto-detect can't recognise Hebrew yet, so every dictation is treated as English. It needs a small language-detection model (${size} MB).`;
+  const why = `Automatic can't recognise Hebrew yet, so every dictation is treated as English. It needs a small language-detection model (${size} MB).`;
   if (i.target?.busy) return { show: true, text: "Downloading the language-detection model…" };
   if (i.target && i.target.canStart && i.target.missing > 0) return { show: true, text: why, download: `Download ${size} MB…` };
   return {

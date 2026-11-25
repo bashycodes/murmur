@@ -222,6 +222,40 @@ class LanguageDefaultTest {
         }
     }
 
+    @Test fun automaticSendsNoLanguageOffThePhone() {
+        // D113: the server (or cloud) identifies the language itself, even with a Hebrew keyboard.
+        val he = setOf("he")
+        val auto = Settings.LANGUAGE_AUTO
+        val server = LanguageDefault.resolve(auto, "en", multi, he, keyboard = "he", offPhone = true)
+        assertEquals(LanguageDefault.Resolved("auto", LanguageDefault.Source.FIXED), server)
+        assertTrue(server.sessionLanguages.isEmpty())
+        val phone = LanguageDefault.resolve(auto, "en", multi, he, keyboard = "he", offPhone = false)
+        assertEquals(listOf("he"), phone.sessionLanguages)
+        assertEquals("other settings ignore it", "he", LanguageDefault.effective("he", "en", multi, he))
+        assertEquals(
+            "Keyboard language still forces it",
+            "he", LanguageDefault.resolve(Settings.LANGUAGE_KEYBOARD, "en", multi, he, keyboard = "he", offPhone = true).language,
+        )
+    }
+
+    @Test fun automaticOnThePhoneRereadsTheKeyboardAtTheStop() {
+        val he = setOf("he")
+        val auto = Settings.LANGUAGE_AUTO
+        assertTrue(LanguageDefault.rereadsAtStop(auto, he, offPhone = false))
+        assertTrue("server: its language ID decides", !LanguageDefault.rereadsAtStop(auto, he, offPhone = true))
+        assertTrue("no language model: nothing for the keyboard to pick", !LanguageDefault.rereadsAtStop(auto, emptySet(), offPhone = false))
+        assertTrue(LanguageDefault.rereadsAtStop(Settings.LANGUAGE_KEYBOARD, emptySet(), offPhone = true))
+        assertTrue(!LanguageDefault.rereadsAtStop("en", he, offPhone = false))
+        assertTrue(!LanguageDefault.rereadsAtStop(Settings.LANGUAGE_UNSET, he, offPhone = false))
+        // English keyboard at the start, Hebrew at the stop: the stop language differs, so the
+        // recording runs again on the Hebrew model (D58).
+        val start = LanguageDefault.resolve(auto, "en", multi, he, keyboard = "en")
+        val stop = LanguageDefault.resolve(auto, "en", multi, he, keyboard = "he")
+        assertTrue(start.sessionLanguages.isEmpty())
+        assertEquals(listOf("he"), stop.sessionLanguages)
+        assertEquals(LoadSet.Language("he"), LoadSet.of(stop.language, hebrewInstalled = true, keepBoth = false) { true })
+    }
+
     @Test fun automaticUsesAnInstalledLanguageModelForItsKeyboardElseDetects() {
         val he = setOf("he")
         val auto = Settings.LANGUAGE_AUTO

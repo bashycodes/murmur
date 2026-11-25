@@ -320,9 +320,14 @@ object LanguageDefault {
      * [deviceLanguage] = `Locale.getDefault().language`; [asr] = the loaded local ASR (null: none);
      * [installed] = languages with their own imported model (H5: `he` with a Hebrew model), which
      * the phone (or keyboard) language selects whatever is loaded right now; [keyboard] = the
-     * active keyboard's language ([KeyboardLanguage.of]; null = unknown).
+     * active keyboard's language ([KeyboardLanguage.of]; null = unknown); [offPhone] = the
+     * dictation goes to the server or the cloud ([DevSettings.expectedRoute]), which detect the
+     * language themselves, so Automatic sends none there (D113).
      */
-    fun resolve(setting: String, deviceLanguage: String?, asr: LoadedAsr?, installed: Set<String> = emptySet(), keyboard: String? = null): Resolved {
+    fun resolve(
+        setting: String, deviceLanguage: String?, asr: LoadedAsr?, installed: Set<String> = emptySet(), keyboard: String? = null,
+        offPhone: Boolean = false,
+    ): Resolved {
         fun follow(lang: String?): String {
             val l = normalize(lang)
             if (l != null && l in installed) return l
@@ -333,15 +338,28 @@ object LanguageDefault {
             Settings.LANGUAGE_KEYBOARD ->
                 if (kb != null) Resolved(follow(kb), Source.KEYBOARD) else Resolved(follow(deviceLanguage), Source.PHONE)
             Settings.LANGUAGE_UNSET -> Resolved(follow(deviceLanguage), Source.PHONE)
-            // D113: no spoken language ID on the phone, so a keyboard in a language with its own
-            // model (Hebrew) picks that model; anything else is detected from the speech.
-            Settings.LANGUAGE_AUTO -> kb?.takeIf { it in installed }?.let { Resolved(it, Source.KEYBOARD) } ?: Resolved(setting, Source.FIXED)
+            // D113: off the phone the server's (or cloud's) language ID decides. On the phone,
+            // which has none, a keyboard in a language with its own model (Hebrew) picks that
+            // model; anything else is detected from the speech.
+            Settings.LANGUAGE_AUTO ->
+                kb?.takeIf { !offPhone && it in installed }?.let { Resolved(it, Source.KEYBOARD) } ?: Resolved(setting, Source.FIXED)
             else -> Resolved(setting, Source.FIXED)
         }
     }
 
     fun effective(setting: String, deviceLanguage: String?, asr: LoadedAsr?, installed: Set<String> = emptySet(), keyboard: String? = null): String =
         resolve(setting, deviceLanguage, asr, installed, keyboard).language
+
+    /**
+     * D58 / D113: the keyboard is read again when the recording stops (a switch re-runs the
+     * recording in the stop language): always for Keyboard language; for Automatic only on the
+     * phone ([offPhone] false) with a language model [installed], the one case the keyboard decides.
+     */
+    fun rereadsAtStop(setting: String, installed: Set<String>, offPhone: Boolean): Boolean = when (setting) {
+        Settings.LANGUAGE_KEYBOARD -> true
+        Settings.LANGUAGE_AUTO -> !offPhone && installed.isNotEmpty()
+        else -> false
+    }
 
     fun name(code: String): String = when (code) {
         Settings.LANGUAGE_AUTO -> "Automatic"

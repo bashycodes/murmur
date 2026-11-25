@@ -25,6 +25,16 @@ class DevSettingsTest {
         assertEquals("client", d.routeOrderWire(BuildCaps.LOCAL))
     }
 
+    /** D113: Automatic sends no language when the dictation is expected off the phone. */
+    @Test fun expectedRouteIsTheFirstUsableOne() {
+        val d = DevSettings.defaults(BuildCaps.ALL).copy(allowServer = true, allowClient = true, host = "100.64.0.10")
+        assertEquals(DevSettings.Route.SERVER, d.expectedRoute())
+        assertEquals("server breaker open", DevSettings.Route.CLIENT, d.expectedRoute(serverOpen = true))
+        assertEquals("no server set up", DevSettings.Route.CLIENT, d.copy(host = "").expectedRoute())
+        assertEquals("phone first", DevSettings.Route.CLIENT, d.copy(routeOrder = listOf(DevSettings.Route.CLIENT, DevSettings.Route.SERVER)).expectedRoute())
+        assertNull(d.copy(allowServer = false, allowClient = false).expectedRoute())
+    }
+
     @Test fun validHosts() {
         for (h in listOf("192.168.1.2", "0.0.0.0", "desktop", "box.tail1.ts.net", "::1", "[fd7a:115c:a1e0::1]", "a-b.example.com", "fe80::1", "::ffff:192.168.1.1", "1::", "2001:db8:0:0:0:0:2:1")) {
             assertTrue(h, HostRules.validate(h).isSuccess)

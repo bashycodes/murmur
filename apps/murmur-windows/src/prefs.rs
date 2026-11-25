@@ -24,10 +24,6 @@ pub const FILE_NAME: &str = "prefs.json";
 ///   `languages`); a language the user chose stays. Since D113 Automatic
 ///   is the default again, so a pre-D37 file keeps what it had (no
 ///   keyboard language).
-/// * 8 (D113): Automatic is the default: a saved `keyboard_language` (the
-///   default since rev 4, so almost always untouched) turns off once, with
-///   `languages` cleared; Keyboard language picked again afterwards stays,
-///   and so does any fixed language.
 /// * 5 (D57): push to talk defaults to Right Alt instead of Ctrl+Win: a
 ///   saved Ctrl+Win (the untouched old default) moves to Right Alt unless
 ///   another shortcut already uses it; any other shortcut stays.
@@ -38,6 +34,10 @@ pub const FILE_NAME: &str = "prefs.json";
 /// * 7 (D110): learn-from-edits re-reads the field every 250 ms instead of
 ///   every second: a saved 1000 (the untouched old default) moves to 250;
 ///   any other value stays.
+/// * 8 (D113): Automatic is the default: a saved `keyboard_language` (the
+///   default since rev 4, so almost always untouched) turns off once, with
+///   `languages` cleared; Keyboard language picked again afterwards stays,
+///   and so does any fixed language.
 pub const PREFS_REV: u32 = 8;
 
 /// The learn-from-edits re-read interval before D110 (rev ≤ 6).

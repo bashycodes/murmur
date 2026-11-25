@@ -538,7 +538,7 @@ class SettingsActivity : Activity() {
                         when (code) {
                             Settings.LANGUAGE_AUTO -> "Detected from your speech; a Hebrew keyboard uses the Hebrew model when one is imported"
                             Settings.LANGUAGE_KEYBOARD -> "Follows the keyboard you type with (e.g. Hebrew on Gboard → Hebrew), read when you start dictating"
-                            Settings.LANGUAGE_UNSET -> "If the speech model supports it, else auto-detect"
+                            Settings.LANGUAGE_UNSET -> "If the speech model supports it, else Automatic"
                             else -> ""
                         },
                     )
@@ -549,7 +549,7 @@ class SettingsActivity : Activity() {
             val hebrew = note("")
             refreshers += {
                 val n = app.settings.load()
-                val r = app.resolveLanguage(n)
+                val r = app.resolveLanguage(n, app.dictationGoesOffPhone())
                 val eff = r.language
                 effective.text = "Next dictation: " + LanguageDefault.label(n.language, eff, r.source)
                 val h = SettingsPages.hebrewNote(eff, app.engine.hebrewModel()?.second?.label, caps.local)
