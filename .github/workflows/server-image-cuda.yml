@@ -1,12 +1,20 @@
 # murmur-server's NVIDIA CUDA image (deploy/docker/Dockerfile `--target cuda`,
 # D84): checks that the CUDA plugins (llama.cpp and whisper.cpp) compile and
-# link and that the image starts. Build only: no GPU on the runner and nothing
-# is pushed. Its own workflow so it is never a required check: it is the
-# slowest build in the repo. Runs when the CUDA build's inputs change, on pull
-# requests and on main (feature-branch pushes are covered by
-# their pull request: push + pull_request would build twice, in two
-# concurrency groups), and by hand (workflow_dispatch, which can also build
-# every GPU architecture).
+# link and that the image starts (no GPU on the runner). Its own workflow so
+# it is never a required check: it is the slowest build in the repo. Runs
+# when the CUDA build's inputs change, on pull requests and on main
+# (feature-branch pushes are covered by their pull request: push +
+# pull_request would build twice, in two concurrency groups), on release
+# tags (path filters do not apply to tags), and by hand (workflow_dispatch).
+# Pull requests and main: the `build` job only (contents: read), one GPU
+# architecture, no registry login, nothing pushed.
+# A vX.Y.Z tag (or workflow_dispatch with a tag, to publish an older release
+# later): `build` checks the tag against VERSION (the D26 version gate),
+# builds RELEASE_CUDAARCHS (fixed: a release refuses a cudaarchs override),
+# checks the image and hands it over as an artifact; `publish`, the only job
+# with packages: write, pushes that tested image to
+# ghcr.io/<owner>/murmur-server as :X.Y.Z-cuda, plus :latest-cuda when the
+# tag is the highest vX.Y.Z tag (an older tag never moves latest-cuda).
 # Every run is a cold cargo + nvcc build: type=gha keeps image layers, not
 # BuildKit cache mounts (the stage's cargo registry and target/).
 name: server-image-cuda
@@ -14,11 +22,15 @@ name: server-image-cuda
 on:
   workflow_dispatch:
     inputs:
+      tag:
+        description: "Release tag to check out and publish (e.g. v1.7.1); empty = build only"
+        default: ""
       cudaarchs:
-        description: "GPU architectures (CUDAARCHS); the image's default is 75;80;86;89;90;120"
-        default: "86"
+        description: "Build only: GPU architectures (CUDAARCHS, e.g. 86 or 75;86); empty = 86. Must be empty with a tag (a release builds RELEASE_CUDAARCHS)"
+        default: ""
   push:
     branches: [main]
+    tags: ["v*"]
     paths:
       # Everything the build context carries (.dockerignore): the cuda
       # target also builds the CPU server from the whole workspace.
@@ -50,18 +62,109 @@ on:
       - ".github/workflows/server-image-cuda.yml"
 
 concurrency:
-  group: server-image-cuda-${{ github.ref }}
-  cancel-in-progress: true
+  group: server-image-cuda-${{ inputs.tag || github.ref }}
+  # A release publish always runs to the end.
+  cancel-in-progress: ${{ github.ref_type != 'tag' && !inputs.tag }}
 
 permissions:
   contents: read
 
+env:
+  # The published image's GPU architectures. The CUDA stage took ~37 min
+  # for one architecture (sm_86) on the hosted runner, most of it nvcc, so
+  # the image default's six (75-120) would risk the 6 h job limit. These
+  # four cover the consumer cards natively (Turing, Ampere, Ada,
+  # Blackwell); CMake also embeds each one's PTX, which the driver
+  # JIT-compiles on first use for the data-centre 80 (A100, from 75) and
+  # 90 (H100, from 89). Other sets: build it yourself (docs/container.md §8).
+  RELEASE_CUDAARCHS: "75;86;89;120"
+
 jobs:
-  cuda:
+  build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    # A release builds four architectures (RELEASE_CUDAARCHS).
+    timeout-minutes: ${{ (github.ref_type == 'tag' || inputs.tag) && 330 || 180 }}
+    permissions:
+      contents: read
+    outputs:
+      publish: ${{ steps.release.outputs.publish }}
+      tags: ${{ steps.meta.outputs.tags }}
     steps:
+      # A dispatched tag is checked before it reaches checkout.
+      - name: Ref
+        id: ref
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          if [ -n "$TAG" ]; then
+            [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::'$TAG' is not a release tag (vX.Y.Z)"; exit 1; }
+            echo "ref=refs/tags/$TAG" >>"$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.ref.outputs.ref }}  # empty: the event's own ref
+
+      # publish / latest / version / revision / cudaarchs. A tag must be
+      # vX.Y.Z and pass the D26 version gate (tag = v<VERSION>, CHANGELOG
+      # section); latest only for the highest vX.Y.Z tag on the remote; a
+      # release always builds RELEASE_CUDAARCHS. Every output is checked
+      # against a one-line pattern before it is written. Inline, not a
+      # script: a dispatch checks out an older tag, which lacks new tools.
+      - name: Release
+        id: release
+        env:
+          TAG: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name || '') }}
+          ARCHS: ${{ inputs.cudaarchs }}
+        run: |
+          set -euo pipefail
+          out() { [[ $2 =~ $3 ]] || { echo "::error::bad $1 value"; exit 1; }; printf '%s=%s\n' "$1" "$2" >>"$GITHUB_OUTPUT"; }
+          semver='^[0-9]+\.[0-9]+\.[0-9]+$'
+          archs='^[0-9]+(;[0-9]+)*$'
+          if [ -n "$TAG" ]; then
+            [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::'$TAG' is not a release tag (vX.Y.Z)"; exit 1; }
+            [ -z "$ARCHS" ] || { echo "::error::a release builds RELEASE_CUDAARCHS ($RELEASE_CUDAARCHS); leave cudaarchs empty"; exit 1; }
+            tools/check-version.sh --tag "$TAG"
+            highest=$(git ls-remote --tags --refs origin 'refs/tags/v*' | sed 's|.*refs/tags/||' \
+              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
+            latest=false; [ "$TAG" = "$highest" ] && latest=true
+            echo "highest release tag: $highest; latest: $latest"
+            out publish true '^true$'
+            out latest "$latest" '^(true|false)$'
+            out version "${TAG#v}" "$semver"
+            out cudaarchs "$RELEASE_CUDAARCHS" "$archs"
+          else
+            out publish false '^false$'
+            out latest false '^false$'
+            out version "$(tr -d '[:space:]' <VERSION)" "$semver"
+            out cudaarchs "${ARCHS:-86}" "$archs"
+          fi
+          out revision "$(git rev-parse HEAD)" '^[0-9a-f]{40}$'
+
+      - name: Image name
+        id: image
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          name="ghcr.io/${OWNER,,}/murmur-server"
+          [[ $name =~ ^ghcr\.io/[a-z0-9-]+/murmur-server$ ]] || { echo "::error::bad image name"; exit 1; }
+          echo "name=$name" >>"$GITHUB_OUTPUT"
+
+      # Registry tags (release only) and OCI labels (every build).
+      - name: Tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.name }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=${{ steps.release.outputs.version }}-cuda,enable=${{ steps.release.outputs.publish }}
+            type=raw,value=latest-cuda,enable=${{ steps.release.outputs.latest }}
+          labels: |
+            org.opencontainers.image.title=murmur-server (CUDA)
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.release.outputs.version }}
+            org.opencontainers.image.revision=${{ steps.release.outputs.revision }}
 
       # The CUDA devel image and two CUDA builds need more disk than the
       # runner has free.
@@ -72,8 +175,9 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      # One architecture by default (Ampere, sm_86): the build is checked, not
-      # shipped, and every extra architecture adds minutes of nvcc.
+      # One architecture (Ampere, sm_86) unless releasing: the build is
+      # checked, not shipped, and every extra architecture adds nvcc time.
+      # Separate layer caches for the one-architecture and release builds.
       - name: Build
         uses: docker/build-push-action@v6
         with:
@@ -83,12 +187,13 @@ jobs:
           push: false
           load: true
           tags: murmur-server:ci-cuda
+          labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            MURMUR_GIT_SHA=${{ github.sha }}
+            MURMUR_GIT_SHA=${{ steps.release.outputs.revision }}
             CARGO_BUILD_JOBS=4
-            CUDAARCHS=${{ inputs.cudaarchs || '86' }}
-          cache-from: type=gha,scope=cuda
-          cache-to: type=gha,scope=cuda,mode=min
+            CUDAARCHS=${{ steps.release.outputs.cudaarchs }}
+          cache-from: type=gha,scope=${{ steps.release.outputs.publish == 'true' && 'cuda-release' || 'cuda' }}
+          cache-to: type=gha,scope=${{ steps.release.outputs.publish == 'true' && 'cuda-release' || 'cuda' }},mode=min
 
       # Without a GPU the image must still start: the CLI runs, and the
       # entrypoint refuses an empty models folder with its message. The
@@ -109,3 +214,50 @@ jobs:
             done
             echo "MURMUR_WHISPER_LIB=$MURMUR_WHISPER_LIB"; test -f "$MURMUR_WHISPER_LIB"'
           docker image ls murmur-server:ci-cuda
+
+      # Release only: hand the tested image to the publish job.
+      - name: Save image
+        if: steps.release.outputs.publish == 'true'
+        run: docker save murmur-server:ci-cuda | gzip -1 >image.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        if: steps.release.outputs.publish == 'true'
+        with:
+          name: murmur-server-cuda-image
+          path: image.tar.gz
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+
+  # The only job that can write packages; runs for release tags only.
+  publish:
+    needs: build
+    if: (github.ref_type == 'tag' || inputs.tag) && needs.build.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: murmur-server-cuda-image
+
+      - name: Load the tested image
+        run: gunzip -c image.tar.gz | docker load
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish
+        env:
+          TAGS: ${{ needs.build.outputs.tags }}
+        run: |
+          for t in $TAGS; do
+            docker tag murmur-server:ci-cuda "$t"
+            docker push "$t"
+          done

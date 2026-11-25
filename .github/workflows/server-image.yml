@@ -1,13 +1,24 @@
 # murmur-server container image (deploy/docker/Dockerfile, D77): checks that
-# it builds and starts. Build only: nothing is pushed or published (users
-# build it from the source, docs/server-setup.md). Runs on pull requests, on
-# main (path-filtered) and on release tags (path filters do not apply to
-# tags); feature-branch pushes are covered by their pull request.
+# it builds and starts. Runs on pull requests, on main (path-filtered) and on
+# release tags (path filters do not apply to tags); feature-branch pushes are
+# covered by their pull request.
+# Pull requests and main: the `build` job only (contents: read), no registry
+# login, nothing pushed.
+# A vX.Y.Z tag (or workflow_dispatch with a tag, to publish an older release
+# later): `build` checks the tag against VERSION (the D26 version gate),
+# builds and checks the image and hands it over as an artifact; `publish`,
+# the only job with packages: write, pushes that tested image to
+# ghcr.io/<owner>/murmur-server as :X.Y.Z, plus :latest when the tag is the
+# highest vX.Y.Z tag (an older tag never moves latest).
 # CPU image only: the CUDA variant (`--target cuda`) is server-image-cuda.yml.
 name: server-image
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to check out and publish (e.g. v1.7.1); empty = build only"
+        default: ""
   push:
     branches: [main]
     tags: ["v*"]
@@ -34,8 +45,9 @@ on:
       - ".github/workflows/server-image.yml"
 
 concurrency:
-  group: server-image-${{ github.ref }}
-  cancel-in-progress: true
+  group: server-image-${{ inputs.tag || github.ref }}
+  # A release publish always runs to the end.
+  cancel-in-progress: ${{ github.ref_type != 'tag' && !inputs.tag }}
 
 permissions:
   contents: read
@@ -44,8 +56,81 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    permissions:
+      contents: read
+    outputs:
+      publish: ${{ steps.release.outputs.publish }}
+      tags: ${{ steps.meta.outputs.tags }}
     steps:
+      # A dispatched tag is checked before it reaches checkout.
+      - name: Ref
+        id: ref
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          if [ -n "$TAG" ]; then
+            [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::'$TAG' is not a release tag (vX.Y.Z)"; exit 1; }
+            echo "ref=refs/tags/$TAG" >>"$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.ref.outputs.ref }}  # empty: the event's own ref
+
+      # publish / latest / version / revision. A tag must be vX.Y.Z and pass
+      # the D26 version gate (tag = v<VERSION>, CHANGELOG section); latest
+      # only for the highest vX.Y.Z tag on the remote. Every output is checked
+      # against a one-line pattern before it is written. Inline, not a script:
+      # a dispatch checks out an older tag, which lacks new tools.
+      - name: Release
+        id: release
+        env:
+          TAG: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name || '') }}
+        run: |
+          set -euo pipefail
+          out() { [[ $2 =~ $3 ]] || { echo "::error::bad $1 value"; exit 1; }; printf '%s=%s\n' "$1" "$2" >>"$GITHUB_OUTPUT"; }
+          semver='^[0-9]+\.[0-9]+\.[0-9]+$'
+          if [ -n "$TAG" ]; then
+            [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::'$TAG' is not a release tag (vX.Y.Z)"; exit 1; }
+            tools/check-version.sh --tag "$TAG"
+            highest=$(git ls-remote --tags --refs origin 'refs/tags/v*' | sed 's|.*refs/tags/||' \
+              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
+            latest=false; [ "$TAG" = "$highest" ] && latest=true
+            echo "highest release tag: $highest; latest: $latest"
+            out publish true '^true$'
+            out latest "$latest" '^(true|false)$'
+            out version "${TAG#v}" "$semver"
+          else
+            out publish false '^false$'
+            out latest false '^false$'
+            out version "$(tr -d '[:space:]' <VERSION)" "$semver"
+          fi
+          out revision "$(git rev-parse HEAD)" '^[0-9a-f]{40}$'
+
+      - name: Image name
+        id: image
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          name="ghcr.io/${OWNER,,}/murmur-server"
+          [[ $name =~ ^ghcr\.io/[a-z0-9-]+/murmur-server$ ]] || { echo "::error::bad image name"; exit 1; }
+          echo "name=$name" >>"$GITHUB_OUTPUT"
+
+      # Registry tags (release only) and OCI labels (every build).
+      - name: Tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.name }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=${{ steps.release.outputs.version }},enable=${{ steps.release.outputs.publish }}
+            type=raw,value=latest,enable=${{ steps.release.outputs.latest }}
+          labels: |
+            org.opencontainers.image.title=murmur-server
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.release.outputs.version }}
+            org.opencontainers.image.revision=${{ steps.release.outputs.revision }}
 
       - uses: docker/setup-buildx-action@v3
 
@@ -58,8 +143,9 @@ jobs:
           push: false
           load: true
           tags: murmur-server:ci
+          labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            MURMUR_GIT_SHA=${{ github.sha }}
+            MURMUR_GIT_SHA=${{ steps.release.outputs.revision }}
             CARGO_BUILD_JOBS=4
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -82,3 +168,50 @@ jobs:
           for f in COPYRIGHT NOTICE THIRD-PARTY-LICENSES; do test -s "img/$f" || { echo "FAIL: no /opt/murmur-server/$f"; exit 1; }; done
           grep -q 'All rights reserved' img/COPYRIGHT
           tools/checks/no-tts-libs.sh img/lib/*.so*
+
+      # Release only: hand the tested image to the publish job.
+      - name: Save image
+        if: steps.release.outputs.publish == 'true'
+        run: docker save murmur-server:ci | gzip -1 >image.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        if: steps.release.outputs.publish == 'true'
+        with:
+          name: murmur-server-image
+          path: image.tar.gz
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+
+  # The only job that can write packages; runs for release tags only.
+  publish:
+    needs: build
+    if: (github.ref_type == 'tag' || inputs.tag) && needs.build.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: murmur-server-image
+
+      - name: Load the tested image
+        run: gunzip -c image.tar.gz | docker load
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish
+        env:
+          TAGS: ${{ needs.build.outputs.tags }}
+        run: |
+          for t in $TAGS; do
+            docker tag murmur-server:ci "$t"
+            docker push "$t"
+          done
