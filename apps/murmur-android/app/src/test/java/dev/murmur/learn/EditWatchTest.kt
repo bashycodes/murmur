@@ -97,6 +97,58 @@ class EditWatchTest {
         assertEquals(Outcome(EndReason.CLEARED, null), w.observe(750, t("")))
     }
 
+    @Test fun aDeletionMidTextBeforeAClearIsNotAFix() {
+        val w = EditWatch("see you at noon", a("", ""), 0, fast)
+        w.observe(0, t("see you at noon"))
+        w.observe(250, t("see at noon"))
+        assertEquals(Outcome(EndReason.CLEARED, null), w.observe(500, t("")))
+        // A fix then a deletion: the fix stays the last good one.
+        val v = EditWatch("teh plan for today", a("", ""), 0, fast)
+        v.observe(0, t("teh plan for today"))
+        v.observe(250, t("the plan for today"))
+        v.observe(500, t("the plan today"))
+        assertEquals(Outcome(EndReason.CLEARED, "the plan for today"), v.observe(750, t("")))
+    }
+
+    @Test fun deletionIsASubsequenceCheck() {
+        assertTrue(EditText.isDeletionOf("see at noon", "see you at noon"))
+        assertTrue(EditText.isDeletionOf("", "x"))
+        assertFalse("same length", EditText.isDeletionOf("the plan", "teh plan"))
+        assertFalse("reordered", EditText.isDeletionOf("the pln", "teh plan"))
+    }
+
+    @Test fun anOldWatchClosingAfterANewOneOpenedKeepsEventsOn() {
+        val calls = ArrayList<Boolean>()
+        val subs = ChangeSubscriptions<Any> { calls += it }
+        val old = Any()
+        val new = Any()
+        subs.open(old)
+        subs.open(new)
+        subs.close(old)
+        assertEquals("the late close changes nothing", listOf(true, true), calls)
+        assertTrue(subs.current === new)
+        subs.close(new)
+        assertEquals(listOf(true, true, false), calls)
+        assertNull(subs.current)
+    }
+
+    @Test fun overlappingOpenAndCloseLeaveTheNewestOn() {
+        // Threads racing an old close against a new open: the last setEvents always matches
+        // whether a subscription is open.
+        repeat(200) {
+            var on = false
+            val subs = ChangeSubscriptions<Any> { on = it }
+            val old = Any()
+            subs.open(old)
+            val new = Any()
+            val a = Thread { subs.close(old) }
+            val b = Thread { subs.open(new) }
+            a.start(); b.start(); a.join(); b.join()
+            assertTrue(subs.current === new)
+            assertTrue("events on for the open watch", on)
+        }
+    }
+
     /** Text-changed events at fixed virtual times; pending ones answer at once. */
     private class Events(private val clock: LongArray, times: List<Long>) : FieldChanges {
         private val left = ArrayDeque(times)

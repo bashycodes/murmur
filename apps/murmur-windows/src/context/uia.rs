@@ -249,6 +249,8 @@ pub struct UiaFieldReader {
     // `Option` so Drop can release the COM objects before CoUninitialize.
     com: Option<(IUIAutomation, IUIAutomationElement)>,
     inited: bool,
+    /// Name / HelpText at bind time: a value equal to one is a placeholder.
+    hints: Vec<String>,
 }
 
 /// Bind to the focused control; `None` for password fields and controls
@@ -256,14 +258,25 @@ pub struct UiaFieldReader {
 pub fn field_reader() -> Option<UiaFieldReader> {
     unsafe {
         let inited = CoInitializeEx(None, COINIT_MULTITHREADED).is_ok();
-        let mut r = UiaFieldReader { com: None, inited };
+        let mut r = UiaFieldReader {
+            com: None,
+            inited,
+            hints: Vec::new(),
+        };
         let uia: IUIAutomation =
             CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).ok()?;
         let el = uia.GetFocusedElement().ok()?;
         if el.CurrentIsPassword().map(|b| b.as_bool()).unwrap_or(true) {
             return None;
         }
-        read_whole(&el)?;
+        let now = read_whole(&el)?;
+        // The field holds the paste now, so a Name / HelpText equal to it
+        // mirrors the content (some controls do) and is no placeholder.
+        r.hints = [el.CurrentName(), el.CurrentHelpText()]
+            .into_iter()
+            .filter_map(|b| b.ok().map(|b| b.to_string()))
+            .filter(|h| !h.trim().is_empty() && h.trim() != now.trim())
+            .collect();
         r.com = Some((uia, el));
         Some(r)
     }
@@ -301,7 +314,7 @@ impl crate::learn::FieldReader for UiaFieldReader {
                 Err(_) => return Read::Unavailable,
             }
             match read_whole(el) {
-                Some(t) => Read::Text(t),
+                Some(t) => Read::Text(crate::learn::without_placeholder(t, &self.hints)),
                 None => Read::Unavailable,
             }
         }
@@ -311,7 +324,8 @@ impl crate::learn::FieldReader for UiaFieldReader {
     /// before is read even when the last poll missed it. Gone → `None`.
     fn final_read(&mut self) -> Option<String> {
         let (_, el) = self.com.as_ref()?;
-        unsafe { read_whole(el) }
+        let t = unsafe { read_whole(el) }?;
+        Some(crate::learn::without_placeholder(t, &self.hints))
     }
 }
 

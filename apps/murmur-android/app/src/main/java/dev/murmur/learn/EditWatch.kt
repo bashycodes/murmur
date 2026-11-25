@@ -38,6 +38,28 @@ fun interface FieldReader {
     fun read(): FieldRead
 }
 
+/**
+ * At most one open [FieldChanges] subscription; [setEvents] turns the platform's text events on
+ * or off. Open and close (and the [setEvents] call they make) run under one lock, so an old
+ * watch closing after a newer one opened never turns the newer one's events off.
+ */
+class ChangeSubscriptions<T : Any>(private val setEvents: (Boolean) -> Unit) {
+    @Volatile var current: T? = null
+        private set
+
+    @Synchronized fun open(sub: T) {
+        current = sub
+        setEvents(true)
+    }
+
+    /** Ends [sub] if it is still the open one; a replaced subscription changes nothing. */
+    @Synchronized fun close(sub: T) {
+        if (current !== sub) return
+        current = null
+        setEvents(false)
+    }
+}
+
 /** Text-changed signal for the watched field (no text: only "something changed"). */
 interface FieldChanges : AutoCloseable {
     /** True as soon as a change arrived (or one is pending), false after [timeoutMs] without. */
@@ -94,6 +116,18 @@ data class Anchors(val before: String = "", val after: String = "") {
 }
 
 object EditText {
+    /** [next] is [prev] with characters removed and none added (a subsequence). */
+    fun isDeletionOf(next: String, prev: String): Boolean {
+        if (next.length >= prev.length) return false
+        var j = 0
+        for (c in next) {
+            while (j < prev.length && prev[j] != c) j++
+            if (j == prev.length) return false
+            j++
+        }
+        return true
+    }
+
     /** Collapse whitespace so trailing spaces / line breaks from the insert don't count as edits. */
     fun normalize(s: String): String = s.split(Regex("\\s+")).filter { it.isNotEmpty() }.joinToString(" ")
 
@@ -165,15 +199,17 @@ class EditWatch(pasted: String, private val anchors: Anchors, private val starte
     private var baselineSeen = false
     private var lastRegion: String? = null
     /**
-     * The last region that wasn't just a cut of the one before (backspacing from the end): what
-     * a clear learns from, so holding Backspace down to an empty field isn't read as a fix.
+     * The last region that wasn't a pure deletion from the one before (Backspace / Delete
+     * anywhere, nothing typed): what a clear learns from, so deleting text on the way to an
+     * empty field isn't read as a fix. Accepted trade-off: a fix that only deletes ("colour" →
+     * "color") right before a clear isn't learned; after a timeout or focus change it still is.
      */
     private var lastGood: String? = null
     private var lastChangeMs = startedMs
 
     private fun remember(r: String) {
         val good = lastGood
-        if (good == null || !(r.length < good.length && good.startsWith(r))) lastGood = r
+        if (good == null || !EditText.isDeletionOf(r, good)) lastGood = r
         lastRegion = r
     }
 

@@ -136,14 +136,14 @@ class MurmurAccessibilityService : AccessibilityService(), AccessibilityBridge {
         // Text-changed events are only subscribed while an edit watch runs (editChanges) and
         // feed only that watch: the bubble's state loop doesn't need a wake per keystroke.
         if (event?.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) {
-            editSignal?.let { (pkg, ch) -> if (event.packageName?.toString() == pkg) ch.trySend(Unit) }
+            editSubs.current?.let { (pkg, ch) -> if (event.packageName?.toString() == pkg) ch.trySend(Unit) }
             return
         }
         wake.trySend(Unit)
     }
 
     /** The open [editChanges] handle: the watched app and its conflated signal. */
-    @Volatile private var editSignal: Pair<String?, Channel<Unit>>? = null
+    private val editSubs = dev.murmur.learn.ChangeSubscriptions<Pair<String, Channel<Unit>>>(::setTextEvents)
 
     /**
      * Subscribe to TYPE_VIEW_TEXT_CHANGED for the field [editReader] reads, until the handle is
@@ -153,20 +153,14 @@ class MurmurAccessibilityService : AccessibilityService(), AccessibilityBridge {
     override fun editChanges(): dev.murmur.learn.FieldChanges? {
         val snap = startSnapshot ?: return null
         if (startFieldProtected || BubbleVisibilityPolicy.isRestricted(snap.pkg)) return null
-        val signal = snap.pkg to Channel<Unit>(Channel.CONFLATED)
-        synchronized(this) { editSignal = signal }
-        setTextEvents(true)
+        val pkg = snap.pkg ?: return null // a null package would match null-package events
+        val signal = pkg to Channel<Unit>(Channel.CONFLATED)
+        editSubs.open(signal)
         return object : dev.murmur.learn.FieldChanges {
             override suspend fun await(timeoutMs: Long): Boolean =
                 withTimeoutOrNull(timeoutMs) { signal.second.receive() } != null
 
-            override fun close() {
-                synchronized(this@MurmurAccessibilityService) {
-                    if (editSignal !== signal) return
-                    editSignal = null
-                }
-                setTextEvents(false)
-            }
+            override fun close() = editSubs.close(signal)
         }
     }
 

@@ -20,6 +20,12 @@
 //! once more ([`FieldReader::final_read`]). A clear can't be read ahead of:
 //! the app empties the field in reply to Enter or its send button, and UIA
 //! only reports a text change after it happened.
+//!
+//! Placeholders: a control that reports its hint as its value while empty
+//! is read as empty when the text equals its UIA Name or HelpText (read
+//! once when the watch starts, [`without_placeholder`]). A hint shown only
+//! by drawing it, or one exposed nowhere else, can't be told apart from
+//! typed text.
 
 use crate::context::{head_chars, tail_chars};
 use crate::core_api::FieldContext;
@@ -179,15 +185,35 @@ pub struct EditWatch {
     opts: WatchOpts,
     baseline_seen: bool,
     last_region: Option<String>,
-    /// The last region that wasn't just a cut of the one before (backspacing
-    /// from the end): what a clear learns from, so holding Backspace down to
-    /// an empty field isn't read as a correction.
+    /// The last region that wasn't a pure deletion from the one before
+    /// (Backspace / Delete anywhere, nothing typed): what a clear learns
+    /// from, so deleting text on the way to an empty field isn't read as a
+    /// correction.
     last_good: Option<String>,
 }
 
-/// `next` is `prev` with characters removed from its end.
-fn is_cut_of(next: &str, prev: &str) -> bool {
-    next.len() < prev.len() && prev.starts_with(next)
+/// `next` is `prev` with characters removed and none added (a subsequence).
+/// Accepted trade-off: a fix that only deletes ("colour" → "color") made
+/// right before a clear isn't learned; after a timeout or a focus change it
+/// still is (those learn from the last region).
+fn is_deletion_of(next: &str, prev: &str) -> bool {
+    if next.len() >= prev.len() {
+        return false;
+    }
+    let mut rest = prev.chars();
+    next.chars().all(|c| rest.any(|p| p == c))
+}
+
+/// The read text, or `""` when it is only the field's placeholder: some
+/// controls report their hint (UIA Name or HelpText) as the value while
+/// empty, which would otherwise look like the dictation was replaced.
+pub fn without_placeholder(text: String, hints: &[String]) -> String {
+    let t = text.trim();
+    if !t.is_empty() && hints.iter().any(|h| h.trim() == t) {
+        String::new()
+    } else {
+        text
+    }
 }
 
 impl EditWatch {
@@ -205,7 +231,11 @@ impl EditWatch {
     }
 
     fn remember(&mut self, r: String) {
-        if !self.last_good.as_deref().is_some_and(|g| is_cut_of(&r, g)) {
+        if !self
+            .last_good
+            .as_deref()
+            .is_some_and(|g| is_deletion_of(&r, g))
+        {
             self.last_good = Some(r.clone());
         }
         self.last_region = Some(r);
@@ -649,6 +679,49 @@ mod tests {
         let o = w.focus_left(Some("something else"));
         assert_eq!(o.reason, EndReason::FocusChanged);
         assert_eq!(o.edited.as_deref(), Some("the plan"));
+    }
+
+    #[test]
+    fn a_deletion_mid_text_before_a_clear_is_not_a_fix() {
+        let mut w = EditWatch::new("see you at noon", a("", ""), 0, FAST);
+        w.observe(0, Read::Text("see you at noon".into()));
+        w.observe(250, Read::Text("see at noon".into()));
+        assert_eq!(
+            w.observe(500, Read::Text(String::new())),
+            Step::Done(Outcome {
+                reason: EndReason::Cleared,
+                edited: None
+            })
+        );
+        // A fix then a deletion: the fix is still the last good one.
+        let mut w = EditWatch::new("teh plan for today", a("", ""), 0, FAST);
+        w.observe(0, Read::Text("teh plan for today".into()));
+        w.observe(250, Read::Text("the plan for today".into()));
+        w.observe(500, Read::Text("the plan today".into()));
+        match w.observe(750, Read::Text(String::new())) {
+            Step::Done(o) => assert_eq!(o.edited.as_deref(), Some("the plan for today")),
+            s => panic!("{s:?}"),
+        }
+    }
+
+    #[test]
+    fn deletion_is_a_subsequence_check() {
+        assert!(is_deletion_of("see at noon", "see you at noon"));
+        assert!(is_deletion_of("", "x"));
+        assert!(!is_deletion_of("the plan", "teh plan"), "same length");
+        assert!(!is_deletion_of("the pln", "teh plan"), "reordered");
+    }
+
+    #[test]
+    fn a_placeholder_reads_as_empty() {
+        let hints = ["Type a message".to_string(), String::new()];
+        assert_eq!(without_placeholder(" Type a message ".into(), &hints), "");
+        assert_eq!(
+            without_placeholder("hello".into(), &hints),
+            "hello",
+            "real text stays"
+        );
+        assert_eq!(without_placeholder(String::new(), &hints), "");
     }
 
     #[test]
