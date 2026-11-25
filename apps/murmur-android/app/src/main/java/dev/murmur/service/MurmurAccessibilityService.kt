@@ -44,6 +44,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Keyboard-visibility watcher + insertion channel.
@@ -131,7 +132,46 @@ class MurmurAccessibilityService : AccessibilityService(), AccessibilityBridge {
     override fun probeAlive(): Boolean =
         runCatching { windows.isNotEmpty() || rootInActiveWindow != null }.getOrDefault(false)
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) { wake.trySend(Unit) }
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        // Text-changed events are only subscribed while an edit watch runs (editChanges) and
+        // feed only that watch: the bubble's state loop doesn't need a wake per keystroke.
+        if (event?.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) {
+            editSubs.current?.let { (pkg, ch) -> if (event.packageName?.toString() == pkg) ch.trySend(Unit) }
+            return
+        }
+        wake.trySend(Unit)
+    }
+
+    /** The open [editChanges] handle: the watched app and its conflated signal. */
+    private val editSubs = dev.murmur.learn.ChangeSubscriptions<Pair<String, Channel<Unit>>>(::setTextEvents)
+
+    /**
+     * Subscribe to TYPE_VIEW_TEXT_CHANGED for the field [editReader] reads, until the handle is
+     * closed (at most one at a time; a newer handle replaces an older one). The event's text is
+     * never looked at: it only triggers a read through [editReader]'s checks.
+     */
+    override fun editChanges(): dev.murmur.learn.FieldChanges? {
+        val snap = startSnapshot ?: return null
+        if (startFieldProtected || BubbleVisibilityPolicy.isRestricted(snap.pkg)) return null
+        val pkg = snap.pkg ?: return null // a null package would match null-package events
+        val signal = pkg to Channel<Unit>(Channel.CONFLATED)
+        editSubs.open(signal)
+        return object : dev.murmur.learn.FieldChanges {
+            override suspend fun await(timeoutMs: Long): Boolean =
+                withTimeoutOrNull(timeoutMs) { signal.second.receive() } != null
+
+            override fun close() = editSubs.close(signal)
+        }
+    }
+
+    private fun setTextEvents(on: Boolean) {
+        runCatching {
+            val info = serviceInfo ?: return
+            val type = AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED
+            info.eventTypes = if (on) info.eventTypes or type else info.eventTypes and type.inv()
+            serviceInfo = info
+        }.onFailure { Log.w(TAG, "text events", it) }
+    }
 
     override fun onInterrupt() = Unit
 

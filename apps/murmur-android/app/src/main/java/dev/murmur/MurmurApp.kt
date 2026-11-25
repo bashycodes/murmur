@@ -364,6 +364,12 @@ interface AccessibilityBridge {
     fun editReader(): dev.murmur.learn.FieldReader? = null
 
     /**
+     * Learn from my edits (D110): text-changed events of the app [editReader] reads, while the
+     * returned handle is open. Null = no events; the watch falls back to its timer.
+     */
+    fun editChanges(): dev.murmur.learn.FieldChanges? = null
+
+    /**
      * Command Mode: the focused field's text + selection, or why it is refused (password /
      * sensitive / banking / denylisted / no field). Pins the field like [captureFieldContext].
      */

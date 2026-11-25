@@ -456,7 +456,8 @@ class MurmurService : Service() {
     // ---- learn from my edits ----
 
     /**
-     * After an insert, re-read the same field (off Main, once a second, up to 45 s) and turn the
+     * After an insert, re-read the same field (off Main, on text changes and once a second, at
+     * most every 250 ms, up to 45 s) and turn the
      * user's corrections into Dictionary suggestions. Nothing is added to the dictionary here.
      * A new dictation ends the watch (its last observation still counts, as on Windows);
      * turning the setting off ends it without learning.
@@ -470,10 +471,15 @@ class MurmurService : Service() {
         learnStop = stop
         learnJob = scope.launch(Dispatchers.Default) {
             val watch = EditWatch(pasted, Anchors.of(ctx), SystemClock.elapsedRealtime())
-            val outcome = runWatch(
-                { if (stop.get()) FieldRead.FocusChanged else reader.read() }, watch, SystemClock::elapsedRealtime, { delay(it) },
-                stillWanted = { app.settings.load().learnFromEdits },
-            )
+            val changes = app.accessibility?.editChanges()
+            val outcome = try {
+                runWatch(
+                    { if (stop.get()) FieldRead.FocusChanged else reader.read() }, watch, SystemClock::elapsedRealtime, { delay(it) },
+                    stillWanted = { app.settings.load().learnFromEdits }, changes = changes,
+                )
+            } finally {
+                changes?.close()
+            }
             val core = (app.engine.state.value as? dev.murmur.EngineHolder.State.Ready)?.core
             var added: List<dev.murmur.learn.Suggestion> = emptyList()
             if (core != null && outcome.edited != null) {

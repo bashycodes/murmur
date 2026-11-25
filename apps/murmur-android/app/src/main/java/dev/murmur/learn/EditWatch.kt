@@ -17,6 +17,12 @@ import dev.murmur.core.FieldContext
  * End reasons mirror the Windows shell's; only [EndReason.counts]
  * ones are learned from. Android addition: [EndReason.STABLE] ends the watch early once an
  * edit has stopped changing for [WatchOpts.stableMs], so the field isn't read longer than needed.
+ *
+ * Timing (D110): besides the [WatchOpts.pollMs] timer, the field is read
+ * [WatchOpts.settleMs] after each text-changed accessibility event ([FieldChanges]), never
+ * closer than [WatchOpts.minReadGapMs] to the previous read, so a fix that stays in the field
+ * for 300 ms is seen before a send or clear. A cleared field ([EndReason.CLEARED]) learns from
+ * the last good observation, never from the empty field.
  */
 sealed interface FieldRead {
     /** The whole text of the watched field (still focused). */
@@ -32,19 +38,56 @@ fun interface FieldReader {
     fun read(): FieldRead
 }
 
+/**
+ * At most one open [FieldChanges] subscription; [setEvents] turns the platform's text events on
+ * or off. Open and close (and the [setEvents] call they make) run under one lock, so an old
+ * watch closing after a newer one opened never turns the newer one's events off.
+ */
+class ChangeSubscriptions<T : Any>(private val setEvents: (Boolean) -> Unit) {
+    @Volatile var current: T? = null
+        private set
+
+    @Synchronized fun open(sub: T) {
+        current = sub
+        setEvents(true)
+    }
+
+    /** Ends [sub] if it is still the open one; a replaced subscription changes nothing. */
+    @Synchronized fun close(sub: T) {
+        if (current !== sub) return
+        current = null
+        setEvents(false)
+    }
+}
+
+/** Text-changed signal for the watched field (no text: only "something changed"). */
+interface FieldChanges : AutoCloseable {
+    /** True as soon as a change arrived (or one is pending), false after [timeoutMs] without. */
+    suspend fun await(timeoutMs: Long): Boolean
+
+    /** Stop listening for changes. */
+    override fun close()
+}
+
 data class WatchOpts(
     /** Total observation window (Windows `learn_window_ms`). */
     val windowMs: Long = 45_000,
     /** The inserted text must show up in the field within this time. */
     val baselineMs: Long = 3_000,
-    /** Re-read interval (Windows `learn_poll_ms`). */
+    /** Re-read interval without a text-changed event (Windows `learn_poll_ms`). */
     val pollMs: Long = 1_000,
+    /** Cost bound: at most one read per this many ms, events or not. */
+    val minReadGapMs: Long = 250,
+    /** After a text-changed event, wait this long so a burst of keystrokes is one read. */
+    val settleMs: Long = 100,
     /** An edit unchanged this long ends the watch early ([EndReason.STABLE]). */
     val stableMs: Long = 8_000,
 )
 
 enum class EndReason {
     TIMEOUT, FOCUS_CHANGED, STABLE,
+    /** The whole field became empty (sent or cleared): the last good observation counts. */
+    CLEARED,
     /** The text around the insert changed so the region can't be found. */
     ANCHOR_MISMATCH,
     /** The user deleted the dictated text (or sent it: chat boxes clear). */
@@ -56,7 +99,7 @@ enum class EndReason {
     ;
 
     /** Whether the last observation may be learned from. */
-    val counts: Boolean get() = this == TIMEOUT || this == FOCUS_CHANGED || this == STABLE
+    val counts: Boolean get() = this == TIMEOUT || this == FOCUS_CHANGED || this == STABLE || this == CLEARED
 }
 
 /** [edited]: the corrected region, when the reason counts and it differs from the insert. */
@@ -73,6 +116,18 @@ data class Anchors(val before: String = "", val after: String = "") {
 }
 
 object EditText {
+    /** [next] is [prev] with characters removed and none added (a subsequence). */
+    fun isDeletionOf(next: String, prev: String): Boolean {
+        if (next.length >= prev.length) return false
+        var j = 0
+        for (c in next) {
+            while (j < prev.length && prev[j] != c) j++
+            if (j == prev.length) return false
+            j++
+        }
+        return true
+    }
+
     /** Collapse whitespace so trailing spaces / line breaks from the insert don't count as edits. */
     fun normalize(s: String): String = s.split(Regex("\\s+")).filter { it.isNotEmpty() }.joinToString(" ")
 
@@ -143,7 +198,20 @@ class EditWatch(pasted: String, private val anchors: Anchors, private val starte
     private val pastedLen = pasted.length
     private var baselineSeen = false
     private var lastRegion: String? = null
+    /**
+     * The last region that wasn't a pure deletion from the one before (Backspace / Delete
+     * anywhere, nothing typed): what a clear learns from, so deleting text on the way to an
+     * empty field isn't read as a fix. Accepted trade-off: a fix that only deletes ("colour" →
+     * "color") right before a clear isn't learned; after a timeout or focus change it still is.
+     */
+    private var lastGood: String? = null
     private var lastChangeMs = startedMs
+
+    private fun remember(r: String) {
+        val good = lastGood
+        if (good == null || !EditText.isDeletionOf(r, good)) lastGood = r
+        lastRegion = r
+    }
 
     /** Null = keep watching. */
     fun observe(nowMs: Long, read: FieldRead): Outcome? {
@@ -153,6 +221,7 @@ class EditWatch(pasted: String, private val anchors: Anchors, private val starte
             FieldRead.FocusChanged -> return finish(EndReason.FOCUS_CHANGED)
             FieldRead.Unavailable -> Unit
             is FieldRead.Text -> {
+                if (baselineSeen && EditText.normalize(read.text).isEmpty()) return finish(EndReason.CLEARED)
                 val raw = EditText.region(read.text, anchors, pastedLen)
                 when {
                     raw == null && !baselineSeen -> if (baselineOver) return finish(EndReason.PASTE_NOT_OBSERVED)
@@ -160,12 +229,13 @@ class EditWatch(pasted: String, private val anchors: Anchors, private val starte
                     else -> {
                         val r = EditText.normalize(raw)
                         if (!baselineSeen) {
-                            if (r == pastedNorm) { baselineSeen = true; lastRegion = r; lastChangeMs = nowMs }
+                            if (r == pastedNorm) { baselineSeen = true; remember(r); lastChangeMs = nowMs }
                             else if (baselineOver) return finish(EndReason.PASTE_NOT_OBSERVED)
                         } else if (r.isEmpty()) {
                             return finish(EndReason.REGION_REMOVED)
                         } else {
-                            if (r != lastRegion) { lastRegion = r; lastChangeMs = nowMs }
+                            if (r != lastRegion) lastChangeMs = nowMs
+                            remember(r)
                             if (r != pastedNorm && nowMs - lastChangeMs >= opts.stableMs) return finish(EndReason.STABLE)
                         }
                     }
@@ -177,22 +247,33 @@ class EditWatch(pasted: String, private val anchors: Anchors, private val starte
     }
 
     fun finish(reason: EndReason): Outcome {
-        val edited = if (reason.counts && baselineSeen) lastRegion?.takeIf { it != pastedNorm && it.isNotEmpty() } else null
+        val last = if (reason == EndReason.CLEARED) lastGood else lastRegion
+        val edited = if (reason.counts && baselineSeen) last?.takeIf { it != pastedNorm && it.isNotEmpty() } else null
         return Outcome(reason, edited)
     }
 }
 
 /**
- * Drive [reader] until the watch ends: read, observe, sleep [WatchOpts.pollMs]. [stillWanted]
- * is checked before every read, so turning the setting off stops the re-reads at once.
+ * Drive [reader] until the watch ends: read, observe, then wait for a text-changed event from
+ * [changes] or [WatchOpts.pollMs] (from the start of the read), whichever comes first. After an
+ * event the next read waits [WatchOpts.settleMs]; reads never start closer than
+ * [WatchOpts.minReadGapMs]. Without [changes] it is a plain timer. [stillWanted] is checked
+ * before every read, so turning the setting off stops the re-reads at once.
  */
 suspend fun runWatch(
     reader: FieldReader, watch: EditWatch, now: () -> Long, sleep: suspend (Long) -> Unit,
     stillWanted: () -> Boolean = { true },
+    changes: FieldChanges? = null,
 ): Outcome {
+    val gap = watch.opts.minReadGapMs.coerceAtLeast(1)
+    val poll = watch.opts.pollMs.coerceAtLeast(gap)
     while (true) {
         if (!stillWanted()) return watch.finish(EndReason.CANCELLED)
-        watch.observe(now(), reader.read())?.let { return it }
-        sleep(watch.opts.pollMs.coerceAtLeast(1))
+        val started = now()
+        watch.observe(started, reader.read())?.let { return it }
+        val untilPoll = (started + poll - now()).coerceAtLeast(1)
+        val changed = if (changes != null) changes.await(untilPoll) else { sleep(untilPoll); false }
+        val wait = maxOf(if (changed) watch.opts.settleMs else 0, started + gap - now())
+        if (wait > 0) sleep(wait)
     }
 }
