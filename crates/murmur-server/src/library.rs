@@ -22,16 +22,17 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, UNIX_EPOCH};
 
 use axum::body::{Body, Bytes};
-use axum::extract::{Path as UrlPath, State};
+use axum::extract::{ConnectInfo, Path as UrlPath, State};
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
-use axum::Router;
+use axum::{Extension, Router};
 use murmur_protocol::library::{
     catalogue, is_safe_name, LibraryFile, LibraryModel, ModelKind, ModelList,
 };
@@ -535,13 +536,13 @@ pub(crate) fn routes() -> Router<Arc<AppState>> {
         .route("/v1/models/{id}/files/{*name}", get(file_handler))
 }
 
-fn unauthorized() -> Response {
-    (StatusCode::UNAUTHORIZED, "unauthorized").into_response()
-}
-
-async fn list_handler(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Response {
-    if crate::authorize(&state, &headers).is_err() {
-        return unauthorized();
+async fn list_handler(
+    State(state): State<Arc<AppState>>,
+    Extension(ConnectInfo(peer)): Extension<ConnectInfo<SocketAddr>>,
+    headers: HeaderMap,
+) -> Response {
+    if let Err(d) = crate::authorize(&state, peer.ip(), &headers) {
+        return d.into_response();
     }
     let list = state
         .library
@@ -616,11 +617,13 @@ impl Drop for Counted {
 
 async fn file_handler(
     State(state): State<Arc<AppState>>,
+    Extension(ConnectInfo(peer)): Extension<ConnectInfo<SocketAddr>>,
     UrlPath((id, name)): UrlPath<(String, String)>,
     headers: HeaderMap,
 ) -> Response {
-    let Ok(key) = crate::authorize(&state, &headers) else {
-        return unauthorized();
+    let key = match crate::authorize(&state, peer.ip(), &headers) {
+        Ok(key) => key,
+        Err(d) => return d.into_response(),
     };
     let not_found = || (StatusCode::NOT_FOUND, "no such model file").into_response();
     let Some(lib) = &state.library else {

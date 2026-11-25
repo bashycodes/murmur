@@ -175,6 +175,11 @@ and `core` = the plain product version are informational only.
   dropped too); at most `max_connections` (64) sockets in total and
   `max_connections_per_ip` (16) per peer are open, upgraded WebSockets
   included. Excess connections are closed at accept.
+* Failed-auth lockout (D112): `[auth_throttle] max_failures` (10) failed
+  auths from one non-loopback IP within 60 s lock it for `lockout_secs`
+  (30 s, doubling per repeat, ≤ 15 min). While locked, every authenticated
+  route answers `429` with `Retry-After` before the key is checked (the
+  stream upgrade included; the admin API with code `throttled`).
 * Keepalive (C5): the server sends a WebSocket ping every `ws_ping_ms`
   (15 s) and drops a connection that has sent no frame at all, pongs
   included, for `ws_dead_ms` (45 s), with or without a session; its session

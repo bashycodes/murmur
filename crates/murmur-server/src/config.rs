@@ -73,6 +73,9 @@ pub struct Config {
     /// Open TCP connections, total and per peer IP (S7).
     pub max_connections: usize,
     pub max_connections_per_ip: usize,
+    /// `[auth_throttle]`: lock out a peer IP after repeated failed auths
+    /// (D112).
+    pub auth_throttle: crate::auth_throttle::AuthThrottleConfig,
     /// WebSocket ping interval, and how long a connection may stay silent
     /// (not even a pong) before it is dropped with its session (C5;
     /// protocol.md §1: 15 s / 45 s).
@@ -110,6 +113,7 @@ impl Default for Config {
             handshake_timeout_ms: 10_000,
             max_connections: 64,
             max_connections_per_ip: 16,
+            auth_throttle: Default::default(),
             ws_ping_ms: murmur_protocol::WS_PING_S * 1000,
             ws_dead_ms: murmur_protocol::WS_DEAD_S * 1000,
             llm_timeout_per_char_ms: 15,
@@ -313,6 +317,25 @@ pub fn write_token(path: &Path) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn auth_throttle_is_optional_with_defaults() {
+        let c = Config::from_toml("").unwrap();
+        assert_eq!(c.auth_throttle.max_failures, 10);
+        assert_eq!(c.auth_throttle.lockout_secs, 30);
+        assert!(c.auth_throttle.exempt_loopback);
+        let c = Config::from_toml("[auth_throttle]\nmax_failures = 5\n").unwrap();
+        assert_eq!(c.auth_throttle.max_failures, 5);
+        assert_eq!(c.auth_throttle.lockout_secs, 30);
+        assert!(
+            c.auth_throttle.exempt_loopback,
+            "not settable from the file"
+        );
+        assert!(
+            Config::from_toml("[auth_throttle]\nexempt_loopback = false\n")
+                .is_ok_and(|c| c.auth_throttle.exempt_loopback)
+        );
+    }
 
     #[test]
     fn whisper_lib_comes_from_the_config_else_the_environment() {

@@ -191,6 +191,20 @@ firewall the port**: without `[tls]`, audio, text and keys cross the network
 unencrypted. The server logs a warning at startup for a wildcard or public
 bind without `[tls]`. `--insecure-bind-any` is still accepted and does nothing.
 
+Wrong keys are rate-limited per address (D112): after 10 failed attempts
+within 60 s, that address gets `429 Too Many Requests` (with `Retry-After`)
+on every authenticated route for 30 s, even with the right key. Each repeat
+lockout doubles the wait, up to 15 min; 15 min without one resets it, and a
+successful login clears the count. Loopback is never locked out, and
+`auth = "none"` has nothing to throttle. Each lockout logs one warning with
+the address. Tune it in `config.toml` (`max_failures = 0` turns it off):
+
+```toml
+[auth_throttle]
+max_failures = 10   # failed attempts per address within 60 s
+lockout_secs = 30   # first lockout; doubles on each repeat, at most 15 min
+```
+
 ## 4. Keys (who may connect)
 
 Every person or device gets its own **key** (D38): a named secret, pasted into

@@ -56,6 +56,10 @@ threads = 4            # 4 on the i7-6700: oversubscribing hyperthreads is far s
 # asr_backend = "whisper"
 # asr_path = "/var/lib/murmur-server/library/ivrit-whisper-large-v3-turbo-q5_0/ggml-ivrit-large-v3-turbo-q5_0.bin"
 
+# [auth_throttle]      # wrong keys from one address (D112; loopback exempt)
+# max_failures = 10    # failed attempts within 60 s that lock the address out (0 = off)
+# lockout_secs = 30    # first lockout (429 + Retry-After); doubles per repeat, at most 15 min
+
 # [tls]                # optional wss:// (LAN without a VPN); pin the cert in the client
 # cert = "/etc/murmur-server/cert.pem"
 # key = "/etc/murmur-server/key.pem"

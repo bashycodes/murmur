@@ -2,9 +2,12 @@
 
 use std::sync::Arc;
 
-use axum::extract::State;
-use axum::http::{HeaderMap, StatusCode};
+use std::net::SocketAddr;
+
+use axum::extract::{ConnectInfo, State};
+use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
+use axum::Extension;
 
 use crate::AppState;
 
@@ -35,9 +38,13 @@ pub(crate) fn hello_ok(state: &AppState, proto: u32) -> murmur_protocol::HelloOk
     }
 }
 
-pub(crate) async fn handler(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Response {
-    if crate::authorize(&state, &headers).is_err() {
-        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+pub(crate) async fn handler(
+    State(state): State<Arc<AppState>>,
+    Extension(ConnectInfo(peer)): Extension<ConnectInfo<SocketAddr>>,
+    headers: HeaderMap,
+) -> Response {
+    if let Err(d) = crate::authorize(&state, peer.ip(), &headers) {
+        return d.into_response();
     }
     let body = serde_json::to_string(&hello_ok(&state, murmur_protocol::PROTO_MAX)).unwrap();
     (

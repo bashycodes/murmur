@@ -19,6 +19,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 ### Added
 
 - **Server: a ready-made Docker image with each release.** No build needed: `docker run ghcr.io/bashycodes/murmur-server:<version>` (or `:latest`, the newest release), and `:<version>-cuda` / `:latest-cuda` for NVIDIA GPUs. The Compose file uses it by default (update with `docker compose pull`); building from the source still works (`-f deploy/docker-compose.build.yml up -d --build`). See `docs/server-setup.md`.
+- **Server: wrong keys are rate-limited.** An address that sends a wrong key 10 times within a minute is refused for 30 seconds, even with the right key, and the wait doubles on each repeat, up to 15 minutes. Your own devices are unaffected while they use a valid key, and connections from the server machine itself are never refused. Tune or turn it off with `[auth_throttle]` in `config.toml` (`docs/server-advanced.md`, D112).
 
 ### Changed
 

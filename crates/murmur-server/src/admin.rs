@@ -4,14 +4,15 @@
 //! needs an admin key (else 403). The new key's secret is in the create
 //! answer only: never logged, never stored (the key store keeps its hash).
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::body::Bytes;
-use axum::extract::{DefaultBodyLimit, Path, State};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, State};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get};
-use axum::Router;
+use axum::{Extension, Router};
 use murmur_protocol::admin::{
     code, AdminError, CreateKey, CreatedKey, KeyList, KeyView, RevokedKey, WhoAmI,
     MAX_ADMIN_BODY_BYTES, PATH_ADMIN_KEYS, PATH_WHOAMI,
@@ -64,43 +65,52 @@ fn key_error(e: KeyError) -> Response {
     error(status, c, e.to_string())
 }
 
-/// Why a request may not use the admin API: status, code, message.
-type Refusal = (StatusCode, &'static str, &'static str);
-
-/// The caller's key and the store, or why not: 404 `auth_off`, 401, or
-/// (with `need_admin`) 403.
+/// The caller's key and the store, or the refusal: 404 `auth_off`, 429
+/// `throttled` (D112), 401, or (with `need_admin`) 403.
 fn caller(
     state: &AppState,
+    peer: SocketAddr,
     headers: &HeaderMap,
     need_admin: bool,
-) -> Result<(KeyRef, Arc<KeyStore>), Refusal> {
+) -> Result<(KeyRef, Arc<KeyStore>), Box<Response>> {
     let Some(store) = state.keys.clone() else {
-        return Err((
+        return Err(Box::new(error(
             StatusCode::NOT_FOUND,
             code::AUTH_OFF,
             "this server runs without keys (auth = \"none\")",
-        ));
+        )));
     };
-    let Ok(Some(key)) = crate::authorize(state, headers) else {
-        return Err((
-            StatusCode::UNAUTHORIZED,
-            code::UNAUTHORIZED,
-            "unknown or revoked key",
-        ));
+    let key = match crate::authorize(state, peer.ip(), headers) {
+        Ok(Some(key)) => key,
+        Ok(None) | Err(crate::Denied::Unauthorized) => {
+            return Err(Box::new(error(
+                StatusCode::UNAUTHORIZED,
+                code::UNAUTHORIZED,
+                "unknown or revoked key",
+            )))
+        }
+        Err(crate::Denied::Throttled(d)) => {
+            let mut r = error(
+                StatusCode::TOO_MANY_REQUESTS,
+                code::THROTTLED,
+                "too many failed attempts from this address; try again later",
+            );
+            r.headers_mut().insert(
+                header::RETRY_AFTER,
+                crate::Denied::retry_after_secs(d).into(),
+            );
+            return Err(Box::new(r));
+        }
     };
     if need_admin && !key.admin {
         tracing::info!(key = %key.id, "admin: refused, not an admin key");
-        return Err((
+        return Err(Box::new(error(
             StatusCode::FORBIDDEN,
             code::FORBIDDEN,
             "this key is not an admin key",
-        ));
+        )));
     }
     Ok((key, store))
-}
-
-fn refused((status, c, m): Refusal) -> Response {
-    error(status, c, m)
 }
 
 fn view(k: &KeyInfo, current: &str) -> KeyView {
@@ -132,8 +142,12 @@ fn view_of(store: &KeyStore, id: &str, current: &str) -> KeyView {
         .unwrap_or_default()
 }
 
-async fn whoami(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Response {
-    match caller(&state, &headers, false) {
+async fn whoami(
+    State(state): State<Arc<AppState>>,
+    Extension(ConnectInfo(peer)): Extension<ConnectInfo<SocketAddr>>,
+    headers: HeaderMap,
+) -> Response {
+    match caller(&state, peer, &headers, false) {
         Ok((k, _)) => json(
             StatusCode::OK,
             &WhoAmI {
@@ -142,14 +156,18 @@ async fn whoami(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Respo
                 admin: k.admin,
             },
         ),
-        Err(r) => refused(r),
+        Err(r) => *r,
     }
 }
 
-async fn list(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Response {
-    let (me, store) = match caller(&state, &headers, true) {
+async fn list(
+    State(state): State<Arc<AppState>>,
+    Extension(ConnectInfo(peer)): Extension<ConnectInfo<SocketAddr>>,
+    headers: HeaderMap,
+) -> Response {
+    let (me, store) = match caller(&state, peer, &headers, true) {
         Ok(x) => x,
-        Err(r) => return refused(r),
+        Err(r) => return *r,
     };
     let keys = tokio::task::spawn_blocking(move || store.list())
         .await
@@ -162,10 +180,15 @@ async fn list(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Respons
     )
 }
 
-async fn create(State(state): State<Arc<AppState>>, headers: HeaderMap, body: Bytes) -> Response {
-    let (me, store) = match caller(&state, &headers, true) {
+async fn create(
+    State(state): State<Arc<AppState>>,
+    Extension(ConnectInfo(peer)): Extension<ConnectInfo<SocketAddr>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let (me, store) = match caller(&state, peer, &headers, true) {
         Ok(x) => x,
-        Err(r) => return refused(r),
+        Err(r) => return *r,
     };
     let req: CreateKey = match serde_json::from_slice(&body) {
         Ok(r) => r,
@@ -189,12 +212,13 @@ async fn create(State(state): State<Arc<AppState>>, headers: HeaderMap, body: By
 
 async fn revoke(
     State(state): State<Arc<AppState>>,
+    Extension(ConnectInfo(peer)): Extension<ConnectInfo<SocketAddr>>,
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Response {
-    let (me, store) = match caller(&state, &headers, true) {
+    let (me, store) = match caller(&state, peer, &headers, true) {
         Ok(x) => x,
-        Err(r) => return refused(r),
+        Err(r) => return *r,
     };
     let me_id = me.id.clone();
     let r = tokio::task::spawn_blocking(move || {
