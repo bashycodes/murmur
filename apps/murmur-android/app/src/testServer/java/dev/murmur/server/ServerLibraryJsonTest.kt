@@ -36,6 +36,19 @@ class ServerLibraryJsonTest {
         assertEquals("protocol", LibraryJson.parseDownload("")!!.kind)
     }
 
+    @Test fun aLockoutKeepsItsWait() {
+        // D112: too many wrong keys from this address; the server's wait comes along.
+        val r = LibraryJson.parseList("""{"ok":false,"error":"throttled","message":"m","retry_after_s":42}""") as ListResult.Failed
+        assertEquals(LibraryFailure("throttled", "m", 42), r.failure)
+        assertEquals("Too many wrong keys from this address. Try again in 42 s.", ServerModelPages.listFailed(r.failure))
+        val d = LibraryJson.parseDownload("""{"ok":false,"error":"throttled","message":"m"}""")!!
+        assertNull(d.retryAfterS)
+        assertEquals(
+            "Too many wrong keys from this address. Try again later. What arrived is kept.",
+            ServerModelPages.failed(d, resumable = true),
+        )
+    }
+
     @Test fun fileJsonIsWhatTheNativeSideReads() {
         val o = org.json.JSONObject(LibraryFile("a/b.onnx", 5, "c".repeat(64)).toJson())
         assertEquals("a/b.onnx", o.getString("name"))

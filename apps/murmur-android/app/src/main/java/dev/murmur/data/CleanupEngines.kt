@@ -122,6 +122,8 @@ object CleanupEngines {
     ): String = when {
         !caps.remote -> "Not in this build"
         !d.serverConfigured -> "Not set up"
+        // D112: reachable but locked out; the circuit stays open for the wait.
+        h?.error == dev.murmur.core.Lockout.CODE -> dev.murmur.core.Lockout.text(h.retryAfterS)
         circuitOpen || h?.ok == false -> NOT_REACHABLE
         serverLlm == true -> READY
         serverLlm == false -> NO_LLM

@@ -580,6 +580,23 @@ pub fn progress_id(id: &str) -> String {
 mod tests {
     use super::*;
 
+    /// D112: a lockout stops the download with the shared sentence.
+    #[test]
+    fn a_lockout_stops_with_the_wait() {
+        let e = LibraryError {
+            kind: ErrorKind::Throttled,
+            message: murmur_router::throttled_text(Some(12)),
+            retry_after_s: Some(12),
+        };
+        let Stop::Failed(m) = stop_of(e) else {
+            panic!("not a failure")
+        };
+        assert_eq!(
+            m,
+            "Too many wrong keys from this address. Try again in 12 s."
+        );
+    }
+
     fn file(name: &str, size: u64, sha: &str) -> LibraryFile {
         LibraryFile {
             name: name.into(),

@@ -169,7 +169,7 @@ impl ServerClean {
         self.st.lk().circuit = Circuit::new(false);
     }
 
-    fn settle(&self, epoch: u64, f: Option<Failure>) {
+    fn settle(&self, epoch: u64, f: Option<(Failure, Option<u64>)>) {
         let mut st = self.st.lk();
         if st.epoch != epoch {
             return;
@@ -182,7 +182,7 @@ impl ServerClean {
                     st.circuit = Circuit::new(false);
                 }
             }
-            Some(f) => st.circuit.record_failure(f, Instant::now()),
+            Some((f, after)) => st.circuit.record(f, after, Instant::now()),
         }
     }
 }
@@ -265,7 +265,7 @@ impl Cleaner for ServerClean {
                 }
             }
             Err(e) => {
-                self.settle(epoch, Some(e.kind));
+                self.settle(epoch, Some((e.kind, e.retry_after_s)));
                 let err = match e.kind {
                     Failure::Timeout | Failure::Disconnected => {
                         CleanError::Backend(e.kind.as_str().into())

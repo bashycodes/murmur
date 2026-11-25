@@ -57,6 +57,8 @@ data class HealthReport(
     /** D98: the models the server's hello names; empty from an older server. */
     val models: ServerModelNames = ServerModelNames(),
     val checkedAtMs: Long? = null,
+    /** D112: with [error] `throttled`, seconds until the server lets this address try again. */
+    val retryAfterS: Long? = null,
     /** D18 Test provider (`engine:"cloud"`): provider id, model, what it heard, round trip, cost. */
     val provider: String? = null,
     val model: String? = null,
@@ -215,6 +217,7 @@ object RouterJson {
         busy = o.optIntOrNull("busy"),
         models = decodeServerModelNames(o.optJSONObject("models")),
         checkedAtMs = o.optLongOrNull("checked_at_ms"),
+        retryAfterS = o.optLongOrNull("retry_after_s"),
         provider = o.optStringOrNull("provider"),
         model = o.optStringOrNull("model"),
         transcript = o.optStringOrNull("transcript"),
@@ -326,6 +329,8 @@ object DevText {
             val rtt = h.rttMs?.let { "median ${it.median} ms (${it.min}-${it.max})" } ?: "no RTT"
             return listOfNotNull("OK", rtt, h.serverVersion, h.asrBackend).joinToString(" · ")
         }
+        // D112: the server answered; "is it running?" would mislead.
+        if (h.error == Lockout.CODE) return Lockout.text(h.retryAfterS)
         val hint = when (h.error) {
             "auth_failed" -> "token rejected"
             "connect_failed" -> "is murmur-server running / LAN or VPN up?"

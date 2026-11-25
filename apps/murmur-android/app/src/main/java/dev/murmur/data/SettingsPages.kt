@@ -314,6 +314,7 @@ object SettingsSummary {
         !d.allowServer -> "Off · ${d.host}"
         h == null -> if (checking) "Checking…" else "Not checked yet"
         h.ok -> "Connected" + (h.rttMs?.let { " · ${it.median} ms" } ?: "")
+        h.error == dev.murmur.core.Lockout.CODE -> dev.murmur.core.Lockout.text(h.retryAfterS)
         else -> "Not reachable"
     }
 

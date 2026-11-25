@@ -659,11 +659,16 @@ impl RouterAdapter {
                         .into(),
                 )
             }
+            // D112: locked out after wrong keys; reachable, so say that.
+            Some(e) if e.kind == Failure::Throttled => return Some(e.message),
             Some(e) => format!("{}: {}", e.kind.as_str(), e.message),
             None => {
                 let h = self.router.probe_server();
                 if h.ok {
                     return None;
+                }
+                if h.error.as_deref() == Some(Failure::Throttled.as_str()) {
+                    return Some(murmur_router::throttled_text(h.retry_after_s));
                 }
                 h.message.or(h.error).unwrap_or_default()
             }
@@ -734,6 +739,8 @@ impl RouterAdapter {
             }
             RouterError::ServerUnavailable(why) => format!("Server unreachable ({why})"),
             RouterError::BadConfig(m) => format!("Developer settings are invalid: {m}"),
+            // D112: the sentence itself ("Too many wrong keys … Try again in N s.").
+            RouterError::Throttled { message, .. } => message,
         }
     }
 }
@@ -828,6 +835,13 @@ impl CoreApi for RouterAdapter {
                 });
             } else if detail.starts_with("local_not_ready") {
                 r.error = Some(self.start_error(RouterError::LocalNotReady));
+            } else if r.route.as_ref().and_then(|x| x.fallback.as_deref())
+                == Some(Failure::Throttled.as_str())
+            {
+                // D112: the start's sentence, not "Server unreachable".
+                if !detail.starts_with("Too many wrong keys") {
+                    r.error = Some(murmur_router::throttled_text(None));
+                }
             } else if let Some(fb) = r.route.as_ref().and_then(|x| x.fallback.clone()) {
                 let detail = r.error.clone().unwrap_or_default();
                 r.error = Some(if detail.is_empty() {
@@ -1084,6 +1098,10 @@ mod tests {
         up: AtomicBool,
         starts: AtomicUsize,
         samples: AtomicU64,
+        /// D112: locked out for this many seconds (every connect is refused).
+        locked_s: Mutex<Option<u64>>,
+        /// Connects tried while locked out.
+        locked_tries: AtomicUsize,
     }
 
     impl FakeServer {
@@ -1098,6 +1116,8 @@ mod tests {
                 up: AtomicBool::new(true),
                 starts: AtomicUsize::new(0),
                 samples: AtomicU64::new(0),
+                locked_s: Mutex::new(None),
+                locked_tries: AtomicUsize::new(0),
             })
         }
     }
@@ -1115,6 +1135,10 @@ mod tests {
             &self,
             cfg: &murmur_core::config::SessionConfig,
         ) -> Result<StartInfo, BackendError> {
+            if let Some(n) = *self.0.locked_s.lock().unwrap() {
+                self.0.locked_tries.fetch_add(1, Ordering::SeqCst);
+                return Err(BackendError::throttled(Some(n)));
+            }
             if !self.0.up.load(Ordering::SeqCst) {
                 return Err(BackendError::new(Failure::ConnectFailed, "refused"));
             }
@@ -1141,6 +1165,10 @@ mod tests {
             Backend::cancel(&self.0.core)
         }
         fn probe(&self) -> HealthReport {
+            if let Some(n) = *self.0.locked_s.lock().unwrap() {
+                self.0.locked_tries.fetch_add(1, Ordering::SeqCst);
+                return HealthReport::failed(EngineKind::Remote, &BackendError::throttled(Some(n)));
+            }
             if !self.0.up.load(Ordering::SeqCst) {
                 // Like a real probe of a stopped server: a failure kind the
                 // router's circuit breaker records.
@@ -1789,6 +1817,47 @@ mod tests {
             Ok(res) => res.error.unwrap_or_default(),
         };
         assert!(err.starts_with("Server unreachable"), "{err}");
+    }
+
+    /// D112: a server lockout says so ("Too many wrong keys …"), not
+    /// "Server unreachable", and the next dictation does not reconnect.
+    #[test]
+    fn server_only_lockout_says_so_and_waits() {
+        let r = rig(&dev(true, false));
+        *r.server.locked_s.lock().unwrap() = Some(90);
+        let want = "Too many wrong keys from this address. Try again in 90 s.";
+        assert_eq!(dictate(&r.router).unwrap_err(), want);
+        assert_eq!(r.server.locked_tries.load(Ordering::SeqCst), 1);
+        let err = dictate(&r.router).unwrap_err();
+        assert!(err.starts_with("Too many wrong keys"), "{err}");
+        assert!(!r.router.prewarm());
+        assert_eq!(
+            r.server.locked_tries.load(Ordering::SeqCst),
+            1,
+            "no reconnect inside the lockout"
+        );
+        let m = match r.router.readiness() {
+            Readiness::NotReady { message } => message,
+            other => panic!("{other:?}"),
+        };
+        assert!(m.starts_with("Too many wrong keys"), "{m}");
+        // A commit after the failed start keeps the sentence too.
+        let res = r.router.commit();
+        if let Some(e) = res.error.as_deref().filter(|e| *e != "no active session") {
+            assert!(e.starts_with("Too many wrong keys"), "{e}");
+        }
+    }
+
+    /// D112 with this PC as fallback: the text still comes, the pill says why.
+    #[test]
+    fn lockout_falls_back_with_a_reason() {
+        let r = rig(&dev(true, true));
+        *r.server.locked_s.lock().unwrap() = Some(30);
+        let out = dictate(&r.router).unwrap();
+        assert_eq!(out.final_text.trim(), "from this pc");
+        let fb = out.route.unwrap().fallback.unwrap();
+        assert_eq!(fb, "throttled");
+        assert_eq!(crate::core_api::fallback_reason(&fb), "too many wrong keys");
     }
 
     #[test]

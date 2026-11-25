@@ -68,6 +68,10 @@ pub mod code {
 pub struct AdminError {
     pub code: String,
     pub message: String,
+    /// Client side only: with [`code::THROTTLED`], the answer's
+    /// `Retry-After` in seconds. Never in a server body.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_after_s: Option<u64>,
 }
 
 impl AdminError {
@@ -75,6 +79,7 @@ impl AdminError {
         Self {
             code: code.into(),
             message: message.into(),
+            retry_after_s: None,
         }
     }
 }

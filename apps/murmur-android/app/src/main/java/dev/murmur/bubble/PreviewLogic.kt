@@ -27,6 +27,7 @@ object RouteLabel {
 
     fun reason(fallback: String): String = when (fallback) {
         "connect_failed", "disconnected", "timeout" -> "server unreachable"
+        "throttled" -> "too many wrong keys"
         "busy" -> "server busy"
         "auth_failed" -> "token or key rejected"
         "proto_mismatch" -> "server version differs"

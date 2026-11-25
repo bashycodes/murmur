@@ -118,7 +118,7 @@ fun interface MurmurCoreLoader {
 /**
  * [kind] is the stable `CoreError::kind()` (`model_not_found`, `llm_lib_not_found`, `load`,
  * `bad_config`, …) or a router error kind (`no_engine_enabled`, `local_not_ready`,
- * `server_not_configured`, `server_unavailable`); null when unknown.
+ * `server_not_configured`, `server_unavailable`, `throttled`); null when unknown.
  */
 class CoreException(message: String, val kind: String? = null) : Exception(message) {
     companion object {
@@ -139,6 +139,7 @@ class CoreException(message: String, val kind: String? = null) : Exception(messa
             message.startsWith("llm plugin not found") -> "llm_lib_not_found"
             message.startsWith("bad model config") || message.startsWith("bad config") -> "bad_config"
             message.startsWith("model load failed") -> "load"
+            Lockout.isText(message) -> RouterErrors.THROTTLED
             else -> RouterErrors.KINDS.firstOrNull { message.startsWith(it) }
         }
 
@@ -149,6 +150,22 @@ class CoreException(message: String, val kind: String? = null) : Exception(messa
     }
 }
 
+/**
+ * D112: the server locked this address out after too many wrong keys (code `throttled` in route
+ * fallbacks, health reports, admin and library answers, and as a start error kind).
+ */
+object Lockout {
+    const val CODE = "throttled"
+    private const val LEAD = "Too many wrong keys from this address."
+
+    /** The shared sentence (`murmur_router::throttled_text`); [retryAfterS] = the server's wait, if sent. */
+    fun text(retryAfterS: Long?): String =
+        if (retryAfterS == null) "$LEAD Try again later." else "$LEAD Try again in $retryAfterS s."
+
+    /** [message] is that sentence (the router's start error carries no other prefix). */
+    fun isText(message: String?) = message?.startsWith(LEAD) == true
+}
+
 /** murmur_router `RouterError` kinds (docs/hybrid-architecture.md §1.2), surfaced as last error. */
 object RouterErrors {
     const val NO_ENGINE_ENABLED = "no_engine_enabled"
@@ -156,7 +173,9 @@ object RouterErrors {
     const val SERVER_NOT_CONFIGURED = "server_not_configured"
     const val SERVER_UNAVAILABLE = "server_unavailable"
     const val BAD_CONFIG = "bad_config"
-    val KINDS = listOf(NO_ENGINE_ENABLED, LOCAL_NOT_READY, SERVER_NOT_CONFIGURED, SERVER_UNAVAILABLE, BAD_CONFIG)
+    /** D112: locked out by the server; the message is the sentence to show ([Lockout.text]). */
+    const val THROTTLED = Lockout.CODE
+    val KINDS = listOf(NO_ENGINE_ENABLED, LOCAL_NOT_READY, SERVER_NOT_CONFIGURED, SERVER_UNAVAILABLE, BAD_CONFIG, THROTTLED)
 
     /** User-facing wording for the router's cloud rule: an http:// base URL at a public address (D18). */
     const val CLOUD_NEEDS_TLS = "Provider needs TLS — use an https:// base URL"
@@ -180,6 +199,7 @@ object RouterErrors {
     fun userMessage(kind: String?, message: String): String = when (kind) {
         NO_ENGINE_ENABLED -> "Dictation disabled — enable server or client in Developer settings"
         SERVER_UNAVAILABLE -> serverUnavailable(message)
+        THROTTLED -> if (Lockout.isText(message)) message else Lockout.text(null)
         SERVER_NOT_CONFIGURED -> "No server configured — set the host in Developer settings"
         LOCAL_NOT_READY -> "On-device speech model is not ready"
         "model_not_found" -> "Speech model file is missing (${message.substringAfter(':').trim()}). Re-import it."

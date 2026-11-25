@@ -630,6 +630,7 @@ pub const FAILURE_CODES: &[&str] = &[
     "provider_error",
     "no_private_route",
     "cloud_cleanup_not_configured",
+    "throttled",
 ];
 
 /// The first failure code named in `text`.

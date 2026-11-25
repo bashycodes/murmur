@@ -12,6 +12,8 @@ enum StartMode {
     Ok,
     Queued,
     Fail(Failure),
+    /// D112: the server locked this address out for this many seconds.
+    Throttled(u64),
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -135,6 +137,7 @@ impl Backend for Fake {
         *self.last_cfg.lock().unwrap() = Some(cfg.clone());
         match *self.start.lock().unwrap() {
             StartMode::Fail(f) => Err(BackendError::new(f, "fake start failure")),
+            StartMode::Throttled(n) => Err(BackendError::throttled(Some(n))),
             m => {
                 self.received.store(0, Ordering::SeqCst);
                 self.contexts.lock().unwrap().clear();
@@ -508,6 +511,75 @@ fn on_off_server_down_is_server_unavailable() {
     // Without a fallback a transient failure is retried at once.
     let _ = k.router.start_session(SessionConfig::default());
     assert_eq!(k.remote.starts(), 2);
+}
+
+/// D112: a lockout is its own error, not "server unavailable", and nothing
+/// reconnects inside it: not the next start (even with no fallback), not a
+/// pre-warm. The circuit stays open for the server's whole wait.
+#[test]
+fn a_lockout_is_throttled_and_not_retried_inside_the_wait() {
+    let k = rig_with(
+        cfg(true, false),
+        Fake::new(EngineKind::Local),
+        Fake::new(EngineKind::Remote).with_start(StartMode::Throttled(120)),
+    );
+    let e = k
+        .router
+        .start_session(SessionConfig::default())
+        .unwrap_err();
+    assert_eq!(e.kind(), "throttled");
+    assert_eq!(
+        e,
+        RouterError::Throttled {
+            message: "Too many wrong keys from this address. Try again in 120 s.".into(),
+            retry_after_s: Some(120),
+        }
+    );
+    assert_eq!(e.to_string(), throttled_text(Some(120)));
+    let r = dictate(&k.router);
+    assert_eq!(r.status, CommitStatus::Error);
+    assert_eq!(route(&r).fallback.as_deref(), Some("throttled"));
+    let st = k.router.route_status();
+    assert!(st.circuit.open && !st.circuit.until_config_change);
+    assert_eq!(st.circuit.reason.as_deref(), Some("throttled"));
+    assert!(st.circuit.retry_in_ms.unwrap() > 115_000, "{st:?}");
+    // No fallback, still no retry: the lockout says how long is left.
+    let e = k
+        .router
+        .start_session(SessionConfig::default())
+        .unwrap_err();
+    let RouterError::Throttled { retry_after_s, .. } = e else {
+        panic!("{e:?}")
+    };
+    assert!(matches!(retry_after_s, Some(n) if n > 115 && n <= 120));
+    assert!(!k.router.prewarm(), "no pre-warm inside the lockout");
+    let checks = k.router.route_checks();
+    let skip = checks[0].skip.as_ref().expect("server skipped");
+    assert_eq!(skip.kind, Failure::Throttled);
+    assert!(skip.retry_after_s.is_some());
+    assert_eq!(k.remote.starts(), 1, "one try in total");
+    // The owner fixed the key / waited: a reset tries again.
+    k.router.reset_circuit();
+    let _ = k.router.start_session(SessionConfig::default());
+    assert_eq!(k.remote.starts(), 2);
+}
+
+/// D112 with a fallback: the dictation goes local, the pill says why.
+#[test]
+fn a_lockout_falls_back_to_local() {
+    let k = rig_with(
+        cfg(true, true),
+        Fake::new(EngineKind::Local),
+        Fake::new(EngineKind::Remote).with_start(StartMode::Throttled(30)),
+    );
+    k.router.start_session(SessionConfig::default()).unwrap();
+    let r = dictate(&k.router);
+    assert_eq!(route(&r).engine, "local");
+    assert_eq!(route(&r).fallback.as_deref(), Some("throttled"));
+    k.router.start_session(SessionConfig::default()).unwrap();
+    let r = dictate(&k.router);
+    assert_eq!(route(&r).fallback.as_deref(), Some("throttled"));
+    assert_eq!(k.remote.starts(), 1);
 }
 
 #[test]

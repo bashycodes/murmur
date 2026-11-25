@@ -7,7 +7,8 @@
 //! same one `nativeProbeServer` gets), blocks for at most
 //! `murmur_remote::admin::REQUEST_TIMEOUT`, and never fails: it answers
 //! `{"ok":true,"value":<answer>}` or `{"ok":false,"code":"…","message":"…"}`
-//! (`code` = the `murmur_protocol::admin::code` values).
+//! (`code` = the `murmur_protocol::admin::code` values; with `throttled`,
+//! D112, also `"retry_after_s":N` when the server sent a wait).
 //!
 //! Privacy: nothing here logs. A created key's secret exists only in the
 //! returned string; the decoded copy is wiped before returning.
@@ -47,7 +48,11 @@ fn ok<T: Serialize>(v: &T) -> String {
 }
 
 fn err(e: &AdminError) -> String {
-    serde_json::json!({"ok": false, "code": e.code, "message": e.message}).to_string()
+    let mut j = serde_json::json!({"ok": false, "code": e.code, "message": e.message});
+    if let Some(n) = e.retry_after_s {
+        j["retry_after_s"] = n.into();
+    }
+    j.to_string()
 }
 
 fn answer<T: Serialize>(r: Result<T, AdminError>) -> String {

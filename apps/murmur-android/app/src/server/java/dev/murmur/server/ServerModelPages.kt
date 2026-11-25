@@ -1,5 +1,6 @@
 package dev.murmur.server
 
+import dev.murmur.core.Lockout
 import dev.murmur.data.ModelPages
 
 /** D41: the words of the "From your server" block (JVM-tested; the views are [ServerModelsUi]). */
@@ -53,6 +54,7 @@ object ServerModelPages {
     fun failed(f: LibraryFailure, resumable: Boolean): String = when {
         f.kind == "not_configured" -> "Set up your server first (Settings → Your server)."
         f.kind == "auth" -> "Your server refused the key: check it in the server settings."
+        f.kind == Lockout.CODE -> Lockout.text(f.retryAfterS) + if (resumable) " What arrived is kept." else ""
         resumable -> "Download stopped: ${f.message}. What arrived is kept; tap Resume to continue."
         else -> "Download failed: ${f.message}"
     }
@@ -60,6 +62,7 @@ object ServerModelPages {
     fun listFailed(f: LibraryFailure): String = when (f.kind) {
         "not_configured" -> "Set up your server first (Settings → Your server)."
         "auth" -> "Your server refused the key: check it in the server settings."
+        Lockout.CODE -> Lockout.text(f.retryAfterS)
         else -> "Couldn't read your server's models: ${f.message}"
     }
 

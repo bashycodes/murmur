@@ -41,8 +41,11 @@ data class LibraryModel(
     val size: Long get() = files.sumOf { it.size }
 }
 
-/** A failed library call: [kind] is the JNI_CONTRACT kind (`network`, `auth`, `mismatch`, `cancelled`, …). */
-data class LibraryFailure(val kind: String, val message: String)
+/**
+ * A failed library call: [kind] is the JNI_CONTRACT kind (`network`, `auth`, `mismatch`, `cancelled`,
+ * `throttled`, …); [retryAfterS] = a lockout's wait in seconds (D112).
+ */
+data class LibraryFailure(val kind: String, val message: String, val retryAfterS: Long? = null)
 
 sealed interface ListResult {
     data class Ok(val models: List<LibraryModel>) : ListResult
@@ -51,7 +54,10 @@ sealed interface ListResult {
 
 object LibraryJson {
     private fun failure(o: JSONObject) =
-        LibraryFailure(o.optString("error").ifEmpty { "protocol" }, o.optString("message").ifEmpty { "the server's answer could not be read" })
+        LibraryFailure(
+            o.optString("error").ifEmpty { "protocol" }, o.optString("message").ifEmpty { "the server's answer could not be read" },
+            if (o.has("retry_after_s")) o.optLong("retry_after_s") else null,
+        )
 
     private fun str(o: JSONObject, k: String): String? = if (o.isNull(k)) null else o.optString(k).ifEmpty { null }
 

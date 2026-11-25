@@ -28,6 +28,30 @@ export function failText(code: string | null | undefined, message?: string | nul
   return `${c}${h ? ` — ${h}` : ""}${message ? ` (${message})` : ""}`;
 }
 
+/**
+ * D112: the server locked this address out after too many wrong keys. The
+ * same sentence as the backend's (`murmur_router::throttled_text`).
+ */
+export function throttledText(retryAfterS?: number | null): string {
+  return retryAfterS == null
+    ? "Too many wrong keys from this address. Try again later."
+    : `Too many wrong keys from this address. Try again in ${retryAfterS} s.`;
+}
+
+/**
+ * A failed server Test: `code: message — hint`, or the lockout sentence alone
+ * for `throttled` (the server is reachable; "is it running?" would mislead).
+ */
+export function serverFailText(
+  h: { error: string | null; message: string | null; retry_after_s?: number | null },
+  hint: (code: string) => string,
+): string {
+  const code = h.error ?? "error";
+  if (code === "throttled") return throttledText(h.retry_after_s);
+  const why = hint(code);
+  return `${code}${h.message ? `: ${h.message}` : ""}${why ? ` — ${why}` : ""}`;
+}
+
 /** Money from the backend: preformatted "$0.0234" strings pass through. */
 export function money(v: string | number | null | undefined): string {
   if (v == null || v === "") return "$0";

@@ -7,7 +7,7 @@
 // through the dev store: switches save at once, the server form on Save.
 import { $, el, setStatus } from "../lib/dom.js";
 import { devStore } from "../lib/dev-store.js";
-import { cloudHint } from "../lib/format.js";
+import { cloudHint, serverFailText } from "../lib/format.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { engineWord, HISTORY_PEEK, historyLastText, latestOnly, pickDictation } from "../lib/last-dictation.js";
 import { prefsStore } from "../lib/prefs-store.js";
@@ -38,6 +38,7 @@ const HINTS = {
     server_not_configured: "enter the server host first",
     timeout: "the server is too slow or stuck",
     busy: "the server is busy with another dictation",
+    throttled: "too many wrong keys from this address: wait, then check the token",
 };
 function hint(code) {
     return code ? (HINTS[code] ?? "") : "";
@@ -336,11 +337,8 @@ async function saveSwitch(patch) {
     }
 }
 function healthText(h) {
-    if (!h.ok) {
-        const code = h.error ?? "error";
-        const why = hint(code);
-        return `${code}${h.message ? `: ${h.message}` : ""}${why ? ` — ${why}` : ""}`;
-    }
+    if (!h.ok)
+        return serverFailText(h, hint);
     const r = h.rtt_ms;
     const parts = [
         r ? `OK · median ${r.median} ms (${r.min}-${r.max})` : "OK",
