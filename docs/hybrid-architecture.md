@@ -349,14 +349,14 @@ concurrency).
 ### 3.4 Startup and systemd
 
 * Models load before the listener binds (`load_models` fails → exit 1 with `CoreError::kind()`; systemd restarts). Log line: `ready workers=1 asr=parakeet load_ms=…`.
-* `dist/murmur-server.service`: `DynamicUser=yes`, `StateDirectory=murmur-server`, `Environment=TMPDIR=/var/lib/murmur-server/tmp` (Parakeet `bpe.vocab`), `ProtectSystem=strict`, `ProtectHome=yes`, `PrivateTmp=yes`, `NoNewPrivileges=yes`, `RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX`, **`IPAddressDeny=any` + `IPAddressAllow=localhost 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16 fc00::/7 fe80::/10`** (the kernel enforces "no third party"; the server applies the same classes itself at accept, so a manual start or a container is not exposed), `MemoryMax=8G`, `Restart=on-failure`, `Nice=5`.
+* `dist/murmur-server.service`: `DynamicUser=yes`, `StateDirectory=murmur-server`, `Environment=TMPDIR=/var/lib/murmur-server/tmp` (Parakeet `bpe.vocab`), `ProtectSystem=strict`, `ProtectHome=yes`, `PrivateTmp=yes`, `NoNewPrivileges=yes`, `RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX`, no kernel IP allowlist since D111 (any peer with a valid key may connect; a commented `IPAddressDeny`/`IPAddressAllow` example shows how to restrict it), `MemoryMax=8G`, `Restart=on-failure`, `Nice=5`.
 
 ### 3.5 Privacy and logging
 
 * Never written to disk: audio, transcripts, contexts, dictionaries. No audio dump option exists in v1. History lives only on the client.
 * Default log per session (tracing → journald): `sid`, peer address, `audio_ms`, `asr_ms`, `llm_ms`, `total_ms`, `queue_ms`, `status`, `empty_reason`, `fallback_reason`. No text unless `log_text=true`.
 * Proof `tests/no_persist.rs`: runs a session with `HOME`/`TMPDIR`/cwd pointed at an empty temp dir and asserts it is still empty afterwards, and that captured log output does not contain the mock transcript.
-* The server makes no outbound connections (only listens); the systemd IP allowlist backs this up.
+* The server makes no outbound connections (only listens). Since D111 the unit no longer enforces this in the kernel; the commented IP allowlist in the unit restores that.
 
 ---
 
@@ -838,7 +838,8 @@ can adapt. Server-side items (S7-S10, C5, the server half of C4) are on branch `
   D100 every name, not only `*.local`, single-label and `*.ts.net`) but none counts as private by name. Choice/limit: carrier CGNAT
   also uses 100.64/10, so a phone on such a network with its VPN down cannot be told apart here;
   that case needs `wss://`. Failure: `connect_failed` "…: plaintext refused: … (enable TLS)"; shells
-  may show it as "Use TLS for this server".
+  showed it as "Use TLS for this server" (historical: D111 removed this rule for the server, and
+  the wording with it).
 * **S11 stale preview** (`murmur-core`). A partial decode of a cancelled/committed session can no
   longer appear in the next session; commit and cancel clear the preview. No shell change.
 * **C2 blocking calls.** Documented in `murmur_core.h` and JNI_CONTRACT.md "Threading". A: move

@@ -256,6 +256,8 @@ impl Config {
 
     pub fn validate(&self) -> Result<(), String> {
         self.check_auth()?;
+        // Parse check only: every `bind` entry must be a socket address. Any
+        // address is allowed (D111), so the list itself is not inspected.
         self.bind_addrs()?;
         if self.workers == 0 {
             return Err("workers must be >= 1".into());

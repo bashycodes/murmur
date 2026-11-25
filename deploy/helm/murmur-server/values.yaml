@@ -36,7 +36,7 @@ serverTls:
 service:
   type: ClusterIP
   port: 7313
-  # For a LoadBalancer on a LAN: keep client IPs, so the peer filter sees them.
+  # For a LoadBalancer: "Local" keeps client IPs (per-IP connection limits).
   externalTrafficPolicy: ""
   annotations: {}
 

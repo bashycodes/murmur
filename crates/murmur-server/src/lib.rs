@@ -250,8 +250,8 @@ pub async fn serve_with_pool(
     let wide = cfg.wide_binds()?;
     if !wide.is_empty() && cfg.tls.is_none() {
         let list: Vec<String> = wide.iter().map(|a| a.to_string()).collect();
-        tracing::info!(
-            "bind {}: wildcard or public address, plain ws:// (no [tls]); configure [tls] to encrypt audio, transcripts and the token",
+        tracing::warn!(
+            "bind {}: wildcard or public address, plain ws:// (no [tls]); on a machine reachable from the internet, set up [tls] or firewall the port",
             list.join(", "),
         );
     }

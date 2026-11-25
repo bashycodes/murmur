@@ -72,7 +72,7 @@ tools/server/install.sh --start            # ... and enable + (re)start the serv
 | Libraries | `/opt/murmur-server/lib` | `~/.local/lib/murmur-server` |
 | Model | `/opt/murmur-server/models/<name>` | `~/.local/share/murmur-server/models/<name>` |
 | Config, token | `/etc/murmur-server/{config.toml,token}` | `~/.config/murmur-server/{config.toml,token}` |
-| Unit | `/etc/systemd/system/murmur-server.service`: the packaged hardened unit (`DynamicUser`, `ProtectSystem=strict`, kernel IP allowlist) with these paths | `~/.config/systemd/user/murmur-server.service`: lighter hardening; the bind address, the firewall and the keys are the boundary |
+| Unit | `/etc/systemd/system/murmur-server.service`: the packaged hardened unit (`DynamicUser`, `ProtectSystem=strict`) with these paths | `~/.config/systemd/user/murmur-server.service`: lighter hardening; the bind address, the firewall and the keys are the boundary |
 | Logs | `sudo journalctl -u murmur-server -f` | `journalctl --user -u murmur-server -f` |
 
 The script never overwrites an existing config or token. Every root command is
@@ -184,10 +184,12 @@ carries the decoded `language`; a Hebrew session's result has
 * Optional: restrict port 7313 to your own devices with your VPN's access rules.
 
 The server serves plain `ws://` on any bind, `0.0.0.0`, `::` and public
-addresses included, and accepts any peer with a valid key (D111). Without
-`[tls]` audio, text and keys cross the network unencrypted, so on a machine
-reachable from the internet bind a LAN or VPN address, firewall the port, or
-configure `[tls]`. `--insecure-bind-any` is still accepted and does nothing.
+addresses included, and accepts any peer with a valid key (D111): the key is
+the only gate, with or without TLS, and the default compose file publishes on
+`0.0.0.0`. **On a machine reachable from the internet, set up `[tls]` or
+firewall the port**: without `[tls]`, audio, text and keys cross the network
+unencrypted. The server logs a warning at startup for a wildcard or public
+bind without `[tls]`. `--insecure-bind-any` is still accepted and does nothing.
 
 ## 4. Keys (who may connect)
 
@@ -283,9 +285,10 @@ openssl x509 -in cert.pem -outform DER | sha256sum | cut -d' ' -f1
 
 ## 6. Firewall
 
-The system unit already confines traffic in the kernel: `IPAddressDeny=any`
-plus allow loopback, RFC 1918, 100.64.0.0/10, link-local and fc00::/7. A host
-firewall is a second layer. With ufw:
+Any peer with a valid key may connect (D111), so the firewall decides who can
+reach the port. The system unit has a commented `IPAddressDeny=any` /
+`IPAddressAllow=…` example: uncomment it to let the kernel allow only your
+client ranges (and stop the server reaching anything else). With ufw:
 
 ```sh
 sudo ufw allow in on <vpn-iface> to any port 7313 proto tcp        # VPN

@@ -896,8 +896,6 @@ impl DevForm {
         if !errs.is_empty() {
             return Err(errs);
         }
-        // A toggle the build cannot serve stays off (and disabled in the UI).
-        let tls = self.tls;
         let mut order: Vec<Route> = Vec::new();
         for r in &self.route_order {
             if !order.contains(r) {
@@ -905,13 +903,14 @@ impl DevForm {
             }
         }
         let s = DevSettings {
+            // A toggle the build cannot serve stays off (and disabled in the UI).
             allow_server: self.allow_server && caps.remote,
             allow_client: self.allow_client && caps.local,
             route_order: order,
             server: ServerSettings {
                 host,
                 port,
-                tls,
+                tls: self.tls,
                 tls_pin_sha256: pin,
                 connect_timeout_ms: connect,
                 commit_timeout_base_ms: commit,

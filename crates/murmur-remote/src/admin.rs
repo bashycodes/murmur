@@ -311,7 +311,7 @@ mod tests {
     }
 
     #[test]
-    fn refuses_before_any_socket_without_a_host_or_with_a_bad_id() {
+    fn whoami_without_a_host_fails_before_any_socket() {
         let c = AdminClient::new(
             ServerConfig {
                 token: "secret-token-0123456789".into(),
@@ -319,7 +319,13 @@ mod tests {
             },
             "t",
         );
-        assert!(c.whoami().is_err());
+        assert_eq!(c.whoami().unwrap_err().code, code::CONNECT_FAILED);
+    }
+
+    #[test]
+    fn revoke_rejects_a_bad_id_before_any_socket() {
+        // A public address with TLS off is allowed (D111); the id check
+        // still refuses first.
         let c = AdminClient::new(
             ServerConfig {
                 host: "203.0.113.5".into(),
