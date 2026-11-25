@@ -8,6 +8,7 @@
 // The server's model library is on Settings → Your server. Markup only.
 import { ICON, iconSvg } from "../../lib/icons.js";
 import { advanced, group, heading, row, toggle } from "../../lib/markup.js";
+import { STT_LOCK } from "../../lib/cloud-lock.js";
 import { NOTETAKER_ENABLED } from "../notetaker.js";
 import { FOLDER_ROW } from "../../features/model-folder.js";
 import { browseButton, DOWNLOAD_ROW, HEBREW_ROW, SOURCE_ROW } from "../../features/models.js";
@@ -65,7 +66,9 @@ ${group("", row("Live transcription", "Text appears as you pause, so it finishes
 
 <section class="lw-section" id="or_stt_group" data-needs="cloud">
   <h3 class="fl-group-title lw-title-badge"><span id="or_stt_provider_name">Cloud · OpenRouter</span> <span class="fl-badge fl-badge-light" id="or_stt_used_badge">Used only when on above</span> <button type="button" class="lw-link lw-link-sm" data-go="settings-openrouter">Change provider →</button></h3>
+  ${STT_LOCK.banner}
   <div class="fl-group" id="or_stt_box">
+    ${STT_LOCK.open}
     ${row(`<span id="or_stt_model_name"></span> <span id="or_stt_model_badges" class="pills"></span>`, `<span id="or_stt_model_desc"></span> <code id="or_stt_model_id" class="lw-mono"></code>`, `<button type="button" class="fl-btn fl-btn-secondary lw-btn-160" id="or_stt_change">Change</button>`, `data-stt-provider="openrouter"`)}
     ${row(`<code id="cu_stt_model_name" class="lw-mono"></code>`, `Speech model on your own AI server at <span id="cu_stt_host" class="lw-mono"></span>. Pick another on the AI provider page.`, "", `data-stt-provider="custom" hidden`)}
     ${row("Language", "", `<input id="or_stt_language" class="fl-input lw-w160" spellcheck="false" placeholder="Auto-detect" aria-label="Language (empty = auto-detect)" />`, `data-stt-provider="openrouter"`)}
@@ -76,6 +79,7 @@ ${group("", row("Live transcription", "Text appears as you pause, so it finishes
       </select>`, `data-stt-provider="openrouter"`)}
     ${row("Send dictionary words", "Helps it spell names your way.", toggle("or_stt_send_dictionary", "Send dictionary words"), `data-stt-provider="openrouter"`)}
     ${row("Try it", `<span id="or_stt_consent"></span> <span id="or_stt_test_out"></span> <span id="or_stt_status"></span>`, `<button type="button" class="fl-btn fl-btn-secondary" id="or_stt_test">Test</button>`)}
+    ${STT_LOCK.close}
   </div>
 </section>
 

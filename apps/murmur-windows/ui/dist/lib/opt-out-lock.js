@@ -34,9 +34,13 @@ export function wireOptOut(id, find, w) {
         banner: find(`${id}_off`),
         region: find(`${id}_region`),
     };
+    const focus = (on) => find(on ? w.switchId : `${id}_turn_on`).focus();
     find(`${id}_turn_on`).addEventListener("click", () => {
-        w.turnOn();
-        find(w.switchId).focus();
+        const r = w.turnOn();
+        if (r instanceof Promise)
+            void r.then(focus, () => focus(false));
+        else
+            focus(true);
     });
     return (on) => applyOptOut(view, on);
 }

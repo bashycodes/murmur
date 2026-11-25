@@ -826,6 +826,59 @@ mod tests {
         );
     }
 
+    /// Fewer steps to a provider: switching cloud cleanup on (with its
+    /// consent) is enough; the text around the cursor is a separate, extra
+    /// permission that only widens what the request carries.
+    #[test]
+    fn cloud_cleanup_needs_no_cursor_context_and_sends_it_only_when_allowed() {
+        use murmur_core::cleanup::{CleanRequest, PromptScope, PromptVersion};
+        use murmur_core::config::FieldContext;
+        let req = CleanRequest {
+            text: "meet on thursday".into(),
+            ctx: FieldContext {
+                before: "CURSORBEFORE".into(),
+                selected: "CURSORSELECTED".into(),
+                after: "CURSORAFTER".into(),
+                ..Default::default()
+            },
+            prompt: PromptVersion::V6,
+            // What this PC read; the provider's scope narrows it.
+            scope: PromptScope::FULL,
+            ..Default::default()
+        };
+        let carries = |p: &murmur_core::cleanup::CleanPrompt, x: &str| {
+            p.user.contains(x)
+                || p.source.as_ref().is_some_and(|s| {
+                    s.ctx.before.contains(x)
+                        || s.ctx.selected.contains(x)
+                        || s.ctx.after.contains(x)
+                })
+        };
+
+        let mut d = dev();
+        apply_cleanup(&mut d, &cleanup(true, true), 1).unwrap();
+        assert!(d.cleanup_on(CleanupRoute::Cloud) && d.cleanup_effective(ALL));
+        let scope = d.cloud.openrouter.cleanup.scope();
+        assert!(!scope.surrounding_text, "context stays off by default");
+        let p = req.prompt_for(scope);
+        assert!(p.user.contains("meet on thursday"), "{}", p.user);
+        for x in ["CURSORBEFORE", "CURSORSELECTED", "CURSORAFTER"] {
+            assert!(!carries(&p, x), "{x} sent without its switch");
+        }
+
+        let mut f = cleanup(true, false);
+        f.send_surrounding_text = true;
+        apply_cleanup(&mut d, &f, 2).unwrap();
+        let p = req.prompt_for(d.cloud.openrouter.cleanup.scope());
+        for x in ["CURSORBEFORE", "CURSORSELECTED", "CURSORAFTER"] {
+            assert!(
+                p.user.contains(x),
+                "{x} missing with its switch on: {}",
+                p.user
+            );
+        }
+    }
+
     #[test]
     fn models_privacy_budget_language() {
         let mut d = dev();

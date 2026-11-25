@@ -11,8 +11,9 @@ export function fixFor(text) {
     }
     // Command Mode / transforms refusing a selection name its destination
     // ("… send the selection to OpenRouter", "… to LiteLLM (10.0.0.5)", "… to
-    // the cloud"). The "Text around the cursor" switch that allows it is on the
-    // AI cleanup page, whichever the provider; checked before the provider names.
+    // the cloud"). The AI cleanup page asks for it on the provider card
+    // ("Selected text · Also send it"), whichever the provider; checked before
+    // the provider names.
     if (/send the selection to/i.test(text))
         return { page: "settings-cleanup", label: "Fix →" };
     if (/cloud stt|openrouter/i.test(text))

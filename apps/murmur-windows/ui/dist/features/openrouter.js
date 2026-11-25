@@ -12,11 +12,17 @@ import { $, askDialog, el, setStatus, setValue, when } from "../lib/dom.js";
 import { iconEl } from "../lib/icons.js";
 import { cleanupBlockedLine, cleanupEngineName, cleanupTestFailText, plainHint } from "../lib/cleanup-state.js";
 import { cloudRouteInSentence, cloudRouteTitle, ownServerOr, providerModelLabel } from "../lib/provider-names.js";
+import { contextSwitches, wireSelectionAsk } from "../lib/selection-ask.js";
+import { wireCloudLocks } from "../lib/cloud-lock.js";
 import { cleanupMonthCost, failText, money, usd } from "../lib/format.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { cloudTimeout } from "../lib/model-pages.js";
 import { Serial } from "../lib/serial.js";
 import { views } from "../lib/views.js";
+/** The provider cards' opt-out locks; wired in `wire()`, applied by `showOr`. */
+let locks = { stt: () => { }, cleanup: () => { } };
+/** The provider card's ask for selected text; wired in `wire()`. */
+let showSelectionAsk = () => { };
 const PARAPHRASE_BADGE = "chat model, may paraphrase";
 /** Run an OpenRouter command; errors are plain strings shown in `statusId`. */
 async function orCall(cmd, args, statusId, okText) {
@@ -142,7 +148,7 @@ export function showOr(v) {
     $("or_stt_allow").checked = s.allow;
     $("or_stt_consent").textContent = consentLine(s.consent_at_ms, s.consent, "audio");
     showModelRow("or_stt", s.model, v.stt_model_info);
-    $("or_stt_box").classList.toggle("lw-dim", !s.allow);
+    locks.stt(s.allow);
     $("or_stt_used_badge").hidden = s.allow;
     setValue("or_stt_language", s.language);
     $("or_stt_send_dictionary").checked = s.send_dictionary;
@@ -157,11 +163,12 @@ export function showOr(v) {
     const orSpent = cleanupMonthCost(c.status).openrouter;
     const spent = orSpent > 0 ? `${money(orSpent)} so far this month` : "";
     showModelRow("or_cleanup", c.model, v.cleanup_model_info, spent);
-    $("or_cleanup_box").classList.toggle("lw-dim", !c.allow);
+    locks.cleanup(c.allow);
     $("or_cleanup_sort").value = c.sort;
     $("or_cleanup_send_surrounding_text").checked = c.send_surrounding_text;
     $("or_cleanup_send_screen_words").checked = c.send_screen_words;
     $("or_cleanup_send_app_name").checked = c.send_app_name;
+    showSelectionAsk({ cloudOn: c.allow, sendSurrounding: c.send_surrounding_text, provider: c.provider });
     showCleanupStatus(c.status);
     // D78/D85: LiteLLM does speech only with a speech model set for the proxy.
     const sttAvailable = s.available ?? !custom;
@@ -526,9 +533,7 @@ async function orApplyCleanup(consent) {
         sort: $("or_cleanup_sort").value,
         // Set only by AI cleanup → Give up after (setCloudTimeouts): kept.
         timeout_ms: cloudTimeout("openrouter", views.or?.cleanup.timeout_ms ?? 2500),
-        send_surrounding_text: $("or_cleanup_send_surrounding_text").checked,
-        send_screen_words: $("or_cleanup_send_screen_words").checked,
-        send_app_name: $("or_cleanup_send_app_name").checked,
+        ...contextSwitches((id) => $(id)),
     };
     const r = await orCall("dev_or_set_cleanup", { form }, "or_cleanup_msg", "Saved — applies to the next dictation");
     if (r)
@@ -986,6 +991,19 @@ function wire() {
     $("or_zdr").addEventListener("change", () => void orPrivacyChanged());
     $("or_dc_deny").addEventListener("change", () => void orPrivacyChanged());
     $("or_stt_allow").addEventListener("change", () => void orSttToggled());
+    // A locked card's "Turn on" is its switch: checked, then the usual consent flow.
+    locks = wireCloudLocks((id) => $(id), {
+        stt: async () => {
+            $("or_stt_allow").checked = true;
+            await orSttToggled();
+            return $("or_stt_allow").checked;
+        },
+        cleanup: async () => {
+            $("or_cleanup_allow").checked = true;
+            await writes.run(orCleanupToggled);
+            return $("or_cleanup_allow").checked;
+        },
+    });
     for (const id of ["or_stt_language", "or_stt_send_dictionary", "or_stt_path"]) {
         $(id).addEventListener("change", () => void orApplyStt(false));
     }
@@ -1000,6 +1018,8 @@ function wire() {
     ]) {
         $(id).addEventListener("change", () => void writes.run(() => orApplyCleanup(false)));
     }
+    // The inline ask: the same switch as Advanced → Text around the cursor.
+    showSelectionAsk = wireSelectionAsk((id) => $(id), () => void writes.run(() => orApplyCleanup(false)));
     $("or_cleanup_change").addEventListener("click", () => void openPicker("cleanup"));
     $("or_cleanup_test").addEventListener("click", () => void orTestCleanup());
     // The saved provider; the Cloud page's switch saves a new one (D78).
