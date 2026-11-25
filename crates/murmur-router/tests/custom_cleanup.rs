@@ -409,3 +409,97 @@ fn command_refusal_names_the_active_cloud_provider() {
         }
     );
 }
+
+// ---- the text around the cursor on the custom path --------------------------
+
+/// A custom cleaner that records each prompt and, like the real one
+/// (`murmur_cloud::custom`), has the scope the router built it with.
+struct Recorder {
+    scope: murmur_core::cleanup::PromptScope,
+    seen: Mutex<Vec<CleanPrompt>>,
+}
+
+impl Cleaner for Recorder {
+    fn clean(&self, p: &CleanPrompt, _d: Instant) -> Result<String, CleanError> {
+        self.seen.lock().unwrap().push(p.clone());
+        Ok(CUSTOM_OUT.into())
+    }
+    fn engine(&self) -> &'static str {
+        "cloud"
+    }
+    fn prompt_scope(&self) -> murmur_core::cleanup::PromptScope {
+        self.scope
+    }
+}
+
+/// Dictate into a field with text around the cursor on the custom server;
+/// returns the result and everything the server was sent.
+fn dictate_into_field(send_surrounding_text: bool) -> (CommitResult, String) {
+    let mut c = custom_cfg();
+    c.cloud.openrouter.cleanup.send_surrounding_text = send_surrounding_text;
+    let core = MurmurCore::from_engines(
+        Arc::new(MockAsr::new(IN)),
+        Some(Arc::new(Local) as Arc<dyn Cleaner>),
+    );
+    let built: Arc<Mutex<Option<Arc<Recorder>>>> = Arc::default();
+    let b2 = built.clone();
+    let router = Router::new(c, Some(Arc::new(core) as Arc<dyn Backend>), None)
+        .with_cleanup_factory(Box::new(|_o, _k| {
+            Fake::new(OR_OUT, None) as Arc<dyn Cleaner>
+        }))
+        .with_custom_cleanup_factory(Box::new(move |_cc, scope, _k| {
+            let r = Arc::new(Recorder {
+                scope,
+                seen: Mutex::default(),
+            });
+            *b2.lock().unwrap() = Some(r.clone());
+            r as Arc<dyn Cleaner>
+        }));
+    router
+        .start_session(SessionConfig {
+            llm_skip_clean: false,
+            ..Default::default()
+        })
+        .unwrap();
+    router.set_context(murmur_core::config::FieldContext {
+        before: "Dear team, BEFORESECRET".into(),
+        selected: "SELECTEDSECRET".into(),
+        after: "AFTERSECRET".into(),
+        ..Default::default()
+    });
+    let pcm: Vec<i16> = (0..300 * 16)
+        .map(|i| ((i as f32 * 0.05).sin() * 8000.0) as i16)
+        .collect();
+    assert!(router.push_audio(&pcm));
+    let r = router.commit();
+    let rec = built.lock().unwrap().clone().expect("custom cleaner built");
+    let seen = rec.seen.lock().unwrap();
+    assert_eq!(seen.len(), 1, "one call to the custom server");
+    let p = &seen[0];
+    let mut s = format!("{}{}", p.system, p.user);
+    for (u, a) in &p.examples {
+        s += u;
+        s += a;
+    }
+    (r, s)
+}
+
+#[test]
+fn custom_server_cleans_without_cursor_context_and_gets_none() {
+    let (r, sent) = dictate_into_field(false);
+    // Cleaned there (the text is then fitted to the field around the cursor).
+    assert_eq!(r.cleanup_route.as_deref(), Some("cloud"), "{r:?}");
+    assert!(sent.contains(IN), "the dictation is sent: {sent}");
+    for x in ["BEFORESECRET", "SELECTEDSECRET", "AFTERSECRET"] {
+        assert!(!sent.contains(x), "{x} reached the custom server");
+    }
+}
+
+#[test]
+fn custom_server_gets_cursor_context_when_its_switch_is_on() {
+    let (r, sent) = dictate_into_field(true);
+    assert_eq!(r.cleanup_route.as_deref(), Some("cloud"), "{r:?}");
+    for x in ["BEFORESECRET", "SELECTEDSECRET", "AFTERSECRET"] {
+        assert!(sent.contains(x), "{x} missing: {sent}");
+    }
+}
