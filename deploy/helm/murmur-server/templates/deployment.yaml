@@ -1,6 +1,3 @@
-{{- if and .Values.insecureBindAny .Values.serverTls.enabled }}
-{{- fail "insecureBindAny and serverTls.enabled together: with [tls] the override is not needed" }}
-{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -45,8 +42,6 @@ spec:
               value: /etc/murmur-server/config.toml
             - name: MURMUR_BIND_CONTAINER_IP
               value: {{ ternary "1" "0" .Values.bindPodIP | quote }}
-            - name: MURMUR_INSECURE_BIND_ANY
-              value: {{ ternary "1" "0" .Values.insecureBindAny | quote }}
             - name: MURMUR_START_GRACE_S
               value: {{ .Values.startGraceSeconds | quote }}
             {{- with .Values.extraEnv }}

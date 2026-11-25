@@ -1,6 +1,6 @@
-//! Address classes for the bind policy and the peer filter (S10, D17:
-//! "LAN/VPN only"). Mirrors the private classes the client accepts
-//! for plain `ws://` (docs/protocol.md §1).
+//! Address classes: which bind addresses reach beyond loopback/LAN/VPN
+//! (listed in the startup log). Plain `ws://` is served on any bind and to
+//! any peer (D111); the bearer token is the gate.
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 

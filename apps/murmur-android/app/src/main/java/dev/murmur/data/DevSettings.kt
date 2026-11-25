@@ -86,14 +86,14 @@ data class DevSettings(
     fun oneCloudProvider(): DevSettings = if (allowCloud && !cloud.sttAvailable) copy(allowCloud = false) else this
 
     /**
-     * Toggles AND build capability (§1.3 "effective flags"); public hosts force TLS (§2.6).
+     * Toggles AND build capability (§1.3 "effective flags"). TLS is as the user set it: plain
+     * `ws://` to the user's own server is allowed at any address (D111).
      * A build without the cloud client sends the router no cloud settings at all (C2). D78: no
      * cloud speech while LiteLLM is the Cloud provider ([oneCloudProvider]).
      */
     fun effective(caps: BuildCaps) = copy(
         allowServer = allowServer && caps.remote,
         allowClient = allowClient && caps.local,
-        tls = tls || (host.isNotEmpty() && HostRules.classify(host) == HostRules.AddrClass.PUBLIC),
         allowCloud = oneCloudProvider().allowCloud && caps.cloud,
         routeOrder = if (caps.cloud) routeOrder else routeOrder - Route.CLOUD,
         cloud = if (caps.cloud) cloud else CloudSettings(),
@@ -303,10 +303,8 @@ data class BuildCaps(val local: Boolean, val remote: Boolean, val cloud: Boolean
 
 /**
  * Kotlin twin of `murmur_router::net` (validate_host / classify, §2.6 + §5). The router validates
- * again; this one drives inline errors and the TLS lock before anything reaches native code.
- * Not yet D100: the router now leaves dotted names to the connect-time check
- * (`plaintext_ok_before_resolve`) and has a per-server `allow_plaintext`; this twin still locks
- * TLS on for dotted names (stricter, so the router never refuses what this allows).
+ * again; this one drives inline errors before anything reaches native code. The address class no
+ * longer gates the server's TLS: plain `ws://` goes to any address (D111).
  */
 object HostRules {
     enum class AddrClass { LOOPBACK, LAN, TAILNET, LOCAL_NAME, PUBLIC }
@@ -358,8 +356,6 @@ object HostRules {
             else -> AddrClass.PUBLIC
         }
     }
-
-    fun plaintextOk(host: String) = classify(host) != AddrClass.PUBLIC
 
     private fun Char.isAsciiAlnum() = this in 'a'..'z' || this in 'A'..'Z' || this in '0'..'9'
 
@@ -467,15 +463,13 @@ object DevSettingsForm {
         val settings: DevSettings?,
         val errors: Map<Field, String>,
         val warnings: List<String>,
-        /** TLS forced on and locked: the host is a public address (§2.6). */
-        val tlsLocked: Boolean,
     ) {
         val canSave: Boolean get() = errors.isEmpty() && settings != null
     }
 
     const val BOTH_OFF = "Dictation disabled: turn on Allow server or Allow client."
     const val NO_HOST = "Your server is on but has no address yet: dictation skips it and uses the next engine that is on, such as this phone."
-    const val PLAINTEXT = "Unencrypted (ws://): OK only on your LAN or over an encrypted VPN."
+    const val PLAINTEXT = "Unencrypted (ws://): audio, text and the token cross the network as plain text. Turn on TLS if your server has it."
     const val CLOUD_NO_CONSENT = "Cloud speech-to-text is on but has no consent: it will be skipped (Cloud page)."
     const val CLOUD_NOT_IN_ORDER = "Cloud allowed but not in the route order: it will not be used."
     const val NO_TOKEN = "No token: a server with auth (the default) will reject the connection."
@@ -503,8 +497,7 @@ object DevSettingsForm {
         val ct = num(Field.CONNECT_TIMEOUT, i.connectTimeoutMs, 100, 10_000, "Connect timeout (ms)")
         val cb = num(Field.COMMIT_TIMEOUT, i.commitTimeoutBaseMs, 500, 60_000, "Commit timeout (ms)")
         val ttl = num(Field.HEALTH_TTL, i.healthTtlS, 5, 600, "Health cache (s)")
-        val tlsLocked = host.isNotEmpty() && HostRules.classify(host) == HostRules.AddrClass.PUBLIC
-        val tls = i.tls || tlsLocked
+        val tls = i.tls
         val allowServer = i.allowServer && caps.remote
         val allowClient = i.allowClient && caps.local
         val allowCloud = i.allowCloud && caps.cloud
@@ -528,7 +521,7 @@ object DevSettingsForm {
             allowCloud = allowCloud, routeOrder = i.routeOrder,
             cloud = i.cloud, allowCloudCleanup = i.allowCloudCleanup, cleanupOrder = i.cleanupOrder, cleanupOff = i.cleanupOff,
         ) else null
-        return Result(settings, errors, warnings, tlsLocked)
+        return Result(settings, errors, warnings)
     }
 }
 

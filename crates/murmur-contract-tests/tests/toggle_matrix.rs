@@ -365,13 +365,17 @@ fn matrix_update_config_applies_next_session() {
 }
 
 #[test]
-fn matrix_plaintext_public_host_refused() {
+fn matrix_plaintext_public_host_is_dialled() {
+    // D111: ws:// to a public address is not refused. TEST-NET-3 goes
+    // nowhere, so the dial fails for the network's reasons and the
+    // dictation falls back to local.
     let (_, core) = local();
     let mut cfg = RouterConfig::default();
-    cfg.server.host = "8.8.8.8".into();
+    cfg.server.host = "203.0.113.5".into();
     cfg.server.token = TOKEN.into();
+    cfg.server.connect_timeout_ms = 300;
+    assert!(cfg.validate().is_ok());
     let r = hybrid_router(cfg, Some(core));
-    let t = Instant::now();
     let (_, res) = dictate(&r);
     assert_eq!(
         engine(&res),
@@ -379,13 +383,8 @@ fn matrix_plaintext_public_host_refused() {
     );
     let h = r.probe_server();
     assert!(!h.ok);
-    assert!(h.message.unwrap().contains("plaintext to public address"));
-    // Refused without a socket: no connect timeout was spent.
-    assert!(
-        t.elapsed() < Duration::from_millis(700),
-        "{:?}",
-        t.elapsed()
-    );
+    let m = h.message.unwrap();
+    assert!(!m.contains("plaintext") && !m.contains("enable TLS"), "{m}");
 }
 
 #[test]

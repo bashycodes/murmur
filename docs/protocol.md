@@ -16,7 +16,7 @@ Design rationale: `docs/hybrid-architecture.md` §2.
 | Health | `GET /v1/health` with the same auth → `200` + a `hello_ok` JSON body (without `"t"`) |
 | Model library (D40) | `GET /v1/models` with the same auth → `200` + `{"models":[{id, title, kind, language?, catalogue_id?, engine?, files:[{name, size, sha256}]}]}` (`murmur_protocol::library::ModelList`; `kind` = `stt`/`hebrew`/`llm`/`lid`/`vad`). `GET /v1/models/{id}/files/{name}` → the file (`application/octet-stream`, `ETag` = `"<sha256>"`, `Accept-Ranges: bytes`); one `Range: bytes=` range → `206` + `Content-Range`, unsatisfiable → `416`, `If-Range` with another ETag → whole file. Unknown id/file → `404`; file changed since the last scan → `503` + `Retry-After`. Ids and names use only `A-Z a-z 0-9 . _ -` (plus `/` inside a file name), so paths need no escaping. Clients verify every file against the listed `sha256`, and a model with a `catalogue_id` against their built-in pins |
 | Versioning | Path major `/v1/` changes only on a breaking change; the minor `proto` integer is negotiated in `hello` |
-| Schemes | `ws://` only to loopback / RFC 1918 / 100.64.0.0/10 / fd7a:115c:a1e0::/48 / fc00::/7 / link-local addresses, or a name every address of which is one of those (client-side checks `murmur_router::net::plaintext_ok_before_resolve` when saved, `plaintext_ok_resolved` when connecting); anything else needs `wss://`, unless the owner allowed an unencrypted connection to that server (`ServerConfig::allow_plaintext`, D100) |
+| Schemes | `ws://` or `wss://` to any address, public ones included (D111: the user's own server; no client-side address rule). Without TLS, audio, text and the token cross the network unencrypted |
 | TLS | rustls; self-signed leaf certificates may be pinned by SHA-256 of the leaf DER (`tls_pin_sha256`, 64 hex) |
 | Sockets | TCP_NODELAY on both ends. WebSocket ping every 15 s; 45 s without any frame = dead |
 | Sessions per connection | At most one active session. The client keeps an idle connection for 60 s for the next session |
@@ -166,10 +166,10 @@ and `core` = the plain product version are informational only.
 * Runs an unmodified `MurmurCore` session per `start`, fed the client's
   `SessionConfig` / `FieldContext`: VAD → ASR → hallucination guard → spoken
   cleanup → optional LLM → guard → post-processing → segments.
-* Bind policy (S10): loopback, RFC 1918, 100.64/10, link-local and IPv6 ULA
-  binds are always allowed; `0.0.0.0`, `::` or a public address only with
-  `[tls]` or `--insecure-bind-any` (which logs a WARNING). Peers outside those
-  private classes are dropped at accept unless `--insecure-bind-any`.
+* Bind policy (D111, replaces S10's): any bind address, `0.0.0.0`, `::` and
+  public addresses included, with or without `[tls]`; a wildcard or public
+  bind without `[tls]` is listed in the startup log. Any peer may connect;
+  the bearer key is the gate. `--insecure-bind-any` is accepted as a no-op.
 * Connection limits (S7): the TLS handshake and the HTTP request head must
   complete within `handshake_timeout_ms` (default 10 s; a silent socket is
   dropped too); at most `max_connections` (64) sockets in total and

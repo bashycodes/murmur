@@ -414,20 +414,13 @@ pub(crate) fn clean_refusal(
     }
 }
 
-/// Refuse plaintext to public IP literals before any socket exists (§2.6);
-/// names are decided by their resolved addresses in `conn::dial`. The
-/// owner's opt-in (`allow_plaintext`, D100) skips both.
+/// The checks before any socket exists: a host is set, and TLS is
+/// available when asked for. Plain `ws://` goes to any address (D111).
 pub(crate) fn check_address(c: &ServerConfig) -> Result<(), BackendError> {
     if !c.is_configured() {
         return Err(BackendError::new(
             Failure::ServerNotConfigured,
             "no server host set",
-        ));
-    }
-    if !c.plaintext_allowed_before_resolve() {
-        return Err(BackendError::new(
-            Failure::ConnectFailed,
-            "plaintext to public address (enable TLS)",
         ));
     }
     #[cfg(not(feature = "tls"))]

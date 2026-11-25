@@ -362,8 +362,8 @@ else
     priv_write "$CONF" 0644 <<EOF
 # murmur-server config, written by tools/server/install.sh. Reference:
 # crates/murmur-server/dist/config.example.toml, docs/server-advanced.md.
-# Loopback / LAN / VPN addresses only: 0.0.0.0 or a public address is
-# refused unless [tls] is set.
+# Loopback / LAN / VPN addresses recommended; any address works (plain
+# ws:// unless [tls] is set).
 bind = $BIND_TOML
 token_file = "$TOKEN"
 workers = 1

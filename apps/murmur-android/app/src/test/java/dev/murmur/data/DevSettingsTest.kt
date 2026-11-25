@@ -72,14 +72,31 @@ class DevSettingsTest {
 
     // ---- TLS / pin / token / timeouts ----
 
-    @Test fun publicHostForcesAndLocksTls() {
-        val r = form { copy(host = "murmur.example.com", tls = false) }
-        assertTrue(r.tlsLocked)
-        assertTrue(r.settings!!.tls)
-        val tailnet = form { copy(host = "100.64.0.10", tls = false, token = "x".repeat(16)) }
-        assertFalse(tailnet.tlsLocked)
-        assertFalse(tailnet.settings!!.tls)
-        assertTrue(DevSettingsForm.PLAINTEXT in tailnet.warnings)
+    /** D111: plain ws:// to any address, public ones included; TLS stays as the user set it. */
+    @Test fun publicHostKeepsTlsOff() {
+        for (h in listOf("murmur.example.com", "203.0.113.5", "2001:db8::1", "100.64.0.10")) {
+            val r = form { copy(allowServer = true, host = h, tls = false, token = "x".repeat(16)) }
+            assertTrue(h, r.canSave)
+            assertFalse(h, r.settings!!.tls)
+            assertTrue(h, DevSettingsForm.PLAINTEXT in r.warnings)
+            val wire = org.json.JSONObject(r.settings!!.routerConfigFor(BuildCaps.ALL)).getJSONObject("server")
+            assertFalse(h, wire.getBoolean("tls"))
+        }
+        assertTrue("TLS still works", form { copy(host = "203.0.113.5", tls = true) }.settings!!.tls)
+    }
+
+    /** Old prefs with a stray `server.allow_plaintext` key (D100's name) still load; the key is ignored. */
+    @Test fun oldPrefsWithAllowPlaintextStillLoad() {
+        val kv = MemKV()
+        kv.edit {
+            putString("server.host", "203.0.113.5")
+            putBoolean("server.tls", false)
+            putBoolean("server.allow_plaintext", true)
+        }
+        val s = DevStore(kv, BuildCaps.ALL, SecretVault("t", FakeVaultKeys())).load()
+        assertEquals("203.0.113.5", s.host)
+        assertFalse(s.tls)
+        assertFalse(s.effective(BuildCaps.ALL).tls)
     }
 
     @Test fun pinIsEmptyOr64HexColonsStripped() {

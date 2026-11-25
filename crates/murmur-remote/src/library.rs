@@ -55,7 +55,7 @@ const TICK: Duration = Duration::from_millis(250);
 pub enum ErrorKind {
     /// No server host set.
     NotConfigured,
-    /// DNS, TCP, TLS (incl. a pin mismatch), cleartext refused, timeouts,
+    /// DNS, TCP, TLS (incl. a pin mismatch), timeouts,
     /// a connection cut mid-file (the `.part` is kept: retry resumes).
     Network,
     /// The key was refused (`401`/`403`).
@@ -547,15 +547,17 @@ mod tests {
     }
 
     #[test]
-    fn plaintext_to_a_public_host_is_refused_before_any_socket() {
-        let cfg = ServerConfig {
-            host: "example.com".into(),
-            port: 8443,
-            tls: false,
-            ..Default::default()
-        };
-        let e = LibraryClient::new(cfg, "t").err().unwrap();
-        assert_eq!(e.kind, ErrorKind::Network);
+    fn plaintext_to_a_public_host_is_allowed() {
+        // D111: no cleartext rule; only a missing host is refused up front.
+        for host in ["example.com", "203.0.113.5"] {
+            let cfg = ServerConfig {
+                host: host.into(),
+                port: 8443,
+                tls: false,
+                ..Default::default()
+            };
+            assert!(LibraryClient::new(cfg, "t").is_ok(), "{host}");
+        }
         let e = LibraryClient::new(ServerConfig::default(), "t")
             .err()
             .unwrap();

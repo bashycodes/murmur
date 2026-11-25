@@ -204,7 +204,7 @@ three so switching is an in-place update that keeps prefs, dictionary and histor
 * jniLibs move from `src/main/jniLibs` to `src/<flavour>/jniLibs`; `tools/build-native.sh --flavor local|hybrid|remote` fills them.
 * `BuildConfig.CAP_LOCAL` / `CAP_REMOTE` per flavour; at startup they must equal `nativeCapabilities()` (mismatch = main-screen error "native library flavour mismatch").
 * `remote` flavour hides model import / LLM GGUF import; `ModelConfig` is never built.
-* Native sockets are not subject to Android's cleartext policy (Network Security Config covers Java stacks only), so `ws://` to a VPN address works without `usesCleartextTraffic`. The router's own address check (§2.6) is the gate.
+* Native sockets are not subject to Android's cleartext policy (Network Security Config covers Java stacks only), so `ws://` to the user's server works at any address without `usesCleartextTraffic` (D111).
 * A mesh VPN on Android is an OS VPN: no extra permission or code.
 
 **Root workspace gate** `tools/check-build-matrix.sh` (owner: server implementer):
@@ -268,18 +268,17 @@ Spec file: `docs/protocol.md` (normative; this section is its outline). Types:
 
 ### 2.6 Transport security
 
-| Server address (client-side check: `murmur_router::net::plaintext_ok_before_resolve` when saved, `plaintext_ok_resolved` when connecting) | `ws://` | `wss://` |
+| Server address | `ws://` | `wss://` |
 |---|---|---|
-| loopback, RFC 1918, 100.64.0.0/10 (VPN/CGNAT), fd7a:115c:a1e0::/48 (VPN overlay), fc00::/7, link-local IP; any name that resolves only to those | allowed; Developer page shows "unencrypted: OK only on your LAN or over an encrypted VPN" | allowed |
-| a public IP | **refused** when saved (`connect_failed: plaintext to public address`) | required |
-| a name that resolves to any public address | **refused** when connecting (`connect_failed: … plaintext refused …`) | required |
-| any address, with **Allow an unencrypted connection** on for this server (`ServerConfig::allow_plaintext`, D100) | allowed (warned) | allowed |
+| any address or name, public ones included | allowed; the server settings note that the connection is unencrypted | allowed |
 
-D100: before it, every dotted name other than `*.local` / `*.ts.net` counted as public when
-saved, so a company name such as `asr.corp.example.com` was refused even when it resolved to
-10.x. The server has its own peer filter (loopback/LAN/VPN clients only); on a network with
-public address ranges inside it must run with `--insecure-bind-any`
-(Docker: `MURMUR_INSECURE_BIND_ANY=1`) as well.
+D111 (supersedes D100's opt-in and D17's "plain `ws://` refused for public addresses"): the
+clients have no address rule for the user's own server, and the server serves plain `ws://` on
+any bind (a wildcard or public one included) to any peer; the bearer key is the gate. Before it,
+`ws://` to a public address was refused unless the owner ticked "Allow an unencrypted
+connection" and started the server with `--insecure-bind-any` (now a no-op). The address rules
+in `murmur_router::net` remain for the cloud's custom `http://` endpoints (D18) and the Windows
+webhook (D105).
 
 Recommended: a WireGuard-based VPN (it already encrypts; bind the server to its 100.x address).
 TLS (server `[tls] cert/key`, rustls) for LAN without a VPN; self-signed certs pinned
@@ -407,7 +406,7 @@ Fixtures: `crates/murmur-contract-tests/fixtures/sessions/*.json`:
 | `matrix_off_on_up_never_connects` / `…_down_never_connects` | `TestServer::connections()==0`; also constructed with `remote: None` |
 | `matrix_off_off_start_fails_no_engine_enabled` (× up/down) | `Err(no_engine_enabled)`, commit = ERROR |
 | `matrix_update_config_applies_next_session` | toggle flip mid-session affects only the next one |
-| `matrix_plaintext_public_host_refused` | `ws://8.8.8.8` refused without a socket |
+| `matrix_plaintext_public_host_is_dialled` | `ws://` to a public address is dialled (D111), fails only for the network |
 
 **Other suites**
 
@@ -435,8 +434,7 @@ are marked (ui).
 | `prefer` | segmented "Server first / Client first" (visible when both on) | server | — |
 | `server.host` | text | "" | trim; no scheme/path/port/whitespace; one of: IPv4 dotted quad (4 parts 0-255, no leading zeros), IPv6 literal (brackets optional, stored without), hostname (labels 1-63 `[A-Za-z0-9-]`, no leading/trailing `-`, total ≤ 253). Inline error text; Save disabled while invalid |
 | `server.port` | number | 7313 | integer 1-65535 |
-| `server.tls` | toggle "Use TLS (wss)" | off | forced on (and locked) when the host is a public IP (§2.6), unless `server.allow_plaintext` |
-| `server.allow_plaintext` | toggle "Allow an unencrypted connection" (Windows; D100) | off | plain `ws://` to any address; shown for a public IP, after a "plaintext refused" result, or while on |
+| `server.tls` | toggle "Use TLS (wss)" | off | never forced: plain `ws://` to any address (D111). A saved `allow_plaintext` (D100) is ignored on load |
 | `server.tls_pin_sha256` | text (shown when TLS on) | "" | empty or 64 hex (colons stripped) |
 | `server.token` | password field + show/paste/clear | "" | empty or ≥ 16 chars; never logged, never in exported settings |
 | `server.connect_timeout_ms` | number | 2500 (D24; a stored 800 migrates once) | 100-10000; the router raises it to `rtt × 6` (1.5-10 s) after a probe measured a slow path |
@@ -684,7 +682,7 @@ accept an `OpenRouterConfig` JSON. A legacy entry of another adapter is refused 
   * `RouterError` = `NoEngineEnabled | LocalNotReady | ServerNotConfigured | ServerUnavailable(String) | BadConfig(String)`, `kind()` = the §1.2 snake_case strings; `Display` = `"<kind>: <detail>"`.
 * `Backend::session_failure(&self) -> Option<BackendError>` — new trait method **with a default** (`None`); shells' local wrappers need not implement it. The router polls it on every push to detect a dead remote session (busy, lost connection, no `started` in time).
 * New `Router` methods: `with_local_capability(bool)` (builder: declare a local engine before its models are loaded, so `allow_client` with no model gives `local_not_ready`, not `no_engine_enabled`; default = a local backend was passed to `new`/`set_local`), `with_local_info(asr_engines, llm)` (fills `capabilities()`), `config()`, `probe_config(&ServerConfig)` (Test connection with the unsaved form; touches no router state), `reset_circuit()`.
-* Validation: `RouterConfig::validate() -> Result<(), RouterError::BadConfig>` implements the §5 rules (host syntax via `murmur_router::net::validate_host`, a public IP requires `tls` unless `allow_plaintext` (D100), pin 64 hex, token empty or ≥ 16, timeout ranges). `ServerConfig::addr()` gives "host:port" (IPv6 bracketed). `murmur_router::net::classify(host)` is the §2.6 address class; the speech server's config-time rule is `net::plaintext_ok_before_resolve(host)` (names wait for the resolved-address check, D100).
+* Validation: `RouterConfig::validate() -> Result<(), RouterError::BadConfig>` implements the §5 rules (host syntax via `murmur_router::net::validate_host`, any address with or without `tls` (D111), pin 64 hex, token empty or ≥ 16, timeout ranges). `ServerConfig::addr()` gives "host:port" (IPv6 bracketed). `murmur_router::net::classify(host)` is the §2.6 address class (used for cloud custom endpoints; the speech server has no address rule since D111).
 * murmur-core: besides `CommitResult.route` / `RouteInfo` / `POSTPROCESS_REV`, `murmur_core::VERSION` (crate version, used for `Capabilities.core_version` and `hello.core`).
 * Behaviour decisions:
   * Server-only (`allow_client` off) and the server is unreachable at start: `start_session` returns `Err(server_unavailable: …)` (or `server_not_configured`) **and** a following `commit()` returns ERROR with `route.fallback` set, so either check works.
@@ -703,7 +701,7 @@ accept an `OpenRouterConfig` JSON. A legacy entry of another adapter is refused 
 
 * Use the remote backend with `Router::new(cfg, local, Some(murmur_remote::factory("murmur-windows 0.2.0")))`. Cargo feature `tls` on `murmur-remote` adds `wss://` (rustls + Mozilla roots, or a pinned leaf: `tls_pin_sha256`); without it a `tls: true` config fails with `connect_failed`.
 * Remote behaviour the shells will see:
-  * `ws://` to a public host fails in `start_session`/`probe` with `connect_failed: plaintext to public address (enable TLS)` and opens no socket.
+  * `ws://` to a public host is dialled like any other (D111).
   * A warm connection is reused across sessions (idle close after 60 s), so only the first session after a pause pays the TCP + upgrade + hello round trips.
   * `started{queued:true}` (server busy) makes the router go local with `busy` when a ready local engine exists; without one the session waits on the server's queue (`queue_timeout_ms`, then ERROR).
   * Mid-session failure detection is by `session_failure()` on each push: connection closed, writer queue full (> 6.4 s backlog), server `busy`/`no_session`/`stale_sid`, or no `started` within `connect_timeout_ms`.
@@ -832,8 +830,8 @@ can adapt. Server-side items (S7-S10, C5, the server half of C4) are on branch `
   and a live cloud session that is no longer allowed switches to the next allowed route at once (the
   pill changes on the next poll). A running server session keeps its route until the next session.
   No shell change (just call `update_config` as today).
-* **S6 cleartext by resolved address** (`murmur-remote`, `murmur-cloud`, `murmur_router::net`). `ws://`
-  (and cloud `http://`) to a name resolves it and requires **every** address to be loopback, RFC 1918,
+* **S6 cleartext by resolved address** (`murmur_router::net`; for `murmur-remote` removed by D111:
+  `ws://` to the user's server goes to any address). Was: `ws://` (and cloud `http://`) to a name resolves it and requires **every** address to be loopback, RFC 1918,
   ULA, link-local, or VPN (100.64/10, fd7a:115c:a1e0::/48) reached through an interface that holds
   a VPN address (`net::plaintext_ok_resolved`, `net::route_source`); the connection then goes to
   exactly those addresses. Names pass the config-time check (`ServerConfig::validate`; since

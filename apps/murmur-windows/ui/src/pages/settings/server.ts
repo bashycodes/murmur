@@ -43,14 +43,8 @@ ${group(
     ) +
     row(
       "Encrypt the connection (TLS)",
-      `Turn on for a server on the internet. Always on for a public IP address, unless you allow an unencrypted connection.<span id="dev_tls_forced" hidden> Required for this address.</span>`,
+      `Turn on when your server has a certificate. Without it, audio, text and the access token cross the network unencrypted.`,
       toggle("dev_tls", "Encrypt the connection (TLS)", "data-dev-field"),
-    ) +
-    row(
-      "Allow an unencrypted connection",
-      `For a network you trust, such as an air-gapped company network that uses public address ranges inside. Audio, text and the access token cross that network unencrypted. Your server must also accept this PC: start it with <code>--insecure-bind-any</code> (Docker: <code>MURMUR_INSECURE_BIND_ANY=1</code>).`,
-      toggle("dev_allow_plaintext", "Allow an unencrypted connection", "data-dev-field"),
-      `id="dev_plaintext_row" hidden`,
     ) +
     row(
       `<label for="dev_tls_pin_sha256">Certificate fingerprint</label>`,

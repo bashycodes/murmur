@@ -781,17 +781,35 @@ fn probe_server_caches_health_and_closes_the_circuit() {
 }
 
 #[test]
+fn old_settings_with_allow_plaintext_still_load() {
+    // D100 wrote `allow_plaintext`; D111 dropped it. It is ignored on load.
+    for v in ["true", "false"] {
+        let j =
+            format!(r#"{{"host":"203.0.113.5","port":7313,"tls":false,"allow_plaintext":{v}}}"#);
+        let s: murmur_router::ServerConfig = serde_json::from_str(&j).unwrap();
+        assert_eq!(s.host, "203.0.113.5");
+        assert!(!s.tls);
+        assert!(!serde_json::to_string(&s)
+            .unwrap()
+            .contains("allow_plaintext"));
+    }
+}
+
+#[test]
 fn config_validation() {
     let mut c = cfg(true, true);
     assert!(c.validate().is_ok());
-    c.server.host = "8.8.8.8".into();
-    assert_eq!(c.validate().unwrap_err().kind(), "bad_config");
-    // D100: the owner's opt-in allows ws:// to it; names wait for DNS.
-    c.server.allow_plaintext = true;
-    assert!(c.validate().is_ok());
-    c.server.allow_plaintext = false;
-    c.server.host = "asr.corp.example.com".into();
-    assert!(c.validate().is_ok(), "decided by its resolved addresses");
+    // D111: plain ws:// to the user's own server is fine at any address.
+    for host in [
+        "8.8.8.8",
+        "203.0.113.5",
+        "[2001:db8::1]",
+        "asr.corp.example.com",
+    ] {
+        c.server.host = host.into();
+        assert!(!c.server.tls);
+        assert!(c.validate().is_ok(), "{host}");
+    }
     c.server.host = "8.8.8.8".into();
     c.server.tls = true;
     assert!(c.validate().is_ok());

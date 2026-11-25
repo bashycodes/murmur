@@ -92,10 +92,6 @@ pub struct Config {
     pub debug: crate::capture::DebugConfig,
     /// `[library]`: model files served to clients (D40).
     pub library: crate::library::LibraryConfig,
-    /// `--insecure-bind-any`: allow a wildcard or public bind without TLS
-    /// and accept peers outside loopback/LAN/VPN. Command line only.
-    #[serde(skip)]
-    pub insecure_bind_any: bool,
 }
 
 impl Default for Config {
@@ -126,7 +122,6 @@ impl Default for Config {
             log: LogConfig::default(),
             debug: Default::default(),
             library: Default::default(),
-            insecure_bind_any: false,
         }
     }
 }
@@ -167,23 +162,15 @@ impl Config {
             .collect()
     }
 
-    /// S10: a wildcard (`0.0.0.0`, `::`) or public bind is refused without
-    /// `[tls]` unless `insecure_bind_any` is set. Returns the addresses that
-    /// are reachable beyond loopback/LAN/VPN (for the startup warning).
-    pub fn check_bind(&self) -> Result<Vec<SocketAddr>, String> {
-        let wide: Vec<SocketAddr> = self
+    /// The bind addresses reachable beyond loopback/LAN/VPN: a wildcard
+    /// (`0.0.0.0`, `::`) or public address. Served with or without `[tls]`
+    /// (D111); listed in the startup log.
+    pub fn wide_binds(&self) -> Result<Vec<SocketAddr>, String> {
+        Ok(self
             .bind_addrs()?
             .into_iter()
             .filter(|a| !crate::net::classify(a.ip()).is_local())
-            .collect();
-        if wide.is_empty() || self.tls.is_some() || self.insecure_bind_any {
-            return Ok(wide);
-        }
-        let list: Vec<String> = wide.iter().map(|a| a.to_string()).collect();
-        Err(format!(
-            "bind {} is a wildcard or public address: plain ws:// would expose audio and the token beyond loopback/LAN/VPN. Bind a loopback, LAN or VPN (100.64/10) address, configure [tls], or pass --insecure-bind-any",
-            list.join(", ")
-        ))
+            .collect())
     }
 
     /// `auth = "none"` is only allowed when every bind address is loopback.
@@ -269,7 +256,7 @@ impl Config {
 
     pub fn validate(&self) -> Result<(), String> {
         self.check_auth()?;
-        self.check_bind()?;
+        self.bind_addrs()?;
         if self.workers == 0 {
             return Err("workers must be >= 1".into());
         }
@@ -474,27 +461,15 @@ mod tests {
     }
 
     #[test]
-    fn wildcard_bind_needs_tls_or_the_override() {
-        let c = Config::from_toml("bind = [\"0.0.0.0:7313\"]").unwrap();
-        assert!(c.check_bind().unwrap_err().contains("--insecure-bind-any"));
-        let c = Config {
-            tls: Some(TlsConfig::default()),
-            ..c
-        };
-        assert_eq!(c.check_bind().unwrap().len(), 1);
-        let c = Config {
-            tls: None,
-            insecure_bind_any: true,
-            ..c
-        };
-        assert!(c.check_bind().is_ok());
-        assert!(Config::default().check_bind().unwrap().is_empty());
-    }
-
-    #[test]
-    fn insecure_bind_any_cannot_come_from_the_file() {
-        let c = Config::from_toml("insecure_bind_any = true\nbind = [\"0.0.0.0:1\"]");
-        assert!(c.map_or(true, |c| !c.insecure_bind_any));
+    fn wildcard_and_public_binds_need_no_tls() {
+        // D111: plain ws:// on any bind; `wide_binds` only lists them.
+        for bind in ["0.0.0.0:7313", "[::]:7313", "203.0.113.5:7313"] {
+            let c = Config::from_toml(&format!("bind = [\"{bind}\"]")).unwrap();
+            assert!(c.tls.is_none());
+            assert!(c.validate().is_ok(), "{bind}");
+            assert_eq!(c.wide_binds().unwrap().len(), 1, "{bind}");
+        }
+        assert!(Config::default().wide_binds().unwrap().is_empty());
     }
 
     #[test]

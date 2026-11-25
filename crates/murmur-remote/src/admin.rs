@@ -1,7 +1,7 @@
 //! Admin API client (D39, `murmur_protocol::admin`): who am I, and list /
 //! create / revoke the server's keys. Plain HTTP/1.1 JSON on the stream's
 //! host, port, TLS and bearer key, with the same address checks as the
-//! stream (no plaintext to public addresses, TLS pin honoured).
+//! stream (a host must be set; TLS pin honoured when TLS is on).
 //!
 //! Blocking: every call runs on its own short-lived single-thread runtime,
 //! bounded by `connect_timeout_ms` for the connection and [`REQUEST_TIMEOUT`]
@@ -311,16 +311,23 @@ mod tests {
     }
 
     #[test]
-    fn refuses_plaintext_to_public_hosts_before_any_socket() {
+    fn refuses_before_any_socket_without_a_host_or_with_a_bad_id() {
         let c = AdminClient::new(
             ServerConfig {
-                host: "8.8.8.8".into(),
                 token: "secret-token-0123456789".into(),
                 ..Default::default()
             },
             "t",
         );
-        assert_eq!(c.whoami().unwrap_err().code, code::CONNECT_FAILED);
+        assert!(c.whoami().is_err());
+        let c = AdminClient::new(
+            ServerConfig {
+                host: "203.0.113.5".into(),
+                token: "secret-token-0123456789".into(),
+                ..Default::default()
+            },
+            "t",
+        );
         assert_eq!(c.revoke_key("../x").unwrap_err().code, code::BAD_REQUEST);
     }
 }

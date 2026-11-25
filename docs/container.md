@@ -48,7 +48,6 @@ ubuntu tar czf /b/murmur_data.tgz -C /data .`); the models are your folder.
 | `MURMUR_PORT` | `7313` | port inside the container |
 | `MURMUR_CONTAINER_NAME` | `murmur-server` | the container name in the hints the log prints |
 | `MURMUR_BIND_CONTAINER_IP` | `1` | see Binding |
-| `MURMUR_INSECURE_BIND_ANY` | `0` | see Binding |
 | `MURMUR_START_GRACE_S` | `600` | healthcheck grace while the models load |
 | `MURMUR_WHISPER_LIB` | CUDA image: its `libmurmur_whisper_cuda.so`; CPU image: unset | the whisper GPU plugin (`[model] whisper_lib` when the config sets none); empty = built-in CPU whisper (§7) |
 | `MURMUR_CONFIG` | (unset) | a config file elsewhere, used as is (Helm): no generated config, no admin key; the entrypoint waits for the first `keys add` |
@@ -265,54 +264,29 @@ The chart uses `imagePullPolicy: Never`, so a missing image shows as
 
 ## 10. Binding
 
-murmur-server refuses a wildcard (`0.0.0.0`) or public bind without `[tls]`
-(it would put plain `ws://` audio and tokens on every network), and drops
-peers outside loopback / LAN / VPN (`docs/server-advanced.md` §3, config.rs
-`check_bind`). The image keeps those rules:
+murmur-server serves plain `ws://` on any bind, a wildcard (`0.0.0.0`) or
+public address included, and accepts any peer that has a valid key (D111).
+Without `[tls]`, audio, text and the key cross the network unencrypted, so
+who can reach the port is up to where you publish it and your firewall.
 
 * **Default (`MURMUR_BIND_CONTAINER_IP=1`):** the entrypoint replaces the
-  config's `bind` with `127.0.0.1` and the container's own address (a
-  private address on Docker and Kubernetes networks), on port `MURMUR_PORT`
-  (7313). Published ports and Services reach that address, the bind is
-  not a wildcard, and the peer filter stays on. With Docker's default
-  port publishing the server sees the real client address, so clients
-  from the LAN or VPN connect and public ones are dropped. Who can reach
-  the port at all is set by the publish address (`-p ADDR:7313:7313`,
-  Compose `MURMUR_PUBLISH_ADDR`). The quick start publishes on `0.0.0.0`
-  (IPv4) on purpose: Docker forwards IPv6 connections to an IPv4-only
-  container through its userland proxy, so the server would see the
-  proxy's private address instead of the client's and the peer filter
-  could not drop a public IPv6 client.
+  config's `bind` with `127.0.0.1` and the container's own address, on
+  port `MURMUR_PORT` (7313). Published ports and Services reach that
+  address. Who can reach the port is set by the publish address
+  (`-p ADDR:7313:7313`, Compose `MURMUR_PUBLISH_ADDR`); the quick start
+  publishes on `0.0.0.0`.
 * **Host network (`--network host`):** the container shares the host's
-  addresses, so there is no `-p` (Docker ignores it). With the default
-  `MURMUR_BIND_CONTAINER_IP=1` the entrypoint would bind `127.0.0.1` plus
-  whatever the host's hostname resolves to, which is often only loopback.
-  So run with `MURMUR_BIND_CONTAINER_IP=0` and a `/data/config.toml` with
-  an explicit `bind` list, e.g.
-  `bind = ["127.0.0.1:7313", "192.168.1.20:7313"]`. The server listens
-  only on those addresses, the peer filter stays on, and Docker adds no
-  forwarding rules, so the host firewall (`ufw`) applies as for any host
-  service. The generated config's `0.0.0.0` bind would be refused without
-  TLS, so the config file is required here.
-  On a fresh install, get a full config first: start the container once
-  the quick-start way (default network, `-p`), copy the generated config
-  into the volume as in §3 (`docker exec murmur-server cp
-  /tmp/murmur-server.generated.toml /data/config.toml`), change its `bind`
-  line, then recreate the container with `--network host` and
-  `MURMUR_BIND_CONTAINER_IP=0` on the same `murmur_data` volume. The file
-  must be the whole config: once `/data/config.toml` exists the models are
-  no longer picked from `/models` and `MURMUR_STT` and the others no
-  longer apply.
-* **TLS (`wss://`):** §6. The rewritten bind is not a wildcard either way.
-* **`MURMUR_INSECURE_BIND_ANY=1`** (with `MURMUR_BIND_CONTAINER_IP=0` and a
-  `0.0.0.0` bind) passes `--insecure-bind-any`: no wildcard check and **no
-  peer filter**. The entrypoint and the server both warn at startup. Only
-  for a LAN-only host where the default does not work (an unusual container
-  network); publish the port on a LAN or VPN address, never on a public one.
-  The one other case is a closed network you trust whose clients use public
-  address ranges (an air-gapped company network, D100): the peer filter
-  would drop them all, so set this and turn on "Allow an unencrypted
-  connection" in the apps.
+  addresses, so there is no `-p` (Docker ignores it). Run with
+  `MURMUR_BIND_CONTAINER_IP=0`: the generated config's `0.0.0.0` bind is
+  then used as written and the server listens on every host address. To
+  listen on fewer, put an explicit `bind` list in `/data/config.toml`,
+  e.g. `bind = ["127.0.0.1:7313", "192.168.1.20:7313"]` (copy the
+  generated config first, §3: once `/data/config.toml` exists the models
+  are no longer picked from `/models`). Docker adds no forwarding rules
+  here, so the host firewall (`ufw`) applies as for any host service.
+* **TLS (`wss://`):** §6.
+* **`MURMUR_INSECURE_BIND_ANY`** is no longer needed and is ignored; an
+  old `docker run` line that sets it keeps working.
 
 ## 11. Health checks
 
@@ -351,15 +325,14 @@ Ingress.
 | `image.repository` / `image.tag` | `murmur-server` / `local` | locally loaded image, `pullPolicy: Never` |
 | `gpu.enabled` | `false` | CUDA image (`gpu.image`, tag `local-cuda`) + `nvidia.com/gpu: 1`; `gpu.runtimeClassName` if needed |
 | `bindPodIP` | `true` | bind 127.0.0.1 + the pod IP (Binding above) |
-| `insecureBindAny` | `false` | `--insecure-bind-any`; refused together with `serverTls` |
 | `serverTls.enabled` / `secretName` | off | `wss://` by murmur-server from a `kubernetes.io/tls` Secret; the chart adds `[tls]` |
-| `service.type` | `ClusterIP` | `LoadBalancer` on a LAN: set `service.externalTrafficPolicy: Local` so the peer filter sees client addresses |
+| `service.type` | `ClusterIP` | `LoadBalancer` on a LAN |
 | `ingress.enabled` | `false` | Ingress for `/v1` (WebSocket `/v1/stream`, `/v1/health`, `/v1/models`), TLS at the controller |
 | `persistence.models` / `.state` | 10Gi / 256Mi | `existingClaim`, `storageClass`, `size`, `accessModes` |
 | `resources` | 1 CPU, 2-8 GiB | Parakeet ~1 GB RSS, + ~1.5 GB with Qwen2.5-1.5B |
 
 Ingress notes: the hop from the controller to the pod is plain `ws://`
-inside the cluster (the controller's pod address passes the peer filter).
+inside the cluster.
 Sessions last up to 20 minutes, so raise the controller's WebSocket
 timeouts (the nginx annotations are in `values.yaml`). With
 `serverTls.enabled` and an Ingress, the controller must speak TLS to the

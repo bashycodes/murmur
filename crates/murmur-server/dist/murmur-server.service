@@ -43,8 +43,9 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 # The kernel enforces "no third party": only loopback, private LAN and
 # VPN (100.64/10) peers can talk to the server, and it cannot reach anything else.
 IPAddressDeny=any
-# Same classes the server's own peer filter accepts (src/net.rs). Never add
-# --insecure-bind-any to ExecStart: the server then accepts any peer.
+# This kernel allowlist is the unit's own choice: the server itself accepts
+# any peer with a valid key (D111). For clients outside these ranges (e.g. a
+# company network on public ranges), add them here.
 IPAddressAllow=localhost 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16 fc00::/7 fe80::/10
 
 [Install]

@@ -1,6 +1,6 @@
 //! RemoteBackend against a minimal in-test WebSocket server (no murmur-server):
-//! cancel during commit (review C4, client side), the resolved-address
-//! cleartext rule (review S6) and the probe's model names (D98).
+//! cancel during commit (review C4, client side), plain `ws://` to any
+//! address (D111) and the probe's model names (D98).
 #![allow(clippy::result_large_err)] // tungstenite's handshake callback signature
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -155,46 +155,37 @@ fn cancel_during_commit_sends_cancel_and_stops_waiting() {
 }
 
 #[test]
-fn cleartext_to_a_name_is_decided_by_its_resolved_addresses() {
+fn a_name_is_dialled_by_what_it_resolves_to() {
     let srv = SilentServer::start();
-    // `localhost` resolves to loopback only: allowed.
     let ok = RemoteBackend::new(server_cfg("localhost", srv.port), "test");
     ok.start_session(&SessionConfig::default())
-        .expect("loopback name allowed");
+        .expect("loopback name");
     ok.cancel();
-    // A single-label name no longer counts as private by its name: if it
-    // does not resolve, nothing is sent and the reason says so.
+    // A name that does not resolve: nothing is sent and the reason says so.
     let nx = RemoteBackend::new(server_cfg("murmur-no-such-host-zz9", srv.port), "test");
     let e = nx.start_session(&SessionConfig::default()).unwrap_err();
     assert_eq!(e.kind, Failure::ConnectFailed);
-    assert!(
-        e.message.contains("resolve") || e.message.contains("enable TLS"),
-        "{}",
-        e.message
-    );
+    assert!(e.message.contains("resolve"), "{}", e.message);
 }
 
-/// D100: a public-range address (here TEST-NET-3, which goes nowhere) is
-/// refused over `ws://` before any socket, unless the owner allowed
-/// plaintext for this server; then the app really tries to connect and
-/// fails only for the network's reasons.
+/// D111: a public-range address (here TEST-NET-3, which goes nowhere) with
+/// TLS off is not refused: the app really dials it over `ws://` and fails
+/// only for the network's reasons.
 #[test]
-fn allow_plaintext_lets_ws_reach_a_public_address() {
-    let public = |allow: bool| ServerConfig {
-        allow_plaintext: allow,
+fn plain_ws_dials_a_public_address() {
+    let cfg = ServerConfig {
         connect_timeout_ms: 300,
         ..server_cfg("203.0.113.5", 7313)
     };
-    let e = RemoteBackend::new(public(false), "test")
+    assert!(!cfg.tls);
+    assert!(cfg.validate().is_ok());
+    let e = RemoteBackend::new(cfg, "test")
         .start_session(&SessionConfig::default())
         .unwrap_err();
-    assert!(e.message.contains("enable TLS"), "{}", e.message);
-    let e = RemoteBackend::new(public(true), "test")
-        .start_session(&SessionConfig::default())
-        .unwrap_err();
+    assert_eq!(e.kind, Failure::ConnectFailed);
     assert!(
         !e.message.contains("enable TLS") && !e.message.contains("plaintext"),
-        "the opt-in must skip the cleartext rule: {}",
+        "no cleartext rule: {}",
         e.message
     );
 }
