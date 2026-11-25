@@ -40,6 +40,9 @@ pub mod code {
     pub const FORBIDDEN: &str = "forbidden";
     /// (404) no active key with that id.
     pub const NOT_FOUND: &str = "not_found";
+    /// (429) too many failed attempts from this address (D112); the
+    /// answer's `Retry-After` says when to try again.
+    pub const THROTTLED: &str = "throttled";
     /// (404) the server runs with `auth = "none"`: there are no keys.
     pub const AUTH_OFF: &str = "auth_off";
     /// (409) revoking it would leave no active admin key.

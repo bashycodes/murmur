@@ -10,6 +10,7 @@
 //! listens; it never opens an outbound connection.
 
 mod admin;
+pub mod auth_throttle;
 pub mod capture;
 pub mod config;
 mod health;
@@ -66,6 +67,8 @@ pub(crate) struct AppState {
     /// S7: open-connection caps (global permits, per-IP counts).
     conn_slots: Arc<Semaphore>,
     per_ip: Mutex<HashMap<IpAddr, usize>>,
+    /// Failed-auth lockouts per peer IP (D112).
+    throttle: auth_throttle::AuthThrottle,
 }
 
 /// One open connection's share of the caps; released when the HTTP
@@ -287,6 +290,7 @@ pub async fn serve_with_pool(
     }
     let models = server_models(pool.model_config(), pool.llm, library.as_deref());
     let cfg_max_conns = cfg.max_connections.max(1);
+    let throttle = auth_throttle::AuthThrottle::new(cfg.auth_throttle.clone());
     let state = Arc::new(AppState {
         pool,
         keys,
@@ -301,6 +305,7 @@ pub async fn serve_with_pool(
         cancels: AtomicU64::new(0),
         conn_slots: Arc::new(Semaphore::new(cfg_max_conns)),
         per_ip: Mutex::new(HashMap::new()),
+        throttle,
     });
     let app = Router::new()
         .route(murmur_protocol::PATH_STREAM, get(stream_handler))
@@ -419,22 +424,73 @@ async fn accept_loop(l: TcpListener, app: Router, state: Arc<AppState>, tls: Acc
     }
 }
 
-/// The bearer check (D38): `Ok(None)` when auth is off, `Ok(Some(key))`
-/// for an active key, `Err(())` otherwise. The key store compares hashes
-/// in constant time and re-reads `keys.json` when the CLI changed it.
-pub(crate) fn authorize(state: &AppState, headers: &HeaderMap) -> Result<Option<keys::KeyRef>, ()> {
+/// Why [`authorize`] refused a request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Denied {
+    /// Missing, unknown or revoked key (401).
+    Unauthorized,
+    /// Too many failed attempts from this peer; retry after (429, D112).
+    Throttled(Duration),
+}
+
+impl Denied {
+    /// `Retry-After` in whole seconds (at least 1).
+    pub(crate) fn retry_after_secs(d: Duration) -> u64 {
+        (d.as_millis().div_ceil(1000) as u64).max(1)
+    }
+}
+
+impl IntoResponse for Denied {
+    fn into_response(self) -> Response {
+        match self {
+            Denied::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized").into_response(),
+            Denied::Throttled(d) => (
+                StatusCode::TOO_MANY_REQUESTS,
+                [(
+                    axum::http::header::RETRY_AFTER,
+                    Denied::retry_after_secs(d).to_string(),
+                )],
+                "too many failed attempts",
+            )
+                .into_response(),
+        }
+    }
+}
+
+/// The bearer check (D38) for a request from `peer`: `Ok(None)` when auth
+/// is off, `Ok(Some(key))` for an active key, else why not. A peer locked
+/// out for failed attempts (D112) is refused before its key is compared.
+/// The key store compares hashes in constant time and re-reads
+/// `keys.json` when the CLI changed it.
+pub(crate) fn authorize(
+    state: &AppState,
+    peer: IpAddr,
+    headers: &HeaderMap,
+) -> Result<Option<keys::KeyRef>, Denied> {
     let Some(store) = &state.keys else {
         return Ok(None);
     };
+    state.throttle.check(peer).map_err(Denied::Throttled)?;
     let got = headers
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
         .unwrap_or("");
-    if got.is_empty() {
-        return Err(());
+    let key = if got.is_empty() {
+        None
+    } else {
+        store.authenticate(got)
+    };
+    match key {
+        Some(key) => {
+            state.throttle.succeeded(peer);
+            Ok(Some(key))
+        }
+        None => {
+            state.throttle.failed(peer);
+            Err(Denied::Unauthorized)
+        }
     }
-    store.authenticate(got).map(Some).ok_or(())
 }
 
 async fn stream_handler(
@@ -444,9 +500,15 @@ async fn stream_handler(
     headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Response {
-    let Ok(key) = authorize(&state, &headers) else {
-        tracing::info!(%peer, "rejected: bad or missing token");
-        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+    let key = match authorize(&state, peer.ip(), &headers) {
+        Ok(key) => key,
+        Err(d) => {
+            tracing::info!(%peer, "rejected: {}", match d {
+                Denied::Unauthorized => "bad or missing token",
+                Denied::Throttled(_) => "locked out after failed attempts",
+            });
+            return d.into_response();
+        }
     };
     ws.protocols([murmur_protocol::SUBPROTOCOL])
         .max_message_size(limits::MAX_WS_MESSAGE_BYTES)

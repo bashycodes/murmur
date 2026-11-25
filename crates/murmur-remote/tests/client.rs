@@ -247,3 +247,30 @@ fn probe_carries_the_server_models() {
     let json = serde_json::to_string(&h).unwrap();
     assert!(!json.contains("\"models\""), "{json}");
 }
+
+/// A server that has locked this address out answers the upgrade with 429
+/// (D112): the error says so, with the wait, instead of a bare HTTP error.
+#[test]
+fn locked_out_upgrade_says_when_to_retry() {
+    use std::io::{Read, Write};
+    let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = l.local_addr().unwrap().port();
+    std::thread::spawn(move || {
+        while let Ok((mut s, _)) = l.accept() {
+            let mut buf = [0u8; 4096];
+            let _ = s.read(&mut buf);
+            let _ = s.write_all(
+                b"HTTP/1.1 429 Too Many Requests\r\nRetry-After: 17\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            );
+        }
+    });
+    let e = RemoteBackend::new(server_cfg("127.0.0.1", port), "test")
+        .start_session(&SessionConfig::default())
+        .unwrap_err();
+    assert_eq!(e.kind, Failure::ConnectFailed);
+    assert!(
+        e.message.contains("too many failed sign-ins") && e.message.contains("17 s"),
+        "{}",
+        e.message
+    );
+}
