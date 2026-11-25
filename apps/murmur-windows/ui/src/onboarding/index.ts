@@ -21,7 +21,6 @@
 import { FolderChecklist } from "../features/model-folder.js";
 import { downloadSource, hasServer, hebrewEntry, mb, models, pickPath, progressLine, recommendedLlm, setDownloadSource, type CatalogEntry } from "../features/models.js";
 import { devStore } from "../lib/dev-store.js";
-import { isPlaintextRefusal, optInFor, PLAINTEXT_REFUSED_TEXT } from "../lib/plaintext.js";
 import { $, el, html } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { captureChord, stopCapture } from "../lib/keycapture.js";
@@ -245,20 +244,13 @@ function renderEngine(): void {
   showCounter();
 }
 
-/** D100: setup has no plaintext toggle, so the saved opt-in goes only with the saved address. */
-function optInPatch(host: string): Partial<DevForm> {
-  const saved = views.dev?.form;
-  return { host, allow_plaintext: optInFor(saved?.host ?? "", !!saved?.allow_plaintext, host) };
-}
-
 async function testServer(): Promise<void> {
   const host = $<HTMLInputElement>("ob_host").value.trim();
-  const form = devStore.form({ ...optInPatch(host), token: $<HTMLInputElement>("ob_token").value.trim() });
+  const form = devStore.form({ host, token: $<HTMLInputElement>("ob_token").value.trim() });
   status("ob_server_status", "Connecting…");
   try {
     const h = await invoke<Health>("dev_test_connection", { form });
     if (h.ok) status("ob_server_status", `Connected${h.server ? ` to ${h.server}` : ""}${h.rtt_ms ? ` · ${h.rtt_ms.median} ms` : ""}.`, true);
-    else if (isPlaintextRefusal(h.message)) status("ob_server_status", PLAINTEXT_REFUSED_TEXT, false);
     else status("ob_server_status", h.message ?? h.error ?? "No answer.", false);
   } catch (e) {
     status("ob_server_status", errText(e), false);
@@ -277,7 +269,7 @@ async function saveServer(patch: Partial<DevForm>): Promise<boolean> {
   }
   try {
     const token = $<HTMLInputElement>("ob_token").value.trim();
-    await devStore.save({ ...patch, ...optInPatch(host), token });
+    await devStore.save({ ...patch, host, token });
     if (token) st.tokenSaves += 1;
     $<HTMLInputElement>("ob_token").value = "";
     return true;

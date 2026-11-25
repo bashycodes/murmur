@@ -145,8 +145,7 @@ hides it again):
   client in Developer settings".
 * Server **host/IP** (IPv4, IPv6, or a name such as `mybox.local`;
   no `ws://`, path or port) and **port** (default 7313), TLS + optional
-  certificate pin (required and forced for a public IP address, unless
-  "Allow an unencrypted connection" is on, D100), **token**
+  certificate pin (optional for any address, D111), **token**
   (from `murmur-server gen-token`; stored DPAPI-encrypted for your Windows
   account, never logged), connect / commit timeouts, health cache, keep the
   local model warm, S/L badge on the Murmur bar.
@@ -631,7 +630,7 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 
 - [ ] Hybrid build: Developer tab is visible; Build row says "client + server"; header line no longer says "nothing is sent over the network".
 - [ ] Host field: `ws://1.2.3.4`, `1.2.3.4:7313`, `256.1.1.1`, `my box` each show an inline error and disable Save / Test connection; `100.64.0.10`, `[fd7a:115c:a1e0::1]`, `mybox.local` are accepted (brackets dropped on save). Port 0 / 70000 rejected.
-- [ ] Host `example.com` ticks and locks "Use TLS"; a 100.x / 192.168.x host shows "Unencrypted: OK only on your LAN or over an encrypted VPN.".
+- [ ] Any host (`example.com`, `203.0.113.5`, 100.x, 192.168.x) leaves "Use TLS" as set; with TLS off the page notes "Unencrypted (ws://): …".
 - [ ] Token: Show / Paste / Clear work; a 10-char token is rejected; after Save, `prefs.json` contains `token_dpapi` and **not** the token text; copying `prefs.json` to another Windows account leaves the token empty there.
 - [ ] Test connection with the server up: "OK · median N ms (a-b) · murmur-server 0.2.0+1a2b3c4 · parakeet" (version + commit, D26); with a wrong token: "auth_failed … token rejected"; with the server stopped: "connect_failed … is murmur-server running / LAN or VPN up?".
 - [ ] Test session: "EMPTY (no_speech) via server"; with the server stopped: "via client (fallback: connect_failed)".

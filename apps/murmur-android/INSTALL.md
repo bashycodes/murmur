@@ -78,10 +78,8 @@ background* (each is a row on the *Permissions* page, menu ☰ → Permissions: 
 **3. Point it at the server.** Menu ☰ → *Settings* → *Your server* (or Menu ☰ → *Developer settings* → *Server*): host = the PC's
 `100.x.y.z` (or its VPN DNS name), port `7313`, *Paste* the key, *Use TLS* off, *Save* (top
 bar), then *Test connection* (bottom) → `OK · median N ms … · parakeet`. *Settings → Speech to text*:
-*Use your server* + *Use this phone* on (the defaults in hybrid; they apply at once). Plain `ws://` is
-only allowed when the address is private or a VPN address **and** the phone reaches it through its
-VPN interface: "Server needs TLS — turn on Use TLS …" means the VPN is off on the phone
-or the host is a public address. For on-device fallback, either import a model (§2, §5) or tick
+*Use your server* + *Use this phone* on (the defaults in hybrid; they apply at once). Plain `ws://`
+works to any address. For on-device fallback, either import a model (§2, §5) or tick
 *Settings → Mock engine*.
 
 **4. Smoke checklist (10 minutes).** Note the phone model, Android version and pass/fail per line.
@@ -597,7 +595,7 @@ Every screen uses the app design (top bar, cards, light and dark):
       session* (*Developer settings → Engine options*) says `OK: Client (on-device) · … EMPTY (no_speech)`.
 - [ ] `hybrid` over `local`: dictionary/history kept. Developer settings visible; host
       validation (*Server* page): `http://x`, `10.0.0.1:7313`, `256.1.1.1`, `a_b.com` show inline
-      errors and the top-bar *Save* greys out; `8.8.8.8` / `example.com` lock *Use TLS* on.
+      errors and the top-bar *Save* greys out.
 - [ ] `hybrid`, server up (VPN): *Test connection* shows median RTT + server version;
       dictation → last engine `Server …`, optional badge `[S]` on the preview line; Server info
       shows "pipeline ✓".

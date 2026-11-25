@@ -67,23 +67,21 @@ pub(crate) trait Io: AsyncRead + AsyncWrite + Unpin + Send {}
 impl<T: AsyncRead + AsyncWrite + Unpin + Send> Io for T {}
 pub(crate) type BoxIo = Box<dyn Io>;
 
-/// TCP (+TLS) to the configured server, with the cleartext rules: shared
-/// by the WebSocket session ([`connect`]) and the model library's HTTP
-/// client (`library`). The caller bounds it with `connect_timeout_ms`.
+/// TCP (+TLS) to the configured server: shared by the WebSocket session
+/// ([`connect`]) and the model library's HTTP client (`library`). Plain
+/// `ws://` goes to any address (D111). The caller bounds it with
+/// `connect_timeout_ms`.
 pub(crate) async fn dial(cfg: &ServerConfig) -> Result<BoxIo, BackendError> {
     let host = net::bare_host(&cfg.host).to_string();
-    // Resolve first; plain ws:// only if *every* address is private /
-    // loopback / link-local / VPN-via-VPN-interface (review S6), and then
-    // connect to exactly those addresses (no second lookup to rebind).
-    // The owner's opt-in (`allow_plaintext`, D100) skips the rule.
     let addrs: Vec<std::net::SocketAddr> = tokio::net::lookup_host((host.as_str(), cfg.port))
         .await
         .map_err(|e| connect_failed(format!("{}: cannot resolve: {e}", cfg.addr())))?
         .collect();
-    if !cfg.tls && !cfg.allow_plaintext {
-        let ips: Vec<std::net::IpAddr> = addrs.iter().map(|a| a.ip()).collect();
-        net::plaintext_ok_resolved(&ips, &net::route_source)
-            .map_err(|e| connect_failed(format!("{}: plaintext refused: {e}", cfg.addr())))?;
+    if addrs.is_empty() {
+        return Err(connect_failed(format!(
+            "{}: the server name did not resolve",
+            cfg.addr()
+        )));
     }
     let tcp = tokio::net::TcpStream::connect(&addrs[..])
         .await

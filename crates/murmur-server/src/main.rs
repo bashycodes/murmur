@@ -1,4 +1,4 @@
-//! `murmur-server [--config PATH] [--token-file PATH] [--insecure-bind-any]`
+//! `murmur-server [--config PATH] [--token-file PATH]` (`--insecure-bind-any`: accepted, no-op, D111)
 //! `murmur-server gen-token --out PATH`
 //! `murmur-server check-config [--config PATH]`
 //! `murmur-server keys add <name> [--admin] | list | revoke <name|id> [--force]` (D38)
@@ -16,7 +16,7 @@ const SYSTEM_STATE_DIR: &str = "/var/lib/murmur-server";
 
 fn usage() -> ExitCode {
     eprintln!(
-        "usage:\n  murmur-server [--config PATH] [--token-file PATH] [--insecure-bind-any]\n  murmur-server gen-token --out PATH\n  murmur-server check-config [--config PATH] [--token-file PATH]\n  murmur-server keys add <name> [--admin] [--config PATH] [--state-dir DIR]\n  murmur-server keys list [--config PATH] [--state-dir DIR]\n  murmur-server keys revoke <name|id> [--force] [--config PATH] [--state-dir DIR]\n  murmur-server library list [--config PATH] [--state-dir DIR]"
+        "usage:\n  murmur-server [--config PATH] [--token-file PATH]\n  murmur-server gen-token --out PATH\n  murmur-server check-config [--config PATH] [--token-file PATH]\n  murmur-server keys add <name> [--admin] [--config PATH] [--state-dir DIR]\n  murmur-server keys list [--config PATH] [--state-dir DIR]\n  murmur-server keys revoke <name|id> [--force] [--config PATH] [--state-dir DIR]\n  murmur-server library list [--config PATH] [--state-dir DIR]"
     );
     ExitCode::from(2)
 }
@@ -26,7 +26,6 @@ struct Args {
     config: PathBuf,
     token_file: Option<PathBuf>,
     out: Option<PathBuf>,
-    insecure_bind_any: bool,
     state_dir: Option<PathBuf>,
     admin: bool,
     /// `keys revoke --force`: allow revoking the last admin key.
@@ -41,7 +40,6 @@ fn parse() -> Option<Args> {
         config: DEFAULT_CONFIG.into(),
         token_file: None,
         out: None,
-        insecure_bind_any: false,
         state_dir: None,
         admin: false,
         force: false,
@@ -53,7 +51,9 @@ fn parse() -> Option<Args> {
             "--config" => a.config = it.next()?.into(),
             "--token-file" => a.token_file = Some(it.next()?.into()),
             "--out" => a.out = Some(it.next()?.into()),
-            "--insecure-bind-any" => a.insecure_bind_any = true,
+            // No-op since D111 (plain ws:// on any bind is the default);
+            // still accepted so existing command lines keep working.
+            "--insecure-bind-any" => {}
             "--state-dir" => a.state_dir = Some(it.next()?.into()),
             "--admin" => a.admin = true,
             "--force" => a.force = true,
@@ -86,7 +86,6 @@ fn load_unchecked(a: &Args) -> Result<Config, String> {
     {
         c.state_dir = Some(SYSTEM_STATE_DIR.into());
     }
-    c.insecure_bind_any = a.insecure_bind_any;
     c.apply_whisper_lib_env(std::env::var("MURMUR_WHISPER_LIB").ok());
     Ok(c)
 }

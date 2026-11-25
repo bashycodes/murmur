@@ -29,16 +29,14 @@
 # `murmur-server keys add <name> --admin` creates keys.json (a crash loop
 # would make `exec` impossible).
 #
-# Binding (docs/container.md "Binding"). The server refuses a wildcard bind
-# (0.0.0.0) without [tls] or --insecure-bind-any (config.rs check_bind), so:
+# Binding (docs/container.md "Binding"). The server serves plain ws:// on any
+# bind, a wildcard included (D111):
 # * MURMUR_BIND_CONTAINER_IP=1 (default): replace the config's `bind` with
-#   127.0.0.1 and this container's own addresses (private on Docker and
-#   Kubernetes networks), port MURMUR_PORT (default 7313). Published/forwarded
-#   ports reach those addresses; the peer filter (loopback/LAN/VPN only)
-#   stays on.
-# * MURMUR_BIND_CONTAINER_IP=0: use the config's `bind` as written (e.g.
-#   0.0.0.0 with [tls], or with MURMUR_INSECURE_BIND_ANY=1).
-# * MURMUR_INSECURE_BIND_ANY=1 adds --insecure-bind-any (warns).
+#   127.0.0.1 and this container's own addresses, port MURMUR_PORT (default
+#   7313). Published/forwarded ports reach those addresses.
+# * MURMUR_BIND_CONTAINER_IP=0: use the config's `bind` as written (e.g. the
+#   generated 0.0.0.0, for --network host).
+# * MURMUR_INSECURE_BIND_ANY is ignored (no longer needed).
 set -eu
 
 BIN="${MURMUR_BIN:-/opt/murmur-server/bin/murmur-server}"
@@ -250,7 +248,6 @@ cli() {
             shift
             c="$(config_file)"
             set -- "$@" --config "$(effective_config "$c")"
-            [ "${MURMUR_INSECURE_BIND_ANY:-0}" = 1 ] && set -- "$@" --insecure-bind-any
             exec "$BIN" check-config "$@" ;;
     esac
     exec "$BIN" "$@"
@@ -272,10 +269,6 @@ if ! has_config_flag "$@"; then
     EFFECTIVE="$(effective_config "$CONFIG")"
     [ "$EFFECTIVE" = "$CONFIG" ] || say "bind = $(sed -n 2p "$EFFECTIVE" | cut -d= -f2-)"
     set -- --config "$EFFECTIVE" "$@"
-fi
-if [ "${MURMUR_INSECURE_BIND_ANY:-0}" = 1 ]; then
-    say "WARNING: MURMUR_INSECURE_BIND_ANY=1: wildcard/public bind allowed without TLS and no peer filter. Publish the port on a loopback, LAN or VPN host address only, or configure [tls] (docs/container.md)."
-    set -- "$@" --insecure-bind-any
 fi
 
 # Wait for the first key (a config without token_file). check-config is

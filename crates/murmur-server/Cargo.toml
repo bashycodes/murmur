@@ -3,7 +3,7 @@ name = "murmur-server"
 version.workspace = true
 edition.workspace = true
 license-file.workspace = true
-description = "Self-hosted murmur-core server for hybrid dictation (LAN/VPN only; stores no audio or text unless [debug] capture is on)"
+description = "Self-hosted murmur-core server for hybrid dictation (stores no audio or text unless [debug] capture is on)"
 
 [features]
 default = ["whisper", "whisper-plugin", "tls"]

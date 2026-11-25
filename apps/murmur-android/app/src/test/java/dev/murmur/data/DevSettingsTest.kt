@@ -40,21 +40,6 @@ class DevSettingsTest {
         }
     }
 
-    @Test fun classificationTable() {
-        val t = mapOf(
-            "127.0.0.1" to HostRules.AddrClass.LOOPBACK, "::1" to HostRules.AddrClass.LOOPBACK, "[::1]" to HostRules.AddrClass.LOOPBACK,
-            "localhost" to HostRules.AddrClass.LOOPBACK, "10.1.2.3" to HostRules.AddrClass.LAN, "172.16.0.1" to HostRules.AddrClass.LAN,
-            "172.32.0.1" to HostRules.AddrClass.PUBLIC, "192.168.1.20" to HostRules.AddrClass.LAN, "169.254.1.1" to HostRules.AddrClass.LAN,
-            "100.64.0.10" to HostRules.AddrClass.TAILNET, "100.127.255.255" to HostRules.AddrClass.TAILNET, "100.128.0.1" to HostRules.AddrClass.PUBLIC,
-            "100.63.0.1" to HostRules.AddrClass.PUBLIC, "fd7a:115c:a1e0::1" to HostRules.AddrClass.TAILNET, "fd00::1" to HostRules.AddrClass.LAN,
-            "fe80::1" to HostRules.AddrClass.LAN, "2001:4860:4860::8888" to HostRules.AddrClass.PUBLIC, "::ffff:192.168.1.1" to HostRules.AddrClass.LAN,
-            "::ffff:8.8.8.8" to HostRules.AddrClass.PUBLIC, "8.8.8.8" to HostRules.AddrClass.PUBLIC, "box.tail1234.ts.net" to HostRules.AddrClass.TAILNET,
-            "desktop.local" to HostRules.AddrClass.LOCAL_NAME, "desktop" to HostRules.AddrClass.LOCAL_NAME, "example.com" to HostRules.AddrClass.PUBLIC,
-            "ts.net.example.com" to HostRules.AddrClass.PUBLIC,
-        )
-        for ((h, want) in t) assertEquals(h, want, HostRules.classify(h))
-    }
-
     @Test fun portMustBe1To65535() {
         for (p in listOf("0", "65536", "-1", "abc", "", "1.5")) assertTrue(p, Field.PORT in form { copy(port = p) }.errors)
         for (p in listOf("1", "7313", "65535", " 443 ")) assertTrue(p, form { copy(port = p) }.canSave)
@@ -72,14 +57,31 @@ class DevSettingsTest {
 
     // ---- TLS / pin / token / timeouts ----
 
-    @Test fun publicHostForcesAndLocksTls() {
-        val r = form { copy(host = "murmur.example.com", tls = false) }
-        assertTrue(r.tlsLocked)
-        assertTrue(r.settings!!.tls)
-        val tailnet = form { copy(host = "100.64.0.10", tls = false, token = "x".repeat(16)) }
-        assertFalse(tailnet.tlsLocked)
-        assertFalse(tailnet.settings!!.tls)
-        assertTrue(DevSettingsForm.PLAINTEXT in tailnet.warnings)
+    /** D111: plain ws:// to any address, public ones included; TLS stays as the user set it. */
+    @Test fun publicHostKeepsTlsOff() {
+        for (h in listOf("murmur.example.com", "203.0.113.5", "2001:db8::1", "100.64.0.10")) {
+            val r = form { copy(allowServer = true, host = h, tls = false, token = "x".repeat(16)) }
+            assertTrue(h, r.canSave)
+            assertFalse(h, r.settings!!.tls)
+            assertTrue(h, DevSettingsForm.PLAINTEXT in r.warnings)
+            val wire = org.json.JSONObject(r.settings!!.routerConfigFor(BuildCaps.ALL)).getJSONObject("server")
+            assertFalse(h, wire.getBoolean("tls"))
+        }
+        assertTrue("TLS still works", form { copy(host = "203.0.113.5", tls = true) }.settings!!.tls)
+    }
+
+    /** Old prefs with a stray `server.allow_plaintext` key (D100's name) still load; the key is ignored. */
+    @Test fun oldPrefsWithAllowPlaintextStillLoad() {
+        val kv = MemKV()
+        kv.edit {
+            putString("server.host", "203.0.113.5")
+            putBoolean("server.tls", false)
+            putBoolean("server.allow_plaintext", true)
+        }
+        val s = DevStore(kv, BuildCaps.ALL, SecretVault("t", FakeVaultKeys())).load()
+        assertEquals("203.0.113.5", s.host)
+        assertFalse(s.tls)
+        assertFalse(s.effective(BuildCaps.ALL).tls)
     }
 
     @Test fun pinIsEmptyOr64HexColonsStripped() {

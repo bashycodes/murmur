@@ -2034,11 +2034,6 @@ fn ensure_local(state: &AppState, prefs: &Prefs) {
 struct DevCheck {
     errors: Vec<FieldError>,
     warnings: Vec<String>,
-    /// TLS is required and its switch locked (public address, no opt-in).
-    tls_forced: bool,
-    /// The address is a public IP literal (D100: the page then offers
-    /// "Allow an unencrypted connection").
-    host_public: bool,
 }
 
 fn dev_check(form: &DevForm, saved: &DevSettings, creds: &dyn CredentialStore) -> DevCheck {
@@ -2065,23 +2060,12 @@ fn dev_check(form: &DevForm, saved: &DevSettings, creds: &dyn CredentialStore) -
                 caps,
                 credentials::key_state(creds, credentials::OPENROUTER).set,
             ));
-            let (tls_forced, host_public) = form.tls_lock();
-            DevCheck {
-                errors,
-                warnings,
-                tls_forced,
-                host_public,
-            }
+            DevCheck { errors, warnings }
         }
-        Err(errors) => {
-            let (tls_forced, host_public) = form.tls_lock();
-            DevCheck {
-                errors,
-                warnings: Vec::new(),
-                tls_forced,
-                host_public,
-            }
-        }
+        Err(errors) => DevCheck {
+            errors,
+            warnings: Vec::new(),
+        },
     }
 }
 

@@ -126,7 +126,7 @@ when it fires.
 
 ## 4. Where the call runs: client direct
 
-Unchanged from D18: keys stay on each device, murmur-server keeps `IPAddressDeny=any`, no
+Unchanged from D18: keys stay on each device, murmur-server makes no outbound calls, no
 protocol change. Cloud cleanup applies to on-device and cloud-STT dictations, **not** to
 the server route in v1 (the server uses its own LLM; proposal §2.5).
 

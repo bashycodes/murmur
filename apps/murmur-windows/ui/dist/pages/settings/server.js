@@ -22,8 +22,7 @@ ${group("Connection", row(`<label for="dev_host">Address</label>`, `Name or IP a
          <button type="button" class="fl-btn fl-btn-ghost fl-btn-sm" id="dev_token_show">Show</button>
          <button type="button" class="fl-btn fl-btn-ghost fl-btn-sm" id="dev_token_clear">Clear</button>
        </span>`) +
-        row("Encrypt the connection (TLS)", `Turn on for a server on the internet. Always on for a public IP address, unless you allow an unencrypted connection.<span id="dev_tls_forced" hidden> Required for this address.</span>`, toggle("dev_tls", "Encrypt the connection (TLS)", "data-dev-field")) +
-        row("Allow an unencrypted connection", `For a network you trust, such as an air-gapped company network that uses public address ranges inside. Audio, text and the access token cross that network unencrypted. Your server must also accept this PC: start it with <code>--insecure-bind-any</code> (Docker: <code>MURMUR_INSECURE_BIND_ANY=1</code>).`, toggle("dev_allow_plaintext", "Allow an unencrypted connection", "data-dev-field"), `id="dev_plaintext_row" hidden`) +
+        row("Encrypt the connection (TLS)", `Turn on when your server has a certificate. Without it, audio, text and the access token cross the network unencrypted.`, toggle("dev_tls", "Encrypt the connection (TLS)", "data-dev-field")) +
         row(`<label for="dev_tls_pin_sha256">Certificate fingerprint</label>`, `Optional. Pins this exact server. ${err("tls_pin_sha256")}`, `<input id="dev_tls_pin_sha256" class="fl-input lw-w300 lw-mono-input" data-dev-field spellcheck="false" placeholder="SHA-256" />`, `id="dev_pin_row"`))}
 <div class="lw-actions lw-actions-tight">
   <button type="button" id="dev_save" class="fl-btn fl-btn-primary">Save</button>

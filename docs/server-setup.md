@@ -98,10 +98,11 @@ the same `docker run` with the new version. With Compose:
 ## Safety
 
 * `-p 0.0.0.0:7313:7313` opens the port on every IPv4 address of the
-  machine. The server then refuses every peer that is not loopback, LAN or
-  VPN; that is the only guard, because **ports published by Docker bypass
-  `ufw`** and most host firewalls. On a machine with a public address,
-  publish on its LAN or VPN address only: `-p 192.168.1.20:7313:7313`.
+  machine. Any peer with a valid key may then connect (D111), and the keys
+  are the only guard, because **ports published by Docker bypass `ufw`**
+  and most host firewalls. On a machine reachable from the internet, set up
+  `[tls]` or publish on its LAN or VPN address only:
+  `-p 192.168.1.20:7313:7313`.
   Or run it on the host network with a fixed list of addresses, where the
   host firewall applies: `docs/container.md` §10 "Host network".
 * Plain `ws://` is not encrypted: use the server over a VPN or a LAN you

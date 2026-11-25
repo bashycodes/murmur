@@ -40,12 +40,11 @@ LockPersonality=yes
 RestrictRealtime=yes
 CapabilityBoundingSet=
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
-# The kernel enforces "no third party": only loopback, private LAN and
-# VPN (100.64/10) peers can talk to the server, and it cannot reach anything else.
-IPAddressDeny=any
-# Same classes the server's own peer filter accepts (src/net.rs). Never add
-# --insecure-bind-any to ExecStart: the server then accepts any peer.
-IPAddressAllow=localhost 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16 fc00::/7 fe80::/10
+# Any peer with a valid key may connect (D111). To let the kernel restrict
+# who can talk to the server (and stop it reaching anything else), uncomment
+# and list your client ranges, e.g. loopback, private LAN and VPN:
+# IPAddressDeny=any
+# IPAddressAllow=localhost 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16 fc00::/7 fe80::/10
 
 [Install]
 WantedBy=multi-user.target

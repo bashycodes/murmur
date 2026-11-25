@@ -152,8 +152,8 @@
     if (f.token && f.token.length < 16) errors.push({ field: "token", message: "Token must be at least 16 characters (or empty)" });
     const warnings = [];
     if (!f.allow_server && !f.allow_client) warnings.push("Dictation disabled — enable server or client in Developer settings");
-    else if (f.allow_server && !f.tls && h) warnings.push("Unencrypted: OK only on your LAN or over an encrypted VPN.");
-    return { errors, warnings, tls_forced: /\.(com|org|net)$/.test(h) && !h.endsWith(".ts.net") };
+    else if (f.allow_server && !f.tls && h) warnings.push("Unencrypted (ws://): audio, text and the token cross the network as plain text. Turn on TLS if your server has it.");
+    return { errors, warnings };
   };
   const health = {
     ok: true, engine: "remote", error: null, message: null, server: "100.64.0.10:7313", rtt_ms: { min: 3, median: 4, max: 6 },

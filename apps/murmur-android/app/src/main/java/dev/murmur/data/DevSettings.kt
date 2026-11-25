@@ -86,14 +86,14 @@ data class DevSettings(
     fun oneCloudProvider(): DevSettings = if (allowCloud && !cloud.sttAvailable) copy(allowCloud = false) else this
 
     /**
-     * Toggles AND build capability (§1.3 "effective flags"); public hosts force TLS (§2.6).
+     * Toggles AND build capability (§1.3 "effective flags"). TLS is as the user set it: plain
+     * `ws://` to the user's own server is allowed at any address (D111).
      * A build without the cloud client sends the router no cloud settings at all (C2). D78: no
      * cloud speech while LiteLLM is the Cloud provider ([oneCloudProvider]).
      */
     fun effective(caps: BuildCaps) = copy(
         allowServer = allowServer && caps.remote,
         allowClient = allowClient && caps.local,
-        tls = tls || (host.isNotEmpty() && HostRules.classify(host) == HostRules.AddrClass.PUBLIC),
         allowCloud = oneCloudProvider().allowCloud && caps.cloud,
         routeOrder = if (caps.cloud) routeOrder else routeOrder - Route.CLOUD,
         cloud = if (caps.cloud) cloud else CloudSettings(),
@@ -302,15 +302,11 @@ data class BuildCaps(val local: Boolean, val remote: Boolean, val cloud: Boolean
 }
 
 /**
- * Kotlin twin of `murmur_router::net` (validate_host / classify, §2.6 + §5). The router validates
- * again; this one drives inline errors and the TLS lock before anything reaches native code.
- * Not yet D100: the router now leaves dotted names to the connect-time check
- * (`plaintext_ok_before_resolve`) and has a per-server `allow_plaintext`; this twin still locks
- * TLS on for dotted names (stricter, so the router never refuses what this allows).
+ * Kotlin twin of `murmur_router::net::validate_host` (§5). The router validates again; this one
+ * drives inline errors before anything reaches native code. There is no address-class rule for the
+ * server: plain `ws://` goes to any address (D111).
  */
 object HostRules {
-    enum class AddrClass { LOOPBACK, LAN, TAILNET, LOCAL_NAME, PUBLIC }
-
     fun bare(host: String): String {
         val h = host.trim()
         return if (h.startsWith("[") && h.endsWith("]")) h.substring(1, h.length - 1) else h
@@ -346,43 +342,7 @@ object HostRules {
         return Result.success(h)
     }
 
-    fun classify(host: String): AddrClass {
-        val h = bare(host)
-        parseIpv4(h)?.let { return classifyV4(it) }
-        parseIpv6(h)?.let { return classifyV6(it) }
-        val name = h.trimEnd('.').lowercase()
-        return when {
-            name == "localhost" || name.endsWith(".localhost") -> AddrClass.LOOPBACK
-            name.endsWith(".ts.net") -> AddrClass.TAILNET
-            name.endsWith(".local") || !name.contains('.') -> AddrClass.LOCAL_NAME
-            else -> AddrClass.PUBLIC
-        }
-    }
-
-    fun plaintextOk(host: String) = classify(host) != AddrClass.PUBLIC
-
     private fun Char.isAsciiAlnum() = this in 'a'..'z' || this in 'A'..'Z' || this in '0'..'9'
-
-    private fun classifyV4(o: IntArray): AddrClass = when {
-        o[0] == 127 -> AddrClass.LOOPBACK
-        o[0] == 100 && (o[1] and 0xC0) == 64 -> AddrClass.TAILNET
-        o[0] == 10 || (o[0] == 172 && o[1] in 16..31) || (o[0] == 192 && o[1] == 168) -> AddrClass.LAN
-        o[0] == 169 && o[1] == 254 -> AddrClass.LAN
-        else -> AddrClass.PUBLIC
-    }
-
-    private fun classifyV6(s: IntArray): AddrClass {
-        // ::ffff:a.b.c.d (IPv4-mapped) classifies as the IPv4 address.
-        if ((0 until 5).all { s[it] == 0 } && s[5] == 0xffff) {
-            return classifyV4(intArrayOf(s[6] shr 8, s[6] and 0xff, s[7] shr 8, s[7] and 0xff))
-        }
-        return when {
-            (0 until 7).all { s[it] == 0 } && s[7] == 1 -> AddrClass.LOOPBACK
-            s[0] == 0xfd7a && s[1] == 0x115c && s[2] == 0xa1e0 -> AddrClass.TAILNET
-            (s[0] and 0xfe00) == 0xfc00 || (s[0] and 0xffc0) == 0xfe80 -> AddrClass.LAN
-            else -> AddrClass.PUBLIC
-        }
-    }
 
     /** Strict dotted quad (as Rust's `Ipv4Addr::from_str`: no leading zeros), or null. */
     fun parseIpv4(s: String): IntArray? {
@@ -467,15 +427,13 @@ object DevSettingsForm {
         val settings: DevSettings?,
         val errors: Map<Field, String>,
         val warnings: List<String>,
-        /** TLS forced on and locked: the host is a public address (§2.6). */
-        val tlsLocked: Boolean,
     ) {
         val canSave: Boolean get() = errors.isEmpty() && settings != null
     }
 
     const val BOTH_OFF = "Dictation disabled: turn on Allow server or Allow client."
     const val NO_HOST = "Your server is on but has no address yet: dictation skips it and uses the next engine that is on, such as this phone."
-    const val PLAINTEXT = "Unencrypted (ws://): OK only on your LAN or over an encrypted VPN."
+    const val PLAINTEXT = "Unencrypted (ws://): audio, text and the token cross the network as plain text. Turn on TLS if your server has it."
     const val CLOUD_NO_CONSENT = "Cloud speech-to-text is on but has no consent: it will be skipped (Cloud page)."
     const val CLOUD_NOT_IN_ORDER = "Cloud allowed but not in the route order: it will not be used."
     const val NO_TOKEN = "No token: a server with auth (the default) will reject the connection."
@@ -503,8 +461,6 @@ object DevSettingsForm {
         val ct = num(Field.CONNECT_TIMEOUT, i.connectTimeoutMs, 100, 10_000, "Connect timeout (ms)")
         val cb = num(Field.COMMIT_TIMEOUT, i.commitTimeoutBaseMs, 500, 60_000, "Commit timeout (ms)")
         val ttl = num(Field.HEALTH_TTL, i.healthTtlS, 5, 600, "Health cache (s)")
-        val tlsLocked = host.isNotEmpty() && HostRules.classify(host) == HostRules.AddrClass.PUBLIC
-        val tls = i.tls || tlsLocked
         val allowServer = i.allowServer && caps.remote
         val allowClient = i.allowClient && caps.local
         val allowCloud = i.allowCloud && caps.cloud
@@ -517,18 +473,18 @@ object DevSettingsForm {
             CloudText.orderWarning(order)?.let { warnings += it }
         }
         if (allowServer && host.isEmpty() && Field.HOST !in errors) warnings += NO_HOST
-        if (allowServer && host.isNotEmpty() && !tls) warnings += PLAINTEXT
+        if (allowServer && host.isNotEmpty() && !i.tls) warnings += PLAINTEXT
         if (allowServer && host.isNotEmpty() && token.isEmpty()) warnings += NO_TOKEN
         val settings = if (errors.isEmpty()) DevSettings(
             allowServer = allowServer, allowClient = allowClient, host = host, port = port!!.toInt(),
-            tls = tls, tlsPinSha256 = if (tls) pin else "", token = token, connectTimeoutMs = ct!!, commitTimeoutBaseMs = cb!!,
+            tls = i.tls, tlsPinSha256 = if (i.tls) pin else "", token = token, connectTimeoutMs = ct!!, commitTimeoutBaseMs = cb!!,
             healthTtlS = ttl!!, keepLocalWarm = i.keepLocalWarm, showEngineBadge = i.showEngineBadge,
             // A build without the cloud keeps the stored providers / order untouched (prefs survive a
             // flavour switch); effective() strips them from what the router sees.
             allowCloud = allowCloud, routeOrder = i.routeOrder,
             cloud = i.cloud, allowCloudCleanup = i.allowCloudCleanup, cleanupOrder = i.cleanupOrder, cleanupOff = i.cleanupOff,
         ) else null
-        return Result(settings, errors, warnings, tlsLocked)
+        return Result(settings, errors, warnings)
     }
 }
 

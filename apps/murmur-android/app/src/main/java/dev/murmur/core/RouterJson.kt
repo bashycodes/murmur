@@ -322,7 +322,6 @@ object RouterJson {
 object DevText {
     fun probe(h: HealthReport): String {
         if (h.engine == "cloud") return cloudProbe(h)
-        if (!h.ok && RouterErrors.plaintextRefused(h.message)) return "${h.error ?: "connect_failed"}: ${RouterErrors.NEEDS_TLS}"
         if (h.ok) {
             val rtt = h.rttMs?.let { "median ${it.median} ms (${it.min}-${it.max})" } ?: "no RTT"
             return listOfNotNull("OK", rtt, h.serverVersion, h.asrBackend).joinToString(" · ")
@@ -379,7 +378,7 @@ object DevText {
                 h.costUsd?.let { dev.murmur.data.CloudText.usd(it) }, h.model,
             ).joinToString(" · ")
         }
-        if (RouterErrors.plaintextRefused(h.message)) return "${h.error ?: "connect_failed"}: ${RouterErrors.CLOUD_NEEDS_TLS}"
+        if (RouterErrors.cloudNeedsTls(h.message)) return "${h.error ?: "bad_config"}: ${RouterErrors.CLOUD_NEEDS_TLS}"
         val hint = dev.murmur.data.CloudText.hint(h.error)
         return listOfNotNull("${h.error ?: "error"}${hint?.let { ": $it" } ?: ""}", h.message).joinToString(" — ")
     }
@@ -426,7 +425,7 @@ object DevText {
         parts += "asr ${r.timings.asrMs} ms / total ${r.timings.totalMs} ms"
         if (r.timings.segments > 0) parts += "${r.timings.segments} seg (+${r.timings.preAsrMs} ms early)"
         if (r.timings.waitMs > 0) parts += "wait ${r.timings.waitMs} ms"
-        parts += r.status.name + (r.emptyReason?.let { " ($it)" } ?: "") + (r.error?.let { ": " + if (RouterErrors.plaintextRefused(it)) RouterErrors.NEEDS_TLS else it } ?: "")
+        parts += r.status.name + (r.emptyReason?.let { " ($it)" } ?: "") + (r.error?.let { ": $it" } ?: "")
         // D27: llm_skipped_clean reads as a normal result ("AI not needed"), not a failure.
         dev.murmur.data.LlmOutcome.label(dev.murmur.data.LlmOutcome.code(r))?.let { parts += it }
         // D28: who cleaned it (on-device / OpenRouter) and what it cost.

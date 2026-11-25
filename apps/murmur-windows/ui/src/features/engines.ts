@@ -8,7 +8,6 @@
 
 import { $, el, setStatus } from "../lib/dom.js";
 import { devStore } from "../lib/dev-store.js";
-import { isPlaintextRefusal, optInFor } from "../lib/plaintext.js";
 import { cloudHint } from "../lib/format.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { engineWord, HISTORY_PEEK, historyLastText, latestOnly, pickDictation, type HistoryHead } from "../lib/last-dictation.js";
@@ -35,7 +34,6 @@ const DEV_SWITCHES = ["allow_server", "allow_client", "keep_local_warm", "show_e
 const SRV_NUM = ["port", "connect_timeout_ms", "commit_timeout_base_ms", "health_ttl_s"] as const;
 const SRV_TEXT = ["host", "tls_pin_sha256", "token"] as const;
 
-
 let devOrder: Route[] = ["server", "client", "cloud"];
 /** The speech model on this PC (get_model_status / `model:status`), for its engine badge. */
 let pcModel: ModelStatus = { state: "loading", path: "" };
@@ -46,10 +44,6 @@ let devValid = true;
 let serverDirty = false;
 /** Clear was pressed: the saved token is removed on Save. */
 let tokenCleared = false;
-/** D100: the last check found a public IP address. */
-let hostPublic = false;
-/** D100: a connection was refused as plaintext to a public address (e.g. a name that resolves publicly). */
-let plaintextRefused = false;
 
 const HINTS: Record<string, string> = {
   auth_failed: "token rejected — copy it again from the server's token file",
@@ -64,13 +58,10 @@ function hint(code: string | null): string {
   return code ? (HINTS[code] ?? "") : "";
 }
 
-
-
 /** The Your server page's fields as a form patch. */
 function readServer(): Partial<DevForm> {
   const f: Partial<DevForm> = {
     tls: $<HTMLInputElement>("dev_tls").checked,
-    allow_plaintext: $<HTMLInputElement>("dev_allow_plaintext").checked,
   };
   for (const k of SRV_TEXT) f[k] = $<HTMLInputElement>(`dev_${k}`).value;
   for (const k of SRV_NUM) {
@@ -101,8 +92,6 @@ function setNum(field: string, v: number): void {
 
 function fillServer(f: DevForm): void {
   $<HTMLInputElement>("dev_tls").checked = f.tls;
-  $<HTMLInputElement>("dev_allow_plaintext").checked = !!f.allow_plaintext;
-  showPlaintextRow();
   for (const k of SRV_TEXT) $<HTMLInputElement>(`dev_${k}`).value = f[k];
   for (const k of SRV_NUM) {
     if (k === "port") $<HTMLInputElement>("dev_port").value = String(f.port);
@@ -303,13 +292,6 @@ function meetingToggled(r: Route): void {
   void saveMeetings(meetingRoutes().map((e) => (e.route === r ? { ...e, enabled: on } : { ...e })));
 }
 
-/** D100: offer "Allow an unencrypted connection" where TLS would otherwise be
- *  required, and keep it shown while it is on (so it can be turned off). */
-function showPlaintextRow(): void {
-  const on = $<HTMLInputElement>("dev_allow_plaintext").checked;
-  $<HTMLElement>("dev_plaintext_row").hidden = !hostPublic && !plaintextRefused && !on;
-}
-
 function showCheck(c: DevCheck): void {
   for (const s of document.querySelectorAll<HTMLElement>("[data-err]")) s.textContent = "";
   for (const i of document.querySelectorAll<HTMLInputElement>("[data-dev-field]")) i.classList.remove("invalid");
@@ -326,12 +308,6 @@ function showCheck(c: DevCheck): void {
   devValid = c.errors.length === 0;
   $<HTMLButtonElement>("dev_save").disabled = !devValid;
   $<HTMLButtonElement>("dev_test_conn").disabled = !devValid;
-  $<HTMLElement>("dev_tls_forced").hidden = !c.tls_forced;
-  hostPublic = c.host_public;
-  showPlaintextRow();
-  const tls = $<HTMLInputElement>("dev_tls");
-  if (c.tls_forced) tls.checked = true;
-  tls.disabled = c.tls_forced;
   $<HTMLUListElement>("dev_warnings").replaceChildren(
     ...c.warnings.map((w) => el("li", w.startsWith("Dictation disabled") ? "err" : "", w)),
   );
@@ -351,7 +327,7 @@ function scheduleCheck(): void {
 function errorText(e: unknown): string {
   const errs = e as FieldError[] | string;
   if (Array.isArray(errs)) {
-    showCheck({ errors: errs, warnings: [], tls_forced: false, host_public: false });
+    showCheck({ errors: errs, warnings: [] });
     const fields = errs.map((x) => x.message).join("; ");
     return `Your server needs fixing first: ${fields}`;
   }
@@ -372,12 +348,6 @@ async function saveSwitch(patch: Partial<DevForm>): Promise<void> {
 function healthText(h: Health): string {
   if (!h.ok) {
     const code = h.error ?? "error";
-    // murmur-remote refuses ws:// to an address that is not private/VPN (S6).
-    if (isPlaintextRefusal(h.message)) {
-      plaintextRefused = true;
-      showPlaintextRow();
-      return "Server needs TLS — its address is not private (or resolves to a public one). If your server has a certificate, turn on TLS (and set its fingerprint); only on a network you trust, allow an unencrypted connection instead";
-    }
     const why = hint(code);
     return `${code}${h.message ? `: ${h.message}` : ""}${why ? ` — ${why}` : ""}`;
   }
@@ -505,7 +475,6 @@ function showRoute(r: RouteView): void {
         : `open until ${new Date(Date.now() + (cc.retry_in_ms ?? 0)).toLocaleTimeString()} (${cloudHint(cc.reason)})`;
   }
 }
-
 
 function showDev(v: DevView): void {
   fillDev(v.form);
@@ -644,20 +613,6 @@ export const engines: Feature = {
       i.addEventListener("input", edited);
       i.addEventListener("change", edited);
     }
-    // D100: the opt-in is per server. A new address starts without it (and
-    // without the last address's refusal); the saved address gets it back.
-    $<HTMLInputElement>("dev_host").addEventListener("input", () => {
-      const saved = views.dev?.form;
-      const host = $<HTMLInputElement>("dev_host").value;
-      $<HTMLInputElement>("dev_allow_plaintext").checked = optInFor(saved?.host ?? "", !!saved?.allow_plaintext, host);
-      plaintextRefused = false;
-      showPlaintextRow();
-    });
-    // D100: allowing plaintext releases the forced TLS switch; turn it off with it.
-    $<HTMLInputElement>("dev_allow_plaintext").addEventListener("change", (e) => {
-      const tls = $<HTMLInputElement>("dev_tls");
-      if ((e.target as HTMLInputElement).checked && tls.disabled) tls.checked = false;
-    });
     $<HTMLButtonElement>("dev_save").addEventListener("click", () => void serverSave());
     $<HTMLButtonElement>("dev_test_conn").addEventListener("click", () => void devTestConnection());
     $<HTMLButtonElement>("dev_test_session").addEventListener("click", () => void devTestSession(showDiag));

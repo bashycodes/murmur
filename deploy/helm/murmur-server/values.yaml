@@ -27,12 +27,9 @@ gpu:
 
 # Binding (docs/container.md "Binding"):
 # bindPodIP: the entrypoint binds 127.0.0.1 + the pod IP instead of the
-#   config's bind, so the server's loopback/LAN/VPN rules and peer filter
-#   apply as on a host install (pod IPs are private).
-# insecureBindAny: --insecure-bind-any (0.0.0.0 without TLS, no peer
-#   filter). Only with bindPodIP false and no serverTls.
+#   config's bind. Off: the config's bind as written (any address works,
+#   with or without serverTls, D111).
 bindPodIP: true
-insecureBindAny: false
 
 # wss:// terminated by murmur-server itself (cert pinned in the apps):
 # a kubernetes.io/tls Secret mounted at /etc/murmur-server/tls.
@@ -43,7 +40,7 @@ serverTls:
 service:
   type: ClusterIP
   port: 7313
-  # For a LoadBalancer on a LAN: keep client IPs, so the peer filter sees them.
+  # For a LoadBalancer: "Local" keeps client IPs (per-IP connection limits).
   externalTrafficPolicy: ""
   annotations: {}
 

@@ -158,12 +158,11 @@ object RouterErrors {
     const val BAD_CONFIG = "bad_config"
     val KINDS = listOf(NO_ENGINE_ENABLED, LOCAL_NOT_READY, SERVER_NOT_CONFIGURED, SERVER_UNAVAILABLE, BAD_CONFIG)
 
-    /** User-facing wording for review S6's "plaintext refused" (ws:// / http:// to a non-private address). */
-    const val NEEDS_TLS = "Server needs TLS — turn on Use TLS for this server in Developer settings"
+    /** User-facing wording for the router's cloud rule: an http:// base URL at a public address (D18). */
     const val CLOUD_NEEDS_TLS = "Provider needs TLS — use an https:// base URL"
 
-    /** murmur-remote / murmur-cloud refused cleartext to an address that is not private or a VPN address. */
-    fun plaintextRefused(message: String?) = message?.contains("plaintext refused", ignoreCase = true) == true
+    /** The router refused a cloud base URL that is http:// to a public address (`CloudSettings::validate`). */
+    fun cloudNeedsTls(message: String?) = message?.contains("https:// is required", ignoreCase = true) == true
 
     /** D24: the router names the phone-model failure after the server's (`…; phone model failed to load: why`). */
     private const val PHONE_MODEL_FAILED = "phone model failed to load:"
@@ -178,7 +177,7 @@ object RouterErrors {
     }
 
     /** User-facing text for the bubble / main screen (§5 "Errors in normal UI"). */
-    fun userMessage(kind: String?, message: String): String = if (plaintextRefused(message)) NEEDS_TLS else when (kind) {
+    fun userMessage(kind: String?, message: String): String = when (kind) {
         NO_ENGINE_ENABLED -> "Dictation disabled — enable server or client in Developer settings"
         SERVER_UNAVAILABLE -> serverUnavailable(message)
         SERVER_NOT_CONFIGURED -> "No server configured — set the host in Developer settings"

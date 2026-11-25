@@ -10,7 +10,7 @@
 #   --system (default)  /opt/murmur-server/{bin,lib,models}, config + token in
 #                       /etc/murmur-server, the hardened system unit from
 #                       crates/murmur-server/dist/murmur-server.service
-#                       (DynamicUser, IP allowlist). Needs sudo; every root
+#                       (DynamicUser, ProtectSystem). Needs sudo; every root
 #                       command is printed and confirmed first.
 #   --user              ~/.local/{bin,lib/murmur-server,share/murmur-server/models},
 #                       ~/.config/murmur-server, a systemd *user* unit. No sudo.
@@ -362,8 +362,8 @@ else
     priv_write "$CONF" 0644 <<EOF
 # murmur-server config, written by tools/server/install.sh. Reference:
 # crates/murmur-server/dist/config.example.toml, docs/server-advanced.md.
-# Loopback / LAN / VPN addresses only: 0.0.0.0 or a public address is
-# refused unless [tls] is set.
+# Loopback / LAN / VPN addresses recommended; any address works (plain
+# ws:// unless [tls] is set).
 bind = $BIND_TOML
 token_file = "$TOKEN"
 workers = 1
@@ -406,10 +406,10 @@ else
     priv_write "$UNIT_PATH" 0644 <<EOF
 # murmur-server as a systemd user unit (tools/server/install.sh --user).
 # The system unit (crates/murmur-server/dist/murmur-server.service) adds
-# DynamicUser and a kernel IP allowlist; here the server's own bind policy
-# and peer filter (loopback / LAN / VPN only) are the boundary.
+# DynamicUser and stricter sandboxing. Any peer with a valid key may connect
+# (D111): the bind address, the firewall and the keys are the boundary.
 [Unit]
-Description=murmur-server (self-hosted dictation ASR; LAN/VPN only)
+Description=murmur-server (self-hosted dictation ASR)
 After=network-online.target
 
 [Service]

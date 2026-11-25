@@ -166,17 +166,11 @@ pub struct ServerConfig {
     /// Host or IP literal; empty = not configured.
     pub host: String,
     pub port: u16,
-    /// `wss://` instead of `ws://` (required for public addresses unless
-    /// [`Self::allow_plaintext`]).
+    /// `wss://` instead of `ws://`. Optional for any address: plain
+    /// `ws://` to the user's own server is allowed wherever it is (D111).
+    /// An `allow_plaintext` key that older settings wrote (D100) is an
+    /// unknown field now and is ignored on load.
     pub tls: bool,
-    /// The owner trusts the network to this server (e.g. an air-gapped
-    /// company network that uses public address ranges inside): plain
-    /// `ws://` is allowed whatever the address, at config time and at
-    /// connect time (D100). Audio, transcripts and the token then cross
-    /// that network unencrypted. Omitted while false, so older settings
-    /// files read and write unchanged.
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    pub allow_plaintext: bool,
     /// SHA-256 of the server's leaf certificate DER, 64 hex chars.
     pub tls_pin_sha256: Option<String>,
     /// Bearer token (>= 16 chars). Never logged.
@@ -192,7 +186,6 @@ impl Default for ServerConfig {
             host: String::new(),
             port: murmur_protocol::DEFAULT_PORT,
             tls: false,
-            allow_plaintext: false,
             tls_pin_sha256: None,
             token: String::new(),
             connect_timeout_ms: DEFAULT_CONNECT_TIMEOUT_MS,
@@ -217,15 +210,6 @@ impl ServerConfig {
         !self.host.trim().is_empty()
     }
 
-    /// Does the config-time cleartext rule (§2.6) let this server be
-    /// reached as configured? TLS or the owner's opt-in always pass;
-    /// otherwise [`net::plaintext_ok_before_resolve`] (an IP literal must be
-    /// private / loopback / VPN; a name is decided by what it resolves to,
-    /// at connect time).
-    pub fn plaintext_allowed_before_resolve(&self) -> bool {
-        self.tls || self.allow_plaintext || net::plaintext_ok_before_resolve(&self.host)
-    }
-
     /// The §5 field rules. An empty host is valid (not configured).
     pub fn validate(&self) -> Result<(), String> {
         if self.is_configured() {
@@ -235,13 +219,6 @@ impl ServerConfig {
                     e.trim_end_matches('.')
                 )
             })?;
-            if !self.plaintext_allowed_before_resolve() {
-                return Err(
-                    "The server address is public, so it needs TLS (wss): turn TLS on, \
-                     or allow an unencrypted connection to this server."
-                        .into(),
-                );
-            }
         }
         if self.port == 0 {
             return Err("The server port must be 1-65535.".into());

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- `hybrid` flavour: talks to the user's own murmur-server (D17). Adds INTERNET and nothing
      else; verifyHybrid<BuildType>OnlyInternetPermission checks the merged manifest.
-     Native sockets are not subject to the cleartext policy; murmur_router's address
-     check (ws:// only to private / VPN addresses) is the gate. -->
+     Every connection to the server is a native (Rust) socket, which Android's cleartext
+     policy does not cover, so ws:// to the user's server works at any address (D111). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />

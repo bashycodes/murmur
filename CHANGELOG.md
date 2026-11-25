@@ -20,6 +20,10 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 - **Server: a ready-made Docker image with each release.** No build needed: `docker run ghcr.io/bashycodes/murmur-server:<version>` (or `:latest`, the newest release), and `:<version>-cuda` / `:latest-cuda` for NVIDIA GPUs. The Compose file uses it by default (update with `docker compose pull`); building from the source still works (`-f deploy/docker-compose.build.yml up -d --build`). See `docs/server-setup.md`.
 
+### Changed
+
+- **Connecting to your server without encryption just works.** The apps no longer refuse a plain `ws://` connection to your own server at a public address, and there is no "Allow an unencrypted connection" switch to find anymore: turn TLS on or off as your server needs, on Windows and Android, in setup and in Settings. The server likewise accepts a wildcard (`0.0.0.0`) or public bind without TLS and without any extra flag; `--insecure-bind-any` and the container's `MURMUR_INSECURE_BIND_ANY` are no longer needed (old command lines keep working). Without TLS, audio, text and your key cross the network unencrypted, and the server settings say so. Settings saved by an older version load as before (D111).
+
 ## [1.7.1] - 2026-11-25
 
 ### Added

@@ -126,9 +126,14 @@ mod tests {
     }
 
     #[test]
-    fn cleartext_to_a_public_host_is_refused_before_any_socket() {
-        let r = parse(&list(r#"{"host":"203.0.113.5","port":7313,"tls":false}"#));
+    fn cleartext_to_a_public_host_is_dialled() {
+        // D111: no cleartext rule; TEST-NET-3 goes nowhere, so only the
+        // network fails.
+        let r = parse(&list(
+            r#"{"host":"203.0.113.5","port":7313,"tls":false,"connect_timeout_ms":300}"#,
+        ));
         assert_eq!(r["error"], "network", "{r}");
+        assert!(!r.to_string().contains("plaintext"), "{r}");
     }
 
     #[test]

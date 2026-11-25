@@ -24,9 +24,9 @@
 #   MURMUR_STT / MURMUR_LLM / MURMUR_HEBREW / MURMUR_LID
 #                      a model folder to use instead of the default pick, or none
 #   MURMUR_PUBLISH_ADDR  host address the port is published on (default 0.0.0.0: every
-#                      IPv4 address; the server's peer filter, loopback/LAN/VPN only,
-#                      is then the only guard, and Docker-published ports bypass ufw).
-#                      Set your LAN or VPN address on a host with a public address.
+#                      IPv4 address; the server's keys are then the only guard, and
+#                      Docker-published ports bypass ufw). Set your LAN or VPN address
+#                      on a host with a public address.
 #   MURMUR_HOST_PORT     host port (default 7313)
 #   MURMUR_IMAGE         the CPU image (default ghcr.io/bashycodes/murmur-server:latest);
 #                      pin a release: ghcr.io/bashycodes/murmur-server:<version>, e.g. 1.7.1

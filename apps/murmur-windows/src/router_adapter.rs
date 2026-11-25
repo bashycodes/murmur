@@ -668,14 +668,10 @@ impl RouterAdapter {
                 h.message.or(h.error).unwrap_or_default()
             }
         };
-        Some(if needs_tls(&detail) {
-            SERVER_NEEDS_TLS.into()
-        } else {
-            format!(
-                "Your server at {addr} can't be reached ({detail}). Check that it's running \
-                 and that this PC can reach it."
-            )
-        })
+        Some(format!(
+            "Your server at {addr} can't be reached ({detail}). Check that it's running \
+             and that this PC can reach it."
+        ))
     }
 
     /// Will this session start on the local engine (so a model load in
@@ -736,22 +732,10 @@ impl RouterAdapter {
             RouterError::ServerNotConfigured => {
                 "Server unreachable (no server host set in Developer settings)".into()
             }
-            RouterError::ServerUnavailable(why) if needs_tls(&why) => SERVER_NEEDS_TLS.into(),
             RouterError::ServerUnavailable(why) => format!("Server unreachable ({why})"),
             RouterError::BadConfig(m) => format!("Developer settings are invalid: {m}"),
         }
     }
-}
-
-/// Pill text for murmur-remote's `connect_failed … plaintext refused …`:
-/// `ws://` to an address that is not private/VPN (review S6). D100: or the
-/// owner allows an unencrypted connection on Settings → Your server.
-pub const SERVER_NEEDS_TLS: &str = "Server needs TLS — its address is not private; turn on TLS \
-     or allow an unencrypted connection in Settings → Your server";
-
-/// A router/remote error that means "plaintext refused".
-pub fn needs_tls(detail: &str) -> bool {
-    detail.contains("plaintext refused") || detail.contains("plaintext to public address")
 }
 
 /// ASR engines compiled into this build (Capabilities row).
@@ -844,8 +828,6 @@ impl CoreApi for RouterAdapter {
                 });
             } else if detail.starts_with("local_not_ready") {
                 r.error = Some(self.start_error(RouterError::LocalNotReady));
-            } else if needs_tls(&detail) {
-                r.error = Some(SERVER_NEEDS_TLS.into());
             } else if let Some(fb) = r.route.as_ref().and_then(|x| x.fallback.clone()) {
                 let detail = r.error.clone().unwrap_or_default();
                 r.error = Some(if detail.is_empty() {
@@ -1100,8 +1082,6 @@ mod tests {
     struct FakeServer {
         core: murmur_core::MurmurCore,
         up: AtomicBool,
-        /// Answer like murmur-remote refusing ws:// to a public address (S6).
-        public: AtomicBool,
         starts: AtomicUsize,
         samples: AtomicU64,
     }
@@ -1116,7 +1096,6 @@ mod tests {
             Arc::new(FakeServer {
                 core,
                 up: AtomicBool::new(true),
-                public: AtomicBool::new(false),
                 starts: AtomicUsize::new(0),
                 samples: AtomicU64::new(0),
             })
@@ -1136,12 +1115,6 @@ mod tests {
             &self,
             cfg: &murmur_core::config::SessionConfig,
         ) -> Result<StartInfo, BackendError> {
-            if self.0.public.load(Ordering::SeqCst) {
-                return Err(BackendError::new(
-                    Failure::ConnectFailed,
-                    "box.example:7313: plaintext refused: 203.0.113.5 is not private",
-                ));
-            }
             if !self.0.up.load(Ordering::SeqCst) {
                 return Err(BackendError::new(Failure::ConnectFailed, "refused"));
             }
@@ -1785,21 +1758,6 @@ mod tests {
     }
 
     #[test]
-    fn plaintext_refused_reads_server_needs_tls() {
-        let r = rig(&dev(true, false));
-        r.server.public.store(true, Ordering::SeqCst);
-        let err = match dictate(&r.router) {
-            Err(e) => e,
-            Ok(res) => res.error.unwrap_or_default(),
-        };
-        assert_eq!(err, SERVER_NEEDS_TLS);
-        assert!(needs_tls(
-            "connect_failed: plaintext to public address (enable TLS)"
-        ));
-        assert!(!needs_tls("connect_failed: refused"));
-    }
-
-    #[test]
     fn a_cancelled_commit_is_returned_as_is() {
         let r = rig(&dev(true, true));
         CoreApi::start_session(&*r.router, session()).unwrap();
@@ -2118,7 +2076,8 @@ mod tests {
         }
     }
 
-    /// Shell host validation and the router's agree on the §5 table.
+    /// Shell host validation and the router's agree on the §5 table; any
+    /// address passes with TLS off (D111).
     #[test]
     fn host_rules_agree_with_the_router() {
         for h in [
@@ -2127,16 +2086,13 @@ mod tests {
             "box.tailnet.ts.net",
             "mybox",
             "example.com",
+            "203.0.113.5",
+            "2001:db8::1",
         ] {
             let mut d = dev(true, true);
             d.server.host = crate::dev_settings::normalize_host(h).unwrap();
-            d.server.tls = crate::dev_settings::host_is_public(&d.server.host);
+            d.server.tls = false;
             assert!(router_config(&d, BOTH).is_ok(), "{h}");
-            assert_eq!(
-                crate::dev_settings::host_is_public(&d.server.host),
-                !murmur_router::net::plaintext_ok_before_resolve(&d.server.host),
-                "{h}"
-            );
         }
     }
 

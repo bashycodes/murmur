@@ -247,14 +247,12 @@ pub async fn serve_with_pool(
             tracing::warn!("no active keys: every request gets 401 until `murmur-server keys add`");
         }
     }
-    let wide = cfg.check_bind()?;
-    if cfg.insecure_bind_any {
+    let wide = cfg.wide_binds()?;
+    if !wide.is_empty() && cfg.tls.is_none() {
         let list: Vec<String> = wide.iter().map(|a| a.to_string()).collect();
         tracing::warn!(
-            "WARNING: --insecure-bind-any: accepting peers from any address{}{}. Audio, transcripts and the bearer token may cross untrusted networks{}",
-            if list.is_empty() { "" } else { " on " },
+            "bind {}: wildcard or public address, plain ws:// (no [tls]); on a machine reachable from the internet, set up [tls] or firewall the port",
             list.join(", "),
-            if cfg.tls.is_some() { "" } else { " in cleartext (no [tls])" },
         );
     }
     let tls = acceptor(&cfg)?;
@@ -365,10 +363,6 @@ async fn accept_loop(l: TcpListener, app: Router, state: Arc<AppState>, tls: Acc
             },
             _ = kill.changed() => return,
         };
-        if !state.cfg.insecure_bind_any && !net::classify(peer.ip()).is_local() {
-            tracing::info!(%peer, "rejected: peer outside loopback/LAN/VPN");
-            continue;
-        }
         let Some(slot) = state.take_slot(peer.ip()) else {
             tracing::debug!(%peer, "rejected: connection limit");
             continue;

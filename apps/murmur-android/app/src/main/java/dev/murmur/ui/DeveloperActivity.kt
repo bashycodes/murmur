@@ -635,9 +635,6 @@ class DeveloperActivity : Activity() {
         val r = draft.result(caps)
         for ((f, row) in fieldRows) row.setError(r.errors[f])
         if (page == Page.SERVER) {
-            if (r.tlsLocked && !tls.isChecked) { tls.isChecked = true; draft = draft.edit { readViews(this) } }
-            tls.isEnabled = !r.tlsLocked
-            tls.setDescription(if (r.tlsLocked) "Required for a public address" else "Encrypt the connection")
             pin.edit.isEnabled = tls.isChecked
             pin.edit.alpha = if (tls.isChecked) 1f else 0.5f
             chainAddress()

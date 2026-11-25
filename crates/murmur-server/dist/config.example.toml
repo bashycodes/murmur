@@ -1,9 +1,8 @@
 # murmur-server example config (/etc/murmur-server/config.toml).
-# Bind only to loopback / LAN / VPN addresses; the server must never be
-# reachable from the internet. Recommended: the machine's VPN address (e.g. 100.x).
-# 0.0.0.0, :: or a public address is refused unless [tls] is set (or the
-# --insecure-bind-any flag is given); peers outside loopback/LAN/VPN are
-# dropped before any byte is read either way (unless --insecure-bind-any).
+# Recommended: loopback plus the machine's VPN address (e.g. 100.x). Any
+# address works, 0.0.0.0, :: and public ones included, with or without
+# [tls] (D111); without [tls] audio, text and keys cross the network
+# unencrypted, so firewall a wide bind or configure [tls].
 bind = ["127.0.0.1:7313"]          # e.g. ["127.0.0.1:7313", "100.64.0.10:7313"]
 token_file = "/etc/murmur-server/token"  # create with: murmur-server gen-token --out /etc/murmur-server/token
 # auth = "none"                    # only accepted when every bind address is loopback

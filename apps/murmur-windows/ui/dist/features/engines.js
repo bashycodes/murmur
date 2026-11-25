@@ -7,7 +7,6 @@
 // through the dev store: switches save at once, the server form on Save.
 import { $, el, setStatus } from "../lib/dom.js";
 import { devStore } from "../lib/dev-store.js";
-import { isPlaintextRefusal, optInFor } from "../lib/plaintext.js";
 import { cloudHint } from "../lib/format.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { engineWord, HISTORY_PEEK, historyLastText, latestOnly, pickDictation } from "../lib/last-dictation.js";
@@ -32,10 +31,6 @@ let devValid = true;
 let serverDirty = false;
 /** Clear was pressed: the saved token is removed on Save. */
 let tokenCleared = false;
-/** D100: the last check found a public IP address. */
-let hostPublic = false;
-/** D100: a connection was refused as plaintext to a public address (e.g. a name that resolves publicly). */
-let plaintextRefused = false;
 const HINTS = {
     auth_failed: "token rejected — copy it again from the server's token file",
     connect_failed: "is murmur-server running / LAN or VPN up?",
@@ -51,7 +46,6 @@ function hint(code) {
 function readServer() {
     const f = {
         tls: $("dev_tls").checked,
-        allow_plaintext: $("dev_allow_plaintext").checked,
     };
     for (const k of SRV_TEXT)
         f[k] = $(`dev_${k}`).value;
@@ -82,8 +76,6 @@ function setNum(field, v) {
 }
 function fillServer(f) {
     $("dev_tls").checked = f.tls;
-    $("dev_allow_plaintext").checked = !!f.allow_plaintext;
-    showPlaintextRow();
     for (const k of SRV_TEXT)
         $(`dev_${k}`).value = f[k];
     for (const k of SRV_NUM) {
@@ -290,12 +282,6 @@ function meetingToggled(r) {
     const on = $(`meet_on_${r}`).checked;
     void saveMeetings(meetingRoutes().map((e) => (e.route === r ? { ...e, enabled: on } : { ...e })));
 }
-/** D100: offer "Allow an unencrypted connection" where TLS would otherwise be
- *  required, and keep it shown while it is on (so it can be turned off). */
-function showPlaintextRow() {
-    const on = $("dev_allow_plaintext").checked;
-    $("dev_plaintext_row").hidden = !hostPublic && !plaintextRefused && !on;
-}
 function showCheck(c) {
     for (const s of document.querySelectorAll("[data-err]"))
         s.textContent = "";
@@ -315,13 +301,6 @@ function showCheck(c) {
     devValid = c.errors.length === 0;
     $("dev_save").disabled = !devValid;
     $("dev_test_conn").disabled = !devValid;
-    $("dev_tls_forced").hidden = !c.tls_forced;
-    hostPublic = c.host_public;
-    showPlaintextRow();
-    const tls = $("dev_tls");
-    if (c.tls_forced)
-        tls.checked = true;
-    tls.disabled = c.tls_forced;
     $("dev_warnings").replaceChildren(...c.warnings.map((w) => el("li", w.startsWith("Dictation disabled") ? "err" : "", w)));
 }
 let checkTimer = 0;
@@ -338,7 +317,7 @@ function scheduleCheck() {
 function errorText(e) {
     const errs = e;
     if (Array.isArray(errs)) {
-        showCheck({ errors: errs, warnings: [], tls_forced: false, host_public: false });
+        showCheck({ errors: errs, warnings: [] });
         const fields = errs.map((x) => x.message).join("; ");
         return `Your server needs fixing first: ${fields}`;
     }
@@ -359,12 +338,6 @@ async function saveSwitch(patch) {
 function healthText(h) {
     if (!h.ok) {
         const code = h.error ?? "error";
-        // murmur-remote refuses ws:// to an address that is not private/VPN (S6).
-        if (isPlaintextRefusal(h.message)) {
-            plaintextRefused = true;
-            showPlaintextRow();
-            return "Server needs TLS — its address is not private (or resolves to a public one). If your server has a certificate, turn on TLS (and set its fingerprint); only on a network you trust, allow an unencrypted connection instead";
-        }
         const why = hint(code);
         return `${code}${h.message ? `: ${h.message}` : ""}${why ? ` — ${why}` : ""}`;
     }
@@ -630,21 +603,6 @@ export const engines = {
             i.addEventListener("input", edited);
             i.addEventListener("change", edited);
         }
-        // D100: the opt-in is per server. A new address starts without it (and
-        // without the last address's refusal); the saved address gets it back.
-        $("dev_host").addEventListener("input", () => {
-            const saved = views.dev?.form;
-            const host = $("dev_host").value;
-            $("dev_allow_plaintext").checked = optInFor(saved?.host ?? "", !!saved?.allow_plaintext, host);
-            plaintextRefused = false;
-            showPlaintextRow();
-        });
-        // D100: allowing plaintext releases the forced TLS switch; turn it off with it.
-        $("dev_allow_plaintext").addEventListener("change", (e) => {
-            const tls = $("dev_tls");
-            if (e.target.checked && tls.disabled)
-                tls.checked = false;
-        });
         $("dev_save").addEventListener("click", () => void serverSave());
         $("dev_test_conn").addEventListener("click", () => void devTestConnection());
         $("dev_test_session").addEventListener("click", () => void devTestSession(showDiag));

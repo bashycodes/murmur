@@ -126,9 +126,13 @@ mod tests {
     }
 
     #[test]
-    fn plaintext_to_a_public_host_is_refused_before_any_socket() {
-        let cfg = r#"{"host":"8.8.8.8","token":"secret-token-0123456789"}"#;
-        assert_eq!(v(&whoami(cfg))["code"], code::CONNECT_FAILED);
+    fn plaintext_to_a_public_host_is_dialled() {
+        // D111: no cleartext rule; TEST-NET-3 goes nowhere, so only the
+        // network fails, and an old `allow_plaintext` key is ignored.
+        let cfg = r#"{"host":"203.0.113.5","tls":false,"allow_plaintext":true,"connect_timeout_ms":300,"token":"secret-token-0123456789"}"#;
+        let r = v(&whoami(cfg));
+        assert_eq!(r["code"], code::CONNECT_FAILED, "{r}");
+        assert!(!r["message"].as_str().unwrap().contains("plaintext"), "{r}");
     }
 
     #[test]

@@ -339,7 +339,8 @@ Session semantics (2026-10-22, review fixes):
 * Base URLs are parsed with the `url` crate (reqwest's parser): `\`, whitespace, control
   characters and any userinfo are refused (`bad_config`). `CloudSettings.kt`'s mirror must
   give the same answers as `crates/murmur-router/tests/url_parse.rs`.
-* `ws://` and `http://` (cloud) to a **name** are decided by its resolved addresses: every
+* `ws://` to the user's own server is allowed at any address, public ones included (D111).
+* `http://` (cloud) to a **name** is decided by its resolved addresses: every
   address must be loopback / private / link-local, or a VPN address (100.64/10, fd7a:115c:a1e0::/48)
   reached through a VPN interface; otherwise `connect_failed` "plaintext refused" (use TLS).
 
