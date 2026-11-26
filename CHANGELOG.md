@@ -16,6 +16,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-11-26
+
 ### Added
 
 - **Setup recommends models that suit your PC or phone.** Murmur reads the RAM, the free disk space and (on Windows) whether AI can run on the graphics chip, and recommends the speech, AI cleanup and Hebrew models from one table: Parakeet with 4 GB of RAM or more (whisper base or tiny below), Qwen2.5 1.5B for AI cleanup with 8 GB (Llama 3.2 3B with a graphics chip), none below 8 GB. Each model says whether it fits this device, or why not ("needs 1.3 GB free", "needs 8 GB RAM", "needs a graphics chip"); one that doesn't fit can still be picked. Windows: setup's speech and AI cleanup steps start on the recommended model, and Settings → Speech to text and AI cleanup mark the same ones. Android: the model import pages show a Recommended badge and a fits line instead of the old "flagship phones" notes (D117).
@@ -1552,7 +1554,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   adaptive connect timeout, connection pre-warm.
 - All P1/P2 findings of the 2026-10-22 review (`docs/reviews/2026-10-22-integration.md`).
 
-[Unreleased]: https://github.com/bashycodes/murmur/compare/v1.8.0...HEAD
+[Unreleased]: https://github.com/bashycodes/murmur/compare/v1.8.1...HEAD
+[1.8.1]: https://github.com/bashycodes/murmur/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/bashycodes/murmur/compare/v1.7.1...v1.8.0
 [1.7.1]: https://github.com/bashycodes/murmur/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/bashycodes/murmur/compare/v1.6.1...v1.7.0

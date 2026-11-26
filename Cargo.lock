@@ -1263,7 +1263,7 @@ dependencies = [
 
 [[package]]
 name = "murmur-asr-sherpa"
-version = "1.8.0"
+version = "1.8.1"
 dependencies = [
  "hound",
  "serde_json",
@@ -1273,14 +1273,14 @@ dependencies = [
 
 [[package]]
 name = "murmur-build-info"
-version = "1.8.0"
+version = "1.8.1"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "murmur-cli"
-version = "1.8.0"
+version = "1.8.1"
 dependencies = [
  "hound",
  "murmur-core",
@@ -1292,7 +1292,7 @@ dependencies = [
 
 [[package]]
 name = "murmur-cloud"
-version = "1.8.0"
+version = "1.8.1"
 dependencies = [
  "base64 0.22.1",
  "claxon",
@@ -1308,7 +1308,7 @@ dependencies = [
 
 [[package]]
 name = "murmur-contract-tests"
-version = "1.8.0"
+version = "1.8.1"
 dependencies = [
  "base64 0.22.1",
  "claxon",
@@ -1328,7 +1328,7 @@ dependencies = [
 
 [[package]]
 name = "murmur-core"
-version = "1.8.0"
+version = "1.8.1"
 dependencies = [
  "fancy-regex",
  "hound",
@@ -1345,7 +1345,7 @@ dependencies = [
 
 [[package]]
 name = "murmur-ffi"
-version = "1.8.0"
+version = "1.8.1"
 dependencies = [
  "jni",
  "murmur-build-info",
@@ -1364,7 +1364,7 @@ dependencies = [
 
 [[package]]
 name = "murmur-llm"
-version = "1.8.0"
+version = "1.8.1"
 dependencies = [
  "llama-cpp-2",
  "serde",
@@ -1373,7 +1373,7 @@ dependencies = [
 
 [[package]]
 name = "murmur-protocol"
-version = "1.8.0"
+version = "1.8.1"
 dependencies = [
  "murmur-core",
  "serde",
@@ -1382,7 +1382,7 @@ dependencies = [
 
 [[package]]
 name = "murmur-remote"
-version = "1.8.0"
+version = "1.8.1"
 dependencies = [
  "futures-util",
  "http-body-util",
@@ -1405,7 +1405,7 @@ dependencies = [
 
 [[package]]
 name = "murmur-replay"
-version = "1.8.0"
+version = "1.8.1"
 dependencies = [
  "murmur-cloud",
  "murmur-core",
@@ -1416,7 +1416,7 @@ dependencies = [
 
 [[package]]
 name = "murmur-router"
-version = "1.8.0"
+version = "1.8.1"
 dependencies = [
  "murmur-core",
  "murmur-protocol",
@@ -1428,7 +1428,7 @@ dependencies = [
 
 [[package]]
 name = "murmur-server"
-version = "1.8.0"
+version = "1.8.1"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -1456,7 +1456,7 @@ dependencies = [
 
 [[package]]
 name = "murmur-whisper"
-version = "1.8.0"
+version = "1.8.1"
 dependencies = [
  "murmur-core",
  "serde",
