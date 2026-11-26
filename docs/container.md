@@ -33,6 +33,15 @@ checks pass:
 | `ghcr.io/bashycodes/murmur-server:X.Y.Z`, `:latest` | CPU image (target `runtime`) |
 | `ghcr.io/bashycodes/murmur-server:X.Y.Z-cuda`, `:latest-cuda` | CUDA image (§7), GPU architectures 75, 86, 89 and 120 (Turing, Ampere, Ada, Blackwell); A100 (80) and H100 (90) should run the embedded PTX (CMake embeds it for each architecture), which the driver compiles on first use (not tested: CI has no GPU). For another set, build it yourself (§8) |
 
+**CPU baseline.** Both images run on any x86-64 CPU with AVX2 and FMA
+(x86-64-v3: Intel Haswell 2013 or newer, AMD Excavator / Zen or newer).
+The C/C++ engines are compiled for that fixed baseline, not for the build
+machine (`GGML_NATIVE=OFF`), so they use no AVX-512 even where the CPU has
+it; onnxruntime (Parakeet, zipformer) picks its kernels at run time. CI
+fails the build if the server binary or a plugin contains AVX-512 code
+(`tools/checks/no-avx512.sh`, D118). An image you build yourself (§8) gets
+the same baseline.
+
 `latest` / `latest-cuda` go only to the highest `vX.Y.Z` tag, so they move
 with each new release; pin a version in production. The images carry OCI
 labels (`org.opencontainers.image.source`, `.version`, `.revision`: the

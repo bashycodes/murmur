@@ -44,6 +44,7 @@ on:
       - "NOTICE"
       - "THIRD-PARTY-LICENSES"
       - "tools/container/stage-prebuilt.sh"
+      - "tools/checks/no-avx512.sh"
       - ".github/workflows/server-image-cuda.yml"
   pull_request:
     paths:
@@ -59,6 +60,7 @@ on:
       - "NOTICE"
       - "THIRD-PARTY-LICENSES"
       - "tools/container/stage-prebuilt.sh"
+      - "tools/checks/no-avx512.sh"
       - ".github/workflows/server-image-cuda.yml"
 
 concurrency:
@@ -214,6 +216,16 @@ jobs:
             done
             echo "MURMUR_WHISPER_LIB=$MURMUR_WHISPER_LIB"; test -f "$MURMUR_WHISPER_LIB"'
           docker image ls murmur-server:ci-cuda
+
+      # The CPU side must run on any x86-64 CPU with AVX2 (x86-64-v3): no
+      # AVX-512 in the server binary or the plugins (1.8.0's server binary
+      # crashed with SIGILL on CPUs without it). Upstream onnxruntime and the
+      # CUDA libraries pick their kernels by CPUID and are not checked.
+      - name: No AVX-512 in our binaries
+        run: |
+          id=$(docker create murmur-server:ci-cuda)
+          docker cp "$id:/opt/murmur-server" img; docker rm "$id"
+          tools/checks/no-avx512.sh img/bin/murmur-server img/lib/libmurmur_*.so
 
       # Release only: hand the tested image to the publish job.
       - name: Save image

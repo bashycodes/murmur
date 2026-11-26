@@ -6,7 +6,8 @@ loopback, LAN and VPN addresses. It never stores audio or text.
 
 ## What you need
 
-* Docker on a Linux machine (x86_64, 4 GB RAM free).
+* Docker on a Linux machine (x86_64 with AVX2, 4 GB RAM free: any Intel
+  CPU since Haswell (2013), any AMD since Excavator / Zen).
 * Only to build the image yourself: the Murmur source (`git clone` of the
   repo, or the source archive of a release, GitHub → Releases → *Source
   code*, unpacked). The ready-made image and a Murmur bundle need no build

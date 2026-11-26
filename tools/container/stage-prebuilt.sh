@@ -8,7 +8,10 @@
 #
 #   --build             first build murmur-server (features
 #                       whisper,whisper-plugin,parakeet,tls,llm) and the murmur-llm
-#                       plugin, release, --offline
+#                       plugin, release, --offline, with GGML_NATIVE=OFF (the
+#                       images' AVX2 baseline, no -march=native; a target/ that
+#                       built whisper-rs-sys natively needs
+#                       `cargo clean -p whisper-rs-sys` first)
 #   --sherpa-lib DIR    dir with libsherpa-onnx-c-api.so + libonnxruntime.so, the no-TTS
 #                       build (sherpa-onnx-v1.13.8-linux-x64-shared-no-tts-lib/lib; D80)
 #                       (default $SHERPA_ONNX_LIB_DIR, else target/release)
@@ -59,7 +62,7 @@ if [ "$BUILD" = 1 ]; then
     [ -n "$SHERPA_LIB" ] || die "--build needs --sherpa-lib DIR or SHERPA_ONNX_LIB_DIR (offline build)"
     GCC_INC="$(gcc -print-file-name=include)"
     (cd "$ROOT" &&
-        SHERPA_ONNX_LIB_DIR="$SHERPA_LIB" cargo build --release --offline -p murmur-server \
+        GGML_NATIVE=OFF SHERPA_ONNX_LIB_DIR="$SHERPA_LIB" cargo build --release --offline -p murmur-server \
             --no-default-features --features whisper,whisper-plugin,parakeet,tls,llm &&
         BINDGEN_EXTRA_CLANG_ARGS="${BINDGEN_EXTRA_CLANG_ARGS:--I$GCC_INC}" \
             cargo build --release --offline -p murmur-llm)
