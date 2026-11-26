@@ -20,7 +20,7 @@ Design rationale: `docs/hybrid-architecture.md` §2.
 | TLS | rustls; self-signed leaf certificates may be pinned by SHA-256 of the leaf DER (`tls_pin_sha256`, 64 hex) |
 | Sockets | TCP_NODELAY on both ends. WebSocket ping every 15 s; 45 s without any frame = dead |
 | Sessions per connection | At most one active session. The client keeps an idle connection for 60 s for the next session |
-| Admin API | Plain HTTP JSON on the same port and TLS (D39): `GET /v1/whoami` (any key), `GET`/`POST /v1/admin/keys`, `DELETE /v1/admin/keys/{id}` (admin keys; 403 `forbidden` otherwise). Types and error codes: `crates/murmur-protocol/src/admin.rs`; client: `murmur_remote::admin::AdminClient`. Team dictionary (D114): `GET /v1/dictionary` (any key, `ETag` / `If-None-Match` → 304), `POST`/`DELETE /v1/admin/dictionary` (admin keys); types `crates/murmur-protocol/src/dictionary.rs`, client cache `murmur_remote::team_dict` |
+| Admin API | Plain HTTP JSON on the same port and TLS (D39): `GET /v1/whoami` (any key), `GET`/`POST /v1/admin/keys`, `DELETE /v1/admin/keys/{id}` (admin keys; 403 `forbidden` otherwise). Types and error codes: `crates/murmur-protocol/src/admin.rs`; client: `murmur_remote::admin::AdminClient`. Team dictionary (D115): `GET /v1/dictionary` (any key, `ETag` / `If-None-Match` → 304), `POST`/`DELETE /v1/admin/dictionary` (admin keys); types `crates/murmur-protocol/src/dictionary.rs`, client cache `murmur_remote::team_dict` |
 
 ## 2. Frames
 

@@ -30,8 +30,8 @@ import org.robolectric.shadows.ShadowAlertDialog
 
 /**
  * Settings → Speech to text (AndroidSpeech.dc.html), per flavour: ranked engine rows that read as
- * one switch each, apply-at-once switches, Change order, OpenRouter's consent, the model card and
- * Transcribe while I speak.
+ * one switch each, apply-at-once switches, Change order, OpenRouter's consent and the model card.
+ * Live transcription has no switch (D114).
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = MurmurApp::class)
@@ -45,7 +45,6 @@ class SpeechUiTest {
     @After fun reset() {
         app.dev.save(DevSettings.defaults(app.caps))
         app.dev.saveCloud(allowCloud = false, cloud = app.dev.load().cloud)
-        app.settings.save(app.settings.load().copy(decodeWhileSpeaking = dev.murmur.data.Settings().decodeWhileSpeaking))
     }
 
     /** The row body (rank, name, state line): opens the engine's page. */
@@ -58,7 +57,7 @@ class SpeechUiTest {
     @Test fun enginesAreRankedSwitchRowsInTheStoredOrder() {
         val a = launch()
         val t = texts(a)
-        for (want in listOf("Speech to text", "Engines", "Transcribe while I speak")) assertTrue(want, want in t)
+        for (want in listOf("Speech to text", "Engines")) assertTrue(want, want in t)
         assertFalse("omitted: Android has no such switch", "Use dictionary words" in t)
         val list = DevPages.engines(app.dev.load(), app.caps)
         assertTrue(list.isNotEmpty())
@@ -133,11 +132,12 @@ class SpeechUiTest {
         assertFalse(engineSwitch(a, Route.CLOUD).createAccessibilityNodeInfo().isChecked)
     }
 
-    @Test fun transcribeWhileISpeakAppliesAtOnce() {
-        val a = launch()
-        val was = app.settings.load().decodeWhileSpeaking
-        rowTitled(a, "Transcribe while I speak").performClick()
-        assertEquals(!was, app.settings.load().decodeWhileSpeaking)
+    @Test fun liveTranscriptionHasNoSwitch() {
+        // D114: always on; no page shows the old switch, and no flavor keeps an empty "Options" card.
+        val t = texts(launch())
+        assertFalse("Transcribe while I speak" in t)
+        assertFalse("Options" in t)
+        assertEquals(app.caps.local, "On this phone" in t)
     }
 
     @Test fun keepBothLanguagesLoadedIsOffByDefaultAndPersists() {

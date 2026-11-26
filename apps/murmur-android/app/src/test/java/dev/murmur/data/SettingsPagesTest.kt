@@ -78,13 +78,6 @@ class SettingsPagesTest {
         }
     }
 
-    @Test fun timingSaveLeavesTranscribeWhileISpeakAlone() {
-        // "Transcribe while I speak" is a switch on Speech to text now (applies at once).
-        val out = draft(Page.TIMING).edit { copy(capMinutes = "9") }.result(s.copy(decodeWhileSpeaking = false)).settings!!
-        assertFalse(out.decodeWhileSpeaking)
-        assertEquals(9, out.capMinutes)
-    }
-
     @Test fun denylistIsTrimmedDedupedAndValidated() {
         val d = draft(Page.APPS).edit { copy(denylist = "  com.example.app \n\ncom.example.app\norg.foo_bar.Baz\n") }
         assertEquals(setOf("com.example.app", "org.foo_bar.Baz"), d.result().settings!!.userDenylist)

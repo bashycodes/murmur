@@ -218,9 +218,9 @@ never cut off.
 
 **Live transcription** (Both). Murmur transcribes while you speak, so a
 long dictation is ready soon after you stop.
-*How:* this is on by default. Windows: *Settings → Speech to text → Live
-transcription*. Android: *Settings → Speech to text → Transcribe while I
-speak*.
+*How:* always on, with nothing to set. It works with the speech model on
+your PC or phone and with your own server; the cloud speech engine gets
+your audio once, after you stop, so it transcribes everything then.
 
 **Live preview** (Both). Shows the words next to the Murmur bar or the
 bubble as you speak.

@@ -268,7 +268,7 @@ For a user install drop `sudo` and pass `--config ~/.config/murmur-server/config
 
 ### Team dictionary
 
-One word list per server, shared by everyone who uses it (D114). Every app
+One word list per server, shared by everyone who uses it (D115). Every app
 downloads it and uses it like its own dictionary words (help hearing them,
 the AI cleanup spelling them, "heard as" rewrites); a word in someone's own
 dictionary wins over the same word here. Admin keys edit it in the apps'

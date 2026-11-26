@@ -87,9 +87,9 @@ works to any address. For on-device fallback, either import a model (§2, §5) o
       the text is inserted. With *Settings → Timing & limits → Stop after silence* set to 1500 (off,
       0, by default on a fresh install since D104; an install from before keeps 1500), stop talking
       instead: after ~1.5 s of silence the dictation ends by itself (hands-free endpointing).
-- [ ] Long dictation (30 s+, with pauses), *Settings → Timing & limits → Decode while speaking* on (default): the
-      text appears well under a second after you stop; the debug line shows `segments` ≥ 2 and
-      `pre_asr_ms` > 0. Toggle it off: `segments` 0 and the wait grows with the length.
+- [ ] Long dictation (30 s+, with pauses; live transcription, always on): the text appears well
+      under a second after you stop; the debug line shows `segments` ≥ 2 and `pre_asr_ms` > 0.
+      *Settings → Speech to text* has no switch for it.
 - [ ] **Hold** the bubble, speak, release: inserted; holding never stops by itself.
 - [ ] The *Developer settings* status card says *Last dictation* `Server · client N ms`
       (*Status & server info* → *Active engine* has the full `Server 100.x…:7313 · …` line).
@@ -153,7 +153,7 @@ One line per dictation; the fields are the same in the Windows app:
 | `perceived_ms` | stop or release → text inserted: what you waited |
 | `client_ms` | release → result on the phone, network included (router; `null` without a result). The latency to compare between routes: a server's `total_ms` is only its own commit |
 | `wait_ms` | how long the commit waited for a decode already running (live preview or a segment); part of `total_ms` |
-| `segments` | pieces sent to speech recognition (*Decode while speaking*: finished phrases + the tail); `0` = off, or the cloud route |
+| `segments` | pieces sent to speech recognition (live transcription: finished phrases + the tail); `0` on the cloud route or an older server |
 | `pre_asr_ms` | recognition time spent while you were still speaking; not part of `asr_ms`, which is now only the tail |
 | `target` | app package; `<redacted>` in password fields, banking and denylisted apps (text too) |
 | `insert` | `{"outcome": inserted / paste_failed / target_changed / target_protected / empty / error / timeout / start_failed / cancelled, "steps": [insertion trail]}` |
@@ -206,11 +206,11 @@ With the toggle off nothing is written; `MurmurService commit …` (timings only
 always logged and since D22 also carries `wait=…ms segments=… pre_asr=…ms client=…ms`
 (`client=-` when the result did not come through the router).
 
-**Decode while speaking** (*Settings → Timing & limits*, default on, stored on this phone only): the
-engine decodes each finished phrase (cut in the middle of pauses ≥ 0.8 s) while you keep
-talking, so after you stop it only decodes the last phrase. Same text, less waiting on long
-dictations. Used on the phone engine and your own server; the cloud route never gets audio
-before you stop, so it is off there. Live preview and ✕ behave as before.
+**Live transcription** (always on since D114, no setting): the engine decodes each finished
+phrase (cut in the middle of pauses ≥ 0.8 s) while you keep talking, so after you stop it only
+decodes the last phrase. Same text, less waiting on long dictations. Used on the phone engine
+and your own server; the cloud route never gets audio before you stop, so it is off there.
+Live preview and ✕ behave as before.
 
 ### Release build
 
@@ -470,8 +470,8 @@ current value and open a page:
 | Writing style · *Style per app* | One row per app moved to another group (icon, name, group dropdown, remove); *Add app* = searchable list of launcher apps, recently dictated-into first, then the group; overrides the built-in app list | at once |
 | General · *Bubble size* | Live preview, Shrink to a dot, Shake to restore, Bubble size; *Command mode* (✎ button: When text is selected / Always / Off) | at once |
 | General · *Excluded apps* | package names, one per line (checked) | *Save* |
-| General · *Timing and limits* | Stop after silence (ms, 0 or 300–10000), Decode while speaking, session limit (1–20 min) | *Save* |
-| Models · *Speech to text* | *Engines*: one switch per engine (Use your server / Use this phone / Use the cloud for speech; the cloud asks for consent) in try order, *Change order* (↑ / ↓). *On this phone* (local / hybrid): the model in use → *Model on this phone* (Whisper or Parakeet, *Speech model (whisper)* / *Parakeet model folder* imports), *Import another model*, *Keep loaded while the server is used* (hybrid); *Transcribe while I speak* | at once (reloads) |
+| General · *Timing and limits* | Stop after silence (ms, 0 or 300–10000), session limit (1–20 min) | *Save* |
+| Models · *Speech to text* | *Engines*: one switch per engine (Use your server / Use this phone / Use the cloud for speech; the cloud asks for consent) in try order, *Change order* (↑ / ↓). *On this phone* (local / hybrid): the model in use → *Model on this phone* (Whisper or Parakeet, *Speech model (whisper)* / *Parakeet model folder* imports), *Import another model*, *Keep loaded while the server is used* (hybrid) | at once (reloads) |
 | Models · *AI cleanup* | *Engines*: one switch per engine (Clean up on this phone / Clean up on your server / Clean up in the cloud; the cloud asks for consent) in try order, *Change order* (↑ / ↓); *AI cleanup model* import; strength. The row says e.g. "Medium · Cloud, then rules". In `remote` it opens the Cloud page | at once (reloads) |
 | Connections · *Your server* (hybrid / remote) | Developer settings' *Server* page; the row shows the last check ("Connected · 41 ms") | top bar |
 | Connections · *Cloud* (hybrid / remote) | The Cloud page (§5c); the row shows this month's cost | at once |

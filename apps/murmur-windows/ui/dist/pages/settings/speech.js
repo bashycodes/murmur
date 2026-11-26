@@ -1,8 +1,8 @@
 // Settings → Speech to text (design: SettingsSpeech.dc.html): the engine
 // order and the meeting order (D47) (features/engines.ts), the model on
-// this PC with its status chip (features/general.ts), live transcription,
-// cloud speech to text on OpenRouter or (D85) the LiteLLM proxy
-// (features/openrouter.ts), and an Advanced fold with the model plumbing
+// this PC with its status chip (features/general.ts), cloud speech to
+// text on OpenRouter or (D85) the LiteLLM proxy (features/openrouter.ts),
+// and an Advanced fold with the model plumbing
 // (Hebrew model, keep loaded, download source, other models, a folder of
 // model files (features/model-folder.ts), model file).
 // The server's model library is on Settings → Your server. Markup only.
@@ -61,8 +61,6 @@ ${group("", row(`<label for="asr_engine">This PC model</label>`, `Parakeet is En
     </select>
     <span class="fl-badge fl-badge-light" id="pc_model_chip" hidden></span>
     <button type="button" class="fl-btn fl-btn-secondary" id="pc_model_dl" hidden>Download…</button>`, `id="pc_model_row"`), `data-needs="local"`)}
-
-${group("", row("Live transcription", "Text appears as you pause, so it finishes sooner.", toggle("dev_decode_while_speaking", "Live transcription", `data-save="dev"`)), `data-needs="dev"`)}
 
 <section class="lw-section" id="or_stt_group" data-needs="cloud">
   <h3 class="fl-group-title lw-title-badge"><span id="or_stt_provider_name">Cloud · OpenRouter</span> <span class="fl-badge fl-badge-light" id="or_stt_used_badge">Used only when on above</span> <button type="button" class="lw-link lw-link-sm" data-go="settings-openrouter">Change provider →</button></h3>

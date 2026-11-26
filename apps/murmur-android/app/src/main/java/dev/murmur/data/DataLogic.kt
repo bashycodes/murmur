@@ -94,12 +94,6 @@ data class Settings(
      * again, the default since D104 (it was 1.5 s; an install from before keeps that, [EndpointDefault]).
      */
     val endpointSilenceMs: Int = DEFAULT_ENDPOINT_SILENCE_MS,
-    /**
-     * D22 "Decode while speaking": decode finished phrases during recording so release → text
-     * only waits for the tail. Per device (not in the synced dictionary). Local and server routes;
-     * the core opts the cloud route out by itself.
-     */
-    val decodeWhileSpeaking: Boolean = true,
     /** D27 "Writing style": per-bucket style; chats casual, email + other formal ([Styles] defaults). */
     val styles: dev.murmur.core.Styles = dev.murmur.core.Styles(),
     /** "Writing style → Apps": package → bucket, over the built-in [AppCategorizer] lists. */
@@ -210,7 +204,11 @@ data class Settings(
         const val RECOMMENDED_ENDPOINT_SILENCE_MS = 1_500
         const val OLD_DEFAULT_ENDPOINT_SILENCE_MS = 2_000
         val ENDPOINT_RANGE_MS = 300..10_000
-        /** D22: `murmur_core::segment::RECOMMENDED_PAUSE_MS`. */
+        /**
+         * D22 live transcription, always on since D114: every dictation sends this
+         * (`murmur_core::segment::RECOMMENDED_PAUSE_MS`). The core ignores it for an engine that
+         * must not see audio before commit (the cloud route, D18); an older server ignores it too.
+         */
         const val SEGMENT_PAUSE_MS = 800
 
         /**
@@ -267,7 +265,7 @@ data class Settings(
         partialIntervalMs = if (livePreview) PARTIAL_INTERVAL_MS else null,
         llmTimeoutMs = ANDROID_LLM_TIMEOUT_MS,
         spokenCleanup = spokenCleanup,
-        segmentPauseMs = if (decodeWhileSpeaking) SEGMENT_PAUSE_MS else null,
+        segmentPauseMs = SEGMENT_PAUSE_MS,
         styles = styles,
     )
 

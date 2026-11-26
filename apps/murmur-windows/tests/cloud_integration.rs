@@ -180,10 +180,27 @@ impl Rig {
         self.c.handle(i);
     }
     fn dictate(&mut self) {
+        self.dictate_phrases(&[1500], 2500, || {});
+    }
+    /// Push to talk: the phrases (ms of speech) with 1.2 s pauses between
+    /// them; `before_release` runs just before the key goes up at
+    /// `release_ms` after the press; then wait for the result.
+    fn dictate_phrases(
+        &mut self,
+        phrases: &[usize],
+        release_ms: u64,
+        before_release: impl FnOnce(),
+    ) {
         let start = self.t.load(Ordering::SeqCst) + 10_000;
         self.at(start, Input::Hotkey(HotkeyAction::PttDown));
-        self.os.feed(&speech(1500));
-        self.at(start + 2500, Input::Hotkey(HotkeyAction::PttUp));
+        for (i, &ms) in phrases.iter().enumerate() {
+            if i > 0 {
+                self.os.feed(&[0i16; 1200 * 16]);
+            }
+            self.os.feed(&speech(ms));
+        }
+        before_release();
+        self.at(start + release_ms, Input::Hotkey(HotkeyAction::PttUp));
         let deadline = Instant::now() + Duration::from_secs(20);
         while self.c.machine().is_active() {
             let left = deadline.saturating_duration_since(Instant::now());
@@ -357,6 +374,42 @@ fn no_key_or_no_consent_never_contacts_the_provider() {
         );
     }
     assert_eq!(srv.count(), 0, "C1");
+}
+
+/// Three phrases, each past the core's 4 s segment minimum.
+const PAUSED: [usize; 3] = [4500, 4500, 2000];
+
+/// D114: live transcription is always on. This PC's engine decodes the
+/// finished phrases while the user keeps talking.
+#[test]
+fn live_transcription_splits_a_dictation_on_this_pc() {
+    let (srv, _g) = mock(ok_reply());
+    let d = dev(true, false, vec![Route::Client], true);
+    let mut r = rig(&d, &*keyed());
+    r.dictate_phrases(&PAUSED, 15_000, || {});
+    assert_eq!(srv.count(), 0);
+    assert!(said(&r.os.pastes(), LOCAL_SAYS), "{:?}", r.os.pastes());
+    let last = r.last();
+    assert_eq!(last.engine.as_deref(), Some("local"));
+    assert!(last.segments >= 2, "{last:?}");
+}
+
+/// D114 with the cloud route, which can't stream (D18, C5): the same
+/// always-on session uploads once, at release, as before the switch went.
+#[test]
+fn live_transcription_leaves_the_cloud_route_one_upload_at_release() {
+    let (srv, _g) = mock(ok_reply());
+    let d = dev(true, true, vec![Route::Cloud, Route::Client], true);
+    let mut r = rig(&d, &*keyed());
+    let mut before_release = usize::MAX;
+    r.dictate_phrases(&PAUSED, 15_000, || before_release = srv.count());
+    assert!(said(&r.os.pastes(), CLOUD_SAYS), "{:?}", r.os.pastes());
+    assert_eq!(before_release, 0, "nothing uploaded while speaking");
+    assert_eq!(srv.count(), 1);
+    let last = r.last();
+    assert_eq!(last.engine.as_deref(), Some("cloud"));
+    assert_eq!(last.segments, 0, "{last:?}");
+    r.assert_no_key();
 }
 
 #[test]
