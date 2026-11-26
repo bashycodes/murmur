@@ -13,6 +13,7 @@ import dev.murmur.data.CleanupEngines
 import dev.murmur.data.HebrewImport
 import dev.murmur.data.HebrewModels
 import dev.murmur.data.ModelFiles
+import dev.murmur.data.ModelFit
 import dev.murmur.data.ModelPages
 import dev.murmur.server.ServerModels
 import java.io.File
@@ -109,10 +110,14 @@ class ModelImportActivity : Activity() {
 
             sectionLabel("RECOMMENDED")
             card {
+                val machine = machine()
                 for (m in ModelPages.recommended(screen)) {
                     val copyLink = { copyLink(m.file, m.url) }
+                    val fit = ModelPages.rowFit(screen, m, machine, installed = items.any { it.name == m.file })
                     listRow(
                         m.file, ModelPages.subtitle(m),
+                        badge = if (fit?.recommended == true) "Recommended" else "",
+                        flag = fit?.line, flagTone = if (fit?.fits == false) Tone.WARN else Tone.OK,
                         trailing = iconButton(R.drawable.ic_scr_copy, "Copy download link for ${m.file}") { copyLink() },
                         actions = listOf("Copy download link" to copyLink),
                     ) { copyLink() }
@@ -134,6 +139,18 @@ class ModelImportActivity : Activity() {
                 }
             }
         }
+    }
+
+    /**
+     * This phone for the machine-class table (D116): total RAM (ActivityManager) and the free
+     * space where this screen saves its models. The phone runs no model on a GPU.
+     */
+    private fun machine(): ModelFit.Machine {
+        val mem = android.app.ActivityManager.MemoryInfo()
+        runCatching { getSystemService(android.app.ActivityManager::class.java)?.getMemoryInfo(mem) }
+        val where = if (parakeet) app.engine.parakeetDir() else if (hebrew) app.engine.hebrewDir() else dir()
+        val free = runCatching { generateSequence(where) { it.parentFile }.first { it.exists() }.usableSpace }.getOrNull()
+        return ModelFit.Machine(totalRam = mem.totalMem, freeDisk = free?.takeIf { it > 0 })
     }
 
     /** Progress while copying: only the status line and the button change. */

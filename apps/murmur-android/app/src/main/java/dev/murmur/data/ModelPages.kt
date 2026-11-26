@@ -10,7 +10,8 @@ import java.util.Locale
 object ModelPages {
     enum class Screen { WHISPER, PARAKEET, LLM, HEBREW }
 
-    data class Recommended(val file: String, val sizeMb: Int, val speed: String, val quality: String, val note: String, val url: String)
+    /** [model]: the row in the machine-class table ([ModelFit], D116) that marks it Recommended and fits / doesn't fit. */
+    data class Recommended(val file: String, val sizeMb: Int, val speed: String, val quality: String, val note: String, val url: String, val model: ModelFit.Model? = null)
 
     private const val WHISPER = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
     private const val SHERPA = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models"
@@ -20,33 +21,50 @@ object ModelPages {
 
     fun recommended(s: Screen): List<Recommended> = when (s) {
         Screen.WHISPER -> listOf(
-            Recommended("ggml-base.en-q5_1.bin", 60, "Fast", "Good quality", "English only", "$WHISPER/ggml-base.en-q5_1.bin"),
-            Recommended("ggml-base-q5_1.bin", 60, "Fast", "Good quality", "Many languages (follows the phone language)", "$WHISPER/ggml-base-q5_1.bin"),
-            Recommended("ggml-tiny.en-q5_1.bin", 32, "Fastest", "Basic quality", "English only; older phones", "$WHISPER/ggml-tiny.en-q5_1.bin"),
-            Recommended("ggml-small.en-q5_1.bin", 190, "About 3× slower", "Better quality", "English only; flagship phones", "$WHISPER/ggml-small.en-q5_1.bin"),
+            Recommended("ggml-base.en-q5_1.bin", 60, "Fast", "Good quality", "English only", "$WHISPER/ggml-base.en-q5_1.bin", ModelFit.Model.WHISPER_BASE),
+            Recommended("ggml-base-q5_1.bin", 60, "Fast", "Good quality", "Many languages (follows the phone language)", "$WHISPER/ggml-base-q5_1.bin", ModelFit.Model.WHISPER_BASE),
+            Recommended("ggml-tiny.en-q5_1.bin", 32, "Fastest", "Basic quality", "English only", "$WHISPER/ggml-tiny.en-q5_1.bin", ModelFit.Model.WHISPER_TINY),
+            Recommended("ggml-small.en-q5_1.bin", 190, "About 3× slower", "Better quality", "English only", "$WHISPER/ggml-small.en-q5_1.bin", ModelFit.Model.WHISPER_SMALL),
         )
         Screen.PARAKEET -> listOf(
             Recommended(
                 "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8", 661, "Fast", "Best quality",
-                "English only; WER 1.2% vs 3.7% for whisper base. Unpack on a computer, copy the folder (encoder, decoder, joiner .onnx + tokens.txt). Needs ~1 GB free RAM",
-                "$SHERPA/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8.tar.bz2",
+                "English only; WER 1.2% vs 3.7% for whisper base. Unpack on a computer, copy the folder (encoder, decoder, joiner .onnx + tokens.txt)",
+                "$SHERPA/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8.tar.bz2", ModelFit.Model.PARAKEET,
             ),
         )
         Screen.HEBREW -> listOf(
             Recommended(
                 "zipformer-he (ivrit-ai/zipformer2-66m-streaming-he)", 72, "Fastest", "Best Hebrew quality",
                 "Hebrew only; 27 % word errors vs 51–67 % for whisper. Download encoder, decoder, joiner .int8.onnx + tokens.txt from sherpa-onnx/. CC-BY-4.0, ivrit.ai",
-                ZIPFORMER_HE,
+                ZIPFORMER_HE, ModelFit.Model.ZIPFORMER_HE,
             ),
             Recommended(
                 "parakeet-v3-he (krut42/voice-parakeet-he-int8)", 673, "Fast", "Good Hebrew quality",
-                "Hebrew only; 29 % word errors; needs ~1 GB free RAM. Download the four files (encoder, decoder, joiner .int8.onnx + tokens.txt). CC-BY-4.0",
-                PARAKEET_HE,
+                "Hebrew only; 29 % word errors. Download the four files (encoder, decoder, joiner .int8.onnx + tokens.txt). CC-BY-4.0",
+                PARAKEET_HE, ModelFit.Model.PARAKEET_HE,
             ),
         )
         Screen.LLM -> ModelFiles.LLM_RECOMMENDATIONS.mapIndexed { i, r ->
-            Recommended(r.file, r.sizeMb, if (i == 0) "Fastest" else "About 3× slower", if (i == 0) "Good quality" else "Best quality", r.note, r.url)
+            Recommended(r.file, r.sizeMb, if (i == 0) "Fastest" else "About 3× slower", if (i == 0) "Good quality" else "Best quality", r.note, r.url, ModelFit.Model.of(r.model))
         }
+    }
+
+    /** The screen's file the table recommends for [p] (null: none on this screen, e.g. AI cleanup below 8 GB RAM). */
+    fun pick(s: Screen, p: ModelFit.Picks): ModelFit.Model? = when (s) {
+        Screen.WHISPER -> if (p.speech == ModelFit.Model.WHISPER_TINY) ModelFit.Model.WHISPER_TINY else ModelFit.Model.WHISPER_BASE
+        Screen.PARAKEET -> p.speech.takeIf { it == ModelFit.Model.PARAKEET }
+        Screen.HEBREW -> p.hebrew
+        Screen.LLM -> p.cleanup
+    }
+
+    /** What a recommended row says about this phone: the Recommended badge and its fits / doesn't-fit line (D116). */
+    data class RowFit(val recommended: Boolean, val fits: Boolean, val line: String)
+
+    fun rowFit(s: Screen, r: Recommended, m: ModelFit.Machine, installed: Boolean = false): RowFit? {
+        val model = r.model ?: return null
+        val f = ModelFit.fit(model, r.sizeMb * 1_000_000L, installed, m)
+        return RowFit(model == pick(s, ModelFit.recommend(m)), f.fits, ModelFit.line(f))
     }
 
     fun subtitle(r: Recommended) = "~${r.sizeMb} MB · ${r.speed} · ${r.quality} · ${r.note}"
@@ -84,7 +102,7 @@ object ModelPages {
         Screen.WHISPER -> if (server) "Copy a whisper.cpp model file (ggml-*.bin) to this phone and import it, or download one from your own server. " +
             "The app downloads only from your server; the links under Recommended are for a computer."
         else "Copy a whisper.cpp model file (ggml-*.bin) to this phone, then import it. Murmur never downloads anything."
-        Screen.PARAKEET -> "English only and more accurate than whisper base. Copy the unpacked model folder to the phone, then pick that folder. Recommended on phones with 6–8 GB RAM."
+        Screen.PARAKEET -> "English only and more accurate than whisper base. Copy the unpacked model folder to the phone, then pick that folder."
         Screen.HEBREW -> "Used only when the dictation language is Hebrew; the phone then loads this model instead of the English one " +
             "(switching language reloads, a few seconds). Put the four files in one folder (or one .zip), copy it to the phone and import it. " +
             "Files are checked against the pinned sizes and SHA-256."

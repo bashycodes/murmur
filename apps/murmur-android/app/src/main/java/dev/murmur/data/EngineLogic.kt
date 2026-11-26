@@ -15,7 +15,8 @@ import dev.murmur.core.ParakeetDecoding
 object ModelFiles {
     enum class Kind { ASR_GGML, LLM_GGUF, UNKNOWN }
 
-    data class Recommendation(val file: String, val sizeMb: Int, val note: String, val url: String)
+    /** [model]: its [ModelFit] key (D116). */
+    data class Recommendation(val file: String, val sizeMb: Int, val note: String, val url: String, val model: String)
 
     /** Qwen2.5-Instruct Q4_K_M: the pair murmur-core's llm_e2e measures (docs/core-architecture.md). */
     val LLM_RECOMMENDATIONS = listOf(
@@ -23,11 +24,13 @@ object ModelFiles {
             "qwen2.5-0.5b-instruct-q4_k_m.gguf", 490,
             "Fastest. Fixes punctuation and casing; misses some backtracking (\"scratch that\").",
             "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf",
+            "qwen2.5-0.5b",
         ),
         Recommendation(
             "qwen2.5-1.5b-instruct-q4_k_m.gguf", 1120,
-            "Best quality (8/8 on the host test set) but about 3× slower. Flagship phones only.",
+            "Best quality (8/8 on the host test set) but about 3× slower.",
             "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+            "qwen2.5-1.5b",
         ),
     )
 

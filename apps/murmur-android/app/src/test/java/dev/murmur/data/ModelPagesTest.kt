@@ -67,4 +67,29 @@ class ModelPagesTest {
             assertEquals(whisper, server, "your own server" in whisper)
         }
     }
+
+    private fun phone(gib: Double, free: Long? = null) = ModelFit.Machine((gib * (1L shl 30)).toLong(), free)
+
+    /** D116: the table marks one file per screen Recommended and says whether each fits; the old static "flagship phones" notes are gone. */
+    @Test fun recommendedBadgeAndFitFollowThePhone() {
+        val big = phone(11.2, 50_000_000_000)
+        val llm = ModelPages.recommended(Screen.LLM)
+        assertEquals(listOf(false, true), llm.map { ModelPages.rowFit(Screen.LLM, it, big)!!.recommended })
+        val small = phone(5.5, 50_000_000_000)
+        val qwen15 = ModelPages.rowFit(Screen.LLM, llm[1], small)!!
+        assertEquals(ModelPages.RowFit(recommended = false, fits = false, line = "Doesn't fit: needs 8 GB RAM"), qwen15)
+        assertEquals("Fits this phone", ModelPages.rowFit(Screen.PARAKEET, ModelPages.recommended(Screen.PARAKEET)[0], small)!!.line)
+        val tight = ModelPages.rowFit(Screen.PARAKEET, ModelPages.recommended(Screen.PARAKEET)[0], phone(2.8, 300_000_000))!!
+        assertEquals("Doesn't fit: needs 761 MB free, needs 4 GB RAM", tight.line)
+        // Below 4 GB the whisper screen's base files are the pick; tiny only below 2 GB.
+        val whisper = ModelPages.recommended(Screen.WHISPER)
+        assertEquals(listOf(true, true, false, false), whisper.map { ModelPages.rowFit(Screen.WHISPER, it, phone(2.8))!!.recommended })
+        assertEquals(listOf(false, false, true, false), whisper.map { ModelPages.rowFit(Screen.WHISPER, it, phone(1.5))!!.recommended })
+        val hebrew = ModelPages.recommended(Screen.HEBREW).single { ModelPages.rowFit(Screen.HEBREW, it, big)!!.recommended }
+        assertTrue(hebrew.file, hebrew.file.startsWith("zipformer-he"))
+        for (s in Screen.entries) for (r in ModelPages.recommended(s)) {
+            assertTrue(r.file, r.model != null)
+            for (stale in listOf("flagship", "older phones", "free ram")) assertTrue(r.note, stale !in r.note.lowercase())
+        }
+    }
 }
