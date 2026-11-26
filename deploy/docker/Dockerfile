@@ -42,17 +42,7 @@ ARG CARGO_BUILD_JOBS=2
 # upstream's no-TTS shared-lib release, pinned (D80: the default release links
 # espeak-ng, GPL-3.0, for text-to-speech, which murmur-server never uses).
 # bindgen's libclang misses the compiler's own headers on some images.
-# GGML_NATIVE=OFF: whisper-rs-sys forwards GGML_* variables to whisper.cpp's
-# CMake, whose default is GGML_NATIVE=ON (-march=native). On an AVX-512 CI
-# runner that put AVX-512 into the server binary, which then died with
-# SIGILL on CPUs without it (1.8.0). OFF is ggml's fixed AVX2 + FMA + F16C +
-# BMI2 baseline (x86-64-v3, no AVX-512); llama-cpp-sys-2 already forces it.
-# whisper-rs-sys does not rebuild when GGML_* changes, so the target/ cache
-# mount carries the baseline in its id: a new baseline starts a clean cache.
-# The own id also keeps it apart from the CUDA stage's target/ (both used to
-# share the default id, so parallel builds could overwrite each other's
-# target/release/libmurmur_llm.so). CI checks the result with
-# tools/checks/no-avx512.sh.
+# GGML_NATIVE=OFF and the own target/ cache id: the portable CPU baseline (D118).
 ARG SHERPA_VERSION=1.13.8
 ARG SHERPA_NO_TTS_SHA256=bf2d998c8b07012cd5098f3b92673bc1333fd9b927767d7cb664be8190d8bc0b
 RUN --mount=type=cache,target=/usr/local/cargo/registry \

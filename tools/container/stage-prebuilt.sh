@@ -8,10 +8,7 @@
 #
 #   --build             first build murmur-server (features
 #                       whisper,whisper-plugin,parakeet,tls,llm) and the murmur-llm
-#                       plugin, release, --offline, with GGML_NATIVE=OFF (the
-#                       images' AVX2 baseline, no -march=native; a target/ that
-#                       built whisper-rs-sys natively needs
-#                       `cargo clean -p whisper-rs-sys` first)
+#                       plugin, release, --offline, GGML_NATIVE=OFF (D118)
 #   --sherpa-lib DIR    dir with libsherpa-onnx-c-api.so + libonnxruntime.so, the no-TTS
 #                       build (sherpa-onnx-v1.13.8-linux-x64-shared-no-tts-lib/lib; D80)
 #                       (default $SHERPA_ONNX_LIB_DIR, else target/release)

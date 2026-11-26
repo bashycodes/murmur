@@ -1,29 +1,37 @@
 #!/usr/bin/env bash
-# murmur-server's images must run on any x86-64 CPU with AVX2 (x86-64-v3), not
-# only on the AVX-512 machine that built them: 1.8.0's server binary carried
-# AVX-512 in whisper.cpp's ggml (GGML_NATIVE on the CI runner) and died with
-# SIGILL on a Skylake desktop CPU. Checks the x86-64 files we compile ourselves
-# (murmur-server, libmurmur_*.so) for AVX-512 instructions.
-#   tools/checks/no-avx512.sh FILE...   (exit 1 naming each file that has them)
-# Not for third-party libraries that pick their kernels at run time by CPUID:
-# upstream onnxruntime (MLAS) and the CUDA libraries ship AVX-512 paths that
-# a CPU without it never runs.
-# AVX-512 shows in a disassembly as zmm registers, opmask registers (%k0-%k7),
-# xmm/ymm 16-31 (EVEX only), or an explicit {evex} encoding.
+# The server images must run on CPUs without AVX-512 (D118): fails if an x86-64
+# file we compile ourselves (murmur-server, libmurmur_*.so) has any AVX-512
+# instruction. Not for upstream libraries that pick kernels by CPUID
+# (onnxruntime, CUDA).
+#   tools/checks/no-avx512.sh FILE...   exit 1 naming each file that has some,
+#                                       exit 2 when a file cannot be disassembled
+# Every AVX-512 instruction is EVEX-encoded: opcode byte 0x62 after any legacy
+# prefixes (in 64-bit mode 0x62 is nothing else; BOUND is 32-bit only). The
+# opmask instructions (kmovw, kandw, ...) are VEX-encoded and are caught by
+# their %k registers.
 set -euo pipefail
 [ $# -gt 0 ] || { echo "usage: no-avx512.sh FILE..." >&2; exit 2; }
 command -v objdump >/dev/null || { echo "no-avx512.sh: objdump not found (binutils)" >&2; exit 2; }
-pattern='%zmm[0-9]|%k[0-7]|%[xy]mm(1[6-9]|2[0-9]|3[01])|[{]evex[}]'
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
 bad=0
 for f in "$@"; do
-  [ -f "$f" ] || { echo "no-avx512.sh: $f not found" >&2; exit 2; }
-  # "<count> <first function>" in one pass.
-  read -r n first < <(objdump -d --no-show-raw-insn "$f" | awk -v re="$pattern" '
-    /^[0-9a-f]+ <.*>:$/ { fn = substr($2, 2, length($2) - 3) }
-    $0 ~ re { if (!n++) first = fn }
-    END { print n + 0, (first == "" ? "-" : first) }')
+  # --insn-width=15: all of an instruction's bytes on its own line.
+  if ! objdump -d --insn-width=15 "$f" >"$tmp/dis" 2>"$tmp/err"; then
+    echo "no-avx512.sh: cannot disassemble $f: $(head -n 1 "$tmp/err")" >&2
+    exit 2
+  fi
+  # "<count> <first function>"; lines are "  addr:\tbytes\tmnemonic operands".
+  read -r n first < <(awk -F '\t' '
+    /^[0-9a-f]+ <.*>:$/ { fn = substr($0, index($0, "<") + 1); sub(/>:$/, "", fn); next }
+    NF >= 3 && $1 ~ /^ *[0-9a-f]+:$/ {
+      k = split($2, b, " "); i = 1
+      while (i <= k && b[i] ~ /^(66|67|f0|f2|f3|2e|36|3e|26|64|65)$/) i++
+      if ((i <= k && b[i] == "62") || $3 ~ /%k[0-7]/) { if (!n++) first = fn }
+    }
+    END { print n + 0, (first == "" ? "-" : first) }' "$tmp/dis")
   if [ "$n" != 0 ]; then
-    echo "FAIL $f: $n AVX-512 instructions (first in $first); build ggml with GGML_NATIVE=OFF" >&2
+    echo "FAIL $f: $n AVX-512 instructions (first in $first); see D118 (GGML_NATIVE=OFF)" >&2
     bad=1
   else
     echo "ok   $f: no AVX-512"

@@ -171,9 +171,7 @@ jobs:
           grep -q 'All rights reserved' img/COPYRIGHT
           tools/checks/no-tts-libs.sh img/lib/*.so*
 
-      # The image must run on any x86-64 CPU with AVX2 (x86-64-v3): no
-      # AVX-512 in what we compile (1.8.0 crashed with SIGILL on CPUs without
-      # it). Upstream onnxruntime picks its kernels by CPUID and is not checked.
+      # No AVX-512 in the server binary or the plugin (D118).
       - name: No AVX-512 in our binaries
         run: tools/checks/no-avx512.sh img/bin/murmur-server img/lib/libmurmur_*.so
 
