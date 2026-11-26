@@ -5,14 +5,10 @@
 //! and Settings says what is sent there; that is the consent for this
 //! route, which bypasses the router's cloud gate.
 //!
-//! The address rule is the cleartext rule "Your server" uses (§2.6):
-//! `https://` anywhere; plain `http://` only to a private, loopback or VPN
-//! host. Unlike the server there is no "allow an unencrypted connection"
-//! opt-in (D100).
-//! When saved, [`check_url`] applies `plaintext_ok_before_resolve` (a
-//! public IP literal fails, a name passes); when sending, a name is
-//! resolved and every address must pass `plaintext_ok_resolved`, and the
-//! request goes to exactly those addresses (no second lookup).
+//! Addresses (D116, like the user's own server since D111): `https://` or
+//! plain `http://`, to any address, with no opt-in. The URL is the user's
+//! choice; [`check_url`] checks only its shape. A name is resolved the
+//! usual way when sending.
 //!
 //! One attempt, at most [`TIMEOUT`], no redirects, no retry. The URL is
 //! user config, not a secret, but its query string may carry a token:
@@ -50,7 +46,7 @@ pub struct Payload {
 pub enum Failure {
     /// The server answered with a non-2xx status.
     Status(u16),
-    /// No answer: refused address, connection, timeout, bad URL.
+    /// No answer: connection, timeout, bad URL.
     Other(String),
 }
 
@@ -61,7 +57,7 @@ pub enum Outcome {
     Sent,
     /// A non-2xx answer.
     Status(u16),
-    /// No answer (refused address, connection, timeout, bad URL).
+    /// No answer (connection, timeout, bad URL).
     Error(String),
     /// Esc came before the request went out: nothing was sent.
     Cancelled,
@@ -89,57 +85,32 @@ impl From<Result<u16, Failure>> for Outcome {
     }
 }
 
-/// The parts of a webhook URL the rule needs.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Parsed {
-    pub https: bool,
-    /// Without IPv6 brackets.
-    pub host: String,
-    pub port: u16,
-}
+const SCHEME_ERR: &str = "the webhook URL must start with https:// or http://";
 
-/// Parse and check a webhook URL (Settings save, and again before each
+/// Check a webhook URL's shape (Settings save, and again before each
 /// send). Errors never contain the query string.
-pub fn check_url(url: &str) -> Result<Parsed, String> {
+pub fn check_url(url: &str) -> Result<(), String> {
     let url = url.trim();
     if url.chars().any(char::is_whitespace) {
         return Err("the webhook URL must not contain spaces".into());
     }
-    let (scheme, rest) = url
-        .split_once("://")
-        .ok_or("the webhook URL must start with https://")?;
-    let https = match scheme.to_ascii_lowercase().as_str() {
-        "https" => true,
-        "http" => false,
-        _ => return Err("the webhook URL must start with https://".into()),
-    };
+    let (scheme, rest) = url.split_once("://").ok_or(SCHEME_ERR)?;
+    if !matches!(scheme.to_ascii_lowercase().as_str(), "https" | "http") {
+        return Err(SCHEME_ERR.into());
+    }
     let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
     if authority.contains('@') {
         return Err("the webhook URL must not contain a user name or password".into());
     }
     let (host, port) = split_host_port(authority)?;
-    let host = murmur_router::net::validate_host(host)
-        .map_err(|e| format!("the webhook URL's host: {e}"))?;
-    let port = match port {
-        None => {
-            if https {
-                443
-            } else {
-                80
-            }
-        }
-        Some(p) => p
-            .parse::<u16>()
+    murmur_router::net::validate_host(host).map_err(|e| format!("the webhook URL's host: {e}"))?;
+    if let Some(p) = port {
+        p.parse::<u16>()
             .ok()
             .filter(|p| *p != 0)
-            .ok_or("the webhook URL's port must be 1-65535")?,
-    };
-    if !https && !murmur_router::net::plaintext_ok_before_resolve(&host) {
-        return Err(format!(
-            "the webhook needs https:// — {host} is not a private address"
-        ));
+            .ok_or("the webhook URL's port must be 1-65535")?;
     }
-    Ok(Parsed { https, host, port })
+    Ok(())
 }
 
 /// `host[:port]` or `[v6][:port]` → (host, port).
@@ -191,39 +162,25 @@ pub fn body(text: &str, raw: &str, app: &str, now_ms: u64) -> String {
 /// POST `body` (JSON) to `url`: `Ok(status)` on a 2xx answer.
 #[cfg(feature = "webhook")]
 pub fn post(url: &str, body: &str) -> Result<u16, Failure> {
-    post_with(url, body, &murmur_router::net::route_source)
+    post_with(url, body, &|b| b)
 }
 
-/// [`post`] with the VPN route check injectable (tests).
+/// [`post`] with a last say over the client (tests: point a public name
+/// at a local listener).
 #[cfg(feature = "webhook")]
-pub fn post_with(
+fn post_with(
     url: &str,
     body: &str,
-    source_of: &dyn Fn(std::net::IpAddr) -> Option<std::net::IpAddr>,
+    configure: &dyn Fn(reqwest::blocking::ClientBuilder) -> reqwest::blocking::ClientBuilder,
 ) -> Result<u16, Failure> {
-    use std::net::ToSocketAddrs;
-    let p = check_url(url).map_err(Failure::Other)?;
-    let mut builder = reqwest::blocking::Client::builder()
+    check_url(url).map_err(Failure::Other)?;
+    let builder = reqwest::blocking::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .referer(false)
         .connect_timeout(TIMEOUT)
         .timeout(TIMEOUT)
         .user_agent(concat!("murmur/", env!("CARGO_PKG_VERSION")));
-    if !p.https {
-        // Cleartext: every address the name resolves to must be private,
-        // and the request goes only to those (no second lookup).
-        let addrs: Vec<std::net::SocketAddr> = (p.host.as_str(), p.port)
-            .to_socket_addrs()
-            .map_err(|_| Failure::Other(format!("{} did not resolve", p.host)))?
-            .collect();
-        let ips: Vec<_> = addrs.iter().map(|a| a.ip()).collect();
-        murmur_router::net::plaintext_ok_resolved(&ips, source_of).map_err(|e| {
-            let why = e.trim_end_matches(" (enable TLS)");
-            Failure::Other(format!("needs https:// ({why})"))
-        })?;
-        builder = builder.resolve_to_addrs(&p.host, &addrs);
-    }
-    let client = builder
+    let client = configure(builder)
         .build()
         .map_err(|e| Failure::Other(e.without_url().to_string()))?;
     let r = client
@@ -264,13 +221,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn https_anywhere_http_only_to_private_hosts() {
-        let ok = check_url("https://hooks.example.com/in?token=abc").unwrap();
-        assert_eq!(
-            (ok.https, ok.host.as_str(), ok.port),
-            (true, "hooks.example.com", 443)
-        );
+    fn https_and_http_to_any_host() {
         for u in [
+            "https://hooks.example.com/in?token=abc",
+            "HTTP://hooks.example.com:8080/in",
             "http://127.0.0.1:8080/hook",
             "http://localhost/hook",
             "http://192.168.1.20/hook",
@@ -278,12 +232,13 @@ mod tests {
             "http://100.64.0.10/hook",
             "http://[fd00::1]:9000/",
             "http://my-nas/hook",
+            // D116: public addresses too, by IP or by name.
+            "http://203.0.113.9/hook",
+            "http://[2001:db8::1]:8080/hook",
+            "http://hooks.example.com/in?token=abc",
         ] {
             assert!(check_url(u).is_ok(), "{u}");
         }
-        let e = check_url("http://203.0.113.9/hook").unwrap_err();
-        assert!(e.contains("needs https://"), "{e}");
-        assert_eq!(check_url("http://[fd00::1]:9000/").unwrap().host, "fd00::1");
     }
 
     #[test]
@@ -301,8 +256,9 @@ mod tests {
         ] {
             assert!(check_url(u).is_err(), "{u}");
         }
-        let e = check_url("http://203.0.113.9/hook?token=s3cret").unwrap_err();
+        let e = check_url("ftp://203.0.113.9/hook?token=s3cret").unwrap_err();
         assert!(!e.contains("s3cret"), "{e}");
+        assert_eq!(e, SCHEME_ERR);
     }
 
     #[test]
@@ -464,14 +420,28 @@ mod tests {
 
     #[cfg(feature = "webhook")]
     #[test]
-    fn cleartext_to_a_vpn_address_needs_a_vpn_route() {
-        // 100.64/10 with no VPN interface routing to it: refused before
-        // anything is sent (the same rule as the speech server's).
-        let r = post_with("http://100.64.0.10:9/h", "{}", &|_| None);
-        let Err(Failure::Other(why)) = r else {
-            panic!("{r:?}")
-        };
-        assert!(why.starts_with("needs https:// (100.64.0.10 is"), "{why}");
-        assert!(!why.contains("TLS") && !why.ends_with("))"), "{why}");
+    fn cleartext_to_a_public_name_is_sent() {
+        // D116: plain http:// to a public name goes out like any other
+        // send. The name is pointed at the local mock: no real DNS.
+        let (local, h) = mock("204 No Content", Duration::ZERO);
+        let addr: std::net::SocketAddr = local
+            .trim_start_matches("http://")
+            .split('/')
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap();
+        let url = format!("http://hooks.example.com:{}/in?token=abc", addr.port());
+        let b = body("Hi.", "hi", "notepad.exe", 0);
+        let r = post_with(&url, &b, &|c| c.resolve("hooks.example.com", addr));
+        assert_eq!(r, Ok(204));
+        let req = h.join().unwrap();
+        assert!(req.starts_with("POST /in?token=abc HTTP/1.1\r\n"), "{req}");
+        assert!(
+            req.to_ascii_lowercase()
+                .contains(&format!("host: hooks.example.com:{}", addr.port())),
+            "{req}"
+        );
+        assert!(req.ends_with(&b), "{req}");
     }
 }

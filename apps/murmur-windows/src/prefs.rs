@@ -1865,8 +1865,11 @@ mod tests {
             p.validate().is_ok(),
             "a shortcut alone is fine (feature off)"
         );
+        p.webhook_url = "ftp://hooks.example.com/in".into();
+        assert!(p.validate().is_err(), "not http(s)");
+        // D116: plain http:// to a public address is saved like any URL.
         p.webhook_url = "http://203.0.113.9/hook".into();
-        assert!(p.validate().is_err(), "public cleartext");
+        assert_eq!(p.validate().is_ok(), crate::webhook::CAN_WEBHOOK);
         p.webhook_url = "https://hooks.example.com/in?token=abc".into();
         assert_eq!(p.validate().is_ok(), crate::webhook::CAN_WEBHOOK);
         // Round trip, and an old file without the fields loads off.

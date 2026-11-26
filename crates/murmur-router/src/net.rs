@@ -3,15 +3,12 @@
 //! The private ranges: loopback, RFC 1918, CGNAT 100.64/10 (VPN overlays),
 //! the VPN overlay IPv6 range fd7a:115c:a1e0::/48, ULA fc00::/7, link-local,
 //! `*.ts.net`, `*.local` and single-label names; everything else is
-//! public. The user's own speech server is no longer held to these: plain
-//! `ws://` to it is allowed at any address (D111). The rules here remain
-//! for the other plain-`http://` routes: a custom cleanup provider
-//! ([`classify`], D18) and the Windows webhook (D105), which applies
-//! [`plaintext_ok_before_resolve`] when saved (pure string/IP logic, no
-//! DNS: public IP literals fail, names pass) and [`plaintext_ok_resolved`]
-//! to every resolved address when sending (review S6).
+//! public. The user's own speech server (D111) and the Windows webhook
+//! (D116) are no longer held to these: plain `ws://` / `http://` to them is
+//! allowed at any address. The rule remains for a custom cleanup provider
+//! ([`classify`], D18).
 
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AddrClass {
@@ -93,68 +90,6 @@ fn classify_v6(ip: Ipv6Addr) -> AddrClass {
     } else {
         AddrClass::Public
     }
-}
-
-/// The config-time cleartext rule (the webhook's, D105): an IP literal
-/// must not be [`AddrClass::Public`]; a name always passes here, because
-/// what it resolves to decides ([`plaintext_ok_resolved`] when sending).
-/// [`classify`] alone would call every dotted name public before it is
-/// ever resolved.
-pub fn plaintext_ok_before_resolve(host: &str) -> bool {
-    match bare_host(host).parse::<IpAddr>() {
-        Ok(ip) => classify_ip(ip).plaintext_ok(),
-        Err(_) => true,
-    }
-}
-
-/// The cleartext rule on **resolved** addresses (review S6), the one that
-/// decides at connect time: every address must be loopback, private
-/// (RFC 1918 / ULA), link-local, or VPN (`Tailnet`). Names (`*.local`,
-/// single-label, `*.ts.net`, anything) count only by what they resolve to;
-/// an empty list is refused.
-///
-/// Tailnet (100.64.0.0/10, fd7a:115c:a1e0::/48) is accepted only when the
-/// OS would reach the peer *from* an address in the same range, i.e. over
-/// an interface that holds a VPN overlay address in that range. `source_of`
-/// answers that ([`route_source`] in production). Choice and limit: carrier
-/// CGNAT also hands out 100.64/10 addresses, and a phone on such a carrier
-/// network with its VPN down looks the same from here; that residual case
-/// needs `wss://` (or an OS VPN check in the shell).
-pub fn plaintext_ok_resolved(
-    ips: &[IpAddr],
-    source_of: &dyn Fn(IpAddr) -> Option<IpAddr>,
-) -> Result<(), String> {
-    if ips.is_empty() {
-        return Err("the server name did not resolve".into());
-    }
-    for ip in ips {
-        match classify_ip(*ip) {
-            AddrClass::Loopback | AddrClass::Lan => {}
-            AddrClass::Tailnet => {
-                let via_tailnet =
-                    source_of(*ip).is_some_and(|s| classify_ip(s) == AddrClass::Tailnet);
-                if !via_tailnet {
-                    return Err(format!(
-                        "{ip} is a VPN/CGNAT address but no VPN interface routes to it (enable TLS)"
-                    ));
-                }
-            }
-            _ => return Err(format!("{ip} is not a private address (enable TLS)")),
-        }
-    }
-    Ok(())
-}
-
-/// The local address the OS would use to reach `ip` (a connected UDP
-/// socket: no packet is sent). `None` when there is no route.
-pub fn route_source(ip: IpAddr) -> Option<IpAddr> {
-    let bind: SocketAddr = match ip {
-        IpAddr::V4(_) => (Ipv4Addr::UNSPECIFIED, 0).into(),
-        IpAddr::V6(_) => (Ipv6Addr::UNSPECIFIED, 0).into(),
-    };
-    let s = std::net::UdpSocket::bind(bind).ok()?;
-    s.connect((ip, 9)).ok()?;
-    s.local_addr().ok().map(|a| a.ip())
 }
 
 /// Validate a user-entered host (§5): IPv4 dotted quad (no leading zeros),
@@ -260,65 +195,6 @@ mod tests {
         }
         assert!(!classify("8.8.8.8").plaintext_ok());
         assert!(classify("100.64.0.10").plaintext_ok());
-    }
-
-    #[test]
-    fn names_are_left_to_the_resolved_check() {
-        for h in [
-            "asr.corp.example.com",
-            "example.com",
-            "desktop.local",
-            "box",
-            "localhost",
-        ] {
-            assert!(plaintext_ok_before_resolve(h), "{h}");
-        }
-        for h in [
-            "10.1.2.3",
-            "192.168.1.20",
-            "[fd00::1]",
-            "::1",
-            "100.64.0.10",
-        ] {
-            assert!(plaintext_ok_before_resolve(h), "{h}");
-        }
-        for h in [
-            "8.8.8.8",
-            "30.1.2.3",
-            "[2001:4860:4860::8888]",
-            "::ffff:8.8.8.8",
-        ] {
-            assert!(!plaintext_ok_before_resolve(h), "{h}");
-        }
-    }
-
-    #[test]
-    fn resolved_addresses_decide_cleartext() {
-        let ip = |s: &str| s.parse::<IpAddr>().unwrap();
-        let no_tailnet = |_: IpAddr| Some(ip("192.168.1.10"));
-        let tailnet = |_: IpAddr| Some(ip("100.100.1.2"));
-        let ok = |v: &[&str], f: &dyn Fn(IpAddr) -> Option<IpAddr>| {
-            let v: Vec<IpAddr> = v.iter().map(|s| ip(s)).collect();
-            plaintext_ok_resolved(&v, f).is_ok()
-        };
-        assert!(ok(&["192.168.1.2"], &no_tailnet));
-        assert!(ok(&["127.0.0.1", "::1"], &no_tailnet));
-        assert!(ok(&["fe80::1", "10.0.0.1", "fd00::2"], &no_tailnet));
-        // One public address among private ones: refused (rebinding, split DNS).
-        assert!(!ok(&["192.168.1.2", "8.8.8.8"], &no_tailnet));
-        assert!(!ok(&["2001:4860:4860::8888"], &no_tailnet));
-        assert!(!ok(&[], &no_tailnet), "NXDOMAIN / nothing resolved");
-        // 100.64/10 and the VPN overlay v6 range only via a VPN interface.
-        assert!(!ok(&["100.64.0.10"], &no_tailnet));
-        assert!(!ok(&["100.64.0.10"], &|_| None));
-        assert!(ok(&["100.64.0.10"], &tailnet));
-        assert!(ok(&["fd7a:115c:a1e0::1"], &|_| Some(ip(
-            "fd7a:115c:a1e0::9"
-        ))));
-        assert!(!ok(&["fd7a:115c:a1e0::1"], &|_| Some(ip("fd00::9"))));
-        // Mapped v4 is classified as v4.
-        assert!(!ok(&["::ffff:8.8.8.8"], &no_tailnet));
-        assert!(route_source(ip("127.0.0.1")).is_some_and(|s| s.is_loopback()));
     }
 
     #[test]
