@@ -38,7 +38,11 @@ pub const FILE_NAME: &str = "prefs.json";
 ///   default since rev 4, so almost always untouched) turns off once, with
 ///   `languages` cleared; Keyboard language picked again afterwards stays,
 ///   and so does any fixed language.
-pub const PREFS_REV: u32 = 8;
+/// * 9 (D114): live transcription is always on: the Speech page's switch
+///   (`developer.decode_while_speaking`) is gone. A saved value, `false`
+///   included, is no longer read and drops out at the next save, so
+///   [`Prefs::migrate`] has no step for it.
+pub const PREFS_REV: u32 = 9;
 
 /// The learn-from-edits re-read interval before D110 (rev ≤ 6).
 const OLD_LEARN_POLL_MS: u64 = 1_000;
@@ -675,11 +679,9 @@ impl Prefs {
                 .then_some(self.live_preview_interval_ms.max(250)),
             llm_timeout_ms: self.llm_timeout_ms.clamp(200, 30_000),
             spoken_cleanup: self.spoken_cleanup,
-            // D22 "Decode while speaking": both modes; absent when off.
-            segment_pause_ms: self
-                .developer
-                .decode_while_speaking
-                .then_some(murmur_core::segment::RECOMMENDED_PAUSE_MS),
+            // D22 live transcription, always on (D114), in both modes. The
+            // core ignores it on the cloud route (D18), an older server too.
+            segment_pause_ms: Some(murmur_core::segment::RECOMMENDED_PAUSE_MS),
             ..SessionConfig::default()
         }
     }
@@ -1497,10 +1499,9 @@ mod tests {
     }
 
     #[test]
-    fn decode_while_speaking_sets_segment_pause_in_every_mode() {
+    fn live_transcription_sets_segment_pause_in_every_mode() {
         use crate::dictation::Mode;
-        let mut p = Prefs::default();
-        assert!(p.developer.decode_while_speaking, "default on (D22)");
+        let p = Prefs::default();
         for m in [Mode::Ptt, Mode::Locked] {
             assert_eq!(
                 p.session_config_for(m).segment_pause_ms,
@@ -1508,13 +1509,24 @@ mod tests {
             );
         }
         assert_eq!(p.session_config().segment_pause_ms, Some(800));
-        p.developer.decode_while_speaking = false;
-        for m in [Mode::Ptt, Mode::Locked] {
-            assert_eq!(p.session_config_for(m).segment_pause_ms, None);
+    }
+
+    #[test]
+    fn rev_9_a_saved_live_transcription_off_loads_live_and_is_dropped() {
+        // D114: the switch is gone; an explicit `false` from rev 8 (or a
+        // pre-D22 file without it) loads without error and ends up live.
+        for (name, dev) in [
+            ("lt-off", r#"{"decode_while_speaking":false}"#),
+            ("lt-on", r#"{"decode_while_speaking":true}"#),
+            ("lt-none", "{}"),
+        ] {
+            let (p, outcome) = load_str(name, &format!(r#"{{"prefs_rev":8,"developer":{dev}}}"#));
+            assert!(matches!(outcome, LoadOutcome::Loaded), "{name}");
+            assert_eq!(p.prefs_rev, PREFS_REV);
+            assert_eq!(p.session_config().segment_pause_ms, Some(800), "{name}");
+            let j = serde_json::to_value(&p).unwrap();
+            assert!(j["developer"].get("decode_while_speaking").is_none(), "{j}");
         }
-        // Old prefs.json without the field: on.
-        let old: Prefs = serde_json::from_str(r#"{"developer":{}}"#).unwrap();
-        assert!(old.developer.decode_while_speaking);
     }
 
     #[test]

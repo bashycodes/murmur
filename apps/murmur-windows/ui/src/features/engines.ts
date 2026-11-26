@@ -29,7 +29,7 @@ interface SessionTest {
 }
 
 /** Engine switches that save at once (checkbox id = `dev_<field>`). */
-const DEV_SWITCHES = ["allow_server", "allow_client", "keep_local_warm", "show_engine_badge", "decode_while_speaking"] as const;
+const DEV_SWITCHES = ["allow_server", "allow_client", "keep_local_warm", "show_engine_badge"] as const;
 /** The server form (Your server page), saved with its Save button. */
 const SRV_NUM = ["port", "connect_timeout_ms", "commit_timeout_base_ms", "health_ttl_s"] as const;
 const SRV_TEXT = ["host", "tls_pin_sha256", "token"] as const;

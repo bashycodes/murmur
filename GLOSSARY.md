@@ -8,6 +8,10 @@ A dictation app: the user speaks, and polished text is inserted where they are t
 The words the speech model heard, before any cleanup.
 _Avoid_: raw text, ASR output
 
+**Live transcription**:
+Transcribing a dictation while the user still speaks: each phrase is turned into text at a pause of 0.8 s or more, so stopping leaves only the last phrase to transcribe (D22, `segment_pause_ms`). Always on, with no setting, since D114. The speech model on the device and the user's own server do it; the cloud route does not (it gets the audio once, after the user stops). Not the live preview, which only shows words next to the bar or bubble.
+_Avoid_: decode while speaking, transcribe while I speak (old setting names), streaming (that is an engine kind)
+
 **AI cleanup**:
 The language-model step that turns a transcript into finished text: punctuation, sentence and paragraph breaks, spoken commands such as "quote unquote" or "in parentheses", quotation marks, hyphens, numbers, self-corrections, lists, tone and light edits (dropping fillers, short trims, unit abbreviations), all in one pass.
 _Avoid_: post-processing, formatting rules, LLM cleanup, spoken commands (as a separate stage)

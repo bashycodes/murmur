@@ -238,10 +238,6 @@ pub struct DevSettings {
     /// default. Not part of [`DevForm`]: its own toggle saves it at once,
     /// and a form save keeps the stored value.
     pub debug_log: bool,
-    /// D22 "Decode while speaking": sessions carry `segment_pause_ms: 800`
-    /// (finished phrases are decoded while the user keeps talking). On by
-    /// default; per device (prefs.json), never synced.
-    pub decode_while_speaking: bool,
     /// Parakeet search (`ModelConfig.parakeet_decoding`): `auto` (default:
     /// beam with hotwords + a greedy recognizer, ≈ +0.6 GB RSS, which a
     /// desktop can spare) or `greedy` (one recognizer, no hotwords).
@@ -275,7 +271,6 @@ impl DevSettings {
             legacy_cleanup_order: Vec::new(),
             cloud_notice: None,
             debug_log: false,
-            decode_while_speaking: true,
             parakeet_decoding: ParakeetDecoding::Auto,
         }
     }
@@ -756,7 +751,6 @@ pub struct DevForm {
     pub keep_local_warm: bool,
     pub show_engine_badge: bool,
     pub dev_unlocked: bool,
-    pub decode_while_speaking: bool,
     pub parakeet_decoding: ParakeetDecoding,
 }
 
@@ -798,7 +792,6 @@ impl DevForm {
             keep_local_warm: s.keep_local_warm,
             show_engine_badge: s.show_engine_badge,
             dev_unlocked: s.dev_unlocked,
-            decode_while_speaking: s.decode_while_speaking,
             parakeet_decoding: s.parakeet_decoding,
         }
     }
@@ -930,7 +923,6 @@ impl DevForm {
             legacy_cleanup_order: Vec::new(),
             cloud_notice: None,
             debug_log: false,
-            decode_while_speaking: self.decode_while_speaking,
             parakeet_decoding: self.parakeet_decoding,
         };
         let order = s.order();
@@ -1080,19 +1072,19 @@ mod tests {
     }
 
     #[test]
-    fn decode_while_speaking_is_on_by_default_and_saved_by_the_form() {
-        assert!(DevSettings::for_build(BOTH).decode_while_speaking);
-        let old: DevSettings = serde_json::from_str(r#"{"allow_server":true}"#).unwrap();
-        assert!(old.decode_while_speaking, "pre-D22 file: on");
-        let mut f = form();
-        assert!(f.decode_while_speaking);
-        f.decode_while_speaking = false;
-        let (s, _) = f.validate(BOTH).unwrap();
-        assert!(!s.decode_while_speaking);
-        assert!(!DevForm::for_page(&s).decode_while_speaking);
-        // A page from before D22 posts no field: on.
-        let f: DevForm = serde_json::from_str(r#"{"allow_client":true}"#).unwrap();
-        assert!(f.decode_while_speaking);
+    fn the_removed_live_transcription_switch_still_loads_and_is_dropped() {
+        // D114: an old file or an old page may still carry the field, `false`
+        // included; it loads, and is neither kept nor sent back.
+        let old: DevSettings =
+            serde_json::from_str(r#"{"allow_server":true,"decode_while_speaking":false}"#).unwrap();
+        assert!(old.allow_server);
+        let j = serde_json::to_value(&old).unwrap();
+        assert!(j.get("decode_while_speaking").is_none(), "{j}");
+        let f: DevForm =
+            serde_json::from_str(r#"{"allow_client":true,"decode_while_speaking":false}"#).unwrap();
+        assert!(f.validate(BOTH).is_ok());
+        let j = serde_json::to_value(DevForm::for_page(&old)).unwrap();
+        assert!(j.get("decode_while_speaking").is_none(), "{j}");
     }
 
     #[test]

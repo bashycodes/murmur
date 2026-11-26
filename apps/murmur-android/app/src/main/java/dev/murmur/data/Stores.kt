@@ -53,7 +53,6 @@ class SettingsStore(context: Context) {
         spokenCleanup = sp.getBoolean("spoken_cleanup", true),
         asrEngine = dev.murmur.core.AsrEngine.entries.firstOrNull { it.wire == sp.getString("asr_engine", null) } ?: dev.murmur.core.AsrEngine.WHISPER,
         endpointSilenceMs = EndpointDefault.load(kv),
-        decodeWhileSpeaking = sp.getBoolean("decode_while_speaking", true),
         styles = loadStyles(),
         appBuckets = WritingStyle.parseOverrides(sp.getString("app_buckets", null).orEmpty()).map,
         learnFromEdits = sp.getBoolean("learn_from_edits", true),
@@ -116,7 +115,6 @@ class SettingsStore(context: Context) {
             .putBoolean(AUTO_MIGRATED, true)
             .also { e -> for (d in OLD_DEFAULTS) e.putBoolean(d.flag, true) }
             .putString(ThemeDefault.key, s.theme.key)
-            .putBoolean("decode_while_speaking", s.decodeWhileSpeaking)
             .putString("style_personal", s.styles.personal.wire)
             .putString("style_work", s.styles.work.wire)
             .putString("style_email", s.styles.email.wire)

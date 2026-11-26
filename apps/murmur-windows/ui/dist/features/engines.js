@@ -17,7 +17,7 @@ import { serverSpeechLine } from "../lib/model-pages.js";
 import { views } from "../lib/views.js";
 import { NOTETAKER_ENABLED } from "../pages/notetaker.js";
 /** Engine switches that save at once (checkbox id = `dev_<field>`). */
-const DEV_SWITCHES = ["allow_server", "allow_client", "keep_local_warm", "show_engine_badge", "decode_while_speaking"];
+const DEV_SWITCHES = ["allow_server", "allow_client", "keep_local_warm", "show_engine_badge"];
 /** The server form (Your server page), saved with its Save button. */
 const SRV_NUM = ["port", "connect_timeout_ms", "commit_timeout_base_ms", "health_ttl_s"];
 const SRV_TEXT = ["host", "tls_pin_sha256", "token"];

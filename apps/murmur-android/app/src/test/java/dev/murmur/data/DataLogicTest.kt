@@ -117,10 +117,14 @@ class FieldContextBuilderTest {
 
     // ---- D22 (docs/proposals/streaming-asr-shell-api.md §1-2, §5) ----
 
-    @Test fun decodeWhileSpeakingDefaultsOnAndSends800() {
-        assertTrue(Settings().decodeWhileSpeaking)
+    @Test fun everyDictationSendsLiveTranscription() {
+        // D114: no setting. The core runs it where the engine can (this phone, a D22 server).
         assertEquals(800, Settings().toSessionConfig(emptyList()).segmentPauseMs)
-        assertEquals("off = field omitted (today's behaviour)", null, Settings(decodeWhileSpeaking = false).toSessionConfig(emptyList()).segmentPauseMs)
+    }
+
+    @Test fun callRecordingsStillNeverSegment() {
+        // Routes that can't stream behave as before: a call or meeting chunk is one whole decode.
+        assertNull(dev.murmur.calls.CallEngine.session(Settings(), emptyList(), "auto").segmentPauseMs)
     }
 
     @Test fun endpointDefaultMigratesOnlyTheOldDefault() {

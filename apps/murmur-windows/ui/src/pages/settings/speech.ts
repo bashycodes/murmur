@@ -1,8 +1,8 @@
 // Settings → Speech to text (design: SettingsSpeech.dc.html): the engine
 // order and the meeting order (D47) (features/engines.ts), the model on
-// this PC with its status chip (features/general.ts), live transcription,
-// cloud speech to text on OpenRouter or (D85) the LiteLLM proxy
-// (features/openrouter.ts), and an Advanced fold with the model plumbing
+// this PC with its status chip (features/general.ts), cloud speech to
+// text on OpenRouter or (D85) the LiteLLM proxy (features/openrouter.ts),
+// and an Advanced fold with the model plumbing
 // (Hebrew model, keep loaded, download source, other models, a folder of
 // model files (features/model-folder.ts), model file).
 // The server's model library is on Settings → Your server. Markup only.
@@ -81,16 +81,6 @@ ${group(
     `id="pc_model_row"`,
   ),
   `data-needs="local"`,
-)}
-
-${group(
-  "",
-  row(
-    "Live transcription",
-    "Text appears as you pause, so it finishes sooner.",
-    toggle("dev_decode_while_speaking", "Live transcription", `data-save="dev"`),
-  ),
-  `data-needs="dev"`,
 )}
 
 <section class="lw-section" id="or_stt_group" data-needs="cloud">
