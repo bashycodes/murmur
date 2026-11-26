@@ -50,7 +50,8 @@ network): the short owner guide is `docs/air-gapped.md`.
   `-p murmur-llm` with `--llm`, see "LLM cleanup" below). `whisper`
   (whisper.cpp, needs cmake) carries language ID (`lid_path`), the Silero
   VAD and the whisper engine; `--no-whisper` leaves it out unless the
-  existing config uses one of them.
+  existing config uses one of them. whisper.cpp is tuned for the building
+  machine's CPU; for another machine build with `GGML_NATIVE=OFF` (D118).
 * Optional, for LLM cleanup: a GGUF (`tools/fetch-models.sh --llm 1.5b` puts
   `qwen2.5-1.5b-instruct-q4_k_m.gguf` in `models/`), libclang and cmake for
   the llama.cpp build.

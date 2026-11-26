@@ -33,6 +33,9 @@ checks pass:
 | `ghcr.io/bashycodes/murmur-server:X.Y.Z`, `:latest` | CPU image (target `runtime`) |
 | `ghcr.io/bashycodes/murmur-server:X.Y.Z-cuda`, `:latest-cuda` | CUDA image (§7), GPU architectures 75, 86, 89 and 120 (Turing, Ampere, Ada, Blackwell); A100 (80) and H100 (90) should run the embedded PTX (CMake embeds it for each architecture), which the driver compiles on first use (not tested: CI has no GPU). For another set, build it yourself (§8) |
 
+**CPU baseline.** Both images need an x86-64 CPU with AVX2, FMA, F16C and
+BMI2 (Haswell-class or newer); they use no AVX-512 (D118).
+
 `latest` / `latest-cuda` go only to the highest `vX.Y.Z` tag, so they move
 with each new release; pin a version in production. The images carry OCI
 labels (`org.opencontainers.image.source`, `.version`, `.revision`: the

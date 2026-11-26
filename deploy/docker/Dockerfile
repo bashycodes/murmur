@@ -42,11 +42,13 @@ ARG CARGO_BUILD_JOBS=2
 # upstream's no-TTS shared-lib release, pinned (D80: the default release links
 # espeak-ng, GPL-3.0, for text-to-speech, which murmur-server never uses).
 # bindgen's libclang misses the compiler's own headers on some images.
+# GGML_NATIVE=OFF and the own target/ cache id: the portable CPU baseline (D118).
 ARG SHERPA_VERSION=1.13.8
 ARG SHERPA_NO_TTS_SHA256=bf2d998c8b07012cd5098f3b92673bc1333fd9b927767d7cb664be8190d8bc0b
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/src/target \
+    --mount=type=cache,id=murmur-server-target-x86-64-v3,target=/src/target \
     set -eu; \
+    export GGML_NATIVE=OFF; \
     if [ -e deploy/docker/prebuilt/lib/libsherpa-onnx-c-api.so ]; then \
         export SHERPA_ONNX_LIB_DIR=/src/deploy/docker/prebuilt/lib; \
     else \

@@ -24,6 +24,10 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 - **Windows: Send to webhook accepts `http://` to any address.** Before, plain `http://` worked only for an address on your own network; now any `http://` URL is saved and sent, with no extra setting, like your own server. Without https the dictation and any token in the URL cross the network unencrypted, and Settings says so. `https://` is unchanged (D116).
 
+### Fixed
+
+- **Server: the Docker images run on CPUs without AVX-512.** The published 1.8.0 image (and the CUDA image) stopped with an illegal instruction (SIGILL, exit code 132) seconds after start on CPUs without AVX-512, such as most desktop Intel CPUs before Ice Lake and many AMD ones. CI compiled whisper.cpp for its own build machine, which has AVX-512. The images are now built for a fixed baseline: an x86-64 CPU with AVX2, FMA, F16C and BMI2 (Intel Haswell, 2013, or newer; AMD Excavator / Zen or newer). CI fails the build if the server binary or its plugins contain AVX-512 code (D118).
+
 ## [1.8.0] - 2026-11-26
 
 ### Added

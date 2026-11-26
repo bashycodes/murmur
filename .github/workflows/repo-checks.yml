@@ -77,6 +77,9 @@ jobs:
       # folder, the admin key never logged; a stub server, no Docker.
       - name: Container entrypoint
         run: tools/container/entrypoint_test.sh
+      # The server images' AVX-512 guard on objects assembled here.
+      - name: AVX-512 guard
+        run: tools/checks/no-avx512_test.sh
       # D80: the installer notice check on stub MSI/NSIS layouts (no 7-Zip).
       - name: Installer notice check
         run: apps/murmur-windows/tools/ci/check-installer-notices_test.sh

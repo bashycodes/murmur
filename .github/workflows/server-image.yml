@@ -31,6 +31,7 @@ on:
       - "COPYRIGHT"
       - "NOTICE"
       - "THIRD-PARTY-LICENSES"
+      - "tools/checks/no-avx512.sh"
       - ".github/workflows/server-image.yml"
   pull_request:
     paths:
@@ -42,6 +43,7 @@ on:
       - "COPYRIGHT"
       - "NOTICE"
       - "THIRD-PARTY-LICENSES"
+      - "tools/checks/no-avx512.sh"
       - ".github/workflows/server-image.yml"
 
 concurrency:
@@ -168,6 +170,10 @@ jobs:
           for f in COPYRIGHT NOTICE THIRD-PARTY-LICENSES; do test -s "img/$f" || { echo "FAIL: no /opt/murmur-server/$f"; exit 1; }; done
           grep -q 'All rights reserved' img/COPYRIGHT
           tools/checks/no-tts-libs.sh img/lib/*.so*
+
+      # No AVX-512 in the server binary or the plugin (D118).
+      - name: No AVX-512 in our binaries
+        run: tools/checks/no-avx512.sh img/bin/murmur-server img/lib/libmurmur_*.so
 
       # Release only: hand the tested image to the publish job.
       - name: Save image
