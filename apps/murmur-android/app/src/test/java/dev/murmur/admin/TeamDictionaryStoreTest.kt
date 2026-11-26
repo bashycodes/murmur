@@ -44,10 +44,12 @@ class TeamDictionaryStoreTest {
         assertEquals(emptyList<DictEntry>(), s.entries)
         assertTrue(s.add("Velloria", "") is AdminResult.Err)
         assertEquals(3, asked)
-        // No network build or no address: no client at all.
-        assertNull(TeamDictionary.clientFor(BuildCaps.LOCAL, DevSettings(allowServer = true, allowClient = true, host = "example.test"), File("x")))
-        assertNull(TeamDictionary.clientFor(BuildCaps.ALL, DevSettings(allowServer = true, allowClient = true, host = ""), File("x")))
-        assertTrue(TeamDictionary.clientFor(BuildCaps.ALL, DevSettings(allowServer = true, allowClient = true, host = "example.test"), File("x")) is NativeTeamDictionaryApi)
+        // No network build, no address or no key (as on Windows): no client at all.
+        val key = "test-token-0123456789"
+        assertNull(TeamDictionary.clientFor(BuildCaps.LOCAL, DevSettings(allowServer = true, allowClient = true, host = "example.test", token = key), File("x")))
+        assertNull(TeamDictionary.clientFor(BuildCaps.ALL, DevSettings(allowServer = true, allowClient = true, host = "", token = key), File("x")))
+        assertNull(TeamDictionary.clientFor(BuildCaps.ALL, DevSettings(allowServer = true, allowClient = true, host = "example.test"), File("x")))
+        assertTrue(TeamDictionary.clientFor(BuildCaps.ALL, DevSettings(allowServer = true, allowClient = true, host = "example.test", token = key), File("x")) is NativeTeamDictionaryApi)
     }
 
     @Test fun loadReadsTheCacheAndRefreshAppliesTheAnswer() {

@@ -87,8 +87,8 @@ object TeamDictionary {
         o.optJSONObject("error")?.let { AdminResult.Err(it.optString("code").ifEmpty { AdminCode.BAD_RESPONSE }, it.optString("message")) },
     )
 
-    /** A network build with a saved server address (any key reads; a server without keys answers empty). */
-    fun available(caps: BuildCaps, s: DevSettings) = caps.remote && s.serverConfigured
+    /** A network build with a saved server address and key (as on Windows; any key reads). */
+    fun available(caps: BuildCaps, s: DevSettings) = caps.remote && s.serverConfigured && s.token.isNotBlank()
 
     /** The client for the saved settings, or null without a server. Tests replace it. */
     @Volatile var factory: (Context) -> TeamDictionaryApi? = { ctx ->
