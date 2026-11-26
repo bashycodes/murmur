@@ -1,6 +1,6 @@
 [package]
 name = "murmur-windows"
-version = "1.7.1"
+version = "1.8.0"
 edition = "2021"
 description = "Windows shell (Tauri 2) of the dictation app"
 license-file = "../../COPYRIGHT"

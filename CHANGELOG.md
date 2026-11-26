@@ -16,6 +16,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-11-26
+
 ### Added
 
 - **Server: a ready-made Docker image with each release.** No build needed: `docker run ghcr.io/bashycodes/murmur-server:<version>` (or `:latest`, the newest release), and `:<version>-cuda` / `:latest-cuda` for NVIDIA GPUs. The Compose file uses it by default (update with `docker compose pull`); building from the source still works (`-f deploy/docker-compose.build.yml up -d --build`). See `docs/server-setup.md`.
@@ -1538,7 +1540,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   adaptive connect timeout, connection pre-warm.
 - All P1/P2 findings of the 2026-10-22 review (`docs/reviews/2026-10-22-integration.md`).
 
-[Unreleased]: https://github.com/bashycodes/murmur/compare/v1.7.1...HEAD
+[Unreleased]: https://github.com/bashycodes/murmur/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/bashycodes/murmur/compare/v1.7.1...v1.8.0
 [1.7.1]: https://github.com/bashycodes/murmur/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/bashycodes/murmur/compare/v1.6.1...v1.7.0
 [1.6.1]: https://github.com/bashycodes/murmur/compare/v1.6.0...v1.6.1
