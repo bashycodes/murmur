@@ -366,56 +366,40 @@ pub const CATALOG: &[CatalogEntry] = &[
 /// Catalogue id of Llama 3.2 3B (the GPU pick).
 pub const LLAMA32_3B_ID: &str = "llama-3.2-3b-instruct-q4_k_m";
 
-/// The cleanup model Settings recommends when RAM is not known: Llama 3.2 3B
-/// when local cleanup runs on a GPU, Qwen2.5 1.5B (the default) on a CPU-only
-/// PC (the 0.5B scores 43 % on the 88-suite, the 1.5B 74 %; benchmark
-/// 2026-10-30). The machine-class table decides (D117, `model_fit`).
-pub fn recommended_llm(gpu: bool) -> &'static CatalogEntry {
-    let m = Machine {
-        gpu_llm: gpu,
-        ..Machine::default()
-    };
-    let pick = model_fit::recommend(&m)
-        .cleanup
-        .expect("unknown RAM passes the cleanup bar");
-    entry(catalog_id(pick)).expect("the table's pick is in the catalogue")
-}
+/// Every catalogue model's row in the machine-class table (D117), in one
+/// list: the first id listed for a model is the one its pick downloads
+/// (setup's English row is Parakeet TDT, the Whisper row's default is
+/// whisper base).
+const TABLE: &[(&str, Model)] = &[
+    ("parakeet-tdt-0.6b-v2-int8", Model::Parakeet),
+    ("parakeet-unified-en-0.6b-int8", Model::Parakeet),
+    ("whisper-base", Model::WhisperBase),
+    ("whisper-base-en-q5_1", Model::WhisperBase),
+    ("whisper-base-q5_1", Model::WhisperBase),
+    ("whisper-tiny-en-q5_1", Model::WhisperTiny),
+    ("whisper-small-q5_1", Model::WhisperSmall),
+    ("whisper-small-en-q5_1", Model::WhisperSmall),
+    ("whisper-large-v3-turbo-q5_0", Model::WhisperTurbo),
+    (ZIPFORMER_HE_ID, Model::ZipformerHe),
+    (PARAKEET_HE_ID, Model::ParakeetHe),
+    (IVRIT_TURBO_ID, Model::IvritTurbo),
+    ("qwen2.5-0.5b-instruct-q4_k_m", Model::Qwen05),
+    ("qwen2.5-1.5b-instruct-q4_k_m", Model::Qwen15),
+    (LLAMA32_3B_ID, Model::Llama3b),
+];
 
-/// The machine-class table's model (D117) for a catalogue entry.
+/// The table's model for a catalogue entry ([`TABLE`]).
 pub fn table_model(id: &str) -> Option<Model> {
-    Some(match id {
-        "parakeet-tdt-0.6b-v2-int8" | "parakeet-unified-en-0.6b-int8" => Model::Parakeet,
-        "whisper-base" | "whisper-base-en-q5_1" | "whisper-base-q5_1" => Model::WhisperBase,
-        "whisper-tiny-en-q5_1" => Model::WhisperTiny,
-        "whisper-small-q5_1" | "whisper-small-en-q5_1" => Model::WhisperSmall,
-        "whisper-large-v3-turbo-q5_0" => Model::WhisperTurbo,
-        ZIPFORMER_HE_ID => Model::ZipformerHe,
-        PARAKEET_HE_ID => Model::ParakeetHe,
-        IVRIT_TURBO_ID => Model::IvritTurbo,
-        "qwen2.5-0.5b-instruct-q4_k_m" => Model::Qwen05,
-        "qwen2.5-1.5b-instruct-q4_k_m" => Model::Qwen15,
-        LLAMA32_3B_ID => Model::Llama3b,
-        _ => return None,
-    })
+    TABLE.iter().find(|(i, _)| *i == id).map(|&(_, m)| m)
 }
 
-/// The catalogue entry a table pick downloads: setup's English row
-/// (Parakeet TDT), the Whisper row's default (whisper base), the English
-/// tiny, the cleanup and Hebrew models.
+/// The catalogue entry a table pick downloads ([`TABLE`]).
 pub fn catalog_id(m: Model) -> &'static str {
-    match m {
-        Model::Parakeet => "parakeet-tdt-0.6b-v2-int8",
-        Model::WhisperBase => "whisper-base",
-        Model::WhisperTiny => "whisper-tiny-en-q5_1",
-        Model::WhisperSmall => "whisper-small-q5_1",
-        Model::WhisperTurbo => "whisper-large-v3-turbo-q5_0",
-        Model::ZipformerHe => ZIPFORMER_HE_ID,
-        Model::ParakeetHe => PARAKEET_HE_ID,
-        Model::IvritTurbo => IVRIT_TURBO_ID,
-        Model::Qwen05 => "qwen2.5-0.5b-instruct-q4_k_m",
-        Model::Qwen15 => "qwen2.5-1.5b-instruct-q4_k_m",
-        Model::Llama3b => LLAMA32_3B_ID,
-    }
+    TABLE
+        .iter()
+        .find(|&&(_, t)| t == m)
+        .map(|&(id, _)| id)
+        .expect("every table model has a catalogue row")
 }
 
 /// The table's picks when RAM is not known, with or without a GPU: what
@@ -446,16 +430,6 @@ pub(crate) const LID_FILES: &[ModelFile] = &[model_file!(
 pub const ZIPFORMER_HE_ID: &str = "zipformer-he-int8";
 pub const PARAKEET_HE_ID: &str = "parakeet-tdt-0.6b-v3-he-int8";
 pub const IVRIT_TURBO_ID: &str = "ivrit-whisper-large-v3-turbo-q5_0";
-
-/// The Hebrew model Settings recommends: ivrit turbo when whisper runs on
-/// a GPU (`whisper_backend` probe), the zipformer on a CPU-only PC (D117).
-pub fn recommended_hebrew(gpu: bool) -> &'static CatalogEntry {
-    let p = model_fit::recommend(&Machine {
-        gpu_whisper: gpu,
-        ..Machine::default()
-    });
-    entry(catalog_id(p.hebrew)).expect("the table's pick is in the catalogue")
-}
 
 pub fn entry(id: &str) -> Option<&'static CatalogEntry> {
     CATALOG.iter().find(|e| e.id == id)
@@ -1555,8 +1529,8 @@ mod tests {
 
     #[test]
     fn hebrew_recommendation_follows_the_gpu() {
-        assert_eq!(recommended_hebrew(true).id, IVRIT_TURBO_ID);
-        assert_eq!(recommended_hebrew(false).id, ZIPFORMER_HE_ID);
+        assert_eq!(default_picks(true)[2], IVRIT_TURBO_ID);
+        assert_eq!(default_picks(false)[2], ZIPFORMER_HE_ID);
     }
 
     #[test]
@@ -1630,12 +1604,12 @@ mod tests {
 
     #[test]
     fn cleanup_recommendation_follows_the_gpu() {
-        assert_eq!(recommended_llm(true).id, LLAMA32_3B_ID);
-        assert_eq!(recommended_llm(false).id, "qwen2.5-1.5b-instruct-q4_k_m");
+        assert_eq!(default_picks(true)[1], LLAMA32_3B_ID);
+        assert_eq!(default_picks(false)[1], "qwen2.5-1.5b-instruct-q4_k_m");
         // The CPU pick is also the default file the app loads without a
         // configured path (D11).
         assert_eq!(
-            recommended_llm(false).dest,
+            entry(default_picks(false)[1]).unwrap().dest,
             crate::core_adapter::DEFAULT_LLM_FILE
         );
         let v = catalog_view(&tmp("rec"), true, |_| true);

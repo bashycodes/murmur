@@ -246,8 +246,9 @@ pub fn fit(model: Model, size: u64, installed: bool, m: &Machine) -> Fit {
     }
 }
 
-/// Bytes rounded up: "0.8 GB" from 1 GB (decimal, as the apps show sizes),
-/// else "95 MB".
+/// Bytes rounded up to the next tenth of a GB from 1 GB: "2.2 GB" from
+/// 2_119_377_696 (decimal units, as the apps show sizes),
+/// else to the next MB: "762 MB" from 761_200_000.
 pub fn bytes_up(b: u64) -> String {
     if b >= 1_000_000_000 {
         let tenths = b.div_ceil(100_000_000);

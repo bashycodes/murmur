@@ -1379,20 +1379,50 @@ async fn server_model_download(app: AppHandle, id: String) -> Result<(), String>
     }
 }
 
+/// The cleanup plugin path set in prefs (`llm_lib_path`), if any.
+fn llm_lib(state: &AppState) -> Option<String> {
+    state
+        .prefs
+        .read()
+        .unwrap()
+        .llm_lib_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .map(str::to_string)
+}
+
+/// Where local AI cleanup would run: the plugin's probe (cached), or "no
+/// local engine" in a server-only build. Blocking on the first call.
+fn probe_llm(lib: Option<&str>) -> core_adapter::LlmBackendView {
+    if !cfg!(feature = "local-engine") {
+        return core_adapter::LlmBackendView::from_probe(Err(
+            murmur_core::llama::LlamaLoadError::Backend("this build has no local engine".into()),
+        ));
+    }
+    core_adapter::llm_backend_probe(lib)
+}
+
+/// Where whisper would run: the plugin's probe (cached), or "no local
+/// engine" in a server-only build. Blocking on the first call.
+fn probe_whisper() -> core_adapter::LlmBackendView {
+    if !cfg!(feature = "local-engine") {
+        return core_adapter::whisper_backend_view(
+            Err(murmur_core::whisper_plugin::WhisperPluginError::Backend(
+                "this build has no local engine".into(),
+            )),
+            false,
+        );
+    }
+    core_adapter::whisper_backend_probe()
+}
+
 /// Where whisper models would run (GPU through `murmur_whisper_vulkan.dll`,
 /// or the CPU), for Settings → Speech to text: it recommends ivrit turbo
 /// as the Hebrew model on a GPU. Probes the plugin on first use (cached).
 #[tauri::command]
 async fn whisper_backend() -> Result<core_adapter::LlmBackendView, String> {
-    if !cfg!(feature = "local-engine") {
-        return Ok(core_adapter::whisper_backend_view(
-            Err(murmur_core::whisper_plugin::WhisperPluginError::Backend(
-                "this build has no local engine".into(),
-            )),
-            false,
-        ));
-    }
-    tauri::async_runtime::spawn_blocking(core_adapter::whisper_backend_probe)
+    tauri::async_runtime::spawn_blocking(probe_whisper)
         .await
         .map_err(|e| e.to_string())
 }
@@ -1404,21 +1434,8 @@ async fn whisper_backend() -> Result<core_adapter::LlmBackendView, String> {
 async fn llm_backend(
     state: tauri::State<'_, AppState>,
 ) -> Result<core_adapter::LlmBackendView, String> {
-    if !cfg!(feature = "local-engine") {
-        return Ok(core_adapter::LlmBackendView::from_probe(Err(
-            murmur_core::llama::LlamaLoadError::Backend("this build has no local engine".into()),
-        )));
-    }
-    let lib = state
-        .prefs
-        .read()
-        .unwrap()
-        .llm_lib_path
-        .as_deref()
-        .map(str::trim)
-        .filter(|p| !p.is_empty())
-        .map(str::to_string);
-    tauri::async_runtime::spawn_blocking(move || core_adapter::llm_backend_probe(lib.as_deref()))
+    let lib = llm_lib(&state);
+    tauri::async_runtime::spawn_blocking(move || probe_llm(lib.as_deref()))
         .await
         .map_err(|e| e.to_string())
 }
@@ -1431,33 +1448,11 @@ async fn machine_fit(
     state: tauri::State<'_, AppState>,
 ) -> Result<crate::machine_fit::MachineView, String> {
     let dir = core_adapter::models_dir(state.appdata.as_deref());
-    let lib = state
-        .prefs
-        .read()
-        .unwrap()
-        .llm_lib_path
-        .as_deref()
-        .map(str::trim)
-        .filter(|p| !p.is_empty())
-        .map(str::to_string);
-    let local = cfg!(feature = "local-engine");
+    let lib = llm_lib(&state);
     tauri::async_runtime::spawn_blocking(move || {
         use crate::machine_fit::{free_disk, ram, view, Probe};
-        let (llm, whisper) = if local {
-            (
-                core_adapter::llm_backend_probe(lib.as_deref()),
-                core_adapter::whisper_backend_probe(),
-            )
-        } else {
-            let none = || {
-                core_adapter::LlmBackendView::from_probe(Err(
-                    murmur_core::llama::LlamaLoadError::Backend(
-                        "this build has no local engine".into(),
-                    ),
-                ))
-            };
-            (none(), none())
-        };
+        let llm = probe_llm(lib.as_deref());
+        let whisper = probe_whisper();
         let (total_ram, available_ram) = ram();
         let p = Probe {
             total_ram,
