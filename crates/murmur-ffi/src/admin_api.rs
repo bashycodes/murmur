@@ -14,7 +14,7 @@
 //! returned string; the decoded copy is wiped before returning.
 
 use murmur_protocol::admin::{code, AdminError};
-use murmur_protocol::dictionary::{check_entry, TeamDictionary, TeamEntry};
+use murmur_protocol::dictionary::TeamDictionary;
 use murmur_remote::admin::AdminClient;
 use murmur_remote::team_dict::TeamDictCache;
 use murmur_router::ServerConfig;
@@ -144,15 +144,8 @@ pub fn team_dictionary_add(
     word: &str,
     replacement: &str,
 ) -> String {
-    let e = TeamEntry {
-        word: word.into(),
-        replacement: Some(replacement.to_string()).filter(|r| !r.trim().is_empty()),
-    };
-    if let Err(m) = check_entry(&e) {
-        return err(&AdminError::new(code::BAD_REQUEST, m));
-    }
     answer(team(server_json, cache_path).and_then(|(c, cache)| {
-        let a = c.add_team_entry(&e)?;
+        let a = c.add_team_word(word, replacement)?;
         Ok(TeamDictionary {
             entries: cache.edited(&c, &a),
         })

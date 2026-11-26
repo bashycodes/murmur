@@ -12,7 +12,7 @@
 use std::path::{Path, PathBuf};
 
 use murmur_protocol::admin::{code, AdminError};
-use murmur_protocol::dictionary::{sanitize, TeamDictionary, TeamEntry};
+use murmur_protocol::dictionary::{sanitize, valid_etag, TeamDictionary, TeamEntry};
 use serde::{Deserialize, Serialize};
 
 use crate::admin::AdminClient;
@@ -62,6 +62,7 @@ impl TeamDictCache {
             .filter(|c| c.server == server)
             .map(|c| CacheFile {
                 entries: sanitize(&c.entries),
+                etag: c.etag.filter(|t| valid_etag(t)),
                 ..c
             })
             .unwrap_or_default()
@@ -83,15 +84,30 @@ impl TeamDictCache {
     ) -> std::io::Result<Vec<TeamEntry>> {
         let c = CacheFile {
             server: server.into(),
-            etag,
+            etag: etag.filter(|t| valid_etag(t)),
             entries: sanitize(&list.entries),
         };
         if let Some(d) = self.path.parent() {
             std::fs::create_dir_all(d)?;
         }
-        let tmp = self.path.with_extension("json.tmp");
-        std::fs::write(&tmp, serde_json::to_vec(&c).expect("cache serialises"))?;
-        std::fs::rename(&tmp, &self.path)?;
+        // A tmp name of its own (two writers never share one), synced
+        // before the rename so a crash leaves the old file or the new one.
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let tmp = self
+            .path
+            .with_extension(format!("json.{}.{n}.tmp", std::process::id()));
+        let write = || -> std::io::Result<()> {
+            use std::io::Write;
+            let mut f = std::fs::File::create(&tmp)?;
+            f.write_all(&serde_json::to_vec(&c).expect("cache serialises"))?;
+            f.sync_all()?;
+            std::fs::rename(&tmp, &self.path)
+        };
+        if let Err(e) = write() {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e);
+        }
         Ok(c.entries)
     }
 
@@ -152,8 +168,13 @@ impl TeamDictCache {
                 error: None,
             },
             // The server has no team dictionary (auth off, or older than
-            // the feature): there is no team list.
-            Err(e) if e.code == code::AUTH_OFF || e.code == code::UNSUPPORTED => {
+            // the feature), or no longer takes this key (revoked): there
+            // is no team list.
+            Err(e)
+                if e.code == code::AUTH_OFF
+                    || e.code == code::UNSUPPORTED
+                    || e.code == code::UNAUTHORIZED =>
+            {
                 self.clear();
                 Refresh {
                     changed: !cached.entries.is_empty(),
@@ -161,7 +182,7 @@ impl TeamDictCache {
                     error: Some(e),
                 }
             }
-            // Offline, throttled, a revoked key: keep using the last copy.
+            // Offline, throttled, a server error: keep using the last copy.
             Err(e) => Refresh {
                 entries: cached.entries,
                 changed: false,
@@ -231,16 +252,61 @@ mod tests {
         });
         assert_eq!(r.entries, vec![e("Velloria")]);
         assert_eq!(r.error.unwrap().code, code::CONNECT_FAILED);
-        let r = c.refresh_with(SERVER, |_| Err(AdminError::new(code::UNAUTHORIZED, "")));
-        assert_eq!(
-            r.entries,
-            vec![e("Velloria")],
-            "a revoked key keeps the copy"
-        );
+        let r = c.refresh_with(SERVER, |_| Err(AdminError::new(code::THROTTLED, "")));
+        assert_eq!(r.entries, vec![e("Velloria")], "a lockout keeps the copy");
         // An old server (no route) or auth off: no team list at all.
         let r = c.refresh_with(SERVER, |_| Err(AdminError::new(code::UNSUPPORTED, "")));
         assert_eq!((r.entries.is_empty(), r.changed), (true, true));
         assert!(c.load(SERVER).is_empty());
+    }
+
+    #[test]
+    fn a_revoked_key_clears_the_copy() {
+        let (_d, c) = cache();
+        c.store(SERVER, &list(&["Velloria"]), None).unwrap();
+        let r = c.refresh_with(SERVER, |_| Err(AdminError::new(code::UNAUTHORIZED, "")));
+        assert_eq!((r.entries.is_empty(), r.changed), (true, true));
+        assert_eq!(r.error.unwrap().code, code::UNAUTHORIZED);
+        assert!(c.load(SERVER).is_empty() && !c.path().exists());
+    }
+
+    #[test]
+    fn a_malformed_etag_is_never_stored_or_sent() {
+        let (_d, c) = cache();
+        c.store(
+            SERVER,
+            &list(&["Velloria"]),
+            Some("\"a\"\r\nX-Evil: 1".into()),
+        )
+        .unwrap();
+        let mut sent = Some("unset".to_string());
+        c.refresh_with(SERVER, |t| {
+            sent = t.map(str::to_string);
+            Ok(None)
+        });
+        assert_eq!(sent, None);
+        // A hand-edited cache with a bad one: read as none.
+        let bad = serde_json::json!({"server": SERVER, "etag": "\"x\"\n", "entries": [{"word": "Velloria"}]});
+        std::fs::write(c.path(), bad.to_string()).unwrap();
+        c.refresh_with(SERVER, |t| {
+            sent = t.map(str::to_string);
+            Ok(None)
+        });
+        assert_eq!(sent, None);
+        assert_eq!(c.load(SERVER), vec![e("Velloria")]);
+    }
+
+    #[test]
+    fn a_store_leaves_no_tmp_file() {
+        let (d, c) = cache();
+        c.store(SERVER, &list(&["Velloria"]), None).unwrap();
+        c.store(SERVER, &list(&["Quillon"]), None).unwrap();
+        let names: Vec<_> = std::fs::read_dir(d.path().join("cache"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names, ["team-dictionary.json"]);
+        assert_eq!(c.load(SERVER), vec![e("Quillon")]);
     }
 
     #[test]

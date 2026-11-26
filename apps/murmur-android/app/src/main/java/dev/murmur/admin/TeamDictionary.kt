@@ -99,10 +99,13 @@ object TeamDictionary {
     fun clientFor(caps: BuildCaps, s: DevSettings, cache: File): TeamDictionaryApi? =
         if (available(caps, s)) NativeTeamDictionaryApi(s.toServerConfigJson().toString(), cache.path) else null
 
-    /** Local check before an add (the server has the final say). */
+    /**
+     * Local check before an add (the server has the final say). Characters are code points, as
+     * in `murmur_protocol::dictionary::check_entry` (an emoji or other astral character is one).
+     */
     fun wordError(word: String): String? = when {
         word.isBlank() -> "Type the word."
-        word.trim().length > 64 -> "At most 64 characters."
+        word.trim().let { it.codePointCount(0, it.length) } > 64 -> "At most 64 characters."
         else -> null
     }
 
@@ -122,6 +125,8 @@ data class TeamRefresh(val entries: List<DictEntry>, val changed: Boolean, val e
 
 /** The team dictionary against the saved server. All but [cached] are blocking: call off the main thread. */
 interface TeamDictionaryApi {
+    /** Which server and key this client talks to: an answer is used only while it is still the saved one. */
+    val source: String get() = ""
     /** The cached list for this server; no network. */
     fun cached(): AdminResult<List<DictEntry>>
     fun refresh(): AdminResult<TeamRefresh>
@@ -131,6 +136,9 @@ interface TeamDictionaryApi {
 
 /** [TeamDictionaryApi] over the JNI natives; `local` (no symbols) answers [AdminCode.NOT_IN_BUILD]. */
 class NativeTeamDictionaryApi(private val serverConfigJson: String, private val cachePath: String) : TeamDictionaryApi {
+    // In memory only, never logged: address, port and key.
+    override val source: String get() = serverConfigJson
+
     private inline fun <T> call(what: String?, f: () -> String, noinline value: (JSONObject) -> T): AdminResult<T> {
         what?.let(BlockingCalls::check)
         if (!NativeAdmin.loaded()) return AdminResult.Err(AdminCode.NOT_IN_BUILD, "the speech engine library is missing")
@@ -154,6 +162,8 @@ class NativeTeamDictionaryApi(private val serverConfigJson: String, private val 
  * asks the server on a worker thread; [add] / [remove] are the admin edits (blocking). Without a
  * server ([client] null) the list is empty and nothing is fetched. [onChange] runs after the
  * list changed (D68: the engine re-plans its Parakeet search); [listeners] let open pages redraw.
+ * An answer is used only if the saved server and key are still the ones it was asked with
+ * ([TeamDictionaryApi.source]): a slow answer from the old server never lands.
  */
 class TeamDictionaryStore(private val client: () -> TeamDictionaryApi?) {
     @Volatile var entries: List<DictEntry> = emptyList(); private set
@@ -176,7 +186,7 @@ class TeamDictionaryStore(private val client: () -> TeamDictionaryApi?) {
     fun refreshNow(): TeamRefresh? {
         val c = client() ?: run { set(emptyList()); return null }
         return when (val r = c.refresh()) {
-            is AdminResult.Ok -> r.value.also { set(it.entries) }
+            is AdminResult.Ok -> r.value.also { setFor(c, it.entries) }
             // Only a bad config (or a build without the natives): keep what we have.
             is AdminResult.Err -> TeamRefresh(entries, false, r)
         }
@@ -197,10 +207,15 @@ class TeamDictionaryStore(private val client: () -> TeamDictionaryApi?) {
 
     private fun edit(f: (TeamDictionaryApi) -> AdminResult<List<DictEntry>>): AdminResult<List<DictEntry>> {
         val c = client() ?: return AdminResult.Err(AdminCode.NOT_IN_BUILD, "no server")
-        return f(c).also { if (it is AdminResult.Ok) set(it.value) }
+        return f(c).also { if (it is AdminResult.Ok) setFor(c, it.value) }
     }
 
-    private fun set(new: List<DictEntry>) {
+    /** [set] if [c] still talks to the saved server with the saved key; else drop [new]. */
+    @Synchronized private fun setFor(c: TeamDictionaryApi, new: List<DictEntry>) {
+        if (client()?.source == c.source) set(new)
+    }
+
+    @Synchronized private fun set(new: List<DictEntry>) {
         if (new == entries) return
         entries = new
         onChange?.invoke()

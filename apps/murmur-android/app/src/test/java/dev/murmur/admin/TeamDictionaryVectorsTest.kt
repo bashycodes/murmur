@@ -37,6 +37,17 @@ class TeamDictionaryVectorsTest {
         }
     }
 
+    /** murmur-protocol's length vectors (team-dictionary/words.json): code points, astral ones included. */
+    @Test fun wordLengthCountsCodePoints() {
+        val v = JSONObject(javaClass.classLoader!!.getResource("team-dictionary/words.json")!!.readText())
+        val cases = v.getJSONArray("cases")
+        assertTrue(cases.length() > 0)
+        for (i in 0 until cases.length()) {
+            val c = cases.getJSONObject(i)
+            assertEquals(c.getString("name"), c.getBoolean("ok"), TeamDictionary.wordError(c.getString("word")) == null)
+        }
+    }
+
     @Test fun keyFoldsCaseAndSpacing() {
         assertEquals("acme corp", TeamDictionary.key("  Acme \t Corp "))
         assertEquals("", TeamDictionary.key("   "))

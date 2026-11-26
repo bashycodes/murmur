@@ -5,8 +5,10 @@
 //!
 //! Stored as `team-dictionary.json` next to `keys.json` in the state dir
 //! (mode 0600, written atomically), or only in memory when the key store
-//! is. Only the server writes it, under the store's lock; a file that does
-//! not parse is logged and served as an empty list until the next edit.
+//! is. Only the server writes it, under the store's lock. A file that does
+//! not parse is logged as an error and served as an empty list, and every
+//! edit is refused (500 `store_corrupt`) so the file is never overwritten:
+//! the admin repairs or removes it and restarts the server.
 //! The words are the admin's, not dictation text, but the log still gets
 //! only counts.
 
@@ -23,8 +25,8 @@ use axum::{Extension, Router};
 use murmur_core::postprocess::word_key;
 use murmur_protocol::admin::code;
 use murmur_protocol::dictionary::{
-    check_entry, sanitize, RemoveTeamEntry, TeamDictionary, TeamEntry, CODE_TOO_MANY,
-    MAX_EDIT_BODY_BYTES, MAX_ENTRIES, PATH_ADMIN_DICTIONARY, PATH_DICTIONARY,
+    check_entry, sanitize, RemoveTeamEntry, TeamDictionary, TeamEntry, CODE_STORE_CORRUPT,
+    CODE_TOO_MANY, MAX_EDIT_BODY_BYTES, MAX_ENTRIES, PATH_ADMIN_DICTIONARY, PATH_DICTIONARY,
 };
 
 use crate::AppState;
@@ -42,6 +44,8 @@ pub enum EditError {
     NotFound(String),
     /// The file could not be written; nothing changed.
     Io(String),
+    /// The file did not parse at start: edits would overwrite it.
+    Corrupt,
 }
 
 struct Current {
@@ -52,6 +56,8 @@ struct Current {
 /// The team list and its ETag. File-backed or in memory.
 pub struct TeamDictStore {
     path: Option<PathBuf>,
+    /// The file did not parse: serve empty, refuse every edit.
+    corrupt: bool,
     inner: Mutex<Current>,
 }
 
@@ -69,9 +75,11 @@ fn current(list: TeamDictionary) -> Current {
 
 impl TeamDictStore {
     /// The list in `dir` (`None` = memory only). A missing file is an
-    /// empty list; an unreadable one is logged and served empty.
+    /// empty list; an unreadable one is logged, served empty and never
+    /// overwritten ([`EditError::Corrupt`]).
     pub fn open(dir: Option<&Path>) -> Self {
         let path = dir.map(|d| d.join(TEAM_DICTIONARY_FILE));
+        let mut corrupt = false;
         let list = match path
             .as_deref()
             .map(crate::keys::read_json::<TeamDictionary>)
@@ -80,7 +88,10 @@ impl TeamDictStore {
                 entries: sanitize(&l.entries),
             },
             Some(Err(e)) => {
-                tracing::warn!("team dictionary: {e}; serving an empty list until the next edit");
+                tracing::error!(
+                    "team dictionary: {e}; serving an empty list and refusing edits until the file is repaired or removed"
+                );
+                corrupt = true;
                 TeamDictionary::default()
             }
             _ => TeamDictionary::default(),
@@ -90,6 +101,7 @@ impl TeamDictStore {
         }
         Self {
             path,
+            corrupt,
             inner: Mutex::new(current(list)),
         }
     }
@@ -111,6 +123,9 @@ impl TeamDictStore {
 
     /// Save `list` (file first, so a failed write changes nothing).
     fn commit(&self, g: &mut Current, list: TeamDictionary) -> Result<(), EditError> {
+        if self.corrupt {
+            return Err(EditError::Corrupt);
+        }
         if let Some(p) = &self.path {
             if let Some(d) = p.parent() {
                 crate::keys::create_dir(d).map_err(EditError::Io)?;
@@ -125,6 +140,9 @@ impl TeamDictStore {
     /// ignored) in place.
     pub fn upsert(&self, e: &TeamEntry) -> Result<(TeamDictionary, String), EditError> {
         let e = check_entry(e).map_err(EditError::Bad)?;
+        if self.corrupt {
+            return Err(EditError::Corrupt);
+        }
         let mut g = self.lock();
         let mut list = g.list.clone();
         let k = word_key(&e.word);
@@ -140,6 +158,9 @@ impl TeamDictStore {
 
     /// Remove the entry with `word` (case and spacing ignored).
     pub fn remove(&self, word: &str) -> Result<(TeamDictionary, String), EditError> {
+        if self.corrupt {
+            return Err(EditError::Corrupt);
+        }
         let k = word_key(word);
         let mut g = self.lock();
         let mut list = g.list.clone();
@@ -193,6 +214,16 @@ fn edit_error(e: EditError) -> Response {
             code::NOT_FOUND,
             format!("\"{w}\" is not in the team dictionary"),
         ),
+        EditError::Corrupt => {
+            tracing::error!(
+                "team dictionary: edit refused, the list file does not parse; repair or remove it and restart"
+            );
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                CODE_STORE_CORRUPT,
+                "the server's team dictionary file is damaged; the server admin must repair or remove it".into(),
+            )
+        }
         EditError::Io(m) => {
             tracing::warn!("team dictionary: {m}");
             (
@@ -376,12 +407,14 @@ mod tests {
                 .mode();
             assert_eq!(m & 0o777, 0o600);
         }
-        // A broken file is served empty, and the next edit replaces it.
-        std::fs::write(d.path().join(TEAM_DICTIONARY_FILE), "not json").unwrap();
+        // A broken file is served empty and never overwritten.
+        let file = d.path().join(TEAM_DICTIONARY_FILE);
+        std::fs::write(&file, "not json").unwrap();
         let broken = TeamDictStore::open(Some(d.path()));
         assert!(broken.get().0.entries.is_empty());
-        broken.upsert(&e("Velloria", None)).unwrap();
-        assert_eq!(TeamDictStore::open(Some(d.path())).get().0.entries.len(), 1);
+        assert_eq!(broken.upsert(&e("Velloria", None)), Err(EditError::Corrupt));
+        assert_eq!(broken.remove("Quillon"), Err(EditError::Corrupt));
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "not json");
     }
 
     #[test]

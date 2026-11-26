@@ -284,10 +284,14 @@ dictionary wins over the same word here. Admin keys edit it in the apps'
   backslashes; at most 500
   entries. A refused entry gets 400 with the reason. No snippets.
 * File: `team-dictionary.json` in the state dir next to `keys.json` (0600,
-  replaced atomically). Back it up with the keys.
+  replaced atomically). Back it up with the keys. If the file does not
+  parse, the server logs an error, serves an empty list and refuses every
+  edit (500 `store_corrupt`) rather than overwrite it: repair or remove the
+  file and restart.
 * Apps fetch it at start and when Settings opens (one request, usually a
   304) and keep the last copy, so they use it offline too. An edit reaches
-  other devices at their next start or Settings open.
+  other devices at their next start or Settings open. A revoked key drops
+  the app's copy.
 * With `auth = "none"` there are no admin keys, so there is no team
   dictionary (the routes answer 404 `auth_off`).
 

@@ -17,14 +17,17 @@ class TeamDictionaryStoreTest {
     private class Fake(
         var cache: List<DictEntry> = emptyList(),
         var answer: AdminResult<TeamRefresh> = AdminResult.Ok(TeamRefresh(emptyList(), false)),
+        override val source: String = "server-a",
     ) : TeamDictionaryApi {
+        var during: () -> Unit = {}
         var refreshes = 0
         var edit: AdminResult<List<DictEntry>>? = null
         val calls = mutableListOf<String>()
         override fun cached(): AdminResult<List<DictEntry>> = AdminResult.Ok(cache)
-        override fun refresh(): AdminResult<TeamRefresh> { refreshes++; return answer }
+        override fun refresh(): AdminResult<TeamRefresh> { refreshes++; during(); return answer }
         override fun add(word: String, replacement: String): AdminResult<List<DictEntry>> {
             calls += "add:$word:$replacement"
+            during()
             return edit ?: AdminResult.Ok(cache + DictEntry(word, replacement.ifEmpty { null }))
         }
         override fun remove(word: String): AdminResult<List<DictEntry>> {
@@ -50,6 +53,26 @@ class TeamDictionaryStoreTest {
         assertNull(TeamDictionary.clientFor(BuildCaps.ALL, DevSettings(allowServer = true, allowClient = true, host = "", token = key), File("x")))
         assertNull(TeamDictionary.clientFor(BuildCaps.ALL, DevSettings(allowServer = true, allowClient = true, host = "example.test"), File("x")))
         assertTrue(TeamDictionary.clientFor(BuildCaps.ALL, DevSettings(allowServer = true, allowClient = true, host = "example.test", token = key), File("x")) is NativeTeamDictionaryApi)
+    }
+
+    @Test fun anAnswerForAServerOrKeyNoLongerSavedIsDropped() {
+        val old = Fake(answer = AdminResult.Ok(TeamRefresh(listOf(quillon), changed = true)))
+        val other = Fake(source = "server-b")
+        var saved: TeamDictionaryApi? = old
+        val s = TeamDictionaryStore { saved }
+        // The settings change while the old server answers.
+        old.during = { saved = other }
+        assertEquals(listOf(quillon), s.refreshNow()?.entries)
+        assertEquals(emptyList<DictEntry>(), s.entries)
+        saved = old
+        old.during = { saved = null }
+        assertTrue(s.add("Velloria", "") is AdminResult.Ok)
+        assertEquals(emptyList<DictEntry>(), s.entries)
+        // Still the same server and key: applied.
+        saved = old
+        old.during = {}
+        s.refreshNow()
+        assertEquals(listOf(quillon), s.entries)
     }
 
     @Test fun loadReadsTheCacheAndRefreshAppliesTheAnswer() {

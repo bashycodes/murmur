@@ -297,6 +297,32 @@ async fn the_list_survives_a_restart_in_the_state_dir() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_damaged_list_file_is_served_empty_and_never_overwritten() {
+    let d = tempfile::tempdir().unwrap();
+    let state = d.path().join("state");
+    let cfg = || {
+        let mut c = mock_cfg("hello");
+        c.state_dir = Some(state.clone());
+        c
+    };
+    let s = start(cfg()).await;
+    s.kill();
+    std::fs::write(state.join(TEAM_DICTIONARY_FILE), "{ damaged").unwrap();
+    let s = start(cfg()).await;
+    let r = get(s.addr(), Some(TOKEN), None).await;
+    assert_eq!((r.status, list(&r)), (200, vec![]));
+    let r = add(s.addr(), TOKEN, "Velloria", None).await;
+    assert_eq!((r.status, err(&r)), (500, "store_corrupt".to_string()));
+    let r = remove(s.addr(), TOKEN, "Velloria").await;
+    assert_eq!((r.status, err(&r)), (500, "store_corrupt".to_string()));
+    assert_eq!(
+        std::fs::read_to_string(state.join(TEAM_DICTIONARY_FILE)).unwrap(),
+        "{ damaged"
+    );
+    s.kill();
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn throttled_peers_get_429_before_the_key_is_checked() {
     let mut c = mock_cfg("hello");
     c.auth_throttle.max_failures = 2;

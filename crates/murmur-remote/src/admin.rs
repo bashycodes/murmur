@@ -15,7 +15,8 @@ use murmur_protocol::admin::{
     PATH_ADMIN_KEYS, PATH_WHOAMI,
 };
 use murmur_protocol::dictionary::{
-    RemoveTeamEntry, TeamDictionary, TeamEntry, PATH_ADMIN_DICTIONARY, PATH_DICTIONARY,
+    check_entry, entry_from, valid_etag, RemoveTeamEntry, TeamDictionary, TeamEntry,
+    PATH_ADMIN_DICTIONARY, PATH_DICTIONARY,
 };
 use murmur_router::ServerConfig;
 use serde::de::DeserializeOwned;
@@ -83,7 +84,12 @@ impl AdminClient {
         &self,
         etag: Option<&str>,
     ) -> Result<Option<(TeamDictionary, Option<String>)>, AdminError> {
-        let extra: Vec<(&str, &str)> = etag.map(|t| ("If-None-Match", t)).into_iter().collect();
+        // Only a well-formed ETag goes back to the server (`valid_etag`).
+        let extra: Vec<(&str, &str)> = etag
+            .filter(|t| valid_etag(t))
+            .map(|t| ("If-None-Match", t))
+            .into_iter()
+            .collect();
         let a = self.round("GET", PATH_DICTIONARY, None, &extra)?;
         if a.status == 304 {
             return Ok(None);
@@ -93,14 +99,28 @@ impl AdminClient {
     }
 
     /// Add `e` to the team dictionary, or replace the entry with the same
-    /// word (admin key only). The whole list and its ETag.
+    /// word (admin key only). The whole list and its ETag. What is sent is
+    /// `check_entry`'s trimmed entry; a bad one fails here as `bad_request`
+    /// with the server's message, without a request.
     pub fn add_team_entry(
         &self,
         e: &TeamEntry,
     ) -> Result<(TeamDictionary, Option<String>), AdminError> {
-        let body = serde_json::to_vec(e).expect("TeamEntry serialises");
+        let e = check_entry(e).map_err(|m| AdminError::new(code::BAD_REQUEST, m))?;
+        let body = serde_json::to_vec(&e).expect("TeamEntry serialises");
         let a = self.round("POST", PATH_ADMIN_DICTIONARY, Some(body), &[])?;
         Ok((decode(&a, 200)?, a.etag))
+    }
+
+    /// [`Self::add_team_entry`] from an app's two boxes (`replacement`
+    /// blank = none): the one add path of murmur-windows and murmur-ffi.
+    pub fn add_team_word(
+        &self,
+        word: &str,
+        replacement: &str,
+    ) -> Result<(TeamDictionary, Option<String>), AdminError> {
+        let e = entry_from(word, replacement).map_err(|m| AdminError::new(code::BAD_REQUEST, m))?;
+        self.add_team_entry(&e)
     }
 
     /// Remove `word` from the team dictionary (admin key only).
@@ -173,7 +193,7 @@ impl AdminClient {
             path,
             body.as_deref(),
             extra,
-        );
+        )?;
         round_trip(io, &req).await
     }
 }
@@ -182,6 +202,9 @@ fn connect_err(e: murmur_router::BackendError) -> AdminError {
     AdminError::new(code::CONNECT_FAILED, e.to_string())
 }
 
+/// The request head and body. Refuses any header name or value with a CR
+/// or LF (the key, the client string, `extra`), so nothing can add a
+/// header or end the head early.
 fn request(
     cfg: &ServerConfig,
     client: &str,
@@ -189,7 +212,18 @@ fn request(
     path: &str,
     body: Option<&[u8]>,
     extra: &[(&str, &str)],
-) -> Vec<u8> {
+) -> Result<Vec<u8>, AdminError> {
+    let breaks = |t: &str| t.contains(['\r', '\n']);
+    if [method, path, client, cfg.token.as_str(), &cfg.addr()]
+        .into_iter()
+        .chain(extra.iter().flat_map(|(k, v)| [*k, *v]))
+        .any(breaks)
+    {
+        return Err(AdminError::new(
+            code::BAD_REQUEST,
+            "a request header has a line break",
+        ));
+    }
     let mut h = format!(
         "{method} {path} HTTP/1.1\r\nHost: {}\r\nUser-Agent: {client}\r\nAccept: application/json\r\nConnection: close\r\n",
         cfg.addr()
@@ -210,7 +244,7 @@ fn request(
     h.push_str("\r\n");
     let mut out = h.into_bytes();
     out.extend_from_slice(body);
-    out
+    Ok(out)
 }
 
 /// One HTTP answer.
@@ -293,7 +327,8 @@ fn parse(buf: &[u8], eof: bool) -> Option<Result<Answer, AdminError>> {
         } else if k.eq_ignore_ascii_case("retry-after") {
             retry_after_s = crate::conn::retry_after_s(Some(v));
         } else if k.eq_ignore_ascii_case("etag") {
-            etag = Some(v.to_string());
+            // A malformed one is dropped: never cached or sent back.
+            etag = Some(v.to_string()).filter(|t| valid_etag(t));
         }
     }
     let body = &buf[end + 4..];
@@ -448,24 +483,68 @@ mod tests {
             token: "secret-token-0123456789".into(),
             ..Default::default()
         };
-        let r = String::from_utf8(request(
-            &cfg,
-            "t 1",
-            "POST",
-            "/v1/admin/keys",
-            Some(b"{}"),
-            &[],
-        ))
+        let r = String::from_utf8(
+            request(&cfg, "t 1", "POST", "/v1/admin/keys", Some(b"{}"), &[]).unwrap(),
+        )
         .unwrap();
         assert!(r.starts_with("POST /v1/admin/keys HTTP/1.1\r\n"), "{r}");
         assert!(r.contains("Authorization: Bearer secret-token-0123456789\r\n"));
         assert!(r.contains("Content-Length: 2\r\n") && r.ends_with("\r\n\r\n{}"));
-        let r = String::from_utf8(request(&cfg, "t", "GET", "/v1/whoami", None, &[])).unwrap();
+        let r =
+            String::from_utf8(request(&cfg, "t", "GET", "/v1/whoami", None, &[]).unwrap()).unwrap();
         assert!(!r.contains("Content-Length"));
         let extra = [("If-None-Match", "\"ab12\"")];
         let r =
-            String::from_utf8(request(&cfg, "t", "GET", "/v1/dictionary", None, &extra)).unwrap();
+            String::from_utf8(request(&cfg, "t", "GET", "/v1/dictionary", None, &extra).unwrap())
+                .unwrap();
         assert!(r.contains("If-None-Match: \"ab12\"\r\n"), "{r}");
+    }
+
+    #[test]
+    fn a_header_with_a_line_break_is_refused() {
+        let cfg = ServerConfig {
+            host: "127.0.0.1".into(),
+            port: 7313,
+            token: "secret-token-0123456789".into(),
+            ..Default::default()
+        };
+        for extra in [
+            [("If-None-Match", "\"a\"\r\nX-Evil: 1")],
+            [("If-None-Match", "\"a\"\nX-Evil: 1")],
+            [("X-A\r\nX-Evil", "1")],
+        ] {
+            let e = request(&cfg, "t", "GET", "/v1/dictionary", None, &extra).unwrap_err();
+            assert_eq!(e.code, code::BAD_REQUEST);
+        }
+        assert!(request(&cfg, "t\r\nX: 1", "GET", "/v1/whoami", None, &[]).is_err());
+        let bad_key = ServerConfig {
+            token: "k\r\nX: 1".into(),
+            ..cfg
+        };
+        assert!(request(&bad_key, "t", "GET", "/v1/whoami", None, &[]).is_err());
+    }
+
+    #[test]
+    fn a_malformed_etag_is_dropped() {
+        let long = format!(
+            "HTTP/1.1 200 OK\r\netag: \"{}\"\r\ncontent-length: 0\r\n\r\n",
+            "a".repeat(200)
+        );
+        let a = parse(long.as_bytes(), true).unwrap().unwrap();
+        assert_eq!(a.etag, None);
+        let ok = b"HTTP/1.1 200 OK\r\netag: \"ab12\"\r\ncontent-length: 0\r\n\r\n";
+        assert_eq!(
+            parse(ok, true).unwrap().unwrap().etag.as_deref(),
+            Some("\"ab12\"")
+        );
+    }
+
+    #[test]
+    fn a_bad_entry_fails_before_any_request() {
+        let c = AdminClient::new(ServerConfig::default(), "t");
+        let e = c.add_team_word("<b>", "").unwrap_err();
+        assert_eq!(e.code, code::BAD_REQUEST);
+        assert!(e.message.contains("markup"), "{}", e.message);
     }
 
     #[test]

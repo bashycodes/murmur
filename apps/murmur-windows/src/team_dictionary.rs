@@ -10,6 +10,10 @@
 //! `prefs.json` (`murmur_remote::team_dict`, shared with Android). Offline,
 //! the last copy is used. No server saved means no team list. The cache
 //! holds the server's address and the list, never the key.
+//!
+//! A fetch or edit runs for the server and key saved when it started
+//! ([`TeamView::source`]); [`apply`] drops its answer if they changed
+//! meanwhile, so a slow answer from the old server never lands.
 
 use std::path::{Path, PathBuf};
 
@@ -26,6 +30,10 @@ pub const CACHE_FILE: &str = "team-dictionary.json";
 /// What the Dictionary page and Users & keys show (`team_dictionary_*`).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct TeamView {
+    /// The server and key the list belongs to ([`source`]); not sent to
+    /// the page.
+    #[serde(skip)]
+    pub source: Option<u64>,
     /// A server and a token are saved: show the team section.
     pub configured: bool,
     /// The list in use (fresh, or the cached copy).
@@ -44,12 +52,42 @@ pub fn cache_path(prefs_path: &Path) -> PathBuf {
 pub fn to_dict(entries: &[TeamEntry]) -> Vec<DictEntry> {
     entries
         .iter()
-        .map(|e| DictEntry {
-            word: e.word.clone(),
-            replacement: e.replacement.clone(),
-            is_snippet: false,
+        .map(|e| {
+            let d = e.to_dict_entry();
+            DictEntry {
+                word: d.word,
+                replacement: d.replacement,
+                is_snippet: d.is_snippet,
+            }
         })
         .collect()
+}
+
+/// Which server and key `dev` names (host:port and the key, hashed; in
+/// memory only), or `None` without one.
+pub fn source(dev: &DevSettings) -> Option<u64> {
+    #[cfg(feature = "remote")]
+    if let Ok(c) = crate::server_admin::client(dev) {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        (c.server(), dev.token()).hash(&mut h);
+        return Some(h.finish());
+    }
+    #[cfg(not(feature = "remote"))]
+    let _ = dev;
+    None
+}
+
+/// Use `view`'s list for dictation from now on, unless the saved server
+/// or key changed since it was fetched (then it is dropped: `false`).
+/// The caller holds the prefs write lock, so no other prefs write is lost
+/// or loses this one.
+pub fn apply(prefs: &mut crate::prefs::Prefs, view: &TeamView) -> bool {
+    if view.source != source(&prefs.developer) {
+        return false;
+    }
+    prefs.team_dictionary = to_dict(&view.entries);
+    true
 }
 
 /// Page text for a team dictionary error.
@@ -67,21 +105,23 @@ pub fn error_text(e: &AdminError) -> String {
 }
 
 /// The cached list for the saved server, without the network (start-up).
+#[cfg_attr(not(feature = "remote"), allow(unused_variables))]
 pub fn cached(dev: &DevSettings, cache: &Path) -> TeamView {
     #[cfg(feature = "remote")]
     if let Ok(c) = crate::server_admin::client(dev) {
         return TeamView {
+            source: source(dev),
             configured: true,
             entries: murmur_remote::team_dict::TeamDictCache::new(cache).load(&c.server()),
             error: None,
         };
     }
-    let _ = (dev, cache);
     TeamView::default()
 }
 
 /// Fetch the saved server's list if it changed (blocking, ≤ 15 s); offline,
 /// the cached copy with the reason.
+#[cfg_attr(not(feature = "remote"), allow(unused_variables))]
 pub fn refresh(dev: &DevSettings, cache: &Path) -> TeamView {
     #[cfg(feature = "remote")]
     if let Ok(c) = crate::server_admin::client(dev) {
@@ -91,39 +131,37 @@ pub fn refresh(dev: &DevSettings, cache: &Path) -> TeamView {
             e.code != code::UNSUPPORTED && e.code != code::AUTH_OFF
         });
         return TeamView {
+            source: source(dev),
             configured: true,
             entries: r.entries,
             error: error.map(|e| format!("Using the saved copy: {}", error_text(&e))),
         };
     }
-    let _ = (dev, cache);
     TeamView::default()
 }
 
 /// Add `word` (→ `replacement` when not blank), or replace the entry with
-/// that word (admin key only). The new list, also cached.
+/// that word (admin key only). The new list, also cached. A bad entry
+/// fails with the server's reason before any request.
+#[cfg_attr(not(feature = "remote"), allow(unused_variables))]
 pub fn add(
     dev: &DevSettings,
     cache: &Path,
     word: &str,
     replacement: &str,
 ) -> Result<TeamView, String> {
-    let e = TeamEntry {
-        word: word.into(),
-        replacement: Some(replacement.to_string()).filter(|r| !r.trim().is_empty()),
-    };
-    murmur_protocol::dictionary::check_entry(&e)?;
     #[cfg(feature = "remote")]
     {
-        edit(dev, cache, |c| c.add_team_entry(&e))
+        edit(dev, cache, |c| c.add_team_word(word, replacement))
     }
     #[cfg(not(feature = "remote"))]
     {
-        no_server(dev, cache)
+        Err(NO_SERVER.into())
     }
 }
 
 /// Remove `word` (admin key only). The new list, also cached.
+#[cfg_attr(not(feature = "remote"), allow(unused_variables))]
 pub fn remove(dev: &DevSettings, cache: &Path, word: &str) -> Result<TeamView, String> {
     #[cfg(feature = "remote")]
     {
@@ -131,8 +169,7 @@ pub fn remove(dev: &DevSettings, cache: &Path, word: &str) -> Result<TeamView, S
     }
     #[cfg(not(feature = "remote"))]
     {
-        let _ = word;
-        no_server(dev, cache)
+        Err(NO_SERVER.into())
     }
 }
 
@@ -148,6 +185,7 @@ fn edit(
     let c = crate::server_admin::client(dev)?;
     let answer = f(&c).map_err(|e| error_text(&e))?;
     Ok(TeamView {
+        source: source(dev),
         configured: true,
         entries: murmur_remote::team_dict::TeamDictCache::new(cache).edited(&c, &answer),
         error: None,
@@ -155,10 +193,7 @@ fn edit(
 }
 
 #[cfg(not(feature = "remote"))]
-fn no_server(dev: &DevSettings, cache: &Path) -> Result<TeamView, String> {
-    let _ = (dev, cache);
-    Err("this build has no server support".into())
-}
+const NO_SERVER: &str = "this build has no server support";
 
 #[cfg(test)]
 mod tests {
@@ -171,9 +206,48 @@ mod tests {
         assert_eq!(cached(&dev, &d), TeamView::default());
         assert_eq!(refresh(&dev, &d), TeamView::default());
         assert!(add(&dev, &d, "Quillon", "").is_err());
-        // A bad entry is refused before any server is asked.
-        let m = add(&dev, &d, "<b>x</b>", "").unwrap_err();
-        assert!(m.contains("markup"), "{m}");
+        assert!(remove(&dev, &d, "Quillon").is_err());
+    }
+
+    /// A list fetched for one server or key never lands after the saved
+    /// ones changed.
+    #[cfg(feature = "remote")]
+    #[test]
+    fn a_list_for_another_server_or_key_is_dropped() {
+        let mut p = crate::prefs::Prefs::default();
+        let view = |dev: &DevSettings| TeamView {
+            source: source(dev),
+            configured: true,
+            entries: vec![TeamEntry {
+                word: "Quillon".into(),
+                replacement: None,
+            }],
+            error: None,
+        };
+        let mut a = DevSettings::default();
+        a.server.host = "192.0.2.1".into();
+        a.token_dpapi = crate::secrets::protect("secret-token-aaaaaaaaaaaa").unwrap();
+        let mut other_host = a.clone();
+        other_host.server.host = "192.0.2.2".into();
+        let mut other_key = a.clone();
+        other_key.token_dpapi = crate::secrets::protect("secret-token-bbbbbbbbbbbb").unwrap();
+        assert!(source(&a).is_some());
+        assert_ne!(source(&a), source(&other_host));
+        assert_ne!(source(&a), source(&other_key));
+        assert_eq!(source(&DevSettings::default()), None);
+
+        p.developer = a.clone();
+        assert!(!apply(&mut p, &view(&other_host)));
+        assert!(!apply(&mut p, &view(&other_key)));
+        assert!(p.team_dictionary.is_empty());
+        assert!(apply(&mut p, &view(&a)));
+        assert_eq!(p.team_dictionary.len(), 1);
+        // The server was removed: an old server's answer is dropped, and
+        // the empty "no server" view applies.
+        p.developer = DevSettings::default();
+        assert!(!apply(&mut p, &view(&a)));
+        assert!(apply(&mut p, &TeamView::default()));
+        assert!(p.team_dictionary.is_empty());
     }
 
     #[test]

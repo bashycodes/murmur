@@ -468,8 +468,6 @@ fn save_prefs(app: &AppHandle, state: &AppState, mut prefs: Prefs) -> Result<(),
     // The Developer tab saves its own section (dev_set); a General/AI save
     // from a page loaded earlier must not roll it back.
     prefs.developer = state.prefs.read().unwrap().developer.clone();
-    // The team dictionary is the server's, never the page's.
-    prefs.team_dictionary = state.prefs.read().unwrap().team_dictionary.clone();
     // Whatever the page sent, what is saved now is the current schema.
     prefs.prefs_rev = crate::prefs::PREFS_REV;
     prefs.dictionary = crate::dictionary::normalize(prefs.dictionary);
@@ -533,7 +531,7 @@ fn save_prefs(app: &AppHandle, state: &AppState, mut prefs: Prefs) -> Result<(),
     let _ = app.emit_to(OVERLAY, "overlay:theme", prefs.theme);
     let always_changed =
         prefs.show_murmur_bar_always != state.prefs.read().unwrap().show_murmur_bar_always;
-    *state.prefs.write().unwrap() = prefs;
+    put_prefs(state, prefs);
     if always_changed {
         sync_overlay(app, false);
     }
@@ -1821,7 +1819,7 @@ fn transforms_reset(state: tauri::State<'_, AppState>) -> Result<Prefs, String> 
     if let Some(h) = state.hook.lock().unwrap().as_ref() {
         h.set_bindings(prefs.hotkey_bindings());
     }
-    *state.prefs.write().unwrap() = prefs.clone();
+    put_prefs(&state, prefs.clone());
     Ok(prefs)
 }
 
@@ -2150,7 +2148,7 @@ fn save_dev(app: &AppHandle, state: &AppState, mut dev: DevSettings) -> Result<(
     ensure_local(state, &prefs);
     sync_on_demand(state, &prefs);
     refresh_debug_secrets(state, &prefs.developer);
-    *state.prefs.write().unwrap() = prefs;
+    put_prefs(state, prefs);
     probe_in_background(app);
     // Another server (or none) has another team dictionary.
     let _ = refresh_team_in_background(app);
@@ -2202,7 +2200,7 @@ fn debug_log_set(state: tauri::State<'_, AppState>, enabled: bool) -> Result<Deb
     let mut prefs = state.prefs.read().unwrap().clone();
     prefs.developer.debug_log = enabled;
     prefs.save(&state.path).map_err(|e| e.to_string())?;
-    *state.prefs.write().unwrap() = prefs;
+    put_prefs(&state, prefs);
     state.debug.set_enabled(enabled);
     Ok(debug_view(&state))
 }
@@ -2419,14 +2417,23 @@ fn team_cache(app: &AppHandle) -> (DevSettings, PathBuf) {
     (dev, crate::team_dictionary::cache_path(&state.path))
 }
 
-/// Use `view`'s list for dictation from now on.
+/// Use `view`'s list for dictation from now on, unless the saved server
+/// or key changed since it was fetched (`team_dictionary::apply`). Under
+/// the prefs write lock; every other prefs write goes through
+/// [`put_prefs`], which keeps the team list, so neither loses the other.
 fn apply_team(app: &AppHandle, view: &crate::team_dictionary::TeamView) {
     let state = app.state::<AppState>();
-    let team = crate::team_dictionary::to_dict(&view.entries);
     let mut p = state.prefs.write().unwrap();
-    if p.team_dictionary != team {
-        p.team_dictionary = team;
-    }
+    crate::team_dictionary::apply(&mut p, view);
+}
+
+/// Replace the in-memory prefs with `prefs`, keeping the team dictionary
+/// in place (it is the server's, applied only by [`apply_team`]): a
+/// read-clone-modify-write never rolls back a list applied meanwhile.
+fn put_prefs(state: &AppState, mut prefs: Prefs) {
+    let mut g = state.prefs.write().unwrap();
+    prefs.team_dictionary = std::mem::take(&mut g.team_dictionary);
+    *g = prefs;
 }
 
 /// Fetch the saved server's team dictionary (blocking, off the UI thread)
@@ -2598,7 +2605,7 @@ fn save_cloud(app: &AppHandle, state: &AppState, dev: DevSettings) -> Result<(),
         prefs.developer.cloud_effective(caps),
         prefs.developer.cleanup_effective(caps),
     );
-    *state.prefs.write().unwrap() = prefs;
+    put_prefs(state, prefs);
     if (now.0 && !was.0) || (now.1 && !was.1) {
         refresh_catalog_in_background(app, false);
     }
@@ -2870,7 +2877,7 @@ fn dev_meeting_routes_set(
     let mut prefs = state.prefs.read().unwrap().clone();
     prefs.developer.set_meeting_order(&routes)?;
     prefs.save(&state.path).map_err(|e| e.to_string())?;
-    *state.prefs.write().unwrap() = prefs;
+    put_prefs(&state, prefs);
     Ok(dev_view(&state))
 }
 
