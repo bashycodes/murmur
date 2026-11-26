@@ -15,6 +15,7 @@ import { invoke, onEvent } from "../lib/ipc.js";
 import { onServer } from "../lib/model-source.js";
 import { confirmFacts } from "../lib/download-confirm.js";
 import { isHebrewCode } from "../lib/lid-warning.js";
+import { fitText } from "../lib/machine-fit.js";
 import { llmModelChip } from "../lib/model-pages.js";
 import { prefsStore } from "../lib/prefs-store.js";
 import { views } from "../lib/views.js";
@@ -85,9 +86,24 @@ async function browse(field) {
     }
 }
 // ------------------------------------------------------------ catalogue + downloads
+/** This PC against the machine-class table (`machine_fit`, D117); undefined until it answers. */
+let machineFit;
+/** Ask the backend again (RAM, free disk, the GPU probes; installed models change the disk line). */
+function refreshMachine() {
+    invoke("machine_fit")
+        .then((m) => {
+        machineFit = m;
+        notify();
+    })
+        .catch((e) => console.error("machine_fit", e));
+}
 export const models = {
     catalog() {
         return catalog;
+    },
+    /** The machine-class table's answer for this PC (D117); undefined until it answers. */
+    machine() {
+        return machineFit;
     },
     entry(id) {
         return catalog.find((c) => c.id === id);
@@ -121,6 +137,8 @@ export const models = {
         catalog = c;
         lidPresent = lid;
         notify();
+        // Not awaited: the first ask loads the GPU probes (up to a second).
+        refreshMachine();
         return catalog;
     },
     /** Downloads come from the server's library (D41; "Download from" = Your server, D79). */
@@ -359,7 +377,7 @@ function renderSettingsRow() {
     const keep = sel.value;
     sel.replaceChildren(...catalog
         .filter((c) => (c.available || c.importable) && !c.language && isSpeech(c))
-        .map((c) => new Option(`${c.title} · ${mb(c.size)}${c.installed ? " · downloaded" : ""}`, c.id)));
+        .map((c) => new Option(`${c.title} · ${mb(c.size)}${c.installed ? " · downloaded" : c.id === machineFit?.speech ? " · recommended" : ""}`, c.id)));
     if (keep && catalog.some((c) => c.id === keep))
         sel.value = keep;
     const id = sel.value;
@@ -380,7 +398,7 @@ function renderSettingsRow() {
     if (p && models.busy(id))
         bar.firstElementChild.style.width = `${p.total ? Math.round((p.received / p.total) * 100) : 0}%`;
     if (!p) {
-        line.textContent = missing && !e?.installed ? NOT_ON_SERVER : "";
+        line.textContent = missing && !e?.installed ? NOT_ON_SERVER : fitText(machineFit, id);
         line.className = "hint";
         return;
     }
@@ -423,8 +441,15 @@ function askLlmBackend() {
     })
         .finally(renderLlmRow);
 }
-/** The recommended cleanup model for this PC: the GPU pick when a GPU runs cleanup, else the CPU pick. */
-export function recommendedLlm(list, gpu) {
+/**
+ * The recommended cleanup model for this PC: the machine-class table's pick
+ * (D117, `machine_fit`: RAM and the GPU) once it has answered, else the GPU
+ * pick when a GPU runs cleanup and the CPU pick otherwise. Below 8 GB RAM
+ * the table picks none: undefined.
+ */
+export function recommendedLlm(list, gpu, machine = machineFit) {
+    if (machine)
+        return machine.cleanup ? list.find((c) => c.id === machine.cleanup) : undefined;
     return list.find((c) => (gpu ? c.recommended_gpu : c.recommended));
 }
 /** The one line under "This PC model": where cleanup runs (the list marks the pick for it). */
@@ -522,14 +547,19 @@ function renderLlmRow() {
             line.append(`${e.desc}. ${NOT_ON_SERVER}`);
             return;
         }
-        line.append(`${e.desc}.`);
+        line.append(`${e.desc}.${fitSuffix(e.id)}`);
         if (!e.available)
             line.append(" ", html(extLink(e.page, "Get it from its model page")), e.importable ? ", then Import from file." : ".");
         if (e.license)
             line.append(` ${e.license}.`);
         return;
     }
-    set(`${e.desc}.`);
+    set(`${e.desc}.${fitSuffix(e.id)}`);
+}
+/** " Doesn't fit: needs 8 GB RAM." after a model's line (D117); "" when it fits or nothing is known. */
+function fitSuffix(id) {
+    const f = machineFit?.fit[id];
+    return f && !f.fits ? ` ${fitText(machineFit, id)}.` : "";
 }
 async function useLlm(id) {
     const e = models.entry(id);
@@ -663,7 +693,9 @@ function renderHebrewRow() {
         askWhisperBackend();
     // "(recommended)" follows where whisper runs: ivrit turbo on a GPU, Zipformer on the CPU.
     const hebrew = catalog.filter((c) => c.language === "he");
-    const rec = hebrew.find((c) => (whisperBackend?.gpu ? c.recommended_gpu : c.recommended));
+    const rec = machineFit
+        ? hebrew.find((c) => c.id === machineFit?.hebrew)
+        : hebrew.find((c) => (whisperBackend?.gpu ? c.recommended_gpu : c.recommended));
     for (const o of Array.from(sel.options)) {
         const c = models.entry(HEBREW_IDS[o.value] ?? "");
         const base = o.dataset.label ?? o.textContent ?? "";
@@ -730,7 +762,7 @@ function renderHebrewRow() {
                 : e.importable
                     ? "get it from its model page, then Import from file"
                     : "get it from its model page";
-        set(`Not downloaded yet: ${how} (${mb(e.size)}).${wantHe ? " Until then Hebrew uses This PC model." : ""}${wouldRunLine(e, rec)}`, wantHe ? "err" : "");
+        set(`Not downloaded yet: ${how} (${mb(e.size)}).${wantHe ? " Until then Hebrew uses This PC model." : ""}${wouldRunLine(e, rec)}${fitSuffix(e.id)}`, wantHe ? "err" : "");
         if (!e.available)
             credit.append(" · ", html(extLink(e.page, "Download page")));
         return;

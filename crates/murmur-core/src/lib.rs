@@ -20,6 +20,7 @@ pub mod llama;
 pub mod llm_keep;
 pub mod load_timings;
 pub mod meeting;
+pub mod model_fit;
 #[cfg(feature = "parakeet")]
 pub mod parakeet;
 pub mod paste;

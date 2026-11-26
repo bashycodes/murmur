@@ -176,8 +176,6 @@ fn pinned_entry() -> CatalogEntry {
         engine: ModelEngine::Whisper,
         dest: "ggml-base.bin",
         page: "https://huggingface.co/r",
-        recommended: false,
-        recommended_gpu: false,
         language: None,
         license: None,
         extras: &[],

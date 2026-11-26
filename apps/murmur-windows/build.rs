@@ -55,6 +55,7 @@ fn main() {
             "model_catalog",
             "lid_model_present",
             "llm_backend",
+            "machine_fit",
             "whisper_backend",
             "model_download_start",
             "model_import_start",
