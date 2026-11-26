@@ -2151,7 +2151,7 @@ fn save_dev(app: &AppHandle, state: &AppState, mut dev: DevSettings) -> Result<(
     put_prefs(state, prefs);
     probe_in_background(app);
     // Another server (or none) has another team dictionary.
-    let _ = refresh_team_in_background(app);
+    start_team_refresh(app);
     Ok(())
 }
 
@@ -2449,6 +2449,12 @@ fn refresh_team_in_background(
         apply_team(&app, &v);
         v
     })
+}
+
+/// [`refresh_team_in_background`] without waiting for it (app start, a
+/// saved server change): the task runs on, its handle is not needed.
+fn start_team_refresh(app: &AppHandle) {
+    std::mem::drop(refresh_team_in_background(app));
 }
 
 /// Settings opened, or the Dictionary page: the team list, fetched again
@@ -4109,7 +4115,7 @@ pub fn run() {
         .setup(move |app| {
             let _ = MAIN_THREAD.set(std::thread::current().id());
             let handle = app.handle().clone();
-            let _ = refresh_team_in_background(&handle);
+            start_team_refresh(&handle);
             let h = handle.clone();
             instance.listen(move || show_settings(&h));
 
