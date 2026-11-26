@@ -23,6 +23,16 @@ patched sherpa decoder that adds the phrase's own score before it picks
 the beam's tokens, or a second recognizer with a higher base score, used
 only when a screen has names.
 
+**Option A, the patched decoder (2026-11-26, research only):**
+[2026-11-26-screen-names-option-a.md](2026-11-26-screen-names-option-a.md).
+- The per-phrase score at the pick, as asked, reaches 50 % but raises the
+  bench WER by up to 1.25 pt. Rejected.
+- Used for the pick only (not kept in the score, as upstream v2.0.2 does
+  with the global score), it reaches 65 % names with an unchanged bench
+  WER, at base 1.5 and screen 4.0.
+- Shipping it would need a sherpa fork built on every platform, or an
+  upgrade to 2.0.x plus a one-line upstream change.
+
 ## Setup
 
 * Probe: `tools/probes/prototypes/screen_names_2026_11_24/` (`prepare.py`,
@@ -224,3 +234,6 @@ bonus is recognizer-wide. It would need either a patched decoder that adds
 the phrase's own score at that step, or a second recognizer with a higher
 base that runs only when a screen has names. The second costs a second
 model in memory.
+
+**Update 2026-11-26:** the patched decoder was measured. See
+[2026-11-26-screen-names-option-a.md](2026-11-26-screen-names-option-a.md).

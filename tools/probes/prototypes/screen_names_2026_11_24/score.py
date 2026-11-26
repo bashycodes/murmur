@@ -10,7 +10,8 @@ dictionary words, candidates_dict30 = both):
                  consecutive words after the bench normaliser (case, hyphens,
                  punctuation ignored; "Severine's" counts for "Severine");
   WER            on the `names` clips and on the 40 LibriSpeech `bench` clips;
-  hotwords       mean phrase count handed to sherpa.
+  hotwords       mean phrase count handed to sherpa;
+  ms             mean decode wall time per clip (runs from 2026-11-26 on).
 --lang he: Hebrew words (niqqud and punctuation dropped, hyphens split; a one-letter
 prefix before the name does not count).
 """
@@ -80,7 +81,11 @@ def main():
         hw = sum(r[f"{m}_hotwords"] for r in res) / max(len(res), 1)
         summary[m] = dict(name_ok=ok, names=len(names), name_acc=round(acc, 1),
                           names_wer=round(nw, 2), bench_wer=round(bw, 2), hotwords=round(hw, 1))
-        print(f"{m:<16}{ok:>5}/{len(names):<4}{acc:>9.1f}%{nw:>10.2f}%{bw:>10.2f}%{hw:>10.1f}")
+        ms = [r[f"{m}_ms"] for r in res if f"{m}_ms" in r]
+        if ms:
+            summary[m]["ms"] = round(sum(ms) / len(ms), 1)
+        print(f"{m:<16}{ok:>5}/{len(names):<4}{acc:>9.1f}%{nw:>10.2f}%{bw:>10.2f}%{hw:>10.1f}"
+              + (f"{summary[m]['ms']:>9.1f}ms" if ms else ""))
     print()
     for r in names:
         name = man[r["id"]]["name"]
