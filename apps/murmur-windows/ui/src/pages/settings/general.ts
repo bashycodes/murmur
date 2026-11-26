@@ -73,7 +73,7 @@ ${group(
   "Send to webhook",
   row(
     "Webhook URL",
-    "Setting a URL and the shortcut below sends whatever you dictate with that shortcut to this address: the cleaned text, the raw transcript, the app you were in and the time, as JSON, instead of pasting it. https://, or http:// only to an address on your own network.",
+    "Setting a URL and the shortcut below sends whatever you dictate with that shortcut to this address: the cleaned text, the raw transcript, the app you were in and the time, as JSON, instead of pasting it. https:// or http://; with http:// it crosses the network unencrypted.",
     `<input id="webhook_url" class="fl-input is-wide lw-mono-input" data-save="prefs" spellcheck="false" placeholder="https://hooks.example.com/…" aria-label="Webhook URL" />`,
   ) +
     row("Send to webhook", "Hold, speak, let go to send.", key("webhook", "Send to webhook")),

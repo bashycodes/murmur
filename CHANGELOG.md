@@ -16,6 +16,10 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Changed
+
+- **Windows: Send to webhook accepts `http://` to any address.** Before, plain `http://` worked only for an address on your own network; now any `http://` URL is saved and sent, with no extra setting, like your own server. Without https the dictation and any token in the URL cross the network unencrypted, and Settings says so. `https://` is unchanged (D116).
+
 ## [1.8.0] - 2026-11-26
 
 ### Added

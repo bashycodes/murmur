@@ -31,5 +31,10 @@ test("a URL without http(s):// is flagged before any save", () => {
   assert.equal(looksLikeUrl("https://a b"), false);
   const s = webhookStatus("hooks.example.com/in", "Ctrl+Alt+W");
   assert.equal(s.on, false);
-  assert.match(s.text, /must start with https:\/\//);
+  assert.equal(s.text, "The URL must start with https:// or http://.");
+  // D116: http:// to a public address is not flagged.
+  assert.equal(looksLikeUrl("http://203.0.113.9/hook"), true);
+  const pub = webhookStatus("http://hooks.example.com/in", "Ctrl+Alt+W");
+  assert.equal(pub.on, true);
+  assert.doesNotMatch(pub.text, /own network|https:\/\/ only/);
 });

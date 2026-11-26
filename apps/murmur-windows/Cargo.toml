@@ -55,7 +55,7 @@ cloud = ["dep:murmur-cloud"]
 # presses Download for a catalogue model (src/model_download.rs). In the
 # default (hybrid) build; never in `local,app` (no network code there).
 download = ["dep:reqwest"]
-# Send to webhook (D105): one HTTPS (or private-network HTTP) POST of a
+# Send to webhook (D105, D116): one HTTPS or HTTP POST of a
 # dictation to the URL the user set (src/webhook.rs). In the default
 # (hybrid) build; never in `local,app` (no network code there).
 webhook = ["dep:reqwest"]
