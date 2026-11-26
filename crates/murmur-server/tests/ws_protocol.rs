@@ -73,10 +73,9 @@ async fn the_server_picks_the_murmur_subprotocol() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_client_offering_only_the_old_subprotocol_gets_none() {
     let s = start(mock_cfg(TEXT)).await;
-    let e = connect_offering(s.addr(), Some(TOKEN), "flow.v1")
-        .await
-        .err()
-        .expect("handshake without a subprotocol must fail");
+    let Err(e) = connect_offering(s.addr(), Some(TOKEN), "flow.v1").await else {
+        panic!("handshake without a subprotocol must fail");
+    };
     assert!(
         e.to_string().to_lowercase().contains("subprotocol"),
         "unexpected error: {e}"
