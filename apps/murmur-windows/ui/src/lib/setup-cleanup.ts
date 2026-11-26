@@ -36,7 +36,7 @@ export function serverOption(s: ServerFacts): ServerOption {
  * The option setup recommends: your server when one is saved and not known to
  * lack a cleanup model (the server's answer is only known once the app has
  * talked to it), else this PC when the build has local cleanup and the
- * machine-class table picks a cleanup model for it (`pcFits`, D116: below
+ * machine-class table picks a cleanup model for it (`pcFits`, D117: below
  * 8 GB RAM it picks none, so nothing is recommended).
  */
 export function recommendedCleanup(s: ServerFacts, hasPc: boolean, pcFits = true): SetupCleanup | null {

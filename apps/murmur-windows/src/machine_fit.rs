@@ -1,4 +1,4 @@
-//! This PC for the machine-class table (D116, `murmur_core::model_fit`):
+//! This PC for the machine-class table (D117, `murmur_core::model_fit`):
 //! total and available RAM, free disk where models are saved, and the GPU
 //! probes Settings already runs (`llm_backend`, `whisper_backend`). The
 //! `machine_fit` command returns the picks as catalogue ids plus a fits /

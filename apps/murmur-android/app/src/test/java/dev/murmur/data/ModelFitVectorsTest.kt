@@ -8,7 +8,7 @@ import org.junit.Test
 /**
  * The shared model-fit vectors (crates/murmur-core/fixtures/model-fit/vectors.json, on the test
  * classpath via sourceSets). murmur-core's tests/model_fit_vectors.rs checks the same file, so
- * [ModelFit] and the Rust table agree (D116).
+ * [ModelFit] and the Rust table agree (D117).
  */
 class ModelFitVectorsTest {
     private val doc = JSONObject(javaClass.classLoader!!.getResource("model-fit/vectors.json")!!.readText())

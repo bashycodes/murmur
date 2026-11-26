@@ -86,7 +86,7 @@ async function browse(field) {
     }
 }
 // ------------------------------------------------------------ catalogue + downloads
-/** This PC against the machine-class table (`machine_fit`, D116); undefined until it answers. */
+/** This PC against the machine-class table (`machine_fit`, D117); undefined until it answers. */
 let machineFit;
 /** Ask the backend again (RAM, free disk, the GPU probes; installed models change the disk line). */
 function refreshMachine() {
@@ -101,7 +101,7 @@ export const models = {
     catalog() {
         return catalog;
     },
-    /** The machine-class table's answer for this PC (D116); undefined until it answers. */
+    /** The machine-class table's answer for this PC (D117); undefined until it answers. */
     machine() {
         return machineFit;
     },
@@ -443,7 +443,7 @@ function askLlmBackend() {
 }
 /**
  * The recommended cleanup model for this PC: the machine-class table's pick
- * (D116, `machine_fit`: RAM and the GPU) once it has answered, else the GPU
+ * (D117, `machine_fit`: RAM and the GPU) once it has answered, else the GPU
  * pick when a GPU runs cleanup and the CPU pick otherwise. Below 8 GB RAM
  * the table picks none: undefined.
  */
@@ -556,7 +556,7 @@ function renderLlmRow() {
     }
     set(`${e.desc}.${fitSuffix(e.id)}`);
 }
-/** " Doesn't fit: needs 8 GB RAM." after a model's line (D116); "" when it fits or nothing is known. */
+/** " Doesn't fit: needs 8 GB RAM." after a model's line (D117); "" when it fits or nothing is known. */
 function fitSuffix(id) {
     const f = machineFit?.fit[id];
     return f && !f.fits ? ` ${fitText(machineFit, id)}.` : "";

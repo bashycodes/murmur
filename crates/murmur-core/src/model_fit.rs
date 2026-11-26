@@ -1,4 +1,4 @@
-//! Which models suit this machine (D116): one machine-class table, used by
+//! Which models suit this machine (D117): one machine-class table, used by
 //! the Windows setup and Settings and, through a Kotlin twin checked by
 //! `fixtures/model-fit/vectors.json`, by the Android model pages.
 //!
@@ -7,7 +7,7 @@
 //! * [`fit`]: whether one model fits (free disk for its download, total RAM,
 //!   a graphics chip for the GPU-only ones), with the reasons it does not.
 //!
-//! Every number cites a finding (D116 lists them); where the evidence is
+//! Every number cites a finding (D117 lists them); where the evidence is
 //! thin the comment says so. CPU class is not an input: the two CPUs
 //! measured (i7-6700, Core Ultra 9 288V) both run the CPU picks inside the
 //! budget, and nothing measured tells a slow CPU apart cheaply.
@@ -164,7 +164,7 @@ pub struct Picks {
     pub hebrew: Model,
 }
 
-/// The machine-class table (D116).
+/// The machine-class table (D117).
 ///
 /// | RAM | GPU | speech | AI cleanup | Hebrew |
 /// |---|---|---|---|---|

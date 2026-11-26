@@ -70,7 +70,7 @@ class ModelPagesTest {
 
     private fun phone(gib: Double, free: Long? = null) = ModelFit.Machine((gib * (1L shl 30)).toLong(), free)
 
-    /** D116: the table marks one file per screen Recommended and says whether each fits; the old static "flagship phones" notes are gone. */
+    /** D117: the table marks one file per screen Recommended and says whether each fits; the old static "flagship phones" notes are gone. */
     @Test fun recommendedBadgeAndFitFollowThePhone() {
         val big = phone(11.2, 50_000_000_000)
         val llm = ModelPages.recommended(Screen.LLM)

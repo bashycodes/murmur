@@ -369,7 +369,7 @@ pub const LLAMA32_3B_ID: &str = "llama-3.2-3b-instruct-q4_k_m";
 /// The cleanup model Settings recommends when RAM is not known: Llama 3.2 3B
 /// when local cleanup runs on a GPU, Qwen2.5 1.5B (the default) on a CPU-only
 /// PC (the 0.5B scores 43 % on the 88-suite, the 1.5B 74 %; benchmark
-/// 2026-10-30). The machine-class table decides (D116, `model_fit`).
+/// 2026-10-30). The machine-class table decides (D117, `model_fit`).
 pub fn recommended_llm(gpu: bool) -> &'static CatalogEntry {
     let m = Machine {
         gpu_llm: gpu,
@@ -381,7 +381,7 @@ pub fn recommended_llm(gpu: bool) -> &'static CatalogEntry {
     entry(catalog_id(pick)).expect("the table's pick is in the catalogue")
 }
 
-/// The machine-class table's model (D116) for a catalogue entry.
+/// The machine-class table's model (D117) for a catalogue entry.
 pub fn table_model(id: &str) -> Option<Model> {
     Some(match id {
         "parakeet-tdt-0.6b-v2-int8" | "parakeet-unified-en-0.6b-int8" => Model::Parakeet,
@@ -448,7 +448,7 @@ pub const PARAKEET_HE_ID: &str = "parakeet-tdt-0.6b-v3-he-int8";
 pub const IVRIT_TURBO_ID: &str = "ivrit-whisper-large-v3-turbo-q5_0";
 
 /// The Hebrew model Settings recommends: ivrit turbo when whisper runs on
-/// a GPU (`whisper_backend` probe), the zipformer on a CPU-only PC (D116).
+/// a GPU (`whisper_backend` probe), the zipformer on a CPU-only PC (D117).
 pub fn recommended_hebrew(gpu: bool) -> &'static CatalogEntry {
     let p = model_fit::recommend(&Machine {
         gpu_whisper: gpu,
@@ -615,7 +615,7 @@ pub struct CatalogView {
     pub title: &'static str,
     pub desc: &'static str,
     pub engine: ModelEngine,
-    /// The machine-class table's pick (D116) when RAM is not known, on a
+    /// The machine-class table's pick (D117) when RAM is not known, on a
     /// PC without a GPU; `machine_fit` refines it for this PC.
     pub recommended: bool,
     /// The same with a GPU (AI cleanup / Hebrew).
@@ -1601,7 +1601,7 @@ mod tests {
         assert!(llm[2].files[0]
             .url
             .contains("/resolve/5ab33fa94d1d04e903623ae72c95d1696f09f9e8/"));
-        // Every catalogue model has a row in the machine-class table (D116),
+        // Every catalogue model has a row in the machine-class table (D117),
         // and every table model's catalogue id maps back to it.
         for e in CATALOG {
             assert!(table_model(e.id).is_some(), "{} has no table row", e.id);

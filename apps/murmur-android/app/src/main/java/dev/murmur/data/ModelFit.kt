@@ -1,7 +1,7 @@
 package dev.murmur.data
 
 /**
- * Which models suit this phone (D116): the Kotlin twin of murmur-core's `model_fit` (the
+ * Which models suit this phone (D117): the Kotlin twin of murmur-core's `model_fit` (the
  * machine-class table and its numbers are documented there). `ModelFitVectorsTest` checks it
  * against `crates/murmur-core/fixtures/model-fit/vectors.json`, which the Rust side checks too.
  * The phone has no GPU build, so its machines always say "no GPU".

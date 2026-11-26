@@ -45,7 +45,7 @@ const SAMPLE = {
 };
 /** The Parakeet row's model (model_catalog id). */
 const PARAKEET_ID = "parakeet-tdt-0.6b-v2-int8";
-/** Catalogue models the Parakeet row stands for, for the table's pick (D116). */
+/** Catalogue models the Parakeet row stands for, for the table's pick (D117). */
 const PARAKEET_IDS = [PARAKEET_ID, "parakeet-unified-en-0.6b-int8"];
 /** Step 3's recommended row: the machine-class table's pick for this PC (Parakeet until it answers). */
 function recRow() {
@@ -418,7 +418,7 @@ function renderModel() {
                 : e && models.notOnServer(e)
                     ? "Your server doesn't have this model. After setup, download it from the internet in Settings → Speech to text."
                     : "This version of Murmur can't download it. Copy the model to this PC and press Use model files on this PC… below.";
-            // A pick that doesn't fit this PC warns but is still allowed (D116).
+            // A pick that doesn't fit this PC warns but is still allowed (D117).
             picked = { installed, busy, canDownload: canStart, why: why || fitWarning(machine, e?.id, id === "parakeet" ? PARAKEET_TITLE : w.title) };
         }
     }
@@ -530,7 +530,7 @@ function llmLine(s) {
 function renderCleanupOptions() {
     const facts = serverFacts();
     const server = serverOption(facts);
-    // This PC is recommended only when the table picks a cleanup model for it (8 GB RAM, D116).
+    // This PC is recommended only when the table picks a cleanup model for it (8 GB RAM, D117).
     const pcFits = models.machine()?.cleanup !== null;
     const rec = recommendedCleanup(facts, hasCleanup("pc"), pcFits);
     for (const b of document.querySelectorAll("#onboarding [data-ob-cleanup]")) {
@@ -579,7 +579,7 @@ function renderLlmModel() {
 }
 /**
  * The cleanup model setup offers: the machine-class table's pick for this PC
- * (D116: RAM and the graphics chip), else the CPU pick. Below 8 GB RAM the
+ * (D117: RAM and the graphics chip), else the CPU pick. Below 8 GB RAM the
  * table picks none; the CPU pick is still offered, marked as not fitting.
  */
 function llmEntry() {

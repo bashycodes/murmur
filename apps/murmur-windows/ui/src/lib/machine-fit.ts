@@ -1,4 +1,4 @@
-// This PC against the machine-class table (D116): the `machine_fit` answer
+// This PC against the machine-class table (D117): the `machine_fit` answer
 // and the words setup and Settings show for it. The table itself lives in
 // murmur-core (`model_fit`); this file only words its answer. Pure, so
 // `npm test` runs it on the built dist without a page.

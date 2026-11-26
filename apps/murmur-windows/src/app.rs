@@ -1423,7 +1423,7 @@ async fn llm_backend(
         .map_err(|e| e.to_string())
 }
 
-/// This PC against the machine-class table (D116): RAM, free disk on the
+/// This PC against the machine-class table (D117): RAM, free disk on the
 /// models folder and the two GPU probes above (cached after the first ask),
 /// so setup and Settings recommend the same models and say which fit.
 #[tauri::command]

@@ -142,7 +142,7 @@ class ModelImportActivity : Activity() {
     }
 
     /**
-     * This phone for the machine-class table (D116): total RAM (ActivityManager) and the free
+     * This phone for the machine-class table (D117): total RAM (ActivityManager) and the free
      * space where this screen saves its models. The phone runs no model on a GPU.
      */
     private fun machine(): ModelFit.Machine {

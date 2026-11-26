@@ -10,7 +10,7 @@ import java.util.Locale
 object ModelPages {
     enum class Screen { WHISPER, PARAKEET, LLM, HEBREW }
 
-    /** [model]: the row in the machine-class table ([ModelFit], D116) that marks it Recommended and fits / doesn't fit. */
+    /** [model]: the row in the machine-class table ([ModelFit], D117) that marks it Recommended and fits / doesn't fit. */
     data class Recommended(val file: String, val sizeMb: Int, val speed: String, val quality: String, val note: String, val url: String, val model: ModelFit.Model? = null)
 
     private const val WHISPER = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
@@ -58,7 +58,7 @@ object ModelPages {
         Screen.LLM -> p.cleanup
     }
 
-    /** What a recommended row says about this phone: the Recommended badge and its fits / doesn't-fit line (D116). */
+    /** What a recommended row says about this phone: the Recommended badge and its fits / doesn't-fit line (D117). */
     data class RowFit(val recommended: Boolean, val fits: Boolean, val line: String)
 
     fun rowFit(s: Screen, r: Recommended, m: ModelFit.Machine, installed: Boolean = false): RowFit? {

@@ -1,4 +1,4 @@
-// This PC against the machine-class table (D116): the words setup and
+// This PC against the machine-class table (D117): the words setup and
 // Settings show for `machine_fit`. The table itself is tested in murmur-core.
 // Runs on the built dist: `npm test`.
 import { test } from "node:test";

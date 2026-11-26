@@ -15,7 +15,7 @@ import dev.murmur.core.ParakeetDecoding
 object ModelFiles {
     enum class Kind { ASR_GGML, LLM_GGUF, UNKNOWN }
 
-    /** [model]: its [ModelFit] key (D116). */
+    /** [model]: its [ModelFit] key (D117). */
     data class Recommendation(val file: String, val sizeMb: Int, val note: String, val url: String, val model: String)
 
     /** Qwen2.5-Instruct Q4_K_M: the pair murmur-core's llm_e2e measures (docs/core-architecture.md). */

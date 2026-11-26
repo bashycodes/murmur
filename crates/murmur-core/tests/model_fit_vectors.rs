@@ -1,4 +1,4 @@
-//! Shared model-fit vectors (`fixtures/model-fit/vectors.json`, D116). The
+//! Shared model-fit vectors (`fixtures/model-fit/vectors.json`, D117). The
 //! Android `ModelFitVectorsTest` checks the same file against its Kotlin
 //! twin (`ModelFit.kt`), so the phone and the PC read one table.
 //! `MURMUR_BLESS=1` rewrites the expected values from this side.
