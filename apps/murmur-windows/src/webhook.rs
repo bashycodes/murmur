@@ -85,52 +85,32 @@ impl From<Result<u16, Failure>> for Outcome {
     }
 }
 
-/// The parts of a checked webhook URL.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Parsed {
-    pub https: bool,
-    /// Without IPv6 brackets.
-    pub host: String,
-    pub port: u16,
-}
+const SCHEME_ERR: &str = "the webhook URL must start with https:// or http://";
 
-const SCHEME: &str = "the webhook URL must start with https:// or http://";
-
-/// Parse and check a webhook URL (Settings save, and again before each
+/// Check a webhook URL's shape (Settings save, and again before each
 /// send). Errors never contain the query string.
-pub fn check_url(url: &str) -> Result<Parsed, String> {
+pub fn check_url(url: &str) -> Result<(), String> {
     let url = url.trim();
     if url.chars().any(char::is_whitespace) {
         return Err("the webhook URL must not contain spaces".into());
     }
-    let (scheme, rest) = url.split_once("://").ok_or(SCHEME)?;
-    let https = match scheme.to_ascii_lowercase().as_str() {
-        "https" => true,
-        "http" => false,
-        _ => return Err(SCHEME.into()),
-    };
+    let (scheme, rest) = url.split_once("://").ok_or(SCHEME_ERR)?;
+    if !matches!(scheme.to_ascii_lowercase().as_str(), "https" | "http") {
+        return Err(SCHEME_ERR.into());
+    }
     let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
     if authority.contains('@') {
         return Err("the webhook URL must not contain a user name or password".into());
     }
     let (host, port) = split_host_port(authority)?;
-    let host = murmur_router::net::validate_host(host)
-        .map_err(|e| format!("the webhook URL's host: {e}"))?;
-    let port = match port {
-        None => {
-            if https {
-                443
-            } else {
-                80
-            }
-        }
-        Some(p) => p
-            .parse::<u16>()
+    murmur_router::net::validate_host(host).map_err(|e| format!("the webhook URL's host: {e}"))?;
+    if let Some(p) = port {
+        p.parse::<u16>()
             .ok()
             .filter(|p| *p != 0)
-            .ok_or("the webhook URL's port must be 1-65535")?,
-    };
-    Ok(Parsed { https, host, port })
+            .ok_or("the webhook URL's port must be 1-65535")?;
+    }
+    Ok(())
 }
 
 /// `host[:port]` or `[v6][:port]` → (host, port).
@@ -242,12 +222,9 @@ mod tests {
 
     #[test]
     fn https_and_http_to_any_host() {
-        let ok = check_url("https://hooks.example.com/in?token=abc").unwrap();
-        assert_eq!(
-            (ok.https, ok.host.as_str(), ok.port),
-            (true, "hooks.example.com", 443)
-        );
         for u in [
+            "https://hooks.example.com/in?token=abc",
+            "HTTP://hooks.example.com:8080/in",
             "http://127.0.0.1:8080/hook",
             "http://localhost/hook",
             "http://192.168.1.20/hook",
@@ -262,12 +239,6 @@ mod tests {
         ] {
             assert!(check_url(u).is_ok(), "{u}");
         }
-        let p = check_url("http://hooks.example.com/in").unwrap();
-        assert_eq!(
-            (p.https, p.host.as_str(), p.port),
-            (false, "hooks.example.com", 80)
-        );
-        assert_eq!(check_url("http://[fd00::1]:9000/").unwrap().host, "fd00::1");
     }
 
     #[test]
@@ -287,7 +258,7 @@ mod tests {
         }
         let e = check_url("ftp://203.0.113.9/hook?token=s3cret").unwrap_err();
         assert!(!e.contains("s3cret"), "{e}");
-        assert_eq!(e, SCHEME);
+        assert_eq!(e, SCHEME_ERR);
     }
 
     #[test]

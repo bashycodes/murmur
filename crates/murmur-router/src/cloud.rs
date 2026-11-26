@@ -914,9 +914,10 @@ impl CloudProviderConfig {
             ));
         }
         let BaseUrl { https, host, .. } = parse_base_url(&self.base_url)?;
-        // Names (`*.local`, single-label, `*.ts.net`) pass here; murmur-cloud
-        // resolves them before an http:// call and requires every address
-        // to be private (S6).
+        // The only address rule for a custom endpoint: this save-time
+        // `classify` (names such as `*.local`, single-label and `*.ts.net`
+        // count as private by name); nothing re-checks the resolved
+        // addresses at call time.
         if !https && !net::classify(&host).plaintext_ok() {
             return Err("public base URL: https:// is required".into());
         }
