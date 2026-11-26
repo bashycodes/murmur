@@ -31,7 +31,7 @@ import { chip, fileState, initialModel, PARAKEET_TITLE, setupSteps, whisperRow }
 import { changesLine, savedEngine, setupChanges, STEP_OF } from "../lib/setup-diff.js";
 import { pillLine, readinessErrorLine, readinessLine, RECHECK_MS } from "../lib/setup-try.js";
 import { initialEngine, recommendedEngine } from "../lib/setup-engine.js";
-import { cloudMissingLine, enginesFor, initialCleanup, levelWhenOn, recommendedCleanup, serverOption } from "../lib/setup-cleanup.js";
+import { cloudMissingLine, enginesFor, initialCleanup, levelWhenOn, recommendedCleanup, serverOption, startCleanup } from "../lib/setup-cleanup.js";
 import { cloudWhere, providerOf, setupCloudCopy } from "../lib/provider-names.js";
 import { views } from "../lib/views.js";
 import { engines as cleanupEngines, pollCleanupStatus } from "../features/ai.js";
@@ -117,6 +117,11 @@ function savedCleanup() {
         engines: cleanupEngines(),
     }, hasServer());
     return hasCleanup(c) ? c : "rules";
+}
+/** Step 4's starting option: the table's pick on a fresh install, else the saved one (D117). */
+function firstCleanup() {
+    const pcFits = models.machine()?.cleanup !== null;
+    return startCleanup(savedCleanup(), !!prefsStore.get()?.onboarded, hasCleanup("pc"), pcFits);
 }
 /** Steps shown: the model step only with speech on this PC (and a build that has it). */
 function steps() {
@@ -623,9 +628,17 @@ function rerender() {
     else if (st.step === "engine")
         placeServerForm();
     else if (st.step === "cleanup") {
-        renderCleanupOptions();
-        renderCloudConsent();
-        renderLlmModel();
+        // The table answers after the step opened: an untouched fresh install follows it (D117).
+        const before = st.cleanup;
+        if (!st.cleanupPicked && !prefsStore.get()?.onboarded)
+            st.cleanup = firstCleanup();
+        if (st.cleanup !== before)
+            renderCleanup();
+        else {
+            renderCleanupOptions();
+            renderCloudConsent();
+            renderLlmModel();
+        }
     }
 }
 /**
@@ -894,7 +907,7 @@ function show(s) {
     if (s === "cleanup") {
         // A server saved in step 2 on this run counts; a pick made here stays.
         if (!st.cleanupPicked || !hasCleanup(st.cleanup))
-            st.cleanup = savedCleanup();
+            st.cleanup = firstCleanup();
         renderCleanup();
         if (models.fromServer())
             void models.refreshServer();
@@ -1157,7 +1170,7 @@ function initialChoices() {
     const facts = { has, serverSaved: hasServer() };
     st.recEngine = recommendedEngine(facts);
     st.engine = initialEngine(savedSpeech(), !!p?.onboarded, facts);
-    st.cleanup = savedCleanup();
+    st.cleanup = firstCleanup();
     st.cleanupPicked = false;
     st.modelPick = initialModel(activeModel(), !!p?.onboarded, fileState(st.model), recRow());
     st.modelPicked = false;

@@ -45,6 +45,18 @@ export function recommendedCleanup(s: ServerFacts, hasPc: boolean, pcFits = true
   return null;
 }
 
+/**
+ * The option step 4 starts on. A fresh install (setup never finished) starts
+ * on the machine-class table's pick (D117): This PC when the build has local
+ * cleanup and the table picks a cleanup model for it (8 GB RAM, or RAM not
+ * known yet), else Rules only. A server or Cloud the settings already turn on
+ * stays, and so does every saved choice on a re-run.
+ */
+export function startCleanup(saved: SetupCleanup, onboarded: boolean, hasPc: boolean, pcFits: boolean): SetupCleanup {
+  if (onboarded || saved === "server" || saved === "cloud") return saved;
+  return hasPc && pcFits ? "pc" : "rules";
+}
+
 /** The AI cleanup strength when none is set (a fresh install, or AI turned on from "none"). */
 export const DEFAULT_LEVEL = "medium";
 

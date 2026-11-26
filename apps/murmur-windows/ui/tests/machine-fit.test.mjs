@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { doesNotFit, fitText, fitWarning, machineLine, recommendedRow } from "../dist/lib/machine-fit.js";
 import { initialModel } from "../dist/lib/setup-model.js";
-import { recommendedCleanup } from "../dist/lib/setup-cleanup.js";
+import { recommendedCleanup, startCleanup } from "../dist/lib/setup-cleanup.js";
 
 const GIB = 2 ** 30;
 const small = {
@@ -69,4 +69,17 @@ test("step 4 recommends This PC only when the table picks a cleanup model for it
   assert.equal(recommendedCleanup(noServer, true, false), null);
   // A saved server still wins.
   assert.equal(recommendedCleanup({ build: true, saved: true, llm: true }, true, false), "server");
+});
+
+test("step 4 starts on the table's pick on a fresh install, keeps a saved choice", () => {
+  // Fresh install: This PC at 8 GB (or RAM not known yet), else Rules only.
+  assert.equal(startCleanup("rules", false, true, true), "pc");
+  assert.equal(startCleanup("rules", false, true, false), "rules");
+  assert.equal(startCleanup("rules", false, false, true), "rules");
+  // A server or Cloud already turned on stays.
+  assert.equal(startCleanup("server", false, true, true), "server");
+  assert.equal(startCleanup("cloud", false, true, false), "cloud");
+  // A re-run keeps what is saved.
+  assert.equal(startCleanup("rules", true, true, true), "rules");
+  assert.equal(startCleanup("pc", true, true, false), "pc");
 });
