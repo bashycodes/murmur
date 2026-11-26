@@ -32,11 +32,12 @@ export function fileState(s) {
 /**
  * The row picked when the step opens: the model in use once setup has been
  * finished (a re-run keeps the current config) or when its file is there;
- * on a new install with nothing there yet, the recommended one (the
- * built-in default is Whisper, which a new install never chose).
+ * on a new install with nothing there yet, the one the machine-class table
+ * recommends for this PC (D117; Parakeet unless RAM is short). The built-in
+ * default is Whisper, which a new install never chose.
  */
-export function initialModel(active, onboarded, file) {
-    return onboarded || file === "present" ? active : "parakeet";
+export function initialModel(active, onboarded, file, recommended = "parakeet") {
+    return onboarded || file === "present" ? active : recommended;
 }
 /** The row's chip: a download in progress wins, then the file. Unknown: no chip (never "Installed" on a guess). */
 export function chip(file, downloading) {

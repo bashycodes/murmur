@@ -264,6 +264,15 @@ device its own key, see when it was last used, and revoke it alone.
 keys* when the app uses an admin key. See
 [server-advanced.md](server-advanced.md) §4.
 
+**Models that fit this device** (Both). Murmur recommends the speech and
+AI cleanup models that suit this PC or phone (its RAM, free disk and, on
+Windows, the graphics chip), and says next to each model whether it fits
+or why not, such as "needs 8 GB RAM". A model that doesn't fit can still be
+used.
+*How:* Windows: setup's model steps start on the recommended ones;
+*Settings → Speech to text* and *AI cleanup* mark them. Android: *Settings →
+Speech to text* / *AI cleanup* → the model pages, under *Recommended*.
+
 **Models from a folder** (Windows). Point setup at one folder of model
 files, such as the unzipped models bundle, and it sets up English, Hebrew
 and language auto-detect from it with no download: each model is found by

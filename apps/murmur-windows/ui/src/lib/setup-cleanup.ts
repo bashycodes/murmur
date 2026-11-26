@@ -35,12 +35,26 @@ export function serverOption(s: ServerFacts): ServerOption {
 /**
  * The option setup recommends: your server when one is saved and not known to
  * lack a cleanup model (the server's answer is only known once the app has
- * talked to it), else this PC when the build has local cleanup.
+ * talked to it), else this PC when the build has local cleanup and the
+ * machine-class table picks a cleanup model for it (`pcFits`, D117: below
+ * 8 GB RAM it picks none, so nothing is recommended).
  */
-export function recommendedCleanup(s: ServerFacts, hasPc: boolean): SetupCleanup | null {
+export function recommendedCleanup(s: ServerFacts, hasPc: boolean, pcFits = true): SetupCleanup | null {
   if (s.build && s.saved && s.llm !== false) return "server";
-  if (hasPc) return "pc";
+  if (hasPc && pcFits) return "pc";
   return null;
+}
+
+/**
+ * The option step 4 starts on. A fresh install (setup never finished) starts
+ * on the machine-class table's pick (D117): This PC when the build has local
+ * cleanup and the table picks a cleanup model for it (8 GB RAM, or RAM not
+ * known yet), else Rules only. A server or Cloud the settings already turn on
+ * stays, and so does every saved choice on a re-run.
+ */
+export function startCleanup(saved: SetupCleanup, onboarded: boolean, hasPc: boolean, pcFits: boolean): SetupCleanup {
+  if (onboarded || saved === "server" || saved === "cloud") return saved;
+  return hasPc && pcFits ? "pc" : "rules";
 }
 
 /** The AI cleanup strength when none is set (a fresh install, or AI turned on from "none"). */

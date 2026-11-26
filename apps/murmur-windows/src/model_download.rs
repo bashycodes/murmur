@@ -20,6 +20,7 @@
 //! page sends after the user pressed Download in the confirm dialog.
 
 use crate::prefs::{AsrEngineChoice, HebrewModel, Prefs};
+use murmur_core::model_fit::{self, Machine, Model};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
@@ -58,12 +59,6 @@ pub struct CatalogEntry {
     pub dest: &'static str,
     /// The model's page, for "Download links" and the confirm dialog.
     pub page: &'static str,
-    pub recommended: bool,
-    /// The model recommended when it runs on a GPU: AI cleanup by the
-    /// `llm_backend` probe ([`recommended_llm`]), the Hebrew model by the
-    /// `whisper_backend` probe ([`recommended_hebrew`]). `recommended` is
-    /// then the pick for a CPU-only PC.
-    pub recommended_gpu: bool,
     /// `None`: a default model (the engine for every language). `Some("he")`:
     /// the model of that language's route (D33 `languages.he`).
     pub language: Option<&'static str>,
@@ -159,8 +154,6 @@ pub const CATALOG: &[CatalogEntry] = &[
         engine: ModelEngine::Parakeet,
         dest: crate::core_adapter::DEFAULT_PARAKEET_DIR,
         page: "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8",
-        recommended: true,
-        recommended_gpu: false,
         language: None,
         license: Some("CC-BY-4.0 · NVIDIA (nvidia/parakeet-tdt-0.6b-v2)"),
         extras: &[],
@@ -178,8 +171,6 @@ pub const CATALOG: &[CatalogEntry] = &[
         engine: ModelEngine::Whisper,
         dest: crate::core_adapter::DEFAULT_MODEL_FILE,
         page: "https://huggingface.co/ggerganov/whisper.cpp",
-        recommended: false,
-        recommended_gpu: false,
         language: None,
         license: Some("MIT · OpenAI Whisper, ggml by ggerganov/whisper.cpp"),
         extras: &[],
@@ -192,8 +183,6 @@ pub const CATALOG: &[CatalogEntry] = &[
         engine: ModelEngine::Whisper,
         dest: "ggml-small-q5_1.bin",
         page: "https://huggingface.co/ggerganov/whisper.cpp",
-        recommended: false,
-        recommended_gpu: false,
         language: None,
         license: Some("MIT · OpenAI Whisper, ggml by ggerganov/whisper.cpp"),
         extras: &[],
@@ -206,8 +195,6 @@ pub const CATALOG: &[CatalogEntry] = &[
         engine: ModelEngine::Parakeet,
         dest: "sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8",
         page: "https://huggingface.co/csukuangfj2/sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8-non-streaming",
-        recommended: false,
-        recommended_gpu: false,
         language: None,
         license: Some("NVIDIA Open Model License · Licensed by NVIDIA Corporation under the NVIDIA Open Model License"),
         extras: &[],
@@ -225,8 +212,6 @@ pub const CATALOG: &[CatalogEntry] = &[
         engine: ModelEngine::Whisper,
         dest: "ggml-base.en-q5_1.bin",
         page: "https://huggingface.co/ggerganov/whisper.cpp",
-        recommended: false,
-        recommended_gpu: false,
         language: None,
         license: Some("MIT · OpenAI Whisper, ggml by ggerganov/whisper.cpp"),
         extras: &[],
@@ -239,8 +224,6 @@ pub const CATALOG: &[CatalogEntry] = &[
         engine: ModelEngine::Whisper,
         dest: "ggml-base-q5_1.bin",
         page: "https://huggingface.co/ggerganov/whisper.cpp",
-        recommended: false,
-        recommended_gpu: false,
         language: None,
         license: Some("MIT · OpenAI Whisper, ggml by ggerganov/whisper.cpp"),
         extras: &[],
@@ -253,8 +236,6 @@ pub const CATALOG: &[CatalogEntry] = &[
         engine: ModelEngine::Whisper,
         dest: "ggml-tiny.en-q5_1.bin",
         page: "https://huggingface.co/ggerganov/whisper.cpp",
-        recommended: false,
-        recommended_gpu: false,
         language: None,
         license: Some("MIT · OpenAI Whisper, ggml by ggerganov/whisper.cpp"),
         extras: &[],
@@ -267,8 +248,6 @@ pub const CATALOG: &[CatalogEntry] = &[
         engine: ModelEngine::Whisper,
         dest: "ggml-small.en-q5_1.bin",
         page: "https://huggingface.co/ggerganov/whisper.cpp",
-        recommended: false,
-        recommended_gpu: false,
         language: None,
         license: Some("MIT · OpenAI Whisper, ggml by ggerganov/whisper.cpp"),
         extras: &[],
@@ -285,8 +264,6 @@ pub const CATALOG: &[CatalogEntry] = &[
         engine: ModelEngine::Whisper,
         dest: "ggml-large-v3-turbo-q5_0.bin",
         page: "https://huggingface.co/ggerganov/whisper.cpp",
-        recommended: false,
-        recommended_gpu: false,
         language: None,
         license: Some("MIT · OpenAI Whisper, ggml by ggerganov/whisper.cpp"),
         extras: &[],
@@ -299,8 +276,6 @@ pub const CATALOG: &[CatalogEntry] = &[
         engine: ModelEngine::SherpaOnline,
         dest: crate::core_adapter::ZIPFORMER_HE_DIR,
         page: "https://huggingface.co/ivrit-ai/zipformer2-66m-streaming-he",
-        recommended: true,
-        recommended_gpu: false,
         language: Some(crate::core_adapter::HEBREW),
         license: Some("CC-BY-4.0 · Yakov Kolani / ivrit.ai"),
         extras: LID_FILES,
@@ -318,8 +293,6 @@ pub const CATALOG: &[CatalogEntry] = &[
         engine: ModelEngine::Parakeet,
         dest: crate::core_adapter::PARAKEET_HE_DIR,
         page: "https://huggingface.co/krut42/voice-parakeet-he-int8",
-        recommended: false,
-        recommended_gpu: false,
         language: Some(crate::core_adapter::HEBREW),
         license: Some("CC-BY-4.0 · NVIDIA (nvidia/parakeet-tdt-0.6b-v3), fine-tuned by thewh1teagle, int8 by krut42"),
         extras: LID_FILES,
@@ -341,8 +314,6 @@ pub const CATALOG: &[CatalogEntry] = &[
         engine: ModelEngine::Whisper,
         dest: crate::core_adapter::IVRIT_TURBO_FILE,
         page: "https://huggingface.co/tagidu/ivrit-whisper-large-v3-turbo-ggml-quantized",
-        recommended: false,
-        recommended_gpu: true,
         language: Some(crate::core_adapter::HEBREW),
         license: Some("Apache-2.0 · ivrit.ai (ivrit-ai/whisper-large-v3-turbo); q5_0 by Tagidu"),
         extras: LID_FILES,
@@ -358,8 +329,6 @@ pub const CATALOG: &[CatalogEntry] = &[
         engine: ModelEngine::Llm,
         dest: crate::core_adapter::LEGACY_LLM_FILE,
         page: "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF",
-        recommended: false,
-        recommended_gpu: false,
         language: None,
         license: Some("Apache-2.0 · Qwen (Qwen/Qwen2.5-0.5B-Instruct-GGUF)"),
         extras: &[],
@@ -372,8 +341,6 @@ pub const CATALOG: &[CatalogEntry] = &[
         engine: ModelEngine::Llm,
         dest: crate::core_adapter::DEFAULT_LLM_FILE,
         page: "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF",
-        recommended: true,
-        recommended_gpu: false,
         language: None,
         license: Some("Apache-2.0 · Qwen (Qwen/Qwen2.5-1.5B-Instruct-GGUF)"),
         extras: &[],
@@ -389,8 +356,6 @@ pub const CATALOG: &[CatalogEntry] = &[
         engine: ModelEngine::Llm,
         dest: "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
         page: "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF",
-        recommended: false,
-        recommended_gpu: true,
         language: None,
         license: Some("Llama 3.2 Community License · Built with Llama"),
         extras: &[],
@@ -401,21 +366,55 @@ pub const CATALOG: &[CatalogEntry] = &[
 /// Catalogue id of Llama 3.2 3B (the GPU pick).
 pub const LLAMA32_3B_ID: &str = "llama-3.2-3b-instruct-q4_k_m";
 
-/// The cleanup model Settings recommends: Llama 3.2 3B when local cleanup
-/// runs on a GPU, Qwen2.5 1.5B (the default) on a CPU-only PC (the 0.5B scores
-/// 43 % on the 88-suite, the 1.5B 74 %; benchmark 2026-10-30).
-pub fn recommended_llm(gpu: bool) -> &'static CatalogEntry {
-    CATALOG
+/// Every catalogue model's row in the machine-class table (D117), in one
+/// list: the first id listed for a model is the one its pick downloads
+/// (setup's English row is Parakeet TDT, the Whisper row's default is
+/// whisper base).
+const TABLE: &[(&str, Model)] = &[
+    ("parakeet-tdt-0.6b-v2-int8", Model::Parakeet),
+    ("parakeet-unified-en-0.6b-int8", Model::Parakeet),
+    ("whisper-base", Model::WhisperBase),
+    ("whisper-base-en-q5_1", Model::WhisperBase),
+    ("whisper-base-q5_1", Model::WhisperBase),
+    ("whisper-tiny-en-q5_1", Model::WhisperTiny),
+    ("whisper-small-q5_1", Model::WhisperSmall),
+    ("whisper-small-en-q5_1", Model::WhisperSmall),
+    ("whisper-large-v3-turbo-q5_0", Model::WhisperTurbo),
+    (ZIPFORMER_HE_ID, Model::ZipformerHe),
+    (PARAKEET_HE_ID, Model::ParakeetHe),
+    (IVRIT_TURBO_ID, Model::IvritTurbo),
+    ("qwen2.5-0.5b-instruct-q4_k_m", Model::Qwen05),
+    ("qwen2.5-1.5b-instruct-q4_k_m", Model::Qwen15),
+    (LLAMA32_3B_ID, Model::Llama3b),
+];
+
+/// The table's model for a catalogue entry ([`TABLE`]).
+pub fn table_model(id: &str) -> Option<Model> {
+    TABLE.iter().find(|(i, _)| *i == id).map(|&(_, m)| m)
+}
+
+/// The catalogue entry a table pick downloads ([`TABLE`]).
+pub fn catalog_id(m: Model) -> &'static str {
+    TABLE
         .iter()
-        .find(|e| {
-            e.is_llm()
-                && if gpu {
-                    e.recommended_gpu
-                } else {
-                    e.recommended
-                }
-        })
-        .expect("the catalogue has a CPU and a GPU cleanup pick")
+        .find(|&&(_, t)| t == m)
+        .map(|&(id, _)| id)
+        .expect("every table model has a catalogue row")
+}
+
+/// The table's picks when RAM is not known, with or without a GPU: what
+/// `model_catalog` marks `recommended` / `recommended_gpu`.
+fn default_picks(gpu: bool) -> [&'static str; 3] {
+    let p = model_fit::recommend(&Machine {
+        gpu_llm: gpu,
+        gpu_whisper: gpu,
+        ..Machine::default()
+    });
+    [
+        catalog_id(p.speech),
+        catalog_id(p.cleanup.expect("unknown RAM passes the cleanup bar")),
+        catalog_id(p.hebrew),
+    ]
 }
 
 /// The language-ID model the Hebrew entries bring along (H6/D34; hash and
@@ -431,22 +430,6 @@ pub(crate) const LID_FILES: &[ModelFile] = &[model_file!(
 pub const ZIPFORMER_HE_ID: &str = "zipformer-he-int8";
 pub const PARAKEET_HE_ID: &str = "parakeet-tdt-0.6b-v3-he-int8";
 pub const IVRIT_TURBO_ID: &str = "ivrit-whisper-large-v3-turbo-q5_0";
-
-/// The Hebrew model Settings recommends: ivrit turbo when whisper runs on
-/// a GPU (`whisper_backend` probe), the zipformer on a CPU-only PC.
-pub fn recommended_hebrew(gpu: bool) -> &'static CatalogEntry {
-    CATALOG
-        .iter()
-        .find(|e| {
-            e.language.is_some()
-                && if gpu {
-                    e.recommended_gpu
-                } else {
-                    e.recommended
-                }
-        })
-        .expect("the catalogue has a CPU and a GPU Hebrew pick")
-}
 
 pub fn entry(id: &str) -> Option<&'static CatalogEntry> {
     CATALOG.iter().find(|e| e.id == id)
@@ -606,8 +589,10 @@ pub struct CatalogView {
     pub title: &'static str,
     pub desc: &'static str,
     pub engine: ModelEngine,
+    /// The machine-class table's pick (D117) when RAM is not known, on a
+    /// PC without a GPU; `machine_fit` refines it for this PC.
     pub recommended: bool,
-    /// AI cleanup / Hebrew: recommended when it runs on a GPU.
+    /// The same with a GPU (AI cleanup / Hebrew).
     pub recommended_gpu: bool,
     /// `"he"` for a Hebrew model, absent for a default model.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -644,6 +629,7 @@ pub fn catalog_view(
     can_download: bool,
     engine_built: impl Fn(ModelEngine) -> bool,
 ) -> Vec<CatalogView> {
+    let (cpu, gpu) = (default_picks(false), default_picks(true));
     CATALOG
         .iter()
         .map(|e| CatalogView {
@@ -651,8 +637,8 @@ pub fn catalog_view(
             title: e.title,
             desc: e.desc,
             engine: e.engine,
-            recommended: e.recommended,
-            recommended_gpu: e.recommended_gpu,
+            recommended: cpu.contains(&e.id),
+            recommended_gpu: gpu.contains(&e.id),
             language: e.language,
             license: e.license,
             size: e.size(),
@@ -1260,8 +1246,6 @@ mod tests {
                 ModelEngine::Whisper => "m.bin",
             },
             page: "https://huggingface.co/r",
-            recommended: false,
-            recommended_gpu: false,
             language: None,
             license: None,
             extras: &[],
@@ -1545,8 +1529,8 @@ mod tests {
 
     #[test]
     fn hebrew_recommendation_follows_the_gpu() {
-        assert_eq!(recommended_hebrew(true).id, IVRIT_TURBO_ID);
-        assert_eq!(recommended_hebrew(false).id, ZIPFORMER_HE_ID);
+        assert_eq!(default_picks(true)[2], IVRIT_TURBO_ID);
+        assert_eq!(default_picks(false)[2], ZIPFORMER_HE_ID);
     }
 
     #[test]
@@ -1591,26 +1575,41 @@ mod tests {
         assert!(llm[2].files[0]
             .url
             .contains("/resolve/5ab33fa94d1d04e903623ae72c95d1696f09f9e8/"));
+        // Every catalogue model has a row in the machine-class table (D117),
+        // and every table model's catalogue id maps back to it.
+        for e in CATALOG {
+            assert!(table_model(e.id).is_some(), "{} has no table row", e.id);
+        }
+        for m in Model::ALL {
+            assert_eq!(table_model(catalog_id(m)), Some(m));
+        }
         // Exactly one pick each for a CPU-only PC and for a GPU.
-        assert_eq!(llm.iter().filter(|e| e.recommended).count(), 1);
-        assert_eq!(llm.iter().filter(|e| e.recommended_gpu).count(), 1);
-        // Of the speech models only the Hebrew GPU pick carries the flag.
-        let gpu_speech: Vec<_> = CATALOG
-            .iter()
-            .filter(|e| !e.is_llm() && e.recommended_gpu)
-            .map(|e| e.id)
-            .collect();
-        assert_eq!(gpu_speech, [IVRIT_TURBO_ID]);
+        let v = catalog_view(&tmp("picks"), true, |_| true);
+        let ids = |f: fn(&CatalogView) -> bool| -> Vec<&str> {
+            v.iter().filter(|r| f(r)).map(|r| r.id).collect()
+        };
+        assert_eq!(
+            ids(|r| r.recommended),
+            [
+                "parakeet-tdt-0.6b-v2-int8",
+                ZIPFORMER_HE_ID,
+                "qwen2.5-1.5b-instruct-q4_k_m"
+            ]
+        );
+        assert_eq!(
+            ids(|r| r.recommended_gpu),
+            ["parakeet-tdt-0.6b-v2-int8", IVRIT_TURBO_ID, LLAMA32_3B_ID]
+        );
     }
 
     #[test]
     fn cleanup_recommendation_follows_the_gpu() {
-        assert_eq!(recommended_llm(true).id, LLAMA32_3B_ID);
-        assert_eq!(recommended_llm(false).id, "qwen2.5-1.5b-instruct-q4_k_m");
+        assert_eq!(default_picks(true)[1], LLAMA32_3B_ID);
+        assert_eq!(default_picks(false)[1], "qwen2.5-1.5b-instruct-q4_k_m");
         // The CPU pick is also the default file the app loads without a
         // configured path (D11).
         assert_eq!(
-            recommended_llm(false).dest,
+            entry(default_picks(false)[1]).unwrap().dest,
             crate::core_adapter::DEFAULT_LLM_FILE
         );
         let v = catalog_view(&tmp("rec"), true, |_| true);

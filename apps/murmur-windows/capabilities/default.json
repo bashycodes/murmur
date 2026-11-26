@@ -38,6 +38,7 @@
     "allow-model-catalog",
     "allow-lid-model-present",
     "allow-llm-backend",
+    "allow-machine-fit",
     "allow-whisper-backend",
     "allow-model-download-start",
     "allow-model-import-start",
