@@ -100,7 +100,7 @@ object SettingsPages {
 
     private val PACKAGE = Regex("""[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+""")
 
-    /** The form pages' inputs as typed. ("Transcribe while I speak" is a switch on [Page.SPEECH] now.) */
+    /** The form pages' inputs as typed. */
     data class Input(val endpointMs: String, val capMinutes: String, val denylist: String) {
         companion object {
             fun of(s: Settings) = Input(

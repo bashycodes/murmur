@@ -47,7 +47,7 @@
     allow_server: true, allow_client: true, route_order: ["server", "client", "cloud"], host: "100.64.0.10", port: 7313,
     tls: false, tls_pin_sha256: "", token: "dev-token-0123456789abcdef", connect_timeout_ms: 800,
     commit_timeout_base_ms: 3000, health_ttl_s: 30, keep_local_warm: true, show_engine_badge: true, dev_unlocked: false,
-    decode_while_speaking: true, parakeet_decoding: "auto",
+    parakeet_decoding: "auto",
   };
   // D28 OpenRouter: one key (never returned), two consented uses, a catalogue.
   let orKey = "";

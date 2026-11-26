@@ -117,10 +117,19 @@ class FieldContextBuilderTest {
 
     // ---- D22 (docs/proposals/streaming-asr-shell-api.md §1-2, §5) ----
 
-    @Test fun decodeWhileSpeakingDefaultsOnAndSends800() {
-        assertTrue(Settings().decodeWhileSpeaking)
-        assertEquals(800, Settings().toSessionConfig(emptyList()).segmentPauseMs)
-        assertEquals("off = field omitted (today's behaviour)", null, Settings(decodeWhileSpeaking = false).toSessionConfig(emptyList()).segmentPauseMs)
+    @Test fun everyDictationSendsLiveTranscription() {
+        // D114: no setting; every engine, language and cleanup route asks for it. The core runs it
+        // where the engine can (whisper, Parakeet, the Hebrew zipformer, a D22 server).
+        for (engine in dev.murmur.core.AsrEngine.entries) for (lang in listOf("auto", "en", "he")) for (cloud in listOf(false, true)) {
+            val c = Settings(asrEngine = engine).toSessionConfig(emptyList(), language = lang, cloudCleanup = cloud)
+            assertEquals("$engine $lang cloud=$cloud", 800, c.segmentPauseMs)
+        }
+        assertTrue(dev.murmur.core.CoreJson.encode(Settings().toSessionConfig(emptyList())).contains("\"segment_pause_ms\":800"))
+    }
+
+    @Test fun callRecordingsStillNeverSegment() {
+        // Routes that can't stream behave as before: a call or meeting chunk is one whole decode.
+        assertNull(dev.murmur.calls.CallEngine.session(Settings(), emptyList(), "auto").segmentPauseMs)
     }
 
     @Test fun endpointDefaultMigratesOnlyTheOldDefault() {

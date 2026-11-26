@@ -359,6 +359,61 @@ fn no_key_or_no_consent_never_contacts_the_provider() {
     assert_eq!(srv.count(), 0, "C1");
 }
 
+/// Three phrases with 1.2 s pauses (each phrase past the core's 4 s
+/// segment minimum), then release. Returns the provider's request count
+/// just before the release.
+fn dictate_with_pauses(r: &mut Rig, srv: &MockServer) -> usize {
+    let start = r.t.load(Ordering::SeqCst) + 10_000;
+    r.at(start, Input::Hotkey(HotkeyAction::PttDown));
+    let pause = vec![0i16; 1200 * 16];
+    for (i, ms) in [4500, 4500, 2000].into_iter().enumerate() {
+        if i > 0 {
+            r.os.feed(&pause);
+        }
+        r.os.feed(&speech(ms));
+    }
+    let before = srv.count();
+    r.at(start + 15_000, Input::Hotkey(HotkeyAction::PttUp));
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while r.c.machine().is_active() {
+        let left = deadline.saturating_duration_since(Instant::now());
+        let i = r.rx.recv_timeout(left).expect("completion in time");
+        r.c.handle(i);
+    }
+    before
+}
+
+/// D114: live transcription is always on. This PC's engine decodes the
+/// finished phrases while the user keeps talking.
+#[test]
+fn live_transcription_splits_a_dictation_on_this_pc() {
+    let (srv, _g) = mock(ok_reply());
+    let d = dev(true, false, vec![Route::Client], true);
+    let mut r = rig(&d, &*keyed());
+    dictate_with_pauses(&mut r, &srv);
+    assert!(said(&r.os.pastes(), LOCAL_SAYS), "{:?}", r.os.pastes());
+    let last = r.last();
+    assert_eq!(last.engine.as_deref(), Some("local"));
+    assert!(last.segments >= 2, "{last:?}");
+}
+
+/// D114 with the cloud route, which can't stream (D18, C5): the same
+/// always-on session uploads once, at release, as before the switch went.
+#[test]
+fn live_transcription_leaves_the_cloud_route_one_upload_at_release() {
+    let (srv, _g) = mock(ok_reply());
+    let d = dev(true, true, vec![Route::Cloud, Route::Client], true);
+    let mut r = rig(&d, &*keyed());
+    let before_release = dictate_with_pauses(&mut r, &srv);
+    assert!(said(&r.os.pastes(), CLOUD_SAYS), "{:?}", r.os.pastes());
+    assert_eq!(before_release, 0, "nothing uploaded while speaking");
+    assert_eq!(srv.count(), 1);
+    let last = r.last();
+    assert_eq!(last.engine.as_deref(), Some("cloud"));
+    assert_eq!(last.segments, 0, "{last:?}");
+    r.assert_no_key();
+}
+
 #[test]
 fn allow_cloud_off_is_silent_and_local() {
     let (srv, _g) = mock(ok_reply());

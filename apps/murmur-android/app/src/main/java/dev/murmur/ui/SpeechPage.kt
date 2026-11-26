@@ -35,8 +35,8 @@ import java.io.File
  *                  OpenRouter); only the switch turns it on or off.
  *   On this phone  the model in use (name, language, size, import date) → engine choice and imports;
  *                  "Import another model"; "Hebrew model" (D37: visible here, not only on the engine
- *                  page); Keep both languages loaded (D54); keep it loaded (hybrid);
- *                  Transcribe while I speak.
+ *                  page); Keep both languages loaded (D54); keep it loaded (hybrid). Only
+ *                  with the phone's engine. Live transcription has no switch: always on (D114).
  * "Use dictionary words" from the design is left out: Android has no such switch (Parakeet's beam
  * search mode stays in Developer settings → Engine options).
  */
@@ -61,7 +61,6 @@ internal class SpeechPage(
     private var hebrewRow: DevUi.NavRow? = null
     private var keepWarm: DevUi.ToggleRow? = null
     private var keepBoth: DevUi.ToggleRow? = null
-    private lateinit var transcribe: DevUi.ToggleRow
     private var reordering = false
     /** Set by the activity from its health probe; [checking] while one runs. */
     var health: HealthReport? = null
@@ -81,10 +80,11 @@ internal class SpeechPage(
             }.also(::addView)
             if (DevPages.engines(app.dev.load(), caps).size > 1) orderRow = changeOrderRow().also(::addView)
         }
-        val s = app.settings.load()
-        col.sectionLabel(if (caps.local) "On this phone" else "Options")
-        col.card {
-            if (caps.local) {
+        // Without the phone's engine (remote flavor) there is nothing more to show here.
+        if (caps.local) {
+            val s = app.settings.load()
+            col.sectionLabel("On this phone")
+            col.card {
                 modelBlock()
                 // D37: the Hebrew model was only reachable through the model block → engine page.
                 hebrewRow = navRow(R.drawable.ic_set_language, "Hebrew model") { activity.startActivity(ModelImportActivity.hebrewIntent(activity)) }
@@ -96,8 +96,6 @@ internal class SpeechPage(
                         .also { it.onChange { on -> saveDev(app.dev.load().copy(keepLocalWarm = on)) } }
                 }
             }
-            transcribe = toggleRow("Transcribe while I speak", "Long dictations finish sooner. Not used for OpenRouter", s.decodeWhileSpeaking)
-                .also { it.onChange { on -> update { copy(decodeWhileSpeaking = on) } } }
         }
         refresh()
     }
@@ -179,7 +177,6 @@ internal class SpeechPage(
             if (it.isChecked != s.keepBothLanguages) it.isChecked = s.keepBothLanguages
             it.setDescription(keepBothSummary(s))
         }
-        if (transcribe.isChecked != s.decodeWhileSpeaking) transcribe.isChecked = s.decodeWhileSpeaking
     }
 
     private fun fileName(path: String?) = path?.let { File(it).name }

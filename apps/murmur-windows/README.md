@@ -157,12 +157,11 @@ hides it again):
 * Saving applies to the next dictation (no restart; the model reloads
   only when the Parakeet decoding below changed).
 * **Speech decoding** (D22, `docs/proposals/streaming-asr-shell-api.md`):
-  **Decode while speaking** (default on; `developer.decode_while_speaking`)
-  sends `segment_pause_ms: 800` with every session, push-to-talk and
+  live transcription (always on since D114, no setting) sends
+  `segment_pause_ms: 800` with every session, push-to-talk and
   hands-free, so each finished phrase is transcribed while you keep
-  talking and only the tail is left at release; off omits the field (one
-  decode after you stop, as before). The core turns it off by itself for
-  cloud providers. **Parakeet decoding** (`developer.parakeet_decoding`):
+  talking and only the tail is left at release. The core leaves it out
+  for cloud providers (one upload at release). **Parakeet decoding** (`developer.parakeet_decoding`):
   `auto` (default: beam with dictionary words, greedy otherwise; keeps a
   second recognizer, ≈ +0.6 GB RAM) or `greedy` (one recognizer, no
   dictionary biasing). Whisper ignores it.
@@ -621,7 +620,7 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - [ ] Learn from edits ignores password fields, and a chat message sent with "press enter".
 - [ ] Dictionary editor: add/edit/delete rows, snippet with a multi-line body, Save; export writes `Downloads\murmur-dictionary.json`; importing that file (merge) changes nothing; importing the Android app's export works.
 - [ ] Dictating into silence shows "No speech heard" above the pill for ~1.5 s, with no error sound.
-- [ ] (2 min) Decode while speaking (D22): with the Developer toggle on, dictate ~30 s with pauses → text appears ≈ 0.5-1 s after release; the debug line shows `segments` ≥ 2 and `pre_asr_ms` > 0. Toggle off → `segments` 0 and release → text grows with length again.
+- [ ] (2 min) Live transcription (D22, always on since D114): dictate ~30 s with pauses → text appears ≈ 0.5-1 s after release; the debug line shows `segments` ≥ 2 and `pre_asr_ms` > 0. Settings → Speech to text has no switch for it. With the cloud engine first, the same dictation shows `segments` 0 (one upload at release).
 - [ ] Settings → General: "Auto-format punctuation, fillers and corrections" off → "comma" stays a word; Engine = Parakeet with the model folder in `models\` (parakeet build) → tray shows the folder name and jfk-style speech pastes.
 
 - [ ] Debug log: Developer → tick "Debug log (includes transcripts)", dictate into Notepad → the count says 1 entry, Open log folder shows `dictations.jsonl` with `"mode":"hold"`, `"insert":{"outcome":"inserted",…}`, `"target":"notepad.exe"`; stop the server and dictate (server-first) → `"fallback":"connect_failed"`; untick → the delete prompt appears, Delete → the file is gone; dictate again → no file.

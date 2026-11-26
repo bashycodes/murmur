@@ -378,9 +378,10 @@ data class SessionConfig(
      */
     val endpointSilenceMs: Int? = null,
     /**
-     * D22 "Decode while speaking": decode each finished phrase while the user keeps talking,
-     * cutting in pauses of at least this long (shell sends 800). Null (omitted) = off. The core
-     * turns it off by itself for engines that must not see audio before commit (cloud, D18).
+     * D22 live transcription: decode each finished phrase while the user keeps talking, cutting
+     * in pauses of at least this long (dictations always send 800, D114). Null (omitted) = off,
+     * as for call recordings. The core turns it off by itself for engines that must not see audio
+     * before commit (cloud, D18).
      */
     val segmentPauseMs: Int? = null,
 )

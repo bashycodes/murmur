@@ -53,7 +53,6 @@ class SettingsStore(context: Context) {
         spokenCleanup = sp.getBoolean("spoken_cleanup", true),
         asrEngine = dev.murmur.core.AsrEngine.entries.firstOrNull { it.wire == sp.getString("asr_engine", null) } ?: dev.murmur.core.AsrEngine.WHISPER,
         endpointSilenceMs = EndpointDefault.load(kv),
-        decodeWhileSpeaking = sp.getBoolean("decode_while_speaking", true),
         styles = loadStyles(),
         appBuckets = WritingStyle.parseOverrides(sp.getString("app_buckets", null).orEmpty()).map,
         learnFromEdits = sp.getBoolean("learn_from_edits", true),
@@ -116,7 +115,6 @@ class SettingsStore(context: Context) {
             .putBoolean(AUTO_MIGRATED, true)
             .also { e -> for (d in OLD_DEFAULTS) e.putBoolean(d.flag, true) }
             .putString(ThemeDefault.key, s.theme.key)
-            .putBoolean("decode_while_speaking", s.decodeWhileSpeaking)
             .putString("style_personal", s.styles.personal.wire)
             .putString("style_work", s.styles.work.wire)
             .putString("style_email", s.styles.email.wire)
@@ -578,7 +576,8 @@ class HistoryStore(
 }
 
 /**
- * A one-time "an install from before keeps the old default" step for a changed default. Each runs
+ * A one-time step for a changed default: usually "an install from before keeps the old default",
+ * or (D114, [LiveTranscriptionAlways]) a removed setting's stored value is dropped. Each runs
  * once (until its [flag] is set, by the step or by any save) against one emptiness check taken
  * before any step writes ([keepOldDefaults]): only an empty store is a fresh install.
  */
@@ -588,7 +587,7 @@ internal interface OldDefault {
 }
 
 /** Every [OldDefault], in order; [SettingsStore.save] sets all their flags. */
-internal val OLD_DEFAULTS: List<OldDefault> = listOf(StrengthDefault, ThemeDefault, EndpointDefault)
+internal val OLD_DEFAULTS: List<OldDefault> = listOf(StrengthDefault, ThemeDefault, EndpointDefault, LiveTranscriptionAlways)
 
 internal fun keepOldDefaults(kv: KeyValue, empty: Boolean) {
     for (d in OLD_DEFAULTS) d.keepOld(kv, empty)
@@ -663,3 +662,20 @@ internal object EndpointDefault : KeepWhenMissing("endpoint_default_off", "endpo
     }
 }
 
+/**
+ * D114: live transcription (D22, "Transcribe while I speak") is always on and no longer a
+ * setting. The stored `decode_while_speaking` choice, `false` included, is dropped once; nothing
+ * reads it any more, so an older backup restored later only loses the stale key again.
+ */
+internal object LiveTranscriptionAlways : OldDefault {
+    override val flag = "live_transcription_always"
+    const val OLD_KEY = "decode_while_speaking"
+
+    override fun keepOld(kv: KeyValue, empty: Boolean) {
+        if (kv.getBoolean(flag, false)) return
+        kv.edit {
+            putBoolean(flag, true)
+            remove(OLD_KEY)
+        }
+    }
+}

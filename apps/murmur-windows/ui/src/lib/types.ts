@@ -19,7 +19,6 @@ export interface DevForm {
   keep_local_warm: boolean;
   show_engine_badge: boolean;
   dev_unlocked: boolean;
-  decode_while_speaking: boolean;
   parakeet_decoding: string;
 }
 
