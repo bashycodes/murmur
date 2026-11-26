@@ -1,0 +1,20 @@
+--- a/sherpa-onnx/csrc/offline-transducer-modified-beam-search-nemo-decoder.cc
++++ b/sherpa-onnx/csrc/offline-transducer-modified-beam-search-nemo-decoder.cc
+@@ -261,12 +261,15 @@
+         LogSoftmax(token_logits, token_vocab_size, 1);
+ 
+         // Apply context boosting BEFORE top-k selection so hotword tokens
+-        // have a chance to be selected even if their base probability is low
++        // have a chance to be selected even if their base probability is low.
++        // Each arc's own token_score is used, so a per-phrase score
++        // ("phrase :score") also sets this bonus. Without per-phrase scores
++        // token_score equals hotwords_score, as before.
+         if (context_graphs[b] != nullptr && hyp.context_state != nullptr) {
+           for (const auto &pair : hyp.context_state->next) {
+             int32_t token_id = pair.first;
+             if (token_id >= 0 && token_id < token_vocab_size) {
+-              token_logits[token_id] += hotwords_score_;
++              token_logits[token_id] += pair.second->token_score;
+             }
+           }
+         }

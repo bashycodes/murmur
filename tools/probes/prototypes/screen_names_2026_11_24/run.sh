@@ -10,6 +10,9 @@
 # MURMUR_SCREEN_HOTWORDS_SCORE=<s> sets the screen names' hotword score (sweep).
 # Needs the env from PROJECT_CONTEXT.md "How to verify" (BINDGEN_EXTRA_CLANG_ARGS,
 # SHERPA_ONNX_LIB_DIR) and CARGO_TARGET_DIR. One model run at a time.
+# SCREEN_NAMES_LIB=<dir> (2026-11-26, option A) runs the built test binary
+# directly with that dir first on LD_LIBRARY_PATH, to decode with another
+# libsherpa-onnx-c-api.so (cargo test would put SHERPA_ONNX_LIB_DIR first).
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../../.." && pwd)
@@ -25,7 +28,19 @@ else
   export MURMUR_SCREEN_ASR="${EN_ASR:?}"
 fi
 cd "$root"
-cargo test -j 2 --offline -p murmur-core --features wav,parakeet --release \
-  --test screen_names_e2e -- --nocapture --test-threads 1
+if [ -n "${SCREEN_NAMES_LIB:-}" ]; then
+  bin=$(cargo test -j 2 --offline -p murmur-core --features wav,parakeet --release \
+    --test screen_names_e2e --no-run --message-format=json \
+    | "${PYTHON:-python3}" -I -c 'import json,sys
+for l in sys.stdin:
+    m = json.loads(l)
+    if m.get("reason") == "compiler-artifact" and m.get("executable") and m["target"]["name"] == "screen_names_e2e":
+        print(m["executable"])')
+  LD_LIBRARY_PATH="$SCREEN_NAMES_LIB${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+    "$bin" --nocapture --test-threads 1
+else
+  cargo test -j 2 --offline -p murmur-core --features wav,parakeet --release \
+    --test screen_names_e2e -- --nocapture --test-threads 1
+fi
 "${PYTHON:-python3}" -I "$here/score.py" "$out" --manifest "$MURMUR_SCREEN_MANIFEST" --lang "$lang"
 echo "$out"

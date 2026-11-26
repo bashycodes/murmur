@@ -30,6 +30,8 @@
 //! candidates and that dictionary. `MURMUR_PARAKEET_HOTWORDS_SCORE` sets
 //! Parakeet's base hotword score for a comparison.
 //!
+//! Each `<mode>_ms` is that decode's wall time (2026-11-26, option A latency).
+//!
 //! `cargo test -p murmur-core --features wav,parakeet --release --test screen_names_e2e -- --nocapture`
 
 use std::io::Write;
@@ -200,7 +202,9 @@ fn screen_words_as_hotwords() {
             if mode.ends_with("_full") && full.is_empty() {
                 continue;
             }
+            let t0 = std::time::Instant::now();
             let text = engine.transcribe(&pcm, &req).unwrap().text;
+            rec[format!("{mode}_ms")] = json!(t0.elapsed().as_millis() as u64);
             rec[mode] = json!(text);
             rec[format!("{mode}_hotwords")] = json!(murmur_core::asr::hotword_phrases(&req).len());
         }

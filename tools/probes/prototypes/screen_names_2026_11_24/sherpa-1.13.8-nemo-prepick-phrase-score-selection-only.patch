@@ -1,0 +1,30 @@
+--- a/sherpa-onnx/csrc/offline-transducer-modified-beam-search-nemo-decoder.cc
++++ b/sherpa-onnx/csrc/offline-transducer-modified-beam-search-nemo-decoder.cc
+@@ -261,18 +261,24 @@
+         LogSoftmax(token_logits, token_vocab_size, 1);
+ 
+         // Apply context boosting BEFORE top-k selection so hotword tokens
+-        // have a chance to be selected even if their base probability is low
++        // have a chance to be selected even if their base probability is low.
++        // Each arc's own token_score is used, so a per-phrase score
++        // ("phrase :score") also sets this bonus. The boost only picks the
++        // top-k tokens; it is not kept in the hypothesis score (the context
++        // graph adds its own score below).
++        std::vector<float> selection(token_logits,
++                                     token_logits + token_vocab_size);
+         if (context_graphs[b] != nullptr && hyp.context_state != nullptr) {
+           for (const auto &pair : hyp.context_state->next) {
+             int32_t token_id = pair.first;
+             if (token_id >= 0 && token_id < token_vocab_size) {
+-              token_logits[token_id] += hotwords_score_;
++              selection[token_id] += pair.second->token_score;
+             }
+           }
+         }
+ 
+         auto top_k_tokens =
+-            TopkIndex(token_logits, token_vocab_size, max_active_paths_);
++            TopkIndex(selection.data(), token_vocab_size, max_active_paths_);
+ 
+         // Determine duration/skip for TDT
+         int32_t predicted_skip = 1;  // Default: advance by 1 frame
