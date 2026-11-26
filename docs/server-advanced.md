@@ -266,6 +266,31 @@ For a user install drop `sudo` and pass `--config ~/.config/murmur-server/config
 * The key id (`k-` + 16 hex digits) is stable and never reused; the log's
   `connected` and `result` lines carry it, never the secret.
 
+### Team dictionary
+
+One word list per server, shared by everyone who uses it (D114). Every app
+downloads it and uses it like its own dictionary words (help hearing them,
+the AI cleanup spelling them, "heard as" rewrites); a word in someone's own
+dictionary wins over the same word here. Admin keys edit it in the apps'
+**Users & keys**; every key can read it.
+
+* API: `GET /v1/dictionary` (any key; `ETag`, `If-None-Match` → 304),
+  `POST /v1/admin/dictionary` `{"word": "acme corp", "replacement": "AcmeCorp"}`
+  (adds, or replaces the entry with the same word, case and spacing
+  ignored), `DELETE /v1/admin/dictionary` `{"word": "acme corp"}`. Edits
+  need an admin key (403 otherwise). Types: `crates/murmur-protocol/src/dictionary.rs`.
+* Entries: at most 64 characters and 6 words each (word and replacement),
+  no line breaks, control characters, `<` `>` `{` `}` `[` `]`, backticks or
+  backslashes; at most 500
+  entries. A refused entry gets 400 with the reason. No snippets.
+* File: `team-dictionary.json` in the state dir next to `keys.json` (0600,
+  replaced atomically). Back it up with the keys.
+* Apps fetch it at start and when Settings opens (one request, usually a
+  304) and keep the last copy, so they use it offline too. An edit reaches
+  other devices at their next start or Settings open.
+* With `auth = "none"` there are no admin keys, so there is no team
+  dictionary (the routes answer 404 `auth_off`).
+
 ### Upgrade from the single token
 
 Nothing to do. The first start (or the first `keys` command) imports the
