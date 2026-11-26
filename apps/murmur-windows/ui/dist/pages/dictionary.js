@@ -12,6 +12,8 @@ import { $, button, el, setStatus } from "../lib/dom.js";
 import { ICON, iconEl, iconSvg } from "../lib/icons.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { prefsStore } from "../lib/prefs-store.js";
+import { teamRows, teamSummary } from "../lib/team-dict.js";
+import { teamStore } from "../lib/team-store.js";
 // Page-local icons (24x24 stroke paths, same style as lib/icons.ts).
 const SORT_ICON = "M8 4v16M4 8l4-4 4 4M16 20V4M12 16l4 4 4-4";
 const EDIT_ICON = "M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4";
@@ -58,6 +60,13 @@ const DICT_TEMPLATE = `
     <div class="lw-dict-status"><span id="dict_status" class="lw-status"></span></div>
   </div>
   <p class="lw-dict-note">Words here help Parakeet and Whisper hear names correctly, and the AI cleanup spell them your way. With "heard as", what was heard is always rewritten. They're sent to the cloud only if you allow it in Settings.</p>
+
+  <section class="lw-section" id="team_section" hidden>
+    <h3 class="fl-group-title">Team dictionary</h3>
+    <p class="lw-dict-note">Shared by everyone using your server, and used like your own words. Only the server's admin can change it (Settings → Users &amp; keys). When a word is also in your list above, yours is used.</p>
+    <div class="fl-list" id="team_rows"></div>
+    <p class="lw-status-line" id="team_note"></p>
+  </section>
 
   <section class="lw-section">
     <h3 class="fl-group-title">Import and export</h3>
@@ -357,6 +366,30 @@ function renderList(snippet) {
         ? ["No snippets yet", 'Add one: say "my calendar link", get the link pasted.']
         : ["No words yet", "Add names and jargon so they're heard and spelled your way."]);
 }
+/** The server's team dictionary, read-only; hidden without a server. */
+function renderTeam() {
+    const v = teamStore.get();
+    $("team_section").hidden = !v.configured;
+    if (!v.configured)
+        return;
+    $("team_rows").replaceChildren(...teamRows(v.entries, dict).map((r) => {
+        const row = el("div", "fl-list-row lw-dict-row");
+        const text = el("span", "lw-dict-text");
+        if (r.heard)
+            text.append(el("span", "lw-heard", r.heard), el("span", "lw-arrow", "→"));
+        text.append(el("span", "lw-word", r.word));
+        row.append(text);
+        if (r.overridden) {
+            const b = el("span", "fl-badge fl-badge-light", "yours is used");
+            b.title = "Your dictionary has this word too";
+            row.append(b);
+        }
+        return row;
+    }));
+    const note = $("team_note");
+    note.textContent = v.error ?? teamSummary(v.entries, dict);
+    note.classList.toggle("err", !!v.error);
+}
 function render() {
     // An index being edited may have moved or gone after a reload.
     for (const k of ["dict", "snip"]) {
@@ -366,6 +399,7 @@ function render() {
     }
     renderList(false);
     renderList(true);
+    renderTeam();
 }
 // ------------------------------------------------------------------ search, tabs, sort
 function wireSearch(prefix) {
@@ -509,6 +543,7 @@ export const dictionaryPage = {
             });
         });
         void onEvent("suggestions:changed", () => void loadSuggestions());
+        teamStore.onChange(renderTeam);
         // Every add / edit / delete is saved at once, so the saved list is
         // the page's list: take changes made elsewhere (e.g. an import on the
         // other page, or a suggestion accepted) whenever they differ.
@@ -525,6 +560,7 @@ export const dictionaryPage = {
     },
     show() {
         void loadSuggestions();
+        teamStore.refreshIfOlder(30000);
     },
 };
 export const snippetsPage = {

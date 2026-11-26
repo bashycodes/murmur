@@ -735,7 +735,7 @@ impl Controller {
                 dictionary: crate::insights::dictionary_fixes(
                     &r.asr_text,
                     &plain,
-                    &self.prefs.read().unwrap().dictionary,
+                    &self.prefs.read().unwrap().dictation_dictionary(),
                 ),
             };
             let day = crate::insights::local_date(now);
@@ -905,7 +905,7 @@ impl Controller {
                 let bounded = learn::bound_edit(&pasted, &edited);
                 let cands = core.learn_edit(&pasted, &bounded);
                 let Some(store) = suggestions else { return };
-                let dict = live_prefs.read().unwrap().dictionary.clone();
+                let dict = live_prefs.read().unwrap().dictation_dictionary();
                 let mut s = store.lock().unwrap();
                 if s.data.add(&cands, &ctx.app_id, history::now_ms(), &dict) > 0 {
                     if let Err(e) = s.save() {
@@ -1654,7 +1654,7 @@ impl Controller {
                 // "" = automatic: the other installed keyboard language (D58).
                 target: Some(p.translate_to.clone()).filter(|t| !t.is_empty()),
                 installed: self.platform.keyboard_languages(),
-                dictionary: crate::core_adapter::to_core_dict(&p.dictionary),
+                dictionary: crate::core_adapter::to_core_dict(&p.dictation_dictionary()),
             }
         };
         let core = self.core.clone();

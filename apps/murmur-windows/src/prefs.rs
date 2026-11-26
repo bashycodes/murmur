@@ -223,6 +223,12 @@ pub struct Prefs {
     /// host (`mail.example.com`) → bucket, over the built-in lists.
     pub app_buckets: BTreeMap<String, StyleBucket>,
     pub dictionary: Vec<DictEntry>,
+    /// The server's team dictionary (`crate::team_dictionary`): the last
+    /// list fetched or cached for the saved server, empty without one. In
+    /// memory only (never in `prefs.json` or the page's prefs); merged under
+    /// `dictionary` by [`Prefs::dictation_dictionary`].
+    #[serde(skip)]
+    pub team_dictionary: Vec<DictEntry>,
     pub paste_method: PasteMethod,
     pub restore_clipboard: bool,
     /// Override for the wait between Ctrl+V and clipboard restore; `None` =
@@ -329,6 +335,7 @@ impl Default for Prefs {
             styles: default_styles(),
             app_buckets: BTreeMap::new(),
             dictionary: Vec::new(),
+            team_dictionary: Vec::new(),
             paste_method: PasteMethod::CtrlV,
             restore_clipboard: true,
             paste_restore_delay_ms: None,
@@ -657,15 +664,39 @@ impl Prefs {
         format!("Murmur — hold {} to dictate", self.shortcuts.ptt)
     }
 
+    /// The dictionary dictation uses: the personal entries (blank words
+    /// dropped, order kept), then the team entries no personal entry has
+    /// (`murmur_core::dictionary::with_team`: a personal entry wins on the
+    /// same word, case and spacing ignored; no team snippets).
+    pub fn dictation_dictionary(&self) -> Vec<DictEntry> {
+        let personal: Vec<DictEntry> = self
+            .dictionary
+            .iter()
+            .filter(|e| !e.word.trim().is_empty())
+            .cloned()
+            .collect();
+        if self.team_dictionary.is_empty() {
+            return personal;
+        }
+        let team = crate::core_adapter::to_core_dict(&self.team_dictionary).entries;
+        murmur_core::dictionary::with_team(
+            &crate::core_adapter::to_core_dict(&personal).entries,
+            &team,
+        )
+        .entries
+        .into_iter()
+        .map(|e| DictEntry {
+            word: e.word,
+            replacement: e.replacement,
+            is_snippet: e.is_snippet,
+        })
+        .collect()
+    }
+
     pub fn session_config(&self) -> SessionConfig {
         SessionConfig {
             languages: self.languages.clone(),
-            dictionary: self
-                .dictionary
-                .iter()
-                .filter(|e| !e.word.trim().is_empty())
-                .cloned()
-                .collect(),
+            dictionary: self.dictation_dictionary(),
             styles: self.styles.clone(),
             cleanup_level: self.cleanup_level,
             raw_mode: self.raw_mode,
@@ -1083,6 +1114,31 @@ mod tests {
         assert_eq!(c.dictionary[1].replacement.as_deref(), Some("GitHub"));
         assert!(c.dictionary[2].is_snippet);
         assert_eq!(c.partial_interval_ms, None, "live preview off by default");
+        // The team list follows; a personal entry wins on the same word.
+        let team = |w: &str, r: Option<&str>| DictEntry {
+            word: w.into(),
+            replacement: r.map(Into::into),
+            is_snippet: false,
+        };
+        p.team_dictionary = vec![
+            team("KORRA", Some("Korra Labs")),
+            team("Quillon", None),
+            team("acme corp", Some("AcmeCorp")),
+        ];
+        let words: Vec<String> = p
+            .session_config()
+            .dictionary
+            .iter()
+            .map(|e| e.word.clone())
+            .collect();
+        assert_eq!(words, ["Korra", "gh", "my address", "Quillon", "acme corp"]);
+        assert_eq!(
+            p.session_config().dictionary[4].replacement.as_deref(),
+            Some("AcmeCorp")
+        );
+        // Never saved.
+        assert!(!serde_json::to_string(&p).unwrap().contains("Quillon"));
+        p.team_dictionary.clear();
         assert_eq!(c.max_samples, p.policy().max_samples());
         assert_eq!(c.cleanup_level, CleanupLevel::Medium);
         assert!(c.spoken_cleanup, "core-p1 default on");

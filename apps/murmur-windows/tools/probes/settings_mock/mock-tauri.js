@@ -934,6 +934,31 @@
       return { key: structuredClone(k) };
     },
   });
+  // The server's team dictionary (invented words).
+  const team = [
+    { word: "Quillon", replacement: null },
+    { word: "acme corp", replacement: "AcmeCorp" },
+  ];
+  const teamKey = (w) => w.trim().replace(/\s+/g, " ").toLowerCase();
+  const teamView = () => ({ configured: true, entries: structuredClone(team) });
+  Object.assign(cmds, {
+    team_dictionary_refresh: () => teamView(),
+    team_dictionary_add: ({ word, replacement }) => {
+      adminCheck();
+      const e = { word: word.trim(), replacement: replacement.trim() || null };
+      const i = team.findIndex((x) => teamKey(x.word) === teamKey(e.word));
+      if (i >= 0) team[i] = e;
+      else team.push(e);
+      return teamView();
+    },
+    team_dictionary_remove: ({ word }) => {
+      adminCheck();
+      const i = team.findIndex((x) => teamKey(x.word) === teamKey(word));
+      if (i < 0) throw `"${word}" is not in the team dictionary`;
+      team.splice(i, 1);
+      return teamView();
+    },
+  });
   window.__mockCalls = [];
   window.__TAURI__ = {
     core: {

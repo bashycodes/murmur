@@ -17,6 +17,7 @@ import { ICON, iconEl } from "./lib/icons.js";
 import { onEvent } from "./lib/ipc.js";
 import { prefsStore } from "./lib/prefs-store.js";
 import { router } from "./lib/router.js";
+import { teamStore } from "./lib/team-store.js";
 import { followSystemTheme } from "./lib/theme.js";
 import { views } from "./lib/views.js";
 import { onboarding } from "./onboarding/index.js";
@@ -348,6 +349,14 @@ document.addEventListener("click", (e) => {
     closeSettings();
     void onboarding.open();
 });
+// The server's team dictionary: fetched again (usually a 304) when Settings
+// loads or comes back into view, and after a server save.
+void teamStore.refresh();
+document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible")
+        teamStore.refreshIfOlder(30000);
+});
+views.onDev(() => teamStore.refreshIfOlder(2000));
 router.go("home");
 void load().then(() => {
     if (prefsStore.get()?.onboarded === false)

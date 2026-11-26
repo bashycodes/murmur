@@ -60,19 +60,26 @@ pub trait AdminApi {
     fn revoke(&self, id: &str) -> Result<RevokedKey, String>;
 }
 
+/// The admin API client for the saved server and token (or why there is
+/// none). The team dictionary (`crate::team_dictionary`) uses it too.
+#[cfg(feature = "remote")]
+pub fn client(dev: &DevSettings) -> Result<murmur_remote::admin::AdminClient, String> {
+    let token = dev.token();
+    if dev.server.host.is_empty() || token.is_empty() {
+        return Err("save a server address and token first".into());
+    }
+    let cfg = crate::router_adapter::server_config(dev, &token)?;
+    Ok(murmur_remote::admin::AdminClient::new(
+        cfg,
+        &format!("murmur-windows {}", murmur_build_info::FULL),
+    ))
+}
+
 /// The real client for the saved settings (or why there is none).
 pub fn for_settings(dev: &DevSettings) -> Result<Box<dyn AdminApi + Send>, String> {
     #[cfg(feature = "remote")]
     {
-        let token = dev.token();
-        if dev.server.host.is_empty() || token.is_empty() {
-            return Err("save a server address and token first".into());
-        }
-        let cfg = crate::router_adapter::server_config(dev, &token)?;
-        Ok(Box::new(Remote(murmur_remote::admin::AdminClient::new(
-            cfg,
-            &format!("murmur-windows {}", murmur_build_info::FULL),
-        ))))
+        Ok(Box::new(Remote(client(dev)?)))
     }
     #[cfg(not(feature = "remote"))]
     {

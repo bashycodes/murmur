@@ -468,6 +468,8 @@ fn save_prefs(app: &AppHandle, state: &AppState, mut prefs: Prefs) -> Result<(),
     // The Developer tab saves its own section (dev_set); a General/AI save
     // from a page loaded earlier must not roll it back.
     prefs.developer = state.prefs.read().unwrap().developer.clone();
+    // The team dictionary is the server's, never the page's.
+    prefs.team_dictionary = state.prefs.read().unwrap().team_dictionary.clone();
     // Whatever the page sent, what is saved now is the current schema.
     prefs.prefs_rev = crate::prefs::PREFS_REV;
     prefs.dictionary = crate::dictionary::normalize(prefs.dictionary);
@@ -524,7 +526,7 @@ fn save_prefs(app: &AppHandle, state: &AppState, mut prefs: Prefs) -> Result<(),
     }
     let pending = {
         let mut s = state.suggestions.lock().unwrap();
-        s.data.prune_known(&prefs.dictionary);
+        s.data.prune_known(&prefs.dictation_dictionary());
         let _ = s.save();
         s.data.pending.len()
     };
@@ -2150,6 +2152,8 @@ fn save_dev(app: &AppHandle, state: &AppState, mut dev: DevSettings) -> Result<(
     refresh_debug_secrets(state, &prefs.developer);
     *state.prefs.write().unwrap() = prefs;
     probe_in_background(app);
+    // Another server (or none) has another team dictionary.
+    let _ = refresh_team_in_background(app);
     Ok(())
 }
 
@@ -2405,6 +2409,79 @@ async fn admin_revoke_key(
     id: String,
 ) -> Result<murmur_protocol::admin::RevokedKey, String> {
     with_admin(&app, move |a| a.revoke(&id)).await
+}
+
+// ------------------------------------------------- team dictionary
+
+fn team_cache(app: &AppHandle) -> (DevSettings, PathBuf) {
+    let state = app.state::<AppState>();
+    let dev = state.prefs.read().unwrap().developer.clone();
+    (dev, crate::team_dictionary::cache_path(&state.path))
+}
+
+/// Use `view`'s list for dictation from now on.
+fn apply_team(app: &AppHandle, view: &crate::team_dictionary::TeamView) {
+    let state = app.state::<AppState>();
+    let team = crate::team_dictionary::to_dict(&view.entries);
+    let mut p = state.prefs.write().unwrap();
+    if p.team_dictionary != team {
+        p.team_dictionary = team;
+    }
+}
+
+/// Fetch the saved server's team dictionary (blocking, off the UI thread)
+/// and use it. App start, a saved server change and Settings opening
+/// (`team_dictionary_refresh`) call it.
+fn refresh_team_in_background(
+    app: &AppHandle,
+) -> tauri::async_runtime::JoinHandle<crate::team_dictionary::TeamView> {
+    let app = app.clone();
+    let (dev, cache) = team_cache(&app);
+    tauri::async_runtime::spawn_blocking(move || {
+        let v = crate::team_dictionary::refresh(&dev, &cache);
+        apply_team(&app, &v);
+        v
+    })
+}
+
+/// Settings opened, or the Dictionary page: the team list, fetched again
+/// when it changed on the server (the cached copy when offline).
+#[tauri::command]
+async fn team_dictionary_refresh(app: AppHandle) -> crate::team_dictionary::TeamView {
+    refresh_team_in_background(&app).await.unwrap_or_default()
+}
+
+/// Users & keys (admin key): add an entry or replace the one with that word.
+#[tauri::command]
+async fn team_dictionary_add(
+    app: AppHandle,
+    word: String,
+    replacement: String,
+) -> Result<crate::team_dictionary::TeamView, String> {
+    let (dev, cache) = team_cache(&app);
+    let v = tauri::async_runtime::spawn_blocking(move || {
+        crate::team_dictionary::add(&dev, &cache, &word, &replacement)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    apply_team(&app, &v);
+    Ok(v)
+}
+
+/// Users & keys (admin key): remove the entry with that word.
+#[tauri::command]
+async fn team_dictionary_remove(
+    app: AppHandle,
+    word: String,
+) -> Result<crate::team_dictionary::TeamView, String> {
+    let (dev, cache) = team_cache(&app);
+    let v = tauri::async_runtime::spawn_blocking(move || {
+        crate::team_dictionary::remove(&dev, &cache, &word)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    apply_team(&app, &v);
+    Ok(v)
 }
 
 /// D37: Settings → Languages "Keyboard language · now: Hebrew": the
@@ -3855,6 +3932,13 @@ pub fn run() {
         crate::cloud::catalog_cache_path(appdata.as_deref()),
     ))));
 
+    // The server's team dictionary: the cached copy until the first fetch.
+    {
+        let dev = prefs.read().unwrap().developer.clone();
+        let v = crate::team_dictionary::cached(&dev, &crate::team_dictionary::cache_path(&path));
+        prefs.write().unwrap().team_dictionary = crate::team_dictionary::to_dict(&v.entries);
+    }
+
     tauri::Builder::default()
         // No raw keyboard input in our process: likely why the hook missed
         // keys going to our own windows (hotkeys::raw_input).
@@ -3954,6 +4038,9 @@ pub fn run() {
             admin_list_keys,
             admin_create_key,
             admin_revoke_key,
+            team_dictionary_refresh,
+            team_dictionary_add,
+            team_dictionary_remove,
             dev_route_status,
             dev_reset_circuit,
             dev_reset_defaults,
@@ -4015,6 +4102,7 @@ pub fn run() {
         .setup(move |app| {
             let _ = MAIN_THREAD.set(std::thread::current().id());
             let handle = app.handle().clone();
+            let _ = refresh_team_in_background(&handle);
             let h = handle.clone();
             instance.listen(move || show_settings(&h));
 
