@@ -14,12 +14,14 @@ export function serverOption(s) {
 /**
  * The option setup recommends: your server when one is saved and not known to
  * lack a cleanup model (the server's answer is only known once the app has
- * talked to it), else this PC when the build has local cleanup.
+ * talked to it), else this PC when the build has local cleanup and the
+ * machine-class table picks a cleanup model for it (`pcFits`, D116: below
+ * 8 GB RAM it picks none, so nothing is recommended).
  */
-export function recommendedCleanup(s, hasPc) {
+export function recommendedCleanup(s, hasPc, pcFits = true) {
     if (s.build && s.saved && s.llm !== false)
         return "server";
-    if (hasPc)
+    if (hasPc && pcFits)
         return "pc";
     return null;
 }

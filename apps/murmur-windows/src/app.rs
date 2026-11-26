@@ -1423,6 +1423,58 @@ async fn llm_backend(
         .map_err(|e| e.to_string())
 }
 
+/// This PC against the machine-class table (D116): RAM, free disk on the
+/// models folder and the two GPU probes above (cached after the first ask),
+/// so setup and Settings recommend the same models and say which fit.
+#[tauri::command]
+async fn machine_fit(
+    state: tauri::State<'_, AppState>,
+) -> Result<crate::machine_fit::MachineView, String> {
+    let dir = core_adapter::models_dir(state.appdata.as_deref());
+    let lib = state
+        .prefs
+        .read()
+        .unwrap()
+        .llm_lib_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .map(str::to_string);
+    let local = cfg!(feature = "local-engine");
+    tauri::async_runtime::spawn_blocking(move || {
+        use crate::machine_fit::{free_disk, ram, view, Probe};
+        let (llm, whisper) = if local {
+            (
+                core_adapter::llm_backend_probe(lib.as_deref()),
+                core_adapter::whisper_backend_probe(),
+            )
+        } else {
+            let none = || {
+                core_adapter::LlmBackendView::from_probe(Err(
+                    murmur_core::llama::LlamaLoadError::Backend(
+                        "this build has no local engine".into(),
+                    ),
+                ))
+            };
+            (none(), none())
+        };
+        let (total_ram, available_ram) = ram();
+        let p = Probe {
+            total_ram,
+            available_ram,
+            free_disk: free_disk(&dir),
+            gpu: llm.gpu,
+            gpu_device: llm.device,
+            whisper_gpu: whisper.gpu,
+        };
+        view(&p, |id| {
+            crate::model_download::entry(id).is_some_and(|e| e.installed(&dir))
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
 /// Download catalogue model `id` (D9/D31: only ever sent after the user
 /// pressed Download). From the server's library when a server is set and
 /// "Download from" is Your server (D41/D79: its copy must match the
@@ -4028,6 +4080,7 @@ pub fn run() {
             model_catalog,
             lid_model_present,
             llm_backend,
+            machine_fit,
             whisper_backend,
             model_download_start,
             server_models,

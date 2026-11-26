@@ -26,6 +26,7 @@ import { captureChord, stopCapture } from "../lib/keycapture.js";
 import { languageNames } from "../lib/model-pages.js";
 import { sourceHint, sourceView } from "../lib/model-source.js";
 import { prefsStore } from "../lib/prefs-store.js";
+import { doesNotFit, fitText, fitWarning, machineLine, recommendedRow } from "../lib/machine-fit.js";
 import { chip, fileState, initialModel, PARAKEET_TITLE, setupSteps, whisperRow } from "../lib/setup-model.js";
 import { changesLine, savedEngine, setupChanges, STEP_OF } from "../lib/setup-diff.js";
 import { pillLine, readinessErrorLine, readinessLine, RECHECK_MS } from "../lib/setup-try.js";
@@ -42,8 +43,14 @@ const SAMPLE = {
     server: "Lunch is on Thursday.",
     cloud: "Lunch is on Thursday.",
 };
-/** The recommended speech model (model_catalog id). */
+/** The Parakeet row's model (model_catalog id). */
 const PARAKEET_ID = "parakeet-tdt-0.6b-v2-int8";
+/** Catalogue models the Parakeet row stands for, for the table's pick (D116). */
+const PARAKEET_IDS = [PARAKEET_ID, "parakeet-unified-en-0.6b-int8"];
+/** Step 3's recommended row: the machine-class table's pick for this PC (Parakeet until it answers). */
+function recRow() {
+    return recommendedRow(models.machine(), PARAKEET_IDS);
+}
 const st = {
     step: "welcome",
     engine: "pc",
@@ -64,6 +71,8 @@ const st = {
     pick: null,
     /** Step 3's picked row (preselected: the model in use). */
     modelPick: "parakeet",
+    /** The user picked a row on this run (else it follows the table once `machine_fit` answers). */
+    modelPicked: false,
     /** Step 3's "More languages" is open. */
     moreOpen: false,
     /** A re-run (setup was finished before): the settings it opened with (null: a first run). */
@@ -336,6 +345,7 @@ function downloadPct(e) {
 }
 function pickModelRow(id) {
     st.modelPick = id;
+    st.modelPicked = true;
     renderModel();
 }
 /** Step 3 with a folder picked: its checklist instead of the download rows. */
@@ -367,6 +377,11 @@ function renderModel() {
     other.hidden = !st.moreOpen;
     more.setAttribute("aria-expanded", String(st.moreOpen));
     more.querySelector(".lw-ob-chev").textContent = st.moreOpen ? "▾" : "▸";
+    // The table answers after the step opened: an untouched new install follows it.
+    if (!st.modelPicked)
+        st.modelPick = initialModel(activeModel(), !!prefsStore.get()?.onboarded, fileState(st.model), recRow());
+    const rec = recRow();
+    const machine = models.machine();
     let picked = { installed: false, busy: false, canDownload: false, why: "" };
     for (const r of document.querySelectorAll("#onboarding [data-ob-model]")) {
         const id = r.dataset.obModel;
@@ -374,11 +389,12 @@ function renderModel() {
         const on = id === st.modelPick;
         r.classList.toggle("is-on", on);
         r.setAttribute("aria-checked", String(on));
-        r.querySelector("[data-ob-rec]").hidden = id !== "parakeet";
+        r.querySelector("[data-ob-rec]").hidden = id !== rec;
         r.querySelector("[data-ob-model-title]").textContent = id === "parakeet" ? PARAKEET_TITLE : w.title;
         const size = e ? `${mb(e.size)} · ` : "";
+        const fits = fitText(machine, e?.id);
         r.querySelector("[data-ob-model-desc]").textContent =
-            id === "parakeet" ? `${size}English only, the quickest` : `${size}Many languages${e ? "" : " · your own file"}`;
+            (id === "parakeet" ? `${size}English only, the quickest` : `${size}Many languages${e ? "" : " · your own file"}`) + (fits ? ` · ${fits}` : "");
         const pct = downloadPct(e);
         const file = rowFile(id, e);
         const installed = file === "present";
@@ -402,7 +418,8 @@ function renderModel() {
                 : e && models.notOnServer(e)
                     ? "Your server doesn't have this model. After setup, download it from the internet in Settings → Speech to text."
                     : "This version of Murmur can't download it. Copy the model to this PC and press Use model files on this PC… below.";
-            picked = { installed, busy, canDownload: canStart, why };
+            // A pick that doesn't fit this PC warns but is still allowed (D116).
+            picked = { installed, busy, canDownload: canStart, why: why || fitWarning(machine, e?.id, id === "parakeet" ? PARAKEET_TITLE : w.title) };
         }
     }
     const m = st.model;
@@ -513,7 +530,9 @@ function llmLine(s) {
 function renderCleanupOptions() {
     const facts = serverFacts();
     const server = serverOption(facts);
-    const rec = recommendedCleanup(facts, hasCleanup("pc"));
+    // This PC is recommended only when the table picks a cleanup model for it (8 GB RAM, D116).
+    const pcFits = models.machine()?.cleanup !== null;
+    const rec = recommendedCleanup(facts, hasCleanup("pc"), pcFits);
     for (const b of document.querySelectorAll("#onboarding [data-ob-cleanup]")) {
         const id = b.dataset.obCleanup;
         const on = id === st.cleanup;
@@ -558,9 +577,14 @@ function renderLlmModel() {
     $("ob_llm_status").textContent = llmLine(st.info?.llm);
     renderLlmDownload();
 }
-/** The cleanup model setup recommends (the CPU pick: setup doesn't probe the graphics chip). */
+/**
+ * The cleanup model setup offers: the machine-class table's pick for this PC
+ * (D116: RAM and the graphics chip), else the CPU pick. Below 8 GB RAM the
+ * table picks none; the CPU pick is still offered, marked as not fitting.
+ */
 function llmEntry() {
-    return recommendedLlm(models.catalog().filter((c) => c.engine === "llm"), false);
+    const list = models.catalog().filter((c) => c.engine === "llm");
+    return recommendedLlm(list, false) ?? list.find((c) => c.recommended);
 }
 /** Step 4's "Download from" and Download row for the cleanup model (D79), as on step 3. */
 function renderLlmDownload() {
@@ -575,9 +599,13 @@ function renderLlmDownload() {
     const missing = models.notOnServer(e) && !e.installed;
     $("ob_llm_dl_title").textContent = e.title;
     // Setup's own words: the catalogue's description talks about GPUs.
+    const machine = models.machine();
+    const fits = fitText(machine, e.id);
     $("ob_llm_dl_desc").textContent = missing
         ? `${mb(e.size)}. Your server doesn't have this one. Ask whoever runs it to add it, or switch to Hugging Face.`
-        : `Works on any PC · ${mb(e.size)}${e.installed ? " · downloaded and checked" : ""}`;
+        : doesNotFit(machine, e.id)
+            ? `${fitWarning(machine, e.id, e.title)} ${machineLine(machine)}.`
+            : `${fits || "Works on any PC"} · ${mb(e.size)}${e.installed ? " · downloaded and checked" : ""}`;
     $("ob_llm_missing").hidden = !missing || busy;
     const start = $("ob_llm_dl_start");
     start.hidden = !v.downloads || !models.canStart(e) || e.installed || busy;
@@ -1131,7 +1159,8 @@ function initialChoices() {
     st.engine = initialEngine(savedSpeech(), !!p?.onboarded, facts);
     st.cleanup = savedCleanup();
     st.cleanupPicked = false;
-    st.modelPick = initialModel(activeModel(), !!p?.onboarded, fileState(st.model));
+    st.modelPick = initialModel(activeModel(), !!p?.onboarded, fileState(st.model), recRow());
+    st.modelPicked = false;
     st.moreOpen = false;
     $("ob_host").value = dev?.host ?? "";
     $("ob_token").placeholder = dev?.token_saved ? "Saved" : "Paste the token";

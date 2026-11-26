@@ -26,6 +26,7 @@ pub mod input;
 pub mod insights;
 pub mod keyboard_language;
 pub mod learn;
+pub mod machine_fit;
 pub mod meetings;
 pub mod model_download;
 pub mod model_import;
