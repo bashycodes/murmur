@@ -576,8 +576,7 @@ class HistoryStore(
 }
 
 /**
- * A one-time step for a changed default: usually "an install from before keeps the old default",
- * or (D114, [LiveTranscriptionAlways]) a removed setting's stored value is dropped. Each runs
+ * A one-time "an install from before keeps the old default" step for a changed default. Each runs
  * once (until its [flag] is set, by the step or by any save) against one emptiness check taken
  * before any step writes ([keepOldDefaults]): only an empty store is a fresh install.
  */
@@ -587,7 +586,7 @@ internal interface OldDefault {
 }
 
 /** Every [OldDefault], in order; [SettingsStore.save] sets all their flags. */
-internal val OLD_DEFAULTS: List<OldDefault> = listOf(StrengthDefault, ThemeDefault, EndpointDefault, LiveTranscriptionAlways)
+internal val OLD_DEFAULTS: List<OldDefault> = listOf(StrengthDefault, ThemeDefault, EndpointDefault)
 
 internal fun keepOldDefaults(kv: KeyValue, empty: Boolean) {
     for (d in OLD_DEFAULTS) d.keepOld(kv, empty)
@@ -662,20 +661,3 @@ internal object EndpointDefault : KeepWhenMissing("endpoint_default_off", "endpo
     }
 }
 
-/**
- * D114: live transcription (D22, "Transcribe while I speak") is always on and no longer a
- * setting. The stored `decode_while_speaking` choice, `false` included, is dropped once; nothing
- * reads it any more, so an older backup restored later only loses the stale key again.
- */
-internal object LiveTranscriptionAlways : OldDefault {
-    override val flag = "live_transcription_always"
-    const val OLD_KEY = "decode_while_speaking"
-
-    override fun keepOld(kv: KeyValue, empty: Boolean) {
-        if (kv.getBoolean(flag, false)) return
-        kv.edit {
-            putBoolean(flag, true)
-            remove(OLD_KEY)
-        }
-    }
-}

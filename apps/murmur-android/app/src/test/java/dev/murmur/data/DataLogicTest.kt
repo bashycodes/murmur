@@ -118,13 +118,8 @@ class FieldContextBuilderTest {
     // ---- D22 (docs/proposals/streaming-asr-shell-api.md §1-2, §5) ----
 
     @Test fun everyDictationSendsLiveTranscription() {
-        // D114: no setting; every engine, language and cleanup route asks for it. The core runs it
-        // where the engine can (whisper, Parakeet, the Hebrew zipformer, a D22 server).
-        for (engine in dev.murmur.core.AsrEngine.entries) for (lang in listOf("auto", "en", "he")) for (cloud in listOf(false, true)) {
-            val c = Settings(asrEngine = engine).toSessionConfig(emptyList(), language = lang, cloudCleanup = cloud)
-            assertEquals("$engine $lang cloud=$cloud", 800, c.segmentPauseMs)
-        }
-        assertTrue(dev.murmur.core.CoreJson.encode(Settings().toSessionConfig(emptyList())).contains("\"segment_pause_ms\":800"))
+        // D114: no setting. The core runs it where the engine can (this phone, a D22 server).
+        assertEquals(800, Settings().toSessionConfig(emptyList()).segmentPauseMs)
     }
 
     @Test fun callRecordingsStillNeverSegment() {

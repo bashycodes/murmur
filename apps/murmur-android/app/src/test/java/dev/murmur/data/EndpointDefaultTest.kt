@@ -39,7 +39,7 @@ class EndpointDefaultTest {
 
     @Test fun everyStepHasItsOwnFlag() {
         val flags = OLD_DEFAULTS.map { it.flag }
-        assertEquals(listOf(StrengthDefault.MIGRATED, "theme_default_dark", "endpoint_default_off", "live_transcription_always"), flags)
+        assertEquals(listOf(StrengthDefault.MIGRATED, "theme_default_dark", "endpoint_default_off"), flags)
     }
 
     @Test fun aStoredValueIsNeverTouched() {

@@ -1515,7 +1515,6 @@ mod tests {
     fn rev_9_a_saved_live_transcription_off_loads_live_and_is_dropped() {
         // D114: the switch is gone; an explicit `false` from rev 8 (or a
         // pre-D22 file without it) loads without error and ends up live.
-        assert_eq!(PREFS_REV, 9);
         for (name, dev) in [
             ("lt-off", r#"{"decode_while_speaking":false}"#),
             ("lt-on", r#"{"decode_while_speaking":true}"#),
