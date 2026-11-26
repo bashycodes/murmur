@@ -3,7 +3,7 @@
 // on the built dist. Words are user data: callers use textContent.
 
 import type { DictEntry } from "./prefs-store.js";
-import type { TeamEntry } from "./types.js";
+import type { TeamEntry, TeamView } from "./types.js";
 
 /** The matcher's word key, close enough for the page: case and spacing
  *  ignored (`murmur_core::postprocess::word_key`). */
@@ -49,4 +49,11 @@ export function teamSummary(team: TeamEntry[], personal: DictEntry[]): string {
   const words = team.length === 1 ? "1 word" : `${team.length} words`;
   if (!n) return `${words} from your server.`;
   return `${words} from your server. ${n} also in your dictionary: yours ${n === 1 ? "is" : "are"} used.`;
+}
+
+/** The Dictionary page's line under the team list: the backend's reason when
+ *  the server's list could not be read (it says whether a saved copy is in
+ *  use: none after the server refused the key), else the summary. */
+export function teamNote(v: TeamView, personal: DictEntry[]): { text: string; err: boolean } {
+  return v.error ? { text: v.error, err: true } : { text: teamSummary(v.entries, personal), err: false };
 }

@@ -8,7 +8,8 @@
 //! The list is fetched when the app starts and when Settings opens, with
 //! the cached copy's ETag, and kept in `team-dictionary.json` next to
 //! `prefs.json` (`murmur_remote::team_dict`, shared with Android). Offline,
-//! the last copy is used. No server saved means no team list. The cache
+//! the last copy is used; a key the server refuses clears it. No server
+//! saved means no team list. The cache
 //! holds the server's address and the list, never the key.
 //!
 //! A fetch or edit runs for the server and key saved when it started
@@ -38,7 +39,8 @@ pub struct TeamView {
     pub configured: bool,
     /// The list in use (fresh, or the cached copy).
     pub entries: Vec<TeamEntry>,
-    /// Why the server's list could not be read (the cached copy is shown).
+    /// Why the server's list could not be read: the cached copy is shown,
+    /// or none after the server refused the key ([`refresh_error`]).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
@@ -104,6 +106,21 @@ pub fn error_text(e: &AdminError) -> String {
     }
 }
 
+/// Page text for a failed refresh, or `None` when there is nothing to show
+/// (a server without a team dictionary). A refused key (401) clears the
+/// cached copy (`murmur_remote::team_dict`), so no list is in use; any
+/// other failure keeps the saved copy.
+pub fn refresh_error(e: &AdminError) -> Option<String> {
+    match e.code.as_str() {
+        code::UNSUPPORTED | code::AUTH_OFF => None,
+        code::UNAUTHORIZED => Some(KEY_REFUSED.into()),
+        _ => Some(format!("Using the saved copy: {}", error_text(e))),
+    }
+}
+
+/// [`refresh_error`] for a refused key.
+pub const KEY_REFUSED: &str = "The server refused this app's key, so no team list is in use.";
+
 /// The cached list for the saved server, without the network (start-up).
 #[cfg_attr(not(feature = "remote"), allow(unused_variables))]
 pub fn cached(dev: &DevSettings, cache: &Path) -> TeamView {
@@ -126,15 +143,11 @@ pub fn refresh(dev: &DevSettings, cache: &Path) -> TeamView {
     #[cfg(feature = "remote")]
     if let Ok(c) = crate::server_admin::client(dev) {
         let r = murmur_remote::team_dict::TeamDictCache::new(cache).refresh(&c);
-        let error = r.error.filter(|e| {
-            // A server without a team dictionary is not a problem to show.
-            e.code != code::UNSUPPORTED && e.code != code::AUTH_OFF
-        });
         return TeamView {
             source: source(dev),
             configured: true,
             entries: r.entries,
-            error: error.map(|e| format!("Using the saved copy: {}", error_text(&e))),
+            error: r.error.as_ref().and_then(refresh_error),
         };
     }
     TeamView::default()
@@ -277,6 +290,23 @@ mod tests {
             error_text(&e(code::FORBIDDEN, "")),
             "this app's key is not an admin key"
         );
+    }
+
+    /// A refused key cleared the cached copy, so the page must not claim
+    /// one is in use; other failures keep it.
+    #[test]
+    fn refresh_errors_say_whether_a_saved_copy_is_in_use() {
+        let e = |c: &str| AdminError::new(c, "");
+        assert_eq!(
+            refresh_error(&e(code::UNAUTHORIZED)).as_deref(),
+            Some(KEY_REFUSED)
+        );
+        assert!(!KEY_REFUSED.contains("saved copy"));
+        assert!(refresh_error(&e(code::CONNECT_FAILED))
+            .unwrap()
+            .starts_with("Using the saved copy: "));
+        assert_eq!(refresh_error(&e(code::UNSUPPORTED)), None);
+        assert_eq!(refresh_error(&e(code::AUTH_OFF)), None);
     }
 
     /// The team list reaches the core like personal words: replacements,

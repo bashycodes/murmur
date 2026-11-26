@@ -335,7 +335,8 @@ export interface TeamView {
   /** A server and a token are saved: show the team section. */
   configured: boolean;
   entries: TeamEntry[];
-  /** The server's list could not be read; `entries` is the saved copy. */
+  /** Why the server's list could not be read: `entries` is the saved copy,
+   *  or empty after the server refused the key (the text says which). */
   error?: string;
 }
 

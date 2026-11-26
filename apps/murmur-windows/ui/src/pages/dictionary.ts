@@ -14,7 +14,7 @@ import { ICON, iconEl, iconSvg } from "../lib/icons.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { prefsStore, type DictEntry, type Prefs } from "../lib/prefs-store.js";
 import type { Page } from "../lib/router.js";
-import { teamRows, teamSummary } from "../lib/team-dict.js";
+import { teamNote, teamRows } from "../lib/team-dict.js";
 import { teamStore } from "../lib/team-store.js";
 
 // Page-local icons (24x24 stroke paths, same style as lib/icons.ts).
@@ -438,8 +438,9 @@ function renderTeam(): void {
     }),
   );
   const note = $<HTMLElement>("team_note");
-  note.textContent = v.error ?? teamSummary(v.entries, dict);
-  note.classList.toggle("err", !!v.error);
+  const n = teamNote(v, dict);
+  note.textContent = n.text;
+  note.classList.toggle("err", n.err);
 }
 
 function render(): void {
