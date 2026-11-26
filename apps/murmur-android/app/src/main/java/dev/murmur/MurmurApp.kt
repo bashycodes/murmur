@@ -1,5 +1,8 @@
 package dev.murmur
 
+import dev.murmur.admin.TeamDictionary
+import dev.murmur.admin.TeamDictionaryStore
+import dev.murmur.core.DictEntry
 import dev.murmur.core.RouterErrors
 import dev.murmur.bubble.DictationScreen
 import dev.murmur.bubble.OwnScreens
@@ -78,6 +81,8 @@ import java.io.File
 class MurmurApp : Application() {
     lateinit var settings: SettingsStore; private set
     lateinit var dictionary: DictionaryStore; private set
+    /** The server's team dictionary, merged under [dictionary] for dictation ([dictationDictionary]). */
+    val team: TeamDictionaryStore by lazy { TeamDictionaryStore { TeamDictionary.factory(this) } }
     /** Learn-from-edits suggestions waiting for Add / Dismiss (Dictionary screen). */
     lateinit var suggestions: SuggestionStore; private set
     lateinit var history: HistoryStore; private set
@@ -222,6 +227,9 @@ class MurmurApp : Application() {
         engine = EngineHolder(this)
         // D68: the first dictionary word switches Parakeet to beam search, the last one back to greedy.
         dictionary.onChange = { engine.dictionaryChanged() }
+        // Team words count as dictionary words (hotwords, D68); cache first, then the server.
+        team.onChange = { engine.dictionaryChanged() }
+        Thread({ runCatching { team.load(); team.refreshNow() } }, "murmur-team-dict").apply { isDaemon = true }.start()
         calls = CallJobs(
             callsStore,
             decoder = { r -> Decoders.open(this, android.net.Uri.parse(r.uri)) },
@@ -239,6 +247,9 @@ class MurmurApp : Application() {
         // 72 h limit also when the option was turned off meanwhile.
         runCatching { debugAudioWriter.execute { runCatching { debugAudio.prune() } } }
     }
+
+    /** The personal dictionary with the team list under it (personal wins): what dictation, calls and learning use. */
+    fun dictationDictionary(): List<DictEntry> = team.merged(dictionary.all())
 
     /** The language the next dictation uses ([dev.murmur.data.LanguageDefault]). */
     fun effectiveLanguage(s: Settings = settings.load()): String = resolveLanguage(s).language
@@ -490,7 +501,7 @@ class EngineHolder(
     private fun wantedDecoding(s: Settings = app.settings.load(), set: LoadSet = wantedSet(s)): ParakeetDecoding? =
         if (decodingProbe != null) decodingProbe.invoke()
         else if (!app.caps.local || s.mockEngine || s.asrEngine != AsrEngine.PARAKEET || set is LoadSet.Language) null
-        else EnginePlan.parakeetDecoding(app.dev.parakeetDecodingOverride, app.dictionary.all())
+        else EnginePlan.parakeetDecoding(app.dev.parakeetDecodingOverride, app.dictationDictionary())
 
     /** The Parakeet search the current (or loading) engine was planned with ([wantedDecoding]). */
     @Volatile private var loadedDecoding: ParakeetDecoding? = null

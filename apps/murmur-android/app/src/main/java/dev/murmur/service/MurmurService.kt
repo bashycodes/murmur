@@ -484,7 +484,7 @@ class MurmurService : Service() {
             var added: List<dev.murmur.learn.Suggestion> = emptyList()
             if (core != null && outcome.edited != null) {
                 app.suggestions.update { cur ->
-                    val r = EditLearning.learn(pasted, outcome, cur, app.dictionary.all(), ctx.appId, System.currentTimeMillis(), core::learnEdit)
+                    val r = EditLearning.learn(pasted, outcome, cur, app.dictationDictionary(), ctx.appId, System.currentTimeMillis(), core::learnEdit)
                     added = r?.added.orEmpty()
                     r?.next ?: cur
                 }
@@ -731,7 +731,7 @@ class MurmurService : Service() {
             sessionOffPhone = offPhone
             val lang = app.resolveLanguage(it, offPhone)
             languageSource = lang.source.wire
-            it.toSessionConfig(app.dictionary.all(), language = lang.language, cloudCleanup = cloudCleanup)
+            it.toSessionConfig(app.dictationDictionary(), language = lang.language, cloudCleanup = cloudCleanup)
         }
 
         override fun followsKeyboard() =

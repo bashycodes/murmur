@@ -130,6 +130,8 @@ class SettingsActivity : Activity() {
         refresh()
         if (status != null) poll.run()
         if (page == Page.HUB || page == Page.SPEECH || page == Page.CLEANUP) checkServer()
+        // The team dictionary may have changed on the server, or the server itself (Your server).
+        if (page == Page.HUB) app.team.refresh()
     }
 
     override fun onPause() {
