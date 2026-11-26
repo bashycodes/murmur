@@ -111,9 +111,12 @@ class ModelImportActivity : Activity() {
             sectionLabel("RECOMMENDED")
             card {
                 val machine = machine()
+                val names = items.map { it.name }
+                val hebrewKinds = if (hebrew) items.mapNotNull { HebrewModels.kindOf(it)?.let(ModelPages::hebrewModel) }.toSet() else emptySet()
+                val english = ModelPages.englishWhisper(app.settings.load().language, java.util.Locale.getDefault().language)
                 for (m in ModelPages.recommended(screen)) {
                     val copyLink = { copyLink(m.file, m.url) }
-                    val fit = ModelPages.rowFit(screen, m, machine, installed = items.any { it.name == m.file })
+                    val fit = ModelPages.rowFit(screen, m, machine, ModelPages.installed(screen, m, names, hebrewKinds), english)
                     listRow(
                         m.file, ModelPages.subtitle(m),
                         badge = if (fit?.recommended == true) "Recommended" else "",

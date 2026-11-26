@@ -81,15 +81,44 @@ class ModelPagesTest {
         assertEquals("Fits this phone", ModelPages.rowFit(Screen.PARAKEET, ModelPages.recommended(Screen.PARAKEET)[0], small)!!.line)
         val tight = ModelPages.rowFit(Screen.PARAKEET, ModelPages.recommended(Screen.PARAKEET)[0], phone(2.8, 300_000_000))!!
         assertEquals("Doesn't fit: needs 761 MB free, needs 4 GB RAM", tight.line)
-        // Below 4 GB the whisper screen's base files are the pick; tiny only below 2 GB.
+        // Below 4 GB whisper base is the pick (only the file for the language); tiny only below 2 GB;
+        // from 4 GB Parakeet is, so the whisper page badges nothing.
         val whisper = ModelPages.recommended(Screen.WHISPER)
-        assertEquals(listOf(true, true, false, false), whisper.map { ModelPages.rowFit(Screen.WHISPER, it, phone(2.8))!!.recommended })
+        assertEquals(listOf(true, false, false, false), whisper.map { ModelPages.rowFit(Screen.WHISPER, it, phone(2.8))!!.recommended })
+        assertEquals(listOf(false, true, false, false), whisper.map { ModelPages.rowFit(Screen.WHISPER, it, phone(2.8), english = false)!!.recommended })
         assertEquals(listOf(false, false, true, false), whisper.map { ModelPages.rowFit(Screen.WHISPER, it, phone(1.5))!!.recommended })
+        assertEquals(listOf(false, false, false, false), whisper.map { ModelPages.rowFit(Screen.WHISPER, it, big)!!.recommended })
         val hebrew = ModelPages.recommended(Screen.HEBREW).single { ModelPages.rowFit(Screen.HEBREW, it, big)!!.recommended }
         assertTrue(hebrew.file, hebrew.file.startsWith("zipformer-he"))
         for (s in Screen.entries) for (r in ModelPages.recommended(s)) {
             assertTrue(r.file, r.model != null)
             for (stale in listOf("flagship", "older phones", "free ram")) assertTrue(r.note, stale !in r.note.lowercase())
         }
+    }
+
+    @Test fun englishWhisperFollowsTheLanguageSetting() {
+        assertTrue(ModelPages.englishWhisper("en", "de"))
+        assertEquals(false, ModelPages.englishWhisper("de", "en"))
+        assertTrue(ModelPages.englishWhisper(Settings.LANGUAGE_AUTO, "en"))
+        assertEquals(false, ModelPages.englishWhisper(Settings.LANGUAGE_KEYBOARD, "iw"))
+        assertEquals(false, ModelPages.englishWhisper("", "fr"))
+    }
+
+    @Test fun installedModelsSkipTheDiskCheck() {
+        val full = phone(11.2, 100_000_000)
+        val hebrew = ModelPages.recommended(Screen.HEBREW)
+        val parakeetHe = hebrew.single { it.model == ModelFit.Model.PARAKEET_HE }
+        // Hebrew folders keep no recognisable name: the imported kind decides.
+        val kinds = setOf(ModelPages.hebrewModel(HebrewModels.Kind.PARAKEET))
+        assertTrue(ModelPages.installed(Screen.HEBREW, parakeetHe, listOf("parakeet-he"), kinds))
+        assertEquals(false, ModelPages.installed(Screen.HEBREW, parakeetHe, listOf(parakeetHe.file), emptySet()))
+        val fit = ModelPages.rowFit(Screen.HEBREW, parakeetHe, full, ModelPages.installed(Screen.HEBREW, parakeetHe, listOf("parakeet-he"), kinds))!!
+        assertEquals("Fits this phone", fit.line)
+        assertEquals("Doesn't fit: needs 773 MB free", ModelPages.rowFit(Screen.HEBREW, parakeetHe, full)!!.line)
+        val parakeet = ModelPages.recommended(Screen.PARAKEET)[0]
+        assertTrue(ModelPages.installed(Screen.PARAKEET, parakeet, listOf("my-renamed-folder")))
+        val base = ModelPages.recommended(Screen.WHISPER)[0]
+        assertTrue(ModelPages.installed(Screen.WHISPER, base, listOf(base.file)))
+        assertEquals(false, ModelPages.installed(Screen.WHISPER, base, listOf("ggml-tiny.en-q5_1.bin")))
     }
 }

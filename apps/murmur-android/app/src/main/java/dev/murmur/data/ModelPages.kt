@@ -46,25 +46,58 @@ object ModelPages {
             ),
         )
         Screen.LLM -> ModelFiles.LLM_RECOMMENDATIONS.mapIndexed { i, r ->
-            Recommended(r.file, r.sizeMb, if (i == 0) "Fastest" else "About 3× slower", if (i == 0) "Good quality" else "Best quality", r.note, r.url, ModelFit.Model.of(r.model))
+            Recommended(r.file, r.sizeMb, if (i == 0) "Fastest" else "About 3× slower", if (i == 0) "Good quality" else "Best quality", r.note, r.url, r.model)
         }
     }
 
-    /** The screen's file the table recommends for [p] (null: none on this screen, e.g. AI cleanup below 8 GB RAM). */
+    /** The screen's model the table recommends for [p] (null: none on this screen, e.g. whisper when Parakeet is the pick). */
     fun pick(s: Screen, p: ModelFit.Picks): ModelFit.Model? = when (s) {
-        Screen.WHISPER -> if (p.speech == ModelFit.Model.WHISPER_TINY) ModelFit.Model.WHISPER_TINY else ModelFit.Model.WHISPER_BASE
+        Screen.WHISPER -> p.speech.takeIf { it == ModelFit.Model.WHISPER_TINY || it == ModelFit.Model.WHISPER_BASE }
         Screen.PARAKEET -> p.speech.takeIf { it == ModelFit.Model.PARAKEET }
         Screen.HEBREW -> p.hebrew
         Screen.LLM -> p.cleanup
     }
 
+    /**
+     * Whether whisper base means the English-only file: the dictation language when it is a fixed
+     * code, else (Automatic, Keyboard / Phone language) the phone's language [phone].
+     */
+    fun englishWhisper(language: String, phone: String): Boolean {
+        val fixed = language.takeUnless { it == Settings.LANGUAGE_AUTO || it == Settings.LANGUAGE_KEYBOARD || it.isBlank() }
+        return LanguageDefault.normalize(fixed ?: phone)?.substringBefore('-')?.substringBefore('_') == "en"
+    }
+
+    /** The Hebrew page's row for an imported model's kind. */
+    fun hebrewModel(k: HebrewModels.Kind): ModelFit.Model = when (k) {
+        HebrewModels.Kind.ZIPFORMER -> ModelFit.Model.ZIPFORMER_HE
+        HebrewModels.Kind.PARAKEET -> ModelFit.Model.PARAKEET_HE
+    }
+
+    /**
+     * Whether [r] is already on the phone (its download then needs no disk): whisper and AI
+     * cleanup by file name ([names]); the Parakeet page's one model by any imported folder; the
+     * Hebrew rows by the kind of each imported model ([hebrew]), since their folders keep no
+     * recognisable name.
+     */
+    fun installed(s: Screen, r: Recommended, names: List<String>, hebrew: Set<ModelFit.Model> = emptySet()): Boolean = when (s) {
+        Screen.HEBREW -> r.model in hebrew
+        Screen.PARAKEET -> names.isNotEmpty()
+        Screen.WHISPER, Screen.LLM -> r.file in names
+    }
+
     /** What a recommended row says about this phone: the Recommended badge and its fits / doesn't-fit line (D117). */
     data class RowFit(val recommended: Boolean, val fits: Boolean, val line: String)
 
-    fun rowFit(s: Screen, r: Recommended, m: ModelFit.Machine, installed: Boolean = false): RowFit? {
+    /**
+     * [english]: the whisper page badges only one of base.en / base, the one [englishWhisper]
+     * picks.
+     */
+    fun rowFit(s: Screen, r: Recommended, m: ModelFit.Machine, installed: Boolean = false, english: Boolean = true): RowFit? {
         val model = r.model ?: return null
         val f = ModelFit.fit(model, r.sizeMb * 1_000_000L, installed, m)
-        return RowFit(model == pick(s, ModelFit.recommend(m)), f.fits, ModelFit.line(f))
+        val base = if (english) "ggml-base.en-q5_1.bin" else "ggml-base-q5_1.bin"
+        val picked = model == pick(s, ModelFit.recommend(m)) && (model != ModelFit.Model.WHISPER_BASE || r.file == base)
+        return RowFit(picked, f.fits, ModelFit.line(f))
     }
 
     fun subtitle(r: Recommended) = "~${r.sizeMb} MB · ${r.speed} · ${r.quality} · ${r.note}"
