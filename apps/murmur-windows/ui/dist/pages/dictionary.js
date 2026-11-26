@@ -12,7 +12,7 @@ import { $, button, el, setStatus } from "../lib/dom.js";
 import { ICON, iconEl, iconSvg } from "../lib/icons.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { prefsStore } from "../lib/prefs-store.js";
-import { teamRows, teamSummary } from "../lib/team-dict.js";
+import { teamNote, teamRows } from "../lib/team-dict.js";
 import { teamStore } from "../lib/team-store.js";
 // Page-local icons (24x24 stroke paths, same style as lib/icons.ts).
 const SORT_ICON = "M8 4v16M4 8l4-4 4 4M16 20V4M12 16l4 4 4-4";
@@ -387,8 +387,9 @@ function renderTeam() {
         return row;
     }));
     const note = $("team_note");
-    note.textContent = v.error ?? teamSummary(v.entries, dict);
-    note.classList.toggle("err", !!v.error);
+    const n = teamNote(v, dict);
+    note.textContent = n.text;
+    note.classList.toggle("err", n.err);
 }
 function render() {
     // An index being edited may have moved or gone after a reload.

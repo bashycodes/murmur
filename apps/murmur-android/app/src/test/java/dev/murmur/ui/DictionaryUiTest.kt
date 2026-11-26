@@ -282,6 +282,27 @@ class DictionaryUiTest {
         assertTrue("Velloria" in texts(a))
     }
 
+    /** A 401 clears the cached list (`murmur_remote::team_dict`): the section goes, nothing claims a saved copy. */
+    @Test fun aRefusedKeyLeavesNoTeamListInUse() {
+        teamServer(listOf(DictEntry("Quillon")))
+        val (a, _) = tab(Tab.DICTIONARY)
+        assertTrue("Quillon" in texts(a))
+        val refused = object : TeamDictionaryApi {
+            override fun cached(): AdminResult<List<DictEntry>> = AdminResult.Ok(emptyList())
+            override fun refresh(): AdminResult<TeamRefresh> =
+                AdminResult.Ok(TeamRefresh(emptyList(), true, AdminResult.Err(AdminCode.UNAUTHORIZED)))
+            override fun add(word: String, replacement: String): AdminResult<List<DictEntry>> = AdminResult.Err(AdminCode.UNAUTHORIZED)
+            override fun remove(word: String): AdminResult<List<DictEntry>> = AdminResult.Err(AdminCode.UNAUTHORIZED)
+        }
+        TeamDictionary.factory = { refused }
+        app.team.refreshNow()
+        idle()
+        val tx = texts(a)
+        assertFalse(tx.toString(), DictionaryTab.TEAM_LABEL in tx || "Quillon" in tx)
+        assertTrue(tx.toString(), tx.none { it.contains("saved copy", ignoreCase = true) })
+        assertEquals(emptyList<DictEntry>(), app.dictationDictionary())
+    }
+
     @Test fun noServerNoTeamSection() {
         teamServer(listOf(DictEntry("Quillon")))
         TeamDictionary.factory = { null }

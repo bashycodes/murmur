@@ -35,3 +35,9 @@ export function teamSummary(team, personal) {
         return `${words} from your server.`;
     return `${words} from your server. ${n} also in your dictionary: yours ${n === 1 ? "is" : "are"} used.`;
 }
+/** The Dictionary page's line under the team list: the backend's reason when
+ *  the server's list could not be read (it says whether a saved copy is in
+ *  use: none after the server refused the key), else the summary. */
+export function teamNote(v, personal) {
+    return v.error ? { text: v.error, err: true } : { text: teamSummary(v.entries, personal), err: false };
+}
