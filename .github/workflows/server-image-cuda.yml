@@ -217,12 +217,19 @@ jobs:
             echo "MURMUR_WHISPER_LIB=$MURMUR_WHISPER_LIB"; test -f "$MURMUR_WHISPER_LIB"'
           docker image ls murmur-server:ci-cuda
 
-      # No AVX-512 in the server binary or the plugins (D118).
+      # No AVX-512 in the server binary or the plugins (D118). The CUDA LLM
+      # plugin links cuBLASLt statically, whose AVX-512 heuristics code is
+      # CPUID-dispatched (D118): allowed there only.
       - name: No AVX-512 in our binaries
         run: |
           id=$(docker create murmur-server:ci-cuda)
           docker cp "$id:/opt/murmur-server" img; docker rm "$id"
-          tools/checks/no-avx512.sh img/bin/murmur-server img/lib/libmurmur_*.so
+          others=()
+          for f in img/lib/libmurmur_*.so; do
+            [ "$f" = img/lib/libmurmur_llm_cuda.so ] || others+=("$f")
+          done
+          tools/checks/no-avx512.sh img/bin/murmur-server "${others[@]}"
+          tools/checks/no-avx512.sh --allow-prefix libcublasLt_ img/lib/libmurmur_llm_cuda.so
 
       # Release only: hand the tested image to the publish job.
       - name: Save image

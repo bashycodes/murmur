@@ -56,6 +56,29 @@ EOF
 "$check" "$tmp/avx512_1.o" >"$tmp/out" 2>&1 || true
 grep -q 'first in avx512_1)' "$tmp/out" || { echo "FAIL: no function name"; cat "$tmp/out"; fail=1; }
 
+# --allow-prefix: AVX-512 only in functions with the prefix passes (and says
+# so); the same plus one other function fails; without the flag it fails; a
+# file without symbols is an error.
+obj vendor_kernel 'vaddps %zmm1, %zmm2, %zmm3'
+printf '.text\n.globl vendor_kernel\nvendor_kernel:\nvaddps %%zmm1, %%zmm2, %%zmm3\nret\n.globl ggml_thing\nggml_thing:\nvpabsq %%ymm1, %%ymm2\nret\n' |
+  as --64 -o "$tmp/mixed.o" -
+cp "$tmp/vendor_kernel.o" "$tmp/stripped.o"; strip "$tmp/stripped.o"
+expect_allow() { # expect_allow EXIT FILE
+  local rc=0
+  "$check" --allow-prefix vendor_ "$2" >"$tmp/out" 2>&1 || rc=$?
+  if [ "$rc" != "$1" ]; then
+    echo "FAIL: --allow-prefix $2: exit $rc, want $1"; cat "$tmp/out"; fail=1
+  else
+    echo "ok: --allow-prefix $(basename "$2") (exit $rc)"
+  fi
+}
+expect_allow 0 "$tmp/vendor_kernel.o"
+grep -q '1 allowed in: vendor_' "$tmp/out" || { echo "FAIL: allowed count not reported"; cat "$tmp/out"; fail=1; }
+expect 1 "$tmp/vendor_kernel.o"
+expect_allow 1 "$tmp/mixed.o"
+grep -q 'first in ggml_thing)' "$tmp/out" || { echo "FAIL: mixed: wrong function"; cat "$tmp/out"; fail=1; }
+expect_allow 2 "$tmp/stripped.o"
+
 # Not an object file, or missing: an error (exit 2), never "ok".
 echo 'not an object' >"$tmp/text.o"
 expect 2 "$tmp/text.o"
