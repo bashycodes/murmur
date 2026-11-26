@@ -277,8 +277,8 @@ clients have no address rule for the user's own server, and the server serves pl
 any bind (a wildcard or public one included) to any peer; the bearer key is the gate. Before it,
 `ws://` to a public address was refused unless the owner ticked "Allow an unencrypted
 connection" and started the server with `--insecure-bind-any` (now a no-op). The address rules
-in `murmur_router::net` remain for the cloud's custom `http://` endpoints (D18) and the Windows
-webhook (D105).
+in `murmur_router::net` remain for the cloud's custom `http://` endpoints (D18); the Windows
+webhook (D105) dropped them too (D116: `http://` to any address).
 
 Recommended: a WireGuard-based VPN (it already encrypts; bind the server to its 100.x address).
 TLS (server `[tls] cert/key`, rustls) for LAN without a VPN; self-signed certs pinned
@@ -831,7 +831,8 @@ can adapt. Server-side items (S7-S10, C5, the server half of C4) are on branch `
   pill changes on the next poll). A running server session keeps its route until the next session.
   No shell change (just call `update_config` as today).
 * **S6 cleartext by resolved address** (`murmur_router::net`; for `murmur-remote` removed by D111:
-  `ws://` to the user's server goes to any address). Was: `ws://` (and cloud `http://`) to a name resolves it and requires **every** address to be loopback, RFC 1918,
+  `ws://` to the user's server goes to any address; its last user, the Windows webhook, dropped it
+  in D116 and the functions are gone). Was: `ws://` (and cloud `http://`) to a name resolves it and requires **every** address to be loopback, RFC 1918,
   ULA, link-local, or VPN (100.64/10, fd7a:115c:a1e0::/48) reached through an interface that holds
   a VPN address (`net::plaintext_ok_resolved`, `net::route_source`); the connection then goes to
   exactly those addresses. Names pass the config-time check (`ServerConfig::validate`; since
