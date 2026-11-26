@@ -110,6 +110,57 @@ fn json_api_round_trip() {
     assert_eq!(json(&admin_api::whoami(&phone))["code"], "unauthorized");
 }
 
+/// The team dictionary through the JSON layer: an admin adds, a user's
+/// refresh downloads and caches, the next refresh is unchanged (304), a
+/// user can't edit, and the cache is read without the network.
+#[test]
+fn team_dictionary_round_trip() {
+    let s = InProcessServer::start();
+    let d = tempfile::tempdir().unwrap();
+    let admin_cache = d.path().join("admin.json");
+    let user_cache = d.path().join("user.json");
+    let (ac, uc) = (admin_cache.to_str().unwrap(), user_cache.to_str().unwrap());
+    let cfg = s.cfg(TOKEN);
+    let added = json(&admin_api::team_dictionary_add(
+        &cfg, ac, " zephyr ", "Zephyr",
+    ));
+    assert_eq!(
+        added["value"]["entries"],
+        serde_json::json!([{"word":"zephyr","replacement":"Zephyr"}]),
+        "{added}"
+    );
+    json(&admin_api::team_dictionary_add(&cfg, ac, "Quillon", ""));
+    let secret = json(&admin_api::create_key(&cfg, "phone", false))["value"]["secret"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let phone = s.cfg(&secret);
+    let r = json(&admin_api::team_dictionary_refresh(&phone, uc));
+    assert_eq!(r["value"]["changed"], true, "{r}");
+    assert_eq!(r["value"]["entries"].as_array().unwrap().len(), 2, "{r}");
+    assert!(r["value"].get("error").is_none(), "{r}");
+    let r = json(&admin_api::team_dictionary_refresh(&phone, uc));
+    assert_eq!(r["value"]["changed"], false, "{r}");
+    let cached = json(&admin_api::team_dictionary_cached(&phone, uc));
+    assert_eq!(cached["value"]["entries"][1]["word"], "Quillon");
+    assert_eq!(
+        json(&admin_api::team_dictionary_add(&phone, uc, "Brixwell", ""))["code"],
+        "forbidden"
+    );
+    assert_eq!(
+        json(&admin_api::team_dictionary_remove(&phone, uc, "Quillon"))["code"],
+        "forbidden"
+    );
+    let r = json(&admin_api::team_dictionary_remove(&cfg, ac, "ZEPHYR"));
+    assert_eq!(r["value"]["entries"].as_array().unwrap().len(), 1, "{r}");
+    assert_eq!(
+        json(&admin_api::team_dictionary_remove(&cfg, ac, "ZEPHYR"))["code"],
+        "not_found"
+    );
+    let r = json(&admin_api::team_dictionary_refresh(&phone, uc));
+    assert_eq!(r["value"]["changed"], true, "{r}");
+}
+
 /// D112: after a wrong key locks this address out, every admin call answers
 /// `throttled` with the server's wait, even with the right key.
 #[test]
@@ -141,7 +192,7 @@ fn contract_lists_every_admin_symbol() {
         .split('`')
         .filter(|w| w.starts_with("Java_dev_murmur_admin_NativeAdmin_native"))
         .collect();
-    assert_eq!(want.len(), 4, "{want:?}");
+    assert_eq!(want.len(), 8, "{want:?}");
     let src = include_str!("../src/jni_admin.rs");
     let have: std::collections::BTreeSet<&str> = src
         .split(|c: char| !c.is_alphanumeric() && c != '_')
@@ -172,12 +223,14 @@ fn jvm_admin_round_trip() {
     let src =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/java/dev/murmur/admin/JniAdmin.java");
     let s = InProcessServer::start();
+    let caches = tempfile::tempdir().unwrap();
     let out = Command::new("java")
         .arg(format!("-Djava.library.path={}", lib_dir.display()))
         .arg("--enable-native-access=ALL-UNNAMED")
         .arg(&src)
         .arg(s.cfg(TOKEN))
         .arg(s.cfg("TOKEN"))
+        .arg(caches.path())
         .output()
         .unwrap();
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -187,7 +240,7 @@ fn jvm_admin_round_trip() {
         String::from_utf8_lossy(&out.stderr)
     );
     let l: Vec<&str> = stdout.lines().collect();
-    assert_eq!(l.len(), 9, "{stdout}");
+    assert_eq!(l.len(), 14, "{stdout}");
     assert_eq!(json(l[0])["value"]["admin"], true, "{}", l[0]);
     assert_eq!(json(l[1])["value"]["keys"].as_array().unwrap().len(), 1);
     let (created, len) = l[2].rsplit_once(" LEN ").unwrap();
@@ -205,4 +258,11 @@ fn jvm_admin_round_trip() {
     assert_eq!(json(l[6])["code"], "unauthorized");
     assert_eq!(json(l[7])["code"], "bad_request");
     assert_eq!(json(l[8])["code"], "bad_request");
+    let one = serde_json::json!([{"word": "Quillon"}]);
+    assert_eq!(json(l[9])["value"]["entries"], one, "{}", l[9]);
+    assert_eq!(json(l[10])["value"]["entries"], one, "{}", l[10]);
+    assert_eq!(json(l[10])["value"]["changed"], true, "{}", l[10]);
+    assert_eq!(json(l[11])["value"]["entries"], one, "{}", l[11]);
+    assert_eq!(json(l[12])["value"]["entries"], serde_json::json!([]));
+    assert_eq!(json(l[13])["code"], "bad_request");
 }

@@ -43,7 +43,7 @@ fn json<T: Serialize>(status: StatusCode, v: &T) -> Response {
         .into_response()
 }
 
-fn error(status: StatusCode, c: &str, message: impl Into<String>) -> Response {
+pub(crate) fn error(status: StatusCode, c: &str, message: impl Into<String>) -> Response {
     json(status, &AdminError::new(c, message))
 }
 
@@ -66,8 +66,9 @@ fn key_error(e: KeyError) -> Response {
 }
 
 /// The caller's key and the store, or the refusal: 404 `auth_off`, 429
-/// `throttled` (D112), 401, or (with `need_admin`) 403.
-fn caller(
+/// `throttled` (D112), 401, or (with `need_admin`) 403. The team
+/// dictionary routes (`team_dict.rs`) share it.
+pub(crate) fn caller(
     state: &AppState,
     peer: SocketAddr,
     headers: &HeaderMap,

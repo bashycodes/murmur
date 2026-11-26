@@ -58,7 +58,7 @@ object CallEngine {
         val loaded = EnginePlan.load(p, loader)
         val core = loaded.core as? NativeMurmurCore ?: throw CoreException(loaded.error ?: "The speech model failed to load")
         val s = app.settings.load()
-        return NativeMeeting.open(core, session(s, app.dictionary.all(), language))
+        return NativeMeeting.open(core, session(s, app.dictationDictionary(), language))
     }
 
     /**

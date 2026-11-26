@@ -14,6 +14,7 @@ pub mod admin;
 mod conn;
 #[cfg(feature = "library")]
 pub mod library;
+pub mod team_dict;
 #[cfg(feature = "tls")]
 mod tls;
 

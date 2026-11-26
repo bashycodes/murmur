@@ -112,3 +112,63 @@ fn server_down_or_unsaved_is_a_status_not_a_panic() {
     let st = server_admin::status(&d);
     assert!(!st.configured && st.error.is_some());
 }
+
+/// The team dictionary from the app's side: the admin adds words, another
+/// key downloads and caches them, the next refresh is a 304, the cached
+/// copy is used once the server is gone, and the merged dictation list puts
+/// the personal entry first. A non-admin can't edit.
+#[test]
+fn team_dictionary_reaches_dictation_and_survives_offline() {
+    use murmur_windows::team_dictionary as team;
+    let s = start();
+    let owner = dev(&s, TOKEN);
+    let dir = std::env::temp_dir().join(format!("murmur-win-team-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let (owner_cache, phone_cache) = (dir.join("owner.json"), dir.join("phone.json"));
+
+    let v = team::add(&owner, &owner_cache, " zephyr ", "ZephyrCo").unwrap();
+    assert_eq!(v.entries[0].word, "zephyr");
+    assert_eq!(v.entries[0].replacement.as_deref(), Some("ZephyrCo"));
+    team::add(&owner, &owner_cache, "Quillon", "").unwrap();
+    let e = team::add(
+        &owner,
+        &owner_cache,
+        "one two three four five six seven",
+        "",
+    )
+    .unwrap_err();
+    assert!(e.contains("at most 6"), "{e}");
+
+    let secret = api(&owner).create("phone", false).unwrap().secret;
+    let phone = dev(&s, &secret);
+    assert!(team::cached(&phone, &phone_cache).entries.is_empty());
+    let v = team::refresh(&phone, &phone_cache);
+    assert!(v.configured && v.error.is_none(), "{v:?}");
+    assert_eq!(v.entries.len(), 2);
+    assert_eq!(team::refresh(&phone, &phone_cache), v, "304: same list");
+    let e = team::add(&phone, &phone_cache, "Brixwell", "").unwrap_err();
+    assert!(e.contains("not an admin key"), "{e}");
+
+    // A personal "zephyr" wins over the team's.
+    let p = murmur_windows::prefs::Prefs {
+        dictionary: vec![murmur_windows::core_api::DictEntry {
+            word: "Zephyr".into(),
+            replacement: Some("Zephyr Labs".into()),
+            is_snippet: false,
+        }],
+        team_dictionary: team::to_dict(&v.entries),
+        ..Default::default()
+    };
+    let d = p.dictation_dictionary();
+    assert_eq!(d.len(), 2, "{d:?}");
+    assert_eq!(d[0].replacement.as_deref(), Some("Zephyr Labs"));
+    assert_eq!(d[1].word, "Quillon");
+
+    // Offline: the saved copy, with the reason.
+    s.handle.kill();
+    let off = team::refresh(&phone, &phone_cache);
+    assert_eq!(off.entries, v.entries);
+    assert!(off.error.is_some(), "{off:?}");
+    assert_eq!(team::cached(&phone, &phone_cache).entries, v.entries);
+    let _ = std::fs::remove_dir_all(&dir);
+}

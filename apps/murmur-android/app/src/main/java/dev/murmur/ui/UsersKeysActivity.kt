@@ -18,8 +18,10 @@ import dev.murmur.admin.AdminResult
 import dev.murmur.admin.CreatedKey
 import dev.murmur.admin.KeyView
 import dev.murmur.admin.SecretClip
+import dev.murmur.admin.TeamDictionary
 import dev.murmur.admin.UsersKeys
 import dev.murmur.admin.WhoAmI
+import dev.murmur.core.DictEntry
 import kotlin.concurrent.thread
 
 /**
@@ -31,6 +33,9 @@ import kotlin.concurrent.thread
  *   NEW KEY  name + admin switch → Create key → the secret, shown once in a dialog with Copy
  *            (a sensitive clip). The dialog's window is FLAG_SECURE, and the secret leaves the
  *            view (and this activity) when it closes; it is never logged or stored.
+ *   TEAM DICTIONARY  the server's shared words (every client merges them under its own
+ *            dictionary): add a word with an optional replacement, Remove one. A refused edit
+ *            shows the server's reason (bad entry, list full, not an admin key).
  * A `forbidden` / `unauthorized` answer (key no longer admin, revoked) closes the page.
  */
 class UsersKeysActivity : Activity() {
@@ -42,6 +47,11 @@ class UsersKeysActivity : Activity() {
     private lateinit var name: DevUi.FieldRow
     private lateinit var admin: DevUi.ToggleRow
     private var keys: List<KeyView> = emptyList()
+    private lateinit var teamCard: LinearLayout
+    private lateinit var teamWord: DevUi.FieldRow
+    private lateinit var teamReplacement: DevUi.FieldRow
+    private lateinit var teamStatus: DevUi.Result
+    private var teamBusy = false
     private var busy = false
     /** The open secret dialog (tests read it; cleared on dismiss). */
     internal var secretDialog: AlertDialog? = null
@@ -54,6 +64,7 @@ class UsersKeysActivity : Activity() {
         if (api == null) { finish(); return }
         render()
         load()
+        loadTeam()
     }
 
     override fun onDestroy() {
@@ -79,6 +90,17 @@ class UsersKeysActivity : Activity() {
             }
             action("Create key", DevUi.Style.PRIMARY) { onCreateKey() }
             status = result()
+            sectionLabel("TEAM DICTIONARY")
+            note("Words every app on this server uses, under each person's own dictionary: their own entry wins on the same word.")
+            teamCard = card { emptyState("Loading…", "Asking the server for its team dictionary") }
+            card {
+                teamWord = fieldRow("Word or name", "", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS,
+                    help = "Up to 64 characters", hint = "Quillon") { teamWord.setError(null) }
+                teamReplacement = fieldRow("Replace with (optional)", "", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS,
+                    help = "Leave empty to only teach the spelling; fill in to replace what the engine hears") {}
+            }
+            action("Add to team dictionary", DevUi.Style.TONAL) { onAddTeam() }
+            teamStatus = result()
         }
     }
 
@@ -147,6 +169,71 @@ class UsersKeysActivity : Activity() {
                     load()
                 }
                 is AdminResult.Err -> status.show(UsersKeys.errorText(r), Tone.BAD)
+            }
+        }
+    }
+
+    private val team get() = dev.murmur.MurmurApp.of(this).team
+
+    /** Off the main thread; [then] runs on it while the page is open. */
+    private fun <T> teamCall(what: String, call: () -> T, then: (T) -> Unit) {
+        thread(name = "team-dictionary-$what") {
+            val r = call()
+            runOnUiThread { if (alive) then(r) }
+        }
+    }
+
+    private fun loadTeam() {
+        teamCall("refresh", { team.refreshNow() }) { r ->
+            renderTeam()
+            r?.error?.let { teamStatus.show(TeamDictionary.errorText(it), Tone.BAD) }
+        }
+    }
+
+    private fun renderTeam() = with(ui) {
+        teamCard.removeAllViews()
+        val entries = team.entries
+        if (entries.isEmpty()) { teamCard.emptyState("No team words yet", "Add one below"); return@with }
+        for (e in entries.sortedBy { it.word.lowercase() }) {
+            val remove = chip("Remove") { confirmRemoveTeam(e) }.apply { contentDescription = "Remove ${e.word}" }
+            teamCard.listRow(
+                title = e.word, meta = e.replacement?.let { "Replaced with $it" } ?: "Spelling only",
+                trailing = remove, actions = listOf("Remove ${e.word}" to { confirmRemoveTeam(e) }),
+            ) { confirmRemoveTeam(e) }
+        }
+    }
+
+    private fun onAddTeam() {
+        if (teamBusy) return
+        val w = teamWord.text.trim()
+        TeamDictionary.wordError(w)?.let { teamWord.setError(it); return }
+        val r = teamReplacement.text.trim()
+        teamBusy = true
+        teamStatus.show("Adding $w…")
+        teamCall("add", { team.add(w, r) }) { res ->
+            teamBusy = false
+            when (res) {
+                is AdminResult.Ok -> {
+                    teamWord.edit.setText(""); teamReplacement.edit.setText("")
+                    teamStatus.show("Added $w", Tone.OK)
+                    renderTeam()
+                }
+                is AdminResult.Err -> teamStatus.show(TeamDictionary.errorText(res), Tone.BAD)
+            }
+        }
+    }
+
+    private fun confirmRemoveTeam(e: DictEntry) {
+        ui.confirm("Remove ${e.word}?", "It leaves every app's team dictionary at their next refresh. Personal dictionaries keep their own copy.", "Remove",
+            onYes = { removeTeam(e) })
+    }
+
+    private fun removeTeam(e: DictEntry) {
+        teamStatus.show("Removing ${e.word}…")
+        teamCall("remove", { team.remove(e.word) }) { res ->
+            when (res) {
+                is AdminResult.Ok -> { teamStatus.show("Removed ${e.word}", Tone.OK); renderTeam() }
+                is AdminResult.Err -> teamStatus.show(TeamDictionary.errorText(res), Tone.BAD)
             }
         }
     }

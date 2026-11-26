@@ -13,6 +13,10 @@ import dev.murmur.admin.AdminCode
 import dev.murmur.admin.AdminResult
 import dev.murmur.admin.CreatedKey
 import dev.murmur.admin.KeyView
+import dev.murmur.admin.TeamDictionary
+import dev.murmur.admin.TeamDictionaryApi
+import dev.murmur.admin.TeamRefresh
+import dev.murmur.core.DictEntry
 import dev.murmur.admin.UsersKeys
 import dev.murmur.admin.WhoAmI
 import dev.murmur.data.DevPages.Page
@@ -70,8 +74,26 @@ class UsersKeysUiTest {
         }
     }
 
-    @Before fun save() { saved = UsersKeys.factory }
-    @After fun restore() { UsersKeys.factory = saved }
+    /** The server's team dictionary (no natives). */
+    private class Team(var entries: List<DictEntry> = emptyList()) : TeamDictionaryApi {
+        var editError: AdminResult.Err? = null
+        override fun cached(): AdminResult<List<DictEntry>> = AdminResult.Ok(entries)
+        override fun refresh(): AdminResult<TeamRefresh> = AdminResult.Ok(TeamRefresh(entries, false))
+        override fun add(word: String, replacement: String): AdminResult<List<DictEntry>> =
+            editError ?: AdminResult.Ok((entries + DictEntry(word, replacement.ifEmpty { null }))).also { entries = it.value }
+        override fun remove(word: String): AdminResult<List<DictEntry>> =
+            editError ?: AdminResult.Ok(entries.filterNot { it.word == word }).also { entries = it.value }
+    }
+
+    private lateinit var savedTeam: (android.content.Context) -> TeamDictionaryApi?
+
+    @Before fun save() { saved = UsersKeys.factory; savedTeam = TeamDictionary.factory }
+    @After fun restore() {
+        UsersKeys.factory = saved
+        TeamDictionary.factory = { null }
+        MurmurApp.of(ctx).team.refreshNow()
+        TeamDictionary.factory = savedTeam
+    }
 
     private fun use(f: Fake?): Fake? { UsersKeys.factory = { f }; return f }
 
@@ -141,6 +163,46 @@ class UsersKeysUiTest {
         ShadowAlertDialog.getLatestAlertDialog().getButton(DialogInterface.BUTTON_POSITIVE).performClick()
         waitFor("revoked") { "Revoked" in texts(a) }
         assertEquals(listOf("k-2"), f.revoked.toList())
+    }
+
+    @Test fun teamDictionaryListsAddsAndRemoves() {
+        use(Fake())
+        val team = Team(listOf(DictEntry("Quillon")))
+        TeamDictionary.factory = { team }
+        val a = launch()
+        waitFor("team") { "Quillon" in texts(a) }
+        assertTrue("TEAM DICTIONARY" in texts(a).map { it.uppercase() })
+        val fields = walk(a.window.decorView).filterIsInstance<android.widget.EditText>()
+        // Name, then the team word and its replacement.
+        fields[1].setText("brixwell"); fields[2].setText("Brixwell")
+        button(a, "Add to team dictionary").performClick()
+        waitFor("added") { "Added brixwell" in texts(a) }
+        assertTrue(texts(a).toString(), "Replaced with Brixwell" in texts(a))
+        assertEquals(listOf(DictEntry("Quillon"), DictEntry("brixwell", "Brixwell")), MurmurApp.of(ctx).team.entries)
+        assertEquals("", fields[1].text.toString())
+        walk(a.window.decorView).filterIsInstance<Button>().first { it.contentDescription == "Remove Quillon" }.performClick(); idle()
+        ShadowAlertDialog.getLatestAlertDialog().getButton(DialogInterface.BUTTON_POSITIVE).performClick()
+        waitFor("removed") { "Removed Quillon" in texts(a) }
+        assertEquals(listOf(DictEntry("brixwell", "Brixwell")), team.entries)
+        UiTestKit.assertTouchTargets(a, "users-keys team")
+    }
+
+    @Test fun teamDictionaryShowsTheServersReason() {
+        use(Fake())
+        val team = Team().also { it.editError = AdminResult.Err(TeamDictionary.TOO_MANY, "the team dictionary is full (500 entries)") }
+        TeamDictionary.factory = { team }
+        val a = launch()
+        waitFor("empty team") { "No team words yet" in texts(a) }
+        val fields = walk(a.window.decorView).filterIsInstance<android.widget.EditText>()
+        button(a, "Add to team dictionary").performClick(); idle()
+        assertTrue(texts(a).toString(), "Type the word." in texts(a))
+        fields[1].setText("Zephyr")
+        button(a, "Add to team dictionary").performClick()
+        waitFor("error") { "The team dictionary is full (500 entries)" in texts(a) }
+        assertFalse(a.isFinishing)
+        team.editError = AdminResult.Err(AdminCode.FORBIDDEN, "admin key required")
+        button(a, "Add to team dictionary").performClick()
+        waitFor("forbidden") { "Only an admin key can change the team dictionary." in texts(a) }
     }
 
     @Test fun forbiddenClosesThePage() {

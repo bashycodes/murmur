@@ -658,6 +658,8 @@ class DeveloperActivity : Activity() {
         draft = DevDraft.of(app.dev.load(), page)
         validate()
         usersKeys?.check()
+        // Another server (or none) has another team dictionary.
+        if (page == Page.SERVER) app.team.refresh()
         // §5: a probe runs after each save; its result fills "Server info".
         if (s.effective(caps).allowServer && s.serverConfigured) {
             val router = app.engine.router()

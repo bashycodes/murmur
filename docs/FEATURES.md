@@ -124,6 +124,12 @@ from my corrections*. Android: *Dictionary*, and *Settings → Data &
 privacy → Learn from my edits*. Both are on by default. You can import and
 export the list as JSON.
 
+**Team dictionary** (murmur-server, Both). An admin keeps one word list on
+your server and every app using it gets those words too; your own entry
+wins on the same word. Shown read-only under your dictionary.
+*How:* edit it in *Users & keys* (Windows *Settings*, Android *Settings*)
+with an admin key. See [server-advanced.md](server-advanced.md) §4.
+
 **A writing style per kind of app** (Both). Chats get a casual tone,
 email and everything else a formal one. You can change the style for each
 group and move a single app into another group.

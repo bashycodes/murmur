@@ -3,10 +3,15 @@
 // List with usage (revoked keys folded away), create (the secret is shown once in a copy box and
 // dropped from the page when closed), revoke with a confirm. Key names and
 // clients are user data: always textContent, never markup.
+// Also the server's team dictionary: the words every app using the server
+// uses like its own dictionary words (add, replace, remove).
 
 import { $, askDialog, el, setStatus } from "../../lib/dom.js";
 import { invoke } from "../../lib/ipc.js";
 import { keyDetails, keyTime, lastUsed, splitKeys } from "../../lib/key-rows.js";
+import { prefsStore } from "../../lib/prefs-store.js";
+import { teamEntryFrom, teamRows } from "../../lib/team-dict.js";
+import { teamStore } from "../../lib/team-store.js";
 import { group, heading, row, toggle } from "../../lib/markup.js";
 import { router, type Page } from "../../lib/router.js";
 import type { AdminStatus, CreatedKey, KeyList, KeyView } from "../../lib/types.js";
@@ -89,6 +94,21 @@ ${group(
   <span id="keys_status" class="lw-status"></span>
 </div>
 
+<section class="lw-section">
+  <h3 class="fl-group-title">Team dictionary</h3>
+  <p class="hint">Names and jargon for everyone using this server. Every app downloads the list and uses it like its own dictionary words: help hearing them, the AI cleanup spelling them, and "heard as" rewrites. A word in someone's own dictionary wins over the same word here. Up to 6 words and 64 characters each; no snippets.</p>
+  <div class="fl-group">
+    <div class="fl-list" id="team_admin_rows"></div>
+    <p class="lw-empty-row" id="team_admin_empty" hidden></p>
+  </div>
+  <div class="lw-actions lw-actions-tight">
+    <input id="team_word" class="fl-input lw-w180" maxlength="64" spellcheck="false" autocomplete="off" placeholder="Word, e.g. Quillon" aria-label="Word" />
+    <input id="team_heard" class="fl-input lw-w180" maxlength="64" spellcheck="false" autocomplete="off" placeholder="Heard as (optional)" aria-label="Heard as" />
+    <button type="button" id="team_add" class="fl-btn fl-btn-primary">Add word</button>
+    <span id="team_status" class="lw-status"></span>
+  </div>
+</section>
+
 <dialog id="keys_secret_dlg" class="fl-dialog" aria-labelledby="keys_secret_title">
   <h3 id="keys_secret_title">Key created</h3>
   <p>Copy it now: this is the only time it is shown. Paste it into the app on <b id="keys_secret_name"></b> as the access token.</p>
@@ -119,6 +139,14 @@ ${group(
       if (e.key === "Enter") void create();
     });
     $<HTMLButtonElement>("keys_secret_copy").addEventListener("click", () => void copySecret());
+    $<HTMLButtonElement>("team_add").addEventListener("click", () => void addTeamWord());
+    for (const id of ["team_word", "team_heard"]) {
+      $<HTMLInputElement>(id).addEventListener("keydown", (e) => {
+        if (e.key === "Enter") void addTeamWord();
+      });
+    }
+    teamStore.onChange(renderTeam);
+    prefsStore.subscribe(() => renderTeam());
     const dlg = $<HTMLDialogElement>("keys_secret_dlg");
     $<HTMLButtonElement>("keys_secret_done").addEventListener("click", () => dlg.close());
     // However it closes (Done, Esc), the secret leaves the page.
@@ -129,7 +157,10 @@ ${group(
   },
 
   show(opened) {
-    if (opened) void load();
+    if (opened) {
+      void load();
+      void teamStore.refresh();
+    }
   },
 };
 
@@ -262,6 +293,58 @@ async function revoke(k: KeyView): Promise<void> {
   await load();
   // Revoking this app's own key ends its admin access.
   if (k.current) void adminStore.refresh();
+}
+
+// ------------------------------------------------------------------ team dictionary
+
+function renderTeam(): void {
+  const v = teamStore.get();
+  const personal = prefsStore.get()?.dictionary ?? [];
+  const rows = teamRows(v.entries, personal).map((r) => {
+    const row = el("div", "fl-list-row lw-dict-row");
+    const text = el("span", "lw-dict-text");
+    if (r.heard) text.append(el("span", "lw-heard", r.heard), el("span", "lw-arrow", "→"));
+    text.append(el("span", "lw-word", r.word));
+    const del = el("button", "fl-btn fl-btn-ghost fl-btn-sm", "Remove");
+    del.type = "button";
+    del.addEventListener("click", () => void removeTeamWord(r.key, r.word));
+    row.append(text, del);
+    return row;
+  });
+  $<HTMLElement>("team_admin_rows").replaceChildren(...rows);
+  const empty = $<HTMLElement>("team_admin_empty");
+  empty.hidden = rows.length > 0;
+  empty.textContent = "No team words yet.";
+  if (v.error) setStatus("team_status", v.error, false);
+}
+
+async function addTeamWord(): Promise<void> {
+  const e = teamEntryFrom($<HTMLInputElement>("team_word").value, $<HTMLInputElement>("team_heard").value);
+  if (typeof e === "string") {
+    setStatus("team_status", e, false);
+    return;
+  }
+  const btn = $<HTMLButtonElement>("team_add");
+  btn.disabled = true;
+  try {
+    await teamStore.add(e.word, e.replacement);
+    $<HTMLInputElement>("team_word").value = "";
+    $<HTMLInputElement>("team_heard").value = "";
+    setStatus("team_status", `Added "${e.replacement || e.word}"`, true);
+  } catch (err) {
+    setStatus("team_status", String(err), false);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function removeTeamWord(key: string, label: string): Promise<void> {
+  try {
+    await teamStore.remove(key);
+    setStatus("team_status", `Removed "${label}"`, true);
+  } catch (err) {
+    setStatus("team_status", String(err), false);
+  }
 }
 
 // The engine settings loaded or were saved (a new server or token, maybe):

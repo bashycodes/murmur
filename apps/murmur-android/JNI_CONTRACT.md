@@ -275,7 +275,7 @@ separate class, **`dev.murmur.admin.NativeAdmin`** (Kotlin `object` + `@JvmStati
 `remote` + `murmur_remote::admin::AdminClient`); `tools/build-native.sh` enables it for `hybrid`
 and `remote`, so the `local` library has none of these symbols (Kotlin treats
 `UnsatisfiedLinkError` as "not in this build"). `serverConfigJson` is the saved
-`ServerConfig` (as for `nativeProbeServer`). All four are **blocking** (one HTTP request,
+`ServerConfig` (as for `nativeProbeServer`). The four key calls are **blocking** (one HTTP request,
 ≤ 15 s) and never return null. Answer: `{"ok":true,"value":…}` or
 `{"ok":false,"code":…,"message":…}` with `code` from `murmur_protocol::admin::code`
 (`forbidden` = not an admin key: Kotlin hides the page; `throttled` = the server locked this
@@ -288,6 +288,23 @@ an answer is wiped after it is handed to Java.
 | `nativeAdminListKeys(serverConfigJson: String): String` | `(Ljava/lang/String;)Ljava/lang/String;` | `Java_dev_murmur_admin_NativeAdmin_nativeAdminListKeys` | `GET /v1/admin/keys` → `value` = `{keys:[KeyView]}` (usage incl. `downloads`, `download_bytes`; `current` = this key) |
 | `nativeAdminCreateKey(serverConfigJson: String, name: String, admin: Boolean): String` | `(Ljava/lang/String;Ljava/lang/String;Z)Ljava/lang/String;` | `Java_dev_murmur_admin_NativeAdmin_nativeAdminCreateKey` | `POST /v1/admin/keys` → `value` = `{key, secret}`. The **secret** is shown once and never stored or logged by the app |
 | `nativeAdminRevokeKey(serverConfigJson: String, id: String): String` | `(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;` | `Java_dev_murmur_admin_NativeAdmin_nativeAdminRevokeKey` | `DELETE /v1/admin/keys/{id}` → `value` = `{key}`; `last_admin` for the last admin key |
+
+**Team dictionary** (same class and envelope; `murmur_protocol::dictionary`, client side
+`murmur_remote::team_dict`). The server's shared word list: any key reads it, admin keys edit it.
+`cachePath` is the app's cache file (`filesDir/team-dictionary.json`), which holds the last list
+with its server (`host:port`) and ETag, never the key; another server's cache reads as empty.
+Entries are `{word, replacement?}` (a personal `DictEntry` without `isSnippet`), already
+filtered to term-like words (≤ 64 characters, ≤ 6 words, no control or markup characters). The
+app merges them under the personal dictionary with `TeamDictionary.merge` (vectors:
+`crates/murmur-core/fixtures/team-dictionary/merge.json`). `nativeTeamDictionaryCached` is
+local file I/O only; the other three are **blocking** (one HTTP request, ≤ 15 s).
+
+| Kotlin (`@JvmStatic external`) | JNI descriptor | C symbol | Semantics |
+|---|---|---|---|
+| `nativeTeamDictionaryCached(serverConfigJson: String, cachePath: String): String` | `(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;` | `Java_dev_murmur_admin_NativeAdmin_nativeTeamDictionaryCached` | No network → `value` = `{entries}` cached for this server (empty when none) |
+| `nativeTeamDictionaryRefresh(serverConfigJson: String, cachePath: String): String` | `(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;` | `Java_dev_murmur_admin_NativeAdmin_nativeTeamDictionaryRefresh` | `GET /v1/dictionary` with `If-None-Match` → always `ok` with `value` = `{entries, changed, error?:{code,message}}`: `entries` is the list to use (fresh; the cache on 304 or when the server can't be reached; empty and the cache deleted for `auth_off` / `unsupported`). Only a bad config is `ok:false` |
+| `nativeTeamDictionaryAdd(serverConfigJson: String, cachePath: String, word: String, replacement: String): String` | `(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;` | `Java_dev_murmur_admin_NativeAdmin_nativeTeamDictionaryAdd` | `POST /v1/admin/dictionary` (empty `replacement` = a plain word; the same word, case and spacing ignored, is replaced) → `value` = `{entries}`, also cached; `forbidden`, `bad_request` (message says why), `too_many` |
+| `nativeTeamDictionaryRemove(serverConfigJson: String, cachePath: String, word: String): String` | `(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;` | `Java_dev_murmur_admin_NativeAdmin_nativeTeamDictionaryRemove` | `DELETE /v1/admin/dictionary` → `value` = `{entries}`, also cached; `forbidden`, `not_found` |
 
 ## Model library (D41, 2026-10-31) — additive, `hybrid` / `remote` only
 

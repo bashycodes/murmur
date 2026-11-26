@@ -322,6 +322,23 @@ export interface OrView {
   cleanup_model_info: ModelRow | null;
 }
 
+// ------------------------------------------------- Team dictionary
+
+/** One team dictionary entry (`murmur_protocol::dictionary::TeamEntry`). */
+export interface TeamEntry {
+  word: string;
+  replacement?: string | null;
+}
+
+/** `team_dictionary_*` (src/team_dictionary.rs `TeamView`). */
+export interface TeamView {
+  /** A server and a token are saved: show the team section. */
+  configured: boolean;
+  entries: TeamEntry[];
+  /** The server's list could not be read; `entries` is the saved copy. */
+  error?: string;
+}
+
 // ------------------------------------------------- Users & keys (D39)
 
 /** `admin_status`: whether the saved token is an admin key. */

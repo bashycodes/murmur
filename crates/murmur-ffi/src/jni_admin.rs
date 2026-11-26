@@ -116,3 +116,84 @@ pub extern "system" fn Java_dev_murmur_admin_NativeAdmin_nativeAdminRevokeKey(
         (_, None) => bad_arg("key id"),
     })
 }
+
+// ---- team dictionary (`murmur_protocol::dictionary`): any key reads, admin
+// keys edit; `cache` is the app's cache file path.
+
+#[no_mangle]
+pub extern "system" fn Java_dev_murmur_admin_NativeAdmin_nativeTeamDictionaryCached(
+    mut env: JNIEnv,
+    _c: JClass,
+    server: JString,
+    cache: JString,
+) -> jstring {
+    reply(&mut env, |env| {
+        match (arg(env, &server), arg(env, &cache)) {
+            (Some(cfg), Some(cache)) => admin_api::team_dictionary_cached(&cfg, &cache),
+            (None, _) => bad_arg("server config"),
+            (_, None) => bad_arg("cache path"),
+        }
+    })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_murmur_admin_NativeAdmin_nativeTeamDictionaryRefresh(
+    mut env: JNIEnv,
+    _c: JClass,
+    server: JString,
+    cache: JString,
+) -> jstring {
+    reply(&mut env, |env| {
+        match (arg(env, &server), arg(env, &cache)) {
+            (Some(cfg), Some(cache)) => admin_api::team_dictionary_refresh(&cfg, &cache),
+            (None, _) => bad_arg("server config"),
+            (_, None) => bad_arg("cache path"),
+        }
+    })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_murmur_admin_NativeAdmin_nativeTeamDictionaryAdd(
+    mut env: JNIEnv,
+    _c: JClass,
+    server: JString,
+    cache: JString,
+    word: JString,
+    replacement: JString,
+) -> jstring {
+    reply(&mut env, |env| {
+        match (
+            arg(env, &server),
+            arg(env, &cache),
+            arg(env, &word),
+            arg(env, &replacement),
+        ) {
+            (Some(cfg), Some(cache), Some(w), r) => {
+                admin_api::team_dictionary_add(&cfg, &cache, &w, r.as_deref().unwrap_or(""))
+            }
+            (None, ..) => bad_arg("server config"),
+            (_, None, ..) => bad_arg("cache path"),
+            _ => bad_arg("word"),
+        }
+    })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_murmur_admin_NativeAdmin_nativeTeamDictionaryRemove(
+    mut env: JNIEnv,
+    _c: JClass,
+    server: JString,
+    cache: JString,
+    word: JString,
+) -> jstring {
+    reply(&mut env, |env| {
+        match (arg(env, &server), arg(env, &cache), arg(env, &word)) {
+            (Some(cfg), Some(cache), Some(w)) => {
+                admin_api::team_dictionary_remove(&cfg, &cache, &w)
+            }
+            (None, ..) => bad_arg("server config"),
+            (_, None, _) => bad_arg("cache path"),
+            _ => bad_arg("word"),
+        }
+    })
+}

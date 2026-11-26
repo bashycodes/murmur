@@ -3,6 +3,7 @@ package dev.murmur.ui.tabs
 import android.app.Activity
 import android.text.TextUtils
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import dev.murmur.core.DictEntry
@@ -18,11 +19,40 @@ import dev.murmur.ui.TypeScale
  * Dictionary tab (AndroidDictionary.dc.html): one card of words, "heard →" in grey before a word
  * that replaces what the engine hears. Above it, while any wait, the learn-from-my-edits
  * suggestions (Add / Dismiss; nothing is added without Add). No "learned" marker: entries carry
- * no such flag.
+ * no such flag. Below it, with a server that has one, the team dictionary: read-only (admins
+ * edit it in Users & keys); a personal entry wins on the same word.
  */
 internal class DictionaryTab(activity: Activity, ui: DevUi) : EntryTab(activity, ui, Kind.WORDS) {
+    /** A team refresh landed: redraw while the tab shows. */
+    private val teamChanged: () -> Unit = { activity.runOnUiThread { if (!activity.isDestroyed) fill() } }
+
+    override fun onShow() {
+        app.team.addListener(teamChanged)
+        super.onShow()
+    }
+
+    override fun onHide() {
+        app.team.removeListener(teamChanged)
+        super.onHide()
+    }
+
+    override fun below(col: LinearLayout, query: String): Unit = with(ui) {
+        // Empty without a server: the store drops the list when the server goes (Server page save, Settings).
+        val team = app.team.entries
+        if (team.isEmpty()) return@with
+        col.sectionLabel(TEAM_LABEL)
+        col.note(TEAM_NOTE)
+        val shown = DictionaryPages.entries(team, Kind.WORDS, query)
+        if (shown.isEmpty()) { col.card { emptyState("Nothing matches “${query.trim()}”", "Search looks at both the word and what it becomes.") }; return@with }
+        col.card {
+            for (e in shown) addView(wordRow(e).apply {
+                isFocusable = true; contentDescription = DictionaryPages.row(e).description
+                for (i in 0 until childCount) getChildAt(i).importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            })
+        }
+    }
     override fun above(col: LinearLayout): Unit = with(ui) {
-        val pending = app.suggestions.update { it.pruneKnown(app.dictionary.all()) }.pending
+        val pending = app.suggestions.update { it.pruneKnown(app.dictationDictionary()) }.pending
         if (pending.isEmpty()) return@with
         col.sectionLabel("Suggestions")
         col.card {
@@ -42,18 +72,18 @@ internal class DictionaryTab(activity: Activity, ui: DevUi) : EntryTab(activity,
     }
 
     override fun rows(col: LinearLayout, entries: List<DictEntry>): Unit = with(ui) {
-        col.card {
-            for (e in entries) {
-                val r = DictionaryPages.row(e)
-                addView(LinearLayout(activity).apply {
-                    orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                    setPadding(dp(20), dp(8), dp(20), dp(8))
-                    background = ripple(null)
-                    if (r.heard != null) addView(tv("${r.heard} →", TypeScale.ROW, t.ink2).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(10) })
-                    addView(tv(r.word, TypeScale.ROW, p.text).apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                    entry(e)
-                })
-            }
+        col.card { for (e in entries) addView(wordRow(e).apply { background = ripple(null); entry(e) }) }
+    }
+
+    /** "heard →" in grey, then the word. */
+    private fun wordRow(e: DictEntry): LinearLayout = with(ui) {
+        val r = DictionaryPages.row(e)
+        LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(20), dp(8), dp(20), dp(8))
+            minimumHeight = dp(58)
+            if (r.heard != null) addView(tv("${r.heard} →", TypeScale.ROW, t.ink2).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(10) })
+            addView(tv(r.word, TypeScale.ROW, p.text).apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         }
     }
 
@@ -70,5 +100,10 @@ internal class DictionaryTab(activity: Activity, ui: DevUi) : EntryTab(activity,
     private fun done(announcement: String) {
         ui.announce(announcement)
         fill()
+    }
+
+    companion object {
+        const val TEAM_LABEL = "Team"
+        const val TEAM_NOTE = "From your server. Your own entries win."
     }
 }

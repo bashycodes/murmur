@@ -77,6 +77,14 @@ _Avoid_: token (except for the app's field name), password, account, user
 A key with the admin flag, for managing the server remotely (the admin tools come later). Plain keys only dictate.
 _Avoid_: root key, master token
 
+**Team dictionary**:
+The one shared word list on a server: admin keys edit it, every app using the server downloads it and uses it under its own dictionary (a personal entry wins on the same word). Words and "heard as" replacements only, never snippets.
+_Avoid_: shared dictionary, global dictionary, server dictionary
+
+**Personal dictionary**:
+The words and snippets a user keeps in their own app (Dictionary page), as opposed to the team dictionary.
+_Avoid_: local dictionary, my words
+
 **Owner**:
 The admin key named `owner` that the old single server token became on upgrade, so existing installs keep working unchanged.
 _Avoid_: default token, legacy key

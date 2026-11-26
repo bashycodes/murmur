@@ -308,7 +308,7 @@ class HistoryActivity : Activity() {
                     learned = true
                     app.suggestions.update { cur ->
                         val l = HistoryCorrection.learn(
-                            before, after, cur, app.dictionary.all(), r.appId.orEmpty(), System.currentTimeMillis(), core::learnEdit,
+                            before, after, cur, app.dictationDictionary(), r.appId.orEmpty(), System.currentTimeMillis(), core::learnEdit,
                         )
                         names = l.names
                         l.next

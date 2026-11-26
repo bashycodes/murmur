@@ -1,0 +1,51 @@
+{
+  "about": "Team dictionary merge vectors: murmur_core::dictionary::with_team (tests/team_dictionary_vectors.rs) and Android TeamDictionary.merge (TeamDictionaryVectorsTest) must give `want` for `personal` + `team`. Words are made up.",
+  "cases": [
+    {
+      "name": "no team list keeps the personal list",
+      "personal": [{"word": "zephyr", "replacement": "Zephyr"}],
+      "team": [],
+      "want": [{"word": "zephyr", "replacement": "Zephyr"}]
+    },
+    {
+      "name": "team entries follow the personal ones",
+      "personal": [{"word": "Quillon"}],
+      "team": [{"word": "Brixwell"}, {"word": "acme corp", "replacement": "AcmeCorp"}],
+      "want": [{"word": "Quillon"}, {"word": "Brixwell"}, {"word": "acme corp", "replacement": "AcmeCorp"}]
+    },
+    {
+      "name": "personal wins on the same word, case and spacing ignored",
+      "personal": [{"word": "zephyr", "replacement": "Zephyr"}, {"word": "Acme  Corp"}],
+      "team": [{"word": " ZEPHYR ", "replacement": "ZephyrCo"}, {"word": "acme corp", "replacement": "AcmeCorp"}, {"word": "Velloria"}],
+      "want": [{"word": "zephyr", "replacement": "Zephyr"}, {"word": "Acme  Corp"}, {"word": "Velloria"}]
+    },
+    {
+      "name": "a plain personal word beats a team replacement",
+      "personal": [{"word": "Tarnby"}],
+      "team": [{"word": "tarnby", "replacement": "Tarnby Labs"}],
+      "want": [{"word": "Tarnby"}]
+    },
+    {
+      "name": "team snippets, blank words and repeats are dropped; words and replacements trimmed",
+      "personal": [{"word": "my sig", "replacement": "Best, Sam", "isSnippet": true}],
+      "team": [
+        {"word": "team sig", "replacement": "Regards", "isSnippet": true},
+        {"word": "   "},
+        {"word": " Orvane ", "replacement": " Orvane Ltd "},
+        {"word": "orvane", "replacement": "ORVANE"},
+        {"word": "Kestrix", "replacement": "  "}
+      ],
+      "want": [
+        {"word": "my sig", "replacement": "Best, Sam", "isSnippet": true},
+        {"word": "Orvane", "replacement": "Orvane Ltd"},
+        {"word": "Kestrix"}
+      ]
+    },
+    {
+      "name": "a personal snippet's trigger also wins",
+      "personal": [{"word": "standup", "replacement": "Daily standup notes", "isSnippet": true}],
+      "team": [{"word": "Standup", "replacement": "StandUp"}],
+      "want": [{"word": "standup", "replacement": "Daily standup notes", "isSnippet": true}]
+    }
+  ]
+}

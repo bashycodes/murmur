@@ -75,13 +75,15 @@ internal abstract class EntryTab(protected val activity: Activity, protected val
         if (shown.isEmpty()) {
             val e = DictionaryPages.empty(kind, query, DictionaryPages.of(all, kind).size)
             content.card { emptyState(e.title, e.hint) }
-            return@with
-        }
-        rows(content, shown)
+        } else rows(content, shown)
+        below(content, query)
     }
 
     /** Anything shown above the list (Dictionary: learn-from-edits suggestions). */
     protected open fun above(col: LinearLayout) {}
+
+    /** Anything shown below the list (Dictionary: the server's team words), filtered by [query]. */
+    protected open fun below(col: LinearLayout, query: String) {}
 
     /** The entries, already filtered and sorted. */
     protected abstract fun rows(col: LinearLayout, entries: List<DictEntry>)

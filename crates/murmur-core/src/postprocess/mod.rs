@@ -19,7 +19,7 @@ pub mod spoken;
 mod style;
 pub mod terminal;
 
-pub use replace::DictMatcher;
+pub use replace::{word_key, DictMatcher};
 
 use crate::align::trim_punct;
 use crate::config::{AppCategory, FieldContext, Platform, SessionConfig, Style};

@@ -5,6 +5,11 @@ import android.content.Intent
 import android.view.View
 import android.widget.EditText
 import dev.murmur.MurmurApp
+import dev.murmur.admin.AdminCode
+import dev.murmur.admin.AdminResult
+import dev.murmur.admin.TeamDictionary
+import dev.murmur.admin.TeamDictionaryApi
+import dev.murmur.admin.TeamRefresh
 import dev.murmur.core.DictEntry
 import dev.murmur.data.DictionaryPages.Kind
 import dev.murmur.data.ShellPages.Tab
@@ -14,6 +19,7 @@ import dev.murmur.ui.UiTestKit.idle
 import dev.murmur.ui.UiTestKit.rowTitled
 import dev.murmur.ui.UiTestKit.texts
 import dev.murmur.ui.UiTestKit.walk
+import dev.murmur.ui.tabs.DictionaryTab
 import dev.murmur.ui.tabs.EntryTab
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -40,9 +46,26 @@ class DictionaryUiTest {
     private val app get() = MurmurApp.of(ctx)
     private val store get() = app.dictionary
 
+    private val savedTeam = TeamDictionary.factory
+
     @After fun clear() {
         store.replaceAll(emptyList())
         app.suggestions.update { Suggestions() }
+        TeamDictionary.factory = { null }
+        app.team.refreshNow()
+        TeamDictionary.factory = savedTeam
+    }
+
+    /** A server whose team dictionary holds [entries] (no natives). */
+    private fun teamServer(entries: List<DictEntry>) {
+        val api = object : TeamDictionaryApi {
+            override fun cached(): AdminResult<List<DictEntry>> = AdminResult.Ok(entries)
+            override fun refresh(): AdminResult<TeamRefresh> = AdminResult.Ok(TeamRefresh(entries, true))
+            override fun add(word: String, replacement: String): AdminResult<List<DictEntry>> = AdminResult.Err(AdminCode.FORBIDDEN)
+            override fun remove(word: String): AdminResult<List<DictEntry>> = AdminResult.Err(AdminCode.FORBIDDEN)
+        }
+        TeamDictionary.factory = { api }
+        app.team.refreshNow()
     }
 
     private fun launch(i: Intent) = Robolectric.buildActivity(DictionaryActivity::class.java, i).setup().visible().get()
@@ -229,6 +252,52 @@ class DictionaryUiTest {
         ShadowAlertDialog.getLatestAlertDialog().getButton(DialogInterface.BUTTON_POSITIVE).performClick(); idle()
         assertTrue(store.all().isEmpty())
         assertTrue(a.isFinishing)
+    }
+
+    // ---- team dictionary ----
+
+    @Test fun teamWordsShowReadOnlyUnderTheOwnList() {
+        store.replaceAll(listOf(DictEntry("zephyr", "Zephyr", false)))
+        teamServer(listOf(DictEntry("Quillon"), DictEntry("brixwell", "Brixwell")))
+        val (a, t) = tab(Tab.DICTIONARY)
+        val tx = texts(a)
+        assertTrue(tx.toString(), DictionaryTab.TEAM_LABEL in tx && DictionaryTab.TEAM_NOTE in tx)
+        assertTrue(tx.toString(), "Quillon" in tx && "brixwell →" in tx && "Brixwell" in tx)
+        // Read-only: no tap target, no Delete action, nothing in the personal store.
+        val row = byDescription(a, "brixwell, replaced with Brixwell")
+        assertFalse(row.isClickable)
+        assertTrue(row.createAccessibilityNodeInfo().actionList.none { it.label == "Delete" })
+        assertEquals(1, store.all().size)
+        // Search covers the team words too.
+        t.search.setText("quil")
+        assertTrue("Quillon" in texts(a)); assertFalse("Brixwell" in texts(a))
+        UiTestKit.assertTouchTargets(a, "dictionary tab with team words")
+    }
+
+    @Test fun aRefreshWhileTheTabShowsRedraws() {
+        val (a, _) = tab(Tab.DICTIONARY)
+        assertFalse(DictionaryTab.TEAM_LABEL in texts(a))
+        teamServer(listOf(DictEntry("Velloria")))
+        idle()
+        assertTrue("Velloria" in texts(a))
+    }
+
+    @Test fun noServerNoTeamSection() {
+        teamServer(listOf(DictEntry("Quillon")))
+        TeamDictionary.factory = { null }
+        app.team.refreshNow()
+        val (a, _) = tab(Tab.DICTIONARY)
+        assertFalse(DictionaryTab.TEAM_LABEL in texts(a))
+        assertFalse("Quillon" in texts(a))
+        assertEquals(emptyList<DictEntry>(), app.dictationDictionary())
+    }
+
+    @Test fun dictationGetsTheTeamWordsUnderTheOwnOnes() {
+        store.replaceAll(listOf(DictEntry("zephyr", "Zephyr", false)))
+        teamServer(listOf(DictEntry("Zephyr", "ZephyrCo"), DictEntry("Quillon")))
+        assertEquals(listOf(DictEntry("zephyr", "Zephyr", false), DictEntry("Quillon")), app.dictationDictionary())
+        // Never written into the personal store, its export or backups.
+        assertFalse("Quillon" in store.exportJson())
     }
 
     @Test fun editingAMissingEntryCloses() {

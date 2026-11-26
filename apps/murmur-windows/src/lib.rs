@@ -44,5 +44,6 @@ pub mod shell;
 pub mod single_instance;
 pub mod sounds;
 pub mod suggestions;
+pub mod team_dictionary;
 pub mod transforms;
 pub mod webhook;
