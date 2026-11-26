@@ -184,6 +184,20 @@ fn starts_contraction(rest: &[char]) -> bool {
     matches!(rest, [q, t, ..] if matches!(q, '\'' | '’') && matches!(t, 't' | 'T'))
 }
 
+/// The form two dictionary words are "the same word" in: trimmed, case
+/// folded as the matcher folds, whitespace runs as one space. A personal
+/// and a team entry with the same key are one entry (personal wins).
+pub fn word_key(word: &str) -> String {
+    let mut out = String::new();
+    for p in compile(word.trim()) {
+        match p {
+            Piece::Char(c) => out.push(c),
+            Piece::Space => out.push(' '),
+        }
+    }
+    out
+}
+
 fn compile(key: &str) -> Vec<Piece> {
     let mut pieces = Vec::new();
     for c in key.chars() {

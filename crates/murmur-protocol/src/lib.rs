@@ -17,6 +17,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 pub mod admin;
+pub mod dictionary;
 pub mod library;
 
 pub use murmur_core::cleanup::CleanRequest;

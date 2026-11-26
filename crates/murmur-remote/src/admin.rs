@@ -14,6 +14,9 @@ use murmur_protocol::admin::{
     code, key_path, AdminError, CreateKey, CreatedKey, KeyList, RevokedKey, WhoAmI,
     PATH_ADMIN_KEYS, PATH_WHOAMI,
 };
+use murmur_protocol::dictionary::{
+    RemoveTeamEntry, TeamDictionary, TeamEntry, PATH_ADMIN_DICTIONARY, PATH_DICTIONARY,
+};
 use murmur_router::ServerConfig;
 use serde::de::DeserializeOwned;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -37,6 +40,12 @@ impl AdminClient {
             cfg,
             client: client.into(),
         }
+    }
+
+    /// The server this client talks to (`host:port`), which names a cached
+    /// team dictionary ([`crate::team_dict::TeamDictCache`]).
+    pub fn server(&self) -> String {
+        self.cfg.addr()
     }
 
     /// The key this config's token is (any active key).
@@ -67,6 +76,44 @@ impl AdminClient {
         self.call("DELETE", &key_path(id), None, 200)
     }
 
+    /// The server's team dictionary (any active key). With the `etag` of
+    /// the copy the caller holds, `Ok(None)` means that copy is current
+    /// (304). Otherwise the list and its new ETag.
+    pub fn team_dictionary(
+        &self,
+        etag: Option<&str>,
+    ) -> Result<Option<(TeamDictionary, Option<String>)>, AdminError> {
+        let extra: Vec<(&str, &str)> = etag.map(|t| ("If-None-Match", t)).into_iter().collect();
+        let a = self.round("GET", PATH_DICTIONARY, None, &extra)?;
+        if a.status == 304 {
+            return Ok(None);
+        }
+        let list = decode(&a, 200)?;
+        Ok(Some((list, a.etag)))
+    }
+
+    /// Add `e` to the team dictionary, or replace the entry with the same
+    /// word (admin key only). The whole list and its ETag.
+    pub fn add_team_entry(
+        &self,
+        e: &TeamEntry,
+    ) -> Result<(TeamDictionary, Option<String>), AdminError> {
+        let body = serde_json::to_vec(e).expect("TeamEntry serialises");
+        let a = self.round("POST", PATH_ADMIN_DICTIONARY, Some(body), &[])?;
+        Ok((decode(&a, 200)?, a.etag))
+    }
+
+    /// Remove `word` from the team dictionary (admin key only).
+    pub fn remove_team_entry(
+        &self,
+        word: &str,
+    ) -> Result<(TeamDictionary, Option<String>), AdminError> {
+        let body = serde_json::to_vec(&RemoveTeamEntry { word: word.into() })
+            .expect("RemoveTeamEntry serialises");
+        let a = self.round("DELETE", PATH_ADMIN_DICTIONARY, Some(body), &[])?;
+        Ok((decode(&a, 200)?, a.etag))
+    }
+
     fn call<T: DeserializeOwned>(
         &self,
         method: &str,
@@ -74,13 +121,24 @@ impl AdminClient {
         body: Option<Vec<u8>>,
         want: u16,
     ) -> Result<T, AdminError> {
+        decode(&self.round(method, path, body, &[])?, want)
+    }
+
+    /// One request and its raw answer.
+    fn round(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<Vec<u8>>,
+        extra: &[(&str, &str)],
+    ) -> Result<Answer, AdminError> {
         crate::check_address(&self.cfg).map_err(connect_err)?;
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .map_err(|e| AdminError::new(code::CONNECT_FAILED, e.to_string()))?;
-        let answer = rt.block_on(async {
-            tokio::time::timeout(REQUEST_TIMEOUT, self.exchange(method, path, body))
+        rt.block_on(async {
+            tokio::time::timeout(REQUEST_TIMEOUT, self.exchange(method, path, body, extra))
                 .await
                 .map_err(|_| {
                     AdminError::new(
@@ -88,8 +146,7 @@ impl AdminClient {
                         format!("{}: timed out", self.cfg.addr()),
                     )
                 })?
-        })?;
-        decode(&answer, want)
+        })
     }
 
     async fn exchange(
@@ -97,6 +154,7 @@ impl AdminClient {
         method: &str,
         path: &str,
         body: Option<Vec<u8>>,
+        extra: &[(&str, &str)],
     ) -> Result<Answer, AdminError> {
         let connect = Duration::from_millis(self.cfg.connect_timeout_ms.max(1));
         let io = tokio::time::timeout(connect, crate::conn::dial(&self.cfg))
@@ -108,7 +166,14 @@ impl AdminClient {
                 )
             })?
             .map_err(connect_err)?;
-        let req = request(&self.cfg, &self.client, method, path, body.as_deref());
+        let req = request(
+            &self.cfg,
+            &self.client,
+            method,
+            path,
+            body.as_deref(),
+            extra,
+        );
         round_trip(io, &req).await
     }
 }
@@ -123,6 +188,7 @@ fn request(
     method: &str,
     path: &str,
     body: Option<&[u8]>,
+    extra: &[(&str, &str)],
 ) -> Vec<u8> {
     let mut h = format!(
         "{method} {path} HTTP/1.1\r\nHost: {}\r\nUser-Agent: {client}\r\nAccept: application/json\r\nConnection: close\r\n",
@@ -130,6 +196,9 @@ fn request(
     );
     if !cfg.token.is_empty() {
         h.push_str(&format!("Authorization: Bearer {}\r\n", cfg.token));
+    }
+    for (k, v) in extra {
+        h.push_str(&format!("{k}: {v}\r\n"));
     }
     let body = body.unwrap_or_default();
     if !body.is_empty() || method == "POST" {
@@ -150,6 +219,8 @@ struct Answer {
     status: u16,
     /// `Retry-After` in seconds (a 429 lockout, D112).
     retry_after_s: Option<u64>,
+    /// `ETag` (the team dictionary).
+    etag: Option<String>,
     body: Vec<u8>,
 }
 
@@ -209,6 +280,7 @@ fn parse(buf: &[u8], eof: bool) -> Option<Result<Answer, AdminError>> {
     let mut len = None;
     let mut chunked = false;
     let mut retry_after_s = None;
+    let mut etag = None;
     for l in lines {
         let Some((k, v)) = l.split_once(':') else {
             continue;
@@ -220,13 +292,22 @@ fn parse(buf: &[u8], eof: bool) -> Option<Result<Answer, AdminError>> {
             chunked = v.to_ascii_lowercase().contains("chunked");
         } else if k.eq_ignore_ascii_case("retry-after") {
             retry_after_s = crate::conn::retry_after_s(Some(v));
+        } else if k.eq_ignore_ascii_case("etag") {
+            etag = Some(v.to_string());
         }
     }
     let body = &buf[end + 4..];
+    // A 304 (or 204) has no body, whatever the headers say.
+    let len = if status == 304 || status == 204 {
+        Some(0)
+    } else {
+        len
+    };
     let answer = |body: Vec<u8>| {
         Ok(Answer {
             status,
             retry_after_s,
+            etag: etag.clone(),
             body,
         })
     };
@@ -302,6 +383,7 @@ mod tests {
         let ok = |status, body: &[u8]| Answer {
             status,
             retry_after_s: None,
+            etag: None,
             body: body.to_vec(),
         };
         let r = b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\n{}";
@@ -317,6 +399,10 @@ mod tests {
         let t = b"HTTP/1.1 429 Too Many Requests\r\nretry-after: 29\r\ncontent-length: 0\r\n\r\n";
         assert_eq!(parse(t, false).unwrap().unwrap().retry_after_s, Some(29));
         assert!(parse(b"garbage\r\n\r\n", true).unwrap().is_err());
+        // The team dictionary's ETag; a 304 is complete without a body.
+        let n = b"HTTP/1.1 304 Not Modified\r\netag: \"ab12\"\r\n\r\n";
+        let a = parse(n, false).unwrap().unwrap();
+        assert_eq!((a.status, a.etag.as_deref()), (304, Some("\"ab12\"")));
     }
 
     #[test]
@@ -324,6 +410,7 @@ mod tests {
         let a = |status, retry_after_s, body: &[u8]| Answer {
             status,
             retry_after_s,
+            etag: None,
             body: body.to_vec(),
         };
         let e = decode::<WhoAmI>(
@@ -361,13 +448,24 @@ mod tests {
             token: "secret-token-0123456789".into(),
             ..Default::default()
         };
-        let r =
-            String::from_utf8(request(&cfg, "t 1", "POST", "/v1/admin/keys", Some(b"{}"))).unwrap();
+        let r = String::from_utf8(request(
+            &cfg,
+            "t 1",
+            "POST",
+            "/v1/admin/keys",
+            Some(b"{}"),
+            &[],
+        ))
+        .unwrap();
         assert!(r.starts_with("POST /v1/admin/keys HTTP/1.1\r\n"), "{r}");
         assert!(r.contains("Authorization: Bearer secret-token-0123456789\r\n"));
         assert!(r.contains("Content-Length: 2\r\n") && r.ends_with("\r\n\r\n{}"));
-        let r = String::from_utf8(request(&cfg, "t", "GET", "/v1/whoami", None)).unwrap();
+        let r = String::from_utf8(request(&cfg, "t", "GET", "/v1/whoami", None, &[])).unwrap();
         assert!(!r.contains("Content-Length"));
+        let extra = [("If-None-Match", "\"ab12\"")];
+        let r =
+            String::from_utf8(request(&cfg, "t", "GET", "/v1/dictionary", None, &extra)).unwrap();
+        assert!(r.contains("If-None-Match: \"ab12\"\r\n"), "{r}");
     }
 
     #[test]

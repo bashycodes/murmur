@@ -1,6 +1,7 @@
 package dev.murmur.admin;
 
-// Single-file source launch: `java -Djava.library.path=DIR JniAdmin.java <cfgJson> <cfgJsonTemplate>`.
+// Single-file source launch:
+// `java -Djava.library.path=DIR JniAdmin.java <cfgJson> <cfgJsonTemplate> <cacheDir>`.
 // Mirrors apps/murmur-android/JNI_CONTRACT.md "Admin API": static natives on
 // dev.murmur.admin.NativeAdmin. Prints one answer per line (never the secret).
 public class JniAdmin {
@@ -20,6 +21,14 @@ public class JniAdmin {
         System.out.println(NativeAdmin.nativeAdminWhoami(phone));
         System.out.println(NativeAdmin.nativeAdminWhoami(null));
         System.out.println(NativeAdmin.nativeAdminCreateKey(cfg, null, true));
+        // Team dictionary: the admin's edit cache and a reader's cache.
+        String edits = args[2] + "/edits.json";
+        String reads = args[2] + "/reads.json";
+        System.out.println(NativeAdmin.nativeTeamDictionaryAdd(cfg, edits, "Quillon", ""));
+        System.out.println(NativeAdmin.nativeTeamDictionaryRefresh(cfg, reads));
+        System.out.println(NativeAdmin.nativeTeamDictionaryCached(cfg, reads));
+        System.out.println(NativeAdmin.nativeTeamDictionaryRemove(cfg, edits, "quillon"));
+        System.out.println(NativeAdmin.nativeTeamDictionaryAdd(cfg, edits, null, ""));
     }
 
     /** First `"name":"value"` in a JSON string (enough for this test). */
@@ -37,4 +46,8 @@ class NativeAdmin {
     static native String nativeAdminListKeys(String serverConfigJson);
     static native String nativeAdminCreateKey(String serverConfigJson, String name, boolean admin);
     static native String nativeAdminRevokeKey(String serverConfigJson, String id);
+    static native String nativeTeamDictionaryCached(String serverConfigJson, String cachePath);
+    static native String nativeTeamDictionaryRefresh(String serverConfigJson, String cachePath);
+    static native String nativeTeamDictionaryAdd(String serverConfigJson, String cachePath, String word, String replacement);
+    static native String nativeTeamDictionaryRemove(String serverConfigJson, String cachePath, String word);
 }

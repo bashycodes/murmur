@@ -5,7 +5,8 @@
 //! for the duration of a session. None of it is written to disk; logs carry
 //! sizes and timings only (unless `log_text = true`). The key store
 //! (`keys.rs`, D38; managed over `admin.rs`, D39) writes key hashes and
-//! per-key counters, never text or audio. The one opt-in exception is `[debug] capture` (`capture.rs`): received audio and the
+//! per-key counters, never text or audio; the team dictionary
+//! (`team_dict.rs`) writes the admin's shared word list. The one opt-in exception is `[debug] capture` (`capture.rs`): received audio and the
 //! result, local, mode 0600, pruned to 30 files / 72 h. The server only
 //! listens; it never opens an outbound connection.
 
@@ -20,10 +21,12 @@ pub mod limits;
 pub mod logging;
 pub mod net;
 pub mod pool;
+pub mod team_dict;
 mod ws;
 
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -58,6 +61,8 @@ pub(crate) struct AppState {
     pub capture: Option<Arc<capture::CaptureStore>>,
     /// The model library (D40); `None` without a library dir.
     pub library: Option<Arc<library::Library>>,
+    /// The team dictionary; `None` = auth off (no keys, no team list).
+    pub team_dict: Option<Arc<team_dict::TeamDictStore>>,
     /// `hello_ok.models` (D98), named once at start.
     pub models: murmur_protocol::ServerModels,
     pub kill: watch::Receiver<bool>,
@@ -141,6 +146,10 @@ impl ServerHandle {
     /// The key store (`None` when auth is off).
     pub fn keys(&self) -> Option<&Arc<keys::KeyStore>> {
         self.state.keys.as_ref()
+    }
+    /// The team dictionary (`None` when auth is off).
+    pub fn team_dictionary(&self) -> Option<&Arc<team_dict::TeamDictStore>> {
+        self.state.team_dict.as_ref()
     }
     /// TCP connections accepted so far.
     pub fn connections(&self) -> u64 {
@@ -258,6 +267,13 @@ pub async fn serve_with_pool(
             list.join(", "),
         );
     }
+    // Next to keys.json, or in memory with an in-memory key store.
+    let team_dict = keys.as_ref().map(|k| {
+        let dir = k
+            .keys_path()
+            .and_then(|p| p.parent().map(Path::to_path_buf));
+        Arc::new(team_dict::TeamDictStore::open(dir.as_deref()))
+    });
     let tls = acceptor(&cfg)?;
     if cfg.log.log_text {
         tracing::warn!("log_text = true: transcripts will be written to the log at debug level");
@@ -298,6 +314,7 @@ pub async fn serve_with_pool(
         hooks: Arc::new(Hooks::default()),
         capture,
         library,
+        team_dict,
         models,
         kill: kill_rx,
         connections: AtomicU64::new(0),
@@ -312,6 +329,7 @@ pub async fn serve_with_pool(
         .route(murmur_protocol::PATH_HEALTH, get(health::handler))
         .merge(library::routes())
         .merge(admin::routes())
+        .merge(team_dict::routes())
         .with_state(state.clone());
     if let Some(k) = state.keys.clone() {
         let mut kill = state.kill.clone();

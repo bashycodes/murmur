@@ -68,6 +68,44 @@ impl Dictionary {
     }
 }
 
+/// The dictionary a dictation uses: the user's `personal` entries, then the
+/// server's `team` entries (murmur-server's team dictionary) that no
+/// personal entry already has. "The same word" is
+/// [`crate::postprocess::word_key`] (case and spacing ignored), so a
+/// personal entry wins over a team entry on the same word whatever either
+/// replaces it with. Team snippets and blank team words are dropped (the
+/// server never sends them; this guards an old or hand-edited cache), and a
+/// team word listed twice keeps its first entry. Every client merges here
+/// (Android: `TeamDictionary.merge`, checked against the same vectors)
+/// before it starts a session, so the on-device engine, the server route
+/// and the AI cleanup all get one list in `SessionConfig.dictionary`.
+pub fn with_team(personal: &[DictEntry], team: &[DictEntry]) -> Dictionary {
+    use std::collections::HashSet;
+    let key = crate::postprocess::word_key;
+    let mut seen: HashSet<String> = personal.iter().map(|e| key(&e.word)).collect();
+    let mut entries = personal.to_vec();
+    for e in team {
+        if e.is_snippet {
+            continue;
+        }
+        let k = key(&e.word);
+        if k.is_empty() || !seen.insert(k) {
+            continue;
+        }
+        entries.push(DictEntry {
+            word: e.word.trim().to_string(),
+            replacement: e
+                .replacement
+                .as_deref()
+                .map(str::trim)
+                .filter(|r| !r.is_empty())
+                .map(str::to_string),
+            is_snippet: false,
+        });
+    }
+    Dictionary { entries }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
