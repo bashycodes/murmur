@@ -189,9 +189,10 @@ object EnginePlan {
 
     /**
      * D119: `load_language` of the default model when the Hebrew route is configured for language
-     * ID only: the core's default language, which no `languages` key matches.
+     * ID only: the core's default language ([DEFAULT_MODEL_LANGUAGE]), which no `languages` key
+     * matches, so the core loads the default model.
      */
-    const val DEFAULT_ROUTE = "en"
+    const val DEFAULT_ROUTE = dev.murmur.core.DEFAULT_MODEL_LANGUAGE
 
     private fun whisperOk(asrPath: String?, exists: (String) -> Boolean) = asrPath != null && exists(asrPath)
     private fun parakeetOk(s: Settings, parakeetPath: String?, isModelDir: (String) -> Boolean) =

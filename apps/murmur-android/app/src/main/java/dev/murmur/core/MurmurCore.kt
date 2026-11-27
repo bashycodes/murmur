@@ -497,6 +497,13 @@ data class CleanUsage(
     val latencyMs: Long? = null,
 )
 
+/**
+ * D119: what [CommitResult.languageWanted] / [CorePoll.languageWanted] say for the default
+ * model: the core's `DEFAULT_LANGUAGE` (crates/murmur-core/src/engine.rs), the language
+ * language ID gives the default model; no language route has it.
+ */
+const val DEFAULT_MODEL_LANGUAGE = "en"
+
 data class CommitResult(
     val status: CommitStatus,
     val asrText: String = "",

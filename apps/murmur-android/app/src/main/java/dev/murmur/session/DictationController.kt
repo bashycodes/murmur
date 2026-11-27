@@ -5,6 +5,7 @@ import dev.murmur.command.CommandTarget
 import dev.murmur.core.CommandOutcome
 import dev.murmur.core.TranslateOutcome
 import dev.murmur.core.CommitResult
+import dev.murmur.core.DEFAULT_MODEL_LANGUAGE
 import dev.murmur.core.CommitStatus
 import dev.murmur.core.CoreException
 import dev.murmur.core.FieldContext
@@ -435,15 +436,18 @@ class DictationController(
     /** D58: the config the dictation started with (the re-run takes it with the stop languages). */
     private var startCfg: SessionConfig? = null
     /**
-     * D119: the language the phone's language ID heard while recording, whose model was not
-     * loaded; the recording is re-run in it at the stop (as D58). Null = none asked for.
+     * D119: dictation [gen]'s session was dropped mid-recording because language ID heard
+     * [heard], whose model was not loaded; the stop re-runs the recording in it (as D58). No
+     * core endpoints that dictation any more, so a hands-free one ends on the silence here
+     * while [endpointing] (as D55).
      */
-    @Volatile private var lidWanted: String? = null
-    /**
-     * D119: the generation whose session was dropped mid-recording for the language switch: no
-     * core endpoints it any more, so a hands-free dictation ends on the silence here (as D55).
-     */
-    @Volatile private var detached = 0L
+    private class LidSwitch(val gen: Long, val heard: String) {
+        @Volatile var endpointing = true
+    }
+    @Volatile private var lidSwitch: LidSwitch? = null
+
+    /** A re-run in flight: the engine it runs on, its result, and the wait it gets. */
+    private class Rerun(val core: MurmurCore, val pending: Deferred<CommitResult>, val budget: Long)
     /** D35: a History retry holds the core; no dictation starts meanwhile. */
     @Volatile var retrying = false
         private set
@@ -801,7 +805,7 @@ class DictationController(
         captureRetry = command == null && runCatching { host.keepRetryAudio() }.getOrDefault(false)
         captureRelang = runCatching { host.followsKeyboard() }.getOrDefault(false)
         startCfg = cfg
-        lidWanted = null
+        lidSwitch = null
         val pcmCapture = if (captureDebug || captureRetry || captureRelang) PcmCapture(cap.maxSamples.toInt()) else null
         capture = pcmCapture
         hintJob?.cancel(); _hint.value = null; _partial.value = null; _route.value = null
@@ -820,10 +824,11 @@ class DictationController(
             if (silence.heardSpeech) { if (h == DictationHint.NoSpeechYet) _hint.value = null }
             else if (h == null && silence.leadingSilenceMs >= NO_SPEECH_HINT_AFTER_MS) _hint.value = DictationHint.NoSpeechYet
             // D55: no engine to endpoint yet; a hands-free dictation ends on the same silence here.
-            val selfEndpoint = (lw != null && lw.endpointing) || detached == gen
+            val switched = lidSwitch?.takeIf { it.gen == gen && it.endpointing }
+            val selfEndpoint = (lw != null && lw.endpointing) || switched != null
             if (selfEndpoint && endpointMs != null && silence.heardSpeech && silence.trailingSilenceMs >= endpointMs) {
                 lw?.endpointing = false
-                detached = 0L
+                switched?.endpointing = false
                 scope.launch { if (generation == gen && _state.value is DictationState.Recording) stopAndSubmit() }
             }
         }, {
@@ -889,10 +894,9 @@ class DictationController(
                 // D119: language ID wants the other model. Drop this session and start that load
                 // now, while the user still speaks; the stop re-runs the kept recording in it.
                 val heard = p.languageWanted
-                if (heard != null && lidWanted == null && captureRelang && capture != null) {
-                    lidWanted = heard
+                if (heard != null && lidSwitch?.gen != gen && captureRelang && capture != null) {
+                    lidSwitch = LidSwitch(gen, heard)
                     _partial.value = null
-                    detached = gen
                     withContext(commitDispatcher) {
                         runCatching { c.cancel() }
                         runCatching { host.languageDetected(heard) }
@@ -1007,22 +1011,23 @@ class DictationController(
         // the whole recording in the stop language (hands-free endpoint and cap stops too).
         val begun = startCfg
         // D119: the language heard while recording decides; else the keyboard (D58).
-        val heard = lidWanted.takeIf { captureRelang }
-        lidWanted = null
-        detached = 0L
+        val heard = lidSwitch?.takeIf { it.gen == generation && captureRelang }?.heard
+        lidSwitch = null
         val stopLang = when {
-            heard != null -> StopLanguage(listOf(heard), LID_SOURCE)
+            heard != null && begun != null -> StopLanguage(lidLanguages(heard, begun), LID_SOURCE)
             captureRelang -> runCatching { host.stopLanguage() }.getOrNull()
             else -> null
         }
-        // The replay ends itself: no hands-free endpoint, no live preview.
-        val relangCfg = if (stopLang != null && begun != null && stopLang.languages != begun.languages && kept != null && kept.isNotEmpty()) {
+        // The replay ends itself: no hands-free endpoint, no live preview. D119: a switch always
+        // re-runs (its session was dropped), also on the session's own languages.
+        val relangCfg = if (stopLang != null && begun != null && (heard != null || stopLang.languages != begun.languages) && kept != null && kept.isNotEmpty()) {
             begun.copy(languages = stopLang.languages, endpointSilenceMs = null, partialIntervalMs = null)
         } else null
         val deadline = stoppedAt + RERUN_TIMEOUT_MS
         // D21 trace inputs, captured before the next dictation can reset them.
         var ts = traceStart?.let { t ->
-            if (stopLang == null) t else t.copy(stopLanguage = stopLang.languages.firstOrNull() ?: "auto", languageSource = stopLang.source)
+            if (stopLang == null) t
+            else t.copy(stopLanguage = heard ?: stopLang.languages.firstOrNull() ?: "auto", languageSource = stopLang.source)
         }
         val endpointWait = if (silence.heardSpeech) silence.trailingSilenceMs else null
         val live = _route.value
@@ -1066,7 +1071,7 @@ class DictationController(
              * engine serving it, after [prev]'s session is dropped. Null = handled (error shown,
              * timed out or dropped).
              */
-            suspend fun rerun(prev: MurmurCore, cfg: SessionConfig): Triple<MurmurCore, Deferred<CommitResult>, Long>? {
+            suspend fun rerun(prev: MurmurCore, cfg: SessionConfig): Rerun? {
                 // The start-language session (and its live preview) is dropped.
                 _partial.value = null
                 withContext(commitDispatcher) { runCatching { prev.cancel() } }
@@ -1102,7 +1107,7 @@ class DictationController(
                         CommitResult(CommitStatus.ERROR, error = e.message ?: "start failed")
                     }
                 }
-                return Triple(c, pending, minOf(RETRY_TIMEOUT_MS, left))
+                return Rerun(c, pending, minOf(RETRY_TIMEOUT_MS, left))
             }
             /** The result within [budget], else null (the timeout shown); null too for a dropped dictation. */
             suspend fun await(c: MurmurCore, pending: Deferred<CommitResult>, budget: Long): CommitResult? {
@@ -1120,14 +1125,14 @@ class DictationController(
                 }
                 return result
             }
-            val (firstCore, firstPending, firstBudget) = if (relangCfg == null) {
+            val run = if (relangCfg == null) {
                 // Not a child: a hung native commit must be abandonable.
-                Triple(first, CoroutineScope(commitDispatcher).async {
+                Rerun(first, CoroutineScope(commitDispatcher).async {
                     first.commit().also { diag = try { first.lastRouteDiag() } catch (_: Throwable) { null } }
                 }, PROCESSING_TIMEOUT_MS)
             } else rerun(first, relangCfg) ?: return@launch
-            var c = firstCore
-            var result = await(c, firstPending, firstBudget) ?: return@launch
+            var c = run.core
+            var result = await(c, run.pending, run.budget) ?: return@launch
             // D119: a short dictation is identified at its commit: the text came from the other
             // language's model, so load the one it wants and re-run the kept recording in it.
             val wanted = result.languageWanted
@@ -1137,10 +1142,10 @@ class DictationController(
                 ts = ts?.copy(stopLanguage = wanted, languageSource = LID_SOURCE)
                 withContext(commitDispatcher) { runCatching { host.languageDetected(wanted) } }
                 if (generation != gen) return@launch
-                val cfg = begun.copy(languages = listOf(wanted), endpointSilenceMs = null, partialIntervalMs = null)
+                val cfg = begun.copy(languages = lidLanguages(wanted, begun), endpointSilenceMs = null, partialIntervalMs = null)
                 val again = rerun(c, cfg) ?: return@launch
-                c = again.first
-                result = await(c, again.second, again.third) ?: return@launch
+                c = again.core
+                result = await(c, again.pending, again.budget) ?: return@launch
             }
             _route.value = null
             if (isCancelled(result)) {
@@ -1208,6 +1213,14 @@ class DictationController(
             done(if (inserted) InsertOutcome.INSERTED else InsertOutcome.PASTE_FAILED, res)
         }
     }
+
+    /**
+     * D119: the languages a re-run in [heard] sends: a language model's own language is forced
+     * (the session then runs on that model), the default model keeps the session's own (`auto`
+     * detects, as D113: a language without its own model is never forced to English).
+     */
+    private fun lidLanguages(heard: String, begun: SessionConfig): List<String> =
+        if (heard == DEFAULT_MODEL_LANGUAGE) begun.languages else listOf(heard)
 
     /**
      * D58: the engine for the stop language. [Host.prepareStopLanguage] reloads the phone model

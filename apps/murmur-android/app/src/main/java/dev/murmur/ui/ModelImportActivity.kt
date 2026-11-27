@@ -283,8 +283,10 @@ class ModelImportActivity : Activity() {
         val sizes = entries.mapValues { HebrewModels.Facts(it.value.second) }
         // D119: a folder may hold the language-ID file alone, or with the model.
         val ex = HebrewModels.extras(sizes)
-        ex.bad?.let { return render(it, Tone.BAD) }
-        val names = (if (ex.model || !ex.lid) HebrewModels.FILES else emptyList()) + listOfNotNull(HebrewModels.LID.name.takeIf { ex.lid })
+        // A bad language-ID file beside a model: import the model, skip the file (the import warns).
+        if (ex.bad != null && !ex.model) return render(ex.bad, Tone.BAD)
+        val names = (if (ex.model || !ex.lid) HebrewModels.FILES else emptyList()) +
+            listOfNotNull(HebrewModels.LID.name.takeIf { ex.lid || ex.bad != null })
         if (ex.model || !ex.lid) {
             val pre = HebrewModels.identify(sizes)
             if (pre is HebrewModels.Check.Bad) return render(pre.message, Tone.BAD)
@@ -312,6 +314,7 @@ class ModelImportActivity : Activity() {
         render("Copying and checking the Hebrew model…")
         thread(name = "hebrew-import") {
             val tmp = File(root, ".import.part")
+            var lidWarning: String? = null
             val result = runCatching {
                 tmp.deleteRecursively(); tmp.mkdirs()
                 var done = 0L; var shown = 0L
@@ -325,7 +328,12 @@ class ModelImportActivity : Activity() {
                 }
                 // D119: the language-ID file (hash-checked like the model) goes to the Hebrew folder's root.
                 val ex = HebrewModels.extras(facts)
-                ex.bad?.let { error(it) }
+                // A bad one alone fails the import; beside a valid model it is skipped with a warning.
+                if (ex.bad != null) {
+                    if (!ex.model) error(ex.bad)
+                    File(tmp, HebrewModels.LID.name).delete()
+                    lidWarning = ex.bad
+                }
                 fun keepLid() {
                     if (!ex.lid) return
                     val lid = HebrewModels.lidFile(root)
@@ -351,8 +359,10 @@ class ModelImportActivity : Activity() {
             runOnUiThread {
                 busy = false
                 result.onSuccess { d ->
-                    if (d != null) activateHebrew(d)
-                    else {
+                    if (d != null) {
+                        activateHebrew(d)
+                        lidWarning?.let { render("Model imported; language detection was not: $it", Tone.BAD) }
+                    } else {
                         if (app.engine.lidPath() != null) reloadEngine()
                         render("Language detection added: Automatic now hears when you speak Hebrew.", Tone.OK)
                     }

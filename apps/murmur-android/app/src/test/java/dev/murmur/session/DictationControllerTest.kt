@@ -416,7 +416,7 @@ class DictationControllerTest {
     /** D119: a dictation under the 3 s hold is identified at its commit, then re-run in that language. */
     @Test fun aShortDictationIdentifiedAtCommitIsReRunInThatLanguage() = runTest {
         automaticWithLid()
-        val lid = LidCore(core, commitWant = "en")
+        val lid = LidCore(core, commitWant = "he")
         val c = controller(lid)
         c.toggle(hold = false)
         audio.speak()
@@ -424,11 +424,60 @@ class DictationControllerTest {
         c.toggle(hold = false)
         settle()
         assertEquals("inserted once, from the re-run", listOf("hello world"), host.inserted)
-        assertEquals(listOf("en"), host.detected)
+        assertEquals(listOf("he"), host.detected)
         assertEquals(2, lid.starts)
-        assertEquals("en", core.lastConfig!!.languages.single())
+        assertEquals("he", core.lastConfig!!.languages.single())
         assertEquals(16_000, core.samplesPushed)
         assertEquals("lid", host.traces.single().languageSource)
+    }
+
+    /**
+     * D119: the default model is wanted (e.g. Spanish heard on the Hebrew model): the re-run keeps
+     * the session's own languages (auto-detect), never forced English; mid-recording and at commit.
+     */
+    @Test fun aSwitchToTheDefaultModelReRunsInTheSessionsOwnLanguages() = runTest {
+        for (atCommit in listOf(false, true)) {
+            automaticWithLid()
+            host.detected.clear()
+            host.inserted.clear()
+            val lid = if (atCommit) LidCore(core, commitWant = "en") else LidCore(core, pollWant = "en")
+            val c = controller(lid)
+            c.toggle(hold = false)
+            audio.speak(500)
+            advanceTimeBy(DictationController.PARTIAL_POLL_MS + 1); runCurrent()
+            audio.speak(500)
+            advanceTimeBy(600)
+            c.toggle(hold = false)
+            settle()
+            assertEquals("atCommit=$atCommit", listOf("hello world"), host.inserted)
+            assertEquals(listOf("en"), host.detected)
+            assertEquals(2, lid.starts)
+            assertEquals("atCommit=$atCommit: auto, not English", emptyList<String>(), core.lastConfig!!.languages)
+            assertEquals(listOf("en", "lid"), host.traces.last().let { listOf(it.stopLanguage, it.languageSource) })
+        }
+    }
+
+    /**
+     * D119 + D54 "Keep both languages loaded": the core routes each dictation itself and never asks,
+     * so a Hebrew dictation needs no reload and no re-run: one session, one output.
+     */
+    @Test fun keepBothLanguagesLoadedSwitchesWithoutAReload() = runTest {
+        automaticWithLid()
+        val lid = LidCore(core)
+        val c = controller(lid)
+        c.toggle(hold = false)
+        audio.speak(500)
+        advanceTimeBy(DictationController.PARTIAL_POLL_MS + 1); runCurrent()
+        audio.speak(500)
+        advanceTimeBy(600)
+        c.toggle(hold = false)
+        settle()
+        assertEquals("a single output", listOf("hello world"), host.inserted)
+        assertEquals("no reload asked", emptyList<String>(), host.detected)
+        assertEquals(0, host.prepared)
+        assertEquals("no re-run", 1, lid.starts)
+        assertEquals(0, lid.cancels)
+        assertEquals(emptyList<String>(), core.lastConfig!!.languages)
     }
 
     /** D119: no language-ID model: the core never asks, so the dictation runs exactly once, as before. */

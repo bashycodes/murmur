@@ -1668,8 +1668,9 @@ fn identify_language(routes: &AsrRoutes, s: &mut Session, at_commit: bool) -> bo
         return true;
     };
     let language = lid::choose(&scores, DEFAULT_LANGUAGE);
+    let sure = lid::top(&scores, DEFAULT_LANGUAGE) == language;
     s.lid.windows.push(lid::LidWindow { scores, samples });
-    route_session(routes, s, language.as_deref());
+    route_session(routes, s, language.as_deref(), sure);
     true
 }
 
@@ -1739,7 +1740,8 @@ fn identify_at_commit(routes: &AsrRoutes, s: &mut Session, abort: &AtomicBool) {
     // A one-model core never moves the session, so `now` cannot tell
     // whether the whole-dictation answer still wants another model.
     if whole != now || routes.resident.is_some() {
-        route_session(routes, s, whole.as_deref());
+        let sure = lid::top_whole(&s.lid.windows, DEFAULT_LANGUAGE) == whole;
+        route_session(routes, s, whole.as_deref(), sure);
     }
 }
 
@@ -1760,12 +1762,15 @@ fn score_speech(id: &dyn LanguageId, s: &mut Session, range: Range<usize>) {
 ///
 /// D119: on a one-model core, a language the loaded model does not serve
 /// leaves the session on it and records the wanted language instead.
-fn route_session(routes: &AsrRoutes, s: &mut Session, language: Option<&str>) {
+///
+/// `sure`: `language` is also the identifier's most likely answer. A
+/// one-model core never moves the session (it has no other engine); it
+/// asks for the other model only for a sure decision (D119: an uncertain
+/// one must not cost a reload and a re-run).
+fn route_session(routes: &AsrRoutes, s: &mut Session, language: Option<&str>, sure: bool) {
     if let Some(r) = &routes.resident {
-        s.lid.wanted = r.wanted(language);
-        if s.lid.wanted.is_some() {
-            return;
-        }
+        s.lid.wanted = r.wanted(language).filter(|_| sure);
+        return;
     }
     let (engine, key) = match language.and_then(|l| routes.route(l)) {
         Some((k, e)) => (e.clone(), Some(k.clone())),
@@ -2127,7 +2132,17 @@ impl Worker {
         }
     }
 
-    fn finalize(&self, s: Session, ctx: &FieldContext, abort: &Arc<AtomicBool>) -> CommitResult {
+    fn finalize(
+        &self,
+        mut s: Session,
+        ctx: &FieldContext,
+        abort: &Arc<AtomicBool>,
+    ) -> CommitResult {
+        // D119: text from the model the language does not want is re-run by
+        // the shell on the other model; no AI cleanup is spent on it.
+        if s.lid.wanted.is_some() {
+            s.cfg.raw_mode = true;
+        }
         let audio_ms = (s.buf.len() * 1000 / SAMPLE_RATE) as u64;
         let mut r = CommitResult::status(CommitStatus::Empty);
         r.truncated = s.truncated;

@@ -2,12 +2,14 @@
 //! RAM): the session stays on the loaded model and reports the language
 //! whose model it lacks, while recording (poll) and at commit.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use murmur_core::asr::MockAsr;
+use murmur_core::cleanup::{CleanError, CleanPrompt, Cleaner};
 use murmur_core::config::SessionConfig;
-use murmur_core::lid::{MockLid, LID_SAMPLES};
+use murmur_core::lid::{self, LanguageId, MockLid, LID_SAMPLES};
 use murmur_core::{CommitResult, MurmurCore};
 
 fn speech(ms: usize) -> Vec<i16> {
@@ -31,7 +33,11 @@ fn dictate_ms(core: &MurmurCore, cfg: SessionConfig, ms: usize) -> CommitResult 
 /// A one-model core holding `loaded` (`None` = the English default) with a
 /// Hebrew route configured, and an identifier that hears `heard`.
 fn resident(loaded: Option<&str>, heard: &str) -> (MurmurCore, Arc<MockAsr>, Arc<MockLid>) {
-    let asr = Arc::new(MockAsr::new(if loaded.is_some() { "שלום" } else { "hello" }));
+    let asr = Arc::new(MockAsr::new(if loaded.is_some() {
+        "שלום"
+    } else {
+        "hello"
+    }));
     let lid = Arc::new(MockLid::new(heard));
     let core = MurmurCore::from_resident_engine_with_lid(
         asr.clone(),
@@ -127,4 +133,84 @@ fn a_core_without_an_identifier_never_asks() {
     assert_eq!(out.language_wanted, None);
     let json = serde_json::to_value(&out).unwrap();
     assert!(json.get("language_wanted").is_none(), "{json}");
+}
+
+/// An identifier with fixed scores for every window.
+struct ScoredLid(Vec<(&'static str, f32)>);
+
+impl LanguageId for ScoredLid {
+    fn scores(&self, _pcm: &[f32], candidates: &[String]) -> Result<lid::LidScores, String> {
+        Ok(self
+            .0
+            .iter()
+            .filter(|(l, _)| candidates.iter().any(|c| c == l))
+            .map(|(l, p)| (l.to_string(), *p))
+            .collect())
+    }
+}
+
+fn scored(loaded: Option<&str>, scores: Vec<(&'static str, f32)>) -> MurmurCore {
+    MurmurCore::from_resident_engine_with_lid(
+        Arc::new(MockAsr::new("hello")),
+        loaded.map(String::from),
+        vec!["he".into()],
+        Arc::new(ScoredLid(scores)),
+        None,
+    )
+}
+
+/// Hebrew above the routing floor but not the most likely: the server
+/// would route it, but on the phone an uncertain answer must not cost a
+/// reload.
+#[test]
+fn an_uncertain_answer_asks_for_nothing() {
+    let core = scored(None, vec![("en", 0.7), ("he", 0.3)]);
+    core.start_session(SessionConfig::default()).unwrap();
+    push(&core, LID_SAMPLES / 16 + 500);
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(core.poll().language_wanted, None);
+    let out = core.commit();
+    assert_eq!(out.language_wanted, None, "{out:?}");
+    assert_eq!(out.asr_text, "hello");
+}
+
+/// Not Hebrew (English, or a language without its own model) heard surely
+/// on the Hebrew model: the default model is wanted.
+#[test]
+fn a_sure_non_hebrew_answer_on_the_hebrew_model_wants_the_default() {
+    let core = scored(Some("he"), vec![("en", 0.96), ("he", 0.04)]);
+    let out = dictate_ms(&core, SessionConfig::default(), 800);
+    assert_eq!(out.language_wanted.as_deref(), Some("en"), "{out:?}");
+    // Hebrew still the likelier: the Hebrew model stays.
+    let core = scored(Some("he"), vec![("en", 0.45), ("he", 0.55)]);
+    assert_eq!(
+        dictate_ms(&core, SessionConfig::default(), 800).language_wanted,
+        None
+    );
+}
+
+struct CountingCleaner(AtomicUsize);
+
+impl Cleaner for CountingCleaner {
+    fn clean(&self, p: &CleanPrompt, _d: Instant) -> Result<String, CleanError> {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        Ok(p.transcript.clone())
+    }
+}
+
+/// The wrong model's text is re-run by the shell: no AI cleanup is spent on it.
+#[test]
+fn text_from_the_wrong_model_skips_ai_cleanup() {
+    for (heard, cleans) in [("en", 1), ("he", 0)] {
+        let cleaner = Arc::new(CountingCleaner(AtomicUsize::new(0)));
+        let core = MurmurCore::from_resident_engine_with_lid(
+            Arc::new(MockAsr::new("hello there how are you today")),
+            None,
+            vec!["he".into()],
+            Arc::new(MockLid::new(heard)),
+            Some(cleaner.clone()),
+        );
+        let out = dictate_ms(&core, SessionConfig::default(), 800);
+        assert_eq!(cleaner.0.load(Ordering::SeqCst), cleans, "{heard}: {out:?}");
+    }
 }
