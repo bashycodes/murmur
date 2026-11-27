@@ -1,0 +1,16 @@
+# Dated probe (2026-11-27): on-phone spoken language ID cost (D34 on Android).
+# Standalone crate, not a workspace member; builds against murmur-core's
+# WhisperLid exactly as the hybrid flavour links whisper.cpp. See README.md.
+[package]
+name = "phone-lid-probe"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+murmur-core = { path = "../../../../crates/murmur-core", features = ["whisper", "wav"] }
+
+[profile.release]
+opt-level = 3
