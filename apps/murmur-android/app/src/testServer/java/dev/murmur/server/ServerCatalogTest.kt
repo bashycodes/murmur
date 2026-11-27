@@ -35,6 +35,17 @@ class ServerCatalogTest {
         }
     }
 
+    /** D119: the language-ID file Android takes along with a Hebrew model is Windows' `LID_FILES` pin. */
+    @Test fun theLanguageIdPinIsTheWindowsOne() {
+        val p = dev.murmur.data.HebrewModels.LID
+        val size = "%,d".format(java.util.Locale.ROOT, p.size).replace(',', '_')
+        // model_file!(base, name, size, sha) may span lines: read the call ending at the hash.
+        val at = windows.indexOf("\"${p.sha256}\"")
+        assertTrue("LID sha256 not in the Windows catalogue", at >= 0)
+        val call = windows.substring(windows.lastIndexOf("model_file!(", at), at)
+        assertTrue("LID pin differs from Windows: $call", call.contains("\"${p.name}\"") && call.contains(size))
+    }
+
     @Test fun everyIdIsAWindowsCatalogueId() {
         val ids = Regex("""id: "([^"]+)"""").findAll(windows).map { it.groupValues[1] }.toSet() +
             Regex("""pub const \w+_ID: &str = "([^"]+)"""").findAll(windows).map { it.groupValues[1] }.toSet()

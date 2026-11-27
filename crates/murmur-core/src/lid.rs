@@ -52,6 +52,18 @@ pub fn choose(scores: &[(String, f32)], default: &str) -> Option<String> {
         .map(|(l, _)| l.clone())
 }
 
+/// The candidate the identifier scored highest (`None` = `default`, or no
+/// scores). D119: a one-model core asks for another model only when
+/// [`choose`]'s answer is also this one, so a low-confidence pick (above
+/// [`ROUTE_MIN_PROB`] but not the most likely) never costs a reload.
+pub fn top(scores: &[(String, f32)], default: &str) -> Option<String> {
+    scores
+        .iter()
+        .max_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(l, _)| l.clone())
+        .filter(|l| l != default)
+}
+
 /// One window of a dictation's speech and the identifier's answer for it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LidWindow {
@@ -94,9 +106,19 @@ pub fn first_window(speech: Range<usize>) -> Range<usize> {
 /// language after it, or starts with a breath or a click the identifier
 /// hears as English (`docs/findings/2026-11-24-language-detect.md`).
 pub fn choose_whole(windows: &[LidWindow], default: &str) -> Option<String> {
-    let time = speech_time(windows, default);
-    let top = time.iter().map(|t| t.1).max()?;
-    let leaders: Vec<&Option<String>> = time.iter().filter(|t| t.1 == top).map(|t| &t.0).collect();
+    lead(speech_time(windows, default, choose))
+}
+
+/// [`choose_whole`] with [`top`] as each window's answer: the language most
+/// likely over the dictation's speech (D119's confidence check).
+pub fn top_whole(windows: &[LidWindow], default: &str) -> Option<String> {
+    lead(speech_time(windows, default, top))
+}
+
+/// The answer with the most speech; a tie goes to a language over the default.
+fn lead(time: Vec<(Option<String>, usize)>) -> Option<String> {
+    let most = time.iter().map(|t| t.1).max()?;
+    let leaders: Vec<&Option<String>> = time.iter().filter(|t| t.1 == most).map(|t| &t.0).collect();
     leaders
         .iter()
         .find(|l| l.is_some())
@@ -107,7 +129,7 @@ pub fn choose_whole(windows: &[LidWindow], default: &str) -> Option<String> {
 /// True when `remaining` more samples of speech cannot change
 /// [`choose_whole`]'s answer: the leader is ahead of the runner-up by more.
 pub fn decided_without(windows: &[LidWindow], default: &str, remaining: usize) -> bool {
-    let mut time: Vec<usize> = speech_time(windows, default)
+    let mut time: Vec<usize> = speech_time(windows, default, choose)
         .into_iter()
         .map(|t| t.1)
         .collect();
@@ -116,12 +138,19 @@ pub fn decided_without(windows: &[LidWindow], default: &str, remaining: usize) -
     time.first().is_some_and(|&t| t > second + remaining)
 }
 
-/// Samples of speech per [`choose`] answer (`None` = the default), in the
-/// order first heard.
-fn speech_time(windows: &[LidWindow], default: &str) -> Vec<(Option<String>, usize)> {
+/// A per-window answer: [`choose`] or [`top`].
+type Answer = fn(&[(String, f32)], &str) -> Option<String>;
+
+/// Samples of speech per `answer` (`None` = the default), in the order
+/// first heard.
+fn speech_time(
+    windows: &[LidWindow],
+    default: &str,
+    answer: Answer,
+) -> Vec<(Option<String>, usize)> {
     let mut time: Vec<(Option<String>, usize)> = Vec::new();
     for w in windows {
-        let l = choose(&w.scores, default);
+        let l = answer(&w.scores, default);
         match time.iter_mut().find(|(k, _)| *k == l) {
             Some((_, t)) => *t += w.samples,
             None => time.push((l, w.samples)),

@@ -259,8 +259,18 @@ class MurmurApp : Application() {
         LanguageDefault.resolve(
             s.language, java.util.Locale.getDefault().language, engine.loadedAsr(), installedLanguages(),
             keyboard = if (s.language == Settings.LANGUAGE_KEYBOARD || s.language == Settings.LANGUAGE_AUTO) keyboardLanguage() else null,
-            offPhone = offPhone,
+            offPhone = offPhone, lid = engine.lidPath(s) != null, heard = lidHeard,
         )
+
+    /** The language whose model the phone keeps loaded for the next dictation ([LanguageDefault.Resolved.load]). */
+    fun loadLanguage(s: Settings = settings.load()): String = resolveLanguage(s).load
+
+    /**
+     * D119: the language the phone's language ID last heard (`he`, or `en` for the default
+     * model); the next dictation starts on its model. In memory only: after a restart the
+     * keyboard is the first guess again.
+     */
+    @Volatile var lidHeard: String? = null
 
     /** Languages with their own imported model (H5: `he`). */
     fun installedLanguages(): Set<String> = if (engine.hebrewModel() != null) setOf(HebrewModels.LANGUAGE) else emptySet()
@@ -475,7 +485,7 @@ class EngineHolder(
     private fun wantedSet(s: Settings = app.settings.load()): LoadSet =
         if (setProbe != null) setProbe.invoke()
         else if (!app.caps.local || s.mockEngine) LoadSet.Default
-        else LoadSet.of(app.effectiveLanguage(s), hebrewModel() != null, s.keepBothLanguages) { defaultModelInstalled(s) }
+        else LoadSet.of(app.loadLanguage(s), hebrewModel() != null, s.keepBothLanguages) { defaultModelInstalled(s) }
 
     /**
      * The phone can transcribe the next dictation: what [wantedSet] loads for the current language
@@ -484,6 +494,17 @@ class EngineHolder(
      */
     fun phoneSpeechReady(s: Settings = app.settings.load()): Boolean =
         SpeechEngines.phoneReady(s, wantedSet(s)) { defaultModelInstalled(s) }
+
+    /**
+     * D119: the language-ID model's path when Automatic identifies the language on the phone:
+     * the setting is Automatic, the phone has on-device engines, and both a Hebrew model (with
+     * the language-ID file beside it) and a default model are installed (two models to choose
+     * between). Null otherwise: Automatic then follows the keyboard (D113).
+     */
+    fun lidPath(s: Settings = app.settings.load()): String? {
+        if (s.language != Settings.LANGUAGE_AUTO || !app.caps.local || s.mockEngine || hebrewModel() == null) return null
+        return HebrewModels.lidPath(hebrewDir())?.takeIf { defaultModelInstalled(s) }
+    }
 
     /** D54: a default (whisper / Parakeet) model is installed, so "Keep both languages loaded" has two models to keep. */
     fun defaultModelInstalled(s: Settings = app.settings.load()): Boolean = EnginePlan.defaultInstalled(
@@ -815,7 +836,7 @@ class EngineHolder(
             s, app.settings.modelPath, app.settings.llmModelPath, { File(it).isFile }, threads,
             parakeetPath = app.settings.parakeetPath, isModelDir = { ParakeetFiles.isModelDir(File(it)) },
             parakeetDecoding = decoding ?: ParakeetDecoding.GREEDY,
-            language = app.effectiveLanguage(s), hebrew = hebrew, keepBoth = s.keepBothLanguages,
+            language = app.loadLanguage(s), hebrew = hebrew, keepBoth = s.keepBothLanguages, lidPath = lidPath(s),
         )
         return when (val plan = EngineRoute.plan(local, app.dev.load(), app.caps)) {
             EngineRoute.Plan.Mock -> State.Ready(FakeMurmurCore("This is a test of on-device dictation."), "mock engine", mock = true)

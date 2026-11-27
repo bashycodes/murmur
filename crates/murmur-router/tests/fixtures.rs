@@ -443,6 +443,7 @@ fn live_route_fixtures() -> Vec<(String, Value)> {
                     endpoint_reached: false,
                     speech_ms: 1200,
                     trailing_silence_ms: 300,
+                    ..Default::default()
                 },
                 route: Some(cloud),
                 ..Default::default()
@@ -457,6 +458,7 @@ fn live_route_fixtures() -> Vec<(String, Value)> {
                     endpoint_reached: true,
                     speech_ms: 2400,
                     trailing_silence_ms: 2000,
+                    ..Default::default()
                 },
                 route: Some(SessionRoute {
                     engine: EngineKind::Local,

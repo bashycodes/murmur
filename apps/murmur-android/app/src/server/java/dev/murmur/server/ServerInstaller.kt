@@ -27,7 +27,7 @@ class ServerInstaller(private val transport: LibraryTransport) {
         for (f in plan.fetches) {
             if (cancelled()) return Outcome.Cancelled
             f.dest.parentFile?.mkdirs()
-            val failure = transport.download(model.id, f.file, f.dest, f.part, { n -> onProgress(before + n, total) }, cancelled)
+            val failure = transport.download(f.modelId ?: model.id, f.file, f.dest, f.part, { n -> onProgress(before + n, total) }, cancelled)
             if (failure != null) {
                 if (failure.kind == "cancelled") return Outcome.Cancelled
                 return Outcome.Failed(failure, resumable = failure.kind == "network" && f.part.isFile)

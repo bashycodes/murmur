@@ -25,7 +25,8 @@ English.
    Live chunk feeding is a later, app-wide improvement, not part of 0.10.0.
 4. **One model in memory where RAM is tight.** Android loads only the model for the
    current language (switching language reloads). Windows and the server may keep the
-   default and the Hebrew model loaded.
+   default and the Hebrew model loaded. (Amended by D119: Android also keeps the small
+   language-ID model loaded beside the one big model.)
 5. **English-only post-processing is skipped for non-English output.** The rules pass
    (`postprocess::spoken::spoken_cleanup`: fillers, spoken punctuation, backtrack,
    commands, ITN) and `layout()` and `segment::capitalize_joins` run only when the

@@ -40,6 +40,27 @@ class ServerSlotsTest {
         assertTrue(reason(model("w", ModelKind.STT, "whisper", listOf(f("a.bin"))), local = false).contains("no on-device engine"))
     }
 
+    /** D119: a Hebrew model brings the language-ID file along when the server has it, into the Hebrew folder's root. */
+    @Test fun aHebrewModelFetchesTheLanguageIdFileAsAnExtra() {
+        val pin = HebrewModels.LID
+        val tiny = f("ggml-tiny-q5_1.bin", pin.size, pin.sha256)
+        val lidModel = model("lid-tiny", ModelKind.LID, "whisper", listOf(tiny))
+        val he = model("he1", ModelKind.HEBREW, "sherpa_online", SHERPA)
+        val p = ServerSlots.plan(he, dirs, local = true, all = listOf(he, lidModel)).getOrThrow()
+        val extra = p.fetches.last()
+        assertEquals(File("/h/ggml-tiny-q5_1.bin"), extra.dest)
+        assertEquals("fetched from the model holding it", "lid-tiny", extra.modelId)
+        assertEquals(40L + pin.size, p.bytes)
+        // In the Hebrew model's own files: no other model named.
+        val own = model("he2", ModelKind.HEBREW, "parakeet", SHERPA + tiny)
+        assertNull(ServerSlots.plan(own, dirs, local = true).getOrThrow().fetches.last { it.dest.name == pin.name }.modelId)
+        // Optional: without it on the server, the plan is as before.
+        assertEquals(SHERPA.size, ServerSlots.plan(he, dirs, local = true, all = listOf(he)).getOrThrow().fetches.size)
+        // Other slots never take it.
+        val w = model("w", ModelKind.STT, "whisper", listOf(f("ggml-x.bin")))
+        assertEquals(1, ServerSlots.plan(w, dirs, local = true, all = listOf(lidModel)).getOrThrow().fetches.size)
+    }
+
     @Test fun customFilesLandInTheirSlotFolders() {
         val w = plan(model("my-w", ModelKind.STT, "whisper", listOf(f("sub/ggml-x.bin"), f("README.md")))).getOrThrow()
         assertEquals(File("/m/my-w-ggml-x.bin"), w.target)

@@ -831,6 +831,12 @@ pub trait Backend: Send + Sync {
     fn push_audio(&self, pcm: &[i16]) -> bool;
     fn set_context(&self, ctx: &FieldContext);
     fn partial(&self) -> Option<String>;
+    /// D119: the language a one-model local core's language ID asked for
+    /// (`MurmurCore::language_wanted`). Default: never (remote engines
+    /// identify the language themselves).
+    fn language_wanted(&self) -> Option<String> {
+        None
+    }
     /// Blocks until the result or `deadline`. An `Ok` result is final.
     fn commit(&self, deadline: std::time::Instant) -> Result<CommitResult, BackendError>;
     fn cancel(&self);

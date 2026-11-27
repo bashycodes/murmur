@@ -30,6 +30,7 @@ object CoreJson {
             })
         })
         c.loadLanguage?.let { put("load_language", it) }
+        c.lidPath?.let { put("lid_path", it) }
     }.toString()
 
     fun encode(c: SessionConfig): String = JSONObject().apply {
@@ -138,6 +139,7 @@ object CoreJson {
             emptyReason = o.optStringOrNull("empty_reason"),
             route = o.optJSONObject("route")?.let(::decodeRoute),
             llm = decodeCleanUsage(o.optJSONObject("llm")),
+            languageWanted = o.optStringOrNull("language_wanted"),
         )
     } catch (e: JSONException) {
         CommitResult(CommitStatus.ERROR, error = "bad commit json: ${e.message}")

@@ -136,3 +136,28 @@ fn fallback_replay_of_a_long_buffer_drops_nothing() {
     );
     assert!(res.final_text.to_lowercase().contains("hello"), "{res:?}");
 }
+
+/// D119: a one-model phone core's language ID reaches the shell through the
+/// router: in the poll while recording and in the commit result.
+#[test]
+fn local_language_wanted_passes_through_the_router() {
+    let core = Arc::new(MurmurCore::from_resident_engine_with_lid(
+        Arc::new(MockAsr::new("hello")),
+        None,
+        vec!["he".into()],
+        Arc::new(murmur_core::lid::MockLid::new("he")),
+        None,
+    ));
+    let r = Router::new(local_cfg(), Some(core as Arc<dyn Backend>), None);
+    r.start_session(SessionConfig::default()).unwrap();
+    assert!(r.push_audio(&speech(3500)));
+    let t = Instant::now();
+    let mut seen = None;
+    while seen.is_none() && t.elapsed().as_secs() < 5 {
+        seen = r.poll().session.language_wanted;
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert_eq!(seen.as_deref(), Some("he"));
+    let got = r.commit();
+    assert_eq!(got.language_wanted.as_deref(), Some("he"), "{got:?}");
+}

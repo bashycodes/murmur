@@ -5,6 +5,7 @@ import dev.murmur.command.CommandTarget
 import dev.murmur.core.CommandOutcome
 import dev.murmur.core.TranslateOutcome
 import dev.murmur.core.CommitResult
+import dev.murmur.core.DEFAULT_MODEL_LANGUAGE
 import dev.murmur.core.CommitStatus
 import dev.murmur.core.CoreException
 import dev.murmur.core.FieldContext
@@ -282,6 +283,13 @@ class DictationController(
         /** D58: the stop language differs from the start one: make the engine serve it (loads its model if needed). */
         fun prepareStopLanguage() = Unit
 
+        /**
+         * D119: the phone's language ID heard [language] (`he`, or `en` for the default model),
+         * whose model is not loaded: remember it and start loading that model now (the loaded
+         * engine is freed: one model in RAM). Called off the caller's thread.
+         */
+        fun languageDetected(language: String) = Unit
+
         /** D90: the language a translation types in; null = automatic (the other keyboard language). */
         fun translateTarget(): String? = null
 
@@ -335,6 +343,9 @@ class DictationController(
          * most [RETRY_TIMEOUT_MS]).
          */
         const val RERUN_TIMEOUT_MS = 150_000L
+
+        /** D119: the debug line's `language_source` when the phone's language ID chose the language. */
+        const val LID_SOURCE = "lid"
 
         /**
          * D55: the longest a dictation waits for the speech model (an unload wait of up to 30 s,
@@ -424,6 +435,19 @@ class DictationController(
     private var captureRelang = false
     /** D58: the config the dictation started with (the re-run takes it with the stop languages). */
     private var startCfg: SessionConfig? = null
+    /**
+     * D119: dictation [gen]'s session was dropped mid-recording because language ID heard
+     * [heard], whose model was not loaded; the stop re-runs the recording in it (as D58). No
+     * core endpoints that dictation any more, so a hands-free one ends on the silence here
+     * while [endpointing] (as D55).
+     */
+    private class LidSwitch(val gen: Long, val heard: String) {
+        @Volatile var endpointing = true
+    }
+    @Volatile private var lidSwitch: LidSwitch? = null
+
+    /** A re-run in flight: the engine it runs on, its result, and the wait it gets. */
+    private class Rerun(val core: MurmurCore, val pending: Deferred<CommitResult>, val budget: Long)
     /** D35: a History retry holds the core; no dictation starts meanwhile. */
     @Volatile var retrying = false
         private set
@@ -781,6 +805,7 @@ class DictationController(
         captureRetry = command == null && runCatching { host.keepRetryAudio() }.getOrDefault(false)
         captureRelang = runCatching { host.followsKeyboard() }.getOrDefault(false)
         startCfg = cfg
+        lidSwitch = null
         val pcmCapture = if (captureDebug || captureRetry || captureRelang) PcmCapture(cap.maxSamples.toInt()) else null
         capture = pcmCapture
         hintJob?.cancel(); _hint.value = null; _partial.value = null; _route.value = null
@@ -799,8 +824,11 @@ class DictationController(
             if (silence.heardSpeech) { if (h == DictationHint.NoSpeechYet) _hint.value = null }
             else if (h == null && silence.leadingSilenceMs >= NO_SPEECH_HINT_AFTER_MS) _hint.value = DictationHint.NoSpeechYet
             // D55: no engine to endpoint yet; a hands-free dictation ends on the same silence here.
-            if (lw != null && lw.endpointing && endpointMs != null && silence.heardSpeech && silence.trailingSilenceMs >= endpointMs) {
-                lw.endpointing = false
+            val switched = lidSwitch?.takeIf { it.gen == gen && it.endpointing }
+            val selfEndpoint = (lw != null && lw.endpointing) || switched != null
+            if (selfEndpoint && endpointMs != null && silence.heardSpeech && silence.trailingSilenceMs >= endpointMs) {
+                lw?.endpointing = false
+                switched?.endpointing = false
                 scope.launch { if (generation == gen && _state.value is DictationState.Recording) stopAndSubmit() }
             }
         }, {
@@ -863,6 +891,18 @@ class DictationController(
                 if (preview) p.partial?.takeIf { it.isNotBlank() }?.let { _partial.value = it.trim() }
                 // Absent route mid-recording = the session is dead: keep the last label (the commit reports it).
                 p.route?.copy(loading = p.loading)?.let { if (it != _route.value) _route.value = it }
+                // D119: language ID wants the other model. Drop this session and start that load
+                // now, while the user still speaks; the stop re-runs the kept recording in it.
+                val heard = p.languageWanted
+                if (heard != null && lidSwitch?.gen != gen && captureRelang && capture != null) {
+                    lidSwitch = LidSwitch(gen, heard)
+                    _partial.value = null
+                    withContext(commitDispatcher) {
+                        runCatching { c.cancel() }
+                        runCatching { host.languageDetected(heard) }
+                    }
+                    continue
+                }
                 if (handsFree && p.endpointReached) {
                     stopAndSubmit() // D19: exactly as if the user tapped stop
                     break
@@ -970,15 +1010,24 @@ class DictationController(
         // D58: the keyboard at the stop decides the language; a change since the start re-runs
         // the whole recording in the stop language (hands-free endpoint and cap stops too).
         val begun = startCfg
-        val stopLang = if (captureRelang) runCatching { host.stopLanguage() }.getOrNull() else null
-        // The replay ends itself: no hands-free endpoint, no live preview.
-        val relangCfg = if (stopLang != null && begun != null && stopLang.languages != begun.languages && kept != null && kept.isNotEmpty()) {
+        // D119: the language heard while recording decides; else the keyboard (D58).
+        val heard = lidSwitch?.takeIf { it.gen == generation && captureRelang }?.heard
+        lidSwitch = null
+        val stopLang = when {
+            heard != null && begun != null -> StopLanguage(lidLanguages(heard, begun), LID_SOURCE)
+            captureRelang -> runCatching { host.stopLanguage() }.getOrNull()
+            else -> null
+        }
+        // The replay ends itself: no hands-free endpoint, no live preview. D119: a switch always
+        // re-runs (its session was dropped), also on the session's own languages.
+        val relangCfg = if (stopLang != null && begun != null && (heard != null || stopLang.languages != begun.languages) && kept != null && kept.isNotEmpty()) {
             begun.copy(languages = stopLang.languages, endpointSilenceMs = null, partialIntervalMs = null)
         } else null
         val deadline = stoppedAt + RERUN_TIMEOUT_MS
         // D21 trace inputs, captured before the next dictation can reset them.
-        val ts = traceStart?.let { t ->
-            if (stopLang == null) t else t.copy(stopLanguage = stopLang.languages.firstOrNull() ?: "auto", languageSource = stopLang.source)
+        var ts = traceStart?.let { t ->
+            if (stopLang == null) t
+            else t.copy(stopLanguage = heard ?: stopLang.languages.firstOrNull() ?: "auto", languageSource = stopLang.source)
         }
         val endpointWait = if (silence.heardSpeech) silence.trailingSilenceMs else null
         val live = _route.value
@@ -1016,66 +1065,87 @@ class DictationController(
                 _state.value = DictationState.Error(DictationState.ErrorKind.FailedToTranscribe)
                 done(InsertOutcome.TIMEOUT, error = "no result after $budget ms")
             }
-            val c: MurmurCore
-            val pending: Deferred<CommitResult>
-            val budget: Long
-            if (relangCfg == null) {
-                c = first
-                // Not a child: a hung native commit must be abandonable.
-                pending = CoroutineScope(commitDispatcher).async {
-                    c.commit().also { diag = try { c.lastRouteDiag() } catch (_: Throwable) { null } }
-                }
-                budget = PROCESSING_TIMEOUT_MS
-            } else {
-                // D58: the start-language session (and its live preview) is dropped.
+            val job = this
+            /**
+             * D58 / D119: re-runs the whole kept recording with [cfg] (the new language) on the
+             * engine serving it, after [prev]'s session is dropped. Null = handled (error shown,
+             * timed out or dropped).
+             */
+            suspend fun rerun(prev: MurmurCore, cfg: SessionConfig): Rerun? {
+                // The start-language session (and its live preview) is dropped.
                 _partial.value = null
-                withContext(commitDispatcher) { runCatching { first.cancel() } }
+                withContext(commitDispatcher) { runCatching { prev.cancel() } }
                 // A start that took the whole budget (connecting, or waiting for the model): no re-run.
-                if (deadline - now() <= 0) { timedOut(RERUN_TIMEOUT_MS); return@launch }
+                if (deadline - now() <= 0) { timedOut(RERUN_TIMEOUT_MS); return null }
                 val got = try {
                     // Hybrid: a dictation the server (or cloud) took goes back there; the phone model stays.
                     engineForStopLanguage(gen, deadline, swap = live?.engine.let { it == null || it == "local" })
                 } catch (e: CoreException) {
-                    if (generation != gen) return@launch
+                    if (generation != gen) return null
                     val msg = RouterErrors.userMessage(e.kind, e.message ?: "start failed")
                     if (cmd == null) host.recordHistory(CommitResult(CommitStatus.ERROR, error = msg), false, appId, InsertOutcome.ERROR, recording)
                     _route.value = null
                     _state.value = DictationState.Error(DictationState.ErrorKind.EngineUnavailable(msg))
                     done(InsertOutcome.START_FAILED, error = msg)
-                    return@launch
-                } ?: return@launch
-                c = got.core
+                    return null
+                } ?: return null
+                val c = got.core
                 processingCore = c
-                // D58: a re-run transcribes the whole recording again, within what is left of its budget.
+                // A re-run transcribes the whole recording again, within what is left of its budget.
                 val left = deadline - now()
-                if (left <= 0) { timedOut(RERUN_TIMEOUT_MS); return@launch }
-                budget = minOf(RETRY_TIMEOUT_MS, left)
+                if (left <= 0) { timedOut(RERUN_TIMEOUT_MS); return null }
                 val pcmAll = kept!!
                 replaying = true
                 // A child of this job: X, a timeout or the service's end cancels it, and it
                 // stops before the next chunk once this dictation is no longer the live one.
                 // Its own isActive: a parent waiting for a running child stays active.
-                pending = async(commitDispatcher) {
+                val pending = job.async(commitDispatcher) {
                     try {
-                        replay(c, relangCfg, ctx, pcmAll, gen, got.phoneOnly) { !isActive || generation != gen }
+                        replay(c, cfg, ctx, pcmAll, gen, got.phoneOnly) { !isActive || generation != gen }
                             .also { diag = try { c.lastRouteDiag() } catch (_: Throwable) { null } }
                     } catch (e: CoreException) {
                         CommitResult(CommitStatus.ERROR, error = e.message ?: "start failed")
                     }
                 }
+                return Rerun(c, pending, minOf(RETRY_TIMEOUT_MS, left))
             }
-            val result = try {
-                withTimeoutOrNull(budget) { pending.await() }
-            } finally {
-                replaying = false
+            /** The result within [budget], else null (the timeout shown); null too for a dropped dictation. */
+            suspend fun await(c: MurmurCore, pending: Deferred<CommitResult>, budget: Long): CommitResult? {
+                val result = try {
+                    withTimeoutOrNull(budget) { pending.await() }
+                } finally {
+                    replaying = false
+                }
+                _partial.value = null
+                if (generation != gen) return null
+                if (result == null) {
+                    pending.cancel()
+                    c.cancel() // C4: the core aborts the running commit
+                    timedOut(budget)
+                }
+                return result
             }
-            _partial.value = null
-            if (generation != gen) return@launch
-            if (result == null) {
-                pending.cancel()
-                c.cancel() // C4: the core aborts the running commit
-                timedOut(budget)
-                return@launch
+            val run = if (relangCfg == null) {
+                // Not a child: a hung native commit must be abandonable.
+                Rerun(first, CoroutineScope(commitDispatcher).async {
+                    first.commit().also { diag = try { first.lastRouteDiag() } catch (_: Throwable) { null } }
+                }, PROCESSING_TIMEOUT_MS)
+            } else rerun(first, relangCfg) ?: return@launch
+            var c = run.core
+            var result = await(c, run.pending, run.budget) ?: return@launch
+            // D119: a short dictation is identified at its commit: the text came from the other
+            // language's model, so load the one it wants and re-run the kept recording in it.
+            val wanted = result.languageWanted
+            if (relangCfg == null && wanted != null && begun != null && captureRelang && kept != null && kept.isNotEmpty() &&
+                result.status != CommitStatus.ERROR && !isCancelled(result)
+            ) {
+                ts = ts?.copy(stopLanguage = wanted, languageSource = LID_SOURCE)
+                withContext(commitDispatcher) { runCatching { host.languageDetected(wanted) } }
+                if (generation != gen) return@launch
+                val cfg = begun.copy(languages = lidLanguages(wanted, begun), endpointSilenceMs = null, partialIntervalMs = null)
+                val again = rerun(c, cfg) ?: return@launch
+                c = again.core
+                result = await(c, again.pending, again.budget) ?: return@launch
             }
             _route.value = null
             if (isCancelled(result)) {
@@ -1143,6 +1213,14 @@ class DictationController(
             done(if (inserted) InsertOutcome.INSERTED else InsertOutcome.PASTE_FAILED, res)
         }
     }
+
+    /**
+     * D119: the languages a re-run in [heard] sends: a language model's own language is forced
+     * (the session then runs on that model), the default model keeps the session's own (`auto`
+     * detects, as D113: a language without its own model is never forced to English).
+     */
+    private fun lidLanguages(heard: String, begun: SessionConfig): List<String> =
+        if (heard == DEFAULT_MODEL_LANGUAGE) begun.languages else listOf(heard)
 
     /**
      * D58: the engine for the stop language. [Host.prepareStopLanguage] reloads the phone model

@@ -189,7 +189,10 @@ AI set up").
 
 **Automatic language** (Both). By default Murmur detects the language of
 each dictation from your speech, and Hebrew goes to the Hebrew model. On
-Android, which has no spoken language detection, a Hebrew keyboard picks the
+Android this needs the small language-detection model next to the Hebrew
+model (`ggml-tiny-q5_1.bin`, imported with it or downloaded with it from
+your server); switching to the other language's model then reloads it,
+unless both are kept loaded. Without that file a Hebrew keyboard picks the
 Hebrew model when one is imported.
 *How:* this is the default (*Automatic* under *Settings → General →
 Languages* on Windows, and *Settings → Language* on Android).

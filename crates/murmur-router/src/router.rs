@@ -1518,7 +1518,10 @@ impl Router {
         }
         let partial = a.engine.as_ref().and_then(|e| e.partial());
         RouterPoll {
-            session: SessionPoll::new(partial, a.endpointer.as_ref().map(Endpointer::state)),
+            session: SessionPoll {
+                language_wanted: a.engine.as_ref().and_then(|e| e.language_wanted()),
+                ..SessionPoll::new(partial, a.endpointer.as_ref().map(Endpointer::state))
+            },
             route: a.live_route(),
             loading: a.loading(),
         }

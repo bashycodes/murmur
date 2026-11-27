@@ -9,9 +9,10 @@ import java.io.File
  * (apps/murmur-windows/src/server_library.rs `plan`): a model tagged with a catalogue id this
  * build knows is that catalogue model and must match its built-in pins; any other model is
  * custom, checked against the server's SHA-256, and its `kind` + `engine` pick the slot.
- * Android differences: there is no language-ID slot (the phone loads one model for the
- * dictation language, which comes from the keyboard or the settings, D37), and single-file
- * custom models download only their model file (less data on a cellular link).
+ * Android differences: there is no language-ID slot of its own: the language-ID model comes
+ * with a Hebrew model as its extra (D119, as Windows' catalogue extras), into the Hebrew
+ * folder's root; and single-file custom models download only their model file (less data on a
+ * cellular link).
  */
 enum class Slot(val screen: ModelPages.Screen, val label: String) {
     /** whisper.cpp ggml file → `files/models/`, the speech model. */
@@ -40,7 +41,7 @@ data class CatalogueModel(val id: String, val title: String, val slot: Slot, val
  * The catalogue ids (same as Windows' `model_download::CATALOG`) and their pinned files.
  * The Hebrew pins are [HebrewModels]' (import uses them too); ServerCatalogTest checks every
  * pin against the Windows catalogue, so the two apps can't drift apart. The Hebrew entries'
- * language-ID extra is not fetched (no slot on Android).
+ * language-ID extra ([HebrewModels.LID]) is fetched when the server has it ([ServerSlots.plan]).
  */
 object ServerCatalog {
     private fun pin(name: String, size: Long, sha: String) = LibraryFile(name, size, sha)
@@ -119,8 +120,11 @@ data class ModelDirs(val models: File, val parakeet: File, val hebrew: File, val
     }
 }
 
-/** One file to fetch: [file] is what it must match (a pin, or the server's listing), saved as [dest]. */
-data class Fetch(val file: LibraryFile, val dest: File) {
+/**
+ * One file to fetch: [file] is what it must match (a pin, or the server's listing), saved as
+ * [dest]; [modelId] = the server model holding it (null = the model being installed).
+ */
+data class Fetch(val file: LibraryFile, val dest: File, val modelId: String? = null) {
     val part: File get() = File(dest.parentFile, dest.name + ".part")
 }
 
@@ -162,8 +166,33 @@ object ServerSlots {
         }
     }
 
-    /** The slot and files of [m], or why it can't be used in this build ([local] = the build has on-device engines). */
-    fun plan(m: LibraryModel, dirs: ModelDirs, local: Boolean): Result<Plan> = runCatching {
+    /**
+     * D119: the language-ID extra of a Hebrew model: the server file with [HebrewModels.LID]'s
+     * size and SHA-256, from [m] itself or any model in [all] (e.g. a `lid` model), saved in the
+     * Hebrew folder's root. Optional, as on Windows: none when the server has no such file.
+     */
+    private fun lidExtra(m: LibraryModel, all: List<LibraryModel>, dirs: ModelDirs): List<Fetch> {
+        val pin = HebrewModels.LID
+        for (owner in listOf(m) + all) {
+            val f = owner.files.firstOrNull { it.size == pin.size && it.sha256.equals(pin.sha256, ignoreCase = true) } ?: continue
+            return listOf(Fetch(f, HebrewModels.lidFile(dirs.hebrew), owner.id.takeIf { it != m.id }))
+        }
+        return emptyList()
+    }
+
+    private fun Slot.hebrew() = this == Slot.HEBREW_ZIPFORMER || this == Slot.HEBREW_PARAKEET
+
+    /**
+     * The slot and files of [m], or why it can't be used in this build ([local] = the build has
+     * on-device engines). [all] = the server's whole listing (where a Hebrew model's language-ID
+     * extra may come from).
+     */
+    fun plan(m: LibraryModel, dirs: ModelDirs, local: Boolean, all: List<LibraryModel> = emptyList()): Result<Plan> = runCatching {
+        val p = planModel(m, dirs, local)
+        if (p.slot.hebrew()) p.copy(fetches = p.fetches + lidExtra(m, all, dirs)) else p
+    }
+
+    private fun planModel(m: LibraryModel, dirs: ModelDirs, local: Boolean): Plan {
         if (!local) error("this build has no on-device engine (it dictates on your server)")
         ServerCatalog.entry(m.catalogueId)?.let { e ->
             for (p in e.pins) {
@@ -171,7 +200,7 @@ object ServerSlots {
                 if (s.size != p.size || !s.sha256.equals(p.sha256, ignoreCase = true)) error("the server's ${p.name} differs from the fingerprint built into this version")
             }
             val dir = dirs.of(e.slot)
-            return@runCatching if (e.slot.fileExt != null) {
+            return if (e.slot.fileExt != null) {
                 val t = File(dir, e.dest)
                 Plan(e.slot, e, t, listOf(Fetch(e.pins.single(), t)))
             } else {
@@ -183,7 +212,7 @@ object ServerSlots {
         val slot = when {
             m.kind == null -> error("this version doesn't know the kind \"${m.kindWire}\"")
             m.kind == ModelKind.VAD -> error("this app has no slot for a voice-activity model")
-            m.kind == ModelKind.LID -> error("the phone has no language-detection slot: dictation follows the keyboard or the language you set")
+            m.kind == ModelKind.LID -> error("the language-detection model comes along with a Hebrew model on the phone")
             engine.isEmpty() -> error("its tag has no engine (add engine = ${enginesHint()} to model.toml)")
             m.kind == ModelKind.STT && engine == "whisper" -> Slot.STT_WHISPER
             m.kind == ModelKind.STT && engine == "parakeet" -> Slot.STT_PARAKEET
@@ -200,14 +229,14 @@ object ServerSlots {
             val f = m.files.filter { it.name.endsWith(ext) }.singleOrNull() ?: error("expected exactly one $ext file")
             val base = f.name.substringAfterLast('/')
             val t = File(dir, if (base.startsWith(m.id)) base else "${m.id}-$base")
-            Plan(slot, null, t, listOf(Fetch(f, t)))
+            return Plan(slot, null, t, listOf(Fetch(f, t)))
         } else {
             fun top(pre: String) = m.files.any { !it.name.contains('/') && it.name.startsWith(pre) && it.name.endsWith(".onnx") }
             if (!(m.files.any { it.name == "tokens.txt" } && top("encoder") && top("decoder") && top("joiner"))) {
                 error("expected encoder, decoder and joiner .onnx files and tokens.txt")
             }
             val t = File(dir, customName(m.id))
-            Plan(slot, null, t, m.files.map { Fetch(it, it.name.split('/').fold(t) { d, part -> File(d, part) }) })
+            return Plan(slot, null, t, m.files.map { Fetch(it, it.name.split('/').fold(t) { d, part -> File(d, part) }) })
         }
     }
 }

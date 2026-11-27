@@ -46,6 +46,19 @@ object HebrewModels {
         val totalBytes: Long get() = pins.sumOf { it.size }
     }
 
+    /**
+     * D119: the language-ID model the Hebrew models bring along (as on Windows, D31: same file,
+     * size and SHA-256). It sits in the Hebrew folder's root, shared by every Hebrew model, and
+     * lets Automatic hear whether a dictation is Hebrew.
+     */
+    val LID = Pin("ggml-tiny-q5_1.bin", 32_152_673, "818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7")
+
+    /** Where [LID] lives under the Hebrew folder [root]. */
+    fun lidFile(root: java.io.File) = java.io.File(root, LID.name)
+
+    /** The language-ID model's path when it is in [root] with its pinned size (hashed when it was saved), else null. */
+    fun lidPath(root: java.io.File): String? = lidFile(root).takeIf { it.isFile && it.length() == LID.size }?.path
+
     /** What is known about one file: [size] -1 = unknown, [sha256] null = not hashed (yet). */
     data class Facts(val size: Long, val sha256: String? = null)
 
@@ -74,6 +87,23 @@ object HebrewModels {
         val f = files.getValue(bad.name)
         val why = if (f.size >= 0 && f.size != bad.size) "is ${f.size} bytes, expected ${bad.size}" else "has a different SHA-256 (corrupt or another version)"
         return Check.Bad("Not a supported Hebrew model: ${bad.name} $why for ${near.label}. Use the pinned files linked below.")
+    }
+
+    /**
+     * D119: what an import holds besides a model: the language-ID file checked against [LID]
+     * ([lid] true = present and intact; a mismatch is [Check.Bad]'s message), and whether the
+     * model files are there at all ([model] false: an import of the language-ID file alone).
+     */
+    data class Extras(val lid: Boolean, val model: Boolean, val bad: String? = null)
+
+    fun extras(files: Map<String, Facts>): Extras {
+        val model = FILES.any { it in files }
+        val f = files[LID.name] ?: return Extras(lid = false, model = model)
+        if (!fits(LID, f)) {
+            val why = if (f.size >= 0 && f.size != LID.size) "is ${f.size} bytes, expected ${LID.size}" else "has a different SHA-256"
+            return Extras(lid = false, model = model, bad = "${LID.name} $why. Use the pinned file linked below.")
+        }
+        return Extras(lid = true, model = model)
     }
 
     /** The base name of a zip entry / document ("sherpa-onnx/encoder.int8.onnx" → "encoder.int8.onnx"). */
@@ -178,7 +208,8 @@ object HebrewImport {
 
     /**
      * Extracts the model files of a .zip (any folder depth; other entries skipped) into [dir].
-     * Entry names are reduced to [HebrewModels.FILES] names, so nothing lands outside [dir].
+     * Entry names are reduced to [HebrewModels.FILES] names (and D119 [HebrewModels.LID]), so
+     * nothing lands outside [dir].
      */
     fun extractZip(input: java.io.InputStream, dir: java.io.File, onBytes: (Long) -> Unit = {}): Map<String, HebrewModels.Facts> {
         val out = HashMap<String, HebrewModels.Facts>()
@@ -186,7 +217,7 @@ object HebrewImport {
             while (true) {
                 val e = z.nextEntry ?: break
                 val name = HebrewModels.baseName(e.name)
-                if (e.isDirectory || name !in HebrewModels.FILES || name in out) continue
+                if (e.isDirectory || (name !in HebrewModels.FILES && name != HebrewModels.LID.name) || name in out) continue
                 out[name] = copyHashed(z, java.io.File(dir, name), onBytes)
             }
         }

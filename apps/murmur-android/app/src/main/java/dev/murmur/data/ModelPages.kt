@@ -138,7 +138,9 @@ object ModelPages {
         Screen.PARAKEET -> "English only and more accurate than whisper base. Copy the unpacked model folder to the phone, then pick that folder."
         Screen.HEBREW -> "Used only when the dictation language is Hebrew; the phone then loads this model instead of the English one " +
             "(switching language reloads, a few seconds). Put the four files in one folder (or one .zip), copy it to the phone and import it. " +
-            "Files are checked against the pinned sizes and SHA-256."
+            "Files are checked against the pinned sizes and SHA-256. " +
+            "Add ggml-tiny-q5_1.bin (32 MB, whisper.cpp) to the folder, or import it alone, and Automatic hears when you speak Hebrew " +
+            "instead of following the keyboard."
         Screen.LLM -> "Optional. The model the \"This phone\" cleanup engine runs: a small language model that polishes each transcript " +
             "on the phone itself (punctuation, fillers, \"scratch that\" corrections, lists). " +
             (if (server) "Import a GGUF file you copied to the phone, or download one from your own server. "
