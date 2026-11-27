@@ -141,7 +141,7 @@ internal class ServerModelsUi(private val host: ServerModelsHost) : ServerModels
     }
 
     private fun LinearLayout.row(m: LibraryModel, job: ServerDownloads.Job?) = with(ui) {
-        val planned = ServerSlots.plan(m, dirs(), app.caps.local)
+        val planned = ServerSlots.plan(m, dirs(), app.caps.local, models.orEmpty())
         val plan = planned.getOrNull()
         val inUse = plan != null && plan.installed && plan.target.absolutePath == host.activePath()
         val downloading = job?.modelId == m.id

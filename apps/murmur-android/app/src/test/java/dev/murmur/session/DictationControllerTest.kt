@@ -88,6 +88,9 @@ class DictationControllerTest {
         override fun followsKeyboard() = keyboardAtStop != null
         override fun stopLanguage() = keyboardAtStop?.let { DictationController.StopLanguage(it, "keyboard") }
         override fun prepareStopLanguage() { prepared++ }
+        /** D119: what the phone's language ID reported. */
+        val detected = mutableListOf<String>()
+        override fun languageDetected(language: String) { detected += language }
     }
 
     /** advanceUntilIdle ignores backgroundScope work, where the controller lives. */
@@ -367,6 +370,114 @@ class DictationControllerTest {
         settle()
         assertEquals(16_000, core.samplesPushed)
         assertEquals(listOf("hello world"), host.inserted)
+    }
+
+    /** D119: a core with language ID whose first session wants [pollWant] while recording, or [commitWant] at its commit. */
+    private class LidCore(val inner: FakeMurmurCore, val pollWant: String? = null, val commitWant: String? = null) : MurmurCore by inner {
+        @Volatile var starts = 0
+        @Volatile var cancels = 0
+        override fun startSession(cfg: SessionConfig) { inner.startSession(cfg); starts++ }
+        override fun startSessionInfo(cfg: SessionConfig) = inner.startSessionInfo(cfg).also { starts++ }
+        override fun startSessionLocal(cfg: SessionConfig) = startSessionInfo(cfg)
+        override fun poll() = inner.poll().let { if (starts == 1) it.copy(languageWanted = pollWant) else it }
+        override fun commit() = inner.commit().let { if (starts == 1) it.copy(languageWanted = commitWant) else it }
+        override fun cancel() { cancels++; inner.cancel() }
+    }
+
+    /** D119: Automatic with language ID: the session detects (no language), the recording is kept. */
+    private fun automaticWithLid() {
+        host.config = SessionConfig(languages = emptyList())
+        host.keyboardAtStop = emptyList()
+    }
+
+    /** D119: heard mid-recording: the load starts at once, the stop re-runs the recording in that language. */
+    @Test fun languageHeardWhileRecordingSwitchesAndReRunsInIt() = runTest {
+        automaticWithLid()
+        val lid = LidCore(core, pollWant = "he")
+        val c = controller(lid)
+        c.toggle(hold = false)
+        audio.speak(500)
+        advanceTimeBy(DictationController.PARTIAL_POLL_MS + 1); runCurrent()
+        assertEquals("the load started while recording", listOf("he"), host.detected)
+        assertEquals(1, lid.cancels)
+        audio.speak(500)
+        advanceTimeBy(600)
+        c.toggle(hold = false)
+        settle()
+        assertEquals(listOf("hello world"), host.inserted)
+        assertEquals(2, lid.starts)
+        assertEquals("he", core.lastConfig!!.languages.single())
+        assertEquals("the whole recording, again", 16_000, core.samplesPushed)
+        assertEquals(listOf("he"), host.detected)
+        val t = host.traces.single()
+        assertEquals(listOf("auto", "he", "lid"), listOf(t.startLanguage, t.stopLanguage, t.languageSource))
+    }
+
+    /** D119: a dictation under the 3 s hold is identified at its commit, then re-run in that language. */
+    @Test fun aShortDictationIdentifiedAtCommitIsReRunInThatLanguage() = runTest {
+        automaticWithLid()
+        val lid = LidCore(core, commitWant = "en")
+        val c = controller(lid)
+        c.toggle(hold = false)
+        audio.speak()
+        advanceTimeBy(600)
+        c.toggle(hold = false)
+        settle()
+        assertEquals("inserted once, from the re-run", listOf("hello world"), host.inserted)
+        assertEquals(listOf("en"), host.detected)
+        assertEquals(2, lid.starts)
+        assertEquals("en", core.lastConfig!!.languages.single())
+        assertEquals(16_000, core.samplesPushed)
+        assertEquals("lid", host.traces.single().languageSource)
+    }
+
+    /** D119: no language-ID model: the core never asks, so the dictation runs exactly once, as before. */
+    @Test fun withoutLanguageIdAutomaticTranscribesOnce() = runTest {
+        automaticWithLid()
+        val lid = LidCore(core)
+        val c = controller(lid)
+        c.toggle(hold = false)
+        audio.speak()
+        advanceTimeBy(600)
+        c.toggle(hold = false)
+        settle()
+        assertEquals(listOf("hello world"), host.inserted)
+        assertEquals(1, lid.starts)
+        assertEquals(emptyList<String>(), host.detected)
+        assertEquals(0, host.prepared)
+    }
+
+    /** D119: no recording kept (the language does not follow the keyboard or language ID): the first text stands. */
+    @Test fun aWantedLanguageWithoutAKeptRecordingKeepsTheFirstText() = runTest {
+        val lid = LidCore(core, pollWant = "he", commitWant = "he")
+        val c = controller(lid)
+        c.toggle(hold = false)
+        audio.speak(500)
+        advanceTimeBy(DictationController.PARTIAL_POLL_MS + 1); runCurrent()
+        audio.speak(500)
+        advanceTimeBy(600)
+        c.toggle(hold = false)
+        settle()
+        assertEquals(listOf("hello world"), host.inserted)
+        assertEquals(1, lid.starts)
+        assertEquals(emptyList<String>(), host.detected)
+    }
+
+    /** D119: after a switch mid-recording no core endpoints the session; a hands-free dictation ends on silence here. */
+    @Test fun aHandsFreeDictationEndsOnSilenceAfterTheSwitch() = runTest {
+        automaticWithLid()
+        host.endpointMs = 500
+        val lid = LidCore(core, pollWant = "he")
+        val c = controller(lid)
+        c.toggle(hold = false)
+        audio.speak(500)
+        advanceTimeBy(DictationController.PARTIAL_POLL_MS + 1); runCurrent()
+        assertEquals(listOf("he"), host.detected)
+        repeat(6) { audio.sink?.invoke(ShortArray(1600), 1600) } // 600 ms of silence
+        settle()
+        assertTrue("the silence stopped it", FeedbackEvent.StopSound in host.events)
+        assertEquals(listOf("hello world"), host.inserted)
+        assertEquals("he", core.lastConfig!!.languages.single())
     }
 
     @Test fun aLanguageNotFollowingTheKeyboardIsNotReadAtTheStop() = runTest {

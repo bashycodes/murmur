@@ -137,6 +137,13 @@ object EnginePlan {
         hebrew: LanguageModel? = null,
         /** D54 "Keep both languages loaded": with [hebrew] and a default model, load both (no `load_language`). */
         keepBoth: Boolean = false,
+        /**
+         * D119: the language-ID model, when Automatic identifies the language on the phone; used
+         * only with [hebrew]. With one model in RAM the Hebrew route is then always configured
+         * (the default model loads with `load_language` [DEFAULT_ROUTE]), so the core can say
+         * when a dictation wants the other model.
+         */
+        lidPath: String? = null,
     ): Plan {
         if (s.mockEngine) return Plan.Mock
         val whisperOk = whisperOk(asrPath, exists)
@@ -157,21 +164,34 @@ object EnginePlan {
         }
         val llmUsed = llmPath.takeIf { llm is LlmStatus.Loaded }
         val whisper = if (whisperOk) ModelConfig(asrPath = asrPath!!, llmPath = llmUsed, threads = threads, llmLib = llmLib) else null
+        // Two models to choose between: a Hebrew one and a default one.
+        val lid = lidPath.takeIf { hebrew != null && (whisperOk || parakeetOk) }
         if (hebrewRoute != null) {
             // The default model's fields stay (they are not loaded); whisper is the fallback if the Hebrew model fails.
             val he = hebrew!!
             val base = whisper ?: ModelConfig(asrPath = he.asrPath, llmPath = llmUsed, threads = threads, llmLib = llmLib, asrEngine = he.asrEngine)
-            return Plan.Native(base.copy(languages = mapOf(hebrewRoute to he), loadLanguage = hebrewRoute), llm, whisperFallback = whisper)
+            return Plan.Native(base.copy(languages = mapOf(hebrewRoute to he), loadLanguage = hebrewRoute, lidPath = lid), llm, whisperFallback = whisper)
         }
         // D54: the core loads every language model and picks one per dictation from its language (D33).
-        val languages = if (both) mapOf(HebrewModels.LANGUAGE to hebrew!!) else emptyMap()
+        // D119: with language ID the Hebrew route is configured but only the default model loads.
+        val languages = if (both || lid != null) mapOf(HebrewModels.LANGUAGE to hebrew!!) else emptyMap()
+        val loadLanguage = DEFAULT_ROUTE.takeIf { !both && lid != null }
         if (parakeetOk) {
-            val cfg = ModelConfig(asrPath = parakeetPath!!, llmPath = llmUsed, threads = threads, llmLib = llmLib, asrEngine = AsrEngine.PARAKEET, parakeetDecoding = parakeetDecoding, languages = languages)
+            val cfg = ModelConfig(
+                asrPath = parakeetPath!!, llmPath = llmUsed, threads = threads, llmLib = llmLib, asrEngine = AsrEngine.PARAKEET,
+                parakeetDecoding = parakeetDecoding, languages = languages, loadLanguage = loadLanguage, lidPath = lid,
+            )
             return Plan.Native(cfg, llm, whisperFallback = whisper)
         }
         // Both models failing to load together (RAM) falls back to whisper alone, like a failed Hebrew model.
-        return Plan.Native(whisper!!.copy(languages = languages), llm, whisperFallback = whisper.takeIf { both })
+        return Plan.Native(whisper!!.copy(languages = languages, loadLanguage = loadLanguage, lidPath = lid), llm, whisperFallback = whisper.takeIf { both || lid != null })
     }
+
+    /**
+     * D119: `load_language` of the default model when the Hebrew route is configured for language
+     * ID only: the core's default language, which no `languages` key matches.
+     */
+    const val DEFAULT_ROUTE = "en"
 
     private fun whisperOk(asrPath: String?, exists: (String) -> Boolean) = asrPath != null && exists(asrPath)
     private fun parakeetOk(s: Settings, parakeetPath: String?, isModelDir: (String) -> Boolean) =
@@ -193,7 +213,7 @@ object EnginePlan {
 
         companion object {
             fun of(c: ModelConfig): FirstChoice = when {
-                c.loadLanguage != null -> HEBREW
+                c.loadsRoute -> HEBREW
                 loadsBoth(c) -> BOTH_LANGUAGES
                 else -> PARAKEET
             }
@@ -228,7 +248,7 @@ object EnginePlan {
 
     /** The engine the settings ask for: the Hebrew model's while Hebrew routes to it, else the user's choice. */
     fun selectedEngine(s: Settings, local: Plan.Native?): AsrEngine =
-        local?.config?.takeIf { it.loadLanguage != null }?.routed?.asrEngine ?: s.asrEngine
+        local?.config?.takeIf { it.loadsRoute }?.routed?.asrEngine ?: s.asrEngine
 
     private fun loadOne(p: Plan.Native, loader: MurmurCoreLoader): Loaded {
         val asr = loadedAsrOf(p.config)
@@ -239,7 +259,7 @@ object EnginePlan {
     /** The UI / debug name of what [c] loads: "Hebrew zipformer-he", "Parakeet pk + Hebrew zipformer-he", "base.bin". */
     private fun loadName(c: ModelConfig, asr: LoadedAsr): String {
         val prefix = when {
-            c.loadLanguage != null -> "Hebrew "
+            c.loadsRoute -> "Hebrew "
             asr.engine == AsrEngine.PARAKEET -> "Parakeet "
             else -> ""
         }

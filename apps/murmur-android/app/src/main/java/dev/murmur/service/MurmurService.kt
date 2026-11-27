@@ -747,11 +747,19 @@ class MurmurService : Service() {
             val s = app.settings.load()
             if (!dev.murmur.data.LanguageDefault.rereadsAtStop(s.language, app.installedLanguages(), sessionOffPhone)) return null
             val lang = app.resolveLanguage(s, sessionOffPhone)
+            // D119: the phone's language ID decides (the controller re-runs in what it heard), not the keyboard.
+            if (lang.source == dev.murmur.data.LanguageDefault.Source.LID) return null
             return DictationController.StopLanguage(lang.sessionLanguages, lang.source.wire)
         }
 
         // D58: the stop language may need the other model (one model in RAM); Keep both loaded: no-op.
         override fun prepareStopLanguage() = app.engine.ensureLanguage()
+
+        // D119: the next dictations start on the heard language's model; its load starts now.
+        override fun languageDetected(language: String) {
+            app.lidHeard = language
+            app.engine.ensureLanguage()
+        }
 
         override fun endpointSilenceMs(): Int? = app.settings.load().handsFreeEndpointMs()
 

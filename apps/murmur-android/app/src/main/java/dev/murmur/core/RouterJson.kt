@@ -162,6 +162,7 @@ object RouterJson {
             speechMs = o.optLong("speech_ms"), trailingSilenceMs = o.optLong("trailing_silence_ms"),
             route = decodeSessionRoute(o.optJSONObject("route")),
             loading = o.optBoolean("loading"),
+            languageWanted = o.optStr("language_wanted"),
         )
     } catch (e: org.json.JSONException) { CorePoll() }
 

@@ -16,6 +16,10 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Added
+
+- **Android: Automatic hears which language you speak.** With the small language-detection model (`ggml-tiny-q5_1.bin`, 32 MB, the file Windows already uses) next to the Hebrew model, Automatic identifies English or Hebrew from your speech on the phone instead of following the keyboard. Import it with the Hebrew model's folder or .zip, or on its own; a Hebrew model downloaded from your server brings it along when the server has it. When you speak the other language the phone starts loading its model at once and transcribes the whole recording again on it; with "Keep both languages loaded" there is no wait. Without the file nothing changes: a Hebrew keyboard still picks the Hebrew model (D119).
+
 ## [1.8.1] - 2026-11-26
 
 ### Added

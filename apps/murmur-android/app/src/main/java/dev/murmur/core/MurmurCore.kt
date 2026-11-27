@@ -256,10 +256,19 @@ data class ModelConfig(
      * (`MurmurCore::load_models_for`), so the phone keeps one ASR model in RAM. Null = load all.
      */
     val loadLanguage: String? = null,
+    /**
+     * D34 / D119: the language-ID model (`ggml-tiny-q5_1.bin`); with [languages] set, an
+     * Automatic dictation is identified, and a one-model load reports the language whose model
+     * it lacks ([CorePoll.languageWanted]). Omitted from the JSON when null.
+     */
+    val lidPath: String? = null,
 ) {
     /** The ASR model this config actually loads: the [loadLanguage] entry, else the default. */
     val routed: LanguageModel
         get() = loadLanguage?.let { languages[it] } ?: LanguageModel(asrEngine, asrPath, parakeetDecoding)
+
+    /** One language's own model loads ([loadLanguage] names a [languages] entry), not the default one. */
+    val loadsRoute: Boolean get() = loadLanguage != null && languages.containsKey(loadLanguage)
 }
 
 /**
@@ -344,6 +353,8 @@ data class CorePoll(
     val route: SessionRoute? = null,
     /** D24: the phone model is being loaded for this session (audio is buffered). */
     val loading: Boolean = false,
+    /** D119: language ID chose a language whose model is not loaded ([CommitResult.languageWanted]). */
+    val languageWanted: String? = null,
 )
 
 /** murmur_router `RouteDiag` (D24): how the last committed session was routed, for the D21 debug log. */
@@ -507,6 +518,11 @@ data class CommitResult(
     val llm: CleanUsage? = null,
     /** D90: a transform applied after the commit (the translation); not from the core's JSON. */
     val applied: AppliedTransform? = null,
+    /**
+     * D119: language ID chose a language whose model the phone did not have loaded (the text
+     * is from the loaded one): `he`, or `en` for the default model. Null otherwise.
+     */
+    val languageWanted: String? = null,
 ) {
     /** What to paste: [segments] when the core sent them, else the pre-core-p1 fields. */
     fun pastePlan(): List<PasteSegment> = segments.ifEmpty {
