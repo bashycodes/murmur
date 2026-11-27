@@ -39,6 +39,10 @@ impl Backend for MurmurCore {
         MurmurCore::partial(self)
     }
 
+    fn language_wanted(&self) -> Option<String> {
+        MurmurCore::language_wanted(self)
+    }
+
     /// In-process commit cannot be abandoned half way; the deadline is the
     /// remote backend's concern.
     fn commit(&self, _deadline: Instant) -> Result<CommitResult, BackendError> {
@@ -191,6 +195,10 @@ impl Backend for LazyLocal {
 
     fn partial(&self) -> Option<String> {
         self.loaded()?.partial()
+    }
+
+    fn language_wanted(&self) -> Option<String> {
+        self.loaded()?.language_wanted()
     }
 
     fn commit(&self, deadline: Instant) -> Result<CommitResult, BackendError> {

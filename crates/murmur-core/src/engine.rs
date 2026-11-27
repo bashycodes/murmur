@@ -191,6 +191,11 @@ pub struct CommitResult {
         skip_serializing_if = "Option::is_none"
     )]
     pub fallback_detail: Option<String>,
+    /// D119: as [`SessionPoll::language_wanted`], decided over the whole
+    /// dictation at commit: the text was decoded on the resident model,
+    /// which is not the one language ID chose. Omitted while `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language_wanted: Option<String>,
 }
 
 /// One poll of the live session (`MurmurCore::poll`, `Router::poll`): the
@@ -209,6 +214,13 @@ pub struct SessionPoll {
     pub speech_ms: u64,
     /// Audio since the last speech (0 when endpointing is off).
     pub trailing_silence_ms: u64,
+    /// D119: language ID chose a language whose model this one-model core
+    /// does not hold ([`MurmurCore::load_models_for`] with `lid_path`): the
+    /// shell should load that model and re-run the recording on it. A
+    /// route key (`"he"`) or `"en"` for the default model. Omitted while
+    /// `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language_wanted: Option<String>,
 }
 
 impl SessionPoll {
@@ -219,6 +231,7 @@ impl SessionPoll {
             endpoint_reached: ep.reached,
             speech_ms: ep.speech_ms,
             trailing_silence_ms: ep.trailing_silence_ms,
+            language_wanted: None,
         }
     }
 }
@@ -325,6 +338,7 @@ impl CommitResult {
             cleanup_route: None,
             cloud_fallback: None,
             fallback_detail: None,
+            language_wanted: None,
         }
     }
     fn error(msg: impl Into<String>) -> Self {
@@ -393,6 +407,37 @@ struct AsrRoutes {
     /// H6 (D34): identifies an auto-detect dictation's language so it can
     /// take a `by_language` route. `None` = auto-detect uses `default`.
     lid: Option<Arc<dyn LanguageId>>,
+    /// D119: a one-model core ([`MurmurCore::load_models_for`]) with an
+    /// identifier: the routes it was configured with but does not hold.
+    /// `None` for a core that holds all its models.
+    resident: Option<Resident>,
+}
+
+/// D119: what a one-model core holds and what it does not.
+#[derive(Clone, Debug)]
+struct Resident {
+    /// The route key `default` serves (`None` = the default model).
+    loaded: Option<String>,
+    /// Every configured route key (`ModelConfig::languages`).
+    routes: Vec<String>,
+}
+
+impl Resident {
+    /// The route key serving `language` (`None` = the default model).
+    fn key_for(&self, language: Option<&str>) -> Option<String> {
+        let w = primary_language(language?)?;
+        self.routes
+            .iter()
+            .find(|k| primary_language(k).as_deref() == Some(w.as_str()))
+            .cloned()
+    }
+
+    /// The language to ask the shell for when `language` (a [`lid::choose`]
+    /// answer) needs a model this core does not hold, else `None`.
+    fn wanted(&self, language: Option<&str>) -> Option<String> {
+        let key = self.key_for(language);
+        (key != self.loaded).then(|| key.unwrap_or_else(|| DEFAULT_LANGUAGE.to_string()))
+    }
 }
 
 impl AsrRoutes {
@@ -417,7 +462,15 @@ impl AsrRoutes {
     /// H6: true when a session must have its language identified before
     /// decoding: auto-detect, with an identifier and a language route.
     fn needs_lid(&self, cfg: &SessionConfig) -> bool {
-        self.lid.is_some() && !self.by_language.is_empty() && cfg.forced_language().is_none()
+        self.lid.is_some() && !self.route_keys().is_empty() && cfg.forced_language().is_none()
+    }
+
+    /// Every language route key, held or not (D119).
+    fn route_keys(&self) -> Vec<&str> {
+        match &self.resident {
+            Some(r) => r.routes.iter().map(String::as_str).collect(),
+            None => self.by_language.iter().map(|(k, _)| k.as_str()).collect(),
+        }
     }
 
     /// The languages an identifier chooses between: the session's own
@@ -434,11 +487,7 @@ impl AsrRoutes {
             listed
         } else {
             std::iter::once(DEFAULT_LANGUAGE.to_string())
-                .chain(
-                    self.by_language
-                        .iter()
-                        .filter_map(|(k, _)| primary_language(k)),
-                )
+                .chain(self.route_keys().into_iter().filter_map(primary_language))
                 .collect()
         };
         for l in src {
@@ -810,6 +859,9 @@ struct Shared {
     /// `commit`: a segment decode in flight at release is work the commit
     /// needs anyway.
     session_abort: Mutex<Arc<AtomicBool>>,
+    /// D119: `(session id, language)` once language ID asked a one-model
+    /// core for a model it does not hold (read by `poll`).
+    wanted: Mutex<Option<(u64, String)>>,
 }
 
 impl Shared {
@@ -859,6 +911,7 @@ impl MurmurCore {
             default,
             by_language,
             lid,
+            resident: None,
         };
         load.finish(cfg, routes)
     }
@@ -872,6 +925,13 @@ impl MurmurCore {
     /// `language_route` of the old and new language). Before freeing the
     /// old core it can [`MurmurCore::keep_llm`], which this load then reuses
     /// instead of loading the LLM again.
+    ///
+    /// D119: with `lid_path` (and a language route) the language-ID model
+    /// loads too: an auto-detect session is identified as on a full core,
+    /// and when the language needs the model this core does not hold, the
+    /// session still decodes on the loaded one and reports the language
+    /// ([`SessionPoll::language_wanted`], [`CommitResult::language_wanted`])
+    /// so the shell can switch models and re-run the recording.
     pub fn load_models_for(cfg: &ModelConfig, language: Option<&str>) -> Result<Self, CoreError> {
         Self::load_models_for_in(&llm_keep::SLOT, cfg, language)
     }
@@ -882,16 +942,23 @@ impl MurmurCore {
         language: Option<&str>,
     ) -> Result<Self, CoreError> {
         let mut load = Load::start(slot, cfg);
-        let asr = load.add(match cfg.language_route(language) {
+        let loaded = cfg.language_route(language).map(|k| k.to_string());
+        let asr = load.add(match loaded.as_deref() {
             Some(k) => load_asr(&cfg.languages[k], cfg, Some(k))?,
             None => load_asr(&cfg.default_model(), cfg, None)?,
+        });
+        let lid = load_lid(cfg)?.map(|l| load.add(l));
+        let resident = lid.is_some().then(|| Resident {
+            loaded,
+            routes: cfg.languages.keys().cloned().collect(),
         });
         load.finish(
             cfg,
             AsrRoutes {
                 default: asr,
                 by_language: Vec::new(),
-                lid: None,
+                lid,
+                resident,
             },
         )
     }
@@ -951,6 +1018,30 @@ impl MurmurCore {
                 default,
                 by_language,
                 lid,
+                resident: None,
+            },
+            cleaner,
+        )
+    }
+
+    /// D119: a one-model core as [`MurmurCore::load_models_for`] builds it
+    /// with a language identifier: `engine` serves route `loaded` (`None` =
+    /// the default model) of the configured `routes`; an auto-detect
+    /// session identified as another route's language decodes on `engine`
+    /// and reports that language.
+    pub fn from_resident_engine_with_lid(
+        engine: Arc<dyn AsrEngine>,
+        loaded: Option<String>,
+        routes: Vec<String>,
+        lid: Arc<dyn LanguageId>,
+        cleaner: Option<Arc<dyn Cleaner>>,
+    ) -> Self {
+        Self::from_routes(
+            AsrRoutes {
+                default: engine,
+                by_language: Vec::new(),
+                lid: Some(lid),
+                resident: Some(Resident { loaded, routes }),
             },
             cleaner,
         )
@@ -970,6 +1061,7 @@ impl MurmurCore {
             current: AtomicU64::new(0),
             inflight: Mutex::new(None),
             session_abort: Mutex::new(Arc::new(AtomicBool::new(false))),
+            wanted: Mutex::new(None),
         });
         let (tx, rx) = mpsc::channel();
         let ws = shared.clone();
@@ -1112,7 +1204,21 @@ impl MurmurCore {
 
     /// Partial + endpoint in one call (what a shell polls while recording).
     pub fn poll(&self) -> SessionPoll {
-        SessionPoll::new(self.partial(), self.endpoint())
+        SessionPoll {
+            language_wanted: self.language_wanted(),
+            ..SessionPoll::new(self.partial(), self.endpoint())
+        }
+    }
+
+    /// D119: the language the live session's language ID chose when this
+    /// one-model core does not hold its model; `None` otherwise (also
+    /// before the language is known and after commit or cancel).
+    pub fn language_wanted(&self) -> Option<String> {
+        let current = self.shared.current.load(Ordering::SeqCst);
+        match &*self.shared.wanted.lock().unwrap() {
+            Some((id, l)) if *id == current && current != 0 => Some(l.clone()),
+            _ => None,
+        }
     }
 
     /// Stop capture and run the full pipeline. Blocks until the result is ready.
@@ -1223,6 +1329,9 @@ struct LidState {
     /// The session's own `cfg.languages`, restored when the dictation
     /// turns out to be in the default language.
     own_languages: Vec<String>,
+    /// D119: the language a one-model core was asked for and does not hold
+    /// ([`Resident::wanted`]).
+    wanted: Option<String>,
 }
 
 struct Session {
@@ -1627,7 +1736,9 @@ fn identify_at_commit(routes: &AsrRoutes, s: &mut Session, abort: &AtomicBool) {
     }
     let now = s.route_language.as_deref().and_then(primary_language);
     let whole = lid::choose_whole(&s.lid.windows, DEFAULT_LANGUAGE);
-    if whole != now {
+    // A one-model core never moves the session, so `now` cannot tell
+    // whether the whole-dictation answer still wants another model.
+    if whole != now || routes.resident.is_some() {
         route_session(routes, s, whole.as_deref());
     }
 }
@@ -1646,7 +1757,16 @@ fn score_speech(id: &dyn LanguageId, s: &mut Session, range: Range<usize>) {
 /// Decode the session on `language`'s route, or on the default engine
 /// (`None`, or a language without a route), as if that language were
 /// forced; the default restores the session's own languages.
+///
+/// D119: on a one-model core, a language the loaded model does not serve
+/// leaves the session on it and records the wanted language instead.
 fn route_session(routes: &AsrRoutes, s: &mut Session, language: Option<&str>) {
+    if let Some(r) = &routes.resident {
+        s.lid.wanted = r.wanted(language);
+        if s.lid.wanted.is_some() {
+            return;
+        }
+    }
     let (engine, key) = match language.and_then(|l| routes.route(l)) {
         Some((k, e)) => (e.clone(), Some(k.clone())),
         None => (routes.default.clone(), None),
@@ -1706,6 +1826,7 @@ impl Worker {
                         next: 0,
                         candidates: self.routes.lid_candidates(&cfg),
                         own_languages: cfg.languages.clone(),
+                        wanted: None,
                     };
                     self.session = Some(Session {
                         id,
@@ -1936,8 +2057,15 @@ impl Worker {
         };
         s.drain();
         // H6: nothing is decoded before the language is known.
-        if s.lid.pending && !identify_language(&self.routes, s, false) {
-            return;
+        if s.lid.pending {
+            if !identify_language(&self.routes, s, false) {
+                return;
+            }
+            // D119: tell the shell now, while the user is still speaking,
+            // so the other model's load overlaps the rest of the dictation.
+            if let Some(l) = &s.lid.wanted {
+                *self.shared.wanted.lock().unwrap() = Some((s.id, l.clone()));
+            }
         }
         identify_while_recording(&self.routes, s);
         // D22: closed segments first (their text is part of the result);
@@ -2005,6 +2133,7 @@ impl Worker {
         r.truncated = s.truncated;
         r.timings.audio_ms = audio_ms;
         r.timings.lid_ms = s.lid.ms;
+        r.language_wanted = s.lid.wanted.clone();
         if s.buf.is_empty() {
             r.empty_reason = Some("no_audio".into());
             return r;
